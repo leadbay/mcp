@@ -3,13 +3,15 @@ import type {
   LeadPayload,
   AiAgentResponse,
   ContactPayload,
+  PaidContactPayload,
+  LeadWebFetchPayload,
 } from "../types.js";
 
 export function registerGetLeadProfile(api: any, client: LeadbayClient) {
   api.registerTool({
     name: "leadbay_get_lead_profile",
     description:
-      "Get a full lead profile including company details, AI qualification scores, and contacts. Bundles three API calls into one response. If qualification or contacts fail, partial data is still returned.",
+      "Get a full lead profile including company details, AI qualification scores, web insights (company profile, business signals, prospecting clues, key people, technologies), and contacts with recommended contact highlighted. Bundles multiple API calls into one response. If some data is unavailable, partial results are still returned.",
     parameters: {
       type: "object",
       properties: {
@@ -27,7 +29,7 @@ export function registerGetLeadProfile(api: any, client: LeadbayClient) {
     execute: async (params: { leadId: string; lensId?: number }) => {
       const lensId = params.lensId ?? (await client.resolveDefaultLens());
 
-      const [leadResult, qualResult, contactsResult] =
+      const [leadResult, qualResult, contactsResult, paidContactsResult, webFetchResult] =
         await Promise.allSettled([
           client.request<LeadPayload>(
             "GET",
@@ -41,6 +43,14 @@ export function registerGetLeadProfile(api: any, client: LeadbayClient) {
             "GET",
             `/leads/${params.leadId}/contacts?IncludeEnriched=true`
           ),
+          client.request<PaidContactPayload[]>(
+            "GET",
+            `/leads/${params.leadId}/enrich/contacts?IncludeEnriched=true`
+          ),
+          client.request<LeadWebFetchPayload>(
+            "GET",
+            `/leads/${params.leadId}/web_fetch`
+          ),
         ]);
 
       if (leadResult.status === "rejected") {
@@ -52,8 +62,44 @@ export function registerGetLeadProfile(api: any, client: LeadbayClient) {
       const qualification =
         qualResult.status === "fulfilled" ? qualResult.value : null;
 
-      const contacts =
+      const orgContacts =
         contactsResult.status === "fulfilled" ? contactsResult.value : [];
+
+      const paidContacts =
+        paidContactsResult.status === "fulfilled"
+          ? paidContactsResult.value
+          : [];
+
+      const webFetch =
+        webFetchResult.status === "fulfilled" ? webFetchResult.value : null;
+
+      // Merge org contacts and paid contacts, deduplicating by name
+      const allContacts = [
+        ...orgContacts.map((c) => ({
+          id: c.id,
+          first_name: c.first_name,
+          last_name: c.last_name,
+          email: c.email,
+          phone_number: c.phone_number,
+          linkedin_page: c.linkedin_page,
+          job_title: c.job_title,
+          recommended: c.recommended,
+          enrichment: c.enrichment,
+          source: "org" as const,
+        })),
+        ...paidContacts.map((c) => ({
+          id: c.id,
+          first_name: c.first_name,
+          last_name: c.last_name,
+          email: null as string | null,
+          phone_number: null as string | null,
+          linkedin_page: c.linkedin_page,
+          job_title: c.job_title,
+          recommended: c.recommended,
+          enrichment: c.enrichment,
+          source: "paid" as const,
+        })),
+      ];
 
       return {
         lead: {
@@ -73,25 +119,21 @@ export function registerGetLeadProfile(api: any, client: LeadbayClient) {
           phone_numbers: lead.phone_numbers,
           keywords: lead.keywords,
           contacts_count: lead.contacts_count,
+          recommended_contact_title: lead.recommended_contact_title ?? null,
+          recommended_contact: lead.recommended_contact ?? null,
+          web_fetch_in_progress: lead.web_fetch_in_progress ?? false,
         },
-        qualification: qualification?.map((q) => ({
-          question: q.question,
-          score: q.score,
-          response: q.response,
-          computed_at: q.computed_at,
-          outdated_at: q.outdated_at,
-        })) ?? null,
-        contacts: contacts.map((c) => ({
-          id: c.id,
-          first_name: c.first_name,
-          last_name: c.last_name,
-          email: c.email,
-          phone_number: c.phone_number,
-          linkedin_page: c.linkedin_page,
-          job_title: c.job_title,
-          recommended: c.recommended,
-          enrichment: c.enrichment,
-        })),
+        qualification:
+          qualification?.map((q) => ({
+            question: q.question,
+            score: q.score,
+            response: q.response,
+            computed_at: q.computed_at,
+            outdated_at: q.outdated_at,
+          })) ?? null,
+        contacts: allContacts,
+        web_insights: webFetch?.content ?? null,
+        web_insights_fetched_at: webFetch?.fetch_at ?? null,
       };
     },
   });

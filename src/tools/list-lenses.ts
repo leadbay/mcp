@@ -5,7 +5,7 @@ export function registerListLenses(api: any, client: LeadbayClient) {
   api.registerTool({
     name: "leadbay_list_lenses",
     description:
-      "List all available Leadbay lenses (saved lead search configurations). The lens with is_last_active=true is used by default for other tools.",
+      "List all available Leadbay lenses (saved lead search configurations). Each lens defines a different target market or buyer segment. The lens with is_last_active=true is used by default for lead discovery.",
     parameters: {
       type: "object",
       properties: {},

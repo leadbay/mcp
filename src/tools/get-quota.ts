@@ -1,5 +1,5 @@
 import type { LeadbayClient } from "../client.js";
-import type { OrgPayload } from "../types.js";
+import type { UserMePayload } from "../types.js";
 
 export function registerGetQuota(api: any, client: LeadbayClient) {
   api.registerTool({
@@ -11,7 +11,8 @@ export function registerGetQuota(api: any, client: LeadbayClient) {
       properties: {},
     },
     execute: async () => {
-      const org = await client.request<OrgPayload>("GET", "/organizations");
+      const me = await client.request<UserMePayload>("GET", "/users/me");
+      const org = me.organization;
       return {
         org_name: org.name,
         ai_credits: org.billing?.ai_credits ?? null,

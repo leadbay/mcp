@@ -1,11 +1,11 @@
 import type { LeadbayClient } from "../client.js";
-import type { OrgPayload } from "../types.js";
+import type { OrgPayload, UserMePayload } from "../types.js";
 
 export function registerEnrichContacts(api: any, client: LeadbayClient) {
   api.registerTool({
     name: "leadbay_enrich_contacts",
     description:
-      "Order email and/or phone enrichment for a specific contact on a lead. Enrichment is asynchronous — use leadbay_get_contacts after about 60 seconds to retrieve results. Checks quota before enriching.",
+      "Order email and/or phone enrichment for a specific contact on a lead. Tip: the recommended contact from leadbay_discover_leads or leadbay_get_lead_profile is the person with the most fitting job title — enrich them first. Enrichment is asynchronous — use leadbay_get_contacts after about 60 seconds to retrieve results. Checks quota before enriching.",
     optional: true,
     parameters: {
       type: "object",
@@ -49,8 +49,8 @@ export function registerEnrichContacts(api: any, client: LeadbayClient) {
       // Advisory quota check
       let creditsRemaining: number | null = null;
       try {
-        const org = await client.request<OrgPayload>("GET", "/organizations");
-        creditsRemaining = org.billing?.ai_credits ?? null;
+        const me = await client.request<UserMePayload>("GET", "/users/me");
+        creditsRemaining = me.organization.billing?.ai_credits ?? null;
         if (creditsRemaining !== null && creditsRemaining <= 0) {
           throw client.makeError(
             "QUOTA_EXCEEDED",

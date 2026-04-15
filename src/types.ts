@@ -40,6 +40,15 @@ export interface LeadTag {
   tag: string;
 }
 
+export interface RecommendedContactPayload {
+  contact_id?: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  job_title: string | null;
+  email?: string | null;
+  phone_number?: string | null;
+}
+
 export interface LeadPayload {
   id: string;
   name: string;
@@ -60,6 +69,9 @@ export interface LeadPayload {
   tags: LeadTag[];
   phone_numbers: string[];
   keywords: Array<{ keyword: string; score: number }>;
+  recommended_contact_title?: string | null;
+  recommended_contact?: RecommendedContactPayload | null;
+  web_fetch_in_progress?: boolean;
 }
 
 export interface PaginationPayload {
@@ -125,4 +137,58 @@ export interface NotePayload {
 export interface LoginResponse {
   token: string;
   verified: boolean;
+}
+
+export interface LeadWebFetchPayload {
+  lead_id: string;
+  content: Record<string, unknown> | null;
+  fetch_at: string | null;
+  in_progress: boolean;
+}
+
+export interface IdealBuyerProfilePayload {
+  summary: string;
+  key_characteristics: string[];
+  anti_patterns: string[];
+}
+
+export interface PurchaseIntentTagPayload {
+  id: number;
+  display_name: string;
+  tag: string;
+  description: string | null;
+  score: number | null;
+  reasoning: string | null;
+}
+
+export interface AiAgentQuestionPayload {
+  question: string;
+  created_at: string;
+  lang: string;
+}
+
+export interface UserMePayload {
+  id: string;
+  organization: OrgPayload;
+}
+
+export interface PaidContactPayload {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  linkedin_page: string | null;
+  job_title: string | null;
+  enrichment: ContactEnrichment | null;
+  recommended: boolean;
+}
+
+export interface ActivityItem {
+  lead_id: string;
+  type: string;
+  date: string;
+}
+
+export interface PaginatedActivities {
+  items: ActivityItem[];
+  pagination: PaginationPayload;
 }

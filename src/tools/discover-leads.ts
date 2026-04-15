@@ -5,7 +5,7 @@ export function registerDiscoverLeads(api: any, client: LeadbayClient) {
   api.registerTool({
     name: "leadbay_discover_leads",
     description:
-      "Get AI-recommended leads from Leadbay. Returns paginated lead summaries with scores, AI summaries, and qualification data. If lensId is omitted, uses the active lens automatically.",
+      "Get AI-recommended leads from Leadbay. Returns paginated lead summaries with scores, AI summaries, tags, and recommended contacts. After discovering leads, call leadbay_get_lead_profile on promising ones for full qualification data, web insights, and all contacts. If lensId is omitted, uses the active lens automatically.",
     parameters: {
       type: "object",
       properties: {
@@ -51,6 +51,10 @@ export function registerDiscoverLeads(api: any, client: LeadbayClient) {
           ai_summary: lead.ai_summary,
           split_ai_summary: lead.split_ai_summary,
           tags: lead.tags,
+          phone_numbers: lead.phone_numbers,
+          keywords: lead.keywords,
+          recommended_contact_title: lead.recommended_contact_title ?? null,
+          recommended_contact: lead.recommended_contact ?? null,
         })),
         pagination: res.pagination,
       };

@@ -7,6 +7,8 @@ import { registerEnrichContacts } from "./tools/enrich-contacts.js";
 import { registerGetContacts } from "./tools/get-contacts.js";
 import { registerAddNote } from "./tools/add-note.js";
 import { registerGetQuota } from "./tools/get-quota.js";
+import { registerGetTasteProfile } from "./tools/get-taste-profile.js";
+import { registerGetLeadActivities } from "./tools/get-lead-activities.js";
 
 const REGIONS: Record<string, string> = {
   us: "https://api-us.leadbay.app",
@@ -49,12 +51,17 @@ export async function register(api: any) {
 
   const client = new LeadbayClient(baseUrl, token);
 
+  // Prefetch org data and taste profile (fire-and-forget)
+  client.prefetchOrgData().catch(() => {});
+
   // Read-only tools (enabled by default)
   registerListLenses(api, client);
   registerDiscoverLeads(api, client);
   registerGetLeadProfile(api, client);
   registerGetContacts(api, client);
   registerGetQuota(api, client);
+  registerGetTasteProfile(api, client);
+  registerGetLeadActivities(api, client);
 
   // Write tools (optional: true — user must explicitly enable)
   registerQualifyLead(api, client);

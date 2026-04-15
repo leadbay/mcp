@@ -1,13 +1,30 @@
-import type { LeadbayError, LensPayload } from "./types.js";
+import type {
+  LeadbayError,
+  LensPayload,
+  UserMePayload,
+  IdealBuyerProfilePayload,
+  PurchaseIntentTagPayload,
+  AiAgentQuestionPayload,
+} from "./types.js";
 
 const LENS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const TASTE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_CONCURRENT = 5;
+
+export interface TasteProfileResult {
+  idealBuyerProfile: IdealBuyerProfilePayload | null;
+  purchaseIntentTags: PurchaseIntentTagPayload[];
+  qualificationQuestions: AiAgentQuestionPayload[];
+}
 
 export class LeadbayClient {
   private token: string;
   private baseUrl: string;
   private defaultLensId: number | null = null;
   private defaultLensCachedAt: number | null = null;
+  private orgId: string | null = null;
+  private tasteProfile: TasteProfileResult | null = null;
+  private tasteProfileCachedAt: number | null = null;
 
   // Simple semaphore for concurrency limiting
   private activeRequests = 0;
@@ -159,6 +176,61 @@ export class LeadbayClient {
     this.defaultLensId = fallback.id;
     this.defaultLensCachedAt = now;
     return this.defaultLensId;
+  }
+
+  async resolveOrgId(): Promise<string> {
+    if (this.orgId !== null) {
+      return this.orgId;
+    }
+
+    const me = await this.request<UserMePayload>("GET", "/users/me");
+    this.orgId = me.organization.id;
+    return this.orgId;
+  }
+
+  async resolveTasteProfile(): Promise<TasteProfileResult> {
+    const now = Date.now();
+    if (
+      this.tasteProfile !== null &&
+      this.tasteProfileCachedAt !== null &&
+      now - this.tasteProfileCachedAt < TASTE_CACHE_TTL_MS
+    ) {
+      return this.tasteProfile;
+    }
+
+    const orgId = await this.resolveOrgId();
+
+    const [ibpResult, tagsResult, questionsResult] =
+      await Promise.allSettled([
+        this.request<IdealBuyerProfilePayload>(
+          "GET",
+          `/organizations/${orgId}/ideal_buyer_profile`
+        ),
+        this.request<PurchaseIntentTagPayload[]>(
+          "GET",
+          `/organizations/${orgId}/purchase_intent_tags`
+        ),
+        this.request<AiAgentQuestionPayload[]>(
+          "GET",
+          `/organizations/${orgId}/ai_agent_questions`
+        ),
+      ]);
+
+    this.tasteProfile = {
+      idealBuyerProfile:
+        ibpResult.status === "fulfilled" ? ibpResult.value : null,
+      purchaseIntentTags:
+        tagsResult.status === "fulfilled" ? tagsResult.value : [],
+      qualificationQuestions:
+        questionsResult.status === "fulfilled" ? questionsResult.value : [],
+    };
+    this.tasteProfileCachedAt = now;
+    return this.tasteProfile;
+  }
+
+  async prefetchOrgData(): Promise<void> {
+    await this.resolveOrgId();
+    await this.resolveTasteProfile();
   }
 
   makeError(code: string, message: string, hint: string): LeadbayError {
