@@ -176,6 +176,8 @@ export interface PaidContactPayload {
   id: string;
   first_name: string | null;
   last_name: string | null;
+  email: string | null;
+  phone_number: string | null;
   linkedin_page: string | null;
   job_title: string | null;
   enrichment: ContactEnrichment | null;

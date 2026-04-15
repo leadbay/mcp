@@ -1,11 +1,11 @@
 import type { LeadbayClient } from "../client.js";
-import type { OrgPayload, UserMePayload } from "../types.js";
+import type { UserMePayload } from "../types.js";
 
 export function registerEnrichContacts(api: any, client: LeadbayClient) {
   api.registerTool({
     name: "leadbay_enrich_contacts",
     description:
-      "Order email and/or phone enrichment for a specific contact on a lead. Tip: the recommended contact from leadbay_discover_leads or leadbay_get_lead_profile is the person with the most fitting job title — enrich them first. Enrichment is asynchronous — use leadbay_get_contacts after about 60 seconds to retrieve results. Checks quota before enriching.",
+      "Order email and/or phone enrichment for a specific contact. The contactId must come from leadbay_get_lead_profile or leadbay_get_contacts — find the contact with recommended=true for the best match. Note: the recommended_contact on lead summaries does NOT include an ID. Enrichment is asynchronous — use leadbay_get_contacts after about 60 seconds to retrieve results.",
     optional: true,
     parameters: {
       type: "object",
@@ -66,12 +66,12 @@ export function registerEnrichContacts(api: any, client: LeadbayClient) {
       // Try paid contact enrichment path first
       const enrichPath = `/leads/${params.leadId}/enrich/contacts/${params.contactId}/enrich?email=${email}&phone=${phone}`;
       try {
-        await client.request("POST", enrichPath);
+        await client.requestVoid("POST", enrichPath);
       } catch (e: any) {
         if (e?.code === "NOT_FOUND") {
           // Fall back to org contact enrichment path
           const orgPath = `/leads/${params.leadId}/contacts/${params.contactId}/enrich?email=${email}&phone=${phone}`;
-          await client.request("POST", orgPath);
+          await client.requestVoid("POST", orgPath);
         } else {
           throw e;
         }

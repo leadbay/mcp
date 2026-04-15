@@ -149,6 +149,53 @@ export class LeadbayClient {
     }
   }
 
+  async requestVoid(method: string, path: string, body?: unknown): Promise<void> {
+    await this.acquireSemaphore();
+    try {
+      const url = `${this.baseUrl}/1.5${path}`;
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${this.token}`,
+      };
+      if (body) {
+        headers["Content-Type"] = "application/json";
+      }
+
+      const res = await fetch(url, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+
+      if (!res.ok) {
+        // Re-use the error parsing from request()
+        const errorBody = await res.text();
+        let parsed: any;
+        try {
+          parsed = JSON.parse(errorBody);
+        } catch {
+          parsed = null;
+        }
+
+        if (res.status === 401) {
+          throw this.makeError(
+            "AUTH_EXPIRED",
+            "Authentication token expired or invalid",
+            "Re-run plugin setup to generate a new token"
+          );
+        }
+
+        throw this.makeError(
+          "API_ERROR",
+          parsed?.message || `API error (${res.status})`,
+          "Try again or check the Leadbay API status"
+        );
+      }
+      // Success — don't parse body
+    } finally {
+      this.releaseSemaphore();
+    }
+  }
+
   async resolveDefaultLens(): Promise<number> {
     const now = Date.now();
     if (
