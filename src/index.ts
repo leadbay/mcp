@@ -1,4 +1,5 @@
 import { LeadbayClient } from "./client.js";
+import { registerLogin } from "./tools/login.js";
 import { registerListLenses } from "./tools/list-lenses.js";
 import { registerDiscoverLeads } from "./tools/discover-leads.js";
 import { registerGetLeadProfile } from "./tools/get-lead-profile.js";
@@ -16,7 +17,6 @@ const REGIONS: Record<string, string> = {
 };
 
 // OpenClaw plugin entry point
-// api.pluginConfig is a plain object validated against configSchema in openclaw.plugin.json
 
 export async function register(api: any) {
   const cfg = api.pluginConfig ?? {};
@@ -31,28 +31,10 @@ export async function register(api: any) {
     return;
   }
 
-  const token = cfg.token;
+  const client = new LeadbayClient(baseUrl);
 
-  if (!token) {
-    api.logger?.warn?.(
-      "LeadClaw: No token configured. Authenticate first:\n" +
-        '  1. openclaw config set plugins.entries.leadclaw.region "us"   (or "fr")\n' +
-        "  2. openclaw config set plugins.entries.leadclaw.token YOUR_TOKEN"
-    );
-    return;
-  }
-
-  if (typeof token !== "string" || !token.startsWith("u.")) {
-    api.logger?.warn?.(
-      "LeadClaw: Invalid token format. Expected a Leadbay user token (u.xxx)."
-    );
-    return;
-  }
-
-  const client = new LeadbayClient(baseUrl, token);
-
-  // Prefetch org data and taste profile (fire-and-forget)
-  client.prefetchOrgData().catch(() => {});
+  // Login tool — must be called before any other tool
+  registerLogin(api, client);
 
   // Read-only tools (enabled by default)
   registerListLenses(api, client);

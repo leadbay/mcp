@@ -18,8 +18,8 @@ export interface TasteProfileResult {
 }
 
 export class LeadbayClient {
-  private token: string;
-  private baseUrl: string;
+  private token: string | null;
+  readonly baseUrl: string;
   private defaultLensId: number | null = null;
   private defaultLensCachedAt: number | null = null;
   private orgId: string | null = null;
@@ -30,9 +30,17 @@ export class LeadbayClient {
   private activeRequests = 0;
   private waitQueue: Array<() => void> = [];
 
-  constructor(baseUrl: string, token: string) {
+  constructor(baseUrl: string, token?: string) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.token = token ?? null;
+  }
+
+  setToken(token: string): void {
     this.token = token;
+  }
+
+  get isAuthenticated(): boolean {
+    return this.token !== null;
   }
 
   private async acquireSemaphore(): Promise<void> {
@@ -55,6 +63,13 @@ export class LeadbayClient {
   }
 
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    if (!this.token) {
+      throw this.makeError(
+        "NOT_AUTHENTICATED",
+        "Not logged in to Leadbay",
+        "Call leadbay_login with your Leadbay email and password first"
+      );
+    }
     await this.acquireSemaphore();
     try {
       const url = `${this.baseUrl}/1.5${path}`;
@@ -150,6 +165,13 @@ export class LeadbayClient {
   }
 
   async requestVoid(method: string, path: string, body?: unknown): Promise<void> {
+    if (!this.token) {
+      throw this.makeError(
+        "NOT_AUTHENTICATED",
+        "Not logged in to Leadbay",
+        "Call leadbay_login with your Leadbay email and password first"
+      );
+    }
     await this.acquireSemaphore();
     try {
       const url = `${this.baseUrl}/1.5${path}`;

@@ -21,19 +21,20 @@ openclaw plugins install leadclaw
 
 ## Setup
 
-The plugin prompts for your Leadbay credentials on first use:
-
-1. **Region** — set `leadbay.region` to `us` or `fr` depending on your account
-2. **Login** — enter your Leadbay email and password when prompted
-3. The plugin authenticates once, stores only the API token, and discards your credentials
-
-To re-authenticate (e.g., after a token expires):
-
-```bash
-openclaw config delete leadbay.token
-```
+1. Set your region:
+   ```bash
+   openclaw config set plugins.entries.leadclaw.region "us"   # or "fr"
+   ```
+2. Start a conversation — the agent will ask for your Leadbay email and password when needed
+3. The plugin logs you in and discards your credentials (only the session token is kept in memory)
 
 ## Tools
+
+### Authentication
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_login` | Log in with your Leadbay email and password |
 
 ### Read-only (enabled by default)
 
@@ -81,7 +82,6 @@ leadbay_discover_leads → leadbay_qualify_lead (for unscored leads) → (wait ~
 | Key | Required | Description |
 |-----|----------|-------------|
 | `leadbay.region` | Yes | `us` or `fr` |
-| `leadbay.token` | Auto | Set automatically after login |
 | `leadbay.baseUrl` | No | Override API URL (for staging/dev) |
 
 ## Requirements

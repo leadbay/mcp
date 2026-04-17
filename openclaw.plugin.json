@@ -4,6 +4,7 @@
   "description": "Leadbay lead discovery, qualification, and contact enrichment",
   "contracts": {
     "tools": [
+      "leadbay_login",
       "leadbay_list_lenses",
       "leadbay_discover_leads",
       "leadbay_get_lead_profile",
@@ -20,11 +21,6 @@
       "help": "Your Leadbay account region (us or fr)",
       "placeholder": "us"
     },
-    "token": {
-      "label": "Leadbay Token",
-      "help": "API token (auto-set after login)",
-      "sensitive": true
-    },
     "baseUrl": {
       "label": "API Base URL",
       "help": "Override API URL (for staging/dev)",
@@ -38,9 +34,6 @@
       "region": {
         "type": "string",
         "enum": ["us", "fr"]
-      },
-      "token": {
-        "type": "string"
       },
       "baseUrl": {
         "type": "string"
