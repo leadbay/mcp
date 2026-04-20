@@ -16,7 +16,7 @@
 ## Install
 
 ```bash
-openclaw plugins install leadclaw
+openclaw plugins install @leadbay/openclaw-leadclaw
 ```
 
 ## Setup
@@ -43,6 +43,8 @@ openclaw plugins install leadclaw
 | `leadbay_list_lenses` | List available lenses (saved search configs) |
 | `leadbay_discover_leads` | Get AI-recommended leads from your active lens |
 | `leadbay_get_lead_profile` | Full lead profile with AI scores, qualification Q&A, and contacts |
+| `leadbay_get_lead_activities` | Activity feed for a lead (notes, enrichments, status changes) |
+| `leadbay_get_taste_profile` | Your ideal buyer profile, purchase-intent tags, and AI qualification questions |
 | `leadbay_get_contacts` | Get contacts for a lead (with enriched emails/phones if available) |
 | `leadbay_get_quota` | Check your enrichment credit balance |
 
@@ -88,3 +90,52 @@ leadbay_discover_leads → leadbay_qualify_lead (for unscored leads) → (wait ~
 
 - Node.js 22+
 - A [Leadbay account](https://wow.leadbay.ai/?register=true)
+
+## Development
+
+```bash
+npm install        # installs deps + vitest
+npm test           # runs contract + unit + sanity tests (no network, no secrets)
+npm run test:coverage   # coverage report via v8
+npm run build      # emits dist/
+```
+
+### Test tiers
+
+- **Contract tests** (`test/contract.test.ts`) — assert that registered tools match `openclaw.plugin.json` exactly, schemas are valid, write tools are marked `optional: true`. This catches manifest drift at CI.
+- **Unit tests** (`test/unit/**`) — error-code mapping, caching, tool branches. Use `mockHttp` from `test/harness.ts` to stub `node:https`. No network required.
+- **Live smoke tests** (`test/smoke/**`) — opt-in. Set `LEADBAY_TEST_TOKEN` (and optionally `LEADBAY_TEST_BASE_URL`) and run:
+  ```bash
+  LEADBAY_TEST_TOKEN=u.xxx npm run test:smoke
+  ```
+  Without the env var, these tests cleanly skip. Use a **dedicated test tenant** with a **read-only token** — smoke only hits read endpoints (`/users/me`, `/lenses`, taste profile).
+
+### CI recommendation
+
+- Run `npm test` on every PR — no secrets needed.
+- Run `npm run test:smoke` on main merges or nightly, with the `LEADBAY_TEST_TOKEN` secret.
+
+## Publishing
+
+Publication-ready checks:
+
+```bash
+npm run build            # emits dist/
+npm test                 # contract + unit must be green
+npm publish --access public --dry-run   # validate npm package
+```
+
+### ClawHub (primary)
+
+```bash
+clawhub package publish leadbay/leadclaw --dry-run
+clawhub package publish leadbay/leadclaw
+```
+
+### npm (fallback)
+
+```bash
+npm publish --access public
+```
+
+The `prepublishOnly` script wires both `build` and `test` into every publish, so a broken diff never ships.

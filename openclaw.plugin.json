@@ -2,12 +2,15 @@
   "id": "leadclaw",
   "name": "LeadClaw",
   "description": "Leadbay lead discovery, qualification, and contact enrichment",
+  "version": "0.1.0",
   "contracts": {
     "tools": [
       "leadbay_login",
       "leadbay_list_lenses",
       "leadbay_discover_leads",
       "leadbay_get_lead_profile",
+      "leadbay_get_lead_activities",
+      "leadbay_get_taste_profile",
       "leadbay_get_contacts",
       "leadbay_get_quota",
       "leadbay_qualify_lead",
@@ -25,6 +28,11 @@
       "label": "API Base URL",
       "help": "Override API URL (for staging/dev)",
       "advanced": true
+    },
+    "token": {
+      "label": "API Token",
+      "help": "Pre-set bearer token to skip the login step",
+      "sensitive": true
     }
   },
   "configSchema": {

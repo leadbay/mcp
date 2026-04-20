@@ -137,69 +137,7 @@ export class LeadbayClient {
       }
 
       if (res.status < 200 || res.status >= 300) {
-        let parsed: any;
-        try {
-          parsed = JSON.parse(res.body);
-        } catch {
-          parsed = null;
-        }
-
-        if (res.status === 401) {
-          throw this.makeError(
-            "AUTH_EXPIRED",
-            "Authentication token expired or invalid",
-            "Call leadbay_login to re-authenticate"
-          );
-        }
-
-        if (res.status === 402 || parsed?.error === "quota_exceeded") {
-          throw this.makeError(
-            "QUOTA_EXCEEDED",
-            "No enrichment credits remaining",
-            "Purchase more credits at app.leadbay.ai"
-          );
-        }
-
-        if (res.status === 403) {
-          const msg = parsed?.message || parsed?.error || "";
-          if (
-            typeof msg === "string" &&
-            (msg.includes("suspend") || msg.includes("billing"))
-          ) {
-            throw this.makeError(
-              "BILLING_SUSPENDED",
-              "Account billing is suspended",
-              "Check billing at app.leadbay.ai"
-            );
-          }
-          throw this.makeError(
-            "FORBIDDEN",
-            "Insufficient permissions",
-            "Check your account permissions"
-          );
-        }
-
-        if (res.status === 404) {
-          throw this.makeError(
-            "NOT_FOUND",
-            parsed?.message || "Resource not found",
-            "Verify the ID is correct"
-          );
-        }
-
-        if (res.status === 429) {
-          throw this.makeError(
-            "RATE_LIMITED",
-            "Too many requests",
-            "Wait a moment and try again"
-          );
-        }
-
-        throw this.makeError(
-          "API_ERROR",
-          parsed?.message || `API error (${res.status})`,
-          "Try again or check the Leadbay API status"
-        );
+        throw this.mapErrorResponse(res.status, res.body);
       }
 
       return JSON.parse(res.body) as T;
@@ -234,30 +172,72 @@ export class LeadbayClient {
       );
 
       if (res.status < 200 || res.status >= 300) {
-        let parsed: any;
-        try {
-          parsed = JSON.parse(res.body);
-        } catch {
-          parsed = null;
-        }
-
-        if (res.status === 401) {
-          throw this.makeError(
-            "AUTH_EXPIRED",
-            "Authentication token expired or invalid",
-            "Call leadbay_login to re-authenticate"
-          );
-        }
-
-        throw this.makeError(
-          "API_ERROR",
-          parsed?.message || `API error (${res.status})`,
-          "Try again or check the Leadbay API status"
-        );
+        throw this.mapErrorResponse(res.status, res.body);
       }
     } finally {
       this.releaseSemaphore();
     }
+  }
+
+  private mapErrorResponse(status: number, rawBody: string): LeadbayError {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(rawBody);
+    } catch {
+      parsed = null;
+    }
+
+    if (status === 401) {
+      return this.makeError(
+        "AUTH_EXPIRED",
+        "Authentication token expired or invalid",
+        "Call leadbay_login to re-authenticate"
+      );
+    }
+    if (status === 402 || parsed?.error === "quota_exceeded") {
+      return this.makeError(
+        "QUOTA_EXCEEDED",
+        "No enrichment credits remaining",
+        "Purchase more credits at app.leadbay.ai"
+      );
+    }
+    if (status === 403) {
+      const msg = parsed?.message || parsed?.error || "";
+      if (
+        typeof msg === "string" &&
+        (msg.includes("suspend") || msg.includes("billing"))
+      ) {
+        return this.makeError(
+          "BILLING_SUSPENDED",
+          "Account billing is suspended",
+          "Check billing at app.leadbay.ai"
+        );
+      }
+      return this.makeError(
+        "FORBIDDEN",
+        "Insufficient permissions",
+        "Check your account permissions"
+      );
+    }
+    if (status === 404) {
+      return this.makeError(
+        "NOT_FOUND",
+        parsed?.message || "Resource not found",
+        "Verify the ID is correct"
+      );
+    }
+    if (status === 429) {
+      return this.makeError(
+        "RATE_LIMITED",
+        "Too many requests",
+        "Wait a moment and try again"
+      );
+    }
+    return this.makeError(
+      "API_ERROR",
+      parsed?.message || `API error (${status})`,
+      "Try again or check the Leadbay API status"
+    );
   }
 
   async resolveDefaultLens(): Promise<number> {
