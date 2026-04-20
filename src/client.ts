@@ -1,3 +1,4 @@
+import https from "node:https";
 import type {
   LeadbayError,
   LensPayload,
@@ -10,6 +11,50 @@ import type {
 const LENS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const TASTE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_CONCURRENT = 5;
+
+interface HttpResult {
+  status: number;
+  body: string;
+}
+
+// Use node:https directly — the OpenClaw gateway patches globalThis.fetch
+// which intercepts outgoing requests and causes auth failures.
+function httpsRequest(
+  method: string,
+  url: string,
+  headers: Record<string, string>,
+  body?: string
+): Promise<HttpResult> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const reqHeaders: Record<string, string | number> = { ...headers };
+    if (body) {
+      reqHeaders["Content-Length"] = Buffer.byteLength(body);
+    }
+    const req = https.request(
+      {
+        hostname: parsed.hostname,
+        port: 443,
+        path: parsed.pathname + parsed.search,
+        method,
+        headers: reqHeaders,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => {
+          resolve({
+            status: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString("utf8"),
+          });
+        });
+      }
+    );
+    req.on("error", reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
 
 export interface TasteProfileResult {
   idealBuyerProfile: IdealBuyerProfilePayload | null;
@@ -80,21 +125,21 @@ export class LeadbayClient {
         headers["Content-Type"] = "application/json";
       }
 
-      const res = await fetch(url, {
+      const res = await httpsRequest(
         method,
+        url,
         headers,
-        body: body ? JSON.stringify(body) : undefined,
-      });
+        body ? JSON.stringify(body) : undefined
+      );
 
       if (res.status === 204) {
         return null as T;
       }
 
-      if (!res.ok) {
-        const errorBody = await res.text();
+      if (res.status < 200 || res.status >= 300) {
         let parsed: any;
         try {
-          parsed = JSON.parse(errorBody);
+          parsed = JSON.parse(res.body);
         } catch {
           parsed = null;
         }
@@ -103,7 +148,7 @@ export class LeadbayClient {
           throw this.makeError(
             "AUTH_EXPIRED",
             "Authentication token expired or invalid",
-            "Re-run plugin setup to generate a new token"
+            "Call leadbay_login to re-authenticate"
           );
         }
 
@@ -116,7 +161,6 @@ export class LeadbayClient {
         }
 
         if (res.status === 403) {
-          // Check for billing suspension
           const msg = parsed?.message || parsed?.error || "";
           if (
             typeof msg === "string" &&
@@ -158,7 +202,7 @@ export class LeadbayClient {
         );
       }
 
-      return (await res.json()) as T;
+      return JSON.parse(res.body) as T;
     } finally {
       this.releaseSemaphore();
     }
@@ -182,18 +226,17 @@ export class LeadbayClient {
         headers["Content-Type"] = "application/json";
       }
 
-      const res = await fetch(url, {
+      const res = await httpsRequest(
         method,
+        url,
         headers,
-        body: body ? JSON.stringify(body) : undefined,
-      });
+        body ? JSON.stringify(body) : undefined
+      );
 
-      if (!res.ok) {
-        // Re-use the error parsing from request()
-        const errorBody = await res.text();
+      if (res.status < 200 || res.status >= 300) {
         let parsed: any;
         try {
-          parsed = JSON.parse(errorBody);
+          parsed = JSON.parse(res.body);
         } catch {
           parsed = null;
         }
@@ -202,7 +245,7 @@ export class LeadbayClient {
           throw this.makeError(
             "AUTH_EXPIRED",
             "Authentication token expired or invalid",
-            "Re-run plugin setup to generate a new token"
+            "Call leadbay_login to re-authenticate"
           );
         }
 
@@ -212,7 +255,6 @@ export class LeadbayClient {
           "Try again or check the Leadbay API status"
         );
       }
-      // Success — don't parse body
     } finally {
       this.releaseSemaphore();
     }
@@ -230,7 +272,6 @@ export class LeadbayClient {
 
     const lenses = await this.request<LensPayload[]>("GET", "/lenses");
 
-    // Prefer is_last_active (myFirst lens), fall back to default
     const active = lenses.find((l) => l.is_last_active);
     const fallback = active || lenses.find((l) => l.is_default) || lenses[0];
 

@@ -6,13 +6,16 @@
   "main": "dist/index.js",
   "openclaw": {
     "type": "plugin",
-    "extensions": ["./dist/index.js"]
+    "extensions": [
+      "./dist/index.js"
+    ]
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch"
   },
   "devDependencies": {
+    "@types/node": "^25.6.0",
     "typescript": "^5.5"
   },
   "engines": {
