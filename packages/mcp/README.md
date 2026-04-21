@@ -9,11 +9,19 @@ The MCP server needs a bearer token (`LEADBAY_TOKEN`). Two ways to get one:
 **A) Mint one from your email + password (works today, no UI needed):**
 
 ```bash
-npx -y @leadbay/mcp@0.2 login --email you@yourcompany.com
+# Recommended: pin your region + write the config to a 0600 file (token never lands in your terminal)
+npx -y @leadbay/mcp@0.2 login \
+  --email you@yourcompany.com \
+  --region us \
+  --write-config ~/.leadbay-mcp.json
 # (you'll be prompted for your password — it's not echoed)
 ```
 
-The command auto-detects your region (us/fr), prints a ready-to-paste MCP config, and tells you the Claude Code one-liner. Treat the token like a password.
+`--region us|fr` is required by default — it pins which Leadbay backend gets your password, avoiding a silent cross-region credential leak. If you really don't know your region, opt in to fallback with `--allow-region-fallback` (your password will hit BOTH backends if the first 401s).
+
+`--write-config <path>` writes a `0600`-mode JSON file with the token instead of printing it to stdout. Highly recommended — keeps the token out of terminal scrollback, screen-shares, and CI logs. Without it, the token prints to stdout with a loud warning.
+
+Treat the token like a password — it grants full access to your Leadbay account.
 
 **B) From the web app (when available):** log in at [app.leadbay.ai](https://app.leadbay.ai), go to **Settings → API Tokens**, create a token, copy it.
 

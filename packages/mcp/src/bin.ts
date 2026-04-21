@@ -205,15 +205,56 @@ function parseFlag(args: string[], name: string): string | undefined {
   return undefined;
 }
 
+function hasFlag(args: string[], name: string): boolean {
+  return args.some((a) => a === `--${name}`);
+}
+
 async function runLogin(args: string[]): Promise<number> {
   const email = parseFlag(args, "email");
   if (!email) {
     process.stderr.write(
-      "Usage: leadbay-mcp login --email you@example.com\n" +
-        "  Then enter your password (hidden), or pipe it via stdin / set $LEADBAY_PASSWORD.\n"
+      "Usage: leadbay-mcp login --email you@example.com [--region us|fr] [--allow-region-fallback] [--write-config PATH] [--quiet]\n" +
+        "  Then enter your password (hidden), or pipe it via stdin / set $LEADBAY_PASSWORD.\n" +
+        "  --region            Pin the backend (us|fr); avoids sending your password to a backend you don't use.\n" +
+        "                      Defaults to $LEADBAY_REGION if set; otherwise asks you to pass --allow-region-fallback.\n" +
+        "  --allow-region-fallback   Try us, then fr (or fr, then us). Your password hits BOTH backends if the\n" +
+        "                            first 401s. Only do this if you're OK with that.\n" +
+        "  --write-config PATH       Write the resulting MCP-client JSON to PATH with 0600 permissions instead\n" +
+        "                            of stdout. Recommended — keeps the token out of terminal scrollback / CI logs.\n" +
+        "  --quiet             With --write-config, suppress the printed Claude-Code one-liner that includes the token.\n"
     );
     return 2;
   }
+
+  // Region resolution rules, in priority order:
+  //   1. --region <us|fr> on argv → pin, no fallback
+  //   2. $LEADBAY_REGION env (us|fr) → pin, no fallback
+  //   3. --allow-region-fallback → try us then fr (or fr then us if 1 or 2 picked one)
+  //   4. neither pin nor opt-in → refuse and explain (avoids silent cross-region credential leak)
+  const regionArg = parseFlag(args, "region");
+  const regionEnv = process.env.LEADBAY_REGION;
+  const allowFallback = hasFlag(args, "allow-region-fallback");
+  let pinnedRegion: "us" | "fr" | null = null;
+  if (regionArg === "us" || regionArg === "fr") pinnedRegion = regionArg;
+  else if (!regionArg && (regionEnv === "us" || regionEnv === "fr")) pinnedRegion = regionEnv;
+  else if (regionArg) {
+    process.stderr.write(`leadbay-mcp login: invalid --region '${regionArg}' (use us or fr)\n`);
+    return 2;
+  }
+
+  if (!pinnedRegion && !allowFallback) {
+    process.stderr.write(
+      "leadbay-mcp login: refusing to auto-detect region without consent.\n" +
+        "  Avoiding silent credential cross-leak: by default, --region (or $LEADBAY_REGION) must be set\n" +
+        "  so your password only ever hits the backend that owns your account.\n" +
+        "  Either:\n" +
+        "    --region us    (or --region fr)\n" +
+        "  or, if you don't know your region and accept the trade-off:\n" +
+        "    --allow-region-fallback   (your password will hit BOTH backends if the first 401s)\n"
+    );
+    return 2;
+  }
+
   const password = await readPassword();
   if (!password) {
     process.stderr.write("leadbay-mcp login: empty password\n");
@@ -222,20 +263,24 @@ async function runLogin(args: string[]): Promise<number> {
 
   let result;
   try {
-    result = await resolveRegion(email, password);
+    if (pinnedRegion && !allowFallback) {
+      // Pinned: directly use that region; no fallback even on 401.
+      const { REGIONS } = await import("@leadbay/core");
+      const baseUrl = REGIONS[pinnedRegion];
+      const c = createClient({ region: pinnedRegion });
+      // Use the existing client transport for a single login attempt.
+      const token = await loginAt(baseUrl, email, password);
+      result = { region: pinnedRegion, baseUrl, token, verified: true };
+      void c;
+    } else {
+      // Either pinned with explicit fallback consent, or no pin + consent.
+      result = await resolveRegion(email, password, pinnedRegion ?? undefined);
+    }
   } catch (err: any) {
     process.stderr.write(`leadbay-mcp login: ${err?.message ?? String(err)}\n`);
     return 1;
   }
 
-  // Print a ready-to-paste config. Token + region go to stdout so users can
-  // pipe into jq / pbcopy; the explanatory text goes to stderr so it doesn't
-  // pollute the JSON if the user redirects.
-  process.stderr.write(
-    `\nLogged in to ${result.region.toUpperCase()} backend ` +
-      `(${result.verified ? "verified" : "UNVERIFIED — check your email"}).\n\n`
-  );
-  process.stderr.write("Add this to your MCP client config:\n\n");
   const config = {
     mcpServers: {
       leadbay: {
@@ -248,17 +293,101 @@ async function runLogin(args: string[]): Promise<number> {
       },
     },
   };
+
+  const writeConfigPath = parseFlag(args, "write-config");
+  const quiet = hasFlag(args, "quiet");
+
+  if (writeConfigPath) {
+    const { writeFileSync, chmodSync } = await import("node:fs");
+    writeFileSync(writeConfigPath, JSON.stringify(config, null, 2) + "\n", {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    try { chmodSync(writeConfigPath, 0o600); } catch { /* best-effort */ }
+    process.stderr.write(
+      `\nLogged in to ${result.region.toUpperCase()} backend ` +
+        `(${result.verified ? "verified" : "UNVERIFIED — check your email"}).\n` +
+        `Wrote MCP config to ${writeConfigPath} (mode 0600). Token NOT printed to terminal.\n`
+    );
+    if (!quiet) {
+      process.stderr.write(
+        `\nFor Claude Code, run:\n` +
+          `  claude mcp add leadbay --env LEADBAY_TOKEN=$(jq -r .mcpServers.leadbay.env.LEADBAY_TOKEN ${writeConfigPath}) ` +
+          `--env LEADBAY_REGION=${result.region} -- npx -y @leadbay/mcp@0.2\n`
+      );
+    }
+    process.stderr.write(
+      `\nTREAT THE TOKEN AS A SECRET. It grants full access to your Leadbay account.\n` +
+        `Delete the config file once your MCP client has it loaded, or keep it 0600.\n`
+    );
+    return 0;
+  }
+
+  // Default: print to stdout (with a loud warning).
+  process.stderr.write(
+    `\nLogged in to ${result.region.toUpperCase()} backend ` +
+      `(${result.verified ? "verified" : "UNVERIFIED — check your email"}).\n\n` +
+      `⚠️  About to print your bearer token to STDOUT.\n` +
+      `   Treat it like a password. Do NOT paste this into chat, screen-share, or commit it.\n` +
+      `   For safer handling, re-run with --write-config /path/to/config.json (writes 0600).\n\n` +
+      `Add this to your MCP client config:\n\n`
+  );
   process.stdout.write(JSON.stringify(config, null, 2) + "\n");
   process.stderr.write(
-    `\nOr for Claude Code:\n\n` +
+    `\nOr for Claude Code (token included — same warning applies):\n\n` +
       `  claude mcp add leadbay \\\n` +
       `    --env LEADBAY_TOKEN=${result.token} \\\n` +
       `    --env LEADBAY_REGION=${result.region} \\\n` +
       `    -- npx -y @leadbay/mcp@0.2\n\n` +
-      `Restart your MCP client to pick up the new server.\n` +
-      `Treat the token like a password — it grants full access to your Leadbay account.\n`
+      `Restart your MCP client to pick up the new server.\n`
   );
   return 0;
+}
+
+// Single-region login (used when the user pinned --region and we must NOT
+// fall back to the other backend). Imports https inline to keep startup cheap.
+async function loginAt(baseUrl: string, email: string, password: string): Promise<string> {
+  const https = await import("node:https");
+  return await new Promise<string>((resolve, reject) => {
+    const body = JSON.stringify({ email, password });
+    const u = new URL(baseUrl + "/1.5/auth/login");
+    const r = https.request(
+      {
+        hostname: u.hostname,
+        port: 443,
+        path: u.pathname,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf8");
+          if (res.statusCode === 200) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (parsed?.token) return resolve(parsed.token);
+              return reject(new Error("login response had no token"));
+            } catch {
+              return reject(new Error("login response was not JSON"));
+            }
+          }
+          reject(
+            new Error(
+              `login failed (${res.statusCode}) at ${baseUrl}: ${raw.slice(0, 200)}`
+            )
+          );
+        });
+      }
+    );
+    r.on("error", reject);
+    r.write(body);
+    r.end();
+  });
 }
 
 async function runDoctor(): Promise<number> {
