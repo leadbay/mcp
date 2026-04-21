@@ -1,5 +1,6 @@
 import {
   createClient,
+  InMemoryBulkStore,
   login,
   compositeReadTools,
   compositeWriteTools,
@@ -58,6 +59,12 @@ export function register(api: any) {
     }
   }
 
+  // BulkTracker: OpenClaw sandboxes filesystem access per-plugin, so the
+  // default file-backed store isn't reliably writable. Use in-memory — the
+  // handle lasts for the plugin session. MCP stdio deployments get file-backed
+  // durability via @leadbay/mcp. Document this on leadbay_bulk_enrich_status.
+  const bulkTracker = new InMemoryBulkStore({ logger: api.logger });
+
   // Dedup by name (some tools live in multiple lists; e.g. existing composites).
   const seen = new Set<string>();
   for (const tool of exposed) {
@@ -69,7 +76,7 @@ export function register(api: any) {
       parameters: tool.inputSchema,
       ...(tool.optional || tool.write ? { optional: true } : {}),
       execute: async (_id: string, params: unknown) =>
-        tool.execute(client, params as any, { logger: api.logger }),
+        tool.execute(client, params as any, { logger: api.logger, bulkTracker }),
     });
   }
 

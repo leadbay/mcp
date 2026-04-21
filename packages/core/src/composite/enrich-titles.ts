@@ -77,9 +77,16 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
       };
     }
 
+    const explicitLeadIds = params.leadIds && params.leadIds.length > 0;
+    const selectionSource: "explicit" | "wishlist" = explicitLeadIds
+      ? "explicit"
+      : "wishlist";
+    // Resolve lens_id once so bulkTracker gets it regardless of which branch
+    // populates leadIds.
+    const lensId = params.lensId ?? (await client.resolveDefaultLens());
+
     let leadIds = params.leadIds;
     if (!leadIds || leadIds.length === 0) {
-      const lensId = params.lensId ?? (await client.resolveDefaultLens());
       const cnt = params.candidateCount ?? DEFAULT_CANDIDATE_COUNT;
       const wish = await client.request<WishlistResponse>(
         "GET",
@@ -186,6 +193,57 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
           };
         }
 
+        // Two-phase launch: reserve a bulk slot via tracker BEFORE POSTing to
+        // /launch. findOrCreatePending is atomic; if an identical bulk was
+        // launched within the idempotency window, short-circuit without
+        // spending quota. If the tracker is absent (e.g. legacy OpenClaw
+        // deployment), fall through to the raw launch without tracking.
+        const tracker = ctx?.bulkTracker;
+        let bulkRecord:
+          | { bulk_id: string; launched_at: string; durability: "file" | "memory" }
+          | undefined;
+        let bulkReused = false;
+        let bulkSecondsSinceOriginal: number | undefined;
+        if (tracker) {
+          const res = await tracker.findOrCreatePending({
+            lead_ids: leadIds,
+            titles: params.titles,
+            email,
+            phone,
+            lens_id: lensId,
+            selection_source: selectionSource,
+          });
+          bulkRecord = {
+            bulk_id: res.record.bulk_id,
+            launched_at: res.record.launched_at,
+            durability: res.record.durability,
+          };
+          bulkReused = res.reused;
+          bulkSecondsSinceOriginal = res.seconds_since_original;
+
+          if (bulkReused && res.record.status !== "failed") {
+            // Skip /launch — quota preserved. The original launch's record is
+            // reused verbatim so the agent polls the same bulk_id.
+            return {
+              mode: "already_launched",
+              re_used: true,
+              bulk_id: res.record.bulk_id,
+              launched_at: res.record.launched_at,
+              durability: res.record.durability,
+              seconds_since_original_launch: bulkSecondsSinceOriginal ?? 0,
+              titles: params.titles,
+              email,
+              phone,
+              preview,
+              message:
+                "No new enrichment was ordered; quota not spent. An identical bulk was launched " +
+                `${bulkSecondsSinceOriginal ?? 0}s ago. Poll leadbay_bulk_enrich_status with this bulk_id for results.`,
+              next_action:
+                "Call leadbay_bulk_enrich_status({bulk_id}) to check progress; include_contacts=true for the final read.",
+            };
+          }
+        }
+
         try {
           await client.requestVoid(
             "POST",
@@ -193,6 +251,15 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
             { titles: params.titles, email, phone }
           );
         } catch (err: any) {
+          if (bulkRecord && tracker) {
+            try {
+              await tracker.markFailed(bulkRecord.bulk_id);
+            } catch (e: any) {
+              ctx?.logger?.warn?.(
+                `enrich_titles: tracker.markFailed failed: ${e?.message ?? e}`
+              );
+            }
+          }
           if (err?.code === "QUOTA_EXCEEDED") {
             return {
               status: "quota_exceeded",
@@ -204,6 +271,35 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
           throw err;
         }
 
+        if (bulkRecord && tracker) {
+          try {
+            await tracker.markLaunched(bulkRecord.bulk_id);
+          } catch (e: any) {
+            // Launch already succeeded on the backend; flipping the tracker
+            // status failed. Return BULK_PENDING signal in the payload so the
+            // agent knows the handle is in flight.
+            ctx?.logger?.warn?.(
+              `enrich_titles: tracker.markLaunched failed: ${e?.message ?? e}`
+            );
+            return {
+              mode: "launched_tracker_pending",
+              launched: true,
+              preview,
+              bulk_id: bulkRecord.bulk_id,
+              launched_at: bulkRecord.launched_at,
+              durability: bulkRecord.durability,
+              titles: params.titles,
+              email,
+              phone,
+              message:
+                "Enrichment job launched on the backend, but the local tracker record could not be flipped to 'launched'. " +
+                "The bulk_id is still valid — leadbay_bulk_enrich_status will return status:'pending' until the tracker heals.",
+              next_action:
+                "Wait ~60s, then call leadbay_bulk_enrich_status({bulk_id}). If it persists, restart the MCP.",
+            };
+          }
+        }
+
         return {
           mode: "launched",
           preview,
@@ -211,11 +307,17 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
           titles: params.titles,
           email,
           phone,
-          message:
-            "Enrichment job launched. The Leadbay backend does not return a bulk_id (probed 2026-04-20) — " +
-            "track results by polling individual leads via leadbay_get_contacts after ~60s; contact.enrichment.done flips to true.",
-          next_action:
-            "Wait ~60s, then call leadbay_research_lead or leadbay_get_contacts on the leads you care about.",
+          bulk_id: bulkRecord?.bulk_id,
+          launched_at: bulkRecord?.launched_at,
+          durability: bulkRecord?.durability,
+          message: bulkRecord
+            ? "Enrichment job launched. Backend has no server-side bulk_id yet; MCP minted a client-side bulk_id " +
+              "(persisted to disk by default) so you can poll via leadbay_bulk_enrich_status."
+            : "Enrichment job launched. No bulk_id tracker configured — poll leadbay_get_contacts per lead " +
+              "after ~60s; contact.enrichment.done flips to true.",
+          next_action: bulkRecord
+            ? "Call leadbay_bulk_enrich_status({bulk_id}) after ~60s; pass include_contacts=true for the final read."
+            : "Wait ~60s, then call leadbay_research_lead or leadbay_get_contacts on the leads you care about.",
         };
       } finally {
         // Always clear, but never re-throw from finally (would mask the

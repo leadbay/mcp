@@ -69,12 +69,28 @@ import { recallOrderedTitles } from "./composite/recall-ordered-titles.js";
 import { accountStatus } from "./composite/account-status.js";
 import { bulkQualifyLeads } from "./composite/bulk-qualify-leads.js";
 import { enrichTitles } from "./composite/enrich-titles.js";
+import { bulkEnrichStatus } from "./composite/bulk-enrich-status.js";
 import { adjustAudience } from "./composite/adjust-audience.js";
 import { refinePrompt } from "./composite/refine-prompt.js";
 import { answerClarification } from "./composite/answer-clarification.js";
 import { reportOutreach } from "./composite/report-outreach.js";
 
 import type { Tool } from "./types.js";
+
+// Bulk tracking — composite support + public types for MCP/OpenClaw wiring.
+export {
+  LocalBulkStore,
+  InMemoryBulkStore,
+  createDefaultBulkStore,
+  isValidBulkId,
+} from "./jobs/bulk-store.js";
+export type {
+  BulkTracker,
+  BulkRecord,
+  FindOrCreatePendingArgs,
+  LocalBulkStoreOpts,
+  CreateDefaultBulkStoreOpts,
+} from "./jobs/bulk-store.js";
 
 // Re-export individual tools for granular consumers
 export {
@@ -94,6 +110,7 @@ export {
   researchCompany, prepareOutreach,
   // new composite reads
   pullLeads, researchLead, recallOrderedTitles, accountStatus,
+  bulkEnrichStatus,
   // new composite writes
   bulkQualifyLeads, enrichTitles, adjustAudience, refinePrompt,
   answerClarification, reportOutreach,
@@ -165,6 +182,7 @@ export const compositeReadTools: Tool[] = [
   researchLead,
   recallOrderedTitles,
   accountStatus,
+  bulkEnrichStatus,
   // Keep the existing composites available too.
   researchCompany,
   prepareOutreach,

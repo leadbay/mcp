@@ -415,6 +415,10 @@ export interface ToolLogger {
 
 export interface ToolContext {
   logger?: ToolLogger;
+  // Optional BulkTracker for composites that mint/look up client-side bulk_ids
+  // while the Leadbay backend doesn't yet issue real job handles. Granular tools
+  // don't need this. See packages/core/src/jobs/bulk-store.ts.
+  bulkTracker?: import("./jobs/bulk-store.js").BulkTracker;
 }
 
 export type JSONSchema = Record<string, unknown>;

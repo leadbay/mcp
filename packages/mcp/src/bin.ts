@@ -1,6 +1,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   createClient,
+  createDefaultBulkStore,
   LeadbayClient,
   resolveRegion,
   type CreateClientConfig,
@@ -846,10 +847,19 @@ async function main(): Promise<void> {
   const includeAdvanced = process.env.LEADBAY_MCP_ADVANCED === "1";
   const includeWrite = process.env.LEADBAY_MCP_WRITE === "1";
 
-  const server = buildServer(client, { includeAdvanced, includeWrite, logger });
+  // Bulk tracker: file-backed by default at ~/.leadbay/bulks.json.
+  // Fails loudly unless LEADBAY_BULK_STORE_ALLOW_MEMORY=1 is set.
+  const bulkTracker = await createDefaultBulkStore({ logger });
+
+  const server = buildServer(client, {
+    includeAdvanced,
+    includeWrite,
+    logger,
+    bulkTracker,
+  });
   const transport = new StdioServerTransport();
   logger.info?.(
-    `Starting MCP server v${VERSION} (advanced=${includeAdvanced}, write=${includeWrite}, baseUrl=${client.baseUrl})`
+    `Starting MCP server v${VERSION} (advanced=${includeAdvanced}, write=${includeWrite}, baseUrl=${client.baseUrl}, bulk_store=${bulkTracker.durability})`
   );
   await server.connect(transport);
 }

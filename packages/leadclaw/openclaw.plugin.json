@@ -10,6 +10,7 @@
       "leadbay_pull_leads",
       "leadbay_research_lead",
       "leadbay_recall_ordered_titles",
+      "leadbay_bulk_enrich_status",
       "leadbay_research_company",
       "leadbay_prepare_outreach",
       "leadbay_bulk_qualify_leads",

@@ -8,6 +8,7 @@ import {
   compositeWriteTools,
   granularReadTools,
   granularWriteTools,
+  type BulkTracker,
   type LeadbayClient,
   type Tool,
   type ToolLogger,
@@ -30,6 +31,7 @@ interface BuildServerOptions {
   includeAdvanced?: boolean;
   includeWrite?: boolean;
   logger?: ToolLogger;
+  bulkTracker?: BulkTracker;
 }
 
 function formatErrorForLLM(err: any): string {
@@ -118,7 +120,10 @@ export function buildServer(
 
     const args = (req.params.arguments ?? {}) as any;
     try {
-      const result = await tool.execute(client, args, { logger: opts.logger });
+      const result = await tool.execute(client, args, {
+        logger: opts.logger,
+        bulkTracker: opts.bulkTracker,
+      });
       // Leadbay tools may return error envelopes ({ error: true, code, ... })
       // rather than throwing. Surface those as MCP isError so the LLM doesn't
       // treat them as success.
