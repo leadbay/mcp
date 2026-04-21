@@ -1,5 +1,9 @@
 # Changelog — @leadbay/leadclaw
 
+## 0.2.1 — 2026-04-21
+
+No functional changes. First release shipping with signed sigstore provenance (repo is now public, which unblocks npm's provenance gate). Version kept in sync with `@leadbay/mcp@0.2.1`.
+
 ## 0.2.0 — 2026-04-20
 
 First public release to npm and ClawHub.

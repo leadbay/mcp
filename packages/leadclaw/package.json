@@ -1,6 +1,6 @@
 {
   "name": "@leadbay/leadclaw",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "OpenClaw plugin for Leadbay — AI lead discovery, qualification, and enrichment",
   "type": "module",
   "main": "dist/index.js",

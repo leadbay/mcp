@@ -20,6 +20,8 @@ import { register } from "../src/index.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const manifestPath = path.resolve(__dirname, "..", "openclaw.plugin.json");
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+const pkgPath = path.resolve(__dirname, "..", "package.json");
+const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
 
 describe("contract: manifest ↔ code parity (full expose)", () => {
   it("with exposeGranular+exposeWrite, registered tools match manifest exactly", () => {
@@ -112,7 +114,7 @@ describe("contract: manifest ↔ code parity (full expose)", () => {
 
   it("manifest has expected top-level shape", () => {
     expect(manifest.id).toBe("leadclaw");
-    expect(manifest.version).toBe("0.2.0");
+    expect(manifest.version).toBe(pkg.version);
     expect(manifest.configSchema).toBeTypeOf("object");
     expect(Array.isArray(manifest.contracts.tools)).toBe(true);
   });

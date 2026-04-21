@@ -2,7 +2,7 @@
   "id": "leadclaw",
   "name": "LeadClaw",
   "description": "Leadbay lead discovery, qualification, and contact enrichment for AI agents",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "contracts": {
     "tools": [
       "leadbay_login",
