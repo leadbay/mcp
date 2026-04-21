@@ -102,6 +102,13 @@ jobs:
       - name: Publish
         working-directory: packages/mcp
         run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          # Idempotent: if @leadbay/mcp@$VERSION is already on npm, skip.
+          if npm view "@leadbay/mcp@$VERSION" version --silent 2>/dev/null; then
+            echo "@leadbay/mcp@$VERSION already on npm — skipping"
+            exit 0
+          fi
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             npm publish --access public --dry-run
           else
@@ -153,6 +160,14 @@ jobs:
       - name: Publish to npm
         working-directory: packages/leadclaw
         run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          # Idempotent: if @leadbay/leadclaw@$VERSION is already on npm, skip.
+          # Handles the retry-after-ClawHub-failure case without manual intervention.
+          if npm view "@leadbay/leadclaw@$VERSION" version --silent 2>/dev/null; then
+            echo "@leadbay/leadclaw@$VERSION already on npm — skipping npm publish"
+            exit 0
+          fi
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             npm publish --access public --dry-run
           else
