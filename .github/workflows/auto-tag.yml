@@ -1,0 +1,71 @@
+name: auto-tag
+
+# When a merge to main bumps a package version, push the corresponding release
+# tag (mcp-v<ver> or leadclaw-v<ver>). The existing release.yml then fires on
+# the tag and publishes to npm (and ClawHub for leadclaw). No manual `git tag`
+# step. Idempotent: if the tag already exists, the job no-ops.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/mcp/package.json"
+      - "packages/leadclaw/package.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: mcp
+            path: packages/mcp/package.json
+            tag_prefix: mcp-v
+          - package: leadclaw
+            path: packages/leadclaw/package.json
+            tag_prefix: leadclaw-v
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: ver
+        run: |
+          set -euo pipefail
+          ver=$(node -p "require('./${{ matrix.path }}').version")
+          tag="${{ matrix.tag_prefix }}${ver}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${ver}" >> "$GITHUB_OUTPUT"
+          echo "Resolved ${{ matrix.package }} version: ${ver} → tag ${tag}"
+
+      - name: Skip if tag exists
+        id: check
+        run: |
+          set -euo pipefail
+          if git rev-parse --verify "refs/tags/${{ steps.ver.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.ver.outputs.tag }} already exists locally."
+          elif git ls-remote --exit-code --tags origin "refs/tags/${{ steps.ver.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.ver.outputs.tag }} already exists on origin."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push tag
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.ver.outputs.tag }}" "${{ github.sha }}"
+          git push origin "${{ steps.ver.outputs.tag }}"
+          echo "Pushed ${{ steps.ver.outputs.tag }} → release.yml will publish."

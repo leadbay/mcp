@@ -12,10 +12,10 @@ name: release
 #   - CLAWHUB_TOKEN   → ClawHub publish token with rights to @leadbay/leadclaw
 #
 # No auto-version-bump, no auto-changelog. Bump `package.json` (and
-# `openclaw.plugin.json` for leadclaw) in a normal PR, then tag the merge commit:
-#
-#   git tag mcp-v0.3.0      && git push origin mcp-v0.3.0
-#   git tag leadclaw-v0.3.0 && git push origin leadclaw-v0.3.0
+# `openclaw.plugin.json` for leadclaw) in a normal PR. Tagging is automatic:
+# `auto-tag.yml` watches main, sees the bumped version, and pushes the
+# corresponding tag, which triggers this workflow. Manual `git tag` is only
+# needed for emergency re-publish of a version already on main.
 
 on:
   push:
