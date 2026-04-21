@@ -110,9 +110,9 @@ jobs:
             exit 0
           fi
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            npm publish --access public --dry-run
+            npm publish --access public --provenance --dry-run
           else
-            npm publish --access public
+            npm publish --access public --provenance
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -169,9 +169,9 @@ jobs:
             exit 0
           fi
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            npm publish --access public --dry-run
+            npm publish --access public --provenance --dry-run
           else
-            npm publish --access public
+            npm publish --access public --provenance
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
