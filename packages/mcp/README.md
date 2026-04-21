@@ -127,24 +127,29 @@ Leadbay connection OK.
 
 ## 5. Upgrade & rotation
 
-**Upgrade**: change the pinned minor in your config, e.g. `"@leadbay/mcp@0.1"` → `"@leadbay/mcp@0.2"`, then restart the client. See the [changelog](https://github.com/leadbay/leadclaw/releases).
+**Upgrade**: change the pinned minor in your config, e.g. `"@leadbay/mcp@0.1"` → `"@leadbay/mcp@0.2"`, then restart the client. See the [changelog](https://github.com/leadbay/leadclaw/releases) and [MIGRATION.md](./MIGRATION.md).
 
-**Rotate token**: delete the old token at [app.leadbay.ai/settings/api-tokens](https://app.leadbay.ai/settings/api-tokens), create a new one, update `LEADBAY_TOKEN` in your MCP client config, restart.
+**Rotate token**: re-run `npx -y @leadbay/mcp@0.2 install --email you@yourcompany.com --region us` (or `login --write-config …`) — the new session token replaces the old one in your MCP client config, and logging in again invalidates the prior session on most session backends.
 
 ## 6. Advanced
 
-### Exposing the 10 granular tools
+### Exposing the granular tools and write tools
 
-By default the server exposes 3 **composite workflow tools** (`leadbay_find_prospects`, `leadbay_research_company`, `leadbay_prepare_outreach`). These compose the underlying Leadbay API and work well with most prompts.
+By default the server exposes the **composite workflow tools** (`leadbay_pull_leads`, `leadbay_research_lead`, `leadbay_account_status`, `leadbay_recall_ordered_titles`, plus existing `leadbay_research_company`, `leadbay_prepare_outreach`). These work well with most prompts.
 
-If you'd rather give the LLM direct access to the 10 endpoint-level tools (`leadbay_list_lenses`, `leadbay_discover_leads`, `leadbay_get_lead_profile`, `leadbay_get_contacts`, `leadbay_get_quota`, `leadbay_get_taste_profile`, `leadbay_qualify_lead`, `leadbay_enrich_contacts`, `leadbay_add_note`, `leadbay_get_lead_activities`), set `LEADBAY_MCP_ADVANCED=1`:
+To unlock the **granular API tools** (`leadbay_list_lenses`, `leadbay_discover_leads`, `leadbay_get_lead_profile`, `leadbay_get_contacts`, `leadbay_get_quota`, `leadbay_get_taste_profile`, `leadbay_get_lens_filter`, `leadbay_list_sectors`, …), set `LEADBAY_MCP_ADVANCED=1`.
+
+To unlock the **write tools** (`leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, `leadbay_adjust_audience`, `leadbay_refine_prompt`, `leadbay_report_outreach`, etc.), set `LEADBAY_MCP_WRITE=1`. Both flags are independent; combine to expose everything.
 
 ```json
 "env": {
-  "LEADBAY_TOKEN": "lb_...",
-  "LEADBAY_MCP_ADVANCED": "1"
+  "LEADBAY_TOKEN": "<token>",
+  "LEADBAY_MCP_ADVANCED": "1",
+  "LEADBAY_MCP_WRITE": "1"
 }
 ```
+
+`leadbay_report_outreach` requires a `verification` field on every call (Gmail message id, Calendar event id, or `user_confirmed` with the user's literal text) so the agent can't poison your SDR pipeline with hallucinated outreach.
 
 **Note**: `leadbay_login` is intentionally not exposed over MCP — see [Security](#security) below.
 
@@ -152,10 +157,13 @@ If you'd rather give the LLM direct access to the 10 endpoint-level tools (`lead
 
 | Var | Required | Default | Purpose |
 |-----|----------|---------|---------|
-| `LEADBAY_TOKEN` | yes | — | Bearer token |
+| `LEADBAY_TOKEN` | yes | — | Bearer token (mint via `install` or `login`, or set manually) |
 | `LEADBAY_REGION` | no | `us` | `us` or `fr` |
 | `LEADBAY_BASE_URL` | no | derived from region | Override for staging/dev |
-| `LEADBAY_MCP_ADVANCED` | no | unset | `"1"` exposes the 10 granular endpoint tools |
+| `LEADBAY_MCP_ADVANCED` | no | unset | `"1"` exposes the granular API tools |
+| `LEADBAY_MCP_WRITE` | no | unset | `"1"` exposes write composite + granular tools |
+| `LEADBAY_MOCK` | no | unset | `"1"` serves all reads from on-disk fixtures (dev only) |
+| `LEADBAY_MOCK_DIR` | no | `./.context/leadbay-live-shapes/` | Fixture dir for mock mode |
 | `LEADBAY_LOG_LEVEL` | no | `error` | `debug` \| `info` \| `error`, logs to stderr |
 | `LEADBAY_TIMEOUT_MS` | no | (client default) | Per-request timeout override |
 
@@ -168,6 +176,19 @@ If you'd rather give the LLM direct access to the 10 endpoint-level tools (`lead
 ### Privacy
 
 Contact data fetched through this server stays local to your MCP client session. No analytics or telemetry is sent by `@leadbay/mcp`. Requests to Leadbay are subject to the [Leadbay privacy policy](https://leadbay.ai/privacy).
+
+## 7. For maintainers — publishing
+
+This package is published to npm under `@leadbay/mcp`. **Until the first publish lands, `npx -y @leadbay/mcp@0.2 install …` will fail with a 404 — the install instructions in §1 assume the package is on the registry.** To cut a release:
+
+```bash
+cd packages/mcp
+pnpm install                    # ensure workspace deps are linked
+pnpm build                      # tsup bundles @leadbay/core into dist/bin.js
+npm publish --access public     # @leadbay/* is a scoped package
+```
+
+`prepublishOnly` re-runs `tsup` automatically so the published tarball always matches `src/`. The first publish must use `--access public` (already pinned in `publishConfig`).
 
 ## License
 

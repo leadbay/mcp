@@ -1,6 +1,6 @@
 {
   "name": "@leadbay/mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Model Context Protocol (MCP) server for Leadbay — AI lead discovery, qualification, and enrichment for Claude Desktop, Cursor, and Claude Code.",
   "type": "module",
   "bin": {
@@ -9,13 +9,18 @@
   "files": [
     "dist/",
     "README.md",
+    "MIGRATION.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:smoke": "vitest run --config vitest.smoke.config.ts"
+    "test:smoke": "vitest run --config vitest.smoke.config.ts",
+    "prepublishOnly": "tsup"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0"
