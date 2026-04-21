@@ -266,6 +266,22 @@ describe("server.instructions — LLM guidance string", () => {
     expect(SERVER_INSTRUCTIONS).toMatch(/leadbay_research_lead/);
     expect(SERVER_INSTRUCTIONS).toMatch(/leadbay_account_status/);
   });
+
+  it("server instructions teach the inbox + pace + scoring mental model", async () => {
+    const { SERVER_INSTRUCTIONS } = await import("../src/server.js");
+    // Inbox framing — the daily-cadence anchor.
+    expect(SERVER_INSTRUCTIONS).toMatch(/inbox/i);
+    // Consumption-based pacing.
+    expect(SERVER_INSTRUCTIONS).toMatch(/paced|pace/i);
+    // Two scoring layers with concrete field names.
+    expect(SERVER_INSTRUCTIONS).toMatch(/two scoring layers/i);
+    expect(SERVER_INSTRUCTIONS).toMatch(/ai_agent_lead_score/);
+    // Daily-rhythm recommendation.
+    expect(SERVER_INSTRUCTIONS).toMatch(/daily|each day/i);
+    // Points to the on-demand deepening tools.
+    expect(SERVER_INSTRUCTIONS).toMatch(/leadbay_bulk_qualify_leads/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/leadbay_enrich_titles/);
+  });
 });
 
 describe("resolveClientFromEnv — region auto-probe", () => {

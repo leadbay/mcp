@@ -38,7 +38,11 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams> = {
     "until the answers are populated or a budget is exhausted. Already-qualified leads (those with a non-null " +
     "ai_agent_lead_score) are silently no-ops on the backend, so this composite paginates past them to find " +
     "fresh candidates. On 429 mid-fanout, stops launching but keeps polling already-launched leads. " +
-    "When to use: when the user wants more qualified leads than what's currently shown. " +
+    "Context: Leadbay auto-qualifies roughly the top 10 of each daily batch. Leads below the top ~10 are NOT " +
+    "worse — the system is saving resources. This tool is how the agent spends more resources to go deeper on " +
+    "promising-looking leads the user hasn't had time to surface yet. " +
+    "When to use: when the user wants more qualified leads than what's currently shown, or when a lead looks " +
+    "promising in leadbay_pull_leads but has an empty qualification_summary. " +
     "When NOT to use: to qualify a single specific lead — that's leadbay_qualify_lead (granular, advanced).",
   inputSchema: {
     type: "object",

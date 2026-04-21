@@ -6,7 +6,9 @@ export const accountStatus: Tool<Record<string, never>> = {
   description:
     "Show the user's account state — admin rights, language, last-active lens, current quota usage across " +
     "daily/weekly/monthly windows for llm_completion / ai_rescore / web_fetch resources, and whether the org's " +
-    "intelligence is mid-regeneration. " +
+    "intelligence is mid-regeneration. Quota windows also hint at the user's consumption pace: heavy recent " +
+    "activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger " +
+    "fresh batch next time the user logs back in, since batch size is paced by real consumption. " +
     "When to use: at the start of a session to know what the agent can/can't do, or after a 429 to explain to " +
     "the user which resource window was exhausted and when it resets. " +
     "When NOT to use: as a pre-flight gate before bulk ops — operations themselves return 429; this tool is " +

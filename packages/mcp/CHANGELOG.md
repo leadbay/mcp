@@ -1,5 +1,14 @@
 # Changelog — @leadbay/mcp
 
+## 0.2.2 — 2026-04-21
+
+Docs-only release. Teach the agent the Leadbay mental model — agents were calling `pull_leads` like a generic query rather than as a daily inbox, missing that leads past the top ~10 still exist and can be deepened on demand.
+
+- `SERVER_INSTRUCTIONS` gains three new paragraphs: "How Leadbay works" (inbox + consumption-based pacing), "Two scoring layers" (basic `score` vs AI-qualified top ~10 with `ai_agent_lead_score`), and "Suggested rhythm" (daily check-in + host-agnostic scheduling hint).
+- `leadbay_pull_leads`, `leadbay_research_lead`, `leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, and `leadbay_account_status` descriptions updated to reinforce the same model so the agent sees it at both top level and per-tool.
+- New non-regression test asserts the inbox/pace/scoring/daily language stays in `SERVER_INSTRUCTIONS`.
+- No schema changes, no tool-shape changes — wire-compatible with 0.2.1.
+
 ## 0.2.1 — 2026-04-21
 
 Docs-only release.

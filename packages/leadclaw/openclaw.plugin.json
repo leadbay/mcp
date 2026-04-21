@@ -1,8 +1,8 @@
 {
   "id": "leadclaw",
   "name": "LeadClaw",
-  "description": "Leadbay lead discovery, qualification, and contact enrichment for AI agents",
-  "version": "0.2.1",
+  "description": "Leadbay for AI agents: a daily sales-lead inbox with firmographic + AI qualification layers, plus on-demand deeper qualification and contact enrichment. Each login delivers a fresh batch of leads paced by the user's recent consumption; the agent skims, deepens promising ones, and proposes outreach.",
+  "version": "0.2.2",
   "contracts": {
     "tools": [
       "leadbay_login",

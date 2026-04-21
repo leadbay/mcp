@@ -14,18 +14,32 @@ import {
   type ToolLogger,
 } from "@leadbay/core";
 
-// Lead-paragraph mandate is the first thing the agent reads — followed by
-// three sentences, then per-tool descriptions carry the runbook detail.
+// Verification mandate stays first (test asserts report_outreach appears in
+// the first 200 chars). Then the mental-model paragraphs teach the agent
+// what Leadbay is (an inbox, not a DB), the two scoring layers, the
+// start-here sequence, and a recommended daily rhythm.
 export const SERVER_INSTRUCTIONS =
   "After every email, call, message, or meeting with a lead's contact, you MUST call leadbay_report_outreach " +
   "with verification={source, ref} (gmail_message_id from the Gmail send, calendar_event_id from a booking, " +
   "or user_confirmed='<the user's literal confirmation>'). Skipping or fabricating verification poisons the " +
   "human team's pipeline.\n\n" +
+  "How Leadbay works (mental model): Leadbay is a sales inbox, not a queryable database. Each day the user " +
+  "logs back in, a fresh batch of leads is delivered. Batch size is paced by how many leads the user has " +
+  "actually acted on recently — some workflows produce a big stream of smaller prospects, others a narrow " +
+  "stream of bigger ones. Pulling more won't produce more; the user acting on leads (outreach, skips, saves) does.\n\n" +
+  "Two scoring layers: every lead has a basic `score` (firmographic — already decent, usually correlates " +
+  "with AI). Roughly the top 10 of each batch are also AI-qualified (targeted web research + qualification " +
+  "questions → `ai_agent_lead_score`, surfaced as `qualification_summary` on leadbay_pull_leads). Leads past " +
+  "the top ~10 are not worse — the system is saving resources. Call leadbay_bulk_qualify_leads for deeper " +
+  "qualification or leadbay_enrich_titles for contacts on any lead that looks worth it.\n\n" +
   "Start with leadbay_account_status to see the user's state, then leadbay_pull_leads to surface fresh leads. " +
   "Use leadbay_research_lead to dig into one lead deeply (qualification answers, signals, contacts). " +
   "When the user wants more leads, narrower audience, refined criteria, or contact enrichment, use the matching " +
   "composite tool (bulk_qualify_leads / adjust_audience / refine_prompt / enrich_titles) — they hide lens " +
-  "permissions, region routing, polling, and selection state from you.";
+  "permissions, region routing, polling, and selection state from you.\n\n" +
+  "Suggested rhythm: a healthy agent pattern is a daily check-in — pull fresh leads, skim the auto-qualified " +
+  "top, deepen 1-3 promising ones, propose outreach to the user, then leadbay_report_outreach on what actually " +
+  "got sent. If your host supports scheduling, offer to set up a daily run.";
 
 interface BuildServerOptions {
   includeAdvanced?: boolean;
