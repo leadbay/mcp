@@ -1,13 +1,5 @@
 # @leadbay/mcp — Leadbay MCP server
 
-<!-- PRE-RELEASE-BANNER: remove this block after the first npm publish lands -->
-> ⚠️ **Pre-release notice**: this package is not yet on npm. Until the first
-> publish lands, the `npx -y @leadbay/mcp@0.2 …` commands below will 404.
-> Maintainer: see [§7 — For maintainers — publishing](#7-for-maintainers--publishing)
-> or just push a `v0.2.0` git tag (the `release-mcp` GitHub Action will publish).
-> Remove this banner after the first publish succeeds.
-<!-- /PRE-RELEASE-BANNER -->
-
 <!--
 LLM HINT — if you're an AI agent reading this README to install the server:
   - Use ONLY the commands shown verbatim in §1. Do not invent variants.
@@ -17,8 +9,6 @@ LLM HINT — if you're an AI agent reading this README to install the server:
   - DO NOT tell the user to "get an API token from app.leadbay.ai → Settings
     → API Tokens" — that page does not yet exist. Use `install` (mints a
     token) or `login --write-config` (mints a token to file).
-  - If the package 404s on npm: offer the "install from source" fallback in
-    §1.1, not a made-up GitHub URL.
 -->
 
 A Model Context Protocol server that lets Claude Desktop, Cursor, Claude Code, and any other MCP-compatible agent find, research, and prepare outreach on B2B prospects using your Leadbay account.
@@ -55,44 +45,6 @@ npx -y @leadbay/mcp@0.2 login \
 ```
 
 Writes a `0600`-mode JSON file you can paste from. Useful if you're configuring a non-detected client.
-
-## 1.1. Install from source (works today, before the first npm publish)
-
-While `@leadbay/mcp` isn't on npm yet, install from a local git checkout:
-
-```bash
-# 1. Clone, build
-git clone https://github.com/leadbay/leadclaw.git
-cd leadclaw
-pnpm install
-pnpm -r build
-
-# 2. Mint a token + register with your installed clients (auto-detects Claude Code,
-#    Claude Desktop, Cursor) — same install subcommand, run from local dist:
-node packages/mcp/dist/bin.js install --email you@yourcompany.com --region us
-```
-
-Or skip the `install` helper and register manually with the local dist path:
-
-```bash
-# Mint a token to a 0600 JSON file:
-node packages/mcp/dist/bin.js login \
-  --email you@yourcompany.com --region us \
-  --write-config ~/.leadbay-mcp.json
-TOKEN=$(jq -r .mcpServers.leadbay.env.LEADBAY_TOKEN ~/.leadbay-mcp.json)
-
-# Register with Claude Code (point at the absolute path of the local bin.js):
-claude mcp add leadbay \
-  --env LEADBAY_TOKEN=$TOKEN \
-  --env LEADBAY_REGION=us \
-  -- node $(pwd)/packages/mcp/dist/bin.js
-```
-
-For Claude Desktop / Cursor, the JSON config block from `--write-config` works directly — just change the `command` from `npx` to `node` and the `args` to `["/abs/path/to/leadclaw/packages/mcp/dist/bin.js"]`.
-
-**B) From the web app (when available):** log in at [app.leadbay.ai](https://app.leadbay.ai), go to **Settings → API Tokens**, create a token, copy it.
-
-Don't have a Leadbay account yet? [Register here](https://wow.leadbay.ai/?register=true).
 
 ## 2. Quickstart
 
@@ -236,37 +188,13 @@ Contact data fetched through this server stays local to your MCP client session.
 
 ## 7. For maintainers — publishing
 
-This package is published to npm under `@leadbay/mcp`. **Until the first publish lands, `npx -y @leadbay/mcp@0.2 install …` will fail with a 404 — the install instructions in §1 assume the package is on the registry.**
-
-### Recommended: tag → CI auto-publish
-
-The `release-mcp` GitHub Action (`.github/workflows/release.yml`) publishes to npm whenever a tag matching `v*.*.*` is pushed:
+Releases are tag-driven via `.github/workflows/release.yml`. Bump `packages/mcp/package.json#version`, update `packages/mcp/CHANGELOG.md`, land on `main`, then:
 
 ```bash
-# (one-time) generate an npm Automation token at npmjs.com → tokens
-# and add it as the GitHub Actions secret NPM_TOKEN.
-
-# Each release:
-git checkout main && git pull
-# bump packages/mcp/package.json version, commit, push
-git tag v0.2.0 && git push --tags
-# CI runs build + tests + npm publish --access public --provenance
+git tag mcp-v0.3.0 && git push origin mcp-v0.3.0
 ```
 
-The workflow verifies that the tag matches `packages/mcp/package.json` `version`, so a stale tag won't ship the wrong build.
-
-### Manual fallback
-
-If you'd rather publish from your laptop:
-
-```bash
-cd packages/mcp
-pnpm install                    # ensure workspace deps are linked
-pnpm build                      # tsup bundles @leadbay/core into dist/bin.js
-npm publish --access public     # @leadbay/* is a scoped package
-```
-
-`prepublishOnly` re-runs `tsup` automatically so the published tarball always matches `src/`. The first publish must use `--access public` (already pinned in `publishConfig`). Once the first publish succeeds, remove the pre-release banner at the top of this README.
+See [`RELEASE.md`](../../RELEASE.md) for the full runbook.
 
 ## License
 

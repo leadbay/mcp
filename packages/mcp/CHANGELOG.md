@@ -1,5 +1,14 @@
 # Changelog — @leadbay/mcp
 
+## 0.2.1 — 2026-04-21
+
+Docs-only release.
+
+- Removed the stale "pre-release — not yet on npm" banner that was packed into 0.2.0.
+- Removed the §1.1 "install from source" section (covered the pre-publish case; obsolete now that 0.2.0 is live).
+- §7 "For maintainers" replaced with a short pointer to the new `RELEASE.md` runbook.
+- First release carrying signed sigstore provenance (repo is now public).
+
 ## 0.2.0 — 2026-04-20
 
 First public npm release.
