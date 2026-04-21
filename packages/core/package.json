@@ -1,0 +1,16 @@
+{
+  "name": "@leadbay/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Leadbay shared core: HTTP client and protocol-agnostic tool definitions. Consumed by @leadbay/leadclaw and @leadbay/mcp.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:smoke": "vitest run --config vitest.smoke.config.ts"
+  },
+  "license": "MIT"
+}

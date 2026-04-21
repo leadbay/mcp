@@ -1,45 +1,18 @@
 {
-  "name": "@leadbay/openclaw-leadclaw",
-  "version": "0.1.0",
-  "description": "OpenClaw plugin for Leadbay — AI lead discovery, qualification, and enrichment",
+  "name": "leadclaw-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Leadbay packages monorepo — @leadbay/core shared tools, @leadbay/leadclaw OpenClaw adapter, @leadbay/mcp MCP server",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "dist/",
-    "openclaw.plugin.json",
-    "README.md",
-    "LICENSE",
-    "logo.png"
-  ],
-  "openclaw": {
-    "extensions": [
-      "./dist/index.js"
-    ],
-    "install": {
-      "npmSpec": "@leadbay/openclaw-leadclaw"
-    },
-    "compat": {
-      "pluginApi": ">=2026.3.24-beta.2",
-      "minGatewayVersion": "2026.3.24-beta.2"
-    },
-    "build": {
-      "openclawVersion": "2026.3.24-beta.2",
-      "pluginSdkVersion": "2026.3.24-beta.2"
-    }
-  },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "test:smoke": "vitest run --config vitest.smoke.config.ts",
-    "posttest": "echo 'Tip: run npm run test:smoke with LEADBAY_TEST_TOKEN to test the live API.'",
-    "prepublishOnly": "npm run build && npm test"
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:smoke": "pnpm --filter @leadbay/core --filter @leadbay/mcp test:smoke"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "@vitest/coverage-v8": "^2.1.0",
+    "tsup": "^8.3.5",
     "typescript": "^5.5",
     "vitest": "^2.1.0"
   },

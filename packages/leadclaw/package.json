@@ -1,0 +1,43 @@
+{
+  "name": "@leadbay/leadclaw",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin for Leadbay — AI lead discovery, qualification, and enrichment",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE",
+    "logo.png"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "install": {
+      "npmSpec": "@leadbay/leadclaw"
+    },
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2",
+      "minGatewayVersion": "2026.3.24-beta.2"
+    },
+    "build": {
+      "openclawVersion": "2026.3.24-beta.2",
+      "pluginSdkVersion": "2026.3.24-beta.2"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@leadbay/core": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}
