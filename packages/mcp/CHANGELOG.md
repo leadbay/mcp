@@ -1,5 +1,11 @@
 # Changelog — @leadbay/mcp
 
+## 0.2.3 — 2026-04-21
+
+Bug fix release.
+
+- **Fix [product#3508](https://github.com/leadbay/product/issues/3508)**: `leadbay_refine_prompt` (and the granular `leadbay_set_user_prompt`) now send the correct `{ user_prompt }` body key to `POST /organizations/{orgId}/user_prompt`. Previous versions sent `{ prompt }`, which the backend's strict kotlinx.serialization rejected with a JSON deserialization error (400). The `dry_run` preview for both tools was printing the wrong shape too, which hid the mismatch from anyone inspecting it. New unit tests pin the wire key so this contract can't silently regress again.
+
 ## 0.2.2 — 2026-04-21
 
 Bug fix + contract correction + mental-model docs release.

@@ -62,7 +62,7 @@ export const refinePrompt: Tool<RefinePromptParams> = {
         would_call: {
           method: "POST",
           path: `/organizations/${orgId}/user_prompt`,
-          body: { prompt: params.prompt },
+          body: { user_prompt: params.prompt },
         },
       };
     }
@@ -73,7 +73,7 @@ export const refinePrompt: Tool<RefinePromptParams> = {
     const STALE_GUARD_MS = 5_000;
 
     await client.requestVoid("POST", `/organizations/${orgId}/user_prompt`, {
-      prompt: params.prompt,
+      user_prompt: params.prompt,
     });
 
     // Cache invalidation — /me's computing_intelligence flag is now true.

@@ -1,5 +1,11 @@
 # Changelog — @leadbay/leadclaw
 
+## 0.2.3 — 2026-04-21
+
+Bug fix release. Picks up `@leadbay/core@0.2.2` underneath.
+
+- **Fix [product#3508](https://github.com/leadbay/product/issues/3508)**: `leadbay_refine_prompt` (and the granular `leadbay_set_user_prompt`) now send `{ user_prompt }` to `POST /organizations/{orgId}/user_prompt` instead of `{ prompt }`. The backend's `UserPromptPayload` uses `@SerialName("user_prompt")` with strict kotlinx.serialization, so the old key was rejected as a deserialization error (400). The `dry_run` preview was affected the same way. Version kept in sync with `@leadbay/mcp@0.2.3`.
+
 ## 0.2.2 — 2026-04-21
 
 Bug fix + contract correction + mental-model docs release. Picks up `@leadbay/core@0.2.1` underneath.

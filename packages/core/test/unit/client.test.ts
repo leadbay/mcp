@@ -376,6 +376,88 @@ describe("Granular write tools invalidate /me cache", () => {
   });
 });
 
+describe("user_prompt POST body shape (contract pin — #3508)", () => {
+  // Backend's UserPromptPayload is kotlinx.serialization @SerialName("user_prompt");
+  // strict deserialization rejects { prompt: ... }. These tests pin the wire key
+  // so the contract bug can't silently reappear.
+  it("setUserPrompt sends { user_prompt }, not { prompt }", async () => {
+    const { setUserPrompt } = await import("../../src/tools/set-user-prompt.js");
+    const { requests } = mockHttp([
+      {
+        method: "GET",
+        path: "/1.5/users/me",
+        status: 200,
+        body: {
+          id: "u",
+          organization: { id: "org-1", name: "X", computing_intelligence: false },
+        },
+      },
+      { method: "POST", path: "/1.5/organizations/org-1/user_prompt", status: 204 },
+    ]);
+    const client = new LeadbayClient(BASE, "u.test-token");
+    await setUserPrompt.execute(client, { prompt: "focus on hospitals" });
+    const post = requests.find(
+      (r) => r.method === "POST" && r.path === "/1.5/organizations/org-1/user_prompt"
+    );
+    expect(post?.body).toBeDefined();
+    const parsed = JSON.parse(post!.body!);
+    expect(parsed).toEqual({ user_prompt: "focus on hospitals" });
+    expect(parsed).not.toHaveProperty("prompt");
+  });
+
+  it("refinePrompt sends { user_prompt }, not { prompt }", async () => {
+    const { refinePrompt } = await import("../../src/composite/refine-prompt.js");
+    const { requests } = mockHttp([
+      {
+        method: "GET",
+        path: "/1.5/users/me",
+        status: 200,
+        body: {
+          id: "u",
+          admin: true,
+          organization: { id: "org-1", name: "X", computing_intelligence: false },
+        },
+      },
+      { method: "POST", path: "/1.5/organizations/org-1/user_prompt", status: 204 },
+    ]);
+    const client = new LeadbayClient(BASE, "u.test-token");
+    // clarification_poll_attempts: 0 skips the poll loop entirely.
+    await refinePrompt.execute(client, {
+      prompt: "focus on hospitals",
+      clarification_poll_attempts: 0,
+    });
+    const post = requests.find(
+      (r) => r.method === "POST" && r.path === "/1.5/organizations/org-1/user_prompt"
+    );
+    expect(post?.body).toBeDefined();
+    const parsed = JSON.parse(post!.body!);
+    expect(parsed).toEqual({ user_prompt: "focus on hospitals" });
+    expect(parsed).not.toHaveProperty("prompt");
+  });
+
+  it("refinePrompt dry_run preview uses user_prompt key", async () => {
+    const { refinePrompt } = await import("../../src/composite/refine-prompt.js");
+    mockHttp([
+      {
+        method: "GET",
+        path: "/1.5/users/me",
+        status: 200,
+        body: {
+          id: "u",
+          admin: true,
+          organization: { id: "org-1", name: "X" },
+        },
+      },
+    ]);
+    const client = new LeadbayClient(BASE, "u.test-token");
+    const res: any = await refinePrompt.execute(client, {
+      prompt: "p",
+      dry_run: true,
+    });
+    expect(res.would_call.body).toEqual({ user_prompt: "p" });
+  });
+});
+
 describe("LeadbayClient.acquireSelectionLock — Mutex", () => {
   it("serialises concurrent selection holders", async () => {
     const client = new LeadbayClient(BASE, "u.test-token");

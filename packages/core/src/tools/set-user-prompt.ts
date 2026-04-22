@@ -36,12 +36,12 @@ export const setUserPrompt: Tool<SetUserPromptParams> = {
         would_call: {
           method: "POST",
           path: `/organizations/${orgId}/user_prompt`,
-          body: { prompt: params.prompt },
+          body: { user_prompt: params.prompt },
         },
       };
     }
     await client.requestVoid("POST", `/organizations/${orgId}/user_prompt`, {
-      prompt: params.prompt,
+      user_prompt: params.prompt,
     });
     // Mutates organization.computing_intelligence (and clears any pending
     // clarification). The /me cache holds organization.computing_intelligence;
