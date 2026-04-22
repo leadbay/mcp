@@ -35,6 +35,18 @@ The token is **session-scoped** (full account access, password-equivalent). Trea
 
 **Don't have a Leadbay account?** [Register here](https://wow.leadbay.ai/?register=true).
 
+### Claude Desktop 2026 (DXT)
+
+Claude Desktop 2026 ships the DXT (Desktop Extension) system — the legacy `claude_desktop_config.json` is UI-prefs-only there and gets overwritten by the app. If you're on 2026, **install the `.dxt` bundle** from [Releases](https://github.com/leadbay/leadclaw/releases/latest) (drag-drop into Settings → Extensions). `leadbay-mcp install` detects this and skips the legacy write automatically.
+
+### `npm install -g` says "EACCES" / "permission denied"
+
+If you installed Node from the official [nodejs.org](https://nodejs.org) `.pkg`, `/usr/local/lib/node_modules` is root-owned. Any of these works:
+
+- **Use `npx` (recommended, no global install):** all examples above use `npx -y @leadbay/mcp@0.2 ...` — no global install needed.
+- **`sudo npm install -g @leadbay/mcp`** (enter your macOS password).
+- **Use a Node version manager** — [nvm](https://github.com/nvm-sh/nvm), [volta](https://volta.sh), [fnm](https://github.com/Schniz/fnm). They install Node under your home directory, so `npm install -g` works without sudo.
+
 ### If you'd rather mint a token without auto-install
 
 ```bash

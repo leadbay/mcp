@@ -93,6 +93,26 @@ export function createClient(config: CreateClientConfig = {}): LeadbayClient {
   return new LeadbayClient(baseUrl, config.token, region);
 }
 
+// Human-readable login error. Backends sometimes return 401 with an empty body;
+// naive `${baseUrl}: ${body}` leaves a dangling colon. Attach a status-specific
+// hint so non-technical users see "wrong email or password?" instead of a bare
+// status code.
+export function formatLoginError(
+  status: number,
+  body: string,
+  baseUrl: string
+): string {
+  const trimmed = body.trim();
+  const head = `login failed (${status}) at ${baseUrl}`;
+  const hint =
+    status === 401 ? " (wrong email or password?)"
+    : status === 429 ? " (rate-limited; wait and retry)"
+    : status >= 500 ? " (server error; try again shortly)"
+    : "";
+  if (!trimmed) return head + hint;
+  return `${head}: ${trimmed.slice(0, 200)}${hint}`;
+}
+
 // Probe both regions to find which one this email/password works on.
 // Returns the region (us|fr) and bearer token. Throws if neither succeeds.
 export async function resolveRegion(
@@ -103,7 +123,9 @@ export async function resolveRegion(
   const order: Array<"us" | "fr"> =
     startWith === "fr" ? ["fr", "us"] : ["us", "fr"];
 
-  let lastErr: any = null;
+  let lastErr: { kind: "http"; status: number; body: string; region: "us" | "fr"; baseUrl: string } |
+                { kind: "network"; error: unknown; region: "us" | "fr"; baseUrl: string } |
+                null = null;
   for (const region of order) {
     const baseUrl = REGIONS[region];
     const body = JSON.stringify({ email, password });
@@ -125,16 +147,19 @@ export async function resolveRegion(
           };
         }
       }
-      lastErr = { status: res.status, body: res.body, region };
+      lastErr = { kind: "http", status: res.status, body: res.body, region, baseUrl };
     } catch (e) {
-      lastErr = { error: e, region };
+      lastErr = { kind: "network", error: e, region, baseUrl };
     }
   }
 
+  const detail = lastErr?.kind === "http"
+    ? formatLoginError(lastErr.status, lastErr.body, lastErr.baseUrl)
+    : lastErr?.kind === "network"
+    ? `network error at ${lastErr.baseUrl}: ${(lastErr.error as Error)?.message ?? String(lastErr.error)}`
+    : "no attempts made";
   throw new Error(
-    `Leadbay login failed in both regions (us, fr). Last response: ${JSON.stringify(
-      lastErr
-    )}`
+    `Leadbay login failed in both regions (us, fr). ${detail}`
   );
 }
 

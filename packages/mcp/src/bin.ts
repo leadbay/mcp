@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   createClient,
   createDefaultBulkStore,
+  formatLoginError,
   LeadbayClient,
   resolveRegion,
   type CreateClientConfig,
@@ -397,9 +398,7 @@ async function loginAt(baseUrl: string, email: string, password: string): Promis
             }
           }
           reject(
-            new Error(
-              `login failed (${res.statusCode}) at ${baseUrl}: ${raw.slice(0, 200)}`
-            )
+            new Error(formatLoginError(res.statusCode ?? 0, raw, baseUrl))
           );
         });
       }
@@ -412,11 +411,48 @@ async function loginAt(baseUrl: string, email: string, password: string): Promis
 
 // ─── install: one-shot mint + register ────────────────────────────────────
 
+interface DesktopMode {
+  legacy: boolean;       // claude_desktop_config.json exists
+  dxt: boolean;          // DXT extension system is in use
+  markers: string[];     // which DXT markers were seen (for warning text)
+}
+
 interface DetectedClient {
   id: "claude-code" | "claude-desktop" | "cursor";
   label: string;
   // Where it'll be installed (path or "(claude CLI)" for shell-out targets).
   detail: string;
+  // Claude Desktop only: which config system is on this machine.
+  mode?: DesktopMode;
+}
+
+// Claude Desktop 2026 uses DXT (Desktop Extension) packaging. The legacy
+// claude_desktop_config.json still exists for UI prefs but MCP servers
+// written there are wiped by the app. Detect the new system so `install`
+// can warn / default-skip instead of silently failing.
+export function detectClaudeDesktopMode(claudeSupportDir: string): DesktopMode {
+  const { existsSync, readFileSync } = require_("node:fs");
+  const { join } = require_("node:path");
+  const markers: string[] = [];
+  const legacy = existsSync(join(claudeSupportDir, "claude_desktop_config.json"));
+  if (existsSync(join(claudeSupportDir, "Claude Extensions"))) {
+    markers.push("Claude Extensions/");
+  }
+  if (existsSync(join(claudeSupportDir, "extensions-installations.json"))) {
+    markers.push("extensions-installations.json");
+  }
+  const cfgPath = join(claudeSupportDir, "config.json");
+  if (existsSync(cfgPath)) {
+    try {
+      const raw = readFileSync(cfgPath, "utf8");
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        const hasDxtKey = Object.keys(parsed).some((k) => k.startsWith("dxt:"));
+        if (hasDxtKey) markers.push("config.json (dxt:* keys)");
+      }
+    } catch { /* malformed — ignore */ }
+  }
+  return { legacy, dxt: markers.length > 0, markers };
 }
 
 async function detectClients(): Promise<DetectedClient[]> {
@@ -440,16 +476,28 @@ async function detectClients(): Promise<DetectedClient[]> {
     out.push({ id: "claude-code", label: "Claude Code", detail: `${claudeBin} mcp add ...` });
   }
 
-  // Claude Desktop config file.
+  // Claude Desktop: check both legacy file and DXT markers.
   const home = os.homedir();
+  const claudeSupportDir =
+    process.platform === "win32"
+      ? `${process.env.APPDATA ?? `${home}\\AppData\\Roaming`}\\Claude`
+      : process.platform === "darwin"
+      ? `${home}/Library/Application Support/Claude`
+      : `${home}/.config/Claude`;
   const cdPath =
     process.platform === "win32"
-      ? `${process.env.APPDATA ?? `${home}\\AppData\\Roaming`}\\Claude\\claude_desktop_config.json`
-      : process.platform === "darwin"
-      ? `${home}/Library/Application Support/Claude/claude_desktop_config.json`
-      : `${home}/.config/Claude/claude_desktop_config.json`;
-  if (existsSync(cdPath)) {
-    out.push({ id: "claude-desktop", label: "Claude Desktop", detail: cdPath });
+      ? `${claudeSupportDir}\\claude_desktop_config.json`
+      : `${claudeSupportDir}/claude_desktop_config.json`;
+  const mode = detectClaudeDesktopMode(claudeSupportDir);
+  // Include claude-desktop if EITHER the legacy file or DXT markers exist,
+  // so we can warn even when the app has already wiped the legacy block.
+  if (mode.legacy || mode.dxt) {
+    out.push({
+      id: "claude-desktop",
+      label: "Claude Desktop",
+      detail: cdPath,
+      mode,
+    });
   }
 
   // Cursor config — Cursor stores MCP config in ~/.cursor/mcp.json.
@@ -626,13 +674,17 @@ async function runInstall(args: string[]): Promise<number> {
     process.stderr.write(
       "Usage: leadbay-mcp install --email you@example.com [--region us|fr]\n" +
         "                          [--allow-region-fallback] [--include-write]\n" +
-        "                          [--target claude-code,claude-desktop,cursor] [--yes]\n" +
+        "                          [--target claude-code,claude-desktop,cursor]\n" +
+        "                          [--yes] [--force-legacy]\n" +
         "  Mints a token AND registers the MCP server with your installed clients.\n" +
         "  --target            Comma-separated subset; default = all detected.\n" +
         "  --include-write     Enable LEADBAY_MCP_WRITE=1 (composite write tools — refine_prompt,\n" +
         "                      report_outreach, adjust_audience). Off by default; off means the\n" +
         "                      agent can read your Leadbay account but not mutate it.\n" +
-        "  --yes               Don't ask before installing into each detected client.\n"
+        "  --yes               Don't ask before installing into each detected client.\n" +
+        "  --force-legacy      Write to claude_desktop_config.json even when Claude Desktop 2026\n" +
+        "                      DXT is detected. Not recommended — the app overwrites that file.\n" +
+        "                      Use the .dxt bundle instead: https://github.com/leadbay/leadclaw/releases\n"
     );
     return 2;
   }
@@ -684,8 +736,28 @@ async function runInstall(args: string[]): Promise<number> {
   process.stderr.write(
     `\nleadbay-mcp install — detected MCP clients on this machine:\n`
   );
-  for (const c of chosen) process.stderr.write(`  • ${c.label.padEnd(16)} ${c.detail}\n`);
+  for (const c of chosen) {
+    const dxtSuffix = c.mode?.dxt ? "  [DXT — legacy write will be skipped]" : "";
+    process.stderr.write(`  • ${c.label.padEnd(16)} ${c.detail}${dxtSuffix}\n`);
+  }
   process.stderr.write("\n");
+
+  // Surface the DXT warning BEFORE prompting for password so the user can
+  // abort without typing credentials if they realize the legacy path is
+  // hopeless on this machine. Per-client loop below also short-circuits.
+  const forceLegacy = hasFlag(args, "force-legacy");
+  const hasDxtClient = chosen.some((c) => c.id === "claude-desktop" && c.mode?.dxt);
+  if (hasDxtClient && !forceLegacy) {
+    const dxtClient = chosen.find((c) => c.id === "claude-desktop" && c.mode?.dxt)!;
+    process.stderr.write(
+      `⚠️  Claude Desktop 2026 DXT detected (markers: ${dxtClient.mode!.markers.join(", ")}).\n` +
+        `    The legacy claude_desktop_config.json is UI-prefs-only in this version —\n` +
+        `    Claude Desktop will overwrite any \`mcpServers\` block written there.\n` +
+        `    Install the Leadbay .dxt instead (drag-drop into Settings → Extensions):\n` +
+        `      https://github.com/leadbay/leadclaw/releases/latest\n` +
+        `    Override with --force-legacy to write the legacy file anyway (not recommended).\n\n`
+    );
+  }
 
   // Prompt for password BEFORE asking confirmations — so users who change their
   // mind after typing the password don't have to redo it.
@@ -727,6 +799,18 @@ async function runInstall(args: string[]): Promise<number> {
 
   const results: Array<{ id: string; label: string; ok: boolean; message: string }> = [];
   for (const c of chosen) {
+    // Claude Desktop 2026 ships DXT: writing to the legacy file is futile —
+    // the app overwrites it on the next prefs save. We already printed the
+    // warning above (before password prompt); here we just short-circuit.
+    if (c.id === "claude-desktop" && c.mode?.dxt && !forceLegacy) {
+      results.push({
+        id: c.id,
+        label: c.label,
+        ok: false,
+        message: "skipped (DXT detected — install the .dxt bundle instead)",
+      });
+      continue;
+    }
     const ok = skipPrompts || (await readChoice(`Install into ${c.label} (${c.detail})?`, true));
     if (!ok) {
       results.push({ id: c.id, label: c.label, ok: false, message: "skipped by user" });

@@ -2,6 +2,7 @@ export {
   LeadbayClient,
   createClient,
   resolveRegion,
+  formatLoginError,
   getMockJournal,
   clearMockJournal,
   REGIONS,

@@ -1,0 +1,71 @@
+{
+  "dxt_version": "0.2",
+  "name": "leadbay",
+  "display_name": "Leadbay",
+  "version": "{{VERSION}}",
+  "description": "AI lead discovery, qualification, and outreach prep. Ask Claude to find, research, and prepare outreach on B2B prospects using your Leadbay account.",
+  "long_description": "Leadbay MCP surfaces your Leadbay inbox to Claude — fresh daily batches of AI-qualified leads, deep research on any company or contact, outreach-ready prep (email + LinkedIn), and outreach logging. Requires a Leadbay account (https://leadbay.ai).",
+  "icon": "icon.png",
+  "author": {
+    "name": "Leadbay",
+    "email": "support@leadbay.ai",
+    "url": "https://leadbay.ai"
+  },
+  "homepage": "https://github.com/leadbay/leadclaw",
+  "documentation": "https://github.com/leadbay/leadclaw#readme",
+  "support": "https://github.com/leadbay/leadclaw/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/leadbay/leadclaw"
+  },
+  "license": "MIT",
+  "keywords": [
+    "leadbay",
+    "mcp",
+    "b2b",
+    "lead-generation",
+    "sales"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {
+        "LEADBAY_TOKEN": "${user_config.leadbay_token}",
+        "LEADBAY_REGION": "${user_config.leadbay_region}",
+        "LEADBAY_MCP_WRITE": "${user_config.leadbay_mcp_write}"
+      }
+    }
+  },
+  "user_config": {
+    "leadbay_token": {
+      "type": "string",
+      "title": "Leadbay bearer token",
+      "description": "Mint one with: npx -y @leadbay/mcp login --email <you> --region <us|fr> --write-config ~/leadbay.json (then copy the token from that file)",
+      "sensitive": true,
+      "required": true
+    },
+    "leadbay_region": {
+      "type": "string",
+      "title": "Region",
+      "description": "Leadbay backend for your account (us or fr). If you don't know, try fr first — EU accounts are the default.",
+      "enum": ["us", "fr"],
+      "default": "fr",
+      "required": true
+    },
+    "leadbay_mcp_write": {
+      "type": "boolean",
+      "title": "Enable write tools",
+      "description": "Let Claude mutate your Leadbay account (refine_prompt, adjust_audience, report_outreach). Off by default — enable only when you want the agent to modify state.",
+      "default": false,
+      "required": false
+    }
+  },
+  "compatibility": {
+    "runtimes": {
+      "node": ">=22"
+    }
+  }
+}

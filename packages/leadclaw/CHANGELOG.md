@@ -1,5 +1,9 @@
 # Changelog — @leadbay/leadclaw
 
+## 0.2.4 — 2026-04-22
+
+Version kept in sync with `@leadbay/mcp@0.2.4`. Picks up `@leadbay/core`'s new `formatLoginError` helper so login failures surface a readable error instead of a dangling colon ([product#3504](https://github.com/leadbay/product/issues/3504)). No OpenClaw-facing contract changes in this release.
+
 ## 0.2.3 — 2026-04-21
 
 Bug fix release. Picks up `@leadbay/core@0.2.2` underneath.

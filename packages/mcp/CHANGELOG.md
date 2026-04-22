@@ -1,5 +1,15 @@
 # Changelog — @leadbay/mcp
 
+## 0.2.4 — 2026-04-22
+
+Claude Desktop 2026 compatibility + install UX polish. Also publishes the `refine_prompt` `/user_prompt` wire-key fix that landed on `main` in 0.2.3 but never reached npm.
+
+- **Fix [product#3504](https://github.com/leadbay/product/issues/3504)** — `install --target claude-desktop` no longer silently no-ops on Claude Desktop 2026. The app moved to the DXT (Desktop Extension) system; the legacy `claude_desktop_config.json` is UI-prefs-only there and gets overwritten on every prefs save, so a block written to it disappears a few minutes later. `install` now detects DXT (via `Claude Extensions/`, `extensions-installations.json`, or `dxt:*` keys in `config.json`), prints a loud warning pointing at the `.dxt` bundle, and default-skips the legacy write. Pass `--force-legacy` to override.
+- **New: shipping a `.dxt` bundle** — drag-drop into Claude Desktop 2026 → Settings → Extensions. Uploaded to each [GitHub Release](https://github.com/leadbay/leadclaw/releases). Dialog asks for token + region + write-toggle; no terminal required. Manifest is DXT 0.2 (`dxt_version: "0.2"`, `user_config.leadbay_token.sensitive: true`). Source for the build lives in `packages/dxt/`.
+- **Fix**: `login` 401 errors no longer end with a dangling `:` when the backend returns an empty body. Messages now read `login failed (401) at <url> (wrong email or password?)`. 429/5xx get their own hints too. The core helper `formatLoginError` is exported from `@leadbay/core` so the MCP and ClawHub surfaces stay in sync.
+- **README**: new section on `npm install -g` EACCES (sudo / npx / nvm workarounds — common on the official nodejs.org `.pkg`), and a pointer to the `.dxt` install for Claude Desktop 2026.
+- **Also shipping** (previously merged but not yet published to npm) — `leadbay_refine_prompt` / `leadbay_set_user_prompt` now send `{ user_prompt }` instead of `{ prompt }` to `POST /user_prompt` ([product#3508](https://github.com/leadbay/product/issues/3508)). Fixes the JSON deserialization 400 Ludo hit during the 0.2.2 install session.
+
 ## 0.2.3 — 2026-04-21
 
 Bug fix release.

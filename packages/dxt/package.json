@@ -1,0 +1,17 @@
+{
+  "name": "@leadbay/dxt",
+  "version": "0.2.4",
+  "private": true,
+  "type": "module",
+  "description": "Builds the Leadbay .dxt bundle (Claude Desktop 2026 extension format) from @leadbay/mcp.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "node -e \"1\"",
+    "test": "node -e \"1\""
+  },
+  "devDependencies": {
+    "@leadbay/mcp": "workspace:*",
+    "archiver": "^7.0.1",
+    "esbuild": "^0.25.0"
+  }
+}
