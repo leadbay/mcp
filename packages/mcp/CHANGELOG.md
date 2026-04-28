@@ -1,5 +1,29 @@
 # Changelog — @leadbay/mcp
 
+## 0.2.5 — 2026-04-28
+
+New `leadbay_import_leads` composite write tool.
+
+- **New tool: [`leadbay_import_leads`](https://github.com/leadbay/product/issues/3537)** — accepts a list of `{ domain, name? }` and returns Leadbay `leadId`s for the ones the crawler already knows. Output is naturally chainable into `leadbay_bulk_qualify_leads({ leadIds })` and `leadbay_research_lead`. Gated behind `LEADBAY_MCP_WRITE=1` (MCP) and `exposeWrite=true` (OpenClaw).
+
+  **⚠️ Writes user state.** Internally wraps Leadbay's CRM-import wizard (the only domain-import primitive the backend ships today). Each call:
+    - creates a row in the user's CRM-imports list (visible in the web UI)
+    - touches onboarding state (`startFileless`, onboarding step → PROCESSING)
+
+  Suitable for occasional automation. **Not** suitable for high-cadence (>5 calls/day) — the right primitive is a clean async-import-with-crawl backend endpoint, tracked as a follow-up issue (`leadbay/backend` — prolonged async import jobs).
+
+  **Surface:**
+  - Input: `{ domains: [{domain, name?}], dry_run?: boolean, per_phase_budget_ms?, total_budget_ms? }`.
+  - Output: `{ leads: [{domain, leadId, name}], not_imported: [{domain, reason}], importIds, region, _meta }` where `reason ∈ malformed | no_match | uncrawled | ambiguous | internal_error | dry_run`.
+  - `dry_run: true` runs preprocess only — skips the lead-CRM linking. The CRM-imports row still appears (the wedge can't fully eliminate it without backend changes), but the heavier side effect of committing matches is skipped.
+  - 8 typed error codes (`IMPORT_PREPROCESS_FAILED`, `IMPORT_PROCESSING_FAILED`, `IMPORT_BUDGET_EXHAUSTED`, `IMPORT_NOT_TERMINAL`, `IMPORT_ADMIN_REQUIRED`, `IMPORT_BILLING_REQUIRED`, `IMPORT_PAGINATION_RUNAWAY`, `IMPORT_EMPTY_INPUT`) — every one carries `{ code, message, hint }`. Per-domain `not_imported.reason="internal_error"` covers irreconcilable rows from the wizard.
+
+  **Limitations (v1):** uncrawled domains land in `not_imported` with `reason: "uncrawled"` — the tool does NOT create new Leadbay leads for unknown websites; the caller decides what to do. The backend follow-up will lift this.
+
+  **Implementation notes:** preflight admin check (fails in <500ms instead of after a 30s wizard timeout), MCP_ROW_ID-based reconciliation (resilient to wizard URL canonicalization), client-side chunking at 100 domains per CSV upload, stabilization loop after `processing.finished` to avoid races where some records are still in `MATCHING|IMPORTING`, RFC 4180 quoting + formula-injection (`=`/`+`/`-`/`@`) prefix on every cell, AbortSignal plumbing returns `{cancelled: true, importIds, ...}` so callers can recover. New helper `LeadbayClient.requestRawBinary()` for the CSV upload — mirrors `request()` exactly (auth, semaphore, error mapping, `_lastMeta`, `LEADBAY_MOCK=1` mock-mode parity).
+
+- **README**: new `## Write tools (LEADBAY_MCP_WRITE=1)` section with the import quickstart.
+
 ## 0.2.4 — 2026-04-22
 
 Claude Desktop 2026 compatibility + install UX polish. Also publishes the `refine_prompt` `/user_prompt` wire-key fix that landed on `main` in 0.2.3 but never reached npm.

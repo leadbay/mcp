@@ -1,5 +1,17 @@
 # Changelog — @leadbay/leadclaw
 
+## 0.2.5 — 2026-04-28
+
+New `leadbay_import_leads` composite write tool — exposed when `exposeWrite: true`.
+
+- **New tool: [`leadbay_import_leads`](https://github.com/leadbay/product/issues/3537)** — exposed alongside the other composite writes (`bulk_qualify_leads`, `enrich_titles`, `report_outreach`, etc.) when the plugin config has `exposeWrite: true`. Same surface and semantics as the MCP version.
+
+  **⚠️ Writes user state.** Wraps Leadbay's CRM-import wizard. Each call creates a CRM-imports row visible in the user's web UI and touches onboarding state. Suitable for occasional automation, not high-cadence (>5 calls/day). Caller is admin-only.
+
+  Inputs/outputs/error codes documented in `@leadbay/mcp@0.2.5`'s CHANGELOG.
+
+  Manifest (`openclaw.plugin.json`): `leadbay_import_leads` added to `contracts.tools`.
+
 ## 0.2.4 — 2026-04-22
 
 Version kept in sync with `@leadbay/mcp@0.2.4`. Picks up `@leadbay/core`'s new `formatLoginError` helper so login failures surface a readable error instead of a dangling colon ([product#3504](https://github.com/leadbay/product/issues/3504)). No OpenClaw-facing contract changes in this release.

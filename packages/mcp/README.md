@@ -158,7 +158,7 @@ By default the server exposes the **composite workflow tools** (`leadbay_pull_le
 
 To unlock the **granular API tools** (`leadbay_list_lenses`, `leadbay_discover_leads`, `leadbay_get_lead_profile`, `leadbay_get_contacts`, `leadbay_get_quota`, `leadbay_get_taste_profile`, `leadbay_get_lens_filter`, `leadbay_list_sectors`, …), set `LEADBAY_MCP_ADVANCED=1`.
 
-To unlock the **write tools** (`leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, `leadbay_adjust_audience`, `leadbay_refine_prompt`, `leadbay_report_outreach`, etc.), set `LEADBAY_MCP_WRITE=1`. Both flags are independent; combine to expose everything.
+To unlock the **write tools** (`leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, `leadbay_adjust_audience`, `leadbay_refine_prompt`, `leadbay_report_outreach`, `leadbay_import_leads`, etc.), set `LEADBAY_MCP_WRITE=1`. Both flags are independent; combine to expose everything.
 
 ```json
 "env": {
@@ -171,6 +171,38 @@ To unlock the **write tools** (`leadbay_bulk_qualify_leads`, `leadbay_enrich_tit
 `leadbay_report_outreach` requires a `verification` field on every call (Gmail message id, Calendar event id, or `user_confirmed` with the user's literal text) so the agent can't poison your SDR pipeline with hallucinated outreach.
 
 **Note**: `leadbay_login` is intentionally not exposed over MCP — see [Security](#security) below.
+
+### Importing domains from external systems → leadIds
+
+`leadbay_import_leads` is a **write tool** (gated by `LEADBAY_MCP_WRITE=1`) for the case where you have a list of company domains from another system (CRM, analytics, email correspondents, etc.) and want stable Leadbay `leadId`s to chain into qualification:
+
+```bash
+# 1. Set up
+export LEADBAY_TOKEN="<your-token>"
+export LEADBAY_REGION="us"
+export LEADBAY_MCP_WRITE=1
+
+# 2. Wire in your MCP client per §2 above. Then ask the agent:
+#    "Import these domains: apple.com, microsoft.com, salesforce.com.
+#     Then qualify the matched leads."
+#
+#    The agent calls leadbay_import_leads({ domains: [...] }), gets back
+#    { leads: [{domain, leadId, name}], not_imported: [{domain, reason}], importIds, _meta },
+#    then chains leads.map(l => l.leadId) into leadbay_bulk_qualify_leads.
+```
+
+**⚠️ Writes user state.** Internally wraps Leadbay's CRM-import wizard (the only domain-import primitive the backend ships today). Each call:
+
+- creates a row in your CRM-imports list (visible in the web UI)
+- touches onboarding state (`startFileless`, onboarding step → `PROCESSING`)
+
+Suitable for **occasional automation**. **Not** suitable for high-cadence (>5 calls/day) — the right primitive is a clean async-import-with-crawl backend endpoint, tracked as a follow-up in `leadbay/backend`.
+
+**Limitation:** the wedge maps domains to leads the crawler already knows. Uncrawled domains land in `not_imported` with `reason: "uncrawled"` — the tool does **not** create new leads for unknown websites; the caller decides what to do (skip, queue for the backend follow-up, etc.).
+
+**Requires:** `LEADBAY_MCP_WRITE=1` (or `exposeWrite: true` in OpenClaw); admin role on your Leadbay account; active billing.
+
+Use `dry_run: true` to validate domain formatting and wizard reachability without committing the lead-CRM linking. (The CRM-imports row still appears — only a backend change can remove that.)
 
 ### Environment variables
 

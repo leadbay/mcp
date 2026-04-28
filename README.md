@@ -61,6 +61,7 @@ openclaw plugins install @leadbay/openclaw-leadclaw
 | `leadbay_qualify_lead` | Trigger AI qualification on a lead (~60s async) |
 | `leadbay_enrich_contacts` | Order email/phone enrichment for a contact (~60s async) |
 | `leadbay_add_note` | Add a note to a lead (visible to your team) |
+| `leadbay_import_leads` | Map a list of company domains to Leadbay `leadId`s, chainable into `leadbay_bulk_qualify_leads`. Wraps the CSV-import wizard; **mutates user state** (creates a CRM-imports row). Suitable for occasional automation, not high-cadence. Admin-only. |
 
 ## How it works
 
