@@ -420,6 +420,94 @@ export interface QuotaStatusPayload {
   };
 }
 
+// ─── File-import wizard payloads (POST /1.5/imports/...) ──────────────────
+// Wire format probed live 2026-04-28. The Leadbay backend serializes with
+// kotlinx.serialization JsonNamingStrategy.SnakeCase, so all field names are
+// snake_case. The mapping keys for `fields` are column-header names from the
+// uploaded CSV (e.g. "LEAD_NAME"), NOT column indices.
+
+export type StandardCrmFieldType =
+  | "LEAD_NAME"
+  | "LEAD_WEBSITE"
+  | "LEAD_STATUS"
+  | "LEAD_LOCATION"
+  | "LEAD_SECTOR"
+  | "LEAD_SIZE"
+  | "CRM_ID"
+  | "LEADBAY_ID"
+  | "EMAIL"
+  | "DEAL_CRM_ID"
+  | "CONTACT_TITLE"
+  | "LEAD_STATUS_DATE"
+  // The wizard tolerates unknown CSV columns; leadbay_import_leads attaches
+  // an MCP_ROW_ID column for stable reconciliation, but does NOT include it
+  // in the mappings payload (the backend's CrmFieldType enum would 400 on it).
+  | (string & {});
+
+export interface MappingsPayload {
+  fields: Record<string, StandardCrmFieldType>;
+  statuses: Record<string, string>;
+  default_status: string | null;
+}
+
+export interface PreProcessingStatePayloadV15 {
+  finished: boolean;
+  error?: string | null;
+  hints?: unknown | null;
+  samples?: Array<Record<string, string>> | null;
+  status_samples?: string[] | null;
+}
+
+export interface ProcessingStatePayload {
+  progress: number;
+  finished: boolean;
+  error?: string | null;
+}
+
+export interface FileImportPayloadV15 {
+  id: string;
+  date: string;
+  file_name: string;
+  imported_records: number;
+  pending_imported_records: number;
+  total_records: number;
+  mappings: MappingsPayload | null;
+  pre_processing: PreProcessingStatePayloadV15 | null;
+  processing: ProcessingStatePayload | null;
+}
+
+// One entry in record.records[] — { column_name, value, field? }.
+export interface ImportRecordCell {
+  column_name: string;
+  value: string;
+  field?: StandardCrmFieldType | null;
+}
+
+// One row in /imports/{id}/records — what the wizard matched (or didn't).
+// Status from CrmRowRecordStatus (MATCHING/IMPORTING/IMPORTED).
+// match_type from MatchType (AUTOMATIC_MATCH/MANUAL_MATCH/NO_MATCH).
+export interface ImportRecordPayload {
+  id: string | number;
+  records: ImportRecordCell[];
+  match_type: "AUTOMATIC_MATCH" | "MANUAL_MATCH" | "NO_MATCH";
+  status: "MATCHING" | "IMPORTING" | "IMPORTED" | string;
+  // The full LeadPayload-shaped object from the wizard. We only use `.id`,
+  // `.name`, and `.website` — the rest is permissive.
+  lead?: {
+    id: string;
+    name?: string | null;
+    website?: string | null;
+    [k: string]: unknown;
+  } | null;
+  status_set_at?: string | null;
+  lead_status?: string | null;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  pagination: PaginationPayload;
+}
+
 // ─── Protocol-agnostic Tool type ──────────────────────────────────────────────
 
 export interface ToolLogger {
@@ -434,6 +522,10 @@ export interface ToolContext {
   // while the Leadbay backend doesn't yet issue real job handles. Granular tools
   // don't need this. See packages/core/src/jobs/bulk-store.ts.
   bulkTracker?: import("./jobs/bulk-store.js").BulkTracker;
+  // Long-running composites (notably leadbay_import_leads) honor this for
+  // mid-poll cancellation so the caller can recover via the returned
+  // importIds without waiting for the budget to expire.
+  signal?: AbortSignal;
 }
 
 export type JSONSchema = Record<string, unknown>;

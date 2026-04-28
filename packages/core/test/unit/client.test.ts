@@ -139,6 +139,78 @@ describe("LeadbayClient.request — HTTP status → error code mapping", () => {
   });
 });
 
+// ─── requestRawBinary parity ───────────────────────────────────────────────
+
+describe("LeadbayClient.requestRawBinary", () => {
+  it("sends auth header + caller-supplied Content-Type + raw body", async () => {
+    const { requests } = mockHttp([
+      {
+        method: "POST",
+        path: "/1.5/imports?file_name=x.csv",
+        status: 200,
+        body: { id: "imp-1" },
+      },
+    ]);
+    const client = new LeadbayClient(BASE, "u.test-token");
+    const csv = "MCP_ROW_ID,LEAD_NAME,LEAD_WEBSITE\nr1,Apple,apple.com\n";
+    const out = await client.requestRawBinary<{ id: string }>(
+      "POST",
+      "/imports?file_name=x.csv",
+      "text/csv",
+      csv
+    );
+    expect(out).toMatchObject({ id: "imp-1" });
+    expect(requests[0].headers["Authorization"]).toBe("Bearer u.test-token");
+    expect(requests[0].headers["Content-Type"]).toBe("text/csv");
+    expect(requests[0].body).toBe(csv);
+  });
+
+  it("throws NOT_AUTHENTICATED without a token (no network)", async () => {
+    mockHttp([]);
+    const client = new LeadbayClient(BASE);
+    await expect(
+      client.requestRawBinary("POST", "/x", "text/csv", "data")
+    ).rejects.toMatchObject({ code: "NOT_AUTHENTICATED" });
+  });
+
+  it.each([
+    [401, "AUTH_EXPIRED"],
+    [403, "FORBIDDEN"],
+    [429, "QUOTA_EXCEEDED"],
+    [404, "NOT_FOUND"],
+  ])("HTTP %i → %s (mirrors request())", async (status, expected) => {
+    mockHttp([
+      { method: "POST", path: "/1.5/imports?file_name=x", status, body: {} },
+    ]);
+    const client = new LeadbayClient(BASE, "u.test-token");
+    await expect(
+      client.requestRawBinary(
+        "POST",
+        "/imports?file_name=x",
+        "text/csv",
+        "data"
+      )
+    ).rejects.toMatchObject({ code: expected });
+  });
+
+  it("populates _lastMeta with region + endpoint", async () => {
+    mockHttp([
+      {
+        method: "POST",
+        path: "/1.5/imports?file_name=x",
+        status: 200,
+        body: { id: "imp-1" },
+      },
+    ]);
+    const client = new LeadbayClient(BASE, "u.test-token", "us");
+    await client.requestRawBinary("POST", "/imports?file_name=x", "text/csv", "data");
+    const meta = client.lastMeta;
+    expect(meta).not.toBeNull();
+    expect(meta?.region).toBe("us");
+    expect(meta?.endpoint).toBe("POST /imports?file_name=x");
+  });
+});
+
 describe("LeadbayClient.resolveDefaultLens", () => {
   it("prefers me.last_requested_lens when set", async () => {
     mockHttp([

@@ -34,13 +34,13 @@ function httpsRequest(
   method: string,
   url: string,
   headers: Record<string, string>,
-  body?: string
+  body?: string | Buffer
 ): Promise<HttpResult> {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const parsed = new URL(url);
     const reqHeaders: Record<string, string | number> = { ...headers };
-    if (body) {
+    if (body !== undefined) {
       reqHeaders["Content-Length"] = Buffer.byteLength(body);
     }
     const req = https.request(
@@ -65,7 +65,7 @@ function httpsRequest(
       }
     );
     req.on("error", reject);
-    if (body) req.write(body);
+    if (body !== undefined) req.write(body);
     req.end();
   });
 }
@@ -464,6 +464,59 @@ export class LeadbayClient {
     }
   }
 
+  // Like request(), but the caller supplies the Content-Type and the already-
+  // serialized body (string for text payloads such as CSV; Buffer for binary
+  // uploads). Auth, semaphore, error mapping, _lastMeta, and mock-mode all
+  // mirror request() exactly. Used by leadbay_import_leads to upload CSVs to
+  // the wizard at POST /1.5/imports.
+  async requestRawBinary<T>(
+    method: string,
+    path: string,
+    contentType: string,
+    body: string | Buffer
+  ): Promise<T> {
+    if (process.env.LEADBAY_MOCK === "1") {
+      return this.mockRequestBinary<T>(method, path, contentType, body);
+    }
+    if (!this.token) {
+      throw this.makeError(
+        "NOT_AUTHENTICATED",
+        "Not logged in to Leadbay",
+        "Set LEADBAY_TOKEN in your MCP client config, or run: npx -y @leadbay/mcp install --email <you> --region <us|fr>",
+        path
+      );
+    }
+    await this.acquireSemaphore();
+    try {
+      const url = `${this._baseUrl}/1.5${path}`;
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": contentType,
+      };
+
+      const res = await httpsRequest(method, url, headers, body);
+
+      this._lastMeta = {
+        region: this._region,
+        endpoint: `${method} ${path}`,
+        latency_ms: res.latency_ms,
+        retry_after: parseRetryAfter(res.headers["retry-after"]),
+      };
+
+      if (res.status === 204) {
+        return null as T;
+      }
+
+      if (res.status < 200 || res.status >= 300) {
+        throw this.mapErrorResponse(res.status, res.body, path, res.headers);
+      }
+
+      return JSON.parse(res.body) as T;
+    } finally {
+      this.releaseSemaphore();
+    }
+  }
+
   private mockRequest<T>(method: string, path: string, body?: unknown): T {
     const fullPath = `/1.5${path}`;
     this._lastMeta = {
@@ -490,6 +543,51 @@ export class LeadbayClient {
     return {
       mocked: true,
       would_call: { method, path: fullPath, body },
+    } as unknown as T;
+  }
+
+  private mockRequestBinary<T>(
+    method: string,
+    path: string,
+    contentType: string,
+    body: string | Buffer
+  ): T {
+    const fullPath = `/1.5${path}`;
+    this._lastMeta = {
+      region: this._region,
+      endpoint: `${method} ${path}`,
+      latency_ms: 0,
+      retry_after: null,
+    };
+    if (method === "GET") {
+      // Binary GETs aren't a thing in Leadbay's API today; fall through to
+      // standard fixture lookup so the same mocks apply.
+      const fixture = findMockFixture("GET", fullPath);
+      if (!fixture) {
+        throw this.makeError(
+          "MOCK_NOT_FOUND",
+          `LEADBAY_MOCK=1: no fixture for GET ${path}`,
+          `Add a fixture to LEADBAY_MOCK_DIR (default: ./.context/leadbay-live-shapes/) — run a probe script to generate one.`,
+          path
+        );
+      }
+      if (fixture.status === 204) return null as T;
+      return fixture.body as T;
+    }
+    const journalBody = {
+      _binary: true,
+      length: Buffer.byteLength(body),
+      content_type: contentType,
+    };
+    _mockJournal.push({
+      method,
+      path: fullPath,
+      body: journalBody,
+      ts: Date.now(),
+    });
+    return {
+      mocked: true,
+      would_call: { method, path: fullPath, body: journalBody },
     } as unknown as T;
   }
 
