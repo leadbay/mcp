@@ -49,9 +49,8 @@
     },
     "leadbay_region": {
       "type": "string",
-      "title": "Region",
-      "description": "Leadbay backend for your account (us or fr). If you don't know, try fr first — EU accounts are the default.",
-      "enum": ["us", "fr"],
+      "title": "Region (us or fr)",
+      "description": "Leadbay backend for your account. Type 'us' or 'fr'. If you don't know, try fr first — EU accounts are the default.",
       "default": "fr",
       "required": true
     },
