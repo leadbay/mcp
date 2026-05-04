@@ -1,9 +1,13 @@
 name: auto-tag
 
 # When a merge to main bumps a package version, push the corresponding release
-# tag (mcp-v<ver> or leadclaw-v<ver>). The existing release.yml then fires on
-# the tag and publishes to npm (and ClawHub for leadclaw). No manual `git tag`
-# step. Idempotent: if the tag already exists, the job no-ops.
+# tag (mcp-v<ver> or leadclaw-v<ver>) AND dispatch release.yml on that tag.
+# Idempotent: if the tag already exists, both steps no-op.
+#
+# Why we dispatch instead of relying on tag-push: GitHub suppresses workflow
+# runs triggered by pushes made with GITHUB_TOKEN (anti-loop). Tag pushes from
+# this job therefore do NOT fire release.yml on their own. workflow_dispatch
+# is exempt from that rule, so we trigger release.yml explicitly.
 
 on:
   push:
@@ -15,6 +19,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # required for `gh workflow run release.yml`
 
 jobs:
   tag:
@@ -68,4 +73,20 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag "${{ steps.ver.outputs.tag }}" "${{ github.sha }}"
           git push origin "${{ steps.ver.outputs.tag }}"
-          echo "Pushed ${{ steps.ver.outputs.tag }} → release.yml will publish."
+          echo "Pushed ${{ steps.ver.outputs.tag }}."
+
+      # GitHub suppresses workflow runs triggered by pushes made with
+      # GITHUB_TOKEN (anti-loop). So a tag pushed above does NOT fire
+      # release.yml on its own. workflow_dispatch IS exempt from that
+      # rule, so dispatch release.yml explicitly.
+      - name: Trigger release.yml
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh workflow run release.yml \
+            --ref "refs/tags/${{ steps.ver.outputs.tag }}" \
+            -f package=${{ matrix.package }} \
+            -f dry_run=false
+          echo "Dispatched release.yml for ${{ steps.ver.outputs.tag }}."
