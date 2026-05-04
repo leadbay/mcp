@@ -112,11 +112,14 @@ describe("escapeCsvCell — RFC 4180 + formula-injection guard", () => {
 });
 
 describe("synthesizeCsv", () => {
-  it("emits MCP_ROW_ID,LEAD_NAME,LEAD_WEBSITE header + rows", () => {
-    const csv = synthesizeCsv([
-      { rowId: "r1", name: "Apple Inc.", website: "apple.com" },
-      { rowId: "r2", name: "Microsoft", website: "microsoft.com" },
-    ]);
+  it("emits header + rows; missing cells default to empty", () => {
+    const csv = synthesizeCsv(
+      ["MCP_ROW_ID", "LEAD_NAME", "LEAD_WEBSITE"],
+      [
+        { MCP_ROW_ID: "r1", LEAD_NAME: "Apple Inc.", LEAD_WEBSITE: "apple.com" },
+        { MCP_ROW_ID: "r2", LEAD_NAME: "Microsoft", LEAD_WEBSITE: "microsoft.com" },
+      ]
+    );
     expect(csv).toBe(
       "MCP_ROW_ID,LEAD_NAME,LEAD_WEBSITE\n" +
         "r1,Apple Inc.,apple.com\n" +
@@ -124,11 +127,34 @@ describe("synthesizeCsv", () => {
     );
   });
 
-  it("escapes formula-injection in name/website", () => {
-    const csv = synthesizeCsv([
-      { rowId: "r1", name: "=evil()", website: "apple.com" },
-    ]);
+  it("missing cells default to empty string", () => {
+    const csv = synthesizeCsv(
+      ["MCP_ROW_ID", "Brand", "Industry"],
+      [
+        { MCP_ROW_ID: "r1", Brand: "Apple" },
+        { MCP_ROW_ID: "r2", Industry: "Fintech" },
+      ]
+    );
+    expect(csv).toBe(
+      "MCP_ROW_ID,Brand,Industry\n" + "r1,Apple,\n" + "r2,,Fintech\n"
+    );
+  });
+
+  it("escapes formula-injection in cell values", () => {
+    const csv = synthesizeCsv(
+      ["MCP_ROW_ID", "LEAD_NAME", "LEAD_WEBSITE"],
+      [{ MCP_ROW_ID: "r1", LEAD_NAME: "=evil()", LEAD_WEBSITE: "apple.com" }]
+    );
     expect(csv).toContain("r1,'=evil(),apple.com");
+  });
+
+  it("escapes user-supplied column names too (formula injection in headers)", () => {
+    const csv = synthesizeCsv(
+      ["MCP_ROW_ID", '=cmd|"/c calc"!A0'],
+      [{ MCP_ROW_ID: "r1", '=cmd|"/c calc"!A0': "x" }]
+    );
+    // First line is header; user column should be quoted+formula-prefixed.
+    expect(csv.split("\n")[0]).toBe('MCP_ROW_ID,"\'=cmd|""/c calc""!A0"');
   });
 });
 
@@ -389,6 +415,492 @@ describe("leadbay_import_leads — chunking >100", () => {
     const client = newClient();
     const out = await importLeads.execute(client, { domains });
     expect(out.importIds).toHaveLength(2);
+  });
+});
+
+// ─── records mode ──────────────────────────────────────────────────────────
+
+// Records-mode reconciliation in tests: when the user maps a column to
+// LEAD_WEBSITE and the value parses to a domain, the prep step adds it to
+// `byDomain`. The reconciler tries MCP_ROW_ID first (won't match unless we
+// mock crypto.randomUUID), then falls back to LEAD_WEBSITE → byDomain. So
+// these tests use the website fallback path. The output's `rowId` field
+// still comes from the synthetic UUID stored in `prep.validInputs[i]`.
+
+describe("leadbay_import_leads — records mode", () => {
+  it("happy path: 2 records → matched leads; mapping body is verbatim; rowId populated", async () => {
+    mockHttp([
+      { method: "GET", path: "/1.5/users/me", status: 200, body: adminMe() },
+      {
+        method: "POST",
+        path: /\/1\.5\/imports\?file_name=/,
+        status: 200,
+        body: makeImportPayload({ preFinished: true }),
+      },
+      {
+        method: "GET",
+        path: /\/1\.5\/imports\/[a-z0-9-]+$/,
+        status: 200,
+        body: makeImportPayload({ preFinished: true }),
+      },
+      {
+        method: "POST",
+        path: /\/1\.5\/imports\/[a-z0-9-]+\/update_mappings/,
+        status: 204,
+      },
+      {
+        method: "GET",
+        path: /\/1\.5\/imports\/[a-z0-9-]+$/,
+        status: 200,
+        body: makeImportPayload({ preFinished: true, procFinished: true }),
+      },
+      {
+        method: "GET",
+        path: /\/1\.5\/imports\/[a-z0-9-]+\/records\?/,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: 1,
+              records: [
+                { column_name: "LEAD_WEBSITE", value: "apple.com" },
+                { column_name: "LEAD_NAME", value: "Apple" },
+                { column_name: "LEAD_SECTOR", value: "Hardware" },
+              ],
+              match_type: "AUTOMATIC_MATCH",
+              status: "IMPORTED",
+              lead: { id: "lead-apple", name: "Apple Inc.", website: "apple.com" },
+            },
+            {
+              id: 2,
+              records: [
+                { column_name: "LEAD_WEBSITE", value: "stripe.com" },
+                { column_name: "LEAD_NAME", value: "Stripe" },
+                { column_name: "LEAD_SECTOR", value: "Fintech" },
+              ],
+              match_type: "AUTOMATIC_MATCH",
+              status: "IMPORTED",
+              lead: { id: "lead-stripe", name: "Stripe Inc.", website: "stripe.com" },
+            },
+          ],
+          pagination: { page: 0, pages: 1, total: 2 },
+        },
+      },
+      {
+        method: "GET",
+        path: /\/1\.5\/imports\/[a-z0-9-]+\/records\?/,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: 1,
+              records: [
+                { column_name: "LEAD_WEBSITE", value: "apple.com" },
+                { column_name: "LEAD_NAME", value: "Apple" },
+                { column_name: "LEAD_SECTOR", value: "Hardware" },
+              ],
+              match_type: "AUTOMATIC_MATCH",
+              status: "IMPORTED",
+              lead: { id: "lead-apple", name: "Apple Inc.", website: "apple.com" },
+            },
+            {
+              id: 2,
+              records: [
+                { column_name: "LEAD_WEBSITE", value: "stripe.com" },
+                { column_name: "LEAD_NAME", value: "Stripe" },
+                { column_name: "LEAD_SECTOR", value: "Fintech" },
+              ],
+              match_type: "AUTOMATIC_MATCH",
+              status: "IMPORTED",
+              lead: { id: "lead-stripe", name: "Stripe Inc.", website: "stripe.com" },
+            },
+          ],
+          pagination: { page: 0, pages: 1, total: 2 },
+        },
+      },
+    ]);
+
+    const client = newClient();
+    const out = await importLeads.execute(client, {
+      records: [
+        { Brand: "Apple", Site: "apple.com", Industry: "Hardware" },
+        { Brand: "Stripe", Site: "stripe.com", Industry: "Fintech" },
+      ],
+      mappings: {
+        fields: { Brand: "LEAD_NAME", Site: "LEAD_WEBSITE", Industry: "LEAD_SECTOR" },
+      },
+    });
+
+    expect(out.leads).toHaveLength(2);
+    // Output preserves input order — apple first, stripe second.
+    expect(out.leads[0]).toMatchObject({
+      domain: "apple.com",
+      leadId: "lead-apple",
+      name: "Apple Inc.",
+    });
+    expect((out.leads[0] as any).rowId).toBeTruthy();
+    expect(out.leads[1]).toMatchObject({
+      domain: "stripe.com",
+      leadId: "lead-stripe",
+      name: "Stripe Inc.",
+    });
+    expect((out.leads[1] as any).rowId).toBeTruthy();
+    // The two rowIds must be distinct UUIDs.
+    expect((out.leads[0] as any).rowId).not.toBe((out.leads[1] as any).rowId);
+    expect(out.not_imported).toHaveLength(0);
+
+    // CSV upload: header is sorted user keys after MCP_ROW_ID.
+    const uploadReq = getHttpRequests().find((r) =>
+      /\/imports\?file_name=/.test(r.path)
+    );
+    expect(uploadReq).toBeDefined();
+    const headerLine = (uploadReq!.body as string).split("\n")[0];
+    expect(headerLine).toBe("MCP_ROW_ID,Brand,Industry,Site");
+
+    // CSV upload: each rowId in the CSV body matches one in the output.
+    const csvLines = (uploadReq!.body as string).split("\n").filter(Boolean);
+    const csvRowIds = csvLines.slice(1).map((l) => l.split(",")[0]);
+    const outRowIds = out.leads.map((l) => (l as any).rowId);
+    expect(new Set(csvRowIds)).toEqual(new Set(outRowIds));
+
+    // update_mappings body is verbatim — no LEAD_NAME/LEAD_WEBSITE injection.
+    const mappingReq = getHttpRequests().find((r) => /update_mappings/.test(r.path));
+    expect(mappingReq).toBeDefined();
+    const mapBody = JSON.parse(mappingReq!.body as string);
+    expect(mapBody).toEqual({
+      fields: { Brand: "LEAD_NAME", Site: "LEAD_WEBSITE", Industry: "LEAD_SECTOR" },
+      statuses: {},
+      default_status: null,
+    });
+  });
+
+  it("dry_run: no update_mappings; not_imported uses rowId; domain only when LEAD_WEBSITE parsed", async () => {
+    mockHttp([
+      { method: "GET", path: "/1.5/users/me", status: 200, body: adminMe() },
+      {
+        method: "POST",
+        path: /\/1\.5\/imports\?file_name=/,
+        status: 200,
+        body: makeImportPayload({ preFinished: true }),
+      },
+      {
+        method: "GET",
+        path: /\/1\.5\/imports\/[a-z0-9-]+$/,
+        status: 200,
+        body: makeImportPayload({ preFinished: true }),
+      },
+    ]);
+    const client = newClient();
+    const out = await importLeads.execute(client, {
+      records: [
+        { Brand: "Apple", Site: "apple.com" },
+        { Brand: "Stripe", Site: "not-a-domain" },
+      ],
+      mappings: { fields: { Brand: "LEAD_NAME", Site: "LEAD_WEBSITE" } },
+      dry_run: true,
+    });
+    expect(out.dry_run).toBe(true);
+    expect(out.leads).toEqual([]);
+    expect(out.not_imported).toHaveLength(2);
+    expect(out.not_imported[0]).toMatchObject({ reason: "dry_run", domain: "apple.com" });
+    expect((out.not_imported[0] as any).rowId).toBeTruthy();
+    // Second record: site doesn't parse → no domain field on the entry.
+    expect(out.not_imported[1]).toMatchObject({ reason: "dry_run" });
+    expect(out.not_imported[1]).not.toHaveProperty("domain");
+    expect((out.not_imported[1] as any).rowId).toBeTruthy();
+    expect(getHttpRequests().some((r) => r.path.includes("update_mappings"))).toBe(false);
+  });
+
+  it("not_imported populated for NO_MATCH records (rowId echoed via byDomain fallback)", async () => {
+    mockHttp([
+      { method: "GET", path: "/1.5/users/me", status: 200, body: adminMe() },
+      {
+        method: "POST",
+        path: /\/1\.5\/imports\?file_name=/,
+        status: 200,
+        body: makeImportPayload({ preFinished: true }),
+      },
+      {
+        method: "GET",
+        path: /\/1\.5\/imports\/[a-z0-9-]+$/,
+        status: 200,
+        body: makeImportPayload({ preFinished: true }),
+      },
+      {
+        method: "POST",
+        path: /\/1\.5\/imports\/[a-z0-9-]+\/update_mappings/,
+        status: 204,
+      },
+      {
+        method: "GET",
+        path: /\/1\.5\/imports\/[a-z0-9-]+$/,
+        status: 200,
+        body: makeImportPayload({ preFinished: true, procFinished: true }),
+      },
+      {
+        method: "GET",
+        path: /\/1\.5\/imports\/[a-z0-9-]+\/records\?/,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: 1,
+              records: [
+                { column_name: "LEAD_WEBSITE", value: "weirddomain.xyz" },
+                { column_name: "LEAD_NAME", value: "Unknown" },
+              ],
+              match_type: "NO_MATCH",
+              status: "IMPORTING",
+              lead: null,
+            },
+          ],
+          pagination: { page: 0, pages: 1, total: 1 },
+        },
+      },
+      {
+        method: "GET",
+        path: /\/1\.5\/imports\/[a-z0-9-]+\/records\?/,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: 1,
+              records: [
+                { column_name: "LEAD_WEBSITE", value: "weirddomain.xyz" },
+                { column_name: "LEAD_NAME", value: "Unknown" },
+              ],
+              match_type: "NO_MATCH",
+              status: "IMPORTING",
+              lead: null,
+            },
+          ],
+          pagination: { page: 0, pages: 1, total: 1 },
+        },
+      },
+    ]);
+
+    const client = newClient();
+    const out = await importLeads.execute(client, {
+      records: [{ Co: "Unknown", Web: "weirddomain.xyz" }],
+      mappings: { fields: { Co: "LEAD_NAME", Web: "LEAD_WEBSITE" } },
+    });
+    expect(out.leads).toEqual([]);
+    expect(out.not_imported).toHaveLength(1);
+    expect(out.not_imported[0]).toMatchObject({
+      reason: "uncrawled",
+      domain: "weirddomain.xyz",
+    });
+    expect((out.not_imported[0] as any).rowId).toBeTruthy();
+  });
+
+  it("chunking: 101 records → 2 importIds; same header on both chunks; rowIds preserve order", async () => {
+    const records = Array.from({ length: 101 }, (_, i) => ({
+      Brand: `Co${String(i).padStart(3, "0")}`,
+      Site: `co${String(i).padStart(3, "0")}.com`,
+    }));
+    const scripts: any[] = [
+      { method: "GET", path: "/1.5/users/me", status: 200, body: adminMe() },
+    ];
+    for (let chunk = 0; chunk < 2; chunk++) {
+      scripts.push(
+        {
+          method: "POST",
+          path: /\/1\.5\/imports\?file_name=/,
+          status: 200,
+          body: makeImportPayload({ preFinished: true }),
+        },
+        {
+          method: "GET",
+          path: /\/1\.5\/imports\/[a-z0-9-]+$/,
+          status: 200,
+          body: makeImportPayload({ preFinished: true }),
+        },
+        {
+          method: "POST",
+          path: /\/1\.5\/imports\/[a-z0-9-]+\/update_mappings/,
+          status: 204,
+        },
+        {
+          method: "GET",
+          path: /\/1\.5\/imports\/[a-z0-9-]+$/,
+          status: 200,
+          body: makeImportPayload({ preFinished: true, procFinished: true }),
+        },
+        {
+          method: "GET",
+          path: /\/1\.5\/imports\/[a-z0-9-]+\/records\?/,
+          status: 200,
+          body: { items: [], pagination: { page: 0, pages: 1, total: 0 } },
+        },
+        {
+          method: "GET",
+          path: /\/1\.5\/imports\/[a-z0-9-]+\/records\?/,
+          status: 200,
+          body: { items: [], pagination: { page: 0, pages: 1, total: 0 } },
+        }
+      );
+    }
+    mockHttp(scripts);
+
+    const client = newClient();
+    const out = await importLeads.execute(client, {
+      records,
+      mappings: { fields: { Brand: "LEAD_NAME", Site: "LEAD_WEBSITE" } },
+    });
+    expect(out.importIds).toHaveLength(2);
+
+    // Both CSV uploads must share the same header line.
+    const uploads = getHttpRequests().filter((r) => /\/imports\?file_name=/.test(r.path));
+    expect(uploads).toHaveLength(2);
+    const h0 = (uploads[0].body as string).split("\n")[0];
+    const h1 = (uploads[1].body as string).split("\n")[0];
+    expect(h0).toBe(h1);
+    expect(h0).toBe("MCP_ROW_ID,Brand,Site");
+
+    // Both update_mappings calls share the same payload.
+    const mapCalls = getHttpRequests().filter((r) => /update_mappings/.test(r.path));
+    expect(mapCalls).toHaveLength(2);
+    const m0 = JSON.parse(mapCalls[0].body as string);
+    const m1 = JSON.parse(mapCalls[1].body as string);
+    expect(m0).toEqual(m1);
+    expect(m0.fields).toEqual({ Brand: "LEAD_NAME", Site: "LEAD_WEBSITE" });
+  });
+
+  it("coerces number/boolean cells; records[i].Brand=42 → '42' in CSV", async () => {
+    mockHttp([
+      { method: "GET", path: "/1.5/users/me", status: 200, body: adminMe() },
+      {
+        method: "POST",
+        path: /\/1\.5\/imports\?file_name=/,
+        status: 200,
+        body: makeImportPayload({ preFinished: true }),
+      },
+      {
+        method: "GET",
+        path: /\/1\.5\/imports\/[a-z0-9-]+$/,
+        status: 200,
+        body: makeImportPayload({ preFinished: true }),
+      },
+    ]);
+    const client = newClient();
+    await importLeads.execute(client, {
+      records: [{ Brand: "Apple", Employees: 500, Public: true } as any],
+      mappings: { fields: { Brand: "LEAD_NAME" } },
+      dry_run: true,
+    });
+    const uploadReq = getHttpRequests().find((r) => /\/imports\?file_name=/.test(r.path));
+    const dataLine = (uploadReq!.body as string).split("\n")[1];
+    // header sorted: MCP_ROW_ID, Brand, Employees, Public
+    const cols = dataLine.split(",");
+    expect(cols[1]).toBe("Apple");
+    expect(cols[2]).toBe("500");
+    expect(cols[3]).toBe("true");
+  });
+});
+
+describe("leadbay_import_leads — records-mode validation errors", () => {
+  function adminClient() {
+    mockHttp([
+      { method: "GET", path: "/1.5/users/me", status: 200, body: adminMe() },
+    ]);
+    return newClient();
+  }
+
+  it("both `domains` and `records` → IMPORT_INPUT_CONFLICT", async () => {
+    await expect(
+      importLeads.execute(newClient(), {
+        domains: [{ domain: "apple.com" }],
+        records: [{ A: "1" }],
+        mappings: { fields: { A: "LEAD_NAME" } },
+      })
+    ).rejects.toMatchObject({ error: true, code: "IMPORT_INPUT_CONFLICT" });
+    expect(getHttpRequests()).toEqual([]);
+  });
+
+  it("neither input → IMPORT_EMPTY_INPUT", async () => {
+    await expect(importLeads.execute(newClient(), {})).rejects.toMatchObject({
+      error: true,
+      code: "IMPORT_EMPTY_INPUT",
+    });
+    expect(getHttpRequests()).toEqual([]);
+  });
+
+  it("`records` without `mappings` → IMPORT_MAPPING_REQUIRED", async () => {
+    const client = adminClient();
+    await expect(
+      importLeads.execute(client, { records: [{ A: "x" }] } as any)
+    ).rejects.toMatchObject({ error: true, code: "IMPORT_MAPPING_REQUIRED" });
+  });
+
+  it("mapping without LEAD_NAME or LEAD_WEBSITE → IMPORT_MAPPING_NO_RESOLVER", async () => {
+    const client = adminClient();
+    await expect(
+      importLeads.execute(client, {
+        records: [{ Sector: "Tech" }],
+        mappings: { fields: { Sector: "LEAD_SECTOR" } },
+      })
+    ).rejects.toMatchObject({ error: true, code: "IMPORT_MAPPING_NO_RESOLVER" });
+  });
+
+  it("reserved column MCP_ROW_ID (any case) in record key → IMPORT_RESERVED_COLUMN", async () => {
+    const client = adminClient();
+    await expect(
+      importLeads.execute(client, {
+        records: [{ mcp_row_id: "x", LEAD_NAME: "y" } as any],
+        mappings: { fields: { LEAD_NAME: "LEAD_NAME" } },
+      })
+    ).rejects.toMatchObject({ error: true, code: "IMPORT_RESERVED_COLUMN" });
+  });
+
+  it("reserved column MCP_ROW_ID (any case) in mapping key → IMPORT_RESERVED_COLUMN", async () => {
+    const client = adminClient();
+    await expect(
+      importLeads.execute(client, {
+        records: [{ A: "x" }],
+        mappings: { fields: { Mcp_Row_Id: "LEAD_NAME" } as any },
+      })
+    ).rejects.toMatchObject({ error: true, code: "IMPORT_RESERVED_COLUMN" });
+  });
+
+  it("mapping key absent from records → IMPORT_MAPPING_KEY_UNKNOWN", async () => {
+    const client = adminClient();
+    await expect(
+      importLeads.execute(client, {
+        records: [{ A: "x" }],
+        mappings: { fields: { B: "LEAD_NAME" } },
+      })
+    ).rejects.toMatchObject({ error: true, code: "IMPORT_MAPPING_KEY_UNKNOWN" });
+  });
+
+  it("non-string non-scalar cell value (array) → IMPORT_INVALID_CELL_TYPE", async () => {
+    const client = adminClient();
+    await expect(
+      importLeads.execute(client, {
+        records: [{ Brand: ["Apple", "Inc"] } as any],
+        mappings: { fields: { Brand: "LEAD_NAME" } },
+      })
+    ).rejects.toMatchObject({ error: true, code: "IMPORT_INVALID_CELL_TYPE" });
+  });
+
+  it("column name longer than 128 chars → IMPORT_INVALID_COLUMN_NAME", async () => {
+    const client = adminClient();
+    const longName = "a".repeat(129);
+    await expect(
+      importLeads.execute(client, {
+        records: [{ [longName]: "x", LEAD_NAME: "y" }],
+        mappings: { fields: { LEAD_NAME: "LEAD_NAME" } },
+      })
+    ).rejects.toMatchObject({ error: true, code: "IMPORT_INVALID_COLUMN_NAME" });
+  });
+
+  it("column name with control char → IMPORT_INVALID_COLUMN_NAME", async () => {
+    const client = adminClient();
+    await expect(
+      importLeads.execute(client, {
+        records: [{ "bad\nname": "x", LEAD_NAME: "y" }],
+        mappings: { fields: { LEAD_NAME: "LEAD_NAME" } },
+      })
+    ).rejects.toMatchObject({ error: true, code: "IMPORT_INVALID_COLUMN_NAME" });
   });
 });
 

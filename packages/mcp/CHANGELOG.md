@@ -1,5 +1,24 @@
 # Changelog — @leadbay/mcp
 
+## 0.4.0 — 2026-05-04
+
+### `leadbay_import_leads` 0.2.0 — custom field mapping
+
+The MCP tool now drives the same CRM-import wizard the web UI exposes — pass arbitrary CSV-shaped records and tell Leadbay which column maps to which `StandardCrmFieldType`.
+
+**Two modes** (pass exactly one of `domains` / `records`):
+
+- **Mode A (existing, unchanged):** `domains: [{domain, name?}]` — synthesizes a 2-column CSV (LEAD_NAME, LEAD_WEBSITE) and uses the default mapping. Output shape is identical to 0.1.x: `{ leads: [{domain, leadId, name}], not_imported: [{domain, reason}], ... }`.
+- **Mode B (new):** `records: [{Col1, Col2, ...}]` plus `mappings: { fields: { Col1: "LEAD_NAME", Col2: "LEAD_WEBSITE", Col3: "LEAD_SECTOR", ... } }`. The tool synthesizes a CSV from the union of record keys (sorted, deterministic) and POSTs the caller-supplied mapping to `/imports/{id}/update_mappings`. Output shape: `{ leads: [{rowId, domain?, leadId, name}], not_imported: [{rowId, domain?, reason}], ... }`. `rowId` round-trips your input row order; `domain` populated only when `LEAD_WEBSITE` was mapped and the value parsed.
+
+Mappings.fields must include `LEAD_NAME` or `LEAD_WEBSITE` — the wizard's resolver needs at least one of those to find a lead. Other CRM fields (`LEAD_SECTOR`, `LEAD_LOCATION`, `LEAD_SIZE`, `EMAIL`, `CRM_ID`, `LEADBAY_ID`, `DEAL_CRM_ID`, `CONTACT_TITLE`, `LEAD_STATUS`, `LEAD_STATUS_DATE`) are passed through verbatim.
+
+**Validation (records mode):** new typed error codes — `IMPORT_INPUT_CONFLICT` (both modes supplied), `IMPORT_MAPPING_REQUIRED` (no mappings.fields), `IMPORT_MAPPING_NO_RESOLVER` (no LEAD_NAME or LEAD_WEBSITE in mapping), `IMPORT_MAPPING_KEY_UNKNOWN` (mapping key absent from records), `IMPORT_RESERVED_COLUMN` (record or mapping key matches `MCP_ROW_ID` case-insensitively), `IMPORT_INVALID_COLUMN_NAME` (column name >128 chars or contains control chars), `IMPORT_INVALID_CELL_TYPE` (cell value is array/object — coerce to string before passing). null/undefined cells coerce to "", numbers/booleans coerce via `String(v)`.
+
+**Security:** user-supplied column names now flow through the same `escapeCsvCell` (RFC 4180 quoting + formula-injection prefix) that data values use. Header injection vectors (`=`, `+`, `-`, `@`, `,`, `"`, newline) are neutered.
+
+**Backward compat:** Mode A output shape unchanged — the new `rowId` field is records-mode only. Existing `domains: [...]` callers see no diff.
+
 ## 0.3.0 — 2026-04-29
 
 Behavior-changing release: closes [product#3504](https://github.com/leadbay/product/issues/3504) end-to-end. Default-installed MCP server now matches its own system prompt out of the box, the `login` command never lands a bearer token in scrollback by default, and `claude mcp add` registers Leadbay at user scope so it's visible from any project.
