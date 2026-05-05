@@ -863,6 +863,11 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsResult> = {
     "  - touches onboarding state (startFileless, onboarding step → PROCESSING)\n" +
     "Suitable for occasional automation. NOT suitable for high-cadence (>5 calls/day) — wait for " +
     "the backend programmatic endpoint (issue: leadbay/backend prolonged-import-with-crawl).\n\n" +
+    "When to use: you have a list of company domains from another system (CRM, analytics, email " +
+    "correspondents) and need stable Leadbay leadIds; or you have CRM-shaped rows with custom " +
+    "columns (sector, location, status, etc.) and want to drive the wizard with explicit field mappings.\n" +
+    "When NOT to use: for prospect discovery (use leadbay_pull_leads); for one specific company's " +
+    "profile (use leadbay_research_company); when you can't tolerate the side effects above.\n\n" +
     "Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role on the " +
     "Leadbay account; active billing.",
   write: true,
