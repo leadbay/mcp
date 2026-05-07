@@ -4,8 +4,16 @@ import {
   ListToolsRequestSchema,
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
+  ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
+  ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { listPrompts, getPrompt } from "./prompts.js";
+import {
+  listResources,
+  listResourceTemplates,
+  readResource,
+} from "./resources.js";
 import {
   compositeReadTools,
   compositeWriteTools,
@@ -187,7 +195,7 @@ export function buildServer(
   const server = new Server(
     { name: "leadbay", version: "0.3.0" },
     {
-      capabilities: { tools: {}, prompts: {} },
+      capabilities: { tools: {}, prompts: {}, resources: {} },
       instructions: buildServerInstructions(exposedNames),
     }
   );
@@ -203,6 +211,18 @@ export function buildServer(
   }));
   server.setRequestHandler(GetPromptRequestSchema, async (req) => {
     return getPrompt(req.params.name, (req.params.arguments ?? {}) as Record<string, string | undefined>);
+  });
+
+  // Resources: URI-addressable read-only payloads (lead://, lens://, org://).
+  // See packages/mcp/src/resources.ts.
+  server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+    resources: listResources(),
+  }));
+  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
+    resourceTemplates: listResourceTemplates(),
+  }));
+  server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
+    return readResource(req.params.uri, client);
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
