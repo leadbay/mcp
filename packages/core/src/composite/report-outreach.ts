@@ -37,6 +37,13 @@ function formatNoteWithVerification(
 
 export const reportOutreach: Tool<ReportOutreachParams> = {
   name: "leadbay_report_outreach",
+  annotations: {
+    title: "Report outreach to Leadbay",
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
   description:
     "Log an outreach action (email, call, message, meeting) on a lead so the human team using Leadbay sees the " +
     "progress in their UI. Writes a NOTE on the lead and (optionally) sets an EPILOGUE status (still chasing, " +

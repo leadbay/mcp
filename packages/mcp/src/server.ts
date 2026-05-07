@@ -125,11 +125,15 @@ function formatErrorForLLM(err: any): string {
 }
 
 function toolsListPayload(tools: Tool[]) {
-  return tools.map((t) => ({
-    name: t.name,
-    description: t.description,
-    inputSchema: t.inputSchema,
-  }));
+  return tools.map((t) => {
+    const out: Record<string, unknown> = {
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+    };
+    if (t.annotations) out.annotations = t.annotations;
+    return out;
+  });
 }
 
 export function buildServer(

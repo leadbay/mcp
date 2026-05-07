@@ -592,10 +592,40 @@ export interface ToolContext {
 
 export type JSONSchema = Record<string, unknown>;
 
+// Mirrors MCP spec ToolAnnotations (modelcontextprotocol 2025-11-25). Defined
+// locally so @leadbay/core stays protocol-agnostic — OpenClaw consumes the
+// same Tool definitions without taking a transitive runtime dep on the MCP
+// SDK. Spec is stable: these four hints have been canonical since 2025-03-26.
+//
+// Per the spec: all properties are HINTS, not contracts. Clients use them to
+// decide UX (auto-approve vs prompt) but must never make trust decisions on
+// them alone.
+export interface ToolAnnotations {
+  // Short human-readable label for client UIs. Optional; falls back to name.
+  title?: string;
+  // True if the tool does not modify any state (calling it is a no-op for
+  // observability purposes). Composites that only fetch are readOnly:true.
+  readOnlyHint?: boolean;
+  // True if the tool may perform an irreversible side-effect — mutates state
+  // in a way that can't be cleanly undone. Sets readOnlyHint:false implicitly.
+  destructiveHint?: boolean;
+  // True if calling the same tool twice with the same arguments is safe and
+  // produces the same observable outcome (no double-write side-effect).
+  idempotentHint?: boolean;
+  // True if the tool reaches outside the local process / context — typically
+  // any tool that hits a remote API. False for self-contained calls (status
+  // checks against in-memory state only).
+  openWorldHint?: boolean;
+}
+
 export interface Tool<P = any, R = any> {
   name: string;
   description: string;
   inputSchema: JSONSchema;
+  // MCP-spec annotations: hints for clients about read/write/idempotency
+  // posture. Optional for backwards-compat — tools without annotations work
+  // exactly as before; clients that don't read annotations ignore them.
+  annotations?: ToolAnnotations;
   optional?: boolean;
   advanced?: boolean;
   // Mutates Leadbay state. MCP server gates these behind LEADBAY_MCP_WRITE=1.

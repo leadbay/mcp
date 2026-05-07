@@ -53,6 +53,13 @@ function summarise(responses: AiAgentResponse[]): QualificationSummary {
 
 export const pullLeads: Tool<PullLeadsParams> = {
   name: "leadbay_pull_leads",
+  annotations: {
+    title: "Pull fresh Leadbay leads",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
   description:
     "Pull up new leads from the user's last-active lens — the canonical 'show me today's prospects' tool. " +
     "Leadbay works like an inbox: each time the user logs back in, a fresh batch is delivered, paced by how " +
