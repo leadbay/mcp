@@ -2,7 +2,10 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { listPrompts, getPrompt } from "./prompts.js";
 import {
   compositeReadTools,
   compositeWriteTools,
@@ -184,7 +187,7 @@ export function buildServer(
   const server = new Server(
     { name: "leadbay", version: "0.3.0" },
     {
-      capabilities: { tools: {} },
+      capabilities: { tools: {}, prompts: {} },
       instructions: buildServerInstructions(exposedNames),
     }
   );
@@ -192,6 +195,15 @@ export function buildServer(
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: toolsListPayload([...toolByName.values()]),
   }));
+
+  // Prompts: pull-based slash commands the user can invoke directly.
+  // See packages/mcp/src/prompts.ts for the catalog.
+  server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+    prompts: listPrompts(),
+  }));
+  server.setRequestHandler(GetPromptRequestSchema, async (req) => {
+    return getPrompt(req.params.name, (req.params.arguments ?? {}) as Record<string, string | undefined>);
+  });
 
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     const name = req.params.name;
