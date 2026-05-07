@@ -161,7 +161,7 @@ Leadbay connection OK.
 
 ### Exposing the granular tools and disabling write tools
 
-By default the server exposes the **composite workflow tools** — both reads (`leadbay_pull_leads`, `leadbay_research_lead`, `leadbay_account_status`, `leadbay_recall_ordered_titles`, `leadbay_research_company`, `leadbay_prepare_outreach`) and writes (`leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, `leadbay_refine_prompt`, `leadbay_report_outreach`, `leadbay_adjust_audience`, `leadbay_answer_clarification`, `leadbay_import_leads`). These work well with most prompts.
+By default the server exposes the **composite workflow tools** — both reads (`leadbay_pull_leads`, `leadbay_research_lead`, `leadbay_account_status`, `leadbay_recall_ordered_titles`, `leadbay_research_company`, `leadbay_prepare_outreach`, `leadbay_qualify_status`, `leadbay_list_mappable_fields`) and writes (`leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, `leadbay_refine_prompt`, `leadbay_report_outreach`, `leadbay_adjust_audience`, `leadbay_answer_clarification`, `leadbay_import_leads`, `leadbay_import_and_qualify`). These work well with most prompts.
 
 To **disable the write tools** (run a strictly read-only agent), set `LEADBAY_MCP_WRITE=0`. The server's system prompt will adapt to omit references to those tools.
 
@@ -206,6 +206,14 @@ export LEADBAY_REGION="us"
 Suitable for **occasional automation**. **Not** suitable for high-cadence (>5 calls/day) — the right primitive is a clean async-import-with-crawl backend endpoint, tracked as a follow-up in `leadbay/backend`.
 
 **Limitation:** the wedge maps domains to leads the crawler already knows. Uncrawled domains land in `not_imported` with `reason: "uncrawled"` — the tool does **not** create new leads for unknown websites; the caller decides what to do (skip, queue for the backend follow-up, etc.).
+
+### Importing + qualifying in one verb (0.5.0)
+
+`leadbay_import_and_qualify` collapses import → AI qualification into a single composite call. Returns per-lead qualification answers + ai_agent_lead_score inline when budget allows; otherwise returns a `qualify_id` UUID handle the agent can pass to `leadbay_qualify_status` later (handle persists 30 days, survives MCP restart). See [MIGRATION.md](./MIGRATION.md#migration-leadbay-mcp-04x--050) for the full worked example (discover → preview → import → qualify_status), JSON shapes, error-code reference, per-tool prereqs, and `not_in_lens` partition semantics.
+
+Companion tool: `leadbay_list_mappable_fields` returns the union of standard CRM fields and this org's custom fields (with `mapping_value` ready for `mappings.fields` paste-in). Optional `for_records` param runs the wizard's preprocess on a sample to attach mapping hints + custom-field name-match candidates in a single call.
+
+
 
 **Requires:** `LEADBAY_MCP_WRITE` not set to `0` (it's ON by default since 0.3.0; or `exposeWrite: true` in OpenClaw); admin role on your Leadbay account; active billing.
 

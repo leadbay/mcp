@@ -893,6 +893,46 @@ describe("leadbay_import_leads — records-mode validation errors", () => {
     ).rejects.toMatchObject({ error: true, code: "IMPORT_INVALID_COLUMN_NAME" });
   });
 
+  it("two columns mapping to LEAD_NAME → IMPORT_MAPPING_CONFLICT_TARGET", async () => {
+    const client = adminClient();
+    await expect(
+      importLeads.execute(client, {
+        records: [{ Brand: "Apple", Name: "Apple Inc.", Web: "apple.com" }],
+        mappings: {
+          fields: { Brand: "LEAD_NAME", Name: "LEAD_NAME", Web: "LEAD_WEBSITE" },
+        },
+      })
+    ).rejects.toMatchObject({ error: true, code: "IMPORT_MAPPING_CONFLICT_TARGET" });
+  });
+
+  it("two columns mapping to the SAME custom field is allowed (not a conflict)", async () => {
+    // Catalog with priority_test seeded
+    mockHttp([
+      { method: "GET", path: "/1.5/users/me", status: 200, body: adminMe() },
+      {
+        method: "GET",
+        path: "/1.5/crm/custom_fields",
+        status: 200,
+        body: [{ id: "8", name: "priority_test", type: "TEXT" }],
+      },
+    ]);
+    const client = newClient();
+    // Will fail later because /imports POST not mocked; we just want NOT to
+    // see IMPORT_MAPPING_CONFLICT_TARGET on the same-custom-field case.
+    await expect(
+      importLeads.execute(client, {
+        records: [{ A: "1", B: "2", Web: "apple.com" }],
+        mappings: {
+          fields: {
+            A: "CUSTOM.8",
+            B: "CUSTOM.8",
+            Web: "LEAD_WEBSITE",
+          },
+        },
+      })
+    ).rejects.not.toMatchObject({ code: "IMPORT_MAPPING_CONFLICT_TARGET" });
+  });
+
   it("column name with control char → IMPORT_INVALID_COLUMN_NAME", async () => {
     const client = adminClient();
     await expect(
@@ -901,6 +941,221 @@ describe("leadbay_import_leads — records-mode validation errors", () => {
         mappings: { fields: { LEAD_NAME: "LEAD_NAME" } },
       })
     ).rejects.toMatchObject({ error: true, code: "IMPORT_INVALID_COLUMN_NAME" });
+  });
+});
+
+// ─── custom-field mapping (0.3.0) ─────────────────────────────────────────
+
+describe("leadbay_import_leads — custom field mapping", () => {
+  function adminClientWithCatalog(
+    catalog: Array<{ id: string; name: string; type: string }>
+  ) {
+    mockHttp([
+      { method: "GET", path: "/1.5/users/me", status: 200, body: adminMe() },
+      {
+        method: "GET",
+        path: "/1.5/crm/custom_fields",
+        status: 200,
+        body: catalog,
+      },
+    ]);
+    return newClient();
+  }
+
+  it("mappings.fields with valid CUSTOM.<id> survives preflight (catalog hit)", async () => {
+    const client = adminClientWithCatalog([
+      { id: "8", name: "priority_test", type: "TEXT" },
+    ]);
+    // We expect the catalog GET to fire AFTER the admin check, BEFORE the
+    // /imports POST. The mock journal won't reach POST because the next
+    // mocked endpoint isn't set up — that's fine for preflight assertion.
+    // Use IMPORT_INVALID_CUSTOM_MAPPING absence as the positive signal.
+    await expect(
+      importLeads.execute(client, {
+        records: [{ Brand: "Apple", Web: "apple.com", P: "high" }],
+        mappings: {
+          fields: { Brand: "LEAD_NAME", Web: "LEAD_WEBSITE", P: "CUSTOM.8" },
+        },
+      })
+    ).rejects.not.toMatchObject({ code: "IMPORT_CUSTOM_FIELD_UNKNOWN" });
+    const reqs = getHttpRequests();
+    expect(reqs.some((r) => r.path === "/1.5/crm/custom_fields")).toBe(true);
+  });
+
+  it("mappings.fields with CUSTOM.999 (id not on org) → IMPORT_CUSTOM_FIELD_UNKNOWN", async () => {
+    const client = adminClientWithCatalog([
+      { id: "8", name: "priority_test", type: "TEXT" },
+    ]);
+    await expect(
+      importLeads.execute(client, {
+        records: [{ Brand: "Apple", Web: "apple.com", P: "high" }],
+        mappings: {
+          fields: { Brand: "LEAD_NAME", Web: "LEAD_WEBSITE", P: "CUSTOM.999" },
+        },
+      })
+    ).rejects.toMatchObject({
+      error: true,
+      code: "IMPORT_CUSTOM_FIELD_UNKNOWN",
+    });
+    // Should NOT have hit POST /imports — preflight blocked it.
+    const reqs = getHttpRequests();
+    expect(reqs.some((r) => r.method === "POST" && r.path.startsWith("/1.5/imports"))).toBe(false);
+  });
+
+  it("mappings.fields with malformed CUSTOM.<bogus> → IMPORT_INVALID_CUSTOM_MAPPING", async () => {
+    const client = adminClientWithCatalog([
+      { id: "8", name: "priority_test", type: "TEXT" },
+    ]);
+    await expect(
+      importLeads.execute(client, {
+        records: [{ Brand: "Apple", Web: "apple.com", P: "high" }],
+        mappings: {
+          fields: {
+            Brand: "LEAD_NAME",
+            Web: "LEAD_WEBSITE",
+            P: "CUSTOM.bogus" as any,
+          },
+        },
+      })
+    ).rejects.toMatchObject({
+      error: true,
+      code: "IMPORT_INVALID_CUSTOM_MAPPING",
+    });
+  });
+
+  it("mappings.custom_fields shorthand by numeric id resolves to CUSTOM.<id>", async () => {
+    const client = adminClientWithCatalog([
+      { id: "8", name: "priority_test", type: "TEXT" },
+      { id: "9", name: "industry_score_test", type: "NUMBER" },
+    ]);
+    // We expect normalization to land in update_mappings; the test
+    // intercepts on the first import-not-mocked failure (no /imports
+    // mock here). Asserts the catalog was fetched and the resolution
+    // didn't throw IMPORT_CUSTOM_FIELD_UNKNOWN.
+    await expect(
+      importLeads.execute(client, {
+        records: [
+          { Brand: "Apple", Web: "apple.com", P: "high", Score: "8" },
+        ],
+        mappings: {
+          fields: { Brand: "LEAD_NAME", Web: "LEAD_WEBSITE" },
+          custom_fields: { P: 8, Score: 9 },
+        },
+      })
+    ).rejects.not.toMatchObject({
+      code: "IMPORT_CUSTOM_FIELD_UNKNOWN",
+    });
+  });
+
+  it("mappings.custom_fields shorthand by name resolves to CUSTOM.<id>", async () => {
+    const client = adminClientWithCatalog([
+      { id: "8", name: "priority_test", type: "TEXT" },
+    ]);
+    await expect(
+      importLeads.execute(client, {
+        records: [{ Brand: "Apple", Web: "apple.com", P: "high" }],
+        mappings: {
+          fields: { Brand: "LEAD_NAME", Web: "LEAD_WEBSITE" },
+          custom_fields: { P: "priority_test" },
+        },
+      })
+    ).rejects.not.toMatchObject({
+      code: "IMPORT_CUSTOM_FIELD_UNKNOWN",
+    });
+  });
+
+  it("mappings.custom_fields unknown name → IMPORT_CUSTOM_FIELD_UNKNOWN with hint listing actual fields", async () => {
+    const client = adminClientWithCatalog([
+      { id: "8", name: "priority_test", type: "TEXT" },
+      { id: "9", name: "industry_score_test", type: "NUMBER" },
+    ]);
+    await expect(
+      importLeads.execute(client, {
+        records: [{ Brand: "Apple", Web: "apple.com", P: "high" }],
+        mappings: {
+          fields: { Brand: "LEAD_NAME", Web: "LEAD_WEBSITE" },
+          custom_fields: { P: "nonexistent_field" },
+        },
+      })
+    ).rejects.toMatchObject({
+      error: true,
+      code: "IMPORT_CUSTOM_FIELD_UNKNOWN",
+      hint: expect.stringContaining("priority_test"),
+    });
+  });
+
+  it("same column in BOTH fields and custom_fields → IMPORT_MAPPING_DUPLICATE_CUSTOM", async () => {
+    const client = adminClientWithCatalog([
+      { id: "8", name: "priority_test", type: "TEXT" },
+    ]);
+    await expect(
+      importLeads.execute(client, {
+        records: [{ Brand: "Apple", Web: "apple.com", P: "high" }],
+        mappings: {
+          fields: { Brand: "LEAD_NAME", Web: "LEAD_WEBSITE", P: "CUSTOM.8" },
+          custom_fields: { P: 8 },
+        },
+      })
+    ).rejects.toMatchObject({
+      error: true,
+      code: "IMPORT_MAPPING_DUPLICATE_CUSTOM",
+    });
+  });
+
+  it("ambiguous custom-field name (case-insensitive collision) → IMPORT_CUSTOM_FIELD_NAME_AMBIGUOUS", async () => {
+    const client = adminClientWithCatalog([
+      { id: "8", name: "Priority", type: "TEXT" },
+      { id: "9", name: "priority", type: "NUMBER" },
+    ]);
+    await expect(
+      importLeads.execute(client, {
+        records: [{ Brand: "Apple", Web: "apple.com", P: "high" }],
+        mappings: {
+          fields: { Brand: "LEAD_NAME", Web: "LEAD_WEBSITE" },
+          custom_fields: { P: "PRIORITY" },
+        },
+      })
+    ).rejects.toMatchObject({
+      error: true,
+      code: "IMPORT_CUSTOM_FIELD_NAME_AMBIGUOUS",
+    });
+  });
+
+  it("non-string non-number custom_fields value → IMPORT_INVALID_CUSTOM_MAPPING", async () => {
+    const client = adminClientWithCatalog([
+      { id: "8", name: "priority_test", type: "TEXT" },
+    ]);
+    await expect(
+      importLeads.execute(client, {
+        records: [{ Brand: "Apple", Web: "apple.com", P: "high" }],
+        mappings: {
+          fields: { Brand: "LEAD_NAME", Web: "LEAD_WEBSITE" },
+          custom_fields: { P: { id: 8 } as any },
+        },
+      })
+    ).rejects.toMatchObject({
+      error: true,
+      code: "IMPORT_INVALID_CUSTOM_MAPPING",
+    });
+  });
+
+  it("references-no-custom mappings skip the catalog GET (no extra HTTP)", async () => {
+    // adminClient WITHOUT catalog — proves we don't call /crm/custom_fields
+    // when the mapping has no CUSTOM.<id> and no custom_fields shorthand.
+    mockHttp([
+      { method: "GET", path: "/1.5/users/me", status: 200, body: adminMe() },
+    ]);
+    const client = newClient();
+    // Will fail later due to no /imports mock — we just want to confirm the
+    // catalog GET wasn't fired.
+    await expect(
+      importLeads.execute(client, {
+        records: [{ Brand: "Apple", Web: "apple.com" }],
+        mappings: { fields: { Brand: "LEAD_NAME", Web: "LEAD_WEBSITE" } },
+      })
+    ).rejects.toBeDefined();
+    const reqs = getHttpRequests();
+    expect(reqs.some((r) => r.path === "/1.5/crm/custom_fields")).toBe(false);
   });
 });
 

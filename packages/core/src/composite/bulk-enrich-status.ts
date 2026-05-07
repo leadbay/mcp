@@ -112,6 +112,18 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
       };
     }
 
+    if (record.kind === "qualify") {
+      return {
+        error: true,
+        code: "BULK_WRONG_KIND",
+        message:
+          "This bulk_id was created by leadbay_import_and_qualify, not leadbay_enrich_titles.",
+        hint:
+          "Call leadbay_qualify_status with this id instead.",
+        bulk_id: record.bulk_id,
+      };
+    }
+
     if (record.status === "pending") {
       return {
         error: true,

@@ -51,6 +51,84 @@ describe("bulk-store — isValidBulkId", () => {
   });
 });
 
+// Qualify-kind helper inputs (mirror the import-and-qualify composite's
+// findOrCreatePendingQualify call site). lead_ids + import_ids + lens_id +
+// mapping_fingerprint are the idempotency dimensions.
+const qualifyArgs = {
+  lead_ids: ["l-a", "l-b"],
+  import_ids: ["imp-1"],
+  lens_id: 42,
+  mapping_fingerprint: "abc123",
+  per_lead_budget_ms: 90_000,
+  total_budget_ms: 600_000,
+};
+
+describe("bulk-store — qualify branch", () => {
+  it("findOrCreatePendingQualify mints a record with kind=qualify", async () => {
+    const store = new InMemoryBulkStore();
+    const { record, reused } = await store.findOrCreatePendingQualify(qualifyArgs);
+    expect(reused).toBe(false);
+    expect(record.kind).toBe("qualify");
+    expect(record.status).toBe("pending");
+    expect(record.lead_ids).toEqual(["l-a", "l-b"]); // sorted
+    expect(record.import_ids).toEqual(["imp-1"]); // sorted
+    expect(record.per_lead_budget_ms).toBe(90_000);
+    expect(record.total_budget_ms).toBe(600_000);
+    expect(isValidBulkId(record.bulk_id)).toBe(true);
+  });
+
+  it("findOrCreatePendingQualify reuses within idempotency window", async () => {
+    const store = new InMemoryBulkStore();
+    const { record: first } = await store.findOrCreatePendingQualify(qualifyArgs);
+    const { record: second, reused } = await store.findOrCreatePendingQualify(qualifyArgs);
+    expect(reused).toBe(true);
+    expect(second.bulk_id).toBe(first.bulk_id);
+  });
+
+  it("getQualify returns the record only when kind=qualify", async () => {
+    const store = new InMemoryBulkStore();
+    const { record: q } = await store.findOrCreatePendingQualify(qualifyArgs);
+    const { record: e } = await store.findOrCreatePending(baseArgs);
+    expect((await store.getQualify(q.bulk_id))?.kind).toBe("qualify");
+    expect(await store.getQualify(e.bulk_id)).toBeUndefined();
+  });
+
+  it("get returns either kind", async () => {
+    const store = new InMemoryBulkStore();
+    const { record: q } = await store.findOrCreatePendingQualify(qualifyArgs);
+    const r = await store.get(q.bulk_id);
+    expect(r?.kind).toBe("qualify");
+  });
+
+  it("markLaunched works on qualify records too", async () => {
+    const store = new InMemoryBulkStore();
+    const { record } = await store.findOrCreatePendingQualify(qualifyArgs);
+    await store.markLaunched(record.bulk_id);
+    const fetched = await store.getQualify(record.bulk_id);
+    expect(fetched?.status).toBe("launched");
+  });
+
+  it("idempotency keys for enrich vs qualify are distinct", async () => {
+    const store = new InMemoryBulkStore();
+    const { record: e } = await store.findOrCreatePending({
+      lead_ids: ["l-a"],
+      titles: [],
+      email: false,
+      phone: false,
+      lens_id: 42,
+      selection_source: "explicit",
+    });
+    const { record: q } = await store.findOrCreatePendingQualify({
+      lead_ids: ["l-a"],
+      import_ids: [],
+      lens_id: 42,
+      mapping_fingerprint: "x",
+    });
+    expect(e.bulk_id).not.toBe(q.bulk_id);
+    expect(e.idempotency_key).not.toBe(q.idempotency_key);
+  });
+});
+
 describe("bulk-store — InMemoryBulkStore happy path", () => {
   it("findOrCreatePending mints a new record first time", async () => {
     const { logger, logs } = createLogger();

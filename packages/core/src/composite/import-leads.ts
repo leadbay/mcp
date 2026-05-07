@@ -8,7 +8,8 @@ import type {
   ImportRecordPayload,
   PaginatedResponse,
   MappingsPayload,
-  StandardCrmFieldType,
+  CrmFieldMappingValue,
+  CustomFieldDef,
 } from "../types.js";
 
 interface DomainInput {
@@ -16,8 +17,21 @@ interface DomainInput {
   name?: string;
 }
 
+// Caller-supplied custom-field shorthand: { CsvColumn: <id-or-name> }. The
+// composite resolves the ergonomic value (numeric id OR field name) to the
+// wire-format "CUSTOM.<id>" via /crm/custom_fields. Mutually exclusive with
+// the same column also appearing in `mappings.fields`.
+type CustomFieldShorthandValue = number | string;
+
 interface RecordsMappings {
-  fields: Record<string, StandardCrmFieldType>;
+  // Standard mapping: column → StandardCrmFieldType OR the literal "CUSTOM.<id>"
+  // wire-format value. Both shapes are accepted; the composite normalizes.
+  fields: Record<string, CrmFieldMappingValue>;
+  // Optional ergonomic shorthand for custom fields. Pass either the numeric id
+  // (8) or the field's display name ("priority_test"). Resolved against the
+  // org's /crm/custom_fields catalog before the import is committed. Useful
+  // when the agent doesn't want to think about the "CUSTOM.<id>" wire format.
+  custom_fields?: Record<string, CustomFieldShorthandValue>;
   statuses?: Record<string, string>;
   default_status?: string | null;
 }
@@ -86,6 +100,19 @@ const DEFAULT_TOTAL_BUDGET_MS = 300_000;
 const STABILIZATION_POLLS = 2;
 const MAX_COLUMN_NAME_LEN = 128;
 const RESERVED_COLUMN_RE = /^mcp_row_id$/i;
+// Backend wire format (CrmFieldType.kt:99) — the serializer expects literally
+// "CUSTOM." followed by the bigint id of a row in the org's custom-fields
+// table. Anything else under the same prefix would 400 server-side.
+const CUSTOM_FIELD_RE = /^CUSTOM\.(\d+)$/;
+
+export function isCustomFieldMappingValue(v: string): v is `CUSTOM.${number}` {
+  return CUSTOM_FIELD_RE.test(v);
+}
+
+export function customFieldIdOf(v: string): string | null {
+  const m = CUSTOM_FIELD_RE.exec(v);
+  return m ? m[1] : null;
+}
 
 // Public mailbox / generic domains. We do NOT denylist these (per user
 // decision in /autoplan CEO phase). The list lives here so the reconciler
@@ -373,11 +400,15 @@ function prepareDomainsMode(client: LeadbayClient, inputs: DomainInput[]): Prepa
 }
 
 // Records-mode prep: validate inputs, coerce cells, compute header from union
-// of all keys, build mappings payload from caller's spec.
+// of all keys, build mappings payload from caller's spec. Custom fields
+// (`mappings.custom_fields` ergonomic shorthand or "CUSTOM.<id>" raw values)
+// are resolved against `customFieldCatalog` if provided — caller's
+// responsibility to fetch GET /crm/custom_fields beforehand.
 function prepareRecordsMode(
   client: LeadbayClient,
   records: Array<Record<string, unknown>>,
-  mappings: RecordsMappings | undefined
+  mappings: RecordsMappings | undefined,
+  customFieldCatalog: CustomFieldDef[] | null
 ): PreparedImport {
   if (!mappings || !mappings.fields || typeof mappings.fields !== "object") {
     throw client.makeError(
@@ -388,7 +419,17 @@ function prepareRecordsMode(
     );
   }
 
-  const fieldEntries = Object.entries(mappings.fields);
+  // Resolve `mappings.custom_fields` shorthand into the wire format and merge
+  // into a single normalized map. Conflicts (same column appearing in both)
+  // are caller errors — fail loudly.
+  const normalizedFields = normalizeFieldsAndCustomShorthand(
+    client,
+    mappings.fields,
+    mappings.custom_fields,
+    customFieldCatalog
+  );
+
+  const fieldEntries = Object.entries(normalizedFields);
   if (fieldEntries.length === 0) {
     throw client.makeError(
       "IMPORT_MAPPING_REQUIRED",
@@ -407,6 +448,31 @@ function prepareRecordsMode(
       "The wizard needs at least one of those fields to match a lead. Map a CSV column to one of them.",
       "POST /imports"
     );
+  }
+
+  // E7: same StandardCrmFieldType target mapped from >1 column. The wizard
+  // accepts this silently (last-write-wins on its column scan), which leads
+  // to imports that look successful but lose data from the masked column.
+  // Reject loudly with the conflicting column names. Custom fields
+  // (CUSTOM.<id>) are excluded from this check — multiple columns into the
+  // same custom field is an explicit user choice (e.g., concatenate).
+  const targetCounts = new Map<string, string[]>();
+  for (const [col, target] of fieldEntries) {
+    if (typeof target !== "string") continue;
+    if (target.startsWith("CUSTOM.")) continue;
+    const cols = targetCounts.get(target) ?? [];
+    cols.push(col);
+    targetCounts.set(target, cols);
+  }
+  for (const [target, cols] of targetCounts) {
+    if (cols.length > 1) {
+      throw client.makeError(
+        "IMPORT_MAPPING_CONFLICT_TARGET",
+        `Multiple columns map to the same target ${target}: ${cols.map((c) => JSON.stringify(c)).join(", ")}`,
+        `Each StandardCrmFieldType can be the destination of only one column (the wizard would silently keep one and drop the others). Pick the column you want and remove the duplicates.`,
+        "POST /imports"
+      );
+    }
   }
 
   // Validate mapping keys (column-name shape + reserved-name + control chars).
@@ -502,11 +568,172 @@ function prepareRecordsMode(
     byRowId,
     header,
     mappings: {
-      fields: { ...mappings.fields },
+      fields: { ...normalizedFields },
       statuses: mappings.statuses ?? {},
       default_status: mappings.default_status ?? null,
     },
   };
+}
+
+// Merge `mappings.fields` (raw — may contain "CUSTOM.<id>" wire form) with
+// `mappings.custom_fields` shorthand (id or name → resolved against catalog),
+// and validate every CUSTOM.<id> reference exists. Returns the wire-form-only
+// map ready to send to /imports/{id}/update_mappings.
+//
+// Errors raised:
+// - IMPORT_INVALID_CUSTOM_MAPPING — value matches CUSTOM.<not-digits>
+// - IMPORT_CUSTOM_FIELD_UNKNOWN — id refers to a field not on this org
+// - IMPORT_CUSTOM_FIELD_NAME_AMBIGUOUS — name matches >1 custom field
+// - IMPORT_MAPPING_DUPLICATE_CUSTOM — column appears in both fields[] and custom_fields[]
+function normalizeFieldsAndCustomShorthand(
+  client: LeadbayClient,
+  fields: Record<string, CrmFieldMappingValue>,
+  customShorthand: Record<string, CustomFieldShorthandValue> | undefined,
+  catalog: CustomFieldDef[] | null
+): Record<string, CrmFieldMappingValue> {
+  const out: Record<string, CrmFieldMappingValue> = {};
+  const seenColumns = new Set<string>();
+
+  // Pass 1: caller's raw `fields` map. Validate any CUSTOM.<id> well-formed,
+  // and (if catalog supplied) confirm id exists.
+  for (const [col, raw] of Object.entries(fields)) {
+    if (typeof raw !== "string") {
+      throw client.makeError(
+        "IMPORT_INVALID_CUSTOM_MAPPING",
+        `mappings.fields[${JSON.stringify(col)}] must be a string (got ${typeof raw})`,
+        "Pass a StandardCrmFieldType name (e.g. 'LEAD_NAME') or 'CUSTOM.<id>'.",
+        "POST /imports"
+      );
+    }
+    if (raw.startsWith("CUSTOM.")) {
+      if (!isCustomFieldMappingValue(raw)) {
+        throw client.makeError(
+          "IMPORT_INVALID_CUSTOM_MAPPING",
+          `mappings.fields[${JSON.stringify(col)}] = ${JSON.stringify(raw)} is not a well-formed custom mapping`,
+          "Custom field mappings must look like 'CUSTOM.<digits>'. Call leadbay_list_mappable_fields to see valid ids.",
+          "POST /imports"
+        );
+      }
+      if (catalog !== null) {
+        const id = customFieldIdOf(raw)!;
+        const found = catalog.find((c) => c.id === id);
+        if (!found) {
+          throw client.makeError(
+            "IMPORT_CUSTOM_FIELD_UNKNOWN",
+            `mappings.fields[${JSON.stringify(col)}] = ${JSON.stringify(raw)} references custom field id ${id}, not present on this org`,
+            `Org has ${catalog.length} custom field(s): ${
+              catalog.length === 0
+                ? "none — create one in the Leadbay web UI first"
+                : catalog.map((c) => `${c.id}=${c.name} (${c.type})`).join(", ")
+            }`,
+            "POST /imports"
+          );
+        }
+      }
+    }
+    out[col] = raw;
+    seenColumns.add(col);
+  }
+
+  // Pass 2: ergonomic shorthand. Resolve to wire form. Catalog is required
+  // here — without it we can't resolve names; reject early.
+  if (customShorthand && Object.keys(customShorthand).length > 0) {
+    if (catalog === null) {
+      throw client.makeError(
+        "IMPORT_CUSTOM_FIELD_CATALOG_REQUIRED",
+        "mappings.custom_fields shorthand requires the org's custom-field catalog",
+        "This is an internal error — the composite should have fetched /crm/custom_fields. Retry, or use raw 'CUSTOM.<id>' in mappings.fields.",
+        "POST /imports"
+      );
+    }
+    for (const [col, val] of Object.entries(customShorthand)) {
+      if (seenColumns.has(col)) {
+        throw client.makeError(
+          "IMPORT_MAPPING_DUPLICATE_CUSTOM",
+          `Column ${JSON.stringify(col)} is in BOTH mappings.fields and mappings.custom_fields`,
+          "Each column maps to exactly one field. Drop the duplicate from one of the two maps.",
+          "POST /imports"
+        );
+      }
+      let resolved: CustomFieldDef | undefined;
+      // Accept either a numeric id, a string-shaped numeric id ("8"), or a
+      // field display name. The string-as-id branch is the more permissive
+      // interpretation when both forms could plausibly match — backend ids
+      // round-trip as strings (LongAsStringSerializer) so callers naturally
+      // hand them back as strings.
+      const numericVal =
+        typeof val === "number"
+          ? val
+          : typeof val === "string" && /^\d+$/.test(val)
+          ? Number(val)
+          : null;
+      if (numericVal !== null) {
+        const idStr = String(numericVal);
+        resolved = catalog.find((c) => c.id === idStr);
+        if (!resolved) {
+          throw client.makeError(
+            "IMPORT_CUSTOM_FIELD_UNKNOWN",
+            `mappings.custom_fields[${JSON.stringify(col)}] = ${val} is not a custom field on this org`,
+            `Org has ${catalog.length} custom field(s): ${
+              catalog.length === 0
+                ? "none — create one in the Leadbay web UI first"
+                : catalog.map((c) => `${c.id}=${c.name} (${c.type})`).join(", ")
+            }`,
+            "POST /imports"
+          );
+        }
+      } else if (typeof val === "string") {
+        const matches = catalog.filter((c) => c.name === val);
+        if (matches.length === 0) {
+          // Fallback to case-insensitive — humans don't always casing-match.
+          const ci = catalog.filter(
+            (c) => c.name.toLowerCase() === val.toLowerCase()
+          );
+          if (ci.length === 0) {
+            throw client.makeError(
+              "IMPORT_CUSTOM_FIELD_UNKNOWN",
+              `mappings.custom_fields[${JSON.stringify(col)}] = ${JSON.stringify(val)} doesn't match any custom field name`,
+              `Org has ${catalog.length} custom field(s): ${
+                catalog.length === 0
+                  ? "none — create one in the Leadbay web UI first"
+                  : catalog.map((c) => `${c.id}=${c.name} (${c.type})`).join(", ")
+              }`,
+              "POST /imports"
+            );
+          }
+          if (ci.length > 1) {
+            throw client.makeError(
+              "IMPORT_CUSTOM_FIELD_NAME_AMBIGUOUS",
+              `mappings.custom_fields[${JSON.stringify(col)}] = ${JSON.stringify(val)} matches ${ci.length} custom fields case-insensitively`,
+              `Pass the numeric id instead. Candidates: ${ci.map((c) => `${c.id}=${c.name}`).join(", ")}`,
+              "POST /imports"
+            );
+          }
+          resolved = ci[0];
+        } else if (matches.length > 1) {
+          throw client.makeError(
+            "IMPORT_CUSTOM_FIELD_NAME_AMBIGUOUS",
+            `mappings.custom_fields[${JSON.stringify(col)}] = ${JSON.stringify(val)} matches ${matches.length} custom fields exactly`,
+            `Pass the numeric id instead. Candidates: ${matches.map((c) => `${c.id}=${c.name}`).join(", ")}`,
+            "POST /imports"
+          );
+        } else {
+          resolved = matches[0];
+        }
+      } else {
+        throw client.makeError(
+          "IMPORT_INVALID_CUSTOM_MAPPING",
+          `mappings.custom_fields[${JSON.stringify(col)}] must be a number (id) or string (name); got ${typeof val}`,
+          "Pass either the numeric id (e.g. 8) or the field name (e.g. 'priority').",
+          "POST /imports"
+        );
+      }
+      out[col] = `CUSTOM.${resolved.id}`;
+      seenColumns.add(col);
+    }
+  }
+
+  return out;
 }
 
 interface ChunkRunOutput {
@@ -863,15 +1090,21 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsResult> = {
     "  - touches onboarding state (startFileless, onboarding step → PROCESSING)\n" +
     "Suitable for occasional automation. NOT suitable for high-cadence (>5 calls/day) — wait for " +
     "the backend programmatic endpoint (issue: leadbay/backend prolonged-import-with-crawl).\n\n" +
+    "ℹ️ Monitor-tab membership: imported leads are NOT auto-promoted to the user's Monitor view. " +
+    "Lens-scoring decides — only above-threshold leads get `in_monitor: true` server-side.\n\n" +
     "When to use: you have a list of company domains from another system (CRM, analytics, email " +
     "correspondents) and need stable Leadbay leadIds; or you have CRM-shaped rows with custom " +
     "columns (sector, location, status, etc.) and want to drive the wizard with explicit field mappings.\n" +
     "When NOT to use: for prospect discovery (use leadbay_pull_leads); for one specific company's " +
     "profile (use leadbay_research_company); when you can't tolerate the side effects above.\n\n" +
+    "Custom fields: pass org-defined custom field mappings as 'CUSTOM.<id>' (raw wire format) in " +
+    "`mappings.fields`, OR use the ergonomic `mappings.custom_fields` shorthand: `{ColName: 8}` " +
+    "(numeric id) or `{ColName: 'priority_test'}` (field name). Discover available custom fields " +
+    "via leadbay_list_mappable_fields.\n\n" +
     "Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role on the " +
     "Leadbay account; active billing.",
   write: true,
-  version: "0.2.0",
+  version: "0.3.0",
   inputSchema: {
     type: "object",
     properties: {
@@ -912,9 +1145,21 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsResult> = {
             type: "object",
             description:
               "Object whose keys are CSV column names (matching keys in `records`) and whose values are " +
-              "Leadbay CRM field types (LEAD_NAME, LEAD_WEBSITE, LEAD_STATUS, LEAD_LOCATION, LEAD_SECTOR, " +
-              "LEAD_SIZE, CRM_ID, LEADBAY_ID, EMAIL, DEAL_CRM_ID, CONTACT_TITLE, LEAD_STATUS_DATE). At " +
-              "least one entry must target LEAD_NAME or LEAD_WEBSITE — the wizard needs that to find leads.",
+              "either Leadbay's StandardCrmFieldType (LEAD_NAME, LEAD_WEBSITE, LEAD_STATUS, " +
+              "LEAD_LOCATION, LEAD_LOCATION_*, LEAD_SECTOR, LEAD_SIZE, CRM_ID, LEADBAY_ID, EMAIL, " +
+              "DEAL_CRM_ID, CONTACT_FIRST_NAME, CONTACT_LAST_NAME, CONTACT_EMAIL, CONTACT_PHONE_NUMBER, " +
+              "CONTACT_TITLE, CONTACT_LINKEDIN, LEAD_STATUS_DATE, OWNER, SCORE, SIREN) or the wire-format " +
+              "string 'CUSTOM.<id>' for org-defined custom fields. At least one entry must target " +
+              "LEAD_NAME or LEAD_WEBSITE — the wizard needs that to find leads. Use " +
+              "leadbay_list_mappable_fields to discover the org's custom fields.",
+          },
+          custom_fields: {
+            type: "object",
+            description:
+              "Ergonomic shorthand: `{CsvColumn: <number-id>}` or `{CsvColumn: '<field-name>'}` for " +
+              "custom-field mappings. Resolved against the org's /crm/custom_fields catalog before the " +
+              "import is committed. Mutually exclusive with `fields[col] = 'CUSTOM.<id>'` for the same " +
+              "column. Useful when the agent doesn't want to deal with the 'CUSTOM.<id>' wire format.",
           },
           statuses: {
             type: "object",
@@ -990,9 +1235,41 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsResult> = {
       );
     }
 
+    // Preflight org custom-field catalog when records-mode mapping references
+    // custom fields (raw "CUSTOM.<id>" or `mappings.custom_fields` shorthand).
+    // Catches typos client-side instead of letting the wizard 400 mid-process.
+    let customFieldCatalog: CustomFieldDef[] | null = null;
+    if (hasRecords) {
+      const m = params.mappings;
+      const referencesCustom =
+        (m?.custom_fields && Object.keys(m.custom_fields).length > 0) ||
+        (m?.fields &&
+          Object.values(m.fields).some(
+            (v) => typeof v === "string" && v.startsWith("CUSTOM.")
+          ));
+      if (referencesCustom) {
+        try {
+          customFieldCatalog = await client.request<CustomFieldDef[]>(
+            "GET",
+            "/crm/custom_fields"
+          );
+        } catch (err: any) {
+          // Read failure on catalog isn't fatal — but we won't catch typos
+          // until the wizard chokes. Surface a clean error rather than going
+          // half-blind.
+          throw client.makeError(
+            "IMPORT_CUSTOM_FIELD_CATALOG_UNAVAILABLE",
+            `Failed to fetch /crm/custom_fields for preflight: ${err?.message ?? err?.code ?? "unknown"}`,
+            "Custom field references can't be validated. Retry, or remove custom-field mappings.",
+            "GET /crm/custom_fields"
+          );
+        }
+      }
+    }
+
     const prep: PreparedImport = hasDomains
       ? prepareDomainsMode(client, params.domains!)
-      : prepareRecordsMode(client, params.records!, params.mappings);
+      : prepareRecordsMode(client, params.records!, params.mappings, customFieldCatalog);
 
     if (prep.validInputs.length === 0) {
       // Domains mode with all-malformed input.
