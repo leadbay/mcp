@@ -668,6 +668,11 @@ export const importAndQualify: Tool<
     // ALSO uses it to detect not_in_lens leads — backend won't qualify those.
     // The separate `skipAlreadyQualifiedLaunch` flag controls whether
     // already-qualified leads bypass the web_fetch POST.
+    ctx?.progress?.({
+      progress: 3,
+      total: 3,
+      message: `Qualifying ${leadIds.length} lead${leadIds.length === 1 ? "" : "s"} (phase 3/3)`,
+    });
     const fanOut = await fanOutWebFetchAndPoll(client, leadIds, {
       perLeadBudgetMs: perLeadBudget,
       totalDeadlineMs: totalDeadline,
@@ -811,7 +816,16 @@ async function runPreview(
 
   // Poll preprocess. Honors ctx.signal so a caller-issued abort lands within
   // 2s instead of holding the call open for the full per_phase_budget.
+  // Streams a phase-1 progress event ("preprocessing") to capable clients.
   const signal = ctx?.signal;
+  // The composite has 3 phases the user can perceive: preprocess (this loop),
+  // commit, qualify. Two of those can be slow under queue load — emit at
+  // phase entry so the UI shows movement.
+  ctx?.progress?.({
+    progress: 1,
+    total: 3,
+    message: "Preprocessing import (phase 1/3)",
+  });
   const deadline = Date.now() + perPhaseBudget;
   let fileImport: FileImportPayloadV15 | null = null;
   while (Date.now() < deadline) {
@@ -824,6 +838,11 @@ async function runPreview(
     );
     if (r.pre_processing?.finished) {
       fileImport = r;
+      ctx?.progress?.({
+        progress: 2,
+        total: 3,
+        message: "Preprocess complete; committing import (phase 2/3)",
+      });
       break;
     }
     await new Promise<void>((res) => {
