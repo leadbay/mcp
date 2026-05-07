@@ -11,6 +11,7 @@ import {
   type BulkTracker,
   type LeadbayClient,
   type Tool,
+  type ToolContext,
   type ToolLogger,
 } from "@leadbay/core";
 
@@ -208,6 +209,31 @@ export function buildServer(
     }
 
     const args = (req.params.arguments ?? {}) as any;
+    // MCP 2025-11-25 §Progress: when the client passes a progressToken
+    // in _meta, capable composites can stream notifications/progress
+    // updates back. Cheap default: progress is undefined when the client
+    // didn't request it. Errors swallowed (log to stderr) so a flaky
+    // transport never bubbles up as a tool failure.
+    const progressToken = (req.params as any)?._meta?.progressToken;
+    const progress: ToolContext["progress"] = progressToken !== undefined
+      ? (params) => {
+          extra
+            .sendNotification({
+              method: "notifications/progress",
+              params: {
+                progressToken,
+                progress: params.progress,
+                ...(params.total !== undefined ? { total: params.total } : {}),
+                ...(params.message !== undefined ? { message: params.message } : {}),
+              },
+            })
+            .catch((err: any) => {
+              opts.logger?.warn?.(
+                `progress emit failed: ${err?.message ?? err?.code ?? String(err)}`
+              );
+            });
+        }
+      : undefined;
     try {
       // MCP 2025-11-25 §Cancellation: extra.signal is aborted by the SDK
       // when the client sends `notifications/cancelled`. Plumbing it to
@@ -218,6 +244,7 @@ export function buildServer(
         logger: opts.logger,
         bulkTracker: opts.bulkTracker,
         signal: extra.signal,
+        progress,
       });
       // Leadbay tools may return error envelopes ({ error: true, code, ... })
       // rather than throwing. Surface those as MCP isError so the LLM doesn't

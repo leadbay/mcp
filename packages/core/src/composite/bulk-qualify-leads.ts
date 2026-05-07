@@ -212,6 +212,20 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams> = {
       }
     }
 
+    // Per-lead progress counter for the spec notifications/progress stream.
+    // Composite-level: doneCount increments on each lead transition; emit on
+    // each transition so the agent's UI reflects "qualified Acme Corp 3/10".
+    let progressDone = 0;
+    const progressTotal = launched.length;
+    // Initial progress event (0/total) so the client knows the workload size.
+    if (progressTotal > 0) {
+      ctx?.progress?.({
+        progress: 0,
+        total: progressTotal,
+        message: `Starting qualification for ${progressTotal} lead${progressTotal === 1 ? "" : "s"}`,
+      });
+    }
+
     // Poll each launched lead in parallel until web_fetch.in_progress=false AND
     // ai_agent_responses is populated, OR budget exhausted.
     const results = await Promise.all(
@@ -239,7 +253,15 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams> = {
               Array.isArray(lastQual) &&
               lastQual.length > 0 &&
               lastQual.every((r) => r.score != null);
-            if (done) break;
+            if (done) {
+              progressDone += 1;
+              ctx?.progress?.({
+                progress: progressDone,
+                total: progressTotal,
+                message: `Qualified lead ${leadId} (${progressDone}/${progressTotal})`,
+              });
+              break;
+            }
           } catch {
             // ignore — try again on next tick
           }

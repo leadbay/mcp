@@ -588,6 +588,12 @@ export interface ToolContext {
   // mid-poll cancellation so the caller can recover via the returned
   // importIds without waiting for the budget to expire.
   signal?: AbortSignal;
+  // Stream progress to the MCP client (per spec notifications/progress).
+  // Defined only when the client requested progress (i.e. the request carried
+  // _meta.progressToken). Composites should fire-and-forget — the wiring
+  // swallows transport errors. Callers that don't observe this leave the
+  // function unset and the wire stays cheap.
+  progress?: (params: { progress: number; total?: number; message?: string }) => void;
 }
 
 export type JSONSchema = Record<string, unknown>;
