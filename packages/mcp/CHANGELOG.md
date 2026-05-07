@@ -1,5 +1,91 @@
 # Changelog — @leadbay/mcp
 
+## 0.5.0 — 2026-05-04
+
+### `leadbay_import_and_qualify` — new composite
+
+End-to-end import + AI qualification in one call. Wraps `leadbay_import_leads` (chunking, mapping preflight, custom-field validation), then fans out `web_fetch` on every imported leadId, polls until each lead's qualification answers populate, and returns the results. When the wall-clock budget overflows, returns a `qualify_id` UUID handle for resumable retrieval via the new `leadbay_qualify_status` tool.
+
+**Inputs** (mostly mirrors `leadbay_import_leads`):
+
+- `domains` OR `records` — same shape as import_leads.
+- `mappings.fields` and `mappings.custom_fields` — same as 0.3.0 import_leads. Custom fields surface as first-class via `leadbay_list_mappable_fields` (also new).
+- `dry_run: "preview"` — special mode: uploads the CSV in dry-run and returns the wizard's per-column AI mapping hints + sample rows + custom-field candidates from the org catalog matched against unmapped column names by exact / case-insensitive / fuzzy-substring. NO ai_rescore quota consumed.
+- `total_budget_ms` (default 900_000 = 15 min), `per_lead_budget_ms` (default 90_000), `per_phase_budget_ms` (default 300_000).
+- `skip_already_qualified` (default `true`) — skips `web_fetch` launch on leads with a non-null `ai_agent_lead_score`. Saves quota.
+
+**Outputs** (full mode):
+
+```
+{
+  kind: "result",
+  qualify_id: "<UUIDv4>" | null,
+  import_ids: [...],
+  imported: [{ leadId, domain?, name, rowId? }],
+  not_imported: [...],
+  qualified: [{ lead_id, qualifications: [{ question, score, response, computed_at }], qualification_summary, signals_count, ... }],
+  still_running: [{ lead_id }],
+  failed: [...],
+  quota_exceeded: bool,
+  skipped_already_qualified: [...],
+  reused?: bool, seconds_since_original?: number,
+  cancelled?: bool, budget_exhausted?: bool,
+  region, _meta
+}
+```
+
+`qualify_id` is persisted to `~/.leadbay/bulks.json` (30-day TTL, 5-min idempotency window) — same store as `leadbay_enrich_titles` but with a `kind: "qualify"` discriminator. Re-calling with the same records+mapping within 5 min returns the same handle (`reused: true`).
+
+### `leadbay_qualify_status` — new resumable retrieval
+
+```
+leadbay_qualify_status({ qualify_id })
+  → { qualify_id, status, lead_ids, qualified, still_running, ... }
+```
+
+Refreshes the per-lead state (`/web_fetch` + `/ai_agent_responses`) at call time. No backend mutation. Survives MCP restart.
+
+### `leadbay_list_mappable_fields` — new discovery
+
+```
+leadbay_list_mappable_fields()
+  → { standard_fields: [{name, description, mapping_value}], custom_fields: [{id, name, type, description, mapping_value}], region, _meta }
+```
+
+Lists every CRM field the agent can target in `mappings.fields`. Standard fields come from a static catalog with human descriptions; custom fields come from `GET /crm/custom_fields`. The `mapping_value` field is what the agent passes verbatim (e.g., `"CUSTOM.8"`).
+
+### `leadbay_import_leads` 0.3.0 — `mappings.custom_fields` shorthand
+
+In 0.2.0 the only way to map a custom field was `mappings.fields[col] = "CUSTOM.<id>"` (raw wire format). 0.3.0 adds `mappings.custom_fields[col] = <id>` (numeric) or `<name>` (string), resolved against `/crm/custom_fields` before the wizard sees it. New error codes: `IMPORT_CUSTOM_FIELD_UNKNOWN`, `IMPORT_INVALID_CUSTOM_MAPPING`, `IMPORT_CUSTOM_FIELD_NAME_AMBIGUOUS`, `IMPORT_CUSTOM_FIELD_CATALOG_REQUIRED`, `IMPORT_MAPPING_DUPLICATE_CUSTOM`. Catalog GET is suppressed when the mapping references no custom fields (saves a round trip).
+
+### Bulk store schema widening
+
+`BulkRecord` now has a `kind: "enrich" | "qualify"` discriminator. Old enrich rows (no `kind` field) default to `"enrich"` on read. Existing `leadbay_bulk_enrich_status` callers see no change. Cross-kind id queries are surfaced with the new `BULK_WRONG_KIND` error code that points the caller at the right tool.
+
+### `not_in_lens` partition — terminate the silent infinite-poll
+
+Both `leadbay_import_and_qualify` and `leadbay_qualify_status` now surface a `not_in_lens: string[]` array — lead ids that exist in the org (the wizard imported them) but are NOT admitted to the active lens. The backend's `queueAiRescoreForLead` is a no-op for these leads — they will never appear in `qualified[]`. Surfacing them in a distinct partition means the agent's poll loop terminates.
+
+Discovered by iter-17 live e2e: imported 4 leads (Apple, Stripe, Datadog, GitHub) into a lens whose scoring rules only admitted Datadog. Datadog got `ai_agent_lead_score: -13` + 3/3 qualifications cleanly; Apple and Stripe sat in `still_running[]` indefinitely with no signal to stop polling. Now they land in `not_in_lens` with an actionable agent prompt: "either change the active lens or accept the lead won't be qualified."
+
+`qualify_status` re-checks lens membership at each call — a lead added to the lens after the original `import_and_qualify` automatically migrates from `not_in_lens` back into the regular qualify pipeline on the next status call.
+
+### Aligned with backend `/imports/{id}/leads` (PR #1801)
+
+`leadbay_import_and_qualify` now sources the qualify-phase lead set from `GET /1.5/imports/{importId}/leads` (added backend-side 2026-05-06). This is the spec-prescribed source of truth — distinct lead ids the import touched (matched-existing AND newly-created). Replaces the per-record reconciliation pagination for the qualify input. Falls back gracefully to the per-record set when the endpoint is unavailable (older backend / 400 in_progress race).
+
+Verified live: import 970bd47a-… (apple.com matched, salesforce.com uncrawled) → /leads returned `{lead_ids: [0a788a89-...]}` cleanly; qualify_id 08ad4555-… retrieved end-to-end.
+
+### Monitor-membership disclosure
+
+Both `leadbay_import_leads` and `leadbay_import_and_qualify` now flag in their tool descriptions that imported leads are NOT auto-promoted to the user's Monitor tab. Lens-scoring rules decide — only above-threshold leads get `in_monitor: true`. This was a real surprise discovered in production (journal entry `leadbay-monitor-lens-filter`, captured 2026-05-05). Surfacing it in the description prevents the agent from telling users "I imported your leads, check Monitor" — answer is the CRM-imports list, not Monitor.
+
+### Stable qualification ordering + human_summary
+
+Both `leadbay_import_and_qualify` and `leadbay_qualify_status` now sort `qualifications[]` by the org's `ai_agent_questions` catalog order — the same question appears at the same index across calls so LLM agents can position-index reliably. Catalog comes from `client.resolveTasteProfile()` (cached 10min). Falls back to alphabetical when the catalog is empty.
+
+Each `qualified[]` entry also carries an optional `human_summary` string of the form `answered X/Y — <signal> on '<question>'[, <signal> on '<question>']` where `<signal>` is `strong positive` (score=20), `positive` (10), `neutral` (0), or `negative` (-10). Top-2 by absolute score. Saves the agent from reading every per-question response when it just needs the gist.
+
 ## 0.4.0 — 2026-05-04
 
 ### `leadbay_import_leads` 0.2.0 — custom field mapping

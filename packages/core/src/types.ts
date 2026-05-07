@@ -431,23 +431,76 @@ export type StandardCrmFieldType =
   | "LEAD_WEBSITE"
   | "LEAD_STATUS"
   | "LEAD_LOCATION"
+  | "LEAD_LOCATION_STREET_NUM"
+  | "LEAD_LOCATION_STREET"
+  | "LEAD_LOCATION_POSTCODE"
+  | "LEAD_LOCATION_CITY"
   | "LEAD_SECTOR"
   | "LEAD_SIZE"
   | "CRM_ID"
   | "LEADBAY_ID"
   | "EMAIL"
   | "DEAL_CRM_ID"
+  | "CONTACT_FIRST_NAME"
+  | "CONTACT_LAST_NAME"
+  | "CONTACT_EMAIL"
+  | "CONTACT_PHONE_NUMBER"
   | "CONTACT_TITLE"
+  | "CONTACT_LINKEDIN"
   | "LEAD_STATUS_DATE"
-  // The wizard tolerates unknown CSV columns; leadbay_import_leads attaches
-  // an MCP_ROW_ID column for stable reconciliation, but does NOT include it
-  // in the mappings payload (the backend's CrmFieldType enum would 400 on it).
+  | "OWNER"
+  | "SCORE"
+  | "SIREN";
+
+// Custom-field mapping is encoded as the literal string "CUSTOM.<id>" where
+// <id> is the numeric CustomCrmField.id from /crm/custom_fields. The backend
+// serializer (CrmFieldType.kt) deserializes both StandardCrmFieldType names
+// and "CUSTOM.<digits>" into the same `Map<String, CrmFieldType>`.
+export type CustomFieldMappingValue = `CUSTOM.${number}`;
+
+// Wire-format value for an entry in MappingsPayload.fields. The wizard
+// tolerates unknown CSV columns; leadbay_import_leads attaches an MCP_ROW_ID
+// column for stable reconciliation but does NOT include it in the mappings
+// payload (would 400). String escape hatch retained for forward compat.
+export type CrmFieldMappingValue =
+  | StandardCrmFieldType
+  | CustomFieldMappingValue
   | (string & {});
 
 export interface MappingsPayload {
-  fields: Record<string, StandardCrmFieldType>;
+  fields: Record<string, CrmFieldMappingValue>;
   statuses: Record<string, string>;
   default_status: string | null;
+}
+
+// Mirrors backend CustomCrmFieldKind (CustomCrmFieldKind.kt). The org admin
+// picks one when creating a custom field. Field-typed callers (NUMBER, PRICE)
+// are coerced from strings to typed values server-side at import time.
+export type CustomCrmFieldKind =
+  | "TEXT"
+  | "NUMBER"
+  | "PRICE"
+  | "DATE"
+  | "DATETIME"
+  | "EXTERNAL_ID"
+  | (string & {}); // forward compat — surface unknown kinds as warnings, don't reject
+
+// Optional config block per kind, mirroring backend sealed interface.
+// PRICE → { currency }, DATE/DATETIME → { format }, EXTERNAL_ID → { urlTemplate }.
+export interface CustomCrmFieldConfig {
+  currency?: string;
+  format?: string | null;
+  urlTemplate?: string;
+}
+
+// Wire shape of a custom field row (GET /crm/custom_fields). `id` is a string
+// because the backend uses LongAsStringSerializer to avoid JS number-precision
+// loss on the wire, even though the column is BIGINT.
+export interface CustomFieldDef {
+  id: string;
+  name: string;
+  type: CustomCrmFieldKind;
+  config?: CustomCrmFieldConfig | null;
 }
 
 export interface PreProcessingStatePayloadV15 {
@@ -474,6 +527,15 @@ export interface FileImportPayloadV15 {
   mappings: MappingsPayload | null;
   pre_processing: PreProcessingStatePayloadV15 | null;
   processing: ProcessingStatePayload | null;
+}
+
+// Returned by GET /1.5/imports/{importId}/leads (backend PR #1801, 2026-05-06).
+// Distinct lead ids that this import touched — matched-existing AND
+// newly-created. Source of truth for downstream chaining (bulk_qualify_leads
+// / bulk_enrich / import_and_qualify) — replaces per-record pagination.
+// Returns 400 `in_progress` if the import isn't processed yet.
+export interface ImportLeadsResponse {
+  lead_ids: string[];
 }
 
 // One entry in record.records[] — { column_name, value, field? }.

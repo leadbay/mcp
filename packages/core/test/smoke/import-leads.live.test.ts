@@ -123,4 +123,74 @@ describe.skipIf(!runLive)("leadbay_import_leads — live smoke", () => {
     },
     1_800_000
   );
+
+  // Custom-field mapping: confirms the CUSTOM.<id> wire format round-trips.
+  // Requires the org to have at least 1 custom field defined; assertion is
+  // best-effort. (B2/B5 in 02c-eval-framework.md.)
+  const runCustomLong = process.env.LEADBAY_SMOKE_LONG === "1";
+  it.skipIf(!runCustomLong)(
+    "custom-field mapping (CUSTOM.<id>) round-trips through the wizard",
+    async () => {
+      const lb = client();
+      // Discover the catalog. If empty, we still assert the shape works
+      // (with no custom fields present); the long-form happy path needs at
+      // least one to be meaningful.
+      const catalog = await lb.request<
+        Array<{ id: string; name: string; type: string }>
+      >("GET", "/crm/custom_fields");
+      const text = catalog.find((c) => c.type === "TEXT");
+      if (!text) {
+        // eslint-disable-next-line no-console
+        console.log(
+          "[smoke] custom-field test: org has no TEXT custom field; skipping happy path"
+        );
+        return;
+      }
+      const records = [
+        { Brand: "Apple", Web: "apple.com", Tag: "high-priority" },
+        { Brand: "Microsoft", Web: "microsoft.com", Tag: "low-priority" },
+      ];
+      const out = await importLeads.execute(
+        lb,
+        {
+          records,
+          mappings: {
+            fields: { Brand: "LEAD_NAME", Web: "LEAD_WEBSITE" },
+            custom_fields: { Tag: text.id },
+          },
+          per_phase_budget_ms: 300_000,
+          total_budget_ms: 900_000,
+        },
+        { logger }
+      );
+      expect(out.importIds.length).toBeGreaterThanOrEqual(1);
+      expect(out.leads.length + out.not_imported.length).toBeGreaterThanOrEqual(
+        records.length
+      );
+      // Records-mode rowId is preserved on the matched entries.
+      for (const lead of out.leads) {
+        expect("rowId" in lead).toBe(true);
+        expect(typeof (lead as any).rowId).toBe("string");
+      }
+    },
+    1_800_000
+  );
+
+  // Negative test: unknown custom-field id → preflight rejects with
+  // IMPORT_CUSTOM_FIELD_UNKNOWN, no /imports POST happens. Cheap (no upload).
+  it("CUSTOM.<id> preflight rejects unknown id with hint", async () => {
+    const lb = client();
+    await expect(
+      importLeads.execute(
+        lb,
+        {
+          records: [{ Brand: "Apple", Web: "apple.com", X: "y" }],
+          mappings: {
+            fields: { Brand: "LEAD_NAME", Web: "LEAD_WEBSITE", X: "CUSTOM.999999999" },
+          },
+        },
+        { logger }
+      )
+    ).rejects.toMatchObject({ code: "IMPORT_CUSTOM_FIELD_UNKNOWN" });
+  }, 30_000);
 });

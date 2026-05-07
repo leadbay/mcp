@@ -37,6 +37,7 @@ import { getProspectingActions } from "./tools/get-prospecting-actions.js";
 import { getWebFetch } from "./tools/get-web-fetch.js";
 import { getSelectionIds } from "./tools/get-selection-ids.js";
 import { getEnrichmentJobTitles } from "./tools/get-enrichment-job-titles.js";
+import { listMappableFields } from "./tools/list-mappable-fields.js";
 
 // New write tools (autoplan §E5) — gated behind LEADBAY_MCP_WRITE=1 in MCP
 import { selectLeads } from "./tools/select-leads.js";
@@ -70,6 +71,8 @@ import { recallOrderedTitles } from "./composite/recall-ordered-titles.js";
 import { accountStatus } from "./composite/account-status.js";
 import { bulkQualifyLeads } from "./composite/bulk-qualify-leads.js";
 import { importLeads } from "./composite/import-leads.js";
+import { importAndQualify } from "./composite/import-and-qualify.js";
+import { qualifyStatus } from "./composite/qualify-status.js";
 import { enrichTitles } from "./composite/enrich-titles.js";
 import { bulkEnrichStatus } from "./composite/bulk-enrich-status.js";
 import { adjustAudience } from "./composite/adjust-audience.js";
@@ -103,6 +106,7 @@ export {
   getLensFilter, getLensScoring, listSectors, getUserPrompt, getClarification,
   getLeadNotes, getEpilogueResponses, getProspectingActions, getWebFetch,
   getSelectionIds, getEnrichmentJobTitles,
+  listMappableFields,
   // new granular writes
   selectLeads, deselectLeads, clearSelection, setActiveLens, createLens,
   updateLens, updateLensFilter, createLensDraft, promoteLens, setUserPrompt,
@@ -112,10 +116,10 @@ export {
   researchCompany, prepareOutreach,
   // new composite reads
   pullLeads, researchLead, recallOrderedTitles, accountStatus,
-  bulkEnrichStatus,
+  bulkEnrichStatus, qualifyStatus,
   // new composite writes
   bulkQualifyLeads, enrichTitles, adjustAudience, refinePrompt,
-  answerClarification, reportOutreach, importLeads,
+  answerClarification, reportOutreach, importLeads, importAndQualify,
 };
 
 // ─── Tool catalogues ─────────────────────────────────────────────────────
@@ -140,6 +144,7 @@ export const granularReadTools: Tool[] = [
   getWebFetch,
   getSelectionIds,
   getEnrichmentJobTitles,
+  listMappableFields,
 ];
 
 // Granular writes (advanced + write — gated by both LEADBAY_MCP_ADVANCED=1
@@ -185,6 +190,11 @@ export const compositeReadTools: Tool[] = [
   recallOrderedTitles,
   accountStatus,
   bulkEnrichStatus,
+  qualifyStatus,
+  // listMappableFields is granular-shaped but the import composites depend on
+  // it for discoverability; expose it always-on so agents can find custom fields
+  // without needing LEADBAY_MCP_ADVANCED=1.
+  listMappableFields,
   // Keep the existing composites available too.
   researchCompany,
   prepareOutreach,
@@ -200,6 +210,7 @@ export const compositeWriteTools: Tool[] = [
   answerClarification,
   reportOutreach,
   importLeads,
+  importAndQualify,
 ];
 
 // Backward-compat alias for existing consumers.

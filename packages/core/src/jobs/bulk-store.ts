@@ -36,19 +36,45 @@ import type { ToolLogger } from "../types.js";
 
 // ─── Public types ───────────────────────────────────────────────────────────
 
-export type BulkRecord = {
+// Two record kinds today: enrich (legacy, default if `kind` absent on disk)
+// and qualify (new in 0.4.x for import_and_qualify). Both share the same
+// state machine and storage backing — only the payload-shape differs.
+export type BulkRecordKind = "enrich" | "qualify";
+
+// Common spine across kinds. Concrete shapes extend this with kind-specific
+// fields. `kind` is optional on disk for backward-compat with rows written
+// before 0.4.x (default to "enrich" on read).
+interface BulkRecordCommon {
   bulk_id: string; // client-minted UUIDv4 (future: server-minted)
   launched_at: string; // ISO string
   lead_ids: string[]; // sorted, deduplicated
+  status: "pending" | "launched" | "failed";
+  idempotency_key: string; // sha256 over sorted inputs
+  durability: "file" | "memory";
+}
+
+export interface EnrichBulkRecord extends BulkRecordCommon {
+  kind: "enrich";
   titles: string[]; // sorted, deduplicated
   email: boolean;
   phone: boolean;
   lens_id: number;
   selection_source: "explicit" | "wishlist";
-  status: "pending" | "launched" | "failed";
-  idempotency_key: string; // sha256 over sorted inputs
-  durability: "file" | "memory";
-};
+}
+
+export interface QualifyBulkRecord extends BulkRecordCommon {
+  kind: "qualify";
+  // import-and-qualify launches one or more underlying file-imports; tracking
+  // them lets the status tool surface "what's still mid-import vs mid-qualify"
+  // and lets the agent re-fetch the wizard's records page if it cares.
+  import_ids: string[];
+  lens_id: number;
+  // Caller-supplied budgets at launch time. Repeated by the status tool.
+  per_lead_budget_ms?: number;
+  total_budget_ms?: number;
+}
+
+export type BulkRecord = EnrichBulkRecord | QualifyBulkRecord;
 
 export interface FindOrCreatePendingArgs {
   lead_ids: string[];
@@ -60,15 +86,36 @@ export interface FindOrCreatePendingArgs {
   idempotency_window_ms?: number;
 }
 
+export interface FindOrCreatePendingQualifyArgs {
+  lead_ids: string[];
+  import_ids: string[];
+  lens_id: number;
+  // Mapping fingerprint contributes to the idempotency key — two calls with
+  // the same leadIds + same mapping (re-runs of the same input file) reuse
+  // the same qualify_id within the idempotency window.
+  mapping_fingerprint: string;
+  per_lead_budget_ms?: number;
+  total_budget_ms?: number;
+  idempotency_window_ms?: number;
+}
+
 export interface BulkTracker {
   findOrCreatePending(args: FindOrCreatePendingArgs): Promise<{
-    record: BulkRecord;
+    record: EnrichBulkRecord;
+    reused: boolean;
+    seconds_since_original?: number;
+  }>;
+  findOrCreatePendingQualify(args: FindOrCreatePendingQualifyArgs): Promise<{
+    record: QualifyBulkRecord;
     reused: boolean;
     seconds_since_original?: number;
   }>;
   markLaunched(bulk_id: string): Promise<BulkRecord>;
   markFailed(bulk_id: string): Promise<void>;
   get(bulk_id: string): Promise<BulkRecord | undefined>;
+  // Typed accessor — returns undefined when the record exists but is the
+  // wrong kind. Saves callers from repeating the type narrowing.
+  getQualify(bulk_id: string): Promise<QualifyBulkRecord | undefined>;
   list(): Promise<BulkRecord[]>;
 }
 
@@ -96,6 +143,24 @@ function computeIdempotencyKey(args: {
     args.email ? "e1" : "e0",
     args.phone ? "p1" : "p0",
     `l${args.lens_id}`,
+  ];
+  return createHash("sha256").update(parts.join("|")).digest("hex");
+}
+
+function computeQualifyIdempotencyKey(args: {
+  lead_ids: string[];
+  import_ids: string[];
+  lens_id: number;
+  mapping_fingerprint: string;
+}): string {
+  // Distinct domain prefix from enrich's key so a hash collision is
+  // impossible across kinds.
+  const parts = [
+    "qualify",
+    [...args.lead_ids].sort().join(","),
+    [...args.import_ids].sort().join(","),
+    `l${args.lens_id}`,
+    args.mapping_fingerprint,
   ];
   return createHash("sha256").update(parts.join("|")).digest("hex");
 }
@@ -271,34 +336,63 @@ export class LocalBulkStore implements BulkTracker {
     if (typeof r.launched_at !== "string") throw new Error("missing launched_at");
     if (!Array.isArray(r.lead_ids) || !r.lead_ids.every((x) => typeof x === "string"))
       throw new Error("invalid lead_ids");
-    if (!Array.isArray(r.titles) || !r.titles.every((x) => typeof x === "string"))
-      throw new Error("invalid titles");
-    if (typeof r.email !== "boolean") throw new Error("invalid email");
-    if (typeof r.phone !== "boolean") throw new Error("invalid phone");
-    if (typeof r.lens_id !== "number") throw new Error("invalid lens_id");
-    if (r.selection_source !== "explicit" && r.selection_source !== "wishlist")
-      throw new Error("invalid selection_source");
     if (r.status !== "pending" && r.status !== "launched" && r.status !== "failed")
       throw new Error("invalid status");
     if (typeof r.idempotency_key !== "string") throw new Error("invalid idempotency_key");
-    return {
-      bulk_id: r.bulk_id,
-      launched_at: r.launched_at,
-      lead_ids: r.lead_ids as string[],
-      titles: r.titles as string[],
-      email: r.email,
-      phone: r.phone,
-      lens_id: r.lens_id,
-      selection_source: r.selection_source,
-      status: r.status,
-      idempotency_key: r.idempotency_key,
-      durability: this.backend,
-    };
+
+    // kind discriminator: default to "enrich" for backward compat with rows
+    // written before 0.4.x. Any unknown kind is dropped (warned by readAll).
+    const kind = (r.kind as BulkRecordKind | undefined) ?? "enrich";
+    if (kind === "qualify") {
+      if (!Array.isArray(r.import_ids) || !r.import_ids.every((x) => typeof x === "string"))
+        throw new Error("invalid import_ids");
+      if (typeof r.lens_id !== "number") throw new Error("invalid lens_id");
+      const out: QualifyBulkRecord = {
+        kind: "qualify",
+        bulk_id: r.bulk_id,
+        launched_at: r.launched_at,
+        lead_ids: r.lead_ids as string[],
+        import_ids: r.import_ids as string[],
+        lens_id: r.lens_id,
+        status: r.status,
+        idempotency_key: r.idempotency_key,
+        durability: this.backend,
+      };
+      if (typeof r.per_lead_budget_ms === "number") out.per_lead_budget_ms = r.per_lead_budget_ms;
+      if (typeof r.total_budget_ms === "number") out.total_budget_ms = r.total_budget_ms;
+      return out;
+    }
+    if (kind === "enrich") {
+      if (!Array.isArray(r.titles) || !r.titles.every((x) => typeof x === "string"))
+        throw new Error("invalid titles");
+      if (typeof r.email !== "boolean") throw new Error("invalid email");
+      if (typeof r.phone !== "boolean") throw new Error("invalid phone");
+      if (typeof r.lens_id !== "number") throw new Error("invalid lens_id");
+      if (r.selection_source !== "explicit" && r.selection_source !== "wishlist")
+        throw new Error("invalid selection_source");
+      return {
+        kind: "enrich",
+        bulk_id: r.bulk_id,
+        launched_at: r.launched_at,
+        lead_ids: r.lead_ids as string[],
+        titles: r.titles as string[],
+        email: r.email,
+        phone: r.phone,
+        lens_id: r.lens_id,
+        selection_source: r.selection_source,
+        status: r.status,
+        idempotency_key: r.idempotency_key,
+        durability: this.backend,
+      };
+    }
+    throw new Error(`unknown kind: ${String(kind)}`);
   }
 
   private async writeAll(records: BulkRecord[]): Promise<void> {
     if (this.backend === "memory") {
-      this.memory = records.map((r) => ({ ...r, durability: "memory" }));
+      this.memory = records.map((r) =>
+        ({ ...r, durability: "memory" as const }) as BulkRecord
+      );
       return;
     }
     await this.ensureInitialized();
@@ -359,7 +453,7 @@ export class LocalBulkStore implements BulkTracker {
 
   async findOrCreatePending(
     args: FindOrCreatePendingArgs
-  ): Promise<{ record: BulkRecord; reused: boolean; seconds_since_original?: number }> {
+  ): Promise<{ record: EnrichBulkRecord; reused: boolean; seconds_since_original?: number }> {
     const { lead_ids, titles } = normalizeLaunchInputs(args);
     const idempotency_key = computeIdempotencyKey({
       lead_ids,
@@ -374,9 +468,11 @@ export class LocalBulkStore implements BulkTracker {
       const all = this.prune(await this.readAll());
       const nowMs = this.now();
       // Look for a reusable match: same fingerprint, not `failed`, and within
-      // the window.
+      // the window. Restrict to the enrich kind so cross-kind hash collisions
+      // (impossible by domain prefix) cannot leak.
       const existing = all.find(
-        (r) =>
+        (r): r is EnrichBulkRecord =>
+          r.kind === "enrich" &&
           r.idempotency_key === idempotency_key &&
           r.status !== "failed" &&
           nowMs - Date.parse(r.launched_at) < window
@@ -395,7 +491,8 @@ export class LocalBulkStore implements BulkTracker {
           ),
         };
       }
-      const record: BulkRecord = {
+      const record: EnrichBulkRecord = {
+        kind: "enrich",
         bulk_id: randomUUID(),
         launched_at: new Date(nowMs).toISOString(),
         lead_ids,
@@ -411,12 +508,78 @@ export class LocalBulkStore implements BulkTracker {
       all.push(record);
       await this.writeAll(all);
       this.logger?.info?.(
-        `bulk.registered bulk_id=${record.bulk_id} lens_id=${record.lens_id} ` +
+        `bulk.registered kind=enrich bulk_id=${record.bulk_id} lens_id=${record.lens_id} ` +
           `lead_count=${record.lead_ids.length} titles_count=${record.titles.length} ` +
           `durability=${record.durability}`
       );
       return { record, reused: false };
     });
+  }
+
+  async findOrCreatePendingQualify(
+    args: FindOrCreatePendingQualifyArgs
+  ): Promise<{ record: QualifyBulkRecord; reused: boolean; seconds_since_original?: number }> {
+    const lead_ids = [...new Set(args.lead_ids)].sort();
+    const import_ids = [...new Set(args.import_ids)].sort();
+    const idempotency_key = computeQualifyIdempotencyKey({
+      lead_ids,
+      import_ids,
+      lens_id: args.lens_id,
+      mapping_fingerprint: args.mapping_fingerprint,
+    });
+    const window = args.idempotency_window_ms ?? DEFAULT_IDEMPOTENCY_WINDOW_MS;
+
+    return this.mutex.run(async () => {
+      const all = this.prune(await this.readAll());
+      const nowMs = this.now();
+      const existing = all.find(
+        (r): r is QualifyBulkRecord =>
+          r.kind === "qualify" &&
+          r.idempotency_key === idempotency_key &&
+          r.status !== "failed" &&
+          nowMs - Date.parse(r.launched_at) < window
+      );
+      if (existing) {
+        this.logger?.info?.(
+          `bulk.reused kind=qualify bulk_id=${existing.bulk_id} seconds_since_original=${
+            Math.round((nowMs - Date.parse(existing.launched_at)) / 1000)
+          }`
+        );
+        return {
+          record: existing,
+          reused: true,
+          seconds_since_original: Math.round(
+            (nowMs - Date.parse(existing.launched_at)) / 1000
+          ),
+        };
+      }
+      const record: QualifyBulkRecord = {
+        kind: "qualify",
+        bulk_id: randomUUID(),
+        launched_at: new Date(nowMs).toISOString(),
+        lead_ids,
+        import_ids,
+        lens_id: args.lens_id,
+        status: "pending",
+        idempotency_key,
+        durability: this.backend,
+      };
+      if (args.per_lead_budget_ms !== undefined) record.per_lead_budget_ms = args.per_lead_budget_ms;
+      if (args.total_budget_ms !== undefined) record.total_budget_ms = args.total_budget_ms;
+      all.push(record);
+      await this.writeAll(all);
+      this.logger?.info?.(
+        `bulk.registered kind=qualify bulk_id=${record.bulk_id} lens_id=${record.lens_id} ` +
+          `lead_count=${record.lead_ids.length} import_count=${record.import_ids.length} ` +
+          `durability=${record.durability}`
+      );
+      return { record, reused: false };
+    });
+  }
+
+  async getQualify(bulk_id: string): Promise<QualifyBulkRecord | undefined> {
+    const r = await this.get(bulk_id);
+    return r && r.kind === "qualify" ? r : undefined;
   }
 
   async markLaunched(bulk_id: string): Promise<BulkRecord> {
