@@ -9,6 +9,9 @@ import {
   ReadResourceRequestSchema,
   ElicitRequestSchema,
   ElicitResultSchema,
+  SubscribeRequestSchema,
+  UnsubscribeRequestSchema,
+  CompleteRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { listPrompts, getPrompt } from "./prompts.js";
 import {
@@ -231,7 +234,14 @@ export function buildServer(
   const server = new Server(
     { name: "leadbay", version: "0.6.0" },
     {
-      capabilities: { tools: {}, prompts: {}, resources: {} },
+      capabilities: {
+        tools: {},
+        prompts: {},
+        // iter-28: advertise subscribe + listChanged on resources, plus
+        // completions provider for URI auto-complete.
+        resources: { subscribe: true, listChanged: true },
+        completions: {},
+      },
       instructions: buildServerInstructions(exposedNames),
     }
   );
@@ -259,6 +269,74 @@ export function buildServer(
   }));
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     return readResource(req.params.uri, client);
+  });
+
+  // iter-28: resources/subscribe + resources/unsubscribe.
+  // The Leadbay backend has no push-update channel for lead profiles or
+  // lenses, so the server's contract is "we accept the subscription and
+  // *may* emit notifications/resources/updated when we know the
+  // underlying state has changed." Today we never emit (no push); the
+  // capability advertisement still lets clients build cache strategies
+  // around it without needing a fallback. When the backend gains a
+  // change-feed, this is the wire-up point.
+  const subscribers = new Set<string>();
+  server.setRequestHandler(SubscribeRequestSchema, async (req) => {
+    subscribers.add(req.params.uri);
+    opts.logger?.info?.(`resources.subscribe uri=${req.params.uri} subs=${subscribers.size}`);
+    return {};
+  });
+  server.setRequestHandler(UnsubscribeRequestSchema, async (req) => {
+    subscribers.delete(req.params.uri);
+    opts.logger?.info?.(`resources.unsubscribe uri=${req.params.uri} subs=${subscribers.size}`);
+    return {};
+  });
+
+  // iter-28: completion provider for resource templates (URI auto-complete).
+  // When the agent is composing a `lead://{uuid}/profile` URI in a client UI,
+  // the client can call completion/complete with the partial value; we offer
+  // matching UUIDs from the user's last-active lens (best-effort, capped).
+  server.setRequestHandler(CompleteRequestSchema, async (req) => {
+    const ref = req.params.ref;
+    const argName = req.params.argument?.name;
+    const argValue = String(req.params.argument?.value ?? "");
+    // Only resource templates supported (no prompt completions yet).
+    if (ref.type !== "ref/resource") {
+      return { completion: { values: [], total: 0, hasMore: false } };
+    }
+    try {
+      // For lead URIs: surface up to 20 lead UUIDs from the active lens'
+      // wishlist matching the partial value. Cheap fan-out.
+      if (ref.uri === "lead://{uuid}/profile" && argName === "uuid") {
+        const lensId = await client.resolveDefaultLens();
+        const wish: any = await client.request<any>(
+          "GET",
+          `/lenses/${lensId}/leads/wishlist?count=50&page=0`
+        );
+        const ids = ((wish?.items ?? []) as Array<{ id: string }>)
+          .map((i) => i.id)
+          .filter((id) => id.toLowerCase().startsWith(argValue.toLowerCase()))
+          .slice(0, 20);
+        return {
+          completion: { values: ids, total: ids.length, hasMore: false },
+        };
+      }
+      // For lens URIs: surface lens ids matching the partial value.
+      if (ref.uri === "lens://{id}/definition" && argName === "id") {
+        const lenses: any = await client.request<any>("GET", "/lenses");
+        const ids = ((lenses ?? []) as Array<{ id: number }>)
+          .map((l) => String(l.id))
+          .filter((id) => id.startsWith(argValue))
+          .slice(0, 20);
+        return {
+          completion: { values: ids, total: ids.length, hasMore: false },
+        };
+      }
+    } catch (err: any) {
+      opts.logger?.warn?.(
+        `completion provider error: ${err?.message ?? err?.code ?? err}`
+      );
+    }
+    return { completion: { values: [], total: 0, hasMore: false } };
   });
 
   // iter-26: per-tool-call observability hook. Off by default; enabled via
