@@ -131,7 +131,77 @@ const RESOURCES_PARAGRAPH =
   "`lens://{id}/definition` (filter + scoring config), " +
   "`org://taste-profile` (qualification questions + intent tags). " +
   "Capable clients cache these across turns — cheaper than re-running pull_leads / research_lead when the agent " +
-  "already has the id.";
+  "already has the id. Capable clients can also call `resources/subscribe` (the server stores the subscription; " +
+  "Leadbay's backend doesn't push deltas yet so notifications are not currently emitted) and " +
+  "`completion/complete` for URI auto-complete on the templates.";
+
+// iter-29: protocol-level primitives don't strictly need user-facing
+// guidance text (a capable client handles them via SDK), but a brilliant
+// human ships it because (a) some MCP hosts surface server-instructions to
+// the agent verbatim and (b) the agent's mental model improves when it
+// understands the *why* of the cancel/progress/elicit shapes rather than
+// only the *what*.
+//
+// Tool-specific examples are conditional on the exposed set — we only
+// reference tools the agent can actually call (preserves the iter-12
+// invariant that buildServerInstructions never names unavailable tools).
+function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): string {
+  const longRunners = [
+    "bulk_qualify_leads",
+    "import_and_qualify",
+    "enrich_titles",
+    "bulk_enrich_status",
+    "qualify_status",
+  ].filter((n) => has(`leadbay_${n}`));
+  const elicitTools = [
+    "refine_prompt clarifications",
+    "report_outreach.user_confirmed",
+  ].filter((label) => {
+    if (label.startsWith("refine_prompt")) return has("leadbay_refine_prompt");
+    if (label.startsWith("report_outreach")) return has("leadbay_report_outreach");
+    return false;
+  });
+
+  const parts: string[] = ["Protocol primitives the server supports:"];
+
+  if (longRunners.length > 0) {
+    parts.push(
+      "(1) `notifications/progress` — when you pass `_meta.progressToken` on a tools/call, long-running " +
+        "composites stream per-unit-of-work progress with `progress`, `total`, and human-readable `message` " +
+        `(e.g. 'Qualified Acme Corp (3/10)'). Pass a progressToken on ${longRunners
+          .map((n) => `leadbay_${n}`)
+          .join(", ")}.`
+    );
+  } else {
+    parts.push(
+      "(1) `notifications/progress` — when you pass `_meta.progressToken` on a tools/call, long-running " +
+        "composites stream per-unit-of-work progress (none of the long-runners are currently exposed in " +
+        "this configuration)."
+    );
+  }
+
+  if (longRunners.length > 0) {
+    parts.push(
+      "(2) `notifications/cancelled` — when the user clicks Cancel in the host UI, the polling loop exits " +
+        "within ≤2 seconds AND the bulk-store entry transitions to 'cancelled'; subsequent status polls " +
+        "return `BULK_CANCELLED` so the agent stops polling."
+    );
+  } else {
+    parts.push(
+      "(2) `notifications/cancelled` — supported (no long-runners exposed in this configuration)."
+    );
+  }
+
+  if (elicitTools.length > 0) {
+    parts.push(
+      `(3) \`elicitation/create\` — for ${elicitTools.join(
+        " and "
+      )} the SERVER asks the user via the client UI. The agent doesn't author the prompt or fabricate the response — the user types directly. The response carries \`confirmed_via: 'elicit' | 'agent_supplied' | 'non_user_confirmed'\` so the audit trail records which path was actually taken.`
+    );
+  }
+
+  return parts.join(" ");
+}
 
 export function buildServerInstructions(exposed: Set<string>): string {
   const has = (name: string) => exposed.has(name);
@@ -147,6 +217,7 @@ export function buildServerInstructions(exposed: Set<string>): string {
   parts.push(buildRhythmParagraph(has));
   parts.push(buildSlashCommandsParagraph(has));
   parts.push(RESOURCES_PARAGRAPH);
+  parts.push(buildProtocolPrimitivesParagraph(has));
   return parts.join("\n\n");
 }
 
