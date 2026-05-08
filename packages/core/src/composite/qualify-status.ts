@@ -202,6 +202,15 @@ export const qualifyStatus: Tool<
       );
     }
 
+    if (record.status === "cancelled") {
+      throw client.makeError(
+        "BULK_CANCELLED",
+        "The qualify run was cancelled (ctx.signal aborted by the client mid-flight); no further qualifications are in flight",
+        "Call leadbay_import_and_qualify again with the same input to relaunch — the cancelled record won't block a fresh launch.",
+        ""
+      );
+    }
+
     // Phase 1/3: pull the question order so qualifications come back in
     // mission-importance order. Surface a tick so the agent can stream
     // long-poll progress to the user (otherwise the spinner is mute).

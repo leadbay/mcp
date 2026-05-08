@@ -802,6 +802,20 @@ export const importAndQualify: Tool<
       ...(questionOrder ? { questionOrder } : {}),
     });
 
+    // iter-21: when the qualify fan-out was cancelled (ctx.signal aborted),
+    // mark the bulk-store record cancelled so a subsequent qualify_status
+    // returns BULK_CANCELLED instead of "still launched". Best-effort —
+    // the operational cancel already happened; only the record needs the bit.
+    if (fanOut.cancelled) {
+      try {
+        await ctx.bulkTracker.markCancelled(reservation.record.bulk_id);
+      } catch (err: any) {
+        ctx?.logger?.warn?.(
+          `import_and_qualify: tracker.markCancelled failed: ${err?.message ?? err}`
+        );
+      }
+    }
+
     const qualified = fanOut.results
       .filter((r) => !r._stillRunning)
       .map(({ _stillRunning, ...rest }) => rest);

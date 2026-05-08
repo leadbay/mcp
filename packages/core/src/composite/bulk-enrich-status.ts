@@ -207,6 +207,19 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
       };
     }
 
+    if (record.status === "cancelled") {
+      return {
+        error: true,
+        code: "BULK_CANCELLED",
+        message:
+          "The bulk was cancelled (ctx.signal aborted by the client mid-launch). No further work is in flight.",
+        hint:
+          "Call leadbay_enrich_titles again with the same titles to relaunch — the cancelled record won't block a fresh launch.",
+        bulk_id: record.bulk_id,
+        launched_at: record.launched_at,
+      };
+    }
+
     // record.status === "launched" — fetch per-lead contacts.
     type Ok = {
       kind: "ok";

@@ -380,12 +380,23 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
             { titles: params.titles, email, phone }
           );
         } catch (err: any) {
+          // iter-21: ctx.signal abort during launch → mark the pending
+          // record cancelled so subsequent bulk_enrich_status returns
+          // BULK_CANCELLED instead of "still launched". AbortError surfaces
+          // as either err.name === "AbortError" or signal.aborted at catch
+          // time; both are handled.
+          const aborted =
+            err?.name === "AbortError" || ctx?.signal?.aborted === true;
           if (bulkRecord && tracker) {
             try {
-              await tracker.markFailed(bulkRecord.bulk_id);
+              if (aborted) {
+                await tracker.markCancelled(bulkRecord.bulk_id);
+              } else {
+                await tracker.markFailed(bulkRecord.bulk_id);
+              }
             } catch (e: any) {
               ctx?.logger?.warn?.(
-                `enrich_titles: tracker.markFailed failed: ${e?.message ?? e}`
+                `enrich_titles: tracker.${aborted ? "markCancelled" : "markFailed"} failed: ${e?.message ?? e}`
               );
             }
           }

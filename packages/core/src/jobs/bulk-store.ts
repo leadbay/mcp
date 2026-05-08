@@ -48,7 +48,12 @@ interface BulkRecordCommon {
   bulk_id: string; // client-minted UUIDv4 (future: server-minted)
   launched_at: string; // ISO string
   lead_ids: string[]; // sorted, deduplicated
-  status: "pending" | "launched" | "failed";
+  // pending = launch POST in flight. launched = backend acknowledged.
+  // failed = launch POST failed; no work was actually started.
+  // cancelled = ctx.signal aborted mid-flight (iter-21); the bulk was
+  // either never launched OR the polling loop exited; readers (status
+  // tools) should surface BULK_CANCELLED so the agent stops polling.
+  status: "pending" | "launched" | "failed" | "cancelled";
   idempotency_key: string; // sha256 over sorted inputs
   durability: "file" | "memory";
 }
@@ -112,6 +117,12 @@ export interface BulkTracker {
   }>;
   markLaunched(bulk_id: string): Promise<BulkRecord>;
   markFailed(bulk_id: string): Promise<void>;
+  // iter-21: terminal-state transition for ctx.signal aborts. Idempotent —
+  // safe to call repeatedly OR on an already-cancelled / non-existent record.
+  // Status-poller composites (bulk_enrich_status, qualify_status) surface
+  // cancelled records as BULK_CANCELLED error envelopes so the agent stops
+  // polling.
+  markCancelled(bulk_id: string): Promise<void>;
   get(bulk_id: string): Promise<BulkRecord | undefined>;
   // Typed accessor — returns undefined when the record exists but is the
   // wrong kind. Saves callers from repeating the type narrowing.
@@ -607,6 +618,21 @@ export class LocalBulkStore implements BulkTracker {
       all[idx] = { ...all[idx], status: "failed" };
       await this.writeAll(all);
       this.logger?.info?.(`bulk.launch_failed bulk_id=${bulk_id}`);
+    });
+  }
+
+  async markCancelled(bulk_id: string): Promise<void> {
+    return this.mutex.run(async () => {
+      const all = this.prune(await this.readAll());
+      const idx = all.findIndex((r) => r.bulk_id === bulk_id);
+      if (idx < 0) {
+        // Best-effort: marking a non-existent bulk cancelled is a no-op
+        // (the record may have aged out via TTL or never existed). Idempotent.
+        return;
+      }
+      all[idx] = { ...all[idx], status: "cancelled" };
+      await this.writeAll(all);
+      this.logger?.info?.(`bulk.cancelled bulk_id=${bulk_id}`);
     });
   }
 

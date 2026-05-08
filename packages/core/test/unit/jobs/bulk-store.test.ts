@@ -159,6 +159,37 @@ describe("bulk-store — InMemoryBulkStore happy path", () => {
     expect(fetched?.status).toBe("failed");
   });
 
+  it("markCancelled flips pending → cancelled (iter-21)", async () => {
+    const store = new InMemoryBulkStore();
+    const { record } = await store.findOrCreatePending(baseArgs);
+    await store.markCancelled(record.bulk_id);
+    const fetched = await store.get(record.bulk_id);
+    expect(fetched?.status).toBe("cancelled");
+  });
+
+  it("markCancelled flips launched → cancelled (mid-flight cancel)", async () => {
+    const store = new InMemoryBulkStore();
+    const { record } = await store.findOrCreatePending(baseArgs);
+    await store.markLaunched(record.bulk_id);
+    await store.markCancelled(record.bulk_id);
+    const fetched = await store.get(record.bulk_id);
+    expect(fetched?.status).toBe("cancelled");
+  });
+
+  it("markCancelled is idempotent and no-op on missing record", async () => {
+    const store = new InMemoryBulkStore();
+    // Non-existent: best-effort no-op.
+    await expect(
+      store.markCancelled("00000000-0000-4000-8000-000000000000")
+    ).resolves.toBeUndefined();
+    // Already cancelled: idempotent.
+    const { record } = await store.findOrCreatePending(baseArgs);
+    await store.markCancelled(record.bulk_id);
+    await store.markCancelled(record.bulk_id);
+    const fetched = await store.get(record.bulk_id);
+    expect(fetched?.status).toBe("cancelled");
+  });
+
   it("list returns records sorted by launched_at desc", async () => {
     let t = 1_000_000_000_000;
     const store = new InMemoryBulkStore({ now: () => t });
