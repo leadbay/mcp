@@ -21,6 +21,30 @@ export const getTasteProfile: Tool<Record<string, never>> = {
     properties: {},
     additionalProperties: false,
   },
+  outputSchema: {
+    type: "object",
+    properties: {
+      ideal_buyer_profile: {
+        description:
+          "Ideal Buyer Profile {summary, key_characteristics, anti_patterns} or null when none.",
+      },
+      purchase_intent_tags: {
+        type: "array",
+        description: "Tags describing buying signals. Each: {display_name, description, score, reasoning}.",
+        items: { type: "object" },
+      },
+      qualification_questions: {
+        type: "array",
+        description: "Questions Leadbay asks for each lead. Each: {question}.",
+        items: { type: "object" },
+      },
+      hint: {
+        type: "string",
+        description: "Operator note when the taste profile is empty (no_profile state).",
+      },
+    },
+    required: ["purchase_intent_tags", "qualification_questions"],
+  },
   execute: async (client: LeadbayClient) => {
     const profile = await client.resolveTasteProfile();
 

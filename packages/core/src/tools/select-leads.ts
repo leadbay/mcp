@@ -42,6 +42,16 @@ export const selectLeads: Tool<SelectLeadsParams> = {
     required: ["leadIds"],
     additionalProperties: false,
   },
+  outputSchema: {
+    type: "object",
+    properties: {
+      selected: {
+        type: "number",
+        description: "How many leadIds the call added to the selection (echoes input length).",
+      },
+    },
+    required: ["selected"],
+  },
   execute: async (client: LeadbayClient, params: SelectLeadsParams) => {
     const qs = params.leadIds
       .map((id) => `leadIds=${encodeURIComponent(id)}`)

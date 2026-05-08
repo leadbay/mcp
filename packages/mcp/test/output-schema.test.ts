@@ -73,8 +73,9 @@ describe("outputSchema on top 5 composites (P2: structured output)", () => {
       mcpClient.connect(clientTransport),
     ]);
     const listed = await mcpClient.listTools();
-    // get_quota is granular; not slated for outputSchema until iter-19+.
-    const t = listed.tools.find((tool) => tool.name === "leadbay_get_quota");
+    // discover_leads is granular and not yet promoted to outputSchema (iter-19
+    // covers ~32% of granulars; `discover_leads` is not in the iter-19 batch).
+    const t = listed.tools.find((tool) => tool.name === "leadbay_discover_leads");
     expect(t).toBeDefined();
     expect(t!.outputSchema).toBeUndefined();
   });

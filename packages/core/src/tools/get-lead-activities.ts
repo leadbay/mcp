@@ -35,6 +35,27 @@ export const getLeadActivities: Tool<GetLeadActivitiesParams> = {
     required: ["leadId"],
     additionalProperties: false,
   },
+  outputSchema: {
+    type: "object",
+    properties: {
+      activities: {
+        type: "array",
+        description: "Activity entries. Each: {type, date}. Older activities trimmed by `count`.",
+        items: {
+          type: "object",
+          properties: {
+            type: { type: "string" },
+            date: { type: "string" },
+          },
+        },
+      },
+      total: {
+        type: "number",
+        description: "Total activity count for this lead (across all pages).",
+      },
+    },
+    required: ["activities", "total"],
+  },
   execute: async (client: LeadbayClient, params: GetLeadActivitiesParams) => {
     const count = Math.min(params.count ?? 50, 100);
 

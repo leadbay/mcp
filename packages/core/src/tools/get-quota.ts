@@ -17,6 +17,18 @@ export const getQuota: Tool<Record<string, never>> = {
     "When NOT to use: as a pre-flight gate before bulk operations — operations themselves return 429 with hints; " +
     "this tool is for diagnostics, not gating.",
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  outputSchema: {
+    type: "object",
+    properties: {
+      plan: { type: ["string", "null"], description: "Org plan tier (e.g., FREE, PRO)." },
+      windows: {
+        type: "array",
+        description:
+          "Per-resource per-window limits. Each: {resource, window, current_units, max_units, resets_at}.",
+        items: { type: "object" },
+      },
+    },
+  },
   execute: async (client: LeadbayClient) => {
     const orgId = await client.resolveOrgId();
     return await client.request<QuotaStatusPayload>(

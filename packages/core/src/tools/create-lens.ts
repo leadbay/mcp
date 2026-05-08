@@ -32,6 +32,20 @@ export const createLens: Tool<CreateLensParams> = {
     required: ["base", "name"],
     additionalProperties: false,
   },
+  outputSchema: {
+    type: "object",
+    description:
+      "Full LensPayload as returned by the backend. Permissive shape — backend may add fields over time.",
+    properties: {
+      id: { type: "number", description: "New lens id." },
+      name: { type: "string" },
+      description: { type: ["string", "null"] },
+      is_default: { type: "boolean" },
+      is_last_active: { type: "boolean" },
+      user_id: { type: ["string", "number", "null"] },
+    },
+    required: ["id", "name"],
+  },
   execute: async (client: LeadbayClient, params: CreateLensParams) => {
     const lens = await client.request<LensPayload>("POST", "/lenses", {
       base: params.base,

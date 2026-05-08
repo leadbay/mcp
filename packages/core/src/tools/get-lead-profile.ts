@@ -43,6 +43,31 @@ export const getLeadProfile: Tool<GetLeadProfileParams> = {
     required: ["leadId"],
     additionalProperties: false,
   },
+  outputSchema: {
+    type: "object",
+    properties: {
+      lead: {
+        type: "object",
+        description:
+          "Lead basics: id, name, score, ai_agent_lead_score, location, description, short_description, size, website, logo, ai_summary, split_ai_summary, tags, phone_numbers, keywords, contacts_count, recommended_contact_title, recommended_contact, web_fetch_in_progress.",
+      },
+      qualification: {
+        type: ["array", "null"],
+        description:
+          "Per-question AI qualification answers ({question, score, response, computed_at, outdated_at}), or null if none.",
+        items: { type: "object" },
+      },
+      contacts: {
+        type: "array",
+        description:
+          "Merged org+paid contacts. Each: {id, first_name, last_name, email, phone_number, linkedin_page, job_title, recommended, enrichment, source:'org'|'paid'}.",
+        items: { type: "object" },
+      },
+      web_insights: { description: "Latest /web_fetch content (string) or null." },
+      web_insights_fetched_at: { description: "ISO timestamp of /web_fetch (string) or null." },
+    },
+    required: ["lead", "contacts"],
+  },
   execute: async (client: LeadbayClient, params: GetLeadProfileParams) => {
     const lensId = params.lensId ?? (await client.resolveDefaultLens());
 

@@ -37,6 +37,15 @@ export const addNote: Tool<AddNoteParams> = {
     required: ["leadId", "note"],
     additionalProperties: false,
   },
+  outputSchema: {
+    type: "object",
+    properties: {
+      id: { type: "string", description: "Note id assigned by the backend." },
+      note: { type: "string", description: "Echoed note text (truncated to 4095 chars)." },
+      created_at: { type: "string", description: "ISO timestamp of creation." },
+    },
+    required: ["id", "note", "created_at"],
+  },
   execute: async (client: LeadbayClient, params: AddNoteParams) => {
     if (!params.note || params.note.trim().length === 0) {
       throw client.makeError(

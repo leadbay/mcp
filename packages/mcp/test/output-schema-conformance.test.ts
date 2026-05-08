@@ -31,6 +31,8 @@ import {
   LeadbayClient,
   compositeReadTools,
   compositeWriteTools,
+  granularReadTools,
+  granularWriteTools,
   type Tool,
 } from "@leadbay/core";
 import { buildServer } from "../src/server.js";
@@ -41,7 +43,9 @@ const BASE = "https://api-us.leadbay.app";
 
 async function connect() {
   const lbClient = new LeadbayClient(BASE, "u.test-token");
-  const server = buildServer(lbClient, { includeWrite: true });
+  // includeAdvanced=true so the granular declarers (iter-19) are exposed
+  // for conformance walks. includeWrite=true for the write composites.
+  const server = buildServer(lbClient, { includeWrite: true, includeAdvanced: true });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const mcpClient = new Client({ name: "test", version: "0.0.1" }, {});
   await Promise.all([
@@ -558,6 +562,161 @@ const CASES: ConformanceCase[] = [
       ]);
     },
   },
+  // Granular cases (iter-19)
+  {
+    toolName: "leadbay_list_lenses",
+    arguments: {},
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/lenses",
+          status: 200,
+          body: [
+            { id: 1, name: "Default", is_last_active: true, description: null },
+          ],
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_get_quota",
+    arguments: {},
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/users/me",
+          status: 200,
+          body: { id: "u", organization: { id: "org-1", name: "X" } },
+        },
+        {
+          method: "GET",
+          path: "/1.5/organizations/org-1/quota_status",
+          status: 200,
+          body: { plan: "PRO", windows: [] },
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_get_user_prompt",
+    arguments: {},
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/users/me",
+          status: 200,
+          body: { id: "u", organization: { id: "org-1", name: "X" } },
+        },
+        {
+          method: "GET",
+          path: "/1.5/organizations/org-1/user_prompt",
+          status: 204,
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_get_clarification",
+    arguments: {},
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/users/me",
+          status: 200,
+          body: { id: "u", organization: { id: "org-1", name: "X" } },
+        },
+        {
+          method: "GET",
+          path: "/1.5/organizations/org-1/clarifications",
+          status: 204,
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_select_leads",
+    arguments: { leadIds: ["lead-1", "lead-2"] },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "POST",
+          path: /\/1\.5\/leads\/selection\/select/,
+          status: 200,
+          body: {},
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_pick_clarification",
+    arguments: { option_id: "opt-1" },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/users/me",
+          status: 200,
+          body: { id: "u", organization: { id: "org-1", name: "X" } },
+        },
+        {
+          method: "POST",
+          path: "/1.5/organizations/org-1/pick_clarification",
+          status: 200,
+          body: {},
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_add_note",
+    arguments: { leadId: "lead-1", note: "Follow up next week." },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "POST",
+          path: "/1.5/leads/lead-1/notes",
+          status: 200,
+          body: {
+            id: "note-1",
+            note: "Follow up next week.",
+            created_at: "2026-05-07T20:00:00Z",
+          },
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_get_lead_activities",
+    arguments: { leadId: "lead-1" },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: /\/1\.5\/leads\/lead-1\/activities/,
+          status: 200,
+          body: { items: [], pagination: { page: 0, pages: 0, total: 0 } },
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_get_web_fetch",
+    arguments: { leadId: "lead-1" },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/leads/lead-1/web_fetch",
+          status: 200,
+          body: { content: null, fetch_at: null },
+        },
+      ]);
+    },
+  },
 ];
 
 // -----------------------------------------------------------------------
@@ -587,7 +746,12 @@ describe("structuredContent conformance — every outputSchema declarer (iter17)
 
       // Pull the tool's own outputSchema from the catalogue (single source
       // of truth) and validate the live shape against it.
-      const allTools: Tool[] = [...compositeReadTools, ...compositeWriteTools];
+      const allTools: Tool[] = [
+      ...compositeReadTools,
+      ...compositeWriteTools,
+      ...granularReadTools,
+      ...granularWriteTools,
+    ];
       const tool = allTools.find((t) => t.name === c.toolName);
       expect(tool, `${c.toolName} not found in catalogue`).toBeDefined();
       expect(tool!.outputSchema, `${c.toolName} has no outputSchema`).toBeDefined();
@@ -632,6 +796,16 @@ const OPT_OUT: Record<string, string> = {
     "Full preprocess + commit + chunk + resolution chain — heavy mock.",
   leadbay_import_and_qualify:
     "Import + qualify chain across multiple phases — heavy mock; covered by composite-level tests.",
+  // Granular OPT_OUTs (iter-19): each declares outputSchema but the
+  // happy-path mock would replicate work already done in packages/core
+  // unit tests. The schema is reviewed at write-time + asserted in
+  // tools/list shape tests.
+  leadbay_get_lead_profile:
+    "Five-fan-out HTTP mocks (lead/lenses + responses + contacts + paid + web_fetch) duplicate composite mocks.",
+  leadbay_get_taste_profile:
+    "Requires resolveTasteProfile path with multi-call coordination; covered in composite paths.",
+  leadbay_create_lens:
+    "Returns full LensPayload — backend-shape mock larger than the conformance-signal warrants.",
 };
 
 // -----------------------------------------------------------------------
@@ -641,7 +815,12 @@ const OPT_OUT: Record<string, string> = {
 
 describe("structuredContent conformance — drift catcher (iter17)", () => {
   it("every Tool with outputSchema has a registered conformance case OR documented opt-out", () => {
-    const allTools: Tool[] = [...compositeReadTools, ...compositeWriteTools];
+    const allTools: Tool[] = [
+      ...compositeReadTools,
+      ...compositeWriteTools,
+      ...granularReadTools,
+      ...granularWriteTools,
+    ];
     const declarers = allTools.filter((t) => t.outputSchema).map((t) => t.name);
     const cases = new Set(CASES.map((c) => c.toolName));
     const optOut = new Set(Object.keys(OPT_OUT));

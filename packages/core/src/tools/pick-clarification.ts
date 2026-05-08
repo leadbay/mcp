@@ -31,6 +31,16 @@ export const pickClarification: Tool<PickClarificationParams> = {
     },
     additionalProperties: false,
   },
+  outputSchema: {
+    type: "object",
+    properties: {
+      answered: {
+        type: "boolean",
+        description: "True when the answer was recorded; intelligence regeneration begins.",
+      },
+    },
+    required: ["answered"],
+  },
   execute: async (
     client: LeadbayClient,
     params: PickClarificationParams

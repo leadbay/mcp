@@ -27,6 +27,28 @@ export const getWebFetch: Tool<GetWebFetchParams> = {
     required: ["leadId"],
     additionalProperties: false,
   },
+  outputSchema: {
+    type: "object",
+    description:
+      "Raw LeadWebFetchPayload as returned by /leads/{id}/web_fetch. Permissive shape — backend dict structure is documented in detail by leadbay_research_lead which reshapes it.",
+    properties: {
+      content: {
+        description: "Backend dict content (object or string), or null when no fetch yet.",
+      },
+      fetch_at: {
+        description: "ISO timestamp of the most recent fetch (string or null).",
+      },
+      status: {
+        type: "string",
+        description: "'pending' | 'complete' | 'failed' (when present).",
+      },
+      signals: {
+        type: "array",
+        description: "Optional reshaped signals when the backend returns them.",
+        items: { type: "object" },
+      },
+    },
+  },
   execute: async (client: LeadbayClient, params: GetWebFetchParams) => {
     return await client.request<LeadWebFetchPayload>(
       "GET",
