@@ -17,6 +17,111 @@ interface ResearchLeadParams {
   leadId: string;
   lensId?: number;
   concise?: boolean;
+  response_format?: "json" | "markdown";
+}
+
+// Marker the MCP server special-cases when emitting tools/call responses.
+// The composite returns this envelope when response_format='markdown'; the
+// server emits the markdown as the text content and exposes the typed
+// structuredContent via the structuredContent block. Other consumers
+// (OpenClaw) currently treat the envelope's `structured` field as the
+// payload (via toContent helper).
+export interface MarkdownEnvelope {
+  __markdown_envelope: true;
+  markdown: string;
+  structured: Record<string, unknown>;
+}
+
+// Pure render: structured research_lead shape → compact markdown.
+// Order mirrors the JSON shape's mission importance: qualification → signals
+// → firmographics → contacts → engagement.
+export function renderResearchLeadMarkdown(
+  shape: Record<string, unknown>
+): string {
+  const out: string[] = [];
+  const firm = (shape.firmographics ?? {}) as Record<string, unknown>;
+  const name = (firm.name ?? "(unnamed lead)") as string;
+  out.push(`# ${name}`);
+  if (firm.website) out.push(`Website: ${firm.website}`);
+  if (firm.location) out.push(`Location: ${firm.location}`);
+  if (typeof firm.score === "number" || firm.score === null) {
+    const aiScore = firm.ai_agent_lead_score;
+    out.push(
+      `Score: ${firm.score ?? "—"}` +
+        (aiScore != null ? ` · AI: ${aiScore}` : "")
+    );
+  }
+  if (firm.short_description) out.push(`\n${firm.short_description}`);
+
+  const qualification = Array.isArray(shape.qualification)
+    ? (shape.qualification as Array<Record<string, unknown>>)
+    : [];
+  if (qualification.length > 0) {
+    out.push(`\n## Qualification`);
+    for (const q of qualification) {
+      const score =
+        q.boost_score != null ? `${q.boost_score}` : "—";
+      const resp = q.response ? String(q.response).slice(0, 200) : "—";
+      out.push(`- **${q.question}** (boost ${score}): ${resp}`);
+    }
+  }
+
+  const signals = Array.isArray(shape.signals)
+    ? (shape.signals as Array<Record<string, unknown>>)
+    : [];
+  if (signals.length > 0) {
+    out.push(`\n## Signals`);
+    for (const sec of signals) {
+      const label = sec.section_label ?? "section";
+      out.push(`### ${sec.section_emoji ?? ""} ${label}`.trim());
+      const entries = Array.isArray(sec.entries)
+        ? (sec.entries as Array<Record<string, unknown>>)
+        : [];
+      for (const e of entries.slice(0, 5)) {
+        const text = e.text ?? e.summary ?? JSON.stringify(e).slice(0, 200);
+        const hot = e.hot === true ? " 🔥" : "";
+        out.push(`- ${text}${hot}`);
+      }
+      if (entries.length > 5) out.push(`- _${entries.length - 5} more …_`);
+    }
+  }
+
+  const contacts = (shape.contacts ?? {}) as Record<string, unknown>;
+  const enriched = Array.isArray(contacts.enriched)
+    ? (contacts.enriched as Array<Record<string, unknown>>)
+    : [];
+  if (enriched.length > 0) {
+    out.push(`\n## Contacts (enriched)`);
+    for (const c of enriched.slice(0, 10)) {
+      const fn = (c.first_name ?? "") as string;
+      const ln = (c.last_name ?? "") as string;
+      const title = c.job_title ?? "—";
+      const email = c.email ?? "no email";
+      out.push(`- **${(fn + " " + ln).trim() || "(unknown)"}** — ${title} · ${email}`);
+    }
+  }
+
+  const engagement = (shape.engagement ?? {}) as Record<string, unknown>;
+  const counts: Array<[string, unknown]> = [
+    ["notes", engagement.notes_count],
+    ["epilogue", engagement.epilogue_actions_count],
+    ["prospecting", engagement.prospecting_actions_count],
+  ];
+  const activeCounts = counts.filter(([, v]) => typeof v === "number" && (v as number) > 0);
+  if (activeCounts.length > 0 || engagement.liked || engagement.disliked) {
+    out.push(`\n## Engagement`);
+    if (engagement.liked) out.push(`- liked ✅`);
+    if (engagement.disliked) out.push(`- disliked ❌`);
+    for (const [k, v] of activeCounts) {
+      out.push(`- ${k}: ${v}`);
+    }
+  }
+
+  if (shape.truncated) {
+    out.push(`\n_Truncated_: ${shape.truncation_hint ?? "response trimmed"}_`);
+  }
+
+  return out.join("\n");
 }
 
 // Map an emoji-prefixed section label like "🏢 company profile" to
@@ -92,6 +197,12 @@ export const researchLead: Tool<ResearchLeadParams> = {
         type: "boolean",
         description:
           "If true, trim signals to hot=true items only (smaller payload). Default false.",
+      },
+      response_format: {
+        type: "string",
+        enum: ["json", "markdown"],
+        description:
+          "How the agent wants the result rendered. 'json' (default): the structured payload as text. 'markdown': a compact human-readable rendering (sections + bullets) — useful for chat-rendering clients (Cursor, Claude Desktop) where the user sees the response directly. structuredContent is emitted in both modes so capable clients still get typed access.",
       },
     },
     required: ["leadId"],
@@ -385,4 +496,25 @@ export const researchLead: Tool<ResearchLeadParams> = {
       },
     };
   },
+};
+
+// Wrapped execute that branches on params.response_format. Default behavior
+// (response_format omitted or "json") is unchanged. When "markdown", the
+// composite returns a MarkdownEnvelope: { __markdown_envelope, markdown,
+// structured } — the MCP server special-cases this to emit markdown text
+// + structuredContent.
+const _innerExecute = researchLead.execute;
+researchLead.execute = async (client, params, ctx) => {
+  const result: any = await _innerExecute(client, params, ctx);
+  if (params.response_format !== "markdown") return result;
+  // result may be a LeadbayError envelope from upstream — pass through.
+  if (result && typeof result === "object" && result.error === true) {
+    return result;
+  }
+  const envelope: MarkdownEnvelope = {
+    __markdown_envelope: true,
+    markdown: renderResearchLeadMarkdown(result),
+    structured: result,
+  };
+  return envelope as any;
 };

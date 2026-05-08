@@ -353,6 +353,35 @@ export function buildServer(
           isError: true,
         };
       }
+
+      // iter-25: MarkdownEnvelope from response_format='markdown' — the
+      // composite-side opt-in for chat-rendering agents. The text content
+      // becomes the rendered markdown; structuredContent stays as the
+      // typed payload so capable clients still get type-safe access.
+      const isMarkdownEnvelope =
+        result &&
+        typeof result === "object" &&
+        (result as any).__markdown_envelope === true &&
+        typeof (result as any).markdown === "string";
+      if (isMarkdownEnvelope) {
+        const env = result as { markdown: string; structured: Record<string, unknown> };
+        const out: Record<string, unknown> = {
+          content: [{ type: "text", text: env.markdown }],
+        };
+        // Emit the structured payload via structuredContent if the tool
+        // declared outputSchema (so capable clients still see the typed
+        // shape they expect).
+        if (
+          tool.outputSchema &&
+          env.structured !== null &&
+          typeof env.structured === "object" &&
+          !Array.isArray(env.structured)
+        ) {
+          out.structuredContent = env.structured;
+        }
+        return out;
+      }
+
       const response: Record<string, unknown> = {
         content: [
           { type: "text", text: JSON.stringify(result, null, 2) },
