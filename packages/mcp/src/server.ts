@@ -261,7 +261,16 @@ export function buildServer(
     return readResource(req.params.uri, client);
   });
 
+  // iter-26: per-tool-call observability hook. Off by default; enabled via
+  // LEADBAY_DEBUG=1 (or "true"). Emits one stderr line per CallTool with
+  // tool name + duration + success flag + result-bytes. stderr keeps the
+  // stdio JSON-RPC stream (stdout) clean; cost when disabled is one truthy
+  // env var read per call.
+  const DEBUG_RAW = process.env.LEADBAY_DEBUG ?? "";
+  const DEBUG_ON = DEBUG_RAW === "1" || DEBUG_RAW.toLowerCase() === "true";
+
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
+    const debugStart = DEBUG_ON ? Date.now() : 0;
     const name = req.params.name;
     const tool = toolByName.get(name);
     if (!tool) {
@@ -379,6 +388,13 @@ export function buildServer(
         ) {
           out.structuredContent = env.structured;
         }
+        if (DEBUG_ON) {
+          const dur = Date.now() - debugStart;
+          const bytes = env.markdown.length;
+          process.stderr.write(
+            `[leadbay-mcp debug] tool=${name} dur=${dur}ms ok=true bytes=${bytes} format=markdown\n`
+          );
+        }
         return out;
       }
 
@@ -400,8 +416,23 @@ export function buildServer(
       ) {
         response.structuredContent = result;
       }
+      if (DEBUG_ON) {
+        const dur = Date.now() - debugStart;
+        const text = (response.content as any)[0]?.text ?? "";
+        const bytes = typeof text === "string" ? text.length : 0;
+        process.stderr.write(
+          `[leadbay-mcp debug] tool=${name} dur=${dur}ms ok=true bytes=${bytes}\n`
+        );
+      }
       return response;
     } catch (err: any) {
+      if (DEBUG_ON) {
+        const dur = Date.now() - debugStart;
+        const code = err?.code ?? err?.name ?? "Error";
+        process.stderr.write(
+          `[leadbay-mcp debug] tool=${name} dur=${dur}ms ok=false code=${code}\n`
+        );
+      }
       return {
         content: [
           { type: "text", text: formatErrorForLLM(err) },
