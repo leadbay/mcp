@@ -367,7 +367,7 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
               error: true,
               code: "ORPHAN_DRAFT",
               message: `Draft ${targetLensId} created but filter update failed; draft cleanup also failed`,
-              hint: `Manually delete draft lens ${targetLensId} via the Leadbay UI`,
+              hint: `Use leadbay_promote_lens or leadbay_update_lens to recover, or open https://leadbay.app/lenses to manually delete draft lens ${targetLensId}.`,
               orphan_draft_id: targetLensId,
             };
           }

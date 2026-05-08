@@ -207,7 +207,7 @@ export const reportOutreach: Tool<ReportOutreachParams> = {
         error: true,
         code: "BAD_INPUT",
         message: "Provide lead_id (single) or lead_ids (bulk)",
-        hint: "lead_id for one lead; lead_ids: [uuid, ...] for many",
+        hint: "Set lead_id to one UUID for a single-lead call, or pass lead_ids: [uuid, ...] for a bulk call. Use leadbay_pull_leads to discover candidate IDs.",
       };
     }
 
