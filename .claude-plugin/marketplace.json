@@ -1,0 +1,17 @@
+{
+  "name": "leadbay-leadclaw",
+  "owner": {
+    "name": "Leadbay",
+    "url": "https://leadbay.ai"
+  },
+  "version": "1.0.0",
+  "description": "Leadbay's official Claude Code plugins - the Leadbay MCP for AI lead discovery, qualification, and outreach prep.",
+  "plugins": [
+    {
+      "name": "leadbay",
+      "source": "./.claude-plugin/plugins/leadbay",
+      "description": "AI lead discovery, qualification, and outreach prep - wraps @leadbay/mcp via npx.",
+      "tags": ["mcp", "sales", "lead-generation", "b2b"]
+    }
+  ]
+}

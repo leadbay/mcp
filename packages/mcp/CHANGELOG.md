@@ -1,6 +1,12 @@
 # Changelog — @leadbay/mcp
 
-## 0.6.0 — UNRELEASED
+## 0.6.1 — UNRELEASED
+
+**Distribution**: listed in the official MCP Registry as `io.github.leadbay/leadbay-mcp` (auto-published from CI via GitHub OIDC); installable as a Claude Code plugin via `/plugin marketplace add leadbay/leadclaw` then `/plugin install leadbay@leadbay-leadclaw`; submission packets prepared for the Claude.ai connector directory and Anthropic's curated MCPB extension directory.
+
+**Registry verification**: adds `mcpName` to the npm package metadata so the MCP Registry can verify ownership of `io.github.leadbay/leadbay-mcp` against the published `@leadbay/mcp` package.
+
+## 0.6.0 — 2026-05-08
 
 Massive spec-coverage upgrade. Each tool declares **annotations** (`readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`); 17 composites + 12 highest-leverage granulars declare typed `outputSchema` + emit `structuredContent`. New surfaces: `prompts/*` (5 canned slash-commands), `resources/*` (`lead://`, `lens://`, `org://taste-profile`), `notifications/progress` (per-lead streaming on every long-running composite), `notifications/cancelled` → `ToolContext.signal` (bulk-store entries marked `cancelled` so subsequent status polls return `BULK_CANCELLED`), `elicitation/create` (refine_prompt clarification + report_outreach user_confirmed anti-poisoning).
 

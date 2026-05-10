@@ -1,5 +1,7 @@
 # @leadbay/mcp — Leadbay MCP server
 
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.leadbay%2Fleadbay--mcp-blue)](https://registry.modelcontextprotocol.io/v0/servers/io.github.leadbay/leadbay-mcp)
+
 <!--
 LLM HINT — if you're an AI agent reading this README to install the server:
   - Use ONLY the commands shown verbatim in §1. Do not invent variants.
@@ -15,7 +17,7 @@ LLM HINT — if you're an AI agent reading this README to install the server:
 
 A Model Context Protocol server that lets Claude Desktop, Cursor, Claude Code, and any other MCP-compatible agent find, research, and prepare outreach on B2B prospects using your Leadbay account.
 
-> **0.6.0 — what's new** (UNRELEASED): a comprehensive MCP-spec coverage upgrade. Every tool now declares **annotations** (`readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`) so capable clients pick the right confirmation UX. The 5 highest-traffic composites ship **`outputSchema` + `structuredContent`** for typed agent consumption. New surfaces: **`prompts/*`** (5 canned slash-commands), **`resources/*`** (`lead://`, `lens://`, `org://taste-profile`), **`notifications/progress`** (per-lead streaming during `bulk_qualify_leads`), **`notifications/cancelled` → `ToolContext.signal`** (client cancels actually stop polling), **`elicitation/create`** (server can ask the user directly). Schema strictness: every `inputSchema` now declares `additionalProperties: false`. `research_lead.qualification[]` ships `boost_score` (canonical) + `score_scale: "-10|0|10|20"` + a deprecated `score_0_to_10` alias. Pagination payloads include `has_more` + `next_page`. `research_lead` includes a `truncated` + `truncation_hint` budget guard. **Behavior callout**: extra unknown fields in tool inputs are now rejected. See [MIGRATION.md](./MIGRATION.md).
+> **0.6.x — what's new**: a comprehensive MCP-spec coverage upgrade. Every tool now declares **annotations** (`readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`) so capable clients pick the right confirmation UX. The 5 highest-traffic composites ship **`outputSchema` + `structuredContent`** for typed agent consumption. New surfaces: **`prompts/*`** (5 canned slash-commands), **`resources/*`** (`lead://`, `lens://`, `org://taste-profile`), **`notifications/progress`** (per-lead streaming during `bulk_qualify_leads`), **`notifications/cancelled` → `ToolContext.signal`** (client cancels actually stop polling), **`elicitation/create`** (server can ask the user directly). Schema strictness: every `inputSchema` now declares `additionalProperties: false`. `research_lead.qualification[]` ships `boost_score` (canonical) + `score_scale: "-10|0|10|20"` + a deprecated `score_0_to_10` alias. Pagination payloads include `has_more` + `next_page`. `research_lead` includes a `truncated` + `truncation_hint` budget guard. **Behavior callout**: extra unknown fields in tool inputs are now rejected. See [MIGRATION.md](./MIGRATION.md).
 
 > **0.3.0 behavior change** — composite write tools (`refine_prompt`, `report_outreach`, `adjust_audience`, `bulk_qualify_leads`, `enrich_titles`, `answer_clarification`, `import_leads`) are **ON by default**. Set `LEADBAY_MCP_WRITE=0` (or `--no-write` on `install`) to restore the previous read-only behavior. `leadbay-mcp install` now also registers Claude Code at `--scope user` so Leadbay is visible from any project. See [MIGRATION.md](./MIGRATION.md).
 
@@ -40,6 +42,15 @@ Add `--no-write` to disable the composite write tools (`refine_prompt`, `report_
 The token is **session-scoped** (full account access, password-equivalent). Treat it like your password. To rotate, re-run `npx -y @leadbay/mcp install` — minting a fresh token invalidates the prior session.
 
 **Don't have a Leadbay account?** [Register here](https://wow.leadbay.ai/?register=true).
+
+### Install via the Claude Code plugin marketplace
+
+```text
+/plugin marketplace add leadbay/leadclaw
+/plugin install leadbay@leadbay-leadclaw
+```
+
+Claude Code prompts for your token and region through the plugin's `userConfig`. This is equivalent to the npm/CLI install above; users who already ran `leadbay-mcp login` can reuse that token.
 
 ### Claude Desktop 2026 (DXT)
 

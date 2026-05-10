@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "leadbay",
+  "version": "0.6.1",
+  "description": "AI lead discovery, qualification, and outreach prep on your Leadbay account.",
+  "author": {
+    "name": "Leadbay",
+    "email": "support@leadbay.ai",
+    "url": "https://leadbay.ai"
+  },
+  "homepage": "https://github.com/leadbay/leadclaw/tree/main/packages/mcp#readme",
+  "repository": "https://github.com/leadbay/leadclaw",
+  "license": "MIT",
+  "keywords": ["mcp", "sales", "lead-generation", "b2b", "outreach"],
+  "mcpServers": {
+    "leadbay": {
+      "command": "npx",
+      "args": ["-y", "@leadbay/mcp@0.6"],
+      "env": {
+        "LEADBAY_TOKEN": "${user_config.leadbay_token}",
+        "LEADBAY_REGION": "${user_config.leadbay_region}",
+        "LEADBAY_MCP_WRITE": "${user_config.leadbay_mcp_write}"
+      }
+    }
+  },
+  "userConfig": {
+    "leadbay_token": {
+      "type": "string",
+      "title": "Leadbay bearer token",
+      "description": "Mint with: npx -y @leadbay/mcp@0.6 login --email <you> --region <us|fr>",
+      "sensitive": true,
+      "required": true
+    },
+    "leadbay_region": {
+      "type": "string",
+      "title": "Region",
+      "description": "Leadbay backend for your account: us or fr.",
+      "default": "fr",
+      "required": true
+    },
+    "leadbay_mcp_write": {
+      "type": "boolean",
+      "title": "Enable composite write tools",
+      "description": "Expose composite write tools such as refine_prompt, adjust_audience, report_outreach, bulk_qualify_leads, enrich_titles, answer_clarification, and import_leads.",
+      "default": true,
+      "required": false
+    }
+  }
+}
