@@ -8,7 +8,7 @@
 //   - server/index.js               (esbuild bundle of packages/mcp/src/bin.ts,
 //                                    plus a "stdio-entry.mjs"-style wrapper that
 //                                    always runs the MCP server, never the CLI)
-//   - icon.png                      (from packages/leadclaw/logo.png)
+//   - icon.png                      (from packages/dxt/icon.png)
 //   - README.md                     (from packages/mcp/README.md)
 //
 // Why bundle bin.ts? Its `isEntrypoint` guard already handles the dual CLI /
@@ -25,7 +25,6 @@ const __dirname = dirname(__filename);
 const DXT_DIR = dirname(__dirname);                          // packages/dxt
 const REPO_ROOT = dirname(dirname(DXT_DIR));                 // <repo root>
 const MCP_DIR = join(REPO_ROOT, "packages", "mcp");
-const LEADCLAW_DIR = join(REPO_ROOT, "packages", "leadclaw");
 const DIST_DIR = join(DXT_DIR, "dist");
 const STAGE_DIR = join(DIST_DIR, "stage");
 
@@ -72,7 +71,7 @@ async function main() {
   });
 
   // 3. Assets.
-  copyFileSync(join(LEADCLAW_DIR, "logo.png"), join(STAGE_DIR, "icon.png"));
+  copyFileSync(join(DXT_DIR, "icon.png"), join(STAGE_DIR, "icon.png"));
   if (existsSync(join(MCP_DIR, "README.md"))) {
     copyFileSync(join(MCP_DIR, "README.md"), join(STAGE_DIR, "README.md"));
   }
