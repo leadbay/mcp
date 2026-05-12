@@ -155,7 +155,23 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams, any> = {
         properties: { region: { type: "string" } },
       },
     },
-    required: ["qualified", "still_running", "failed", "quota_exceeded"],
+    required: ["failed", "quota_exceeded"],
+    anyOf: [
+      { required: ["qualified", "still_running", "failed", "quota_exceeded"] },
+      {
+        required: [
+          "status",
+          "handle_id",
+          "qualify_id",
+          "lead_ids",
+          "launched_count",
+          "failed",
+          "quota_exceeded",
+          "lens_id",
+          "_meta",
+        ],
+      },
+    ],
   },
   execute: async (
     client: LeadbayClient,

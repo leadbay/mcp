@@ -16,16 +16,19 @@ import { mockHttp, resetHttpMock, httpsMockFactory } from "./harness.js";
 
 vi.mock("node:https", () => httpsMockFactory());
 
-import { LeadbayClient } from "@leadbay/core";
+import { InMemoryBulkStore, LeadbayClient } from "@leadbay/core";
 import { buildServer } from "../src/server.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 const BASE = "https://api-us.leadbay.app";
 
-async function connect() {
+async function connect(opts: { bulkTracker?: InMemoryBulkStore } = {}) {
   const lbClient = new LeadbayClient(BASE, "u.test-token");
-  const server = buildServer(lbClient, { includeWrite: true });
+  const server = buildServer(lbClient, {
+    includeWrite: true,
+    bulkTracker: opts.bulkTracker,
+  });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const mcpClient = new Client({ name: "test", version: "0.0.1" }, {});
   await Promise.all([
@@ -128,5 +131,78 @@ describe("outputSchema on top 5 composites (P2: structured output)", () => {
     expect(structured.user.email).toBe("test@example.com");
     expect(structured.organization).toBeDefined();
     expect(structured.organization.id).toBe("org-1");
+  });
+
+  it("import_leads async kickoff returns schema-valid structuredContent", async () => {
+    mockHttp([
+      {
+        method: "GET",
+        path: "/1.5/users/me",
+        status: 200,
+        body: {
+          email: "test@example.com",
+          name: "Test User",
+          admin: true,
+          manager: false,
+          language: "en",
+          organization: { id: "org-1", name: "Test Co" },
+          last_requested_lens: 42,
+        },
+      },
+      {
+        method: "POST",
+        path: /\/1\.5\/imports\?file_name=/,
+        status: 200,
+        body: {
+          id: "imp-async-1",
+          total_records: 1,
+          imported_records: 0,
+          pending_imported_records: 1,
+          pre_processing: { finished: false, error: null },
+          processing: { finished: false, error: null },
+        },
+      },
+    ]);
+    const { mcpClient } = await connect({ bulkTracker: new InMemoryBulkStore() });
+    const result = await mcpClient.callTool({
+      name: "leadbay_import_leads",
+      arguments: {
+        domains: [{ domain: "apple.com" }],
+        wait_for_completion: false,
+      },
+    });
+    expect((result as any).isError).not.toBe(true);
+    const structured = (result as any).structuredContent;
+    expect(structured.status).toBe("running");
+    expect(structured.handle_id).toBeTypeOf("string");
+    expect(structured.importIds).toEqual(["imp-async-1"]);
+    expect(structured.leads).toBeUndefined();
+    expect(structured.not_imported).toBeUndefined();
+  });
+
+  it("bulk_qualify_leads async kickoff returns schema-valid structuredContent", async () => {
+    mockHttp([
+      {
+        method: "POST",
+        path: "/1.5/leads/lead-1/web_fetch?force_fetch=false",
+        status: 204,
+      },
+    ]);
+    const { mcpClient } = await connect({ bulkTracker: new InMemoryBulkStore() });
+    const result = await mcpClient.callTool({
+      name: "leadbay_bulk_qualify_leads",
+      arguments: {
+        leadIds: ["lead-1"],
+        lensId: 42,
+        wait_for_completion: false,
+      },
+    });
+    expect((result as any).isError).not.toBe(true);
+    const structured = (result as any).structuredContent;
+    expect(structured.status).toBe("running");
+    expect(structured.handle_id).toBeTypeOf("string");
+    expect(structured.qualify_id).toBe(structured.handle_id);
+    expect(structured.lead_ids).toEqual(["lead-1"]);
+    expect(structured.launched_count).toBe(1);
   });
 });

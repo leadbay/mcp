@@ -1436,7 +1436,11 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
       },
       _meta: { type: "object" },
     },
-    required: ["leads", "not_imported", "importIds", "region", "_meta"],
+    required: ["importIds", "region", "_meta"],
+    anyOf: [
+      { required: ["leads", "not_imported", "importIds", "region", "_meta"] },
+      { required: ["status", "handle_id", "importIds", "progress", "region", "_meta"] },
+    ],
   },
   execute: async (
     client: LeadbayClient,
