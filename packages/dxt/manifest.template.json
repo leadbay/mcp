@@ -1,6 +1,5 @@
 {
-  "dxt_version": "0.2",
-  "_iter_27_note_dxt_to_mcpb": "Field name kept as `dxt_version` for backwards-compat with Claude Desktop installers that match the field. The bundle is now also published as `leadbay-X.Y.Z.mcpb`. When Anthropic finalises the field rename, swap to `mcpb_version`; until then this stays.",
+  "manifest_version": "0.2",
   "name": "leadbay",
   "display_name": "Leadbay",
   "version": "{{VERSION}}",
@@ -52,7 +51,6 @@
       "type": "string",
       "title": "Region",
       "description": "Leadbay backend for your account (us or fr). If you don't know, try fr first — EU accounts are the default.",
-      "enum": ["us", "fr"],
       "default": "fr",
       "required": true
     },
