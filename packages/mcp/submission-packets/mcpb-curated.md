@@ -8,7 +8,7 @@ Package name: Leadbay
 
 Package identifier: `leadbay`
 
-Version: `0.6.1`
+Version: `0.6.2`
 
 Publisher: Leadbay
 
@@ -28,17 +28,17 @@ Bundle format: MCPB, emitted from the DXT-compatible manifest with `dxt_version:
 
 MCPB release URL:
 
-`https://github.com/leadbay/leadclaw/releases/download/mcp-v0.6.1/leadbay-0.6.1.mcpb`
+`https://github.com/leadbay/leadclaw/releases/download/mcp-v0.6.2/leadbay-0.6.2.mcpb`
 
 SHA-256:
 
-`83addea0b480e3edf1e1175542a7ff5988500f484156251ab60f9d45388fd4f7`
+`TODO: fill after CI publishes the GitHub Release asset`
 
 Compute after release:
 
 ```bash
-gh release download mcp-v0.6.1 --pattern 'leadbay-0.6.1.mcpb'
-openssl dgst -sha256 leadbay-0.6.1.mcpb
+gh release download mcp-v0.6.2 --pattern 'leadbay-0.6.2.mcpb'
+openssl dgst -sha256 leadbay-0.6.2.mcpb
 ```
 
 ## Descriptions
@@ -49,7 +49,7 @@ Leadbay lets Claude find, research, qualify, and prepare outreach for B2B prospe
 
 Long description:
 
-Leadbay MCP connects Claude Desktop to Leadbay for B2B lead discovery, qualification, research, and outreach prep. Users provide a Leadbay bearer token and region during extension setup. Claude can check account status, pull fresh leads, research companies and contacts, prepare outreach-ready email and LinkedIn drafts, and optionally log or update Leadbay state when write tools are enabled. Version 0.6.1 includes MCP annotations, typed outputs, prompts, resources, progress notifications, cancellation support, and elicitation for safer agent workflows.
+Leadbay MCP connects Claude Desktop to Leadbay for B2B lead discovery, qualification, research, and outreach prep. Users provide a Leadbay bearer token and region during extension setup. Claude can check account status, pull fresh leads, research companies and contacts, prepare outreach-ready email and LinkedIn drafts, and optionally log or update Leadbay state when write tools are enabled. Version 0.6.2 includes MCP annotations, typed outputs, prompts, resources, progress notifications, cancellation support, and elicitation for safer agent workflows.
 
 ## Manifest notes
 
@@ -59,7 +59,7 @@ Validated fields:
 
 - `dxt_version: 0.2` retained for current Claude Desktop compatibility.
 - `name: leadbay`
-- `version: 0.6.1` rendered during build.
+- `version: 0.6.2` rendered during build.
 - `server.type: node`
 - `compatibility.runtimes.node: >=22`
 - `user_config.leadbay_token` marked sensitive and required.

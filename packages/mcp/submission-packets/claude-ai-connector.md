@@ -18,7 +18,7 @@ npm: https://www.npmjs.com/package/@leadbay/mcp
 
 MCP Registry name: `io.github.leadbay/leadbay-mcp`
 
-Package: `@leadbay/mcp@0.6.1`
+Package: `@leadbay/mcp@0.6.2`
 
 Install command: `npx -y @leadbay/mcp@0.6`
 
@@ -40,7 +40,7 @@ Leadbay MCP connects Claude to your Leadbay account for AI lead discovery, quali
 
 Long description:
 
-Leadbay MCP gives Claude access to the same B2B prospecting workflow teams use inside Leadbay. With a Leadbay bearer token, Claude can inspect account status, retrieve daily lead batches, research a domain or lead, summarize qualification signals, prepare outreach packages, and help operators keep CRM and outreach state current. The server exposes high-level composite tools for common sales workflows plus advanced granular tools for deeper automation. Version 0.6.1 includes MCP annotations, typed outputs, prompts, resources, progress notifications, cancellation support, and elicitation for safer agent workflows. Composite write tools are enabled by default and can be disabled with `LEADBAY_MCP_WRITE=0`.
+Leadbay MCP gives Claude access to the same B2B prospecting workflow teams use inside Leadbay. With a Leadbay bearer token, Claude can inspect account status, retrieve daily lead batches, research a domain or lead, summarize qualification signals, prepare outreach packages, and help operators keep CRM and outreach state current. The server exposes high-level composite tools for common sales workflows plus advanced granular tools for deeper automation. Version 0.6.2 includes MCP annotations, typed outputs, prompts, resources, progress notifications, cancellation support, and elicitation for safer agent workflows. Composite write tools are enabled by default and can be disabled with `LEADBAY_MCP_WRITE=0`.
 
 ## Authentication
 

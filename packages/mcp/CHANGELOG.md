@@ -1,6 +1,10 @@
 # Changelog — @leadbay/mcp
 
-## 0.6.1 — UNRELEASED
+## 0.6.2 — UNRELEASED
+
+**MCPB install fix**: desktop extension bundles now use the current `manifest_version` field and remove unsupported manifest keys (`user_config.*.enum` and an internal note field) so Claude Desktop can preview and install the MCPB.
+
+## 0.6.1 — 2026-05-10
 
 **Distribution**: listed in the official MCP Registry as `io.github.leadbay/leadbay-mcp` (auto-published from CI via GitHub OIDC); installable as a Claude Code plugin via `/plugin marketplace add leadbay/leadclaw` then `/plugin install leadbay@leadbay-leadclaw`; submission packets prepared for the Claude.ai connector directory and Anthropic's curated MCPB extension directory.
 
