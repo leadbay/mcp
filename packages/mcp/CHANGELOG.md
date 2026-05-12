@@ -1,6 +1,12 @@
 # Changelog — @leadbay/mcp
 
-## 0.6.2 — UNRELEASED
+## 0.6.3 — 2026-05-12
+
+**Async import schema fix**: `leadbay_import_leads` now declares both its legacy blocking result shape and its async kickoff shape (`{status: "running", handle_id, importIds, progress}`) in `outputSchema`, so Claude Desktop and other MCP SDK clients accept the fast handle response instead of rejecting `structuredContent`.
+
+**Async qualification schema fix**: `leadbay_bulk_qualify_leads` now also declares its async kickoff shape (`{status: "running", handle_id, qualify_id, ...}`), matching the `wait_for_completion:false` behavior added for short MCP client transport timeouts.
+
+## 0.6.2 — 2026-05-12
 
 **MCPB install fix**: desktop extension bundles now use the current `manifest_version` field and remove unsupported manifest keys (`user_config.*.enum` and an internal note field) so Claude Desktop can preview and install the MCPB.
 
