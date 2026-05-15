@@ -1,0 +1,17 @@
+---
+name: leadbay_get_user_prompt
+kind: tool-description
+short_description: |
+  Read the org's intelligence-refinement prompt — free-text instruction that
+  steers Leadbay's lead recommendations beyond firmographics.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Read the org's intelligence-refinement prompt (free-text instruction that steers lead recommendations beyond firmographics). Returns `{prompt: null, set: false}` when none is configured (the backend returns 204 in that case).
+
+{{include:headers/tool-when-to-use}} to know what's currently steering the agent's recommendations before suggesting a refine.
+
+{{include:headers/tool-when-not-to-use}} to set/change the prompt — use leadbay_refine_prompt.

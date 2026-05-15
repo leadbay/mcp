@@ -1,0 +1,17 @@
+---
+name: leadbay_recall_ordered_titles
+kind: tool-description
+short_description: |
+  Show job titles the org has previously enriched, so the agent can
+  repeat the same titles for new leads (or skip already-saturated ones).
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Show job titles the org has previously enriched, so the agent can repeat the same titles for new leads (or skip already-saturated ones). Two implementation paths: (1) PREFERRED — a selection-scoped preview call that reads `previously_enriched_titles` from the backend (newer prod field). (2) FALLBACK — live aggregation across each lead's enriched contacts. The composite picks transparently.
+
+{{include:headers/tool-when-to-use}} before leadbay_enrich_titles, to plan which titles to order.
+
+{{include:headers/tool-when-not-to-use}} when you already know the exact titles you want to enrich.

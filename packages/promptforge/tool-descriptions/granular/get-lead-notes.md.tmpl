@@ -1,0 +1,17 @@
+---
+name: leadbay_get_lead_notes
+kind: tool-description
+short_description: |
+  Read existing notes on a lead — context the human team or prior agent runs
+  have already captured.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Read existing notes on a lead — context the human team or prior agent runs have already captured.
+
+{{include:headers/tool-when-to-use}} before adding a note via leadbay_report_outreach, to avoid duplicating or overwriting context the SDR already wrote.
+
+{{include:headers/tool-when-not-to-use}} when the lead summary's `notes_count` is 0 — there's nothing to fetch.

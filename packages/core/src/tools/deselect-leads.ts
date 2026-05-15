@@ -3,6 +3,7 @@
 
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_deselect_leads as DESELECT_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface DeselectLeadsParams {
   leadIds: string[];
@@ -17,10 +18,7 @@ export const deselectLeads: Tool<DeselectLeadsParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Remove leads from the user's transient selection. " +
-    "When to use: when narrowing a previously-built selection without clearing it entirely. " +
-    "When NOT to use: in normal flow — leadbay_enrich_titles handles selection lifecycle.",
+  description: DESELECT_LEADS_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

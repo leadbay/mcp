@@ -1,0 +1,20 @@
+---
+name: leadbay_adjust_audience
+kind: tool-description
+short_description: |
+  Restrict (or expand) the lens audience by sector / size. Free-text sectors
+  auto-resolve against the taxonomy; ambiguous matches are surfaced rather
+  than guessed. Filter MERGES with existing criteria.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Restrict (or expand) the lens audience by sector / size. Free-text sectors are auto-resolved against the sector taxonomy; ambiguous matches are surfaced to the agent rather than guessed silently. Permission routing is hidden: the default lens auto-clones to a new user lens; an org-level lens defaults to a per-user draft (admins can override with `save_for_org:true`). Filter MERGES with existing criteria (unrelated criteria are not dropped).
+
+{{include:headers/tool-when-to-use}} when the user wants to see different kinds of leads (sector / size / etc.).
+
+{{include:headers/tool-when-not-to-use}} to refine BEYOND firmographics — that's leadbay_refine_prompt.
+
+{{include:headers/verification-required-if-write}}

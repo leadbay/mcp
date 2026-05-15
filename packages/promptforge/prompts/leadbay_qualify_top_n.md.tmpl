@@ -1,0 +1,36 @@
+---
+name: leadbay_qualify_top_n
+kind: prompt
+short_description: |
+  Bulk-qualify the top N un-qualified leads in the active lens. Uses
+  leadbay_bulk_qualify_leads with a sensible default budget.
+arguments:
+  - name: count
+    description: "How many leads to qualify (default 10, max 25). Higher counts may take 5+ minutes."
+    required: false
+expected_calls:
+  - leadbay_bulk_qualify_leads
+  - leadbay_research_lead
+failure_modes:
+  - Picks a count larger than the user asked for (or larger than the max 25)
+  - Glosses over still-running leads in the summary instead of naming them
+  - Recommends a lead from the existing qualified pool instead of one from this batch's actual results
+---
+
+Qualify the top {{arg:count_or_default}} un-qualified leads in the active Leadbay lens.
+
+# PHASE 1 — LAUNCH
+Call `leadbay_bulk_qualify_leads` with `count={{arg:count_or_default}}`.
+
+# PHASE 2 — POLL
+While it polls, expect notifications / progress events showing per-lead transitions. Surface meaningful ones (e.g. "lead X just finished") to me as they arrive.
+
+# PHASE 3 — SUMMARIZE
+
+When `bulk_qualify_leads` returns, summarize:
+- How many qualified (name the count)
+- How many are still running (name them, by lead_id + lead name if available, so I can poll again later)
+- The 3 highest-`ai_agent_lead_score` leads from THIS batch, with their `qualification_summary` (one sentence each)
+
+# PHASE 4 — RECOMMEND
+Recommend the single most-promising lead from this batch and offer to research it deeply with `leadbay_research_lead`. Do not actually call `research_lead` yet — wait for my go.

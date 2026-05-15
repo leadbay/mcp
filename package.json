@@ -5,10 +5,17 @@
   "description": "Leadbay packages monorepo — @leadbay/core shared tools, @leadbay/leadclaw OpenClaw adapter, @leadbay/mcp MCP server",
   "type": "module",
   "scripts": {
-    "build": "pnpm -r build",
+    "prompts:build": "pnpm --filter @leadbay/promptforge build",
+    "prompts:check": "pnpm --filter @leadbay/promptforge check",
+    "prompts:approve-drift": "pnpm --filter @leadbay/promptforge exec tsx src/cli.ts approve-drift",
+    "build": "pnpm prompts:build && pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
-    "test:smoke": "pnpm --filter @leadbay/core --filter @leadbay/mcp test:smoke"
+    "test": "pnpm prompts:check && pnpm -r test",
+    "test:smoke": "pnpm --filter @leadbay/core --filter @leadbay/mcp test:smoke",
+    "test:eval": "EVAL=1 pnpm --filter @leadbay/mcp exec vitest run --config vitest.eval.config.ts",
+    "test:gate": "EVAL=1 EVAL_TIER=gate pnpm --filter @leadbay/mcp exec vitest run --config vitest.eval.config.ts",
+    "test:periodic": "EVAL=1 EVAL_TIER=periodic pnpm --filter @leadbay/mcp exec vitest run --config vitest.eval.config.ts",
+    "eval:drift": "tsx packages/mcp/test/eval/scripts/drift-detector.ts"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

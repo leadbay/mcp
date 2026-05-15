@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, SectorPayload } from "../types.js";
+import { leadbay_list_sectors as LIST_SECTORS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface ListSectorsParams {
   lang?: string;
@@ -15,12 +16,7 @@ export const listSectors: Tool<ListSectorsParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "List the sector taxonomy (id + display name in the requested language). " +
-    "When to use: to resolve a free-text sector name (e.g. 'Healthcare') into the sector ids " +
-    "that leadbay_adjust_audience needs. Default: lang follows the caller's language; " +
-    "includeInvisible=false returns ~1,091 visible sectors. " +
-    "When NOT to use: when you already have sector ids — pass them directly.",
+  description: LIST_SECTORS_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

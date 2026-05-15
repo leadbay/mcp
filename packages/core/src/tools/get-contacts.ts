@@ -1,6 +1,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
 import type { ContactPayload, PaidContactPayload } from "../types.js";
+import { leadbay_get_contacts as GET_CONTACTS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface GetContactsParams {
   leadId: string;
@@ -15,11 +16,7 @@ export const getContacts: Tool<GetContactsParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Get contacts for a lead, including enriched email and phone data. Returns both organization contacts and enrichable contacts with IDs. " +
-    "When to use: to check enrichment status (contact.enrichment.done) on individual leads after a bulk enrichment was launched, " +
-    "or to find the contact_id needed by leadbay_enrich_contacts. " +
-    "When NOT to use: as a substitute for leadbay_research_lead, which already includes enriched contacts in its return.",
+  description: GET_CONTACTS_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

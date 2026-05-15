@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, LensPayload } from "../types.js";
+import { leadbay_create_lens as CREATE_LENS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface CreateLensParams {
   base: number;
@@ -16,10 +17,7 @@ export const createLens: Tool<CreateLensParams> = {
     idempotentHint: false,
     openWorldHint: true,
   },
-  description:
-    "Create a new user-level lens by cloning an existing lens's filter/scoring as the starting point. " +
-    "When to use: when adjust_audience determined the current lens cannot be edited (e.g. it's the org default). " +
-    "When NOT to use: to update an existing lens — use leadbay_update_lens or leadbay_update_lens_filter.",
+  description: CREATE_LENS_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

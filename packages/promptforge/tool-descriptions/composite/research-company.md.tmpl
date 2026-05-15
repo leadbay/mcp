@@ -1,0 +1,18 @@
+---
+name: leadbay_research_company
+kind: tool-description
+short_description: |
+  Deep-dive research on a specific company by NAME (fuzzy match against
+  the active lens's wishlist). Use when the user references a company
+  by name and you don't yet have its lead_id.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Deep-dive research on a specific company by NAME (fuzzy match against the active lens's wishlist). Pass `companyName` (matches the top-scoring lead with that name) or `leadId` (takes precedence when both supplied).
+
+{{include:headers/tool-when-to-use}} when the user references a company by name and you don't yet have its `lead_id`.
+
+{{include:headers/tool-when-not-to-use}} when you already have the lead_id — use leadbay_research_lead directly (it bundles richer signals + better top-down ordering for the agent).

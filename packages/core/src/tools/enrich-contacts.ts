@@ -1,6 +1,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
 import type { UserMePayload } from "../types.js";
+import { leadbay_enrich_contacts as ENRICH_CONTACTS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface EnrichContactsParams {
   leadId: string;
@@ -18,11 +19,7 @@ export const enrichContacts: Tool<EnrichContactsParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Order email and/or phone enrichment for a specific contact. " +
-    "When to use: when you have a specific contact_id (from leadbay_get_contacts) and want to enrich just that one. " +
-    "When NOT to use: for bulk enrichment by job title across many leads — use leadbay_enrich_titles, which handles " +
-    "the selection lifecycle and returns a clean preview/launch flow.",
+  description: ENRICH_CONTACTS_DESCRIPTION,
   optional: true,
   inputSchema: {
     type: "object",

@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, FilterPayload } from "../types.js";
+import { leadbay_get_lens_filter as GET_LENS_FILTER_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface GetLensFilterParams {
   lensId: number;
@@ -14,10 +15,7 @@ export const getLensFilter: Tool<GetLensFilterParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Read the firmographic filter (sectors, sizes, locations) currently applied to a lens. " +
-    "When to use: before adjusting an audience — see what's already restricted so changes are diffs, not full replacements. " +
-    "When NOT to use: to actually apply changes — use the leadbay_adjust_audience composite, which handles permissions transparently.",
+  description: GET_LENS_FILTER_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

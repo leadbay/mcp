@@ -1,0 +1,5 @@
+**Domain extraction is a key factor of match success.** Build semantic helper columns BEFORE resolving identities. The Leadbay matcher leans heavily on `LEAD_WEBSITE`/`company_domain`; rows that arrive without one drop to fuzzy name matching, which is unreliable. Whenever a row lacks a website/domain column but contains a contact email at a real business domain, derive a `company_domain` from the email and treat it as `LEAD_WEBSITE` for resolution — but ONLY when that domain agrees with the company/deal/brand context (do not blindly use whatever's after the @).
+
+Ignore consumer mailbox domains such as gmail.com, hotmail.com, outlook.com, yahoo.com, icloud.com, proton.me/protonmail.com, aol.com, live.com, msn.com, me.com, gmx.*, and similar personal email providers — these are NOT company domains. Also ignore POS/vendor/group domains that conflict with the company (e.g. a `square.com` email on a coffee-shop row is the POS provider, not the shop). Keep the original email for CONTACT_EMAIL.
+
+When in doubt, sample several rows that share a candidate derived domain and confirm the company names cluster sensibly under it before committing.

@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_pick_clarification as PICK_CLARIFICATION_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface PickClarificationParams {
   option_id?: string;
@@ -15,12 +16,7 @@ export const pickClarification: Tool<PickClarificationParams> = {
     idempotentHint: false,
     openWorldHint: true,
   },
-  description:
-    "Answer the pending clarification question — either by picking one of the offered options (option_id) " +
-    "or by typing a free-text answer. The answer is stored as the new user_prompt and triggers regeneration. " +
-    "Admin-only. " +
-    "When to use: low-level. " +
-    "When NOT to use: from agent flow — use leadbay_answer_clarification.",
+  description: PICK_CLARIFICATION_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

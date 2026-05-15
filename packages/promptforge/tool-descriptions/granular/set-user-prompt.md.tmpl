@@ -1,0 +1,19 @@
+---
+name: leadbay_set_user_prompt
+kind: tool-description
+short_description: |
+  Set the org's intelligence-refinement prompt — free-text instruction that
+  steers Leadbay's lead recommendations beyond firmographics. Admin-only.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Set the org's intelligence-refinement prompt — free-text instruction that steers Leadbay's lead recommendations beyond firmographics. Admin-only. Setting this clears any pending clarification and triggers a full intelligence regeneration (web search + high-reasoning). `dry_run:true` returns the call shape without contacting the backend.
+
+{{include:headers/tool-when-to-use}} low-level.
+
+{{include:headers/tool-when-not-to-use}} from agent flow — use leadbay_refine_prompt, which polls for follow-up clarifications.
+
+{{include:headers/verification-required-if-write}}

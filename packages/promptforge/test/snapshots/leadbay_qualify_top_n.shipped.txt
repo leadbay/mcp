@@ -1,0 +1,5 @@
+Qualify the top 10 un-qualified leads in the active Leadbay lens:
+1. Call leadbay_bulk_qualify_leads with count=10.
+2. While it polls, expect notifications/progress events showing per-lead transitions.
+3. When it returns, summarize: how many qualified, how many still running, and the 3 highest-boost-score leads with their qualification_summary.
+4. Recommend the single most promising lead and offer to research it deeply with leadbay_research_lead.

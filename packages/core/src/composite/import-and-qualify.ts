@@ -8,6 +8,7 @@ import type {
   FileImportPayloadV15,
   ImportLeadsResponse,
 } from "../types.js";
+import { leadbay_import_and_qualify as IMPORT_AND_QUALIFY_DESCRIPTION } from "../tool-descriptions.generated.js";
 import {
   importLeads,
   escapeCsvCell,
@@ -305,59 +306,7 @@ export const importAndQualify: Tool<
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Composite: import a list of leads (CSV-shaped records OR a list of domains), then trigger Leadbay's AI " +
-    "qualification (web research + per-question scoring) on every imported leadId, and return both the import " +
-    "outcome and the per-lead qualification answers — in one call. " +
-    "For MCP clients with short transport timeouts, pass `wait_for_completion:false`; the tool returns quickly " +
-    "with an import `handle_id` that can be polled with leadbay_import_status before continuing qualification. " +
-    "Honours a total wall-clock budget; when the budget is exhausted before all leads finish qualifying, returns " +
-    "a `qualify_id` UUID handle that survives MCP restart and can be passed to leadbay_qualify_status to " +
-    "retrieve the rest of the answers later.\n\n" +
-    "Inputs:\n" +
-    "  - `domains`: list of `{domain, name?}` (Mode A) — mutually exclusive with `records`.\n" +
-    "  - `records`: list of CSV-shaped objects (Mode B), accompanied by `mappings`. Use `mappings.fields` with " +
-    "    StandardCrmFieldType names or 'CUSTOM.<id>' wire values; or `mappings.custom_fields` with field id " +
-    "    or name shorthand. At least one mapped field must be LEADBAY_ID, CRM_ID, SIREN, LEAD_NAME, or " +
-    "    LEAD_WEBSITE. For messy files, inspect every column and sample values, build a preservation plan, call leadbay_resolve_import_rows, and pass its " +
-    "    records_for_import / mappings_for_import here. Discover the org's mappable surface via " +
-    "    leadbay_list_mappable_fields. For each meaningful column decide standard field, CONTACT_* field, Leadbay note, custom field, derived helper, or skip with a reason; create/reuse custom fields for meaningful data with no standard field. For contact exports and embedded owner/contact lists, map parent company identity plus CONTACT_* fields; " +
-    "    expand structured owners, decision makers, or contacts into additional rows that repeat the parent lead identity and import one person per row. Repeated company/LEADBAY_ID rows import as multiple contacts. If there is no company website, derive " +
-    "    one from business contact email domains only when they agree with company/deal/brand context; ignore consumer mailbox and conflicting POS/vendor/group domains. Preserve HubSpot/source " +
-    "    links by reusing or creating a custom field with leadbay_create_custom_field; reuse existing HubSpot linked-id fields and preserve raw source identifiers such as hubspot_id and associated_deal when meaningful. Keep meaningful per-lead notes/context aside and write them with leadbay_add_note after the import returns lead IDs; for dry runs, report which notes would be written. For ambiguous rows, work to disambiguate with hydrated candidate profiles, exact phone/domain/registry/CRM id, and street-level location; if several candidates share a website, use location/phone/source URL path to pick the specific branch when exactly one matches.\n" +
-    `  - Budgets: \`total_budget_ms\` (default ${DEFAULT_TOTAL_BUDGET_MS / 60_000} min) caps the entire wall-clock; ` +
-    `    \`per_lead_budget_ms\` (default ${DEFAULT_PER_LEAD_BUDGET_MS / 1_000}s) caps each lead's individual qualification poll.\n\n` +
-    "Outputs include `qualified[]` (per-lead question answers), `still_running[]` (lead ids whose qualification " +
-    "exceeded the budget), `not_imported[]` (rows the wizard couldn't match), and `qualify_id` (the resumable " +
-    "handle when at least one lead is still running). Idempotent within a 5-min window: re-calling with the " +
-    "same records+mapping returns the same qualify_id (`reused: true`). The result has a `kind` discriminator " +
-    "(`'result' | 'preview'`); preview-mode (`dry_run: 'preview'`) returns mapping hints + custom-field " +
-    "candidates instead of importing. Pass `dry_run: true` for input-validation only (top-level `dry_run: true` " +
-    "appears in the result so the agent can distinguish from all-malformed input).\n\n" +
-    "When to use: the agent has a list of companies (domains, or CSV-shaped rows from the user's CRM) and " +
-    "wants Leadbay's full AI qualification — qualification answers, web-research signals — without orchestrating " +
-    "import + bulk_qualify_leads + lead_profile chains by hand.\n" +
-    "When NOT to use: discovery (use leadbay_pull_leads); single-lead deep dive (use leadbay_research_lead); " +
-    "high-cadence or untrusted automation — this mutates user state by creating CRM-import rows and consumes " +
-    "ai_rescore + web_fetch quota.\n\n" +
-    "⚠️ MUTATES USER STATE. Each call:\n" +
-    "  - creates a CRM-imports row (visible in the web UI)\n" +
-    "  - touches onboarding state\n" +
-    "  - launches up to N×ai_rescore + N×web_fetch quota where N = imported lead count " +
-    "(unless `skip_already_qualified: true` (default) excludes already-scored leads)\n\n" +
-    "ℹ️ Monitor-tab membership: imported leads are NOT auto-promoted to the user's Monitor view. " +
-    "The lens-scoring rule decides — only leads that score above the lens threshold get " +
-    "`in_monitor: true` server-side. Lower-scoring imports stay invisible to the Monitor tab. " +
-    "Tell the user this if they ask 'where did my import go?' — answer is the CRM-imports list, " +
-    "not Monitor.\n\n" +
-    "ℹ️ In-lens-but-unscored leads: a lead may be admitted to the active lens (lens GET returns 200) " +
-    "but the lens-scoring job may not materialize for it (qualification never starts). The composite " +
-    "today surfaces hard-rejected leads (404 from lens GET) in `not_in_lens[]`, but in-lens-unscored " +
-    "leads currently sit in `still_running[]` — there's no per-lead 'scoring queued vs won't_compute' " +
-    "signal from the backend yet (tracked: leadbay/product#3571). If still_running stays non-empty for " +
-    "a lead more than 5 minutes after a successful import, suggest the user verify the lens covers " +
-    "that lead's profile (e.g., sector match) — qualify_status's poll won't ever produce answers.\n\n" +
-    "Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role; active billing.",
+  description: IMPORT_AND_QUALIFY_DESCRIPTION,
   write: true,
   version: "0.2.0",
   inputSchema: {

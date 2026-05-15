@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_dismiss_clarification as DISMISS_CLARIFICATION_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 export const dismissClarification: Tool<Record<string, never>> = {
   name: "leadbay_dismiss_clarification",
@@ -10,10 +11,7 @@ export const dismissClarification: Tool<Record<string, never>> = {
     idempotentHint: false,
     openWorldHint: true,
   },
-  description:
-    "Dismiss the pending clarification without answering. Leadbay proceeds with its best guess. Admin-only. " +
-    "When to use: when the user explicitly doesn't want to answer the disambiguation. " +
-    "When NOT to use: as a default — answering with even a free-text reason gives Leadbay better signal.",
+  description: DISMISS_CLARIFICATION_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: { type: "object", properties: {}, additionalProperties: false },

@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, EpilogueStatusType } from "../types.js";
+import { leadbay_set_epilogue_status as SET_EPILOGUE_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 // Short labels accepted by the composite, mapped to the EPILOGUE_* enum the
 // backend expects. Keeping a public mapping so callers (and tests) see exactly
@@ -30,13 +31,7 @@ export const setEpilogueStatus: Tool<SetEpilogueStatusParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Bulk-set the outreach progress (epilogue) status across a set of leads. Status values: STILL_CHASING, " +
-    "COULD_NOT_REACH_STILL_TRYING, INTEREST_VALIDATED_OR_MEETING_PLANED ('meeting booked'), NOT_INTERESTED_LOST " +
-    "(short labels accepted; mapped to the EPILOGUE_* enum). Up to 1000 leads per call. " +
-    "When to use: low-level. " +
-    "When NOT to use: from agent flow — leadbay_report_outreach pairs this with a note + verification, which is " +
-    "what humans actually need to see in Leadbay.",
+  description: SET_EPILOGUE_STATUS_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

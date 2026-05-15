@@ -13,6 +13,7 @@ import type {
   ProspectingActionsPayload,
 } from "../types.js";
 
+import { leadbay_research_lead as RESEARCH_LEAD_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface ResearchLeadParams {
   leadId: string;
   lensId?: number;
@@ -171,19 +172,7 @@ export const researchLead: Tool<ResearchLeadParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Tell me everything decision-relevant about a single lead. Bundles the lens-scoped lead profile, the AI " +
-    "qualification answers (the agent's knowledge-base food), the structured web-research signals (with hot " +
-    "flags + sources), the enriched contacts, and the recent notes/epilogue/prospecting activity in one call. " +
-    "Order is deliberate: qualification first, then signals, then firmographics, then contacts, then engagement. " +
-    "Scoring has two layers: the basic `score` (firmographic, always present, already decent) and the AI " +
-    "qualification layer (`ai_agent_lead_score` + per-question answers + web_fetch signals). The AI layer is " +
-    "pre-populated for roughly the top 10 of each daily batch, and on-demand (via leadbay_bulk_qualify_leads) " +
-    "for anything below that. Combine both layers when judging a lead. " +
-    "When to use: when picking up a single lead from leadbay_pull_leads to decide whether to act on it. " +
-    "When NOT to use: across many leads at once — that's leadbay_pull_leads' job. " +
-    "(This composite supersedes the lower-level leadbay_get_lead_profile in agent flow; the granular tool stays " +
-    "available for fine-grained access.)",
+  description: RESEARCH_LEAD_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

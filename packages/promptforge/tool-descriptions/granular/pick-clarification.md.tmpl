@@ -1,0 +1,19 @@
+---
+name: leadbay_pick_clarification
+kind: tool-description
+short_description: |
+  Answer the pending clarification question — either by picking one of the
+  offered options (option_id) or by typing a free-text answer. Admin-only.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: false
+  openWorldHint: true
+---
+Answer the pending clarification question — either by picking one of the offered options (`option_id`) or by typing a free-text answer. The answer is stored as the new user_prompt and triggers regeneration. Admin-only.
+
+{{include:headers/tool-when-to-use}} low-level.
+
+{{include:headers/tool-when-not-to-use}} from agent flow — use leadbay_answer_clarification.
+
+{{include:headers/verification-required-if-write}}

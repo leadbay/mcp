@@ -4,6 +4,7 @@ import { getLeadProfile } from "../tools/get-lead-profile.js";
 import { getContacts } from "../tools/get-contacts.js";
 import { enrichContacts } from "../tools/enrich-contacts.js";
 
+import { leadbay_prepare_outreach as PREPARE_OUTREACH_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface PrepareOutreachParams {
   leadId: string;
   enrich?: boolean;
@@ -18,12 +19,7 @@ export const prepareOutreach: Tool<PrepareOutreachParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Prepare an outreach package for a single lead: recommended contact + enriched contact details + AI summary. " +
-    "When to use: when the agent is about to draft outreach for ONE specific lead and needs the contact's email/phone. " +
-    "When NOT to use: across many leads — use leadbay_enrich_titles for bulk; for general lead detail use " +
-    "leadbay_research_lead (richer signals); to actually log the outreach action use leadbay_report_outreach " +
-    "(requires verification).",
+  description: PREPARE_OUTREACH_DESCRIPTION,
   optional: true,
   inputSchema: {
     type: "object",

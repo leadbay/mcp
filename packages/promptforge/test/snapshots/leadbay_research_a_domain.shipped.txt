@@ -1,0 +1,4 @@
+Research the company with domain '<<DOMAIN_PLACEHOLDER>>' for me using Leadbay:
+1. Call leadbay_import_and_qualify with domains=[{domain:'<<DOMAIN_PLACEHOLDER>>'}]. This imports the lead AND runs AI qualification.
+2. When the import resolves, call leadbay_research_lead on the new leadId.
+3. Summarize: who is this company, what's their fit (qualification answers), what signals stand out, and which contact would I email first. Be honest about uncertainty.

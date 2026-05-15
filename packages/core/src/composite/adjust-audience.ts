@@ -8,6 +8,7 @@ import type {
   FilterCriterion,
 } from "../types.js";
 
+import { leadbay_adjust_audience as ADJUST_AUDIENCE_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface AdjustAudienceParams {
   sectors?: string[];           // free text or sector ids
   sector_ids?: string[];        // explicit ids if known
@@ -156,14 +157,7 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Restrict (or expand) the lens audience by sector / size. Free-text sectors are auto-resolved against " +
-    "the sector taxonomy; ambiguous matches are surfaced to the agent rather than guessed silently. " +
-    "Permission routing is hidden: the default lens auto-clones to a new user lens; an org-level lens defaults " +
-    "to a per-user draft (admins can override with save_for_org:true). Filter MERGES with existing criteria " +
-    "(unrelated criteria are not dropped). " +
-    "When to use: when the user wants to see different kinds of leads (sector / size / etc.). " +
-    "When NOT to use: to refine BEYOND firmographics — that's leadbay_refine_prompt.",
+  description: ADJUST_AUDIENCE_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

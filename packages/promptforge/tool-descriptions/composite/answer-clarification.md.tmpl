@@ -1,0 +1,20 @@
+---
+name: leadbay_answer_clarification
+kind: tool-description
+short_description: |
+  Answer the pending clarification question Leadbay raised after a
+  refine_prompt. Stored as the new user_prompt and triggers regeneration.
+  Pass option_id (preferred) or text_answer. Admin-only.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: false
+  openWorldHint: true
+---
+Answer the pending clarification question Leadbay raised after a refine_prompt. The answer is stored as the new `user_prompt` and triggers regeneration. Pass `option_id` (preferred — pick from the offered options) or `text_answer` (free-text). Admin-only.
+
+{{include:headers/tool-when-to-use}} after leadbay_refine_prompt returns `status='clarification_pending'`.
+
+{{include:headers/tool-when-not-to-use}} to set a brand-new prompt — use leadbay_refine_prompt.
+
+{{include:headers/verification-required-if-write}}

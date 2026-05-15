@@ -6,6 +6,7 @@ import type {
   WishlistResponse,
 } from "../types.js";
 
+import { leadbay_enrich_titles as ENRICH_TITLES_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface EnrichTitlesParams {
   titles?: string[];
   leadIds?: string[];
@@ -32,18 +33,7 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Order contact enrichments by job title across many leads. Contacts are NOT returned by default with a lead " +
-    "(Leadbay keeps enrichment out-of-band to control cost); the agent requests them on demand via this tool when " +
-    "it's ready to actually reach out. Two modes: " +
-    "(A) NO titles param — returns the available titles + Leadbay's title_suggestions + auto_included_titles " +
-    "+ a count of enrichable contacts, so the agent can ask the user which titles to enrich. " +
-    "(B) titles given — calls preview, then launches if there's anything enrichable. " +
-    "On 429 returns {status:'quota_exceeded'} cleanly. Selection lifecycle is wrapped in a try/finally so the " +
-    "user's selection is left clean even on error. " +
-    "When to use: as the agent's go-to enrichment entry point, immediately before proposing outreach. " +
-    "When NOT to use: to enrich a single contact — that's leadbay_enrich_contacts (granular). " +
-    "Speculatively, before the user has committed to outreaching — enrichment spends credits.",
+  description: ENRICH_TITLES_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

@@ -1,0 +1,18 @@
+---
+name: leadbay_qualify_status
+kind: tool-description
+short_description: |
+  Retrieve the current state of an import_and_qualify or bulk_qualify_leads
+  launch by `qualify_id`. Returns qualified[] / still_running[] refreshed
+  against the backend, with 30-day persistent handle.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Retrieve the current state of an import_and_qualify (or bulk_qualify_leads) launch by `qualify_id`. Returns the same `qualified[]` / `still_running[]` shape as the original composite, refreshed against the backend at call time. The handle is persisted to `~/.leadbay/bulks.json` with a 30-day TTL and survives MCP restart.
+
+{{include:headers/tool-when-to-use}} after leadbay_import_and_qualify or leadbay_bulk_qualify_leads returned a `qualify_id` with non-empty `still_running[]`, call this tool a few minutes later (or hours) to retrieve the now-completed qualifications without re-running the import or re-spending qualify quota.
+
+{{include:headers/tool-when-not-to-use}} as a substitute for leadbay_research_lead — that's a deeper per-lead profile and includes contacts. This tool is purely the qualification answers + signals_count.

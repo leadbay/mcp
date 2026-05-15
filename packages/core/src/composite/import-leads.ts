@@ -12,6 +12,7 @@ import type {
   CustomFieldDef,
 } from "../types.js";
 
+import { leadbay_import_leads as IMPORT_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface DomainInput {
   domain: string;
   name?: string;
@@ -1271,54 +1272,7 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Import leads into Leadbay's CRM via the file-import wizard. Returns stable Leadbay leadIds for downstream chaining " +
-    "into leadbay_bulk_qualify_leads / leadbay_research_lead. For MCP clients with short transport timeouts, pass " +
-    "`wait_for_completion:false` to return quickly with `{status:'running', handle_id}`; poll `leadbay_import_status` " +
-    "with that handle for progress and the final `{leads, not_imported, importIds}` result.\n\n" +
-    "TWO MODES:\n" +
-    "  A) Domain-list shortcut — pass `domains: [{domain, name?}]`. The tool builds a 2-column CSV " +
-    "(LEAD_NAME, LEAD_WEBSITE) and imports with the default mapping. Output: { leads: [{domain, leadId, name}], " +
-    "not_imported: [{domain, reason}], importIds, _meta }.\n" +
-    "  B) Custom records + mapping — pass `records: [{Col1, Col2, ...}]` plus `mappings.fields: {Col1: 'LEAD_NAME', Col2: 'LEAD_WEBSITE', ...}`. " +
-    "The tool synthesizes a CSV from the union of record keys (deterministic order) and POSTs the " +
-    "caller-supplied mapping to the wizard. mappings.fields must include LEADBAY_ID, CRM_ID, SIREN, " +
-    "LEAD_NAME, or LEAD_WEBSITE (the resolver needs at least one identity key). Output: { leads: [{rowId, domain?, leadId, name}], " +
-    "not_imported: [{rowId, domain?, reason}], importIds, _meta }. `rowId` round-trips your input order.\n\n" +
-    "Pass exactly one of `domains` / `records`. Reserved column MCP_ROW_ID (any case) cannot appear in " +
-    "records or mappings — the tool injects it for stable reconciliation.\n\n" +
-    "⚠️ MUTATES USER STATE. Each call:\n" +
-    "  - creates a row in the user's CRM-imports list (visible in the web UI)\n" +
-    "  - touches onboarding state (startFileless, onboarding step → PROCESSING)\n" +
-    "Suitable for occasional automation. NOT suitable for high-cadence (>5 calls/day) — wait for " +
-    "the backend programmatic endpoint (issue: leadbay/backend prolonged-import-with-crawl).\n\n" +
-    "ℹ️ Monitor-tab membership: imported leads are NOT auto-promoted to the user's Monitor view. " +
-    "Lens-scoring decides — only above-threshold leads get `in_monitor: true` server-side.\n\n" +
-    "When to use: you have a list of company domains from another system (CRM, analytics, email " +
-    "correspondents) and need stable Leadbay leadIds; or you have CRM-shaped rows with custom " +
-    "columns (sector, location, status, etc.) and want to drive the wizard with explicit field mappings.\n" +
-    "When NOT to use: for prospect discovery (use leadbay_pull_leads); for one specific company's " +
-    "profile (use leadbay_research_company); when you can't tolerate the side effects above.\n\n" +
-    "For messy user files, call leadbay_resolve_import_rows first. It uses the backend resolver to add " +
-    "LEADBAY_ID for deterministic matches and returns records_for_import/mappings_for_import you can pass here. " +
-    "Agents should still inspect every column and sample values, build a preservation plan, and pass an explicit final mapping; column names vary too much to rely on fixed guesses. " +
-    "For each meaningful column decide standard field, CONTACT_* field, Leadbay note, custom field, derived helper, or skip with a reason. Default to preserving client-provided business data; for meaningful columns with no standard field, create/reuse custom fields instead of silently dropping them. " +
-    "For contact-only exports, derive a company-domain column from CONTACT_EMAIL only when the email uses a real business domain " +
-    "(not gmail/hotmail/outlook/yahoo/icloud/proton/aol/etc.) and the domain agrees with the company/deal/brand context; do not use POS/vendor/group domains that conflict with the row. " +
-    "Map that helper column to LEAD_WEBSITE, and keep the original email mapped to CONTACT_EMAIL. " +
-    "If a company/restaurant row contains structured owners, decision makers, or contact lists, expand those people into separate contact rows that repeat the parent lead identity and map one person to CONTACT_* fields per row. " +
-    "Multiple rows can share the same LEADBAY_ID/company and import as separate contacts on that lead. " +
-    "Drop blank-header columns and placeholder values before import. There is no standard LEAD_PHONE field here; preserve establishment/company phone through an intentional custom field.\n\n" +
-    "Ambiguous resolver rows: try to disambiguate before giving up. Do not manually fill LEADBAY_ID unless the selected candidate uniquely matches exact registry/CRM id, exact phone, exact domain with only one candidate, or name plus a clear same-place address match with postcode/city. Compare addresses intelligently as a human would, recognizing ordinary formatting/abbreviation/spelling differences without reducing the decision to rigid rules. If several candidates share the same website/domain, use location evidence (street, postcode, city/neighborhood), phone, source URL path/location slug, and location words in the source name to pick the specific branch when exactly one candidate matches. Root domain, brand, postcode, or city alone is not enough. Keep still-uncertain LEADBAY_ID values blank so Leadbay can crawl/late-match from LEAD_WEBSITE.\n\n" +
-    "Notes/context: import only clean scalar CRM fields through this tool. If the source file contains meaningful per-lead notes, data-quality warnings that affect outreach, owner evidence URLs, or client context that should become Leadbay notes, preserve them separately and call leadbay_add_note after the import returns lead IDs. For dry runs, report which notes would be written. Do not turn noisy scraper plumbing or long reasoning blobs into CRM fields.\n\n" +
-    "Custom fields: pass org-defined custom field mappings as 'CUSTOM.<id>' (raw wire format) in " +
-    "`mappings.fields`, OR use the ergonomic `mappings.custom_fields` shorthand: `{ColName: 8}` " +
-    "(numeric id) or `{ColName: 'priority_test'}` (field name). Discover available custom fields " +
-    "via leadbay_list_mappable_fields. If a valuable source-system link such as a HubSpot record URL/id has no " +
-    "existing field, use leadbay_create_custom_field first. Prefer EXTERNAL_ID with config.url_template and import " +
-    "the stable source id; reuse existing HubSpot linked-id fields when present, and preserve raw identifiers such as hubspot_id and associated_deal in custom fields when meaningful. Fall back to TEXT for full URLs when no stable id/template can be recovered.\n\n" +
-    "Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role on the " +
-    "Leadbay account; active billing.",
+  description: IMPORT_LEADS_DESCRIPTION,
   write: true,
   version: "0.3.0",
   inputSchema: {

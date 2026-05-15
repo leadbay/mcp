@@ -7,6 +7,7 @@ import type {
   WishlistResponse,
 } from "../types.js";
 
+import { leadbay_recall_ordered_titles as RECALL_ORDERED_TITLES_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface RecallOrderedTitlesParams {
   leadIds?: string[];
   lensId?: number;
@@ -28,13 +29,7 @@ export const recallOrderedTitles: Tool<RecallOrderedTitlesParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Show job titles the org has previously enriched, so the agent can repeat the same titles for new leads " +
-    "(or skip already-saturated ones). Two implementation paths: (1) PREFERRED: a selection-scoped " +
-    "preview call that reads previously_enriched_titles from the backend (newer prod field). (2) FALLBACK: " +
-    "live aggregation across each lead's enriched contacts. The composite picks transparently. " +
-    "When to use: before leadbay_enrich_titles, to plan which titles to order. " +
-    "When NOT to use: when you already know the exact titles you want to enrich.",
+  description: RECALL_ORDERED_TITLES_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

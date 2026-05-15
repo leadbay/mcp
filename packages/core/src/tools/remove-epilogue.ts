@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_remove_epilogue as REMOVE_EPILOGUE_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface RemoveEpilogueParams {
   lead_ids: string[];
@@ -14,10 +15,7 @@ export const removeEpilogue: Tool<RemoveEpilogueParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Bulk-clear the epilogue status from a set of leads. " +
-    "When to use: when an outreach action was logged in error and needs to be undone. " +
-    "When NOT to use: to change status — call leadbay_set_epilogue_status with the new status (it overwrites).",
+  description: REMOVE_EPILOGUE_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

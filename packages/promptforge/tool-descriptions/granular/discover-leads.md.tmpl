@@ -1,0 +1,17 @@
+---
+name: leadbay_discover_leads
+kind: tool-description
+short_description: |
+  Get AI-recommended leads from Leadbay. Returns paginated lead summaries with
+  scores, AI summaries, tags, and recommended contacts.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Get AI-recommended leads from Leadbay. Returns paginated lead summaries with scores, AI summaries, tags, and recommended contacts. Auto-resolves to the active lens if `lensId` is omitted; `count` is capped at 50 per page.
+
+{{include:headers/tool-when-to-use}} low-level — when you need raw paginated wishlist access without the qualification_summary attached by leadbay_pull_leads.
+
+{{include:headers/tool-when-not-to-use}} as the agent's default lead-discovery entry point — use leadbay_pull_leads, which adds a one-line qualification summary per lead.

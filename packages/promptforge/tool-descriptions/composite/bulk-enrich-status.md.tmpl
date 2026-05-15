@@ -1,0 +1,18 @@
+---
+name: leadbay_bulk_enrich_status
+kind: tool-description
+short_description: |
+  Check status + per-lead contacts for a bulk enrichment you previously
+  launched via leadbay_enrich_titles. Returns bulk_id, progress per lead,
+  and overall completion.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Check status + per-lead contacts for a bulk enrichment you previously launched via leadbay_enrich_titles. Returns the `bulk_id`, progress per lead (done/total enrichable contacts), and overall progress. When `include_contacts=true` (opt-in), includes each contact's email/phone/job_title/enrichment.done.
+
+{{include:headers/tool-when-to-use}} poll this after leadbay_enrich_titles returns a `bulk_id`. Default `include_contacts=false` for cheap status polls; set `include_contacts=true` once `all_done` flips for the final read.
+
+{{include:headers/tool-when-not-to-use}} as a substitute for leadbay_research_lead — that already includes enriched contacts for a single lead.

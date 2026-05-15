@@ -1,0 +1,19 @@
+---
+name: leadbay_create_lens_draft
+kind: tool-description
+short_description: |
+  Create (or fetch existing) draft of an org-level lens. Idempotent per user
+  — same caller gets the same draft.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: false
+  openWorldHint: true
+---
+Create (or fetch existing) draft of an org-level lens. Idempotent — same user calling twice returns the same draft. The returned lens has `draft_of` set to the original lens id.
+
+{{include:headers/tool-when-to-use}} when a non-admin needs to modify an org-level lens — make a draft, edit the draft.
+
+{{include:headers/tool-when-not-to-use}} from agent flow — leadbay_adjust_audience handles the draft-routing transparently.
+
+{{include:headers/verification-required-if-write}}

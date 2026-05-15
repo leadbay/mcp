@@ -1,0 +1,19 @@
+---
+name: leadbay_launch_bulk_enrichment
+kind: tool-description
+short_description: |
+  Launch a bulk-enrichment job against the current selection. Backend requires
+  email=true OR phone=true (both may be true).
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Launch a bulk-enrichment job against the current selection. The backend requires `email=true` OR `phone=true` (both can be true). Returns 204 with no body — there is no bulk_id and no per-job status endpoint. Track results by polling individual leads via leadbay_get_contacts after ~60s; `contact.enrichment.done` flips to true. `dry_run:true` returns the call shape without contacting the backend.
+
+{{include:headers/tool-when-to-use}} low-level.
+
+{{include:headers/tool-when-not-to-use}} from agent flow — leadbay_enrich_titles handles selection lifecycle, preview, launch, and cleanup.
+
+{{include:headers/verification-required-if-write}}

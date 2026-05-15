@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_update_lens as UPDATE_LENS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface UpdateLensParams {
   lensId: number;
@@ -18,11 +19,7 @@ export const updateLens: Tool<UpdateLensParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Update lens metadata (name, description, mode flags). Does NOT change the audience filter — use " +
-    "leadbay_update_lens_filter for that. " +
-    "When to use: rename a lens or toggle multi_product_mode/use_hq_only. " +
-    "When NOT to use: to change which leads the lens shows — that's a filter operation.",
+  description: UPDATE_LENS_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

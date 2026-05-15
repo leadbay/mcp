@@ -6,6 +6,7 @@ import type {
   Tool,
 } from "../types.js";
 
+import { leadbay_create_custom_field as CREATE_CUSTOM_FIELD_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface CreateCustomFieldParams {
   name: string;
   type?: CustomCrmFieldKind;
@@ -22,20 +23,7 @@ export const createCustomField: Tool<CreateCustomFieldParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Create an org-level CRM custom field for imports, then use the returned `mapping_value` in " +
-    "leadbay_import_leads / leadbay_import_and_qualify mappings. Use when the user's file contains valuable " +
-    "columns that do not fit Leadbay's standard fields, such as source-system deep links, source record IDs, " +
-    "campaign provenance, or user-requested enrichment attributes.\n\n" +
-    "For HubSpot record links, prefer `type:'EXTERNAL_ID'` with `config.url_template` and import only the stable " +
-    "HubSpot id as the CSV value. Example: create field name 'HubSpot Contact', type 'EXTERNAL_ID', " +
-    "config {url_template:'https://app.hubspot.com/contacts/<portal-id>/record/0-1/{value}'}; then map " +
-    "`hubspot_id` to the returned `mapping_value`. If only a full URL column exists and the id cannot be safely " +
-    "extracted, use a TEXT field instead.\n\n" +
-    "When to use: after leadbay_list_mappable_fields shows no suitable existing custom field and preserving the " +
-    "column matters to the user's goal. When NOT to use: for standard company/contact data that maps to " +
-    "LEAD_WEBSITE, LEAD_NAME, CONTACT_EMAIL, etc.; do not create custom fields for noisy scraper notes unless " +
-    "the user explicitly asks to preserve them.",
+  description: CREATE_CUSTOM_FIELD_DESCRIPTION,
   write: true,
   version: "0.6.4",
   inputSchema: {

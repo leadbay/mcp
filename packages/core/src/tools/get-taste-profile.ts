@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_get_taste_profile as GET_TASTE_PROFILE_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 export const getTasteProfile: Tool<Record<string, never>> = {
   name: "leadbay_get_taste_profile",
@@ -10,12 +11,7 @@ export const getTasteProfile: Tool<Record<string, never>> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Get the user's Ideal Buyer Profile, purchase intent tags, and qualification questions. " +
-    "When to use: at the very start of a session to understand what kind of leads the user is looking for. " +
-    "Data is cached. " +
-    "When NOT to use: per-lead — leadbay_research_lead already includes the per-lead qualification answers " +
-    "(which are scored against these org-level questions).",
+  description: GET_TASTE_PROFILE_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {},

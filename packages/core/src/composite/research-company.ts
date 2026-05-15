@@ -4,6 +4,7 @@ import { discoverLeads } from "../tools/discover-leads.js";
 import { getLeadProfile } from "../tools/get-lead-profile.js";
 import { getLeadActivities } from "../tools/get-lead-activities.js";
 
+import { leadbay_research_company as RESEARCH_COMPANY_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface ResearchCompanyParams {
   companyName?: string;
   leadId?: string;
@@ -18,11 +19,7 @@ export const researchCompany: Tool<ResearchCompanyParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Deep-dive research on a specific company by NAME (fuzzy match against the active lens's wishlist). " +
-    "When to use: when the user references a company by name and you don't yet have its lead_id. " +
-    "When NOT to use: when you already have the lead_id — use leadbay_research_lead directly (it bundles " +
-    "richer signals + better top-down ordering for the agent).",
+  description: RESEARCH_COMPANY_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

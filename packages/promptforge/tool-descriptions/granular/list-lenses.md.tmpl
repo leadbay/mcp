@@ -1,0 +1,17 @@
+---
+name: leadbay_list_lenses
+kind: tool-description
+short_description: |
+  List all available Leadbay lenses (saved lead-search configurations).
+  The lens with is_last_active=true is the default for lead discovery.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+List all available Leadbay lenses (saved lead-search configurations). Each lens defines a different target market or buyer segment. The lens with `is_last_active=true` is used by default for lead discovery.
+
+{{include:headers/tool-when-to-use}} when the user wants to switch lens or asks "what lenses do I have".
+
+{{include:headers/tool-when-not-to-use}} in normal flow — composites auto-resolve the active lens via `/me.last_requested_lens`.

@@ -3,6 +3,7 @@ import type { Tool, ToolContext } from "../types.js";
 import { getContacts } from "../tools/get-contacts.js";
 import { isValidBulkId, type BulkRecord } from "../jobs/bulk-store.js";
 
+import { leadbay_bulk_enrich_status as BULK_ENRICH_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface BulkEnrichStatusParams {
   bulk_id: string;
   include_contacts?: boolean;
@@ -42,13 +43,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Check status + per-lead contacts for a bulk enrichment you previously launched via leadbay_enrich_titles. " +
-    "Returns the bulk_id, progress per lead (done/total enrichable contacts), and overall progress. " +
-    "When include_contacts=true (opt-in), includes each contact's email/phone/job_title/enrichment.done. " +
-    "When to use: poll this after leadbay_enrich_titles returns a bulk_id. Default include_contacts=false for cheap " +
-    "status polls; set include_contacts=true once all_done flips for the final read. " +
-    "When NOT to use: as a substitute for leadbay_research_lead — that already includes enriched contacts for a single lead.",
+  description: BULK_ENRICH_STATUS_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

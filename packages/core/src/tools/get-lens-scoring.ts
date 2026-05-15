@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_get_lens_scoring as GET_LENS_SCORING_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface GetLensScoringParams {
   lensId: number;
@@ -19,10 +20,7 @@ export const getLensScoring: Tool<GetLensScoringParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Read the AI-scoring criteria configured on a lens (what makes a lead score 100 vs 30). " +
-    "When to use: when explaining why a lead got the score it did. " +
-    "When NOT to use: to mutate scoring — that's an admin/setup operation, not part of the agent loop.",
+  description: GET_LENS_SCORING_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: { lensId: { type: "number", description: "Lens id (required)" } },

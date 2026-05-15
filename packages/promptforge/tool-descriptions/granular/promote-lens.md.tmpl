@@ -1,0 +1,19 @@
+---
+name: leadbay_promote_lens
+kind: tool-description
+short_description: |
+  Promote a user-level lens (or draft) to org-level so all teammates see it.
+  Admin-only.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: false
+  openWorldHint: true
+---
+Promote a user-level lens (or draft) to org-level so all teammates see it. Admin-only.
+
+{{include:headers/tool-when-to-use}} rare — when an admin user has built a lens (or refined a draft) and wants to share it org-wide.
+
+{{include:headers/tool-when-not-to-use}} as a non-admin (will fail with 403); for personal lens changes (those stay user-scoped).
+
+{{include:headers/verification-required-if-write}}

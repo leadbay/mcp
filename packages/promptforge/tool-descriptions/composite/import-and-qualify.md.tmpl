@@ -1,0 +1,24 @@
+---
+name: leadbay_import_and_qualify
+kind: tool-description
+short_description: |
+  Composite: import a list of leads (CSV-shaped records OR a list of domains),
+  then trigger Leadbay's AI qualification on every imported leadId, and return
+  both the import outcome and the per-lead qualification answers — in one call.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Import + qualify leads in one call. Pass either `domains: [{domain, name?}]` (Mode A) OR `records[]` with `mappings` (Mode B). At least one mapped field must be LEADBAY_ID, CRM_ID, SIREN, LEAD_NAME, or LEAD_WEBSITE. Discover the org's mappable surface via `leadbay_list_mappable_fields`. For messy files, prefer the `leadbay_import_file` prompt which walks an agent through scan → resolve → preserve → commit phases.
+
+{{include:headers/tool-when-to-use}} agent has a list of companies (domains, or CSV-shaped rows from the user's CRM) and wants the full AI qualification — qualification answers, web-research signals — without orchestrating import + bulk_qualify_leads + lead_profile chains by hand.
+
+{{include:headers/tool-when-not-to-use}} discovery (use leadbay_pull_leads); single-lead deep dive (use leadbay_research_lead); high-cadence or untrusted automation — this mutates user state and consumes ai_rescore + web_fetch quota.
+
+Budgets: `total_budget_ms` caps wall-clock; `per_lead_budget_ms` caps each lead's poll. For short transport timeouts, pass `wait_for_completion:false` and poll `leadbay_import_status`. Outputs `qualified[]`, `still_running[]`, `not_imported[]`, `qualify_id` (resumable handle). Idempotent within a 5-min window. `dry_run:'preview'` returns mapping hints + custom-field candidates without importing.
+
+{{include:headers/verification-required-if-write}}
+
+Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role; active billing. Imported leads are NOT auto-promoted to the Monitor view; lens-scoring threshold decides.

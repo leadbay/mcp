@@ -1,0 +1,19 @@
+---
+name: leadbay_select_leads
+kind: tool-description
+short_description: |
+  Add leads to the user's transient selection (used by selection-scoped bulk
+  operations such as enrichment).
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Add leads to the user's transient selection (used by selection-scoped bulk operations). Accepts 1-1000 `leadIds` per call.
+
+{{include:headers/tool-when-to-use}} low-level. The user's selection is a per-token global state — be careful when invoking directly.
+
+{{include:headers/tool-when-not-to-use}} in normal flow — leadbay_enrich_titles wraps select → action → clear in one call with proper Mutex protection. Calling this directly without acquiring the selection lock can clobber concurrent composite calls.
+
+{{include:headers/verification-required-if-write}}

@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_qualify_lead as QUALIFY_LEAD_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface QualifyLeadParams {
   leadId: string;
@@ -15,12 +16,7 @@ export const qualifyLead: Tool<QualifyLeadParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Trigger AI qualification for a single lead (web fetch + AI rescore). The operation is asynchronous — " +
-    "results take ~60s. " +
-    "When to use: low-level. " +
-    "When NOT to use: as the agent's bulk-qualify path — use leadbay_bulk_qualify_leads, which paginates past " +
-    "already-qualified leads, fan-outs, polls, and bails out cleanly on 429.",
+  description: QUALIFY_LEAD_DESCRIPTION,
   optional: true,
   inputSchema: {
     type: "object",

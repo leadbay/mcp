@@ -1,0 +1,17 @@
+---
+name: leadbay_get_quota
+kind: tool-description
+short_description: |
+  Read remaining quota / spend across daily, weekly, and monthly windows for
+  the org's resources (llm_completion, ai_rescore, web_fetch).
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Read remaining quota / spend across daily, weekly, and monthly windows for the org's resources (`llm_completion`, `ai_rescore`, `web_fetch`). Each entry shows `current_units` vs `max_units` and `resets_at`.
+
+{{include:headers/tool-when-to-use}} after a 429 error, to explain to the user which window was hit and when it resets.
+
+{{include:headers/tool-when-not-to-use}} as a pre-flight gate before bulk operations — operations themselves return 429 with hints; this tool is for diagnostics, not gating.

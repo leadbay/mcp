@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, LensPayload } from "../types.js";
+import { leadbay_create_lens_draft as CREATE_LENS_DRAFT_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface CreateLensDraftParams {
   lensId: number;
@@ -14,11 +15,7 @@ export const createLensDraft: Tool<CreateLensDraftParams> = {
     idempotentHint: false,
     openWorldHint: true,
   },
-  description:
-    "Create (or fetch existing) draft of an org-level lens. Idempotent — same user calling twice returns " +
-    "the same draft. The returned lens has draft_of set to the original lens id. " +
-    "When to use: when a non-admin needs to modify an org-level lens — make a draft, edit the draft. " +
-    "When NOT to use: from agent flow — leadbay_adjust_audience handles the draft-routing transparently.",
+  description: CREATE_LENS_DRAFT_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

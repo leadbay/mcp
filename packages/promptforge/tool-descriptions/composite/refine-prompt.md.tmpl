@@ -1,0 +1,20 @@
+---
+name: leadbay_refine_prompt
+kind: tool-description
+short_description: |
+  Refine the kind of leads Leadbay surfaces, beyond firmographics. Sets
+  the org's user_prompt and may raise a clarification question the
+  composite polls for. Admin-only.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: false
+  openWorldHint: true
+---
+Refine the kind of leads Leadbay surfaces, beyond firmographics. Free-text instruction (e.g. "focus on hospitals running their own IT"). Sets the org's `user_prompt`; if the new prompt produces ambiguous criteria, Leadbay raises a clarification question, which this composite polls for and surfaces. Admin-only on the backend (will return 403 for non-admins).
+
+{{include:headers/tool-when-to-use}} when audience filters (leadbay_adjust_audience) aren't enough.
+
+{{include:headers/tool-when-not-to-use}} to answer a pending clarification — that's leadbay_answer_clarification.
+
+{{include:headers/verification-required-if-write}}

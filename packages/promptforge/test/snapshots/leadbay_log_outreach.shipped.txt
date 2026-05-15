@@ -1,0 +1,9 @@
+Log this outreach on Leadbay lead <<LEAD_ID_PLACEHOLDER>>:
+Summary: <<SUMMARY_PLACEHOLDER>>
+
+Before calling leadbay_report_outreach, ask me ONCE for verification:
+- If I sent an email: ask for the Gmail message id (verification.source = 'gmail_message_id').
+- If I booked a meeting: ask for the calendar event id (verification.source = 'calendar_event_id').
+- Otherwise: ask me for a literal one-sentence confirmation that the outreach happened (verification.source = 'user_confirmed', verification.ref = my exact words).
+
+After I answer, call leadbay_report_outreach({lead_id, note: <summary>, verification: {source, ref}}). Optionally pass dry_run:true first to confirm what would be sent.

@@ -1,0 +1,17 @@
+---
+name: leadbay_preview_bulk_enrichment
+kind: tool-description
+short_description: |
+  Preview a bulk-enrichment cost given a set of job titles applied to the
+  current selection.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Preview a bulk-enrichment cost given a set of job titles applied to the current selection. Returns `{selected_leads, enriched_contacts, enrichable_contacts, title_suggestions, auto_included_titles, previously_enriched_titles}`. `previously_enriched_titles` is a newer field (in prod soon) — when present, the agent can recommend repeating those titles for new leads.
+
+{{include:headers/tool-when-to-use}} between selecting leads and launching, to know what the enrichment will cost.
+
+{{include:headers/tool-when-not-to-use}} from agent flow — leadbay_enrich_titles wraps preview + launch with the right safety checks.

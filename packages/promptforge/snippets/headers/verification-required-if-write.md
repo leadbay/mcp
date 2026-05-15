@@ -1,0 +1,1 @@
+This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See `annotations.destructiveHint`.

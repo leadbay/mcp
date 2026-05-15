@@ -1,0 +1,17 @@
+---
+name: leadbay_get_taste_profile
+kind: tool-description
+short_description: |
+  Get the user's Ideal Buyer Profile, purchase-intent tags, and qualification
+  questions.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Get the user's Ideal Buyer Profile, purchase-intent tags, and qualification questions. The result is cached on the client. Returns an operator `hint` when no profile is configured yet.
+
+{{include:headers/tool-when-to-use}} at the very start of a session to understand what kind of leads the user is looking for.
+
+{{include:headers/tool-when-not-to-use}} per-lead — leadbay_research_lead already includes the per-lead qualification answers (which are scored against these org-level questions).

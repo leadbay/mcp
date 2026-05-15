@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_set_user_prompt as SET_USER_PROMPT_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface SetUserPromptParams {
   prompt: string;
@@ -15,12 +16,7 @@ export const setUserPrompt: Tool<SetUserPromptParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Set the org's intelligence-refinement prompt — free-text instruction that steers Leadbay's lead " +
-    "recommendations beyond firmographics. Admin-only. Setting this clears any pending clarification and " +
-    "triggers a full intelligence regeneration (web search + high-reasoning). " +
-    "When to use: low-level. " +
-    "When NOT to use: from agent flow — use leadbay_refine_prompt, which polls for follow-up clarifications.",
+  description: SET_USER_PROMPT_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

@@ -5,6 +5,7 @@
 
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_select_leads as SELECT_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface SelectLeadsParams {
   leadIds: string[];
@@ -19,13 +20,7 @@ export const selectLeads: Tool<SelectLeadsParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Add leads to the user's transient selection (used by selection-scoped bulk operations). " +
-    "When to use: low-level. The user's selection is a per-token global state — be careful when invoking " +
-    "directly. " +
-    "When NOT to use: in normal flow — leadbay_enrich_titles wraps select → action → clear in one call " +
-    "with proper Mutex protection. Calling this directly without acquiring the selection lock can clobber " +
-    "concurrent composite calls.",
+  description: SELECT_LEADS_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

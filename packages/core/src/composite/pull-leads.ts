@@ -7,6 +7,7 @@ import type {
   LeadPayload,
 } from "../types.js";
 
+import { leadbay_pull_leads as PULL_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface PullLeadsParams {
   lensId?: number;
   count?: number;
@@ -60,19 +61,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Pull up new leads from the user's last-active lens — the canonical 'show me today's prospects' tool. " +
-    "Leadbay works like an inbox: each time the user logs back in, a fresh batch is delivered, paced by how " +
-    "many leads they've actually acted on recently. Pulling more won't produce more; user outreach/skips/saves does. " +
-    "Each returned lead carries a one-line qualification_summary built from leadbay_ai_agent_responses, plus " +
-    "the rich tags / scores / recommended_contact_title / engagement counters / in-flight flags from the lead summary. " +
-    "Roughly the top 10 of the batch come pre-qualified (populated qualification_summary + ai_agent_lead_score); " +
-    "leads below the top ~10 carry only the basic firmographic `score` — not worse, just resource-saved by the system. " +
-    "Call leadbay_bulk_qualify_leads to deepen any of them on demand. " +
-    "When to use: as the agent's default opening move when the user wants to see leads, or as a daily check-in " +
-    "for what's new today. " +
-    "When NOT to use: when the user has named a specific lens — pass lensId to override the auto-resolution. " +
-    "Replaces the older leadbay_find_prospects (which is removed in v0.2.0).",
+  description: PULL_LEADS_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

@@ -2,6 +2,7 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, NotePayload } from "../types.js";
 import { EPILOGUE_LABEL_MAP } from "../tools/set-epilogue-status.js";
 
+import { leadbay_report_outreach as REPORT_OUTREACH_DESCRIPTION } from "../tool-descriptions.generated.js";
 // Verification is REQUIRED on every call — the autoplan review (CEO + Eng + DX
 // all flagged) determined that allowing the agent to self-report outreach
 // without proof would poison the SDR pipeline. The user explicitly chose this
@@ -44,17 +45,7 @@ export const reportOutreach: Tool<ReportOutreachParams> = {
     idempotentHint: false,
     openWorldHint: true,
   },
-  description:
-    "Log an outreach action (email, call, message, meeting) on a lead so the human team using Leadbay sees the " +
-    "progress in their UI. Writes a NOTE on the lead and (optionally) sets an EPILOGUE status (still chasing, " +
-    "meeting booked, etc.). " +
-    "VERIFICATION REQUIRED: every call must include verification={source: 'gmail_message_id'|'calendar_event_id'|'user_confirmed', ref: '<id-or-confirmation>'} " +
-    "to prevent hallucinated outreach poisoning the pipeline. The verification is appended to the note body. " +
-    "Bulk variant: pass lead_ids=[uuid,...] instead of lead_id (epilogue is bulk-native; notes fan out per-lead). " +
-    "When to use: AFTER actually emailing/calling/meeting/messaging a contact, OR after a substantive decision " +
-    "the user wants logged (skip, save, hand off). " +
-    "When NOT to use: BEFORE doing the outreach (use dry_run:true to validate args first); without verification " +
-    "(call will be rejected); from a flow where the user did not consent to having actions logged automatically.",
+  description: REPORT_OUTREACH_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

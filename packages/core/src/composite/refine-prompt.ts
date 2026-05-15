@@ -1,6 +1,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, ClarificationPayload } from "../types.js";
 
+import { leadbay_refine_prompt as REFINE_PROMPT_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface RefinePromptParams {
   prompt: string;
   clarification_poll_attempts?: number;
@@ -23,13 +24,7 @@ export const refinePrompt: Tool<RefinePromptParams> = {
     idempotentHint: false,
     openWorldHint: true,
   },
-  description:
-    "Refine the kind of leads Leadbay surfaces, beyond firmographics. Free-text instruction (e.g. 'focus on " +
-    "hospitals running their own IT'). Sets the org's user_prompt; if the new prompt produces ambiguous criteria, " +
-    "Leadbay raises a clarification question, which this composite polls for and surfaces. Admin-only on the " +
-    "backend (will return 403 for non-admins). " +
-    "When to use: when audience filters (leadbay_adjust_audience) aren't enough. " +
-    "When NOT to use: to answer a pending clarification — that's leadbay_answer_clarification.",
+  description: REFINE_PROMPT_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

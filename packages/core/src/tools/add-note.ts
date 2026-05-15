@@ -2,6 +2,7 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
 import type { NotePayload } from "../types.js";
 
+import { leadbay_add_note as ADD_NOTE_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface AddNoteParams {
   leadId: string;
   note: string;
@@ -16,12 +17,7 @@ export const addNote: Tool<AddNoteParams> = {
     idempotentHint: false,
     openWorldHint: true,
   },
-  description:
-    "Add a note to a lead. Notes are visible to the whole organization in Leadbay. " +
-    "When to use: low-level — for free-form notes not tied to outreach actions, including meaningful " +
-    "per-lead notes/context preserved from an imported file after the import returns lead IDs. " +
-    "When NOT to use: to log an outreach action — use leadbay_report_outreach, which requires verification " +
-    "(gmail/calendar/user_confirmed) to prevent hallucinated outreach poisoning the SDR pipeline.",
+  description: ADD_NOTE_DESCRIPTION,
   optional: true,
   inputSchema: {
     type: "object",

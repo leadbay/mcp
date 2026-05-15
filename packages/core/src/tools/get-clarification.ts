@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ClarificationPayload } from "../types.js";
+import { leadbay_get_clarification as GET_CLARIFICATION_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 export const getClarification: Tool<Record<string, never>> = {
   name: "leadbay_get_clarification",
@@ -10,11 +11,7 @@ export const getClarification: Tool<Record<string, never>> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Check whether Leadbay has a pending clarification question — a question raised when refining the intelligence prompt produced contradictory or ambiguous criteria. " +
-    "Returns null when nothing is pending (the backend returns 204). " +
-    "When to use: after leadbay_refine_prompt, to see if Leadbay needs the user to disambiguate. " +
-    "When NOT to use: to answer the question — use leadbay_answer_clarification.",
+  description: GET_CLARIFICATION_DESCRIPTION,
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
   outputSchema: {
     type: "object",

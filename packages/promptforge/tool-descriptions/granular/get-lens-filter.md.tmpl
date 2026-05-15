@@ -1,0 +1,17 @@
+---
+name: leadbay_get_lens_filter
+kind: tool-description
+short_description: |
+  Read the firmographic filter (sectors, sizes, locations) currently applied
+  to a lens.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Read the firmographic filter (sectors, sizes, locations) currently applied to a lens.
+
+{{include:headers/tool-when-to-use}} before adjusting an audience — see what's already restricted so changes are diffs, not full replacements.
+
+{{include:headers/tool-when-not-to-use}} to actually apply changes — use the leadbay_adjust_audience composite, which handles permissions transparently.

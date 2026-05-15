@@ -1,0 +1,52 @@
+---
+name: leadbay_daily_check_in
+kind: prompt
+short_description: |
+  Run the canonical daily check-in: see account state, pull a fresh batch,
+  triage the top 10, deep-dive on every promising one, and offer contact
+  enrichment. The user's typical morning workflow. Trigger when the user
+  asks for "leadbay leads", "best leads to prospect today", "what should
+  I work on", or anything resembling "show me the day's batch".
+arguments: []
+expected_calls:
+  - leadbay_account_status
+  - leadbay_pull_leads
+  - leadbay_research_lead
+  - leadbay_bulk_qualify_leads
+  - leadbay_enrich_contacts
+failure_modes:
+  - Calls leadbay_report_outreach without explicit user authorization
+  - Surfaces fewer than 10 leads when more are available, or fails to top up via leadbay_qualify_top_n when the batch is short
+  - Writes flat one-line summaries instead of motivational "why prospect this today" framing
+  - Skips deep research on promising leads (Phase 4) — the agent must call leadbay_research_lead on each, not just one
+  - Triggers contact enrichment without asking the user first (it consumes quota)
+  - Skips the STOP byproduct and proposes next actions on its own
+---
+
+Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask: "get me leadbay leads", "best leads to prospect today", "what should I work on", "show me my batch".
+
+# PHASE 1 — STATE
+Call `leadbay_account_status` to see what quota I have left and which lens is active. Note the remaining `ai_rescore_remaining` and `web_fetch_remaining` budgets — Phase 4 enrichment depends on them.
+
+# PHASE 2 — FRESH BATCH
+Call `leadbay_pull_leads` to get today's fresh batch.
+
+# PHASE 3 — TRIAGE (top 10, motivational framing)
+
+Pick the top **10** leads — prefer leads with a fresh `ai_agent_lead_score` (those have been newly AI-qualified); fall back to `score` only when `ai_agent_lead_score` is absent. For each, write ONE motivational sentence — framed as *why prospecting this lead today might be a good idea right now* (almost a coach's nudge, not a flat description). Lean on `qualification_summary` for the substance, but reframe — don't paste it verbatim.
+
+If the batch returns fewer than 10 qualified leads, top it up by calling `leadbay_bulk_qualify_leads` with `count` set a bit above what you still need (some leads may get disqualified during qualification — request 1.5x the deficit, capped at 25). Then re-pull the batch and continue. (The `leadbay_qualify_top_n` slash-prompt wraps this same tool with a friendlier surface for users; agents should call the underlying tool directly here.)
+
+# PHASE 4 — DEEP DIVE (every promising lead)
+
+Call `leadbay_research_lead` on **every** lead from your top 10 that the user might realistically prospect today (filter out clearly weak fits if any). Don't pick just one. For each researched lead surface:
+- what makes it promising (1–2 sentences citing signals from the research)
+- the **recommended contacts** the research returns — name, title, why they're the right starting point
+
+Then ASK the user (don't auto-run): "Want me to enrich the contacts on these leads to acquire their emails / phone numbers?" If the user says yes, call `leadbay_enrich_contacts` for the relevant lead IDs (this consumes enrichment quota — that's why we ask first).
+
+# GATE — STOP
+
+IRON LAW — DO NOT TAKE OUTBOUND ACTION. Do not call `leadbay_report_outreach`. Do not draft an outreach message into a tool argument. Outreach is the user's call after they've reviewed your research.
+
+{{include:gates/stop-and-wait}}

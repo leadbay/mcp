@@ -14,6 +14,7 @@ import {
 } from "../composite/_qualify-helpers.js";
 import { escapeCsvCell } from "../composite/import-leads.js";
 
+import { leadbay_list_mappable_fields as LIST_MAPPABLE_FIELDS_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface StandardFieldEntry {
   name: StandardCrmFieldType;
   description: string;
@@ -136,27 +137,7 @@ export const listMappableFields: Tool<
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "List every CRM field the agent can target when calling leadbay_import_leads or leadbay_import_and_qualify. " +
-    "Returns two arrays: `standard_fields` (Leadbay's built-in StandardCrmFieldType enum — LEAD_NAME, LEAD_WEBSITE, " +
-    "LEAD_STATUS, contact + location + sector fields) and `custom_fields` (this org's user-defined fields — id, " +
-    "name, type, and the literal `mapping_value` you pass in `mappings.fields`). For custom fields, `mapping_value` " +
-    "is the wire-format string `CUSTOM.<id>` — pass it verbatim.\n\n" +
-    "For contact exports, map person data to CONTACT_* fields and still provide parent-company identity via " +
-    "LEADBAY_ID/LEAD_WEBSITE/LEAD_NAME/CRM_ID/SIREN. When contact emails contain business domains, agents may " +
-    "derive a clean company-domain column for LEAD_WEBSITE only when the domain agrees with the row's company/deal/brand context, while preserving the original email as CONTACT_EMAIL. " +
-    "For import files, audit every meaningful source column. If no standard/contact field fits, preserve the data by creating or reusing a custom field unless the column is blank, duplicate plumbing, raw unparsed noise after useful extraction, or harmful to data quality. " +
-    "For HubSpot or other source-system deep links, create or reuse an EXTERNAL_ID/TEXT custom field with " +
-    "leadbay_create_custom_field, then map the source id/link to the returned mapping_value. Backend mapping_hints " +
-    "are advisory only; for contact files, do not accept hints such as first_name -> LEAD_NAME when the column is clearly a person field.\n\n" +
-    "Optional `for_records` param: pass a sample of CSV-shaped rows and the tool also runs the wizard's preprocess " +
-    "on them, attaching `mapping_hints` (per-column AI-confidence suggestions) and `custom_field_candidates` " +
-    "(custom fields that match unmapped columns by exact / case-insensitive / fuzzy name) to the response. " +
-    "Saves a separate preview round-trip when the agent already has data in hand.\n\n" +
-    "When to use: before authoring an import mapping, especially when the CSV has columns that aren't obvious " +
-    "matches for standard fields. When NOT to use: when you already know the mapping — this call is cheap " +
-    "(~50ms with no for_records, ~5–10s with) but unnecessary if the agent has already cached the catalog " +
-    "within the same conversation.",
+  description: LIST_MAPPABLE_FIELDS_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

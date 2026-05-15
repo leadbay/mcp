@@ -1,0 +1,17 @@
+---
+name: leadbay_list_sectors
+kind: tool-description
+short_description: |
+  List the sector taxonomy (id + display name in the requested language) for
+  use when resolving free-text sector names into ids.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+List the sector taxonomy (id + display name in the requested language). Default: `lang` follows the caller's language; `includeInvisible=false` returns ~1,091 visible sectors.
+
+{{include:headers/tool-when-to-use}} to resolve a free-text sector name (e.g. "Healthcare") into the sector ids that leadbay_adjust_audience needs.
+
+{{include:headers/tool-when-not-to-use}} when you already have sector ids — pass them directly.

@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_get_enrichment_job_titles as GET_ENRICHMENT_JOB_TITLES_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 export const getEnrichmentJobTitles: Tool<Record<string, never>> = {
   name: "leadbay_get_enrichment_job_titles",
@@ -10,12 +11,7 @@ export const getEnrichmentJobTitles: Tool<Record<string, never>> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "List the actual job titles present across the leads currently in the user's selection — " +
-    "the candidate set the user can ask to enrich. " +
-    "When to use: after leadbay_select_leads, to know which titles are even available before launching a bulk enrichment. " +
-    "When NOT to use: standalone — the selection must already be populated, otherwise the result is an empty array. " +
-    "leadbay_enrich_titles wraps this whole flow when you don't need to inspect the title list manually.",
+  description: GET_ENRICHMENT_JOB_TITLES_DESCRIPTION,
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
   execute: async (client: LeadbayClient) => {
     return await client.request<string[]>(

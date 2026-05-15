@@ -1,0 +1,18 @@
+---
+name: leadbay_remove_epilogue
+kind: tool-description
+short_description: |
+  Bulk-clear the epilogue status from a set of leads.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Bulk-clear the epilogue status from a set of leads.
+
+{{include:headers/tool-when-to-use}} when an outreach action was logged in error and needs to be undone.
+
+{{include:headers/tool-when-not-to-use}} to change status — call leadbay_set_epilogue_status with the new status (it overwrites).
+
+{{include:headers/verification-required-if-write}}

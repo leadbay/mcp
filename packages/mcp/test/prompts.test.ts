@@ -80,12 +80,20 @@ describe("prompts/* capability (P2 prompts)", () => {
     expect(text).toContain("leadbay_resolve_import_rows");
     expect(text).toContain("include_candidate_profiles");
     expect(text).toContain("leadbay_import_and_qualify");
-    expect(text).toContain("Never choose from score alone");
+    // Disambiguation guardrail (prose updated 2026-05-15: "Never **pick**
+    // LEADBAY_ID from score alone..." replaced "Never choose from score alone").
+    expect(text).toContain("score alone");
     expect(text).toContain("business domain");
     expect(text).toContain("CONTACT_EMAIL");
     expect(text).toContain("leadbay_create_custom_field");
     expect(text).toContain("EXTERNAL_ID");
+    // The CRM record link snippet now lists multiple CRMs by name; the
+    // assertion checks at least one of them appears (HubSpot is the canonical
+    // first example).
     expect(text).toContain("HubSpot");
+    expect(text).toContain("Salesforce");
+    // The new GOAL section explicitly teaches what a job-well-done looks like.
+    expect(text).toContain("augmented file");
   });
 
   it("prompts/get with missing required argument errors", async () => {

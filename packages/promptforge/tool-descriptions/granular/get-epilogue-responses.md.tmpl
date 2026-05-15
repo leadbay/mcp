@@ -1,0 +1,17 @@
+---
+name: leadbay_get_epilogue_responses
+kind: tool-description
+short_description: |
+  Read the lead's epilogue history — what status (still chasing, meeting
+  booked, etc.) was set when, and by whom.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Read the lead's epilogue history — what status (still chasing, meeting booked, etc.) was set when, and by whom. Paginated (`count` 1-200 default 20, `page` 0-indexed).
+
+{{include:headers/tool-when-to-use}} to see the lead's outreach progression before deciding the next step.
+
+{{include:headers/tool-when-not-to-use}} when the lead summary's `epilogue_actions_count` is 0.

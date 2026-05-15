@@ -1,0 +1,17 @@
+---
+name: leadbay_get_selection_ids
+kind: tool-description
+short_description: |
+  List the lead ids currently in the user's selection (the transient set that
+  bulk operations like enrichment act on).
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+List the lead ids currently in the user's selection (the transient set that bulk operations like enrichment act on).
+
+{{include:headers/tool-when-to-use}} to verify the selection state before/after bulk ops if a composite call has misbehaved.
+
+{{include:headers/tool-when-not-to-use}} in the normal flow — leadbay_enrich_titles manages selection lifecycle automatically (select → action → clear).

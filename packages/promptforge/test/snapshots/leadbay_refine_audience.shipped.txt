@@ -1,0 +1,5 @@
+Refine the Leadbay audience prompt to: <<INSTRUCTION_PLACEHOLDER>>
+
+1. Call leadbay_refine_prompt with prompt=<the instruction above>.
+2. If the response includes a 'clarification' block, surface the question + options to me VERBATIM and wait. Do NOT call leadbay_answer_clarification on my behalf — I want to choose.
+3. If the response status is 'applied', tell me Leadbay is regenerating intelligence and recommend I check back in a few minutes via leadbay_account_status (computing_intelligence flips to false when ready).

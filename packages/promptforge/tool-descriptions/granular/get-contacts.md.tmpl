@@ -1,0 +1,17 @@
+---
+name: leadbay_get_contacts
+kind: tool-description
+short_description: |
+  Get contacts for a lead, including enriched email and phone data. Returns
+  both org contacts and enrichable (paid) contacts with IDs.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Get contacts for a lead, including enriched email and phone data. Returns both organization contacts and enrichable contacts with IDs, tagged with `source:'org'|'paid'`.
+
+{{include:headers/tool-when-to-use}} to check enrichment status (`contact.enrichment.done`) on individual leads after a bulk enrichment was launched, or to find the `contact_id` needed by leadbay_enrich_contacts.
+
+{{include:headers/tool-when-not-to-use}} as a substitute for leadbay_research_lead, which already includes enriched contacts in its return.

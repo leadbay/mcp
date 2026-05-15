@@ -1,0 +1,39 @@
+{
+  "name": "@leadbay/promptforge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Build-time pipeline: .md.tmpl sources → generated TS modules consumed by @leadbay/core and @leadbay/mcp. Assembles MCP prompts and tool descriptions from snippets with frontmatter validation.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./frontmatter": {
+      "import": "./dist/frontmatter.js",
+      "types": "./dist/frontmatter.d.ts"
+    }
+  },
+  "bin": {
+    "forge": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsx src/cli.ts build",
+    "check": "tsx src/cli.ts check",
+    "compile": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@leadbay/core": "workspace:*",
+    "@leadbay/mcp": "workspace:*",
+    "tsx": "^4.19.2"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,19 @@
+---
+name: leadbay_qualify_lead
+kind: tool-description
+short_description: |
+  Trigger AI qualification for a single lead (web fetch + AI rescore). The
+  operation is asynchronous — results take ~60s.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Trigger AI qualification for a single lead (web fetch + AI rescore). The operation is asynchronous — results take ~60s. `forceFetch:true` re-runs even if recent data exists.
+
+{{include:headers/tool-when-to-use}} low-level — when you need to kick qualification on exactly one lead without composite orchestration.
+
+{{include:headers/tool-when-not-to-use}} as the agent's bulk-qualify path — use leadbay_bulk_qualify_leads, which paginates past already-qualified leads, fans out, polls, and bails out cleanly on 429.
+
+{{include:headers/verification-required-if-write}}

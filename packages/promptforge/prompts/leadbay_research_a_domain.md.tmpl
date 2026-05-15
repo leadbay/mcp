@@ -1,0 +1,38 @@
+---
+name: leadbay_research_a_domain
+kind: prompt
+short_description: |
+  Import a company by domain and run deep qualification + research in one
+  pass. Use when a colleague mentions a name and you want everything Leadbay
+  knows about it.
+arguments:
+  - name: domain
+    description: "The company's primary domain (e.g. 'acme.com'). Protocol/path are stripped."
+    required: true
+expected_calls:
+  - leadbay_import_and_qualify
+  - leadbay_research_lead
+failure_modes:
+  - Fabricates qualification answers not present in any tool response
+  - Reports certainty about fit when qualification didn't actually run (e.g. quota_blocked)
+  - Skips the research step after import completes
+---
+
+{{include:iron-laws/no-fabrication}}
+
+Research the company with domain '{{arg:domain}}' for me using Leadbay.
+
+# PHASE 1 — IMPORT + QUALIFY
+Call `leadbay_import_and_qualify` with `domains=[{domain:'{{arg:domain}}'}]`. This imports the lead AND runs AI qualification in one call. If the response indicates `quota_blocked` or `still_running`, say so explicitly.
+
+# PHASE 2 — DEEP DIVE
+When the import resolves, call `leadbay_research_lead` on the new leadId.
+
+# PHASE 3 — SUMMARY
+Summarize:
+- Who is this company (1 sentence)
+- Their fit (cite specific `qualification_answers` from the qualification response)
+- What signals stand out (cite specific research findings)
+- Which contact would I email first (name, role, source)
+
+Be honest about uncertainty: if any field above is missing from tool responses, say "not surfaced by qualification" rather than guessing.

@@ -1,0 +1,19 @@
+---
+name: leadbay_create_lens
+kind: tool-description
+short_description: |
+  Create a new user-level lens by cloning an existing lens's filter/scoring as
+  the starting point.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: false
+  openWorldHint: true
+---
+Create a new user-level lens by cloning an existing lens's filter/scoring as the starting point.
+
+{{include:headers/tool-when-to-use}} when adjust_audience determined the current lens cannot be edited (e.g. it's the org default).
+
+{{include:headers/tool-when-not-to-use}} to update an existing lens — use leadbay_update_lens or leadbay_update_lens_filter.
+
+{{include:headers/verification-required-if-write}}

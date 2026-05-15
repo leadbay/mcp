@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, FilterPayload } from "../types.js";
+import { leadbay_update_lens_filter as UPDATE_LENS_FILTER_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface UpdateLensFilterParams {
   lensId: number;
@@ -16,12 +17,7 @@ export const updateLensFilter: Tool<UpdateLensFilterParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Replace the audience filter (sectors, sizes, locations) on a lens. Body is the full Filter object — " +
-    "this is a REPLACE, not a merge. Returns 400 'default_lens' if applied to the org default lens (clone it first). " +
-    "When to use: low-level mutation when you've already prepared the merged filter. " +
-    "When NOT to use: from agent flow — use leadbay_adjust_audience, which handles draft-vs-direct routing, " +
-    "permission fallback, and the merge logic so unrelated criteria aren't dropped.",
+  description: UPDATE_LENS_FILTER_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

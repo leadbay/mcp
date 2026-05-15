@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, LeadWebFetchPayload } from "../types.js";
+import { leadbay_get_web_fetch as GET_WEB_FETCH_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface GetWebFetchParams {
   leadId: string;
@@ -14,13 +15,7 @@ export const getWebFetch: Tool<GetWebFetchParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Read the AI-generated web-research summary for a lead — company profile, business signals, prospecting clues, " +
-    "each with sources and 'hot' flags marking high-signal recent items. The content is dictioned by emoji-prefixed " +
-    "section labels in the raw API. " +
-    "When to use: when the agent already qualified this lead and wants the underlying research to reason from. " +
-    "When NOT to use: as the first read on a lead — the leadbay_research_lead composite bundles this with qualification " +
-    "answers and reshapes the dict into a stable array form.",
+  description: GET_WEB_FETCH_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: { leadId: { type: "string", description: "Lead UUID (required)" } },

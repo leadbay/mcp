@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, UserPromptPayload } from "../types.js";
+import { leadbay_get_user_prompt as GET_USER_PROMPT_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 export const getUserPrompt: Tool<Record<string, never>> = {
   name: "leadbay_get_user_prompt",
@@ -10,11 +11,7 @@ export const getUserPrompt: Tool<Record<string, never>> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Read the org's intelligence-refinement prompt (free-text instruction that steers lead recommendations beyond firmographics). " +
-    "Returns null if none is set (the backend returns 204 in that case). " +
-    "When to use: to know what's currently steering the agent's recommendations before suggesting a refine. " +
-    "When NOT to use: to set/change the prompt — use leadbay_refine_prompt.",
+  description: GET_USER_PROMPT_DESCRIPTION,
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
   outputSchema: {
     type: "object",

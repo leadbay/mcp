@@ -1,6 +1,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
 import type { PaginatedActivities } from "../types.js";
+import { leadbay_get_lead_activities as GET_LEAD_ACTIVITIES_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface GetLeadActivitiesParams {
   leadId: string;
@@ -16,10 +17,7 @@ export const getLeadActivities: Tool<GetLeadActivitiesParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Get prospecting activity history for a lead (emails sent, calls made, status changes, notes). " +
-    "When to use: to avoid redundant outreach and understand where this lead is in the sales process. " +
-    "When NOT to use: when leadbay_research_lead has already been called — it includes recent prospecting actions in its engagement block.",
+  description: GET_LEAD_ACTIVITIES_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

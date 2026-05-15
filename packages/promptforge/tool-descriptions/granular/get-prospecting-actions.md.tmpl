@@ -1,0 +1,17 @@
+---
+name: leadbay_get_prospecting_actions
+kind: tool-description
+short_description: |
+  Read the CRM-style activity log for a lead (calls, emails, meetings —
+  actions performed by humans or prior agent runs).
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Read the CRM-style activity log for a lead (calls, emails, meetings — actions performed by humans or prior agent runs). Paginated (`count` 1-200 default 20, `page` 0-indexed).
+
+{{include:headers/tool-when-to-use}} before contacting the lead, to avoid duplicating outreach the team already did.
+
+{{include:headers/tool-when-not-to-use}} when the lead summary's `prospecting_actions_count` is 0.

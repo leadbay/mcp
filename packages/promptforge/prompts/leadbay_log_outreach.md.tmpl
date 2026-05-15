@@ -1,0 +1,41 @@
+---
+name: leadbay_log_outreach
+kind: prompt
+short_description: |
+  Log outreach (an email I sent, a call I made, a meeting I had) on a
+  specific lead. Captures verification so the SDR pipeline trusts the entry.
+arguments:
+  - name: lead_id
+    description: "The lead UUID. Get it from leadbay_pull_leads or leadbay_research_lead."
+    required: true
+  - name: summary
+    description: "1-2 sentences describing what I did (e.g. 'Sent intro email to CTO citing recent Hornsea contract')."
+    required: true
+expected_calls:
+  - leadbay_report_outreach
+failure_modes:
+  - Calls leadbay_report_outreach without first collecting a verification source
+  - Fabricates a gmail_message_id or calendar_event_id (the human team treats verification as canonical)
+  - Records outreach to a different lead_id than the one the user supplied
+  - Skips the dry_run step when the user is unsure what would be sent
+---
+
+{{include:iron-laws/verification-required}}
+
+Log this outreach on Leadbay lead {{arg:lead_id}}:
+Summary: {{arg:summary}}
+
+# PHASE 1 — COLLECT VERIFICATION (ask the user EXACTLY once)
+
+Before calling `leadbay_report_outreach`, ask me ONCE which of these applies:
+
+- I sent an **email** → ask for the Gmail message id (`verification.source = 'gmail_message_id'`, `verification.ref = <the id>`).
+- I booked a **meeting** → ask for the calendar event id (`verification.source = 'calendar_event_id'`, `verification.ref = <the id>`).
+- **Other** → ask me for a literal one-sentence confirmation that the outreach happened (`verification.source = 'user_confirmed'`, `verification.ref = my exact words`).
+
+# PHASE 2 — RECORD
+
+After I answer, call `leadbay_report_outreach({lead_id: '{{arg:lead_id}}', note: <summary>, verification: {source, ref}})`. Optionally pass `dry_run:true` first to confirm exactly what would be sent — recommended if I described the outreach but you're not 100% sure how to phrase the note.
+
+# PHASE 3 — CONFIRM
+Tell me the outreach was logged, name the verification.source used, and surface the response's `outreach_id` if present so I can refer back to it.

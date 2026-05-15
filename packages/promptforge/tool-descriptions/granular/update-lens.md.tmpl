@@ -1,0 +1,19 @@
+---
+name: leadbay_update_lens
+kind: tool-description
+short_description: |
+  Update lens metadata (name, description, mode flags). Does NOT change the
+  audience filter.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Update lens metadata (name, description, mode flags). Does NOT change the audience filter — use leadbay_update_lens_filter for that.
+
+{{include:headers/tool-when-to-use}} rename a lens or toggle `multi_product_mode` / `use_hq_only`.
+
+{{include:headers/tool-when-not-to-use}} to change which leads the lens shows — that's a filter operation.
+
+{{include:headers/verification-required-if-write}}

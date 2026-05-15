@@ -1,6 +1,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, ClarificationPayload } from "../types.js";
 
+import { leadbay_answer_clarification as ANSWER_CLARIFICATION_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface AnswerClarificationParams {
   option_id?: string;
   text_answer?: string;
@@ -18,12 +19,7 @@ export const answerClarification: Tool<AnswerClarificationParams> = {
     idempotentHint: false,
     openWorldHint: true,
   },
-  description:
-    "Answer the pending clarification question Leadbay raised after a refine_prompt. The answer is stored as " +
-    "the new user_prompt and triggers regeneration. Pass option_id (preferred — pick from the offered options) " +
-    "or text_answer (free-text). Admin-only. " +
-    "When to use: after leadbay_refine_prompt returns status='clarification_pending'. " +
-    "When NOT to use: to set a brand-new prompt — use leadbay_refine_prompt.",
+  description: ANSWER_CLARIFICATION_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

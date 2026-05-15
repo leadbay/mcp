@@ -1,0 +1,17 @@
+---
+name: leadbay_get_lens_scoring
+kind: tool-description
+short_description: |
+  Read the AI-scoring criteria configured on a lens (what makes a lead score
+  100 vs 30).
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Read the AI-scoring criteria configured on a lens (what makes a lead score 100 vs 30).
+
+{{include:headers/tool-when-to-use}} when explaining why a lead got the score it did.
+
+{{include:headers/tool-when-not-to-use}} to mutate scoring — that's an admin/setup operation, not part of the agent loop.

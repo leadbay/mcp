@@ -2,6 +2,7 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, RequestMeta, FileImportPayloadV15 } from "../types.js";
 import { isValidBulkId } from "../jobs/bulk-store.js";
 
+import { leadbay_import_status as IMPORT_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface ImportStatusParams {
   handle_id?: string;
   importIds?: string[];
@@ -82,15 +83,7 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Retrieve the current state of an async lead import. Pass `handle_id` returned by " +
-    "leadbay_import_leads({wait_for_completion:false}), or pass legacy `importIds[]` to inspect backend wizard rows. " +
-    "This status call performs a single refresh pass and never polls in a loop.\n" +
-    "When to use: after leadbay_import_leads or leadbay_import_and_qualify returns `{status:'running', handle_id}` " +
-    "for the import phase, call this tool later to retrieve progress or the final import result without re-running " +
-    "the import.\n" +
-    "When NOT to use: for qualification handles returned as `qualify_id` — use leadbay_qualify_status for those; " +
-    "or when you still want the legacy blocking behavior from leadbay_import_leads with wait_for_completion=true.",
+  description: IMPORT_STATUS_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

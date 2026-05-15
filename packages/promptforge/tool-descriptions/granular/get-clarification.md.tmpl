@@ -1,0 +1,17 @@
+---
+name: leadbay_get_clarification
+kind: tool-description
+short_description: |
+  Check whether Leadbay has a pending clarification question — raised when
+  refining the intelligence prompt produced ambiguous criteria.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Check whether Leadbay has a pending clarification question — a question raised when refining the intelligence prompt produced contradictory or ambiguous criteria. Returns `{pending: false, clarification: null}` when nothing is pending (the backend returns 204).
+
+{{include:headers/tool-when-to-use}} after leadbay_refine_prompt, to see if Leadbay needs the user to disambiguate.
+
+{{include:headers/tool-when-not-to-use}} to answer the question — use leadbay_answer_clarification.

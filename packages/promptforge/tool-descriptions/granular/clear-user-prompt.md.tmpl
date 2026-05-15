@@ -1,0 +1,19 @@
+---
+name: leadbay_clear_user_prompt
+kind: tool-description
+short_description: |
+  Remove the org's intelligence-refinement prompt (revert to AI-only
+  generation). Admin-only.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Remove the org's intelligence-refinement prompt (revert to AI-only generation). Admin-only. Triggers full intelligence regeneration.
+
+{{include:headers/tool-when-to-use}} when a refinement turned out to be the wrong direction.
+
+{{include:headers/tool-when-not-to-use}} to replace with a different prompt — just call leadbay_refine_prompt; that overwrites.
+
+{{include:headers/verification-required-if-write}}

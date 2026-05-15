@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_set_active_lens as SET_ACTIVE_LENS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface SetActiveLensParams {
   lensId: number;
@@ -14,11 +15,7 @@ export const setActiveLens: Tool<SetActiveLensParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Mark a lens as last-used. Subsequent /me reads return it as last_requested_lens, so all composite " +
-    "tools default to it. " +
-    "When to use: after the user explicitly switched contexts (e.g. created a new lens via leadbay_create_lens). " +
-    "When NOT to use: in normal flow — leadbay_pull_leads and leadbay_adjust_audience auto-set the right lens.",
+  description: SET_ACTIVE_LENS_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

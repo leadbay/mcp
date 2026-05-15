@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, EpilogueResponsesPayload } from "../types.js";
+import { leadbay_get_epilogue_responses as GET_EPILOGUE_RESPONSES_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface GetEpilogueResponsesParams {
   leadId: string;
@@ -16,10 +17,7 @@ export const getEpilogueResponses: Tool<GetEpilogueResponsesParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Read the lead's epilogue history — what status (still chasing, meeting booked, etc.) was set when, and by whom. " +
-    "When to use: to see the lead's outreach progression before deciding the next step. " +
-    "When NOT to use: when the lead summary's epilogue_actions_count is 0.",
+  description: GET_EPILOGUE_RESPONSES_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

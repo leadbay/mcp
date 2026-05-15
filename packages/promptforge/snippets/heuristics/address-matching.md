@@ -1,0 +1,3 @@
+Compare addresses intelligently as a human would: recognize ordinary formatting, abbreviation, spelling, punctuation, casing, direction, ordinal, and suite/unit differences without reducing the decision to rigid rules.
+
+Write LEADBAY_ID when candidate facts uniquely agree with strong source evidence: exact registry/CRM id, exact phone, exact canonical website/domain with only one candidate, or name plus clear same-place address match with postcode/city and no conflict. If several candidates share the same website/domain, treat it as a chain/multi-location problem and use street address, postcode, city/neighborhood, phone, source URL path/location slug, and location words in the source name to pick the specific place when exactly one candidate matches.

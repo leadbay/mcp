@@ -1,0 +1,18 @@
+---
+name: leadbay_set_epilogue_status
+kind: tool-description
+short_description: |
+  Bulk-set the outreach progress (epilogue) status across a set of leads.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Bulk-set the outreach progress (epilogue) status across a set of leads. Status values: `STILL_CHASING`, `COULD_NOT_REACH_STILL_TRYING`, `INTEREST_VALIDATED_OR_MEETING_PLANED` ("meeting booked"), `NOT_INTERESTED_LOST` (short labels accepted; mapped to the `EPILOGUE_*` enum). Up to 1000 leads per call.
+
+{{include:headers/tool-when-to-use}} low-level.
+
+{{include:headers/tool-when-not-to-use}} from agent flow — leadbay_report_outreach pairs this with a note + verification, which is what humans actually need to see in Leadbay.
+
+{{include:headers/verification-required-if-write}}

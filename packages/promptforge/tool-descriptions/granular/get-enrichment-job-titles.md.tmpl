@@ -1,0 +1,17 @@
+---
+name: leadbay_get_enrichment_job_titles
+kind: tool-description
+short_description: |
+  List the actual job titles present across the leads currently in the user's
+  selection — the candidate set for bulk enrichment.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+List the actual job titles present across the leads currently in the user's selection — the candidate set the user can ask to enrich.
+
+{{include:headers/tool-when-to-use}} after leadbay_select_leads, to know which titles are even available before launching a bulk enrichment.
+
+{{include:headers/tool-when-not-to-use}} standalone — the selection must already be populated, otherwise the result is an empty array. leadbay_enrich_titles wraps this whole flow when you don't need to inspect the title list manually.

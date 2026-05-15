@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, BulkEnrichPreview } from "../types.js";
+import { leadbay_preview_bulk_enrichment as PREVIEW_BULK_ENRICHMENT_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface PreviewBulkEnrichmentParams {
   titles: string[];
@@ -14,13 +15,7 @@ export const previewBulkEnrichment: Tool<PreviewBulkEnrichmentParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Preview a bulk-enrichment cost given a set of job titles applied to the current selection. Returns " +
-    "{selected_leads, enriched_contacts, enrichable_contacts, title_suggestions, auto_included_titles, previously_enriched_titles}. " +
-    "previously_enriched_titles is a newer field (in prod soon) — when present, the agent can recommend " +
-    "repeating those titles for new leads. " +
-    "When to use: between selecting leads and launching, to know what the enrichment will cost. " +
-    "When NOT to use: from agent flow — leadbay_enrich_titles wraps preview + launch with the right safety checks.",
+  description: PREVIEW_BULK_ENRICHMENT_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

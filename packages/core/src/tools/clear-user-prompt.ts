@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_clear_user_prompt as CLEAR_USER_PROMPT_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 export const clearUserPrompt: Tool<Record<string, never>> = {
   name: "leadbay_clear_user_prompt",
@@ -10,11 +11,7 @@ export const clearUserPrompt: Tool<Record<string, never>> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Remove the org's intelligence-refinement prompt (revert to AI-only generation). Admin-only. " +
-    "Triggers full intelligence regeneration. " +
-    "When to use: when a refinement turned out to be the wrong direction. " +
-    "When NOT to use: to replace with a different prompt — just call leadbay_refine_prompt; that overwrites.",
+  description: CLEAR_USER_PROMPT_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: { type: "object", properties: {}, additionalProperties: false },

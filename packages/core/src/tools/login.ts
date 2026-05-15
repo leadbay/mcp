@@ -1,6 +1,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 import { resolveRegion, REGIONS } from "../client.js";
+import { leadbay_login as LOGIN_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface LoginParams {
   email: string;
@@ -16,12 +17,7 @@ export const login: Tool<LoginParams> = {
     idempotentHint: false,
     openWorldHint: true,
   },
-  description:
-    "Log in to Leadbay with email and password. Auto-detects region (us|fr) — the user does not need to know " +
-    "which backend their account lives on. " +
-    "When to use: at the start of a session if no token is preconfigured (cfg.token / LEADBAY_TOKEN). " +
-    "When NOT to use: if a token is already preconfigured (you'll just overwrite it). The user needs a Leadbay " +
-    "account — they can register at https://wow.leadbay.ai/?register=true",
+  description: LOGIN_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

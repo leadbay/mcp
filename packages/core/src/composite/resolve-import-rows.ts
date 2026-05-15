@@ -8,6 +8,7 @@ import type {
   Tool,
 } from "../types.js";
 
+import { leadbay_resolve_import_rows as RESOLVE_IMPORT_ROWS_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface IdentityMappings {
   leadbay_id?: string;
   crm_id?: string;
@@ -225,23 +226,7 @@ export const resolveImportRows: Tool<ResolveImportRowsParams, ResolveImportRowsR
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Resolve messy CSV-shaped lead rows against Leadbay before file import. The tool sends each row's available " +
-    "identity signals to POST /leads/resolve, returns matched lead IDs or ambiguous candidate IDs, and produces " +
-    "`records_for_import` plus a SAFE identity-only `mappings_for_import` starting point for " +
-    "leadbay_import_leads / leadbay_import_and_qualify. This tool deliberately does not try to understand every " +
-    "CSV dialect; the agent should inspect the file, derive clean helper columns when useful, pass explicit " +
-    "`identity_mappings`, and build the final CRM mapping from mapping_guidance.\n\n" +
-    "When to use: before importing user-supplied files when domains, names, CRM IDs, registry numbers, or Leadbay IDs " +
-    "may be inconsistently formatted; when the agent needs to pre-resolve messy rows, inspect ambiguous candidates, " +
-    "or prepare LEADBAY_ID values for leadbay_import_leads / leadbay_import_and_qualify. For contact-only files, " +
-    "first derive company website/domain from business contact emails where possible, while ignoring consumer mailbox domains. " +
-    "Deterministic matches get a LEADBAY_ID column inserted so the standard import commits immediately. Ambiguous rows are deliberately left without LEADBAY_ID; inspect candidates " +
-    "and choose one only when the evidence is good. Rows with websites but no match can still be imported; " +
-    "Leadbay may crawl and match them later, and leadbay_import_status can surface late matches.\n\n" +
-    "When NOT to use: for prospect discovery from scratch (use leadbay_pull_leads); for one known company profile " +
-    "(use leadbay_research_company / leadbay_research_lead); or when the file already has clean, final " +
-    "LEADBAY_ID/CRM_ID/SIREN mappings and no row-level identity disambiguation is needed.",
+  description: RESOLVE_IMPORT_ROWS_DESCRIPTION,
   write: false,
   version: "0.6.4",
   inputSchema: {

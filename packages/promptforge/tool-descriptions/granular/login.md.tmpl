@@ -1,0 +1,19 @@
+---
+name: leadbay_login
+kind: tool-description
+short_description: |
+  Log in to Leadbay with email and password. Auto-detects region (us|fr) so the
+  user does not need to know which backend hosts their account.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: false
+  openWorldHint: true
+---
+Log in to Leadbay with email and password. Auto-detects region (us|fr) — the user does not need to know which backend their account lives on. On success, sets the client's bearer token and switches the active region if needed.
+
+{{include:headers/tool-when-to-use}} at the start of a session if no token is preconfigured (cfg.token / LEADBAY_TOKEN).
+
+{{include:headers/tool-when-not-to-use}} if a token is already preconfigured — you'll just overwrite it. The user needs a Leadbay account first; they can register at https://wow.leadbay.ai/?register=true.
+
+{{include:headers/verification-required-if-write}}

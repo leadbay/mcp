@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ProspectingActionsPayload } from "../types.js";
+import { leadbay_get_prospecting_actions as GET_PROSPECTING_ACTIONS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface GetProspectingActionsParams {
   leadId: string;
@@ -16,10 +17,7 @@ export const getProspectingActions: Tool<GetProspectingActionsParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Read the CRM-style activity log for a lead (calls, emails, meetings — actions performed by humans or prior agent runs). " +
-    "When to use: before contacting the lead, to avoid duplicating outreach the team already did. " +
-    "When NOT to use: when the lead summary's prospecting_actions_count is 0.",
+  description: GET_PROSPECTING_ACTIONS_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

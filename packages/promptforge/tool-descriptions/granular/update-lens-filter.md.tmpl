@@ -1,0 +1,19 @@
+---
+name: leadbay_update_lens_filter
+kind: tool-description
+short_description: |
+  Replace the audience filter (sectors, sizes, locations) on a lens. Body is
+  the full Filter object — this is a REPLACE, not a merge.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Replace the audience filter (sectors, sizes, locations) on a lens. Body is the full `Filter` object — this is a REPLACE, not a merge. Returns 400 `default_lens` if applied to the org default lens (clone it first). `dry_run:true` returns the call shape without contacting the backend.
+
+{{include:headers/tool-when-to-use}} low-level mutation when you've already prepared the merged filter.
+
+{{include:headers/tool-when-not-to-use}} from agent flow — use leadbay_adjust_audience, which handles draft-vs-direct routing, permission fallback, and the merge logic so unrelated criteria aren't dropped.
+
+{{include:headers/verification-required-if-write}}

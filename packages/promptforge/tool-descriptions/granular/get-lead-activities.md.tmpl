@@ -1,0 +1,17 @@
+---
+name: leadbay_get_lead_activities
+kind: tool-description
+short_description: |
+  Get prospecting activity history for a lead (emails sent, calls made, status
+  changes, notes).
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Get prospecting activity history for a lead (emails sent, calls made, status changes, notes). Each entry is `{type, date}`; older activities are trimmed by `count` (max 100, default 50).
+
+{{include:headers/tool-when-to-use}} to avoid redundant outreach and understand where this lead is in the sales process.
+
+{{include:headers/tool-when-not-to-use}} when leadbay_research_lead has already been called — it includes recent prospecting actions in its engagement block.

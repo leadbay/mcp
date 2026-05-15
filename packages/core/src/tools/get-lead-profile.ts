@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_get_lead_profile as GET_LEAD_PROFILE_DESCRIPTION } from "../tool-descriptions.generated.js";
 import type {
   LeadPayload,
   AiAgentResponse,
@@ -22,12 +23,7 @@ export const getLeadProfile: Tool<GetLeadProfileParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Get a full lead profile including company details, AI qualification scores, web insights, and contacts. " +
-    "When to use: low-level — for fine-grained access to the raw shape of the lead profile. " +
-    "When NOT to use: as the agent's default lead-detail tool — use leadbay_research_lead, which structures " +
-    "the data top-down (qualification first, then signals, then firmographics, then contacts, then engagement) " +
-    "and reshapes web_fetch.content into a stable array form.",
+  description: GET_LEAD_PROFILE_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

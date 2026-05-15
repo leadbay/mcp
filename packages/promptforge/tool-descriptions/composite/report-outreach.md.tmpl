@@ -1,0 +1,22 @@
+---
+name: leadbay_report_outreach
+kind: tool-description
+short_description: |
+  Log an outreach action (email, call, message, meeting) on a lead so
+  the human team sees progress. Writes a NOTE and optionally sets an
+  EPILOGUE status. REQUIRES verification (anti-hallucination).
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: false
+  openWorldHint: true
+---
+Log an outreach action (email, call, message, meeting) on a lead so the human team using Leadbay sees the progress in their UI. Writes a NOTE on the lead and (optionally) sets an EPILOGUE status (still chasing, meeting booked, etc.). Bulk variant: pass `lead_ids=[uuid,...]` instead of `lead_id` (epilogue is bulk-native; notes fan out per-lead).
+
+VERIFICATION REQUIRED: every call must include `verification={source: 'gmail_message_id'|'calendar_event_id'|'user_confirmed', ref: '<id-or-confirmation>'}` to prevent hallucinated outreach poisoning the pipeline. The verification is appended to the note body. Skipping or fabricating verification poisons the human team's pipeline.
+
+{{include:headers/tool-when-to-use}} AFTER actually emailing/calling/meeting/messaging a contact, OR after a substantive decision the user wants logged (skip, save, hand off).
+
+{{include:headers/tool-when-not-to-use}} BEFORE doing the outreach (use `dry_run:true` to validate args first); without verification (call will be rejected); from a flow where the user did not consent to having actions logged automatically.
+
+{{include:headers/verification-required-if-write}}

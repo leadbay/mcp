@@ -1,0 +1,6 @@
+Run the Leadbay daily check-in for me:
+1. Call leadbay_account_status to see what quota I have left and which lens is active.
+2. Call leadbay_pull_leads to get today's fresh batch.
+3. Show me the top 3 — by ai_agent_lead_score when present, otherwise by score. For each, summarize qualification_summary in one sentence.
+4. Recommend ONE lead to research deeply, and call leadbay_research_lead on it. Tell me what makes it promising, what signals stand out, and what would be the right outreach move.
+5. Stop. Wait for me to decide what to do next. Do not call leadbay_report_outreach unless I explicitly say so.

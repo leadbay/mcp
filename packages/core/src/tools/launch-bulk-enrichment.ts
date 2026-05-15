@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_launch_bulk_enrichment as LAUNCH_BULK_ENRICHMENT_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 // IMPORTANT — backend behavior confirmed by live probe (SHAPE-DRIFT.md probe 5):
 // `/leads/selection/enrichment/launch` returns 204 with no body and no headers
@@ -26,12 +27,7 @@ export const launchBulkEnrichment: Tool<LaunchBulkEnrichmentParams> = {
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Launch a bulk-enrichment job against the current selection. The backend requires email=true OR phone=true " +
-    "(both can be true). Returns 204 with no body — there is no bulk_id and no per-job status endpoint. " +
-    "Track results by polling individual leads via leadbay_get_contacts after ~60s; contact.enrichment.done flips to true. " +
-    "When to use: low-level. " +
-    "When NOT to use: from agent flow — leadbay_enrich_titles handles selection lifecycle, preview, launch, and cleanup.",
+  description: LAUNCH_BULK_ENRICHMENT_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

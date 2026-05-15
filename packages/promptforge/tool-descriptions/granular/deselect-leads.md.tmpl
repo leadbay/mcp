@@ -1,0 +1,18 @@
+---
+name: leadbay_deselect_leads
+kind: tool-description
+short_description: |
+  Remove leads from the user's transient selection.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Remove leads from the user's transient selection.
+
+{{include:headers/tool-when-to-use}} when narrowing a previously-built selection without clearing it entirely.
+
+{{include:headers/tool-when-not-to-use}} in normal flow — leadbay_enrich_titles handles selection lifecycle.
+
+{{include:headers/verification-required-if-write}}

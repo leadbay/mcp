@@ -1,0 +1,17 @@
+---
+name: leadbay_get_web_fetch
+kind: tool-description
+short_description: |
+  Read the AI-generated web-research summary for a lead — company profile,
+  business signals, prospecting clues, each with sources and 'hot' flags.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Read the AI-generated web-research summary for a lead — company profile, business signals, prospecting clues, each with sources and "hot" flags marking high-signal recent items. The content is dictioned by emoji-prefixed section labels in the raw API.
+
+{{include:headers/tool-when-to-use}} when the agent already qualified this lead and wants the underlying research to reason from.
+
+{{include:headers/tool-when-not-to-use}} as the first read on a lead — the leadbay_research_lead composite bundles this with qualification answers and reshapes the dict into a stable array form.

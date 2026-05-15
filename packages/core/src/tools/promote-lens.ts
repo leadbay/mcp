@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
+import { leadbay_promote_lens as PROMOTE_LENS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface PromoteLensParams {
   lensId: number;
@@ -14,10 +15,7 @@ export const promoteLens: Tool<PromoteLensParams> = {
     idempotentHint: false,
     openWorldHint: true,
   },
-  description:
-    "Promote a user-level lens (or draft) to org-level so all teammates see it. Admin-only. " +
-    "When to use: rare — when an admin user has built a lens (or refined a draft) and wants to share it org-wide. " +
-    "When NOT to use: as a non-admin (will fail with 403); for personal lens changes (those stay user-scoped).",
+  description: PROMOTE_LENS_DESCRIPTION,
   optional: true,
   write: true,
   inputSchema: {

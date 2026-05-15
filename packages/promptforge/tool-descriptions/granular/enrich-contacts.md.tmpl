@@ -1,0 +1,18 @@
+---
+name: leadbay_enrich_contacts
+kind: tool-description
+short_description: |
+  Order email and/or phone enrichment for a specific contact on a lead.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Order email and/or phone enrichment for a specific contact. Performs an advisory credit check, then tries the paid-contact path and falls back to the org-contact path on NOT_FOUND. Consumes enrichment credits.
+
+{{include:headers/tool-when-to-use}} when you have a specific `contact_id` (from leadbay_get_contacts) and want to enrich just that one.
+
+{{include:headers/tool-when-not-to-use}} for bulk enrichment by job title across many leads — use leadbay_enrich_titles, which handles the selection lifecycle and returns a clean preview/launch flow.
+
+{{include:headers/verification-required-if-write}}

@@ -8,6 +8,7 @@ import {
   type QualifyResult,
 } from "./_qualify-helpers.js";
 
+import { leadbay_qualify_status as QUALIFY_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface QualifyStatusParams {
   qualify_id: string;
 }
@@ -56,15 +57,7 @@ export const qualifyStatus: Tool<
     idempotentHint: true,
     openWorldHint: true,
   },
-  description:
-    "Retrieve the current state of an import_and_qualify launch by `qualify_id`. Returns the same `qualified[]` " +
-    "/ `still_running[]` shape as the original composite, refreshed against the backend at call time. The handle " +
-    "is persisted to ~/.leadbay/bulks.json with a 30-day TTL and survives MCP restart.\n\n" +
-    "When to use: after leadbay_import_and_qualify returned a qualify_id with non-empty `still_running[]`, call " +
-    "this tool a few minutes later (or hours) to retrieve the now-completed qualifications without re-running " +
-    "the import or re-spending qualify quota.\n" +
-    "When NOT to use: as a substitute for leadbay_research_lead — that's a deeper per-lead profile and includes " +
-    "contacts. This tool is purely the qualification answers + signals_count.",
+  description: QUALIFY_STATUS_DESCRIPTION,
   inputSchema: {
     type: "object",
     properties: {

@@ -1,0 +1,19 @@
+---
+name: leadbay_dismiss_clarification
+kind: tool-description
+short_description: |
+  Dismiss the pending clarification without answering. Leadbay proceeds with
+  its best guess. Admin-only.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: false
+  openWorldHint: true
+---
+Dismiss the pending clarification without answering. Leadbay proceeds with its best guess. Admin-only.
+
+{{include:headers/tool-when-to-use}} when the user explicitly doesn't want to answer the disambiguation.
+
+{{include:headers/tool-when-not-to-use}} as a default — answering with even a free-text reason gives Leadbay better signal.
+
+{{include:headers/verification-required-if-write}}
