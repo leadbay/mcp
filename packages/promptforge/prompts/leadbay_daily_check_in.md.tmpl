@@ -2,11 +2,13 @@
 name: leadbay_daily_check_in
 kind: prompt
 short_description: |
-  Run the canonical daily check-in: see account state, pull a fresh batch,
-  triage the top 10, deep-dive on every promising one, and offer contact
-  enrichment. The user's typical morning workflow. Trigger when the user
-  asks for "leadbay leads", "best leads to prospect today", "what should
-  I work on", or anything resembling "show me the day's batch".
+  Run the canonical daily check-in: account state, fresh batch, triage
+  top 10, deep-dive every promising one, offer contact enrichment. The
+  morning DISCOVERY workflow (new leads from the lens wishlist). Trigger
+  on "leadbay leads", "best NEW leads", "what's new today", "show me the
+  day's batch", "let's prospect". Do NOT trigger on follow-up phrasings
+  ("what should I follow up on", "before my trip") — those go to
+  `leadbay_followup_check_in`.
 arguments: []
 expected_calls:
   - leadbay_account_status
@@ -25,9 +27,10 @@ failure_modes:
   - Fires 10 parallel leadbay_research_lead calls and treats "stream closed" errors as terminal — must serialize and retry singletons
   - Re-pulls leadbay_pull_leads without passing the captured lensId, allowing a backend lens shift to discard the Phase 2 batch
   - Treats a "Request timed out" from leadbay_bulk_qualify_leads as terminal instead of retrying with wait_for_completion:false + qualify_status polling
+  - Triggers on a follow-up query (e.g., "leads I should follow up with") that should have routed to `leadbay_followup_check_in` — the two entry points are different data sources (Discover wishlist vs Monitor view) per §1.6
 ---
 
-Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask: "get me leadbay leads", "best leads to prospect today", "what should I work on", "show me my batch".
+Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask focused on NEW leads from the Discover wishlist: "get me leadbay leads", "best NEW leads to prospect today", "what's new today", "show me my batch", "let's prospect". For follow-up phrasings ("what should I follow up on", "leads I've already worked", "before my trip"), this is the wrong prompt — route to `leadbay_followup_check_in` instead. If the user's intent is ambiguous ("what should I work on?"), ASK once before picking an entry point.
 
 {{include:heuristics/long-running-tools}}
 

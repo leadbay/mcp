@@ -1,10 +1,10 @@
 ---
 name: leadbay_daily_check_in
-description: "Run the canonical daily check-in: see account state, pull a fresh batch, triage the top 10, deep-dive on every promising one, and offer contact enrichment. The user's typical morning workflow. Trigger when the user asks for \"leadbay leads\", \"best leads to prospect today\", \"what should I work on\", or anything resembling \"show me the day's batch\"."
+description: "Run the canonical daily check-in: account state, fresh batch, triage top 10, deep-dive every promising one, offer contact enrichment. The morning DISCOVERY workflow (new leads from the lens wishlist). Trigger on \"leadbay leads\", \"best NEW leads\", \"what's new today\", \"show me the day's batch\", \"let's prospect\". Do NOT trigger on follow-up phrasings (\"what should I follow up on\", \"before my trip\") — those go to `leadbay_followup_check_in`."
 ---
 
 
-Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask: "get me leadbay leads", "best leads to prospect today", "what should I work on", "show me my batch".
+Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask focused on NEW leads from the Discover wishlist: "get me leadbay leads", "best NEW leads to prospect today", "what's new today", "show me my batch", "let's prospect". For follow-up phrasings ("what should I follow up on", "leads I've already worked", "before my trip"), this is the wrong prompt — route to `leadbay_followup_check_in` instead. If the user's intent is ambiguous ("what should I work on?"), ASK once before picking an entry point.
 
 # Resilience rules for Leadbay long-running tools
 

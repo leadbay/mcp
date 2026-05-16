@@ -19,23 +19,24 @@ Backend: wraps `GET /1.5/monitor?personal=&liked=&filtered=&count=&page=` plus, 
 
 Practical mapping from user phrasing to criterion:
 
-| User phrase                          | Criterion                                                                 |
-|--------------------------------------|---------------------------------------------------------------------------|
-| "leads in Lyon"                      | `{type: "location_ids", locations: [<admin_area_id>]}`                    |
-| "healthcare staffing"                | `{type: "keywords", keywords: ["healthcare", "staffing"]}`                |
-| "leads I haven't touched in 30 days" | `{type: "last_action_date", last_days: 30}`                               |
-| "leads I liked"                      | `{type: "liked"}`                                                         |
-| "leads where I purchased contacts"   | `{type: "last_action", types: ["PURCHASE_LEAD_CONTACT"]}`                 |
-| "leads 50–200 employees"             | `{type: "size", sizes: [{min: 50, max: 200}]}`                            |
-| "Y Combinator companies"             | `{type: "yc"}`                                                            |
+| User phrase                          | Criterion                                                            |
+|--------------------------------------|----------------------------------------------------------------------|
+| "leads in Lyon"                      | `{type: "location_ids", locations: [<admin_area_id>]}`               |
+| "healthcare staffing"                | `{type: "keywords", keywords: ["healthcare", "staffing"]}`           |
+| "leads I haven't touched in 30 days" | `{type: "last_action_date", last_days: 30}`                          |
+| "leads I liked"                      | `{type: "liked"}`                                                    |
+| "leads 50–200 employees"             | `{type: "size", sizes: [{min: 50, max: 200}]}`                       |
+| "Y Combinator companies"             | `{type: "yc"}`                                                       |
 
 Geo filtering requires `admin_area_id` resolution (the backend doesn't accept free-text city names in `location_ids`). The MCP doesn't expose an admin-area lookup yet — for now, ask the user to pick the geo from the Leadbay app's filter UI, or skip the geo filter and rely on agent post-filtering of the response.
 
 **Pushback exclusion.** Leads with active pushback (`pushback_status` set and `pushback_until > today`) are excluded from the response. The composite enforces this client-side; `total_excluded_by_pushback` in the output reports how many rows were dropped.
 
-{{include:headers/tool-when-to-use}} when the user is re-engaging pipeline ("what should I follow up on", "leads in [city]", "stale leads"), or wants to filter their monitored leads by city / sector / recency / action type / liked.
+{{include:headers/tool-when-to-use}} re-engaging pipeline ("what should I follow up on", "stale leads"), filtering monitored leads by city / sector / recency / action type / liked. The canonical orchestrator is the `leadbay_followup_check_in` prompt.
 
-{{include:headers/tool-when-not-to-use}} for NEW leads from the wishlist — that's `leadbay_pull_leads` (discovery). The two surfaces overlap but rank differently; pulling the wrong one wastes the user's time.
+{{include:headers/tool-when-not-to-use}} for NEW leads — that's `leadbay_pull_leads` (Discover).
+
+**Anti-confusion guardrail.** If you're iterating `pull_leads` pages looking for rows with `prospecting_actions_count > 0` or `notes_count > 0`, STOP — wrong entry point. The two read different backend tables; a lead with follow-up history may not appear in `pull_leads` (already aged out of the new-leads queue). Call `pull_followups` instead.
 
 ---
 

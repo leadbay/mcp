@@ -6,7 +6,7 @@
 
 // region: leadbay_daily_check_in
 export const leadbay_daily_check_in: string = `
-Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask: "get me leadbay leads", "best leads to prospect today", "what should I work on", "show me my batch".
+Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask focused on NEW leads from the Discover wishlist: "get me leadbay leads", "best NEW leads to prospect today", "what's new today", "show me my batch", "let's prospect". For follow-up phrasings ("what should I follow up on", "leads I've already worked", "before my trip"), this is the wrong prompt — route to \`leadbay_followup_check_in\` instead. If the user's intent is ambiguous ("what should I work on?"), ASK once before picking an entry point.
 
 # Resilience rules for Leadbay long-running tools
 
@@ -158,6 +158,165 @@ STOP — awaiting user decision. I will not take any further action until you te
 Do not propose a next action. Do not call any more tools. Hand control back to the user.
 `;
 // endregion: leadbay_daily_check_in
+
+// region: leadbay_followup_check_in
+export const leadbay_followup_check_in: string = `
+Run the Leadbay follow-up check-in for me. Treat this prompt the same way for any equivalent ask: "leads I should follow up with", "already known leads", "what's overdue", "before my trip to [city]", "leads I haven't contacted", "who should I re-engage today".
+
+# Resilience rules for Leadbay long-running tools
+
+These four rules apply to every Leadbay workflow that calls \`leadbay_pull_leads\`, \`leadbay_bulk_qualify_leads\`, \`leadbay_research_lead\`, \`leadbay_import_and_qualify\`, or \`leadbay_enrich_titles\`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
+
+## Rule 1 — Pin the lens
+
+After your first \`leadbay_pull_leads\` call, capture \`response.lens.id\` into your working memory and **pass it explicitly as the \`lensId\` argument to every subsequent call** in this session — including any re-pulls, bulk qualifies, or research calls that accept it. (Field-name caveat: the response nests it as \`lens.id\`; the parameter on subsequent calls is \`lensId\`.) The active lens can shift between calls (5-minute client cache + backend \`last_requested_lens\` can change if the user touches the web UI). A lens shift mid-workflow throws away your top-10 work.
+
+## Rule 2 — Prefer async for bulk operations
+
+\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\`, which returns \`{status:'running', qualify_id}\` immediately. Then poll \`leadbay_qualify_status\` (or \`leadbay_import_status\`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
+
+## Rule 3 — Serialize \`leadbay_research_lead\` fan-out
+
+\`leadbay_research_lead\` is composite and reads many sub-resources. Calling it on 10 leads in parallel can saturate the transport and produce \`"Tool permission stream closed"\` errors that look like permission failures but are really backpressure. **Call it sequentially**, or at most 3 in parallel. If one call fails with a stream/timeout error, retry that one call once before moving on; on a second failure, note the lead and continue — do not abandon the remaining leads.
+
+## Rule 4 — Retry, don't replan
+
+If a Leadbay tool returns \`"Request timed out"\`, \`"stream closed"\`, or any other transport-level error (distinct from a Leadbay-issued error payload), the work may still be running server-side. Do this in order:
+
+1. For bulk tools — retry with \`wait_for_completion:false\` and poll the status tool with the returned id. Don't re-pull leads; that can shift the lens.
+2. For single-lead tools — retry the same call once. If it still fails, record the lead id and continue with the rest of the workflow.
+3. **Do not** switch strategies (e.g. "the endpoint is broken, let me re-pull from scratch"). The earlier work is still valid; the timeout was the wire.
+
+If \`pull_leads\` itself fails and you have no prior batch, then yes — retry it, explicitly pass the lensId you captured (if any), and continue.
+
+
+# PHASE 0 — RESUME CHECK
+
+Same resume-check semantics as \`leadbay_daily_check_in\` Phase 0 — if you see prior phase completions in the task list, resume from the next phase instead of restarting.
+
+# PHASE 1 — PULL THE FOLLOW-UP VIEW
+
+Call \`leadbay_pull_followups\` (NOT \`leadbay_pull_leads\` — those are different entry points; see §1.6 of the prospecting overview). If the user mentioned a city, sector, recency window, or other filter, build a \`FilterItem\` and pass it as \`set_filter\` so the result is narrowed (and the filter persists for the user's next session). If the user said something generic ("anyone I should follow up on?"), call with no \`set_filter\` to get the default Monitor view.
+
+For geo filters specifically: resolve the user's city name to an \`admin_area_id\`. The MCP doesn't yet expose an admin-area lookup, so in the interim ask the user to pick the geo from the Leadbay app's filter UI if the city isn't in the popular-cities lookup — do NOT guess an id.
+
+# PHASE 2 — RENDER THE CANONICAL TABLE
+
+GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
+
+If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
+
+
+## RENDERING — follow-ups table, status-badge driven
+
+Markdown table with FOUR columns, sorted by \`last_monitor_action_at\` desc. **NO score bar in this view** — discovery owns the \`▰❖▱\` visual identity; follow-up uses status badges. Active-pushback leads are already excluded server-side.
+
+**Active-filters line** ABOVE the table, \` · \`-separated chips from \`active_filters.criteria\`:
+
+| Criterion type        | Chip                       |
+|-----------------------|----------------------------|
+| \`location_ids\`        | 📍 \\<resolved name\\>       |
+| \`sector_ids\`          | 🏷 \\<sector name\\>         |
+| \`keywords\`            | 🔍 \\<keyword\\>             |
+| \`size\`                | 👥 \\<min\\>–\\<max\\>         |
+| \`last_action_date\`    | 📅 \\<window\\>              |
+| \`last_action\`         | 🎯 \\<action types\\>        |
+| \`liked\` / \`yc\`        | ⭐ liked / 🏅 YC           |
+| \`custom_field*\`       | ⚙ \\<field name\\>          |
+
+Render \`*No filters applied.*\` when empty.
+
+**Column 1 — Status** (DERIVED from existing fields, priority order):
+
+1. \`epilogue_status == "EPILOGUE_INTEREST_VALIDATED_OR_MEETING_PLANED"\` → 🎯 Meeting booked
+2. \`epilogue_status == "EPILOGUE_COULD_NOT_REACH_STILL_TRYING"\` → ⚡ Trying to reach
+3. \`epilogue_status == "EPILOGUE_STILL_CHASING"\` + last_prospecting_action_at within 14d → 🟢 In progress
+4. \`epilogue_status == "EPILOGUE_NOT_INTERESTED_LOST"\` → ❄ Not interested (usually filtered out)
+5. \`epilogue_status == null\` + \`last_prospecting_action_at == null\` → ✨ New
+6. \`epilogue_status == null\` + \`last_prospecting_action_at > 60d\` → 💤 Dormant
+7. Otherwise → 🔥 Hot
+
+Append \`<relative time>\` of \`last_monitor_action_at\` (\`today\`/\`Nd\`/\`Nw\`/\`Nmo\`). For ✨, show \`new\`. Line 2: **[Company](website)** bold. Line 3: short location · compact size.
+
+**Column 2 — AI take** (3 lines from \`split_ai_summary\` verbatim, \`<br>\`-separated):
+
+- Line 1: emoji + **bold split_ai_summary.worth_pursuing**. Emoji from leading word: \`Yes…\`→✅, \`No…\`→❌, \`Maybe…\`→🤔, else→💡.
+- Line 2: *italic split_ai_summary.approach_angle* (≤ 18 words).
+- Line 3: **Next:** split_ai_summary.next_step.
+- Fallback when null: render \`ai_summary\` italic, no emoji.
+
+**Column 3 — History & notes**
+
+- Line 1: \`<relative time> ago · <last_prospecting_action>\` (humanize: snake_case → Title Case; drop \`LEAD_\` prefix). When null: \`*Never touched.*\`
+- Line 2 (when \`epilogue_status\` set): \`📌 Outcome: <user-facing label> · <relative time>\` — NEVER show the wire-format \`EPILOGUE_*\` value.
+- Line 3 (when a recent note surfaces): \`📝 *<note clipped ≤ 14 words>* (<rel time>)\`.
+- If neither: \`*0 prior touches · 0 notes*\`.
+
+**Column 4 — Contacts** (max 3 lines, recommended_contact first):
+
+\`\`\`
+★ [Name](linkedin_page or people-search) · ☎ phone · 📧 email
+\`\`\`
+
+Markers: \`★\` recommended, \`💎\` hot in web_insights key_people. Channel pills: \`☎ phone\` (rec.phone_number → lead.phone_numbers[0] \`(co)\` → \`⚪ phone\`); \`📧 email\` (rec.email → \`⚪ email\`). When no visible contact has email/direct phone: append \`*enrich first*\` in italic.
+
+**Hide:** \`id\`, \`location.pos\`, \`web_fetch_in_progress\`, \`enrichment_in_progress\`, \`stale_at\`, \`sector_id\`, zero counters, \`social_presence\` booleans (except °-flag), \`score\`, string \`"null"\`.
+
+**Legend** (user-facing — NEVER say "epilogue"):
+
+🎯 Meeting booked · ⚡ Trying to reach · 🟢 In progress · 💤 Dormant · ✨ New · 🔥 Hot · ❄ Not interested · ★ recommended · 💎 hot in web_insights · ☎ (co) = company line · ⚪ not enriched
+
+## Linking a contact's name
+
+Two LinkedIn URLs exist and must never be conflated: the **company's** LinkedIn page and an **individual person's** profile.
+
+When the response carries a real contact LinkedIn URL — \`contact.linkedin_page\` is a string that starts with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it) — link the contact's name to that URL.
+
+Otherwise fall back to a LinkedIn people-search URL:
+
+\`\`\`
+https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>
+\`\`\`
+
+URL-encode the params. Strip Inc / LLC / Corp / Ltd / GmbH suffixes from the company name. Append a trailing \` °\` to the rendered name ONLY when the fallback is in use AND \`social_presence.linkedin == false\` (no company LinkedIn → search may not resolve). Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa). The two surfaces are different — conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
+
+When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
+
+\`social_presence\` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+
+
+ABOVE the table, add a 1–3 sentence "Where to start today" paragraph that names the single highest-urgency row and explains why (recent hot signal, overdue commitment, never-touched-but-strong-fit, etc.) — speak to urgency and momentum. Do NOT repeat the AI take column from the table.
+
+# PHASE 3 — DEEP DIVE (only if user asks)
+
+Unlike \`leadbay_daily_check_in\` which deep-dives on every promising lead in Phase 4, this prompt waits for the user to point at a row. Reason: follow-up batches are typically larger and the user is triaging recall, not researching cold.
+
+When the user picks a row, call \`leadbay_research_lead\` on that single lead (or \`leadbay_research_company\` if they only have the name) and offer to \`leadbay_prepare_outreach\` once they say "let's reach out".
+
+# CROSS-MODE PIVOT
+
+Below the table, offer the cross-mode pivot in one short line so the user can redirect if you guessed wrong on entry-point routing: "Want to see NEW leads from your wishlist instead?" — that routes back to \`leadbay_daily_check_in\` (Discovery via \`leadbay_pull_leads\`).
+
+# GATE — STOP
+
+IRON LAW — DO NOT TAKE OUTBOUND ACTION. Do not call \`leadbay_report_outreach\`. Do not draft an outreach message into a tool argument. Outreach is the user's call after they've reviewed the follow-up list.
+
+Render this acknowledgment VERBATIM as the last line of your message:
+
+\`\`\`
+STOP — awaiting user decision. I will not take any further action until you tell me what to do next.
+\`\`\`
+
+Do not propose a next action. Do not call any more tools. Hand control back to the user.
+`;
+// endregion: leadbay_followup_check_in
 
 // region: leadbay_import_file
 export const leadbay_import_file: string = `
@@ -386,9 +545,12 @@ Leadbay supports two parallel ways to find leads to act on. Detect which entry t
 \`\`\`
 Discovery entry              Follow-up entry
 ─────────────────            ───────────────
-leadbay_pull_leads           (re-engagement on the Monitor view —
-(new from the Discover        currently surfaced via the Leadbay app
- wishlist, lens-driven)       UI; MCP-side composite forthcoming)
+leadbay_pull_leads           leadbay_pull_followups
+(new from the Discover        (re-engagement on the
+ wishlist, lens-driven)        Monitor view of known leads)
+        │                            │
+   wrapped by:                   wrapped by:
+leadbay_daily_check_in      leadbay_followup_check_in
         │                            │
         │  optional:                 │  filters by user phrasing:
         │  research_company /        │  geo, sector, recency,
@@ -413,6 +575,14 @@ leadbay_pull_leads           (re-engagement on the Monitor view —
 **Follow-up signals**: "what should I follow up on", "leads I haven't contacted", "leads in [city]", "before my trip", "this week", "this month", "what's overdue", explicit mention of recent or pending actions. Route to \`leadbay_pull_followups\` — the Monitor view of known leads. Apply \`set_filter\` for geo / sector / recency / action-type refinement; the filter is server-persisted across sessions.
 
 When in doubt, ask. The two paths return overlapping but differently-ranked data; presenting the wrong one wastes the user's time.
+
+**Routing the user's first message to an entry point (orchestrator prompts):**
+
+- "give me leads", "what's new", "let's prospect", "today's batch", "best NEW leads" → \`leadbay_daily_check_in\` (Discovery orchestrator — wraps \`leadbay_pull_leads\`)
+- "follow up", "already known", "leads I should contact", "before my trip", "this week", "what's overdue", "re-engage" → \`leadbay_followup_check_in\` (Follow-up orchestrator — wraps \`leadbay_pull_followups\`)
+- Ambiguous ("what should I work on?") → ASK once: "Looking for NEW leads from your wishlist, or follow-ups on leads you've already worked?"
+
+Never call \`leadbay_pull_leads\` directly for a follow-up query. Never call \`leadbay_pull_followups\` for a discovery query. The two tools read from different backend tables; iterating pages of one to fake the other is a known failure mode (see the anti-confusion guardrail in \`pull_followups\`'s description).
 
 ## The outreach loop
 
@@ -734,10 +904,11 @@ The card itself handles the signal callouts (\`📈 business signals\`, \`💡 p
 
 // Prompt metadata (descriptions + arguments) for MCP listings.
 export const PROMPT_META = {
-  leadbay_daily_check_in: {"name":"leadbay_daily_check_in","short_description":"Run the canonical daily check-in: see account state, pull a fresh batch,\ntriage the top 10, deep-dive on every promising one, and offer contact\nenrichment. The user's typical morning workflow. Trigger when the user\nasks for \"leadbay leads\", \"best leads to prospect today\", \"what should\nI work on\", or anything resembling \"show me the day's batch\".\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_research_lead","leadbay_bulk_qualify_leads","leadbay_enrich_contacts"],"failure_modes":["Calls leadbay_report_outreach without explicit user authorization","Surfaces fewer than 10 leads when more are available, or fails to top up via leadbay_qualify_top_n when the batch is short","Replaces the canonical pull_leads table layout with prose per row (the per-tool RENDERING block is the structural contract; \"Today's nudges\" goes above it, not in place of it)","Skips the nudge paragraph entirely — the table alone is fine but adding the nudge is the value-add","Skips deep research on promising leads (Phase 4) — the agent must call leadbay_research_lead on each, not just one","Triggers contact enrichment without asking the user first (it consumes quota)","Skips the STOP byproduct and proposes next actions on its own","Fires 10 parallel leadbay_research_lead calls and treats \"stream closed\" errors as terminal — must serialize and retry singletons","Re-pulls leadbay_pull_leads without passing the captured lensId, allowing a backend lens shift to discard the Phase 2 batch","Treats a \"Request timed out\" from leadbay_bulk_qualify_leads as terminal instead of retrying with wait_for_completion:false + qualify_status polling"]},
+  leadbay_daily_check_in: {"name":"leadbay_daily_check_in","short_description":"Run the canonical daily check-in: account state, fresh batch, triage\ntop 10, deep-dive every promising one, offer contact enrichment. The\nmorning DISCOVERY workflow (new leads from the lens wishlist). Trigger\non \"leadbay leads\", \"best NEW leads\", \"what's new today\", \"show me the\nday's batch\", \"let's prospect\". Do NOT trigger on follow-up phrasings\n(\"what should I follow up on\", \"before my trip\") — those go to\n`leadbay_followup_check_in`.\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_research_lead","leadbay_bulk_qualify_leads","leadbay_enrich_contacts"],"failure_modes":["Calls leadbay_report_outreach without explicit user authorization","Surfaces fewer than 10 leads when more are available, or fails to top up via leadbay_qualify_top_n when the batch is short","Replaces the canonical pull_leads table layout with prose per row (the per-tool RENDERING block is the structural contract; \"Today's nudges\" goes above it, not in place of it)","Skips the nudge paragraph entirely — the table alone is fine but adding the nudge is the value-add","Skips deep research on promising leads (Phase 4) — the agent must call leadbay_research_lead on each, not just one","Triggers contact enrichment without asking the user first (it consumes quota)","Skips the STOP byproduct and proposes next actions on its own","Fires 10 parallel leadbay_research_lead calls and treats \"stream closed\" errors as terminal — must serialize and retry singletons","Re-pulls leadbay_pull_leads without passing the captured lensId, allowing a backend lens shift to discard the Phase 2 batch","Treats a \"Request timed out\" from leadbay_bulk_qualify_leads as terminal instead of retrying with wait_for_completion:false + qualify_status polling","Triggers on a follow-up query (e.g., \"leads I should follow up with\") that should have routed to `leadbay_followup_check_in` — the two entry points are different data sources (Discover wishlist vs Monitor view) per §1.6"]},
+  leadbay_followup_check_in: {"name":"leadbay_followup_check_in","short_description":"Run the canonical follow-up check-in: surface KNOWN leads from the\nMonitor view that need re-engagement today, ranked by AI urgency,\nwith the canonical pull_followups table layout. Trigger when the\nuser asks \"follow up\", \"already known leads\", \"leads I haven't\ncontacted\", \"leads in [city]\", \"before my trip\", \"this week\",\n\"this month\", \"what's overdue\", \"who should I re-engage\", or\nanything that implies pre-existing pipeline context.\n","arguments":[],"expected_calls":["leadbay_pull_followups","leadbay_research_lead","leadbay_prepare_outreach"],"failure_modes":["Calls leadbay_pull_leads (the Discover entry point) instead of leadbay_pull_followups — these are different data sources; the Discover queue does NOT contain Monitor's known-but-cold pipeline","Iterates pages of leadbay_pull_leads filtering by engagement_count to \"fake\" a follow-up view (a real bug observed in 0.9.0 — the right move is to call pull_followups directly)","Replaces the canonical pull_followups table layout with prose per row (the per-tool RENDERING block is the structural contract; commentary belongs above or below)","Skips the cross-mode pivot offer at the end (\"Want to see NEW leads from your wishlist instead?\" routes to leadbay_pull_leads)"]},
   leadbay_import_file: {"name":"leadbay_import_file","short_description":"Import a user-supplied CSV/file into Leadbay through five phases with\nevidence gates — scan, derive, resolve identities, preserve & commit,\nthen optionally qualify and report. The job is to maximize how many\nrows the Leadbay system actually ingests and matches.\n","arguments":[{"name":"file","description":"Path or user-visible name of the CSV/file to import. If omitted, use the file the user attached or referenced.","required":false},{"name":"instruction","description":"Additional user goal, e.g. \"then qualify the leads\", \"preserve owner phone as a custom field\", or \"only import restaurants in Manhattan\".","required":false}],"expected_calls":["leadbay_resolve_import_rows","leadbay_list_mappable_fields","leadbay_create_custom_field","leadbay_import_leads","leadbay_import_and_qualify","leadbay_add_note","leadbay_import_status"],"failure_modes":["Picks LEADBAY_ID from score alone, name-only, fuzzy-name-only, root-domain-only, brand-only, postcode-only, or city-only evidence","Drops meaningful business notes or CRM record links instead of preserving them as custom fields or lead notes","Treats a consumer mailbox domain (gmail.com, hotmail.com, ...) as the company domain","Skips deriving company_domain from a business email when no website column exists (this kills match rate)","Skips the COLUMN PRESERVATION PLAN byproduct before importing","Skips the DECISION LOG byproduct before writing LEADBAY_ID","Returns the imported records WITHOUT writing LEADBAY_ID values back into the user's file (leaves the user no audit trail of what matched)","Fabricates leadIds, contact emails, or mapping IDs not present in the file or a tool response"]},
   leadbay_log_outreach: {"name":"leadbay_log_outreach","short_description":"Log outreach (an email I sent, a call I made, a meeting I had) on a\nspecific lead. Captures verification so the SDR pipeline trusts the entry.\n","arguments":[{"name":"lead_id","description":"The lead UUID. Get it from leadbay_pull_leads or leadbay_research_lead.","required":true},{"name":"summary","description":"1-2 sentences describing what I did (e.g. 'Sent intro email to CTO citing recent Hornsea contract').","required":true}],"expected_calls":["leadbay_report_outreach"],"failure_modes":["Calls leadbay_report_outreach without first collecting a verification source","Fabricates a gmail_message_id or calendar_event_id (the human team treats verification as canonical)","Records outreach to a different lead_id than the one the user supplied","Skips the dry_run step when the user is unsure what would be sent"]},
-  leadbay_prospecting_overview: {"name":"leadbay_prospecting_overview","short_description":"Orientation for working with Leadbay from any host — discovery vs.\nfollow-up, the outreach loop, outcome recording, imports, pushback /\nsnooze, and the connected-outreach-tool registry. Trigger when the\nconversation involves Leadbay leads, prospecting, pipeline, follow-up,\noutreach, or lens / ICP — anything from \"show me my leads\" to \"what\nshould I follow up on\" to \"I'll send via lemlist\".\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_pull_followups","leadbay_research_company","leadbay_research_lead","leadbay_prepare_outreach","leadbay_report_outreach","leadbay_set_pushback","leadbay_remove_pushback","leadbay_bulk_qualify_leads","leadbay_enrich_titles","leadbay_import_leads","leadbay_add_note","leadbay_adjust_audience"],"failure_modes":["Drives outreach without asking the user \"how did it go?\" afterwards — leaving prospecting_actions and epilogue_status stale","Says \"epilogue\" in user-facing dialogue instead of \"outcome\"","Says \"Monitor\" in user-facing dialogue instead of \"follow-ups\"","Treats a \"not now / next quarter\" reply as a note instead of routing through the pushback mechanism","Drafts outreach in a generic format when the user has a connected sequencer (lemlist, Outreach.io, etc.) that has its own idiom","Re-pulls leads without passing the captured lensId, allowing a backend lens shift to discard prior work","Skips the STOP byproduct in any multi-step workflow it triggers"]},
+  leadbay_prospecting_overview: {"name":"leadbay_prospecting_overview","short_description":"Orientation for working with Leadbay from any host — discovery vs.\nfollow-up, the outreach loop, outcome recording, imports, pushback /\nsnooze, and the connected-outreach-tool registry. Trigger when the\nconversation involves Leadbay leads, prospecting, pipeline, follow-up,\noutreach, or lens / ICP — anything from \"show me my leads\" to \"what\nshould I follow up on\" to \"I'll send via lemlist\".\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_pull_followups","leadbay_research_company","leadbay_research_lead","leadbay_prepare_outreach","leadbay_report_outreach","leadbay_set_pushback","leadbay_remove_pushback","leadbay_bulk_qualify_leads","leadbay_enrich_titles","leadbay_import_leads","leadbay_add_note","leadbay_adjust_audience"],"failure_modes":["Drives outreach without asking the user \"how did it go?\" afterwards — leaving prospecting_actions and epilogue_status stale","Says \"epilogue\" in user-facing dialogue instead of \"outcome\"","Says \"Monitor\" in user-facing dialogue instead of \"follow-ups\"","Treats a \"not now / next quarter\" reply as a note instead of routing through the pushback mechanism","Drafts outreach in a generic format when the user has a connected sequencer (lemlist, Outreach.io, etc.) that has its own idiom","Re-pulls leads without passing the captured lensId, allowing a backend lens shift to discard prior work","Skips the STOP byproduct in any multi-step workflow it triggers","Calls leadbay_pull_leads (Discover wishlist) for a follow-up query, or leadbay_pull_followups (Monitor view) for a discovery query — the two entry points read from different backend tables; the right orchestrators are leadbay_daily_check_in (discovery) and leadbay_followup_check_in (follow-up)"]},
   leadbay_qualify_top_n: {"name":"leadbay_qualify_top_n","short_description":"Bulk-qualify the top N un-qualified leads in the active lens. Uses\nleadbay_bulk_qualify_leads with a sensible default budget.\n","arguments":[{"name":"count","description":"How many leads to qualify (default 10, max 25). Higher counts may take 5+ minutes.","required":false}],"expected_calls":["leadbay_bulk_qualify_leads","leadbay_qualify_status","leadbay_pull_leads","leadbay_research_lead"],"failure_modes":["Picks a count larger than the user asked for (or larger than the max 25)","Glosses over still-running leads in the summary instead of naming them","Recommends a lead from the existing qualified pool instead of one from this batch's actual results","Replaces the canonical pull_leads table with prose when rendering the newly-qualified batch (the per-tool RENDERING block is the structural contract; \"standouts\" commentary sits above it)","Expands the qualify-status sentence into a card or table instead of the one-line status-inline render"]},
   leadbay_refine_audience: {"name":"leadbay_refine_audience","short_description":"Refine the kind of leads Leadbay surfaces beyond firmographics, with a\nfree-text instruction. Handles the clarification round-trip if the new\nprompt is ambiguous.\n","arguments":[{"name":"instruction","description":"The refinement (e.g. 'focus on hospitals running their own IT'). Set to plain English.","required":true}],"expected_calls":["leadbay_refine_prompt","leadbay_account_status"],"failure_modes":["Calls leadbay_answer_clarification on the user's behalf instead of surfacing the clarification verbatim","Glosses over the clarification options instead of presenting them as offered","Promises immediate effect when status='applied' actually triggers an async intelligence recompute"]},
   leadbay_research_a_domain: {"name":"leadbay_research_a_domain","short_description":"Import a company by domain and run deep qualification + research in one\npass. Use when a colleague mentions a name and you want everything Leadbay\nknows about it.\n","arguments":[{"name":"domain","description":"The company's primary domain (e.g. 'acme.com'). Protocol/path are stripped.","required":true}],"expected_calls":["leadbay_import_and_qualify","leadbay_research_lead"],"failure_modes":["Fabricates qualification answers not present in any tool response","Reports certainty about fit when qualification didn't actually run (e.g. quota_blocked)","Skips the research step after import completes","Renders the research_lead result as a freeform narrative instead of the canonical research-company-card layout (the card with header score bar, pill row, signal sections, contacts table is the structural contract; commentary belongs ABOVE or BELOW it)","Enumerates every imported lead in prose instead of the terse single-record summary from the import-result rendering snippet"]},
@@ -749,7 +920,8 @@ export type PromptName = keyof typeof PROMPT_META;
 export const PROMPT_CATALOG_HEADER: string = `This server exposes the following workflow prompts via \`prompts/list\` and \`prompts/get\`. Some MCP clients render them as slash commands; if your client does not, you (the agent) should invoke them directly via \`prompts/get\` when the user's request matches one of the triggers described below.`;
 
 export const PROMPT_CATALOG_BULLETS = {
-  leadbay_daily_check_in: `- \`leadbay_daily_check_in\`: Run the canonical daily check-in: see account state, pull a fresh batch, triage the top 10, deep-dive on every promising one, and offer contact enrichment. The user's typical morning workflow. Trigger when the user asks for "leadbay leads", "best leads to prospect today", "what should I work on", or anything resembling "show me the day's batch".`,
+  leadbay_daily_check_in: `- \`leadbay_daily_check_in\`: Run the canonical daily check-in: account state, fresh batch, triage top 10, deep-dive every promising one, offer contact enrichment. The morning DISCOVERY workflow (new leads from the lens wishlist). Trigger on "leadbay leads", "best NEW leads", "what's new today", "show me the day's batch", "let's prospect". Do NOT trigger on follow-up phrasings ("what should I follow up on", "before my trip") — those go to \`leadbay_followup_check_in\`.`,
+  leadbay_followup_check_in: `- \`leadbay_followup_check_in\`: Run the canonical follow-up check-in: surface KNOWN leads from the Monitor view that need re-engagement today, ranked by AI urgency, with the canonical pull_followups table layout. Trigger when the user asks "follow up", "already known leads", "leads I haven't contacted", "leads in [city]", "before my trip", "this week", "this month", "what's overdue", "who should I re-engage", or anything that implies pre-existing pipeline context.`,
   leadbay_import_file: `- \`leadbay_import_file\` (optional args: file, instruction): Import a user-supplied CSV/file into Leadbay through five phases with evidence gates — scan, derive, resolve identities, preserve & commit, then optionally qualify and report. The job is to maximize how many rows the Leadbay system actually ingests and matches.`,
   leadbay_log_outreach: `- \`leadbay_log_outreach\` (required args: lead_id, summary): Log outreach (an email I sent, a call I made, a meeting I had) on a specific lead. Captures verification so the SDR pipeline trusts the entry.`,
   leadbay_prospecting_overview: `- \`leadbay_prospecting_overview\`: Orientation for working with Leadbay from any host — discovery vs. follow-up, the outreach loop, outcome recording, imports, pushback / snooze, and the connected-outreach-tool registry. Trigger when the conversation involves Leadbay leads, prospecting, pipeline, follow-up, outreach, or lens / ICP — anything from "show me my leads" to "what should I follow up on" to "I'll send via lemlist".`,
@@ -760,7 +932,8 @@ export const PROMPT_CATALOG_BULLETS = {
 
 export const PROMPT_CATALOG_INSTRUCTIONS: string = `This server exposes the following workflow prompts via \`prompts/list\` and \`prompts/get\`. Some MCP clients render them as slash commands; if your client does not, you (the agent) should invoke them directly via \`prompts/get\` when the user's request matches one of the triggers described below.
 
-- \`leadbay_daily_check_in\`: Run the canonical daily check-in: see account state, pull a fresh batch, triage the top 10, deep-dive on every promising one, and offer contact enrichment. The user's typical morning workflow. Trigger when the user asks for "leadbay leads", "best leads to prospect today", "what should I work on", or anything resembling "show me the day's batch".
+- \`leadbay_daily_check_in\`: Run the canonical daily check-in: account state, fresh batch, triage top 10, deep-dive every promising one, offer contact enrichment. The morning DISCOVERY workflow (new leads from the lens wishlist). Trigger on "leadbay leads", "best NEW leads", "what's new today", "show me the day's batch", "let's prospect". Do NOT trigger on follow-up phrasings ("what should I follow up on", "before my trip") — those go to \`leadbay_followup_check_in\`.
+- \`leadbay_followup_check_in\`: Run the canonical follow-up check-in: surface KNOWN leads from the Monitor view that need re-engagement today, ranked by AI urgency, with the canonical pull_followups table layout. Trigger when the user asks "follow up", "already known leads", "leads I haven't contacted", "leads in [city]", "before my trip", "this week", "this month", "what's overdue", "who should I re-engage", or anything that implies pre-existing pipeline context.
 - \`leadbay_import_file\` (optional args: file, instruction): Import a user-supplied CSV/file into Leadbay through five phases with evidence gates — scan, derive, resolve identities, preserve & commit, then optionally qualify and report. The job is to maximize how many rows the Leadbay system actually ingests and matches.
 - \`leadbay_log_outreach\` (required args: lead_id, summary): Log outreach (an email I sent, a call I made, a meeting I had) on a specific lead. Captures verification so the SDR pipeline trusts the entry.
 - \`leadbay_prospecting_overview\`: Orientation for working with Leadbay from any host — discovery vs. follow-up, the outreach loop, outcome recording, imports, pushback / snooze, and the connected-outreach-tool registry. Trigger when the conversation involves Leadbay leads, prospecting, pipeline, follow-up, outreach, or lens / ICP — anything from "show me my leads" to "what should I follow up on" to "I'll send via lemlist".

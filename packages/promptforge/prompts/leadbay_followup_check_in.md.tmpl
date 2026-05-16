@@ -1,0 +1,60 @@
+---
+name: leadbay_followup_check_in
+kind: prompt
+short_description: |
+  Run the canonical follow-up check-in: surface KNOWN leads from the
+  Monitor view that need re-engagement today, ranked by AI urgency,
+  with the canonical pull_followups table layout. Trigger when the
+  user asks "follow up", "already known leads", "leads I haven't
+  contacted", "leads in [city]", "before my trip", "this week",
+  "this month", "what's overdue", "who should I re-engage", or
+  anything that implies pre-existing pipeline context.
+arguments: []
+expected_calls:
+  - leadbay_pull_followups
+  - leadbay_research_lead
+  - leadbay_prepare_outreach
+failure_modes:
+  - Calls leadbay_pull_leads (the Discover entry point) instead of leadbay_pull_followups — these are different data sources; the Discover queue does NOT contain Monitor's known-but-cold pipeline
+  - Iterates pages of leadbay_pull_leads filtering by engagement_count to "fake" a follow-up view (a real bug observed in 0.9.0 — the right move is to call pull_followups directly)
+  - Replaces the canonical pull_followups table layout with prose per row (the per-tool RENDERING block is the structural contract; commentary belongs above or below)
+  - Skips the cross-mode pivot offer at the end ("Want to see NEW leads from your wishlist instead?" routes to leadbay_pull_leads)
+---
+
+Run the Leadbay follow-up check-in for me. Treat this prompt the same way for any equivalent ask: "leads I should follow up with", "already known leads", "what's overdue", "before my trip to [city]", "leads I haven't contacted", "who should I re-engage today".
+
+{{include:heuristics/long-running-tools}}
+
+# PHASE 0 — RESUME CHECK
+
+Same resume-check semantics as `leadbay_daily_check_in` Phase 0 — if you see prior phase completions in the task list, resume from the next phase instead of restarting.
+
+# PHASE 1 — PULL THE FOLLOW-UP VIEW
+
+Call `leadbay_pull_followups` (NOT `leadbay_pull_leads` — those are different entry points; see §1.6 of the prospecting overview). If the user mentioned a city, sector, recency window, or other filter, build a `FilterItem` and pass it as `set_filter` so the result is narrowed (and the filter persists for the user's next session). If the user said something generic ("anyone I should follow up on?"), call with no `set_filter` to get the default Monitor view.
+
+For geo filters specifically: resolve the user's city name to an `admin_area_id`. The MCP doesn't yet expose an admin-area lookup, so in the interim ask the user to pick the geo from the Leadbay app's filter UI if the city isn't in the popular-cities lookup — do NOT guess an id.
+
+# PHASE 2 — RENDER THE CANONICAL TABLE
+
+{{include:gates/defer-to-tool-rendering}}
+
+{{include:rendering/pull-followups-table}}
+
+ABOVE the table, add a 1–3 sentence "Where to start today" paragraph that names the single highest-urgency row and explains why (recent hot signal, overdue commitment, never-touched-but-strong-fit, etc.) — speak to urgency and momentum. Do NOT repeat the AI take column from the table.
+
+# PHASE 3 — DEEP DIVE (only if user asks)
+
+Unlike `leadbay_daily_check_in` which deep-dives on every promising lead in Phase 4, this prompt waits for the user to point at a row. Reason: follow-up batches are typically larger and the user is triaging recall, not researching cold.
+
+When the user picks a row, call `leadbay_research_lead` on that single lead (or `leadbay_research_company` if they only have the name) and offer to `leadbay_prepare_outreach` once they say "let's reach out".
+
+# CROSS-MODE PIVOT
+
+Below the table, offer the cross-mode pivot in one short line so the user can redirect if you guessed wrong on entry-point routing: "Want to see NEW leads from your wishlist instead?" — that routes back to `leadbay_daily_check_in` (Discovery via `leadbay_pull_leads`).
+
+# GATE — STOP
+
+IRON LAW — DO NOT TAKE OUTBOUND ACTION. Do not call `leadbay_report_outreach`. Do not draft an outreach message into a tool argument. Outreach is the user's call after they've reviewed the follow-up list.
+
+{{include:gates/stop-and-wait}}

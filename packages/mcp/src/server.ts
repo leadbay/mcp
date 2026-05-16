@@ -109,8 +109,12 @@ function buildRhythmParagraph(has: (name: string) => boolean): string {
 // iter-12 invariant: bullets that name a tool not in the exposed set are
 // dropped entirely, so the agent never reads about a tool it can't call.
 // A bullet's "own" prompt name is exempt (a prompt name like
-// `leadbay_qualify_top_n` matches the regex but isn't a tool reference).
+// `leadbay_qualify_top_n` matches the regex but isn't a tool reference);
+// references to OTHER prompt names (e.g. a discovery bullet pointing the
+// follow-up flow to `leadbay_followup_check_in`) are also exempt since
+// prompts are always exposed.
 const TOOL_REFERENCE_PATTERN = /\bleadbay_[a-z][a-z0-9_]*\b/g;
+const PROMPT_NAMES: ReadonlySet<string> = new Set(Object.keys(PROMPT_CATALOG_BULLETS));
 
 function buildPromptsCatalogParagraph(has: (name: string) => boolean): string {
   const safeBullets: string[] = [];
@@ -118,7 +122,8 @@ function buildPromptsCatalogParagraph(has: (name: string) => boolean): string {
     const referencedTools = new Set<string>();
     for (const match of bullet.matchAll(TOOL_REFERENCE_PATTERN)) {
       const name = match[0];
-      if (name === promptName) continue; // self-reference, not a tool name
+      if (name === promptName) continue; // self-reference
+      if (PROMPT_NAMES.has(name)) continue; // cross-prompt reference (always exposed)
       referencedTools.add(name);
     }
     const allExposed = [...referencedTools].every((n) => has(n));
