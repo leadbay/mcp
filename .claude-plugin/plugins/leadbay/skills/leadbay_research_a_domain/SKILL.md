@@ -7,19 +7,115 @@ description: "Import a company by domain and run deep qualification + research i
 IRON LAW — NO FABRICATION. Every lead id, contact email, custom field id, mapping decision, and tool argument must trace to a value you read from the file the user attached or to an output from a leadbay_* tool call in this session. Do not invent values. Do not "fill in" a missing leadId with a name match. Do not synthesize a CRM id from a guess. If a value is missing, leave the field blank and say so.
 
 
+GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
+
+If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
+
+
 Research the company with domain '<The company's primary domain (e.g. 'acme.com'). Protocol/path are stripped. If not provided in the user's most recent message, ask once before proceeding.>' for me using Leadbay.
 
 # PHASE 1 — IMPORT + QUALIFY
-Call `leadbay_import_and_qualify` with `domains=[{domain:'<the domain (as extracted above)>'}]`. This imports the lead AND runs AI qualification in one call. If the response indicates `quota_blocked` or `still_running`, say so explicitly.
+Call `leadbay_import_and_qualify` with `domains=[{domain:'<the domain (as extracted above)>'}]`. This imports the lead AND runs AI qualification in one call. If the response indicates `quota_blocked` or `still_running`, say so explicitly. Render the import status using the canonical terse single-record summary (never an enumeration of every imported lead):
+
+## RENDERING — import result summary (single-record, terse)
+
+The response carries either a completed result or an async handle. Render a brief summary; do NOT enumerate every imported lead.
+
+**Header — single line, choose by status:**
+
+- Completed: `"✓ Import complete — N leads imported · M failed · P resolved-with-ambiguity"`
+- Running: `"⏳ Import running — handle_id <id>; poll leadbay_import_status"`
+- Pending qualification (`leadbay_import_and_qualify`): `"✓ Imported N leads · qualifying M of them — qualify_id <id>"`
+
+**When failures or ambiguous rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): `<row identifier or domain> · <reason>`. Then `"*+N more — leadbay_import_status for full detail*"`.
+
+**When the user's request implied a downstream use** ("import then prep outreach for them"), emit `Imported leadIds: <up to 5 ids, then '+N more'>` — just the ids. Let the next composite render the leads.
+
+Defer the full list of imported leads to `leadbay_pull_leads` or `leadbay_research_lead` in NEXT STEPS.
+
 
 # PHASE 2 — DEEP DIVE
-When the import resolves, call `leadbay_research_lead` on the new leadId.
+When the import resolves, call `leadbay_research_lead` on the new leadId. Render the result using the canonical single-record card layout — detect MODE A (Discovery) since the user asked to "research" a domain rather than to prepare outreach:
+
+## RENDERING — single-record research card, mode-adaptive
+
+Present as a single-record card, not a table. This tool gets invoked in two distinct user contexts — detect which and adapt the body density accordingly.
+
+**MODE A — Discovery.** The user is evaluating whether to pursue this company as a target. Signals: "tell me about", "what do they do", "is this a fit", "research [company]", arrival via a click-through from `leadbay_pull_leads`, no prior outreach context in the conversation. Next step is usually qualify, deep-dive via `leadbay_research_lead`, or decide whether to start outreach.
+
+**MODE B — Contact preparation.** The user is about to call or email someone at this company and needs the talking points. Signals: "I'm calling them", "draft an email", "before my call", "outreach prep", "what should I say", or the conversation has already touched on a specific contact. Next step is usually `leadbay_prepare_outreach`.
+
+Default to MODE A when uncertain. Always offer the cross-mode pivot at the end so the user can redirect if you guessed wrong.
+
+### Common structure (both modes)
+
+- **Header** (H4 or H5): `<10-segment score bar>` `[Company name](website)`. Use the score-bar algorithm; the bar lives in a single inline-code span. Prefix `https://` to website if it's a bare hostname.
+- **Pill row** (immediately below the header): short location · compact size · social pill chips iterated over `social_urls` (each non-null platform becomes `[<platform-label>](<url>)`) · `[website-domain](website)` · `☎ phone` when `phone_numbers[]` is non-empty (use the first number). All ` · `-separated.
+- **Blurb**: render `description` (preferred) or `short_description` as a single blockquoted paragraph.
+- **Staleness line**: italic, `"Researched <relative time>"` from `web_insights_fetched_at`. Use `"today"` / `"yesterday"` / `"N days ago"` up to 30 days, then absolute date. Prefix with `⚠` if older than 30 days.
+- **Contacts table** (always at the bottom):
+  ```
+  |   | Name | Title | LinkedIn |
+  ```
+  Markers in column 1:
+  - `★` — `recommended_contact` match.
+  - `💎` — name fuzzy-matches a `hot: true` entry in `web_insights` key_people. (Use `💎`, not `🔥`, to avoid glyph collision with the follow-up status badge.)
+  Sort `★` first, then `💎`-only rows, then API order. Link the name via `linkedin_page` first; fall back to LinkedIn people-search with `<First>+<Last>+<Company>`. Append `°` only when the fallback is in use AND `social_presence.linkedin == false`. Cap to 6 rows; if `contacts_count > shown`, end with `"+N more — ask to see the full list"`.
+
+### MODE A body (Discovery, fuller, scannable)
+
+Render each non-empty `web_insights` section as H5 with the emoji + label intact. Section order: `🏢 company profile` → `📈 business signals` → `💡 prospecting clues` → `🧩 strategic positioning` → `🔎 technologies & innovation`. Inside each, bullet 3–5 items. Sort `hot: true` items first. **Bold** the description text of hot items; leave cold items plain. Render `source` as `[source](url)` at the end; include `date` when present. Omit empty sections. Skip `🔗 social links` (already in the pill row) and `👤 key people` (already in the contacts table).
+
+### MODE B body (Contact preparation, tighter)
+
+Render exactly two H5 sections:
+
+##### 🎯 Conversation hooks
+
+Distill the 3 most recent / most hot signals from `📈 business signals` and `💡 prospecting clues` into one-sentence talking points in salesperson voice. Strip the academic framing. Cite the source inline.
+
+##### 👤 About the person *(only when recommended_contact is non-empty)*
+
+2-line summary: their title + any context from `web_insights` key_people. If they appear in a hot signal ("X appointed CEO"), surface that prominently.
+
+Skip 🏢 profile, 🧩 strategic positioning, 🔎 technologies in MODE B — context the user doesn't need for the next 30 seconds.
+
+If `qualification[]` is non-empty, append one collapsed line: `"Qualification: N questions answered, avg boost X"` and offer to expand in NEXT STEPS.
+
+**Hide:** `id`, `lead.id`, `contact.id`, `lead.location.pos`, `web_fetch_in_progress`, `enrichment_in_progress`, `recommended_contact_title` (duplicates `recommended_contact.job_title`), empty arrays, fields whose value is the string `"null"`, `contact.source` (internal), insights whose `source` is empty.
+
+**Legend (print once below the card):** `` `▰` firmographic · `❖` AI booster · `▱` unfilled · ★ recommended · 💎 hot in web_insights · ° = no company LinkedIn (fallback link only) ``
+
+## Linking a contact's name
+
+Two LinkedIn URLs exist and must never be conflated: the **company's** LinkedIn page and an **individual person's** profile.
+
+When the response carries a real contact LinkedIn URL — `contact.linkedin_page` is a string that starts with `https://` (the MCP coerces the legacy literal `"null"` string to real null before you see it) — link the contact's name to that URL.
+
+Otherwise fall back to a LinkedIn people-search URL:
+
+```
+https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>
+```
+
+URL-encode the params. Strip Inc / LLC / Corp / Ltd / GmbH suffixes from the company name. Append a trailing ` °` to the rendered name ONLY when the fallback is in use AND `social_presence.linkedin == false` (no company LinkedIn → search may not resolve). Never append `°` when a real `linkedin_page` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa). The two surfaces are different — conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's `website` as the company-name link target — prefix `https://` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to `website` is always real data.)
+
+When the response carries `social_urls` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over `social_urls`'s keys — never hardcode a fixed list — and emit each as `[<platform-label>](<url>)`. Skip platforms whose URL is null.
+
+`social_presence` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+
 
 # PHASE 3 — SUMMARY
-Summarize:
+Place a 2–3 sentence summary ABOVE the card with:
 - Who is this company (1 sentence)
 - Their fit (cite specific `qualification_answers` from the qualification response)
-- What signals stand out (cite specific research findings)
-- Which contact would I email first (name, role, source)
+- Which contact would I email first (one short clause — the card's contacts table carries the rest)
 
-Be honest about uncertainty: if any field above is missing from tool responses, say "not surfaced by qualification" rather than guessing.
+The card itself handles the signal callouts (`📈 business signals`, `💡 prospecting clues`). Do NOT re-narrate signals in prose above the card — that's what the card sections are for. Be honest about uncertainty: if any field is missing from tool responses, say "not surfaced by qualification" rather than guessing.

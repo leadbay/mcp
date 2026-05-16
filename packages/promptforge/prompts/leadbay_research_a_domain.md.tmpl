@@ -16,23 +16,30 @@ failure_modes:
   - Fabricates qualification answers not present in any tool response
   - Reports certainty about fit when qualification didn't actually run (e.g. quota_blocked)
   - Skips the research step after import completes
+  - Renders the research_lead result as a freeform narrative instead of the canonical research-company-card layout (the card with header score bar, pill row, signal sections, contacts table is the structural contract; commentary belongs ABOVE or BELOW it)
+  - Enumerates every imported lead in prose instead of the terse single-record summary from the import-result rendering snippet
 ---
 
 {{include:iron-laws/no-fabrication}}
 
+{{include:gates/defer-to-tool-rendering}}
+
 Research the company with domain '{{arg:domain}}' for me using Leadbay.
 
 # PHASE 1 — IMPORT + QUALIFY
-Call `leadbay_import_and_qualify` with `domains=[{domain:'{{arg:domain}}'}]`. This imports the lead AND runs AI qualification in one call. If the response indicates `quota_blocked` or `still_running`, say so explicitly.
+Call `leadbay_import_and_qualify` with `domains=[{domain:'{{arg:domain}}'}]`. This imports the lead AND runs AI qualification in one call. If the response indicates `quota_blocked` or `still_running`, say so explicitly. Render the import status using the canonical terse single-record summary (never an enumeration of every imported lead):
+
+{{include:rendering/import-result}}
 
 # PHASE 2 — DEEP DIVE
-When the import resolves, call `leadbay_research_lead` on the new leadId.
+When the import resolves, call `leadbay_research_lead` on the new leadId. Render the result using the canonical single-record card layout — detect MODE A (Discovery) since the user asked to "research" a domain rather than to prepare outreach:
+
+{{include:rendering/research-company-card}}
 
 # PHASE 3 — SUMMARY
-Summarize:
+Place a 2–3 sentence summary ABOVE the card with:
 - Who is this company (1 sentence)
 - Their fit (cite specific `qualification_answers` from the qualification response)
-- What signals stand out (cite specific research findings)
-- Which contact would I email first (name, role, source)
+- Which contact would I email first (one short clause — the card's contacts table carries the rest)
 
-Be honest about uncertainty: if any field above is missing from tool responses, say "not surfaced by qualification" rather than guessing.
+The card itself handles the signal callouts (`📈 business signals`, `💡 prospecting clues`). Do NOT re-narrate signals in prose above the card — that's what the card sections are for. Be honest about uncertainty: if any field is missing from tool responses, say "not surfaced by qualification" rather than guessing.

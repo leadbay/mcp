@@ -10,27 +10,40 @@ arguments:
     required: false
 expected_calls:
   - leadbay_bulk_qualify_leads
+  - leadbay_qualify_status
+  - leadbay_pull_leads
   - leadbay_research_lead
 failure_modes:
   - Picks a count larger than the user asked for (or larger than the max 25)
   - Glosses over still-running leads in the summary instead of naming them
   - Recommends a lead from the existing qualified pool instead of one from this batch's actual results
+  - Replaces the canonical pull_leads table with prose when rendering the newly-qualified batch (the per-tool RENDERING block is the structural contract; "standouts" commentary sits above it)
+  - Expands the qualify-status sentence into a card or table instead of the one-line status-inline render
 ---
 
 Qualify the top {{arg:count_or_default}} un-qualified leads in the active Leadbay lens.
+
+{{include:gates/defer-to-tool-rendering}}
 
 # PHASE 1 — LAUNCH
 Call `leadbay_bulk_qualify_leads` with `count={{arg:count_or_default}}`.
 
 # PHASE 2 — POLL
-While it polls, expect notifications / progress events showing per-lead transitions. Surface meaningful ones (e.g. "lead X just finished") to me as they arrive.
+While it polls, expect notifications / progress events showing per-lead transitions. Surface meaningful ones (e.g. "lead X just finished") to me as they arrive — one inline status sentence per check, never expanded into a card:
+
+{{include:rendering/status-inline}}
 
 # PHASE 3 — SUMMARIZE
 
-When `bulk_qualify_leads` returns, summarize:
-- How many qualified (name the count)
-- How many are still running (name them, by lead_id + lead name if available, so I can poll again later)
-- The 3 highest-`ai_agent_lead_score` leads from THIS batch, with their `qualification_summary` (one sentence each)
+When `bulk_qualify_leads` returns, surface results in two parts.
+
+**Status line first** — one sentence using the status-inline shape above: how many qualified, how many are still running (name them by lead_id + lead name if available so the user can poll later).
+
+**Then a refreshed table** — re-pull the newly-qualified leads via `leadbay_pull_leads` with the same `lensId` and render them using the canonical pull_leads layout:
+
+{{include:rendering/pull-leads-table}}
+
+ABOVE the table, add a 1–2 sentence "Standouts from this batch" line that calls out the 3 highest-`ai_agent_lead_score` rows — this is supplementary commentary, not a replacement for the table.
 
 # PHASE 4 — RECOMMEND
 Recommend the single most-promising lead from this batch and offer to research it deeply with `leadbay_research_lead`. Do not actually call `research_lead` yet — wait for my go.

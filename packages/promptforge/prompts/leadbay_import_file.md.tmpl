@@ -50,6 +50,8 @@ A job well done has TWO deliverables:
 
 {{include:iron-laws/no-fabrication}}
 
+{{include:gates/defer-to-tool-rendering}}
+
 # PHASE 1 — SCAN
 
 Read the file yourself. Inspect every header, sample values from multiple rows, row count, duplicate/blank columns, and obvious dirty data. Build a column preservation plan before importing: for each meaningful column decide standard field, CONTACT_* field, Leadbay note, custom field, derived helper, or skip with a reason. Default to preserving client-provided business data; skip only blank placeholders, duplicate plumbing, raw unparsed blobs after extracting their useful values, or values that would actively harm data quality.

@@ -17,7 +17,8 @@ expected_calls:
 failure_modes:
   - Calls leadbay_report_outreach without explicit user authorization
   - Surfaces fewer than 10 leads when more are available, or fails to top up via leadbay_qualify_top_n when the batch is short
-  - Writes flat one-line summaries instead of motivational "why prospect this today" framing
+  - Replaces the canonical pull_leads table layout with prose per row (the per-tool RENDERING block is the structural contract; "Today's nudges" goes above it, not in place of it)
+  - Skips the nudge paragraph entirely — the table alone is fine but adding the nudge is the value-add
   - Skips deep research on promising leads (Phase 4) — the agent must call leadbay_research_lead on each, not just one
   - Triggers contact enrichment without asking the user first (it consumes quota)
   - Skips the STOP byproduct and proposes next actions on its own
@@ -40,9 +41,15 @@ Call `leadbay_account_status` to see what quota I have left and which lens is ac
 # PHASE 2 — FRESH BATCH
 Call `leadbay_pull_leads` to get today's fresh batch. Capture `response.lens.id` (the response nests it under `lens`). **Use it as an explicit `lensId` argument on every subsequent Leadbay call this session** — including any re-pulls, bulk qualifies, or research calls that accept it. (See Rule 1 above — a mid-session lens shift discards your top-10 work.)
 
-# PHASE 3 — TRIAGE (top 10, motivational framing)
+# PHASE 3 — TRIAGE (top 10, table + nudges)
 
-Pick the top **10** leads — prefer leads with a fresh `ai_agent_lead_score` (those have been newly AI-qualified); fall back to `score` only when `ai_agent_lead_score` is absent. For each, write ONE motivational sentence — framed as *why prospecting this lead today might be a good idea right now* (almost a coach's nudge, not a flat description). Lean on `qualification_summary` for the substance, but reframe — don't paste it verbatim.
+Render the **top 10 leads** using the canonical `leadbay_pull_leads` layout:
+
+{{include:gates/defer-to-tool-rendering}}
+
+{{include:rendering/pull-leads-table}}
+
+ABOVE the table, add a 2–4 sentence "Today's nudges" paragraph for the 3 most-promising rows. The nudges speak to urgency / opportunity / freshness — what makes acting on these RIGHT NOW the right call. Do NOT repeat the "why it fits" column from the table; the nudges should add fresh framing the table doesn't carry (e.g., recent news from the `qualification_summary` excerpt, a window closing, a competitor activity the user mentioned earlier in the session). One sentence per nudge, salesperson voice, not coachspeak.
 
 If the batch returns fewer than 10 qualified leads, top it up: call `leadbay_bulk_qualify_leads` with `lensId:<captured>`, `count:<1.5x deficit, capped at 25>`, and **`wait_for_completion:false`**. Capture `qualify_id` from the response and poll `leadbay_qualify_status` every ~10s until `status:'done'`. Then re-pull with the same `lensId` to pick up the newly qualified leads. **Never re-pull without `lensId` — you will lose your batch to a lens shift.** (The `leadbay_qualify_top_n` slash-prompt wraps this same tool with a friendlier surface for users; agents should call the underlying tool directly here.)
 

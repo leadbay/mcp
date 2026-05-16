@@ -24,7 +24,9 @@ import {
   NO_FABRICATION_FLOOR,
 } from "../helpers/budget-thresholds.js";
 import { EvalCollector } from "../helpers/eval-collector.js";
+import { runScenarioEval, setupScenarioFixtures } from "../helpers/run-eval.js";
 import { SCENARIO } from "../scenarios/daily-check-in/clean-batch.scenario.js";
+import { SCENARIO as RENDERING_SCENARIO } from "../scenarios/daily-check-in/rendering-table-contract.scenario.js";
 import { LeadbayClient } from "@leadbay/core";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -149,3 +151,20 @@ describe.skipIf(mode === "skip")("eval: leadbay_daily_check_in", () => {
     }
   });
 });
+
+// B23 regression — the per-tool RENDERING block is the contract, not the
+// orchestrating prompt's prose framing. See packages/promptforge/snippets/
+// gates/defer-to-tool-rendering.md.
+describe.skipIf(mode === "skip")(
+  "eval: leadbay_daily_check_in — B23 rendering contract",
+  () => {
+    setupScenarioFixtures(RENDERING_SCENARIO);
+    it(`${RENDERING_SCENARIO.name} renders pull-leads table + Today's nudges (not prose list)`, async () => {
+      await runScenarioEval({
+        scenario: RENDERING_SCENARIO,
+        invariants: dailyCheckInInvariants,
+        max_turns: 15,
+      });
+    });
+  },
+);
