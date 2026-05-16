@@ -8,21 +8,54 @@
 export const leadbay_daily_check_in: string = `
 Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask: "get me leadbay leads", "best leads to prospect today", "what should I work on", "show me my batch".
 
+# Resilience rules for Leadbay long-running tools
+
+These four rules apply to every Leadbay workflow that calls \`leadbay_pull_leads\`, \`leadbay_bulk_qualify_leads\`, \`leadbay_research_lead\`, \`leadbay_import_and_qualify\`, or \`leadbay_enrich_titles\`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
+
+## Rule 1 — Pin the lens
+
+After your first \`leadbay_pull_leads\` call, capture \`response.lensId\` into your working memory and **pass it explicitly as \`lensId\` to every subsequent call** in this session — including any re-pulls, bulk qualifies, or research calls that accept it. The active lens can shift between calls (5-minute client cache + backend \`last_requested_lens\` can change if the user touches the web UI). A lens shift mid-workflow throws away your top-10 work.
+
+## Rule 2 — Prefer async for bulk operations
+
+\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\`, which returns \`{status:'running', qualify_id}\` immediately. Then poll \`leadbay_qualify_status\` (or \`leadbay_import_status\`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
+
+## Rule 3 — Serialize \`leadbay_research_lead\` fan-out
+
+\`leadbay_research_lead\` is composite and reads many sub-resources. Calling it on 10 leads in parallel can saturate the transport and produce \`"Tool permission stream closed"\` errors that look like permission failures but are really backpressure. **Call it sequentially**, or at most 3 in parallel. If one call fails with a stream/timeout error, retry that one call once before moving on; on a second failure, note the lead and continue — do not abandon the remaining leads.
+
+## Rule 4 — Retry, don't replan
+
+If a Leadbay tool returns \`"Request timed out"\`, \`"stream closed"\`, or any other transport-level error (distinct from a Leadbay-issued error payload), the work may still be running server-side. Do this in order:
+
+1. For bulk tools — retry with \`wait_for_completion:false\` and poll the status tool with the returned id. Don't re-pull leads; that can shift the lens.
+2. For single-lead tools — retry the same call once. If it still fails, record the lead id and continue with the rest of the workflow.
+3. **Do not** switch strategies (e.g. "the endpoint is broken, let me re-pull from scratch"). The earlier work is still valid; the timeout was the wire.
+
+If \`pull_leads\` itself fails and you have no prior batch, then yes — retry it, explicitly pass the lensId you captured (if any), and continue.
+
+
+# PHASE 0 — RESUME CHECK
+
+If you're resuming an interrupted session (you see a previous Phase already completed in your task list, or the user says "continue" / "continue from where you left off"), do NOT restart from Phase 1. Re-read the active \`lensId\` and your last completed phase from prior context, then resume from the next phase. If you genuinely have no state, restart from Phase 1.
+
 # PHASE 1 — STATE
 Call \`leadbay_account_status\` to see what quota I have left and which lens is active. Note the remaining \`ai_rescore_remaining\` and \`web_fetch_remaining\` budgets — Phase 4 enrichment depends on them.
 
 # PHASE 2 — FRESH BATCH
-Call \`leadbay_pull_leads\` to get today's fresh batch.
+Call \`leadbay_pull_leads\` to get today's fresh batch. Capture \`lensId\` from the response. **Use it as an explicit \`lensId\` argument on every subsequent Leadbay call this session** — including any re-pulls, bulk qualifies, or research calls that accept it. (See Rule 1 above — a mid-session lens shift discards your top-10 work.)
 
 # PHASE 3 — TRIAGE (top 10, motivational framing)
 
 Pick the top **10** leads — prefer leads with a fresh \`ai_agent_lead_score\` (those have been newly AI-qualified); fall back to \`score\` only when \`ai_agent_lead_score\` is absent. For each, write ONE motivational sentence — framed as *why prospecting this lead today might be a good idea right now* (almost a coach's nudge, not a flat description). Lean on \`qualification_summary\` for the substance, but reframe — don't paste it verbatim.
 
-If the batch returns fewer than 10 qualified leads, top it up by calling \`leadbay_bulk_qualify_leads\` with \`count\` set a bit above what you still need (some leads may get disqualified during qualification — request 1.5x the deficit, capped at 25). Then re-pull the batch and continue. (The \`leadbay_qualify_top_n\` slash-prompt wraps this same tool with a friendlier surface for users; agents should call the underlying tool directly here.)
+If the batch returns fewer than 10 qualified leads, top it up: call \`leadbay_bulk_qualify_leads\` with \`lensId:<captured>\`, \`count:<1.5x deficit, capped at 25>\`, and **\`wait_for_completion:false\`**. Capture \`qualify_id\` from the response and poll \`leadbay_qualify_status\` every ~10s until \`status:'done'\`. Then re-pull with the same \`lensId\` to pick up the newly qualified leads. **Never re-pull without \`lensId\` — you will lose your batch to a lens shift.** (The \`leadbay_qualify_top_n\` slash-prompt wraps this same tool with a friendlier surface for users; agents should call the underlying tool directly here.)
 
 # PHASE 4 — DEEP DIVE (every promising lead)
 
-Call \`leadbay_research_lead\` on **every** lead from your top 10 that the user might realistically prospect today (filter out clearly weak fits if any). Don't pick just one. For each researched lead surface:
+Call \`leadbay_research_lead\` on **every** lead from your top 10 that the user might realistically prospect today (filter out clearly weak fits if any). Don't pick just one. **Call it sequentially** — one at a time, or batches of at most 3 in parallel. Do not fire 10 in parallel — it triggers transport backpressure that surfaces as \`"Tool permission stream closed"\` errors (see Rule 3 above). If a call fails, retry that single lead once; if the retry also fails, note the lead id and continue. Report Phase 4 results even if 1–2 leads were unresearchable.
+
+For each researched lead surface:
 - what makes it promising (1–2 sentences citing signals from the research)
 - the **recommended contacts** the research returns — name, title, why they're the right starting point
 
@@ -288,7 +321,7 @@ Be honest about uncertainty: if any field above is missing from tool responses, 
 
 // Prompt metadata (descriptions + arguments) for MCP listings.
 export const PROMPT_META = {
-  leadbay_daily_check_in: {"name":"leadbay_daily_check_in","short_description":"Run the canonical daily check-in: see account state, pull a fresh batch,\ntriage the top 10, deep-dive on every promising one, and offer contact\nenrichment. The user's typical morning workflow. Trigger when the user\nasks for \"leadbay leads\", \"best leads to prospect today\", \"what should\nI work on\", or anything resembling \"show me the day's batch\".\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_research_lead","leadbay_bulk_qualify_leads","leadbay_enrich_contacts"],"failure_modes":["Calls leadbay_report_outreach without explicit user authorization","Surfaces fewer than 10 leads when more are available, or fails to top up via leadbay_qualify_top_n when the batch is short","Writes flat one-line summaries instead of motivational \"why prospect this today\" framing","Skips deep research on promising leads (Phase 4) — the agent must call leadbay_research_lead on each, not just one","Triggers contact enrichment without asking the user first (it consumes quota)","Skips the STOP byproduct and proposes next actions on its own"]},
+  leadbay_daily_check_in: {"name":"leadbay_daily_check_in","short_description":"Run the canonical daily check-in: see account state, pull a fresh batch,\ntriage the top 10, deep-dive on every promising one, and offer contact\nenrichment. The user's typical morning workflow. Trigger when the user\nasks for \"leadbay leads\", \"best leads to prospect today\", \"what should\nI work on\", or anything resembling \"show me the day's batch\".\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_research_lead","leadbay_bulk_qualify_leads","leadbay_enrich_contacts"],"failure_modes":["Calls leadbay_report_outreach without explicit user authorization","Surfaces fewer than 10 leads when more are available, or fails to top up via leadbay_qualify_top_n when the batch is short","Writes flat one-line summaries instead of motivational \"why prospect this today\" framing","Skips deep research on promising leads (Phase 4) — the agent must call leadbay_research_lead on each, not just one","Triggers contact enrichment without asking the user first (it consumes quota)","Skips the STOP byproduct and proposes next actions on its own","Fires 10 parallel leadbay_research_lead calls and treats \"stream closed\" errors as terminal — must serialize and retry singletons","Re-pulls leadbay_pull_leads without passing the captured lensId, allowing a backend lens shift to discard the Phase 2 batch","Treats a \"Request timed out\" from leadbay_bulk_qualify_leads as terminal instead of retrying with wait_for_completion:false + qualify_status polling"]},
   leadbay_import_file: {"name":"leadbay_import_file","short_description":"Import a user-supplied CSV/file into Leadbay through five phases with\nevidence gates — scan, derive, resolve identities, preserve & commit,\nthen optionally qualify and report. The job is to maximize how many\nrows the Leadbay system actually ingests and matches.\n","arguments":[{"name":"file","description":"Path or user-visible name of the CSV/file to import. If omitted, use the file the user attached or referenced.","required":false},{"name":"instruction","description":"Additional user goal, e.g. \"then qualify the leads\", \"preserve owner phone as a custom field\", or \"only import restaurants in Manhattan\".","required":false}],"expected_calls":["leadbay_resolve_import_rows","leadbay_list_mappable_fields","leadbay_create_custom_field","leadbay_import_leads","leadbay_import_and_qualify","leadbay_add_note","leadbay_import_status"],"failure_modes":["Picks LEADBAY_ID from score alone, name-only, fuzzy-name-only, root-domain-only, brand-only, postcode-only, or city-only evidence","Drops meaningful business notes or CRM record links instead of preserving them as custom fields or lead notes","Treats a consumer mailbox domain (gmail.com, hotmail.com, ...) as the company domain","Skips deriving company_domain from a business email when no website column exists (this kills match rate)","Skips the COLUMN PRESERVATION PLAN byproduct before importing","Skips the DECISION LOG byproduct before writing LEADBAY_ID","Returns the imported records WITHOUT writing LEADBAY_ID values back into the user's file (leaves the user no audit trail of what matched)","Fabricates leadIds, contact emails, or mapping IDs not present in the file or a tool response"]},
   leadbay_log_outreach: {"name":"leadbay_log_outreach","short_description":"Log outreach (an email I sent, a call I made, a meeting I had) on a\nspecific lead. Captures verification so the SDR pipeline trusts the entry.\n","arguments":[{"name":"lead_id","description":"The lead UUID. Get it from leadbay_pull_leads or leadbay_research_lead.","required":true},{"name":"summary","description":"1-2 sentences describing what I did (e.g. 'Sent intro email to CTO citing recent Hornsea contract').","required":true}],"expected_calls":["leadbay_report_outreach"],"failure_modes":["Calls leadbay_report_outreach without first collecting a verification source","Fabricates a gmail_message_id or calendar_event_id (the human team treats verification as canonical)","Records outreach to a different lead_id than the one the user supplied","Skips the dry_run step when the user is unsure what would be sent"]},
   leadbay_qualify_top_n: {"name":"leadbay_qualify_top_n","short_description":"Bulk-qualify the top N un-qualified leads in the active lens. Uses\nleadbay_bulk_qualify_leads with a sensible default budget.\n","arguments":[{"name":"count","description":"How many leads to qualify (default 10, max 25). Higher counts may take 5+ minutes.","required":false}],"expected_calls":["leadbay_bulk_qualify_leads","leadbay_research_lead"],"failure_modes":["Picks a count larger than the user asked for (or larger than the max 25)","Glosses over still-running leads in the summary instead of naming them","Recommends a lead from the existing qualified pool instead of one from this batch's actual results"]},
@@ -297,3 +330,24 @@ export const PROMPT_META = {
 } as const;
 
 export type PromptName = keyof typeof PROMPT_META;
+
+// Prompt catalog block the MCP server splices into its initialize instructions.
+export const PROMPT_CATALOG_HEADER: string = `This server exposes the following workflow prompts via \`prompts/list\` and \`prompts/get\`. Some MCP clients render them as slash commands; if your client does not, you (the agent) should invoke them directly via \`prompts/get\` when the user's request matches one of the triggers described below.`;
+
+export const PROMPT_CATALOG_BULLETS = {
+  leadbay_daily_check_in: `- \`leadbay_daily_check_in\`: Run the canonical daily check-in: see account state, pull a fresh batch, triage the top 10, deep-dive on every promising one, and offer contact enrichment. The user's typical morning workflow. Trigger when the user asks for "leadbay leads", "best leads to prospect today", "what should I work on", or anything resembling "show me the day's batch".`,
+  leadbay_import_file: `- \`leadbay_import_file\` (optional args: file, instruction): Import a user-supplied CSV/file into Leadbay through five phases with evidence gates — scan, derive, resolve identities, preserve & commit, then optionally qualify and report. The job is to maximize how many rows the Leadbay system actually ingests and matches.`,
+  leadbay_log_outreach: `- \`leadbay_log_outreach\` (required args: lead_id, summary): Log outreach (an email I sent, a call I made, a meeting I had) on a specific lead. Captures verification so the SDR pipeline trusts the entry.`,
+  leadbay_qualify_top_n: `- \`leadbay_qualify_top_n\` (optional args: count): Bulk-qualify the top N un-qualified leads in the active lens. Uses leadbay_bulk_qualify_leads with a sensible default budget.`,
+  leadbay_refine_audience: `- \`leadbay_refine_audience\` (required args: instruction): Refine the kind of leads Leadbay surfaces beyond firmographics, with a free-text instruction. Handles the clarification round-trip if the new prompt is ambiguous.`,
+  leadbay_research_a_domain: `- \`leadbay_research_a_domain\` (required args: domain): Import a company by domain and run deep qualification + research in one pass. Use when a colleague mentions a name and you want everything Leadbay knows about it.`,
+} as const;
+
+export const PROMPT_CATALOG_INSTRUCTIONS: string = `This server exposes the following workflow prompts via \`prompts/list\` and \`prompts/get\`. Some MCP clients render them as slash commands; if your client does not, you (the agent) should invoke them directly via \`prompts/get\` when the user's request matches one of the triggers described below.
+
+- \`leadbay_daily_check_in\`: Run the canonical daily check-in: see account state, pull a fresh batch, triage the top 10, deep-dive on every promising one, and offer contact enrichment. The user's typical morning workflow. Trigger when the user asks for "leadbay leads", "best leads to prospect today", "what should I work on", or anything resembling "show me the day's batch".
+- \`leadbay_import_file\` (optional args: file, instruction): Import a user-supplied CSV/file into Leadbay through five phases with evidence gates — scan, derive, resolve identities, preserve & commit, then optionally qualify and report. The job is to maximize how many rows the Leadbay system actually ingests and matches.
+- \`leadbay_log_outreach\` (required args: lead_id, summary): Log outreach (an email I sent, a call I made, a meeting I had) on a specific lead. Captures verification so the SDR pipeline trusts the entry.
+- \`leadbay_qualify_top_n\` (optional args: count): Bulk-qualify the top N un-qualified leads in the active lens. Uses leadbay_bulk_qualify_leads with a sensible default budget.
+- \`leadbay_refine_audience\` (required args: instruction): Refine the kind of leads Leadbay surfaces beyond firmographics, with a free-text instruction. Handles the clarification round-trip if the new prompt is ambiguous.
+- \`leadbay_research_a_domain\` (required args: domain): Import a company by domain and run deep qualification + research in one pass. Use when a colleague mentions a name and you want everything Leadbay knows about it.`;

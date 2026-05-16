@@ -18,3 +18,5 @@ Scoring has two layers: the basic `score` (firmographic, always present, already
 {{include:headers/tool-when-to-use}} when picking up a single lead from leadbay_pull_leads to decide whether to act on it.
 
 {{include:headers/tool-when-not-to-use}} across many leads at once — that's leadbay_pull_leads' job. (This composite supersedes the lower-level leadbay_get_lead_profile in agent flow; the granular tool stays available for fine-grained access.)
+
+**Concurrency note**: this is a composite that reads many sub-resources per call. Call it **sequentially** or in small batches (≤3 parallel) when researching multiple leads. Firing 10+ in parallel can saturate the transport and produce misleading `"Tool permission stream closed"` errors that look like permission failures but are really backpressure. On a transient stream/timeout failure, retry the same lead once before moving on.

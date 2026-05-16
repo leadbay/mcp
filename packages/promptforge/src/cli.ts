@@ -2,8 +2,9 @@
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { assemble } from "./assembler.js";
+import { assemble, type AssembleResult } from "./assembler.js";
 import { emit, diff, writeIfDifferent } from "./emit.js";
+import { buildSkillFiles, type SkillFile } from "./skills.js";
 import { discoverRegisteredTools } from "./registry.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -15,6 +16,13 @@ const REPO_ROOT = resolve(PKG_ROOT, "..", "..");
 const CORE_SRC = join(REPO_ROOT, "packages", "core", "src");
 const PROMPTS_OUT = join(REPO_ROOT, "packages", "mcp", "src", "prompts.generated.ts");
 const TOOL_DESC_OUT = join(REPO_ROOT, "packages", "core", "src", "tool-descriptions.generated.ts");
+const SKILLS_OUT_DIR = join(
+  REPO_ROOT,
+  ".claude-plugin",
+  "plugins",
+  "leadbay",
+  "skills",
+);
 const SNAPSHOTS_DIR = join(PKG_ROOT, "test", "snapshots");
 
 type Mode = "build" | "check" | "approve-drift";
@@ -27,27 +35,51 @@ function parseArgs(argv: string[]): { mode: Mode; positional: string[] } {
   return { mode, positional: rest };
 }
 
-function runAssemble(): { promptsModule: string; toolDescriptionsModule: string } {
+interface AssembleAndEmitOutput {
+  promptsModule: string;
+  toolDescriptionsModule: string;
+  skillFiles: SkillFile[];
+  result: AssembleResult;
+}
+
+function runAssemble(): AssembleAndEmitOutput {
   const registered = discoverRegisteredTools(CORE_SRC);
   const result = assemble({ root: PKG_ROOT, registeredToolNames: registered });
-  return emit(result);
+  const { promptsModule, toolDescriptionsModule } = emit(result);
+  const skillFiles = buildSkillFiles(result.prompts);
+  return { promptsModule, toolDescriptionsModule, skillFiles, result };
 }
 
 function cmdBuild(): void {
-  const { promptsModule, toolDescriptionsModule } = runAssemble();
+  const { promptsModule, toolDescriptionsModule, skillFiles } = runAssemble();
   const r1 = writeIfDifferent(PROMPTS_OUT, promptsModule);
   const r2 = writeIfDifferent(TOOL_DESC_OUT, toolDescriptionsModule);
   console.log(`[forge] ${PROMPTS_OUT.replace(REPO_ROOT + "/", "")}: ${r1.changed ? "wrote" : "unchanged"}`);
   console.log(`[forge] ${TOOL_DESC_OUT.replace(REPO_ROOT + "/", "")}: ${r2.changed ? "wrote" : "unchanged"}`);
+  for (const skill of skillFiles) {
+    const fullPath = join(SKILLS_OUT_DIR, skill.relativePath);
+    const r = writeIfDifferent(fullPath, skill.content);
+    console.log(
+      `[forge] ${fullPath.replace(REPO_ROOT + "/", "")}: ${r.changed ? "wrote" : "unchanged"}`,
+    );
+  }
 }
 
 function cmdCheck(): void {
-  const { promptsModule, toolDescriptionsModule } = runAssemble();
+  const { promptsModule, toolDescriptionsModule, skillFiles } = runAssemble();
   const d1 = diff(PROMPTS_OUT, promptsModule);
   const d2 = diff(TOOL_DESC_OUT, toolDescriptionsModule);
-  if (!d1.matches || !d2.matches) {
+  const staleSkills: string[] = [];
+  for (const skill of skillFiles) {
+    const fullPath = join(SKILLS_OUT_DIR, skill.relativePath);
+    if (!diff(fullPath, skill.content).matches) staleSkills.push(fullPath);
+  }
+  if (!d1.matches || !d2.matches || staleSkills.length > 0) {
     if (!d1.matches) console.error(`[forge] ${PROMPTS_OUT} is stale. Run pnpm prompts:build.`);
     if (!d2.matches) console.error(`[forge] ${TOOL_DESC_OUT} is stale. Run pnpm prompts:build.`);
+    for (const path of staleSkills) {
+      console.error(`[forge] ${path} is stale. Run pnpm prompts:build.`);
+    }
     process.exit(1);
   }
   console.log("[forge] generated files are up-to-date.");

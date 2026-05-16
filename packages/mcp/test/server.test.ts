@@ -366,6 +366,40 @@ describe("buildServerInstructions — dynamic LLM guidance", () => {
     expect(instructions).toMatch(/leadbay_enrich_titles/);
     expect(instructions).not.toMatch(/those actions require write tools/i);
   });
+
+  it("default-config instructions advertise every MCP prompt by name", async () => {
+    // Acceptance criterion for the prompts-as-skills surface (Cowork): an
+    // MCP client that doesn't render the prompts/list catalog in its UI
+    // gets the prompt names + trigger phrasing through the agent's
+    // session-start `instructions` so the agent knows to invoke them
+    // directly via prompts/get. All six prompts must appear when the
+    // server is fully configured.
+    const { server } = await connect({ includeWrite: true });
+    const instructions = (server as any)._instructions as string;
+    expect(instructions).toMatch(/`leadbay_daily_check_in`/);
+    expect(instructions).toMatch(/`leadbay_research_a_domain`/);
+    expect(instructions).toMatch(/`leadbay_import_file`/);
+    expect(instructions).toMatch(/`leadbay_log_outreach`/);
+    expect(instructions).toMatch(/`leadbay_qualify_top_n`/);
+    expect(instructions).toMatch(/`leadbay_refine_audience`/);
+    // The catalog explains the direct-invoke fallback for UI-blind clients.
+    expect(instructions).toMatch(/prompts\/get/);
+  });
+
+  it("read-only-config instructions suppress prompt bullets that reference unavailable tools", async () => {
+    // The catalog block must honor the iter-12 invariant: bullets that
+    // literally name an unexposed tool (e.g. leadbay_qualify_top_n's
+    // short_description references leadbay_bulk_qualify_leads) are dropped.
+    // Daily check-in and research-a-domain have no leadbay_* references
+    // in their short_description, so they survive read-only mode.
+    const { buildServerInstructions } = await import("../src/server.js");
+    const out = buildServerInstructions(READ_ONLY);
+    expect(out).toMatch(/`leadbay_daily_check_in`/);
+    expect(out).toMatch(/`leadbay_research_a_domain`/);
+    // qualify_top_n's bullet mentions leadbay_bulk_qualify_leads — dropped
+    // because bulk_qualify_leads isn't exposed in read-only mode.
+    expect(out).not.toMatch(/`leadbay_qualify_top_n`/);
+  });
 });
 
 describe("resolveClientFromEnv — region auto-probe", () => {

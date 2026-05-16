@@ -18,4 +18,7 @@ export type { AssembledArtifact, AssembleResult, AssembleOptions } from "./assem
 export { emit, writeIfDifferent, diff } from "./emit.js";
 export type { EmitOptions, EmitOutput } from "./emit.js";
 
+export { buildSkillMarkdown, buildSkillFiles } from "./skills.js";
+export type { SkillFile } from "./skills.js";
+
 export { discoverRegisteredTools } from "./registry.js";

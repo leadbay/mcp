@@ -58,6 +58,8 @@ WHEN NOT TO USE: as a substitute for leadbay_research_lead — that already incl
 // region: leadbay_bulk_qualify_leads
 export const leadbay_bulk_qualify_leads: string = `Pick the next N unqualified leads in the active lens and qualify them (run AI rescore + web fetch). Pass \`wait_for_completion:false\` to return quickly with \`{status:'running', qualify_id}\`; poll leadbay_qualify_status with that id. With \`wait_for_completion\` omitted/true, the legacy behavior polls until the answers are populated or a budget is exhausted. Already-qualified leads (those with a non-null \`ai_agent_lead_score\`) are silently no-ops on the backend, so this composite paginates past them to find fresh candidates. On 429 mid-fanout, stops launching but keeps polling already-launched leads.
 
+**Default to \`wait_for_completion:false\`** for any \`count > 5\` or when chained inside a multi-phase workflow — the blocking default can hit the MCP per-call timeout and surface as \`"Request timed out"\` even when the server is still working fine. The async pattern (capture \`qualify_id\`, poll \`leadbay_qualify_status\` every ~10s) is timeout-proof. Reserve the blocking form for tiny single-digit counts in interactive use.
+
 Context: Leadbay auto-qualifies roughly the top 10 of each daily batch. Leads below the top ~10 are NOT worse — the system is saving resources. This tool is how the agent spends more resources to go deeper on promising-looking leads the user hasn't had time to surface yet.
 
 WHEN TO USE: when the user wants more qualified leads than what's currently shown, or when a lead looks promising in leadbay_pull_leads but has an empty \`qualification_summary\`.
@@ -455,6 +457,8 @@ Roughly the top 10 of the batch come pre-qualified (populated qualification_summ
 WHEN TO USE: as the agent's default opening move when the user wants to see leads, or as a daily check-in for what's new today.
 
 WHEN NOT TO USE: when the user has named a specific lens — pass \`lensId\` to override the auto-resolution. Replaces the older leadbay_find_prospects (removed in v0.2.0).
+
+The active lens can change between calls (5-min cache + backend \`last_requested_lens\`). If a multi-step workflow depends on staying on one lens, **capture \`lensId\` from the first response and pass it explicitly to every subsequent Leadbay call** — including re-pulls, bulk qualifies, and research. Re-pulling without \`lensId\` after a long-running tool may silently switch to a different lens and discard prior work.
 `;
 // endregion: leadbay_pull_leads
 
@@ -539,6 +543,8 @@ Scoring has two layers: the basic \`score\` (firmographic, always present, alrea
 WHEN TO USE: when picking up a single lead from leadbay_pull_leads to decide whether to act on it.
 
 WHEN NOT TO USE: across many leads at once — that's leadbay_pull_leads' job. (This composite supersedes the lower-level leadbay_get_lead_profile in agent flow; the granular tool stays available for fine-grained access.)
+
+**Concurrency note**: this is a composite that reads many sub-resources per call. Call it **sequentially** or in small batches (≤3 parallel) when researching multiple leads. Firing 10+ in parallel can saturate the transport and produce misleading \`"Tool permission stream closed"\` errors that look like permission failures but are really backpressure. On a transient stream/timeout failure, retry the same lead once before moving on.
 `;
 // endregion: leadbay_research_lead
 

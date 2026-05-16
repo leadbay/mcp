@@ -1,34 +1,37 @@
 ---
 name: leadbay_daily_check_in
-kind: prompt
-short_description: |
-  Run the canonical daily check-in: see account state, pull a fresh batch,
-  triage the top 10, deep-dive on every promising one, and offer contact
-  enrichment. The user's typical morning workflow. Trigger when the user
-  asks for "leadbay leads", "best leads to prospect today", "what should
-  I work on", or anything resembling "show me the day's batch".
-arguments: []
-expected_calls:
-  - leadbay_account_status
-  - leadbay_pull_leads
-  - leadbay_research_lead
-  - leadbay_bulk_qualify_leads
-  - leadbay_enrich_contacts
-failure_modes:
-  - Calls leadbay_report_outreach without explicit user authorization
-  - Surfaces fewer than 10 leads when more are available, or fails to top up via leadbay_qualify_top_n when the batch is short
-  - Writes flat one-line summaries instead of motivational "why prospect this today" framing
-  - Skips deep research on promising leads (Phase 4) — the agent must call leadbay_research_lead on each, not just one
-  - Triggers contact enrichment without asking the user first (it consumes quota)
-  - Skips the STOP byproduct and proposes next actions on its own
-  - Fires 10 parallel leadbay_research_lead calls and treats "stream closed" errors as terminal — must serialize and retry singletons
-  - Re-pulls leadbay_pull_leads without passing the captured lensId, allowing a backend lens shift to discard the Phase 2 batch
-  - Treats a "Request timed out" from leadbay_bulk_qualify_leads as terminal instead of retrying with wait_for_completion:false + qualify_status polling
+description: "Run the canonical daily check-in: see account state, pull a fresh batch, triage the top 10, deep-dive on every promising one, and offer contact enrichment. The user's typical morning workflow. Trigger when the user asks for \"leadbay leads\", \"best leads to prospect today\", \"what should I work on\", or anything resembling \"show me the day's batch\"."
 ---
+
 
 Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask: "get me leadbay leads", "best leads to prospect today", "what should I work on", "show me my batch".
 
-{{include:heuristics/long-running-tools}}
+# Resilience rules for Leadbay long-running tools
+
+These four rules apply to every Leadbay workflow that calls `leadbay_pull_leads`, `leadbay_bulk_qualify_leads`, `leadbay_research_lead`, `leadbay_import_and_qualify`, or `leadbay_enrich_titles`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
+
+## Rule 1 — Pin the lens
+
+After your first `leadbay_pull_leads` call, capture `response.lensId` into your working memory and **pass it explicitly as `lensId` to every subsequent call** in this session — including any re-pulls, bulk qualifies, or research calls that accept it. The active lens can shift between calls (5-minute client cache + backend `last_requested_lens` can change if the user touches the web UI). A lens shift mid-workflow throws away your top-10 work.
+
+## Rule 2 — Prefer async for bulk operations
+
+`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false`, which returns `{status:'running', qualify_id}` immediately. Then poll `leadbay_qualify_status` (or `leadbay_import_status`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
+
+## Rule 3 — Serialize `leadbay_research_lead` fan-out
+
+`leadbay_research_lead` is composite and reads many sub-resources. Calling it on 10 leads in parallel can saturate the transport and produce `"Tool permission stream closed"` errors that look like permission failures but are really backpressure. **Call it sequentially**, or at most 3 in parallel. If one call fails with a stream/timeout error, retry that one call once before moving on; on a second failure, note the lead and continue — do not abandon the remaining leads.
+
+## Rule 4 — Retry, don't replan
+
+If a Leadbay tool returns `"Request timed out"`, `"stream closed"`, or any other transport-level error (distinct from a Leadbay-issued error payload), the work may still be running server-side. Do this in order:
+
+1. For bulk tools — retry with `wait_for_completion:false` and poll the status tool with the returned id. Don't re-pull leads; that can shift the lens.
+2. For single-lead tools — retry the same call once. If it still fails, record the lead id and continue with the rest of the workflow.
+3. **Do not** switch strategies (e.g. "the endpoint is broken, let me re-pull from scratch"). The earlier work is still valid; the timeout was the wire.
+
+If `pull_leads` itself fails and you have no prior batch, then yes — retry it, explicitly pass the lensId you captured (if any), and continue.
+
 
 # PHASE 0 — RESUME CHECK
 
@@ -60,4 +63,10 @@ Then ASK the user (don't auto-run): "Want me to enrich the contacts on these lea
 
 IRON LAW — DO NOT TAKE OUTBOUND ACTION. Do not call `leadbay_report_outreach`. Do not draft an outreach message into a tool argument. Outreach is the user's call after they've reviewed your research.
 
-{{include:gates/stop-and-wait}}
+Render this acknowledgment VERBATIM as the last line of your message:
+
+```
+STOP — awaiting user decision. I will not take any further action until you tell me what to do next.
+```
+
+Do not propose a next action. Do not call any more tools. Hand control back to the user.

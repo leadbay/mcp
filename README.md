@@ -21,18 +21,37 @@
 
 ## Install
 
+Leadbay ships in three shapes depending on which host runs your agent. Pick one — they are independent installs.
+
+### Via OpenClaw
+
 ```bash
 openclaw plugins install @leadbay/openclaw-leadclaw
+openclaw config set plugins.entries.leadclaw.region "us"   # or "fr"
 ```
 
-## Setup
+Start a conversation — the agent will ask for your Leadbay email and password when needed. The plugin logs you in and discards your credentials (only the session token is kept in memory).
 
-1. Set your region:
-   ```bash
-   openclaw config set plugins.entries.leadclaw.region "us"   # or "fr"
-   ```
-2. Start a conversation — the agent will ask for your Leadbay email and password when needed
-3. The plugin logs you in and discards your credentials (only the session token is kept in memory)
+### Via MCP (Claude Desktop, Cursor, Cowork, any MCP client)
+
+```bash
+npx -y @leadbay/mcp@0.7 install --email you@yourcompany.com --region us
+```
+
+The installer auto-detects which MCP clients you have (Claude Desktop, Cursor, Claude Code), prompts you per-target, and writes the token into each client's config. Add `--no-write` to disable the composite write tools. Full per-client setup, env vars, troubleshooting, and a tour of the MCP primitives is in [`packages/mcp/README.md`](packages/mcp/README.md).
+
+### Via the Claude Code plugin marketplace
+
+```text
+/plugin marketplace add leadbay/leadclaw
+/plugin install leadbay@leadbay-leadclaw
+```
+
+This single install registers the MCP server **and** drops six auto-discovered skills (`leadbay_daily_check_in`, `leadbay_research_a_domain`, `leadbay_import_file`, `leadbay_log_outreach`, `leadbay_qualify_top_n`, `leadbay_refine_audience`) that auto-trigger on natural-language asks. Claude Code prompts for your Leadbay token + region through the plugin's `userConfig` — no separate `leadbay-mcp install` step needed.
+
+### Don't have a Leadbay account?
+
+[Register here](https://wow.leadbay.ai/?register=true) before installing.
 
 ## Tools
 

@@ -1,5 +1,88 @@
 # Changelog
 
+## 0.8.0 — 2026-05-15 — Skills + initialize catalog + daily check-in resilience
+
+Two correlated workflow upgrades shipped together: (1) the six MCP
+prompts now also ship as auto-discovered Claude Code skills and the
+MCP `initialize` response advertises the catalog so UI-blind clients
+(Cowork) learn the prompt set; (2) `leadbay_daily_check_in` gains
+resilience rules against MCP per-call timeouts, mid-session lens
+shifts, and `leadbay_research_lead` fan-out backpressure — three
+failure modes seen in a real session.
+
+### Daily check-in resilience
+
+A live `leadbay_daily_check_in` run failed in three correlated ways — a
+blocking `leadbay_bulk_qualify_leads` hit the MCP per-call timeout, the
+recovery re-pull silently switched lens and discarded the EU batch, and
+ten parallel `leadbay_research_lead` calls produced `"Tool permission
+stream closed"` backpressure that the agent treated as terminal. All
+three are workflow-contract gaps, not server bugs.
+
+- New reusable snippet `packages/promptforge/snippets/heuristics/long-running-tools.md`
+  codifies four resilience rules: pin the captured `lensId` to every
+  subsequent call, default `wait_for_completion:false` + `qualify_status`
+  polling for bulk ops, serialize `leadbay_research_lead` fan-out
+  (≤3 parallel), and retry transient transport errors instead of
+  replanning.
+- `leadbay_daily_check_in.md.tmpl` includes the snippet, adds a
+  `PHASE 0 — RESUME CHECK` so "continue from where you left off" does
+  not restart, pins `lensId` in Phase 2, switches Phase 3's top-up to
+  the async pattern with `lensId`, and serializes Phase 4. Three new
+  `failure_modes` entries enforce the rules during evals.
+- Belt-and-suspenders updates to three composite tool descriptions
+  (`pull-leads`, `bulk-qualify-leads`, `research-lead`) so ad-hoc tool
+  use gets the same hints even without the prompt.
+
+### Prompts ship as Claude Code skills; initialize advertises them
+
+The six MCP prompts (`leadbay_daily_check_in`, `leadbay_research_a_domain`,
+`leadbay_import_file`, `leadbay_log_outreach`, `leadbay_qualify_top_n`,
+`leadbay_refine_audience`) now also ship as auto-discovered Claude Code
+skills, and the MCP server's `initialize` response advertises the catalog
+to clients (Cowork is the prototypical case) that don't render the
+`prompts/list` UI.
+
+### New emit targets in `@leadbay/promptforge`
+
+- `.claude-plugin/plugins/leadbay/skills/<name>/SKILL.md` — one auto-
+  discovered skill per prompt. `{{arg:NAME}}` placeholders in the prompt
+  body are rewritten in-place as natural-language extraction instructions
+  because skills have no structured-argument system. Snippet includes are
+  resolved by the existing assembler so iron-laws and gates ship in both
+  surfaces from a single source. First occurrence of each placeholder
+  gets the full extraction prompt; subsequent occurrences become terse
+  back-references so calls like
+  `tool({lead_id: '<the lead_id (as extracted above)>'})` stay readable.
+- `PROMPT_CATALOG_HEADER` / `PROMPT_CATALOG_BULLETS` /
+  `PROMPT_CATALOG_INSTRUCTIONS` exports added to
+  `packages/mcp/src/prompts.generated.ts`. The MCP server splices the
+  filtered bullets into its `initialize` `instructions` payload via
+  `buildPromptsCatalogParagraph`. Bullets that literally name a tool
+  outside the exposed set are suppressed — preserves the iter-12
+  invariant that the system prompt never references a tool the agent
+  cannot call (closes [product#3504](https://github.com/leadbay/product/issues/3504)'s
+  spirit at the prompt layer).
+
+### Plugin
+
+- `.claude-plugin/plugins/leadbay/.claude-plugin/plugin.json` bumped
+  `0.6.2` → `0.6.3`. Skills are auto-discovered from `skills/` by
+  schema convention; no explicit manifest field needed.
+
+### Tests
+
+- `packages/promptforge/test/skills.test.ts` — every `.md.tmpl` has a
+  matching `SKILL.md`, every emitted skill is byte-equal to disk
+  (freshness gate), every description carries trigger phrasing, no
+  unrewritten `{{arg:…}}` survives into the skill body, and the
+  catalog string names every prompt + explains the direct-invoke
+  fallback.
+- `packages/mcp/test/server.test.ts` — two new assertions: default
+  config's `instructions` mentions all six prompts; read-only config
+  drops `leadbay_qualify_top_n` (its short_description references
+  `leadbay_bulk_qualify_leads`, which is gated off).
+
 ## 0.6.0 — UNRELEASED — MCP best-practice initiative
 
 The "make `@leadbay/mcp` the example MCP server" rollout. Closes the

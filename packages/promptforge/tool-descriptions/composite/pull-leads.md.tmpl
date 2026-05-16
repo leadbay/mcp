@@ -18,3 +18,5 @@ Roughly the top 10 of the batch come pre-qualified (populated qualification_summ
 {{include:headers/tool-when-to-use}} as the agent's default opening move when the user wants to see leads, or as a daily check-in for what's new today.
 
 {{include:headers/tool-when-not-to-use}} when the user has named a specific lens — pass `lensId` to override the auto-resolution. Replaces the older leadbay_find_prospects (removed in v0.2.0).
+
+The active lens can change between calls (5-min cache + backend `last_requested_lens`). If a multi-step workflow depends on staying on one lens, **capture `lensId` from the first response and pass it explicitly to every subsequent Leadbay call** — including re-pulls, bulk qualifies, and research. Re-pulling without `lensId` after a long-running tool may silently switch to a different lens and discard prior work.
