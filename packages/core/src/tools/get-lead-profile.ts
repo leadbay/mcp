@@ -9,6 +9,17 @@ import type {
   LeadWebFetchPayload,
 } from "../types.js";
 
+// B6: coerce the literal string "null" — backend sometimes serializes a
+// missing LinkedIn URL this way — back to real null. Wraps every contact
+// emitted from this profile fetch.
+function normalizeLinkedinPage(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  if (!trimmed || trimmed.toLowerCase() === "null") return null;
+  return trimmed;
+}
+
 interface GetLeadProfileParams {
   leadId: string;
   lensId?: number;
@@ -120,7 +131,8 @@ export const getLeadProfile: Tool<GetLeadProfileParams> = {
     const webFetch =
       webFetchResult.status === "fulfilled" ? webFetchResult.value : null;
 
-    // Merge org contacts and paid contacts
+    // Merge org contacts and paid contacts. linkedin_page is normalized via
+    // normalizeLinkedinPage so consumers never see the string "null" (B6).
     const allContacts = [
       ...orgContacts.map((c) => ({
         id: c.id,
@@ -128,7 +140,7 @@ export const getLeadProfile: Tool<GetLeadProfileParams> = {
         last_name: c.last_name,
         email: c.email,
         phone_number: c.phone_number,
-        linkedin_page: c.linkedin_page,
+        linkedin_page: normalizeLinkedinPage(c.linkedin_page),
         job_title: c.job_title,
         recommended: c.recommended,
         enrichment: c.enrichment,
@@ -140,7 +152,7 @@ export const getLeadProfile: Tool<GetLeadProfileParams> = {
         last_name: c.last_name,
         email: c.email,
         phone_number: c.phone_number,
-        linkedin_page: c.linkedin_page,
+        linkedin_page: normalizeLinkedinPage(c.linkedin_page),
         job_title: c.job_title,
         recommended: c.recommended,
         enrichment: c.enrichment,
@@ -166,8 +178,18 @@ export const getLeadProfile: Tool<GetLeadProfileParams> = {
         phone_numbers: lead.phone_numbers,
         keywords: lead.keywords,
         contacts_count: lead.contacts_count,
-        recommended_contact_title: lead.recommended_contact_title ?? null,
-        recommended_contact: lead.recommended_contact ?? null,
+        // B8: recommended_contact_title dropped — duplicates
+        // recommended_contact.job_title. B1+B7: propagate linkedin_page.
+        recommended_contact: lead.recommended_contact
+          ? {
+              ...lead.recommended_contact,
+              linkedin_page: normalizeLinkedinPage(
+                (lead.recommended_contact as any).linkedin_page ?? null
+              ),
+            }
+          : null,
+        social_presence: lead.social_presence ?? null,
+        social_urls: (lead as any).social_urls ?? null,
         web_fetch_in_progress: lead.web_fetch_in_progress ?? false,
       },
       qualification:

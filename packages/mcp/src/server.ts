@@ -230,6 +230,11 @@ interface BuildServerOptions {
   includeWrite?: boolean;
   logger?: ToolLogger;
   bulkTracker?: BulkTracker;
+  // Server version reported on `initialize`. The CLI passes the build-time
+  // package.json#version (via tsup's __LEADBAY_MCP_VERSION__ define) so this
+  // stays in lock-step with the published package. Tests omit it and fall
+  // back to the placeholder.
+  version?: string;
   // Test-only escape hatch: extra tools to register alongside the
   // production catalog. Lets unit tests exercise signal/progress
   // wiring without depending on long-running real composites.
@@ -307,7 +312,7 @@ export function buildServer(
   // prompt only references tools it can call.
   const exposedNames = new Set(toolByName.keys());
   const server = new Server(
-    { name: "leadbay", version: "0.6.2" },
+    { name: "leadbay", version: opts.version ?? "0.0.0-dev" },
     {
       capabilities: {
         tools: {},

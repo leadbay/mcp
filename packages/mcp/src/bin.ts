@@ -1195,6 +1195,7 @@ async function main(): Promise<void> {
     includeWrite,
     logger,
     bulkTracker,
+    version: VERSION,
   });
   const transport = new StdioServerTransport();
   logger.info?.(

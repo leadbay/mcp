@@ -13,6 +13,16 @@ annotations:
 ---
 Deep-dive research on a specific company by NAME (fuzzy match against the active lens's wishlist). Pass `companyName` (matches the top-scoring lead with that name) or `leadId` (takes precedence when both supplied).
 
-{{include:headers/tool-when-to-use}} when the user references a company by name and you don't yet have its `lead_id`.
+The response carries the rich-lead block (firmographics, `phone_numbers`, `split_ai_summary`, `social_urls`), `qualification[]` (Q&A pairs from the AI agent — empty until the lead is qualified), `contacts[]` (paid + org, each with a normalized `linkedin_page`), `web_insights` (keyed by emoji-prefixed section labels — see RENDERING for handling), `web_insights_fetched_at` (staleness), and `recent_activities` (engagement history).
 
-{{include:headers/tool-when-not-to-use}} when you already have the lead_id — use leadbay_research_lead directly (it bundles richer signals + better top-down ordering for the agent).
+{{include:headers/tool-when-to-use}} when the user references a company by name and you don't yet have its `lead_id`, OR when you want a single-record card with web-research signals (business signals, prospecting clues, strategic positioning) rather than a raw lead profile.
+
+{{include:headers/tool-when-not-to-use}} when you already have the lead_id and need the bundled deeper lens-scoped data — use leadbay_research_lead.
+
+---
+
+{{include:rendering/research-company-card}}
+
+---
+
+{{include:next-steps/research-company}}

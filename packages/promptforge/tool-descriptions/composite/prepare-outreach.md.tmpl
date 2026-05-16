@@ -2,16 +2,31 @@
 name: leadbay_prepare_outreach
 kind: tool-description
 short_description: |
-  Prepare an outreach package for a single lead — recommended contact,
-  enriched contact details, and AI summary in one call.
+  Prepare an outreach brief for a single lead — full lead block,
+  recommended contact (post-enrichment shape), channel readiness, and
+  AI angles in one call. Self-polling enrichment.
 annotations:
   readOnlyHint: true
   destructiveHint: false
   idempotentHint: true
   openWorldHint: true
 ---
-Prepare an outreach package for a single lead: recommended contact + enriched contact details + AI summary. Optionally trigger contact enrichment in-flight (`enrich:true`); enrichment is async, so poll leadbay_get_contacts after ~60s if you need the result inline.
+Prepare a single-lead outreach brief: the full `lead` block (score, `split_ai_summary`, `location`, `size`, `phone_numbers`, `website`, `description`, `social_urls`, `social_presence`), the `recommended_contact` (always in the post-enrichment shape — `contact_id`, `first_name`, `last_name`, `job_title`, `email`, `phone_number`, `linkedin_page`, `is_org_contact` — with nulls where data isn't yet enriched), `additional_contacts_count` (other contacts at this company), and an `enrichment` block describing async state.
 
-{{include:headers/tool-when-to-use}} when the agent is about to draft outreach for ONE specific lead and needs the contact's email/phone.
+Optionally trigger contact enrichment in-flight with `enrich:true`. Enrichment is async (~60s). **Self-polling pattern (no separate tool needed):** re-call `leadbay_prepare_outreach(leadId)` without `enrich`; check `enrichment.complete`. When `complete: true`, the recommended contact now carries `email` and/or `phone_number`.
+
+The first call to this tool on a lead records a `LEAD_VIEWED`-style prospecting action server-side (one per lead per session — deduped) so the lead ages out of the Discover "new" view.
+
+{{include:iron-laws/outcome-after-outreach}}
+
+{{include:headers/tool-when-to-use}} when the agent is about to draft outreach for ONE specific lead and needs everything to compose — channels + angles + history context.
 
 {{include:headers/tool-when-not-to-use}} across many leads — use leadbay_enrich_titles for bulk; for general lead detail use leadbay_research_lead (richer signals); to actually log the outreach action use leadbay_report_outreach (requires verification).
+
+---
+
+{{include:rendering/prepare-outreach-brief}}
+
+---
+
+{{include:next-steps/prepare-outreach}}

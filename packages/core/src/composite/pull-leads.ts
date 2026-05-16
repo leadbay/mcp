@@ -8,6 +8,17 @@ import type {
 } from "../types.js";
 
 import { leadbay_pull_leads as PULL_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
+
+// B6/B7: the backend occasionally serializes a missing LinkedIn URL as the
+// literal string "null". Coerce to real null so agents never render the
+// four-character string in a contact card.
+function normalizeLinkedinPage(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  if (!trimmed || trimmed.toLowerCase() === "null") return null;
+  return trimmed;
+}
 interface PullLeadsParams {
   lensId?: number;
   count?: number;
@@ -174,21 +185,44 @@ export const pullLeads: Tool<PullLeadsParams> = {
     );
     const summaryMap = new Map(summaries.map((s) => [s.leadId, s.summary]));
 
+    // Augment recommended_contact with linkedin_page (B1/B7) — the canonical
+    // contact-LinkedIn field name — and coerce the "null" string bug away.
+    // Drop `recommended_contact_title` everywhere (B8) — it duplicates
+    // recommended_contact.job_title; keep only the nested one.
+    const augmentContact = (
+      c: LeadPayload["recommended_contact"] | undefined | null
+    ) =>
+      c
+        ? {
+            ...c,
+            linkedin_page: normalizeLinkedinPage(
+              (c as any).linkedin_page ?? null
+            ),
+          }
+        : null;
+
     const trimmed = (lead: LeadPayload) =>
       verbose
-        ? lead
+        ? {
+            ...lead,
+            recommended_contact: augmentContact(lead.recommended_contact),
+          }
         : {
             id: lead.id,
             name: lead.name,
             score: lead.score,
             ai_agent_lead_score: lead.ai_agent_lead_score,
+            ai_summary: lead.ai_summary ?? null,
+            split_ai_summary: lead.split_ai_summary ?? null,
             location: lead.location,
             short_description: lead.short_description ?? lead.description,
             size: lead.size,
             website: lead.website,
+            phone_numbers: lead.phone_numbers ?? null,
             tags: lead.tags,
-            recommended_contact_title: lead.recommended_contact_title ?? null,
-            recommended_contact: lead.recommended_contact ?? null,
+            social_presence: lead.social_presence ?? null,
+            social_urls: (lead as any).social_urls ?? null,
+            recommended_contact: augmentContact(lead.recommended_contact),
             web_fetch_in_progress: lead.web_fetch_in_progress ?? false,
             enrichment_in_progress: lead.enrichment_in_progress ?? false,
             liked: lead.liked,

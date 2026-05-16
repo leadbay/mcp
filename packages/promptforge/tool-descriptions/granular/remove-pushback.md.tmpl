@@ -1,0 +1,21 @@
+---
+name: leadbay_remove_pushback
+kind: tool-description
+short_description: |
+  Clear a pushback (un-snooze) on one or more leads — they re-enter
+  the follow-up queue immediately.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Clear an active pushback on one or more leads. They re-enter `leadbay_pull_followups` immediately. Use when the user changes their mind ("actually let's reach out now"), or when external context shifts (the company announces hiring / funding / a new product that makes them ripe sooner than the deferral window expected).
+
+Bulk-native: pass up to 1000 lead UUIDs per call. No status enum — pushback is binary (either an active window exists, or it doesn't).
+
+{{include:headers/tool-when-to-use}} the user wants to revive a snoozed lead now, ahead of the pushback window expiry.
+
+{{include:headers/tool-when-not-to-use}} the pushback expired naturally (no API call needed; the lead reappears in `pull_followups` automatically).
+
+{{include:headers/verification-required-if-write}}

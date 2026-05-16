@@ -281,6 +281,59 @@ const CASES: ConformanceCase[] = [
     },
   },
   {
+    toolName: "leadbay_pull_followups",
+    arguments: { count: 5 },
+    setupMocks: () => {
+      mockHttp([
+        // /monitor/filter (read the stored filter; default-filtered path)
+        {
+          method: "GET",
+          path: "/1.5/monitor/filter",
+          status: 200,
+          body: { criteria: [] },
+        },
+        // /monitor with filtered=true
+        {
+          method: "GET",
+          path: /\/1\.5\/monitor\?/,
+          status: 200,
+          body: {
+            items: [
+              {
+                id: "lead-99",
+                name: "ACME FOLLOWUP",
+                score: 75,
+                website: "acme-fu.com",
+                last_monitor_action: "PURCHASE_LEAD_CONTACT",
+                last_monitor_action_at: "2026-05-12T00:00:00Z",
+                last_prospecting_action: "PURCHASE_LEAD_CONTACT",
+                last_prospecting_action_at: "2026-05-12T00:00:00Z",
+                epilogue_status: "EPILOGUE_STILL_CHASING",
+                split_ai_summary: {
+                  worth_pursuing: "Yes — ...",
+                  approach_angle: "Focus on ...",
+                  next_step: "Draft a targeted email ...",
+                },
+                recommended_contact: {
+                  contact_id: "c-1",
+                  first_name: "A",
+                  last_name: "B",
+                  job_title: "CIO",
+                  email: null,
+                  phone_number: null,
+                  linkedin_page: null,
+                },
+                org_contacts: [],
+                pushback_status: null,
+              },
+            ],
+            pagination: { page: 0, pages: 1, total: 1 },
+          },
+        },
+      ]);
+    },
+  },
+  {
     toolName: "leadbay_research_lead",
     arguments: { leadId: "lead-1", lensId: 42 },
     setupMocks: () => {

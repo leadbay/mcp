@@ -55,6 +55,8 @@ import { pickClarification } from "./tools/pick-clarification.js";
 import { dismissClarification } from "./tools/dismiss-clarification.js";
 import { setEpilogueStatus } from "./tools/set-epilogue-status.js";
 import { removeEpilogue } from "./tools/remove-epilogue.js";
+import { setPushback } from "./tools/set-pushback.js";
+import { removePushback } from "./tools/remove-pushback.js";
 import { previewBulkEnrichment } from "./tools/preview-bulk-enrichment.js";
 import { launchBulkEnrichment } from "./tools/launch-bulk-enrichment.js";
 import { createCustomField } from "./tools/create-custom-field.js";
@@ -67,6 +69,7 @@ import { prepareOutreach } from "./composite/prepare-outreach.js";
 
 // New (autoplan §E4 reads + §E6 writes)
 import { pullLeads } from "./composite/pull-leads.js";
+import { pullFollowups } from "./composite/pull-followups.js";
 import { researchLead } from "./composite/research-lead.js";
 import { recallOrderedTitles } from "./composite/recall-ordered-titles.js";
 import { accountStatus } from "./composite/account-status.js";
@@ -115,12 +118,13 @@ export {
   selectLeads, deselectLeads, clearSelection, setActiveLens, createLens,
   updateLens, updateLensFilter, createLensDraft, promoteLens, setUserPrompt,
   clearUserPrompt, pickClarification, dismissClarification, setEpilogueStatus,
-  removeEpilogue, previewBulkEnrichment, launchBulkEnrichment,
+  removeEpilogue, setPushback, removePushback, previewBulkEnrichment,
+  launchBulkEnrichment,
   createCustomField,
   // existing composite
   researchCompany, prepareOutreach,
   // new composite reads
-  pullLeads, researchLead, recallOrderedTitles, accountStatus,
+  pullLeads, pullFollowups, researchLead, recallOrderedTitles, accountStatus,
   bulkEnrichStatus, qualifyStatus, importStatus, resolveImportRows,
   // new composite writes
   bulkQualifyLeads, enrichTitles, adjustAudience, refinePrompt,
@@ -173,6 +177,8 @@ export const granularWriteTools: Tool[] = [
   dismissClarification,
   setEpilogueStatus,
   removeEpilogue,
+  setPushback,
+  removePushback,
   previewBulkEnrichment,
   launchBulkEnrichment,
   createCustomField,
@@ -192,6 +198,7 @@ granularTools.forEach((t) => {
 // Composite read tools — always exposed (default agent surface).
 export const compositeReadTools: Tool[] = [
   pullLeads,
+  pullFollowups,
   researchLead,
   recallOrderedTitles,
   accountStatus,

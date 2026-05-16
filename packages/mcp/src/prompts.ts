@@ -22,6 +22,7 @@ import {
   leadbay_daily_check_in,
   leadbay_import_file,
   leadbay_log_outreach,
+  leadbay_prospecting_overview,
   leadbay_qualify_top_n,
   leadbay_refine_audience,
   leadbay_research_a_domain,
@@ -66,6 +67,12 @@ const CATALOG: CatalogEntry[] = [
     description: PROMPT_META.leadbay_daily_check_in.short_description,
     arguments: [],
     render: () => [userMessage(leadbay_daily_check_in)],
+  },
+  {
+    name: "leadbay_prospecting_overview",
+    description: PROMPT_META.leadbay_prospecting_overview.short_description,
+    arguments: [],
+    render: () => [userMessage(leadbay_prospecting_overview)],
   },
   {
     name: "leadbay_research_a_domain",

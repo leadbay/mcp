@@ -8,6 +8,7 @@
       "leadbay_login",
       "leadbay_account_status",
       "leadbay_pull_leads",
+      "leadbay_pull_followups",
       "leadbay_research_lead",
       "leadbay_recall_ordered_titles",
       "leadbay_bulk_enrich_status",
@@ -62,6 +63,8 @@
       "leadbay_dismiss_clarification",
       "leadbay_set_epilogue_status",
       "leadbay_remove_epilogue",
+      "leadbay_set_pushback",
+      "leadbay_remove_pushback",
       "leadbay_preview_bulk_enrichment",
       "leadbay_launch_bulk_enrichment"
     ]

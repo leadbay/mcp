@@ -4,7 +4,7 @@ These four rules apply to every Leadbay workflow that calls `leadbay_pull_leads`
 
 ## Rule 1 — Pin the lens
 
-After your first `leadbay_pull_leads` call, capture `response.lensId` into your working memory and **pass it explicitly as `lensId` to every subsequent call** in this session — including any re-pulls, bulk qualifies, or research calls that accept it. The active lens can shift between calls (5-minute client cache + backend `last_requested_lens` can change if the user touches the web UI). A lens shift mid-workflow throws away your top-10 work.
+After your first `leadbay_pull_leads` call, capture `response.lens.id` into your working memory and **pass it explicitly as the `lensId` argument to every subsequent call** in this session — including any re-pulls, bulk qualifies, or research calls that accept it. (Field-name caveat: the response nests it as `lens.id`; the parameter on subsequent calls is `lensId`.) The active lens can shift between calls (5-minute client cache + backend `last_requested_lens` can change if the user touches the web UI). A lens shift mid-workflow throws away your top-10 work.
 
 ## Rule 2 — Prefer async for bulk operations
 

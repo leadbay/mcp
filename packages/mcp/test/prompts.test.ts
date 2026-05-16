@@ -34,6 +34,7 @@ describe("prompts/* capability (P2 prompts)", () => {
     const names = listed.prompts.map((p) => p.name);
     expect(names).toEqual([
       "leadbay_daily_check_in",
+      "leadbay_prospecting_overview",
       "leadbay_research_a_domain",
       "leadbay_import_file",
       "leadbay_refine_audience",

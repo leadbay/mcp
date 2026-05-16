@@ -28,10 +28,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const SERVER_PATH = resolve(__dirname, "..", "..", "src", "server.ts");
 
-// Initial budget — current shipped tool descriptions average ~4000 chars.
-// After migration into .md.tmpl with shared snippets, the goal is ~800 chars.
-// Set to 3500 to fit the two largest tools (import_leads ~3136 chars, list_mappable_fields ~2174 chars) plus 10% headroom. Tighten in steps as tools shrink.
-const MIGRATED_TOOL_DESCRIPTION_MAX_CHARS = 3500;
+// Budget raised in the 0.9 RENDERING+NEXT STEPS redesign. Tool descriptions
+// are now the only channel that carries per-tool rendering rules + the
+// observation→suggestion table that agents read verbatim, so the per-tool
+// budget grew from ~3500 to 12000 to accommodate the rich blocks
+// (research_company ~10.5k, prepare_outreach ~10.1k, research_lead similar).
+// Future tightening goal: factor shared rendering fragments further into
+// snippets and trim back, but only after we have evidence the agent
+// behavior is locked in.
+const MIGRATED_TOOL_DESCRIPTION_MAX_CHARS = 12000;
 
 describe("audit: tool description source-of-truth", () => {
   it("server.ts does not register any inline description literals (must come from tool defs)", () => {

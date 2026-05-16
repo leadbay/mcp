@@ -14,6 +14,17 @@ import type {
 } from "../types.js";
 
 import { leadbay_research_lead as RESEARCH_LEAD_DESCRIPTION } from "../tool-descriptions.generated.js";
+
+// B6: the backend occasionally serializes a missing LinkedIn URL as the
+// literal string "null" instead of JSON null. Coerce to real null so agents
+// don't render `linkedin_page: "null"`.
+function normalizeLinkedinPage(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  if (!trimmed || trimmed.toLowerCase() === "null") return null;
+  return trimmed;
+}
 interface ResearchLeadParams {
   leadId: string;
   lensId?: number;
@@ -235,22 +246,99 @@ export const researchLead: Tool<ResearchLeadParams> = {
       firmographics: {
         type: "object",
         description:
-          "Lead profile basics. iter-30: nested additionalProperties:false closes the output-side strictness frontier — runtime returns must match exactly these keys.",
+          "Lead profile basics. The shapes here match the backend `LeadSimplified` schema verbatim — `size` is `{min,max,...}`, `location` is `{city,state,country,full,pos}`, `tags` are typed objects.",
         properties: {
           id: { type: "string" },
           name: { type: "string" },
           sector_id: { type: ["number", "string", "null"] },
-          size: { type: ["string", "null"] },
-          location: { type: ["string", "null"] },
+          size: {
+            type: ["object", "null"],
+            description: "LeadSimplified.size — employee-count band.",
+            properties: {
+              low: { type: ["number", "null"] },
+              high: { type: ["number", "null"] },
+              min: { type: ["number", "null"] },
+              max: { type: ["number", "null"] },
+              label: { type: ["string", "null"] },
+            },
+          },
+          location: {
+            type: ["object", "null"],
+            description: "LeadFullLocation — city/state/country/full/pos.",
+            properties: {
+              city: { type: ["string", "null"] },
+              state: { type: ["string", "null"] },
+              country: { type: ["string", "null"] },
+              full: { type: ["string", "null"] },
+              pos: {
+                type: ["array", "null"],
+                items: { type: "number" },
+              },
+            },
+          },
           website: { type: ["string", "null"] },
           description: { type: ["string", "null"] },
           short_description: { type: ["string", "null"] },
-          keywords: { type: "array", items: { type: "string" } },
-          tags: { type: "array", items: { type: "string" } },
+          keywords: {
+            type: "array",
+            description:
+              "Either bare strings (legacy) or {keyword,score} objects depending on the backend payload version.",
+            items: {},
+          },
+          tags: {
+            type: "array",
+            description: "LeadTag[] — {id, display_name, tag, score}.",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: ["number", "string", "null"] },
+                display_name: { type: ["string", "null"] },
+                tag: { type: "string" },
+                score: { type: ["number", "null"] },
+              },
+            },
+          },
           score: { type: ["number", "null"] },
           ai_agent_lead_score: { type: ["number", "null"] },
-          social_presence: { type: ["object", "string", "null"] },
-          social_urls: { type: ["object", "array", "null"] },
+          ai_summary: { type: ["string", "null"] },
+          split_ai_summary: {
+            type: ["object", "null"],
+            properties: {
+              worth_pursuing: { type: ["string", "null"] },
+              approach_angle: { type: ["string", "null"] },
+              next_step: { type: ["string", "null"] },
+            },
+          },
+          phone_numbers: {
+            type: ["array", "null"],
+            items: { type: "string" },
+          },
+          social_presence: {
+            type: ["object", "null"],
+            description:
+              "LeadSocialPresence — 6 booleans per platform. Use `social_urls` for URLs.",
+            properties: {
+              crunchbase: { type: "boolean" },
+              facebook: { type: "boolean" },
+              instagram: { type: "boolean" },
+              linkedin: { type: "boolean" },
+              tiktok: { type: "boolean" },
+              twitter: { type: "boolean" },
+            },
+          },
+          social_urls: {
+            type: ["object", "null"],
+            description:
+              "LeadSocialUrls — URL strings per platform; null when the company has no profile.",
+            properties: {
+              crunchbase: { type: ["string", "null"] },
+              facebook: { type: ["string", "null"] },
+              instagram: { type: ["string", "null"] },
+              linkedin: { type: ["string", "null"] },
+              tiktok: { type: ["string", "null"] },
+              twitter: { type: ["string", "null"] },
+            },
+          },
           registry_ids: { type: ["object", "array", "null"] },
         },
         additionalProperties: false,
@@ -273,7 +361,6 @@ export const researchLead: Tool<ResearchLeadParams> = {
           liked: { type: "boolean" },
           disliked: { type: "boolean" },
           new: { type: "boolean" },
-          recommended_contact_title: { type: ["string", "null"] },
           recommended_contact: { type: ["object", "null"] },
           notes_count: { type: "number" },
           epilogue_actions_count: { type: "number" },
@@ -458,11 +545,16 @@ export const researchLead: Tool<ResearchLeadParams> = {
         tags: lead.tags,
         score: lead.score,
         ai_agent_lead_score: lead.ai_agent_lead_score,
+        ai_summary: lead.ai_summary ?? null,
+        split_ai_summary: lead.split_ai_summary ?? null,
+        phone_numbers: lead.phone_numbers ?? null,
         social_presence: lead.social_presence ?? null,
         social_urls: (lead as any).social_urls ?? null,
         registry_ids: (lead as any).registry_ids ?? null,
       },
       // 4) contacts (paid/enriched, plus org contacts if present)
+      // B6: defensively coerce the literal string "null" to a real null —
+      // some backend serializers emit it for un-enriched contacts.
       contacts: {
         enriched: paidContacts.map((c) => ({
           id: c.id,
@@ -471,7 +563,7 @@ export const researchLead: Tool<ResearchLeadParams> = {
           job_title: c.job_title,
           email: c.email,
           phone_number: c.phone_number,
-          linkedin_page: c.linkedin_page,
+          linkedin_page: normalizeLinkedinPage(c.linkedin_page),
           recommended: c.recommended,
           enrichment_done: c.enrichment?.done ?? false,
         })),
@@ -481,15 +573,25 @@ export const researchLead: Tool<ResearchLeadParams> = {
           last_name: c.last_name,
           job_title: c.job_title,
           email: c.email,
+          linkedin_page: normalizeLinkedinPage((c as any).linkedin_page ?? null),
         })),
       },
-      // 5) engagement — what humans/prior agent runs already did
+      // 5) engagement — what humans/prior agent runs already did.
+      // B8: `recommended_contact_title` dropped — it duplicates
+      // `recommended_contact.job_title` and just confused agents.
       engagement: {
         liked: lead.liked,
         disliked: lead.disliked,
         new: lead.new ?? false,
-        recommended_contact_title: lead.recommended_contact_title ?? null,
-        recommended_contact: lead.recommended_contact ?? null,
+        recommended_contact: lead.recommended_contact
+          ? {
+              ...lead.recommended_contact,
+              // B1+B7: propagate linkedin_page when the backend includes it.
+              linkedin_page: normalizeLinkedinPage(
+                (lead.recommended_contact as any).linkedin_page ?? null
+              ),
+            }
+          : null,
         notes_count: lead.notes_count ?? 0,
         epilogue_actions_count: lead.epilogue_actions_count ?? 0,
         prospecting_actions_count: lead.prospecting_actions_count ?? 0,

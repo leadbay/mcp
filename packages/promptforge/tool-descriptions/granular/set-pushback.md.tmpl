@@ -1,0 +1,23 @@
+---
+name: leadbay_set_pushback
+kind: tool-description
+short_description: |
+  Snooze (pushback) one or more leads for 3 / 6 / 12 months. They drop
+  out of leadbay_pull_followups until the window expires.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Snooze (pushback) one or more leads for 3, 6, or 12 months. The leads remain in the user's pipeline but are excluded from `leadbay_pull_followups` until the pushback window expires. Use this when the user says "not now", "next quarter", "follow up in 3 months", "6 months out", "next year", or any equivalent deferral.
+
+Accepts short labels (`3`, `6`, `12` — months) or the wire-format enum (`PUSHBACK_3`, `PUSHBACK_6`, `PUSHBACK_12`). Bulk-native: pass up to 1000 lead UUIDs per call.
+
+User-facing language: "snooze for 3/6/12 months" (or "pushback" if the user uses the term themselves). Never say "pushback status" in dialogue — say "snooze" or "follow up in N months".
+
+{{include:headers/tool-when-to-use}} the user explicitly says they want to defer a lead (or a small set of leads) for a known window. Pair with `leadbay_add_note` if the user's reason for deferring is worth preserving.
+
+{{include:headers/tool-when-not-to-use}} the user is just skipping ONE outreach attempt — that's a normal `EPILOGUE_COULD_NOT_REACH_STILL_TRYING` outcome via `leadbay_report_outreach`, not a snooze.
+
+{{include:headers/verification-required-if-write}}

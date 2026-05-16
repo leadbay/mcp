@@ -67,6 +67,43 @@ WHEN TO USE: when the user wants more qualified leads than what's currently show
 WHEN NOT TO USE: to qualify a single specific lead — that's leadbay_qualify_lead (granular, advanced).
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+
+
+---
+
+## Status / scalar — single-sentence shape
+
+The response is a status confirmation or scalar — render exactly one sentence inline. Do NOT emit a card or a table. Do NOT enumerate the affected records (that's the next tool's job).
+
+Template patterns to follow:
+
+- Job kicked off → \`"✓ <Verb> N <noun(s)> — typically ~M minutes. I'll refresh when it's done."\`
+- No work needed → \`"All N <noun(s)> already <state> — no work to do."\`
+- Long-running → \`"⏳ <Verb> still running — N% complete; check back in ~M minutes."\`
+- Failure → \`"⚠ <Verb> failed: <error>. <recovery hint>"\`
+
+After the status line, propose the obvious refresh / progress-check / recovery action in the NEXT STEPS block. Never expand the status into a card.
+
+
+Specifically for bulk qualify:
+
+- Kicked off async → \`"✓ Qualifying N lead(s) (qualify_id <id>) — typically ~M minutes. I'll refresh your leads view when it's done."\`
+- Blocking call returned with answers → \`"✓ Qualified N lead(s). Refresh your leads to see the new ❖ caps."\`
+- Already-qualified short-circuit → \`"All N leads are already qualified — no work to do."\`
+- 429 mid-fanout → \`"⚠ Rate-limited after launching M of N — already-launched leads will complete; re-call later for the rest."\`
+
+Do not enumerate the affected leads — that's the job of \`leadbay_pull_leads\`.
+
+---
+
+## NEXT STEPS — after kicking off bulk qualification
+
+Exactly two offers — keep it terse, this is a status tool:
+
+| Observation                          | Suggest                                       | Calls                          |
+|--------------------------------------|-----------------------------------------------|--------------------------------|
+| Qualification kicked off (async)     | "Check progress in ~30s"                      | leadbay_qualify_status         |
+| Job is done / blocking call returned | "Refresh leads view — the new qualifications should be on the top"  | leadbay_pull_leads(lensId = pinned) |
 `;
 // endregion: leadbay_bulk_qualify_leads
 
@@ -326,6 +363,38 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 
 
 Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role; active billing. Imported leads are NOT auto-promoted to the Monitor view; lens-scoring threshold decides.
+
+---
+
+## RENDERING — import result summary (single-record, terse)
+
+The response carries either a completed result or an async handle. Render a brief summary; do NOT enumerate every imported lead.
+
+**Header — single line, choose by status:**
+
+- Completed: \`"✓ Import complete — N leads imported · M failed · P resolved-with-ambiguity"\`
+- Running: \`"⏳ Import running — handle_id <id>; poll leadbay_import_status"\`
+- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — qualify_id <id>"\`
+
+**When failures or ambiguous rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): \`<row identifier or domain> · <reason>\`. Then \`"*+N more — leadbay_import_status for full detail*"\`.
+
+**When the user's request implied a downstream use** ("import then prep outreach for them"), emit \`Imported leadIds: <up to 5 ids, then '+N more'>\` — just the ids. Let the next composite render the leads.
+
+Defer the full list of imported leads to \`leadbay_pull_leads\` or \`leadbay_research_lead\` in NEXT STEPS.
+
+
+---
+
+## NEXT STEPS — after an import
+
+| Observation                                    | Suggest                                                       | Calls                                                  |
+|------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
+| Status: running                                | "Check progress"                                              | leadbay_import_status(handle_id)                       |
+| Status: complete, imports succeeded            | "Run AI qualification on the imported leads"                  | leadbay_bulk_qualify_leads([leadIds]) — or use leadbay_import_and_qualify next time |
+| Ambiguous / unresolved rows present            | "Resolve the ambiguous rows"                                  | leadbay_resolve_import_rows(records, identity_mappings)|
+| Failed rows from bad mappings                  | "Check the org's mappable fields and remap"                   | leadbay_list_mappable_fields                           |
+| User wants to see the imported leads           | "See the imported leads in your view"                         | leadbay_pull_leads                                     |
+| User had follow-up intent for the imports      | "Prep outreach for [a specific imported lead]"                | leadbay_prepare_outreach(leadId)                       |
 `;
 // endregion: leadbay_import_and_qualify
 
@@ -344,6 +413,38 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 
 
 Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role on the Leadbay account; active billing.
+
+---
+
+## RENDERING — import result summary (single-record, terse)
+
+The response carries either a completed result or an async handle. Render a brief summary; do NOT enumerate every imported lead.
+
+**Header — single line, choose by status:**
+
+- Completed: \`"✓ Import complete — N leads imported · M failed · P resolved-with-ambiguity"\`
+- Running: \`"⏳ Import running — handle_id <id>; poll leadbay_import_status"\`
+- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — qualify_id <id>"\`
+
+**When failures or ambiguous rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): \`<row identifier or domain> · <reason>\`. Then \`"*+N more — leadbay_import_status for full detail*"\`.
+
+**When the user's request implied a downstream use** ("import then prep outreach for them"), emit \`Imported leadIds: <up to 5 ids, then '+N more'>\` — just the ids. Let the next composite render the leads.
+
+Defer the full list of imported leads to \`leadbay_pull_leads\` or \`leadbay_research_lead\` in NEXT STEPS.
+
+
+---
+
+## NEXT STEPS — after an import
+
+| Observation                                    | Suggest                                                       | Calls                                                  |
+|------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
+| Status: running                                | "Check progress"                                              | leadbay_import_status(handle_id)                       |
+| Status: complete, imports succeeded            | "Run AI qualification on the imported leads"                  | leadbay_bulk_qualify_leads([leadIds]) — or use leadbay_import_and_qualify next time |
+| Ambiguous / unresolved rows present            | "Resolve the ambiguous rows"                                  | leadbay_resolve_import_rows(records, identity_mappings)|
+| Failed rows from bad mappings                  | "Check the org's mappable fields and remap"                   | leadbay_list_mappable_fields                           |
+| User wants to see the imported leads           | "See the imported leads in your view"                         | leadbay_pull_leads                                     |
+| User had follow-up intent for the imports      | "Prep outreach for [a specific imported lead]"                | leadbay_prepare_outreach(leadId)                       |
 `;
 // endregion: leadbay_import_leads
 
@@ -353,6 +454,38 @@ export const leadbay_import_status: string = `Retrieve the current state of an a
 WHEN TO USE: after leadbay_import_leads or leadbay_import_and_qualify returns \`{status:'running', handle_id}\` for the import phase, call this tool later to retrieve progress or the final import result without re-running the import.
 
 WHEN NOT TO USE: for qualification handles returned as \`qualify_id\` — use leadbay_qualify_status for those; or when you still want the legacy blocking behavior from leadbay_import_leads with \`wait_for_completion=true\`.
+
+---
+
+## Status / scalar — single-sentence shape
+
+The response is a status confirmation or scalar — render exactly one sentence inline. Do NOT emit a card or a table. Do NOT enumerate the affected records (that's the next tool's job).
+
+Template patterns to follow:
+
+- Job kicked off → \`"✓ <Verb> N <noun(s)> — typically ~M minutes. I'll refresh when it's done."\`
+- No work needed → \`"All N <noun(s)> already <state> — no work to do."\`
+- Long-running → \`"⏳ <Verb> still running — N% complete; check back in ~M minutes."\`
+- Failure → \`"⚠ <Verb> failed: <error>. <recovery hint>"\`
+
+After the status line, propose the obvious refresh / progress-check / recovery action in the NEXT STEPS block. Never expand the status into a card.
+
+
+Specifically for import status:
+
+- Running → \`"⏳ Import still running — N% complete; check back in ~M minutes."\`
+- Complete → \`"✓ Import complete — N leads imported, M failed."\`
+- Error / failed → \`"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."\`
+
+---
+
+## NEXT STEPS
+
+| Observation             | Suggest                                | Calls                          |
+|-------------------------|----------------------------------------|--------------------------------|
+| Status: complete        | "See the imported leads"               | leadbay_pull_leads             |
+| Status: running         | "Check again in N minutes"             | leadbay_import_status — re-call|
+| Status: error / failed  | "Diagnose the failure"                 | leadbay_resolve_import_rows    |
 `;
 // endregion: leadbay_import_status
 
@@ -385,7 +518,35 @@ Optional \`for_records\` param: pass a sample of CSV-shaped rows and the tool al
 
 WHEN TO USE: before authoring an import mapping, especially when the CSV has columns that aren't obvious matches for standard fields.
 
-WHEN NOT TO USE: when you already know the mapping — this call is cheap (~50ms without for_records, ~5–10s with) but unnecessary if the agent has already cached the catalog within the same conversation.
+WHEN NOT TO USE: when you already know the mapping — this call is cheap (~50ms without for_records, ~5–10s with) but unnecessary if the agent has already cached the catalog within the same conversation. Cache the result per session; re-fetch only after a \`leadbay_create_custom_field\` call (which can change the catalog).
+
+---
+
+## RENDERING
+
+When called mid-import (internal use), do NOT render — return the data only.
+
+When the user asks to inspect the org's fields directly, render two sectioned bulleted lists:
+
+##### Standard fields
+
+Bullet each, grouped by domain (lead identity → location → sector → contact → status). Keep field names verbatim.
+
+##### Custom fields (N defined)
+
+Bullet each as \`<name> · <type> · \` \`\` \`<mapping_value>\` \`\` (mapping_value in backticks — agents need it verbatim for import calls).
+
+When called with \`for_records\`, append a final section **"Mapping hints for your file"** with the per-column suggestions; flag low-confidence mappings explicitly.
+
+---
+
+## NEXT STEPS
+
+| Observation                                | Suggest                                                     | Calls                                                  |
+|--------------------------------------------|-------------------------------------------------------------|--------------------------------------------------------|
+| User is preparing an import                | "Map a file"                                                | leadbay_resolve_import_rows / leadbay_import_leads     |
+| User needs a custom field that doesn't exist | "Create a new custom field"                               | leadbay_create_custom_field                            |
+| for_records was passed; hints look good    | "Run the import with these mappings"                        | leadbay_import_leads(records, mappings)                |
 `;
 // endregion: leadbay_list_mappable_fields
 
@@ -421,11 +582,110 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_pick_clarification
 
 // region: leadbay_prepare_outreach
-export const leadbay_prepare_outreach: string = `Prepare an outreach package for a single lead: recommended contact + enriched contact details + AI summary. Optionally trigger contact enrichment in-flight (\`enrich:true\`); enrichment is async, so poll leadbay_get_contacts after ~60s if you need the result inline.
+export const leadbay_prepare_outreach: string = `Prepare a single-lead outreach brief: the full \`lead\` block (score, \`split_ai_summary\`, \`location\`, \`size\`, \`phone_numbers\`, \`website\`, \`description\`, \`social_urls\`, \`social_presence\`), the \`recommended_contact\` (always in the post-enrichment shape — \`contact_id\`, \`first_name\`, \`last_name\`, \`job_title\`, \`email\`, \`phone_number\`, \`linkedin_page\`, \`is_org_contact\` — with nulls where data isn't yet enriched), \`additional_contacts_count\` (other contacts at this company), and an \`enrichment\` block describing async state.
 
-WHEN TO USE: when the agent is about to draft outreach for ONE specific lead and needs the contact's email/phone.
+Optionally trigger contact enrichment in-flight with \`enrich:true\`. Enrichment is async (~60s). **Self-polling pattern (no separate tool needed):** re-call \`leadbay_prepare_outreach(leadId)\` without \`enrich\`; check \`enrichment.complete\`. When \`complete: true\`, the recommended contact now carries \`email\` and/or \`phone_number\`.
+
+The first call to this tool on a lead records a \`LEAD_VIEWED\`-style prospecting action server-side (one per lead per session — deduped) so the lead ages out of the Discover "new" view.
+
+IRON LAW — OUTCOME AFTER OUTREACH. The moment the user reports outreach happened ("I sent it", "she didn't pick up", "left a voicemail", "they replied", a forwarded email thread, a calendar invite), you MUST (1) call leadbay_report_outreach with verification (gmail_message_id, calendar_event_id, or the user's literal one-sentence confirmation as user_confirmed.ref) AND (2) ask the user about the outcome and set epilogue_status to one of the 4 canonical values: EPILOGUE_INTEREST_VALIDATED_OR_MEETING_PLANED ("Meeting booked"), EPILOGUE_COULD_NOT_REACH_STILL_TRYING ("Trying to reach"), EPILOGUE_NOT_INTERESTED_LOST ("Not interested"), EPILOGUE_STILL_CHASING ("In progress"). Use the user-facing labels in dialogue ("What's the outcome — meeting booked, trying to reach, not interested, or in progress?"); never say "epilogue" out loud. Skipping this step silently de-ranks every future follow-up suggestion because pull_followups depends on honest, current outcomes.
+
+
+WHEN TO USE: when the agent is about to draft outreach for ONE specific lead and needs everything to compose — channels + angles + history context.
 
 WHEN NOT TO USE: across many leads — use leadbay_enrich_titles for bulk; for general lead detail use leadbay_research_lead (richer signals); to actually log the outreach action use leadbay_report_outreach (requires verification).
+
+---
+
+## RENDERING — outreach brief (single-record card)
+
+Present as the richest single-record card the MCP emits. The user is seconds-to-minutes away from contacting someone — every section earns its place by either (a) telling them HOW to outreach, (b) showing what they've done before, or (c) surfacing what's missing and how to get it.
+
+**Async enrichment.** When \`enrichment.triggered && !enrichment.complete\`, do NOT block the user. Render the brief with \`⏳\` on un-enriched channels and IMMEDIATELY draft a first version of the outreach using whatever data IS available (\`split_ai_summary.approach_angle\`, company-line phone, LinkedIn-search fallback). Tell the user: *"I'll refresh once enriched data lands."* On their next message (or after a clear pause), re-call \`leadbay_prepare_outreach(leadId)\` without \`enrich\`; if \`enrichment.complete: true\`, surface the now-resolved channels and offer to revise the draft.
+
+### Structure
+
+**Header** (H5): \`📞 Outreach prep — [Contact name](LinkedIn) · [Company](website)\`
+
+- Sub-line: job title · \`+N more contacts\` when \`additional_contacts_count > 0\`.
+- Prefix \`https://\` to \`website\` if it's a bare hostname.
+
+**Score line** (when \`lead.score\` is present): the 10-segment bar inline, no \`<br>\`. Same algorithm as \`pull_leads\`.
+
+**Channel readiness** — a single line of pill chips, \` · \`-separated:
+
+- \`🔗 LinkedIn\` — \`profile\` (linked to real URL) if \`linkedin_page\` present; \`search\` (linked to people-search fallback) otherwise. \`⏳\` during enrichment.
+- \`📧 Email\` — show address if present; \`⏳ enriching\` when \`enrichment.triggered && !complete\`; \`⚪ not enriched\` otherwise.
+- \`📞 Phone\` — contact-specific number if present; fall back to \`lead.phone_numbers[0]\` with \`(company line)\` annotation; \`⏳\` / \`⚪\` otherwise.
+
+**H5: 🎯 Angles & approach**
+
+- Render \`lead.split_ai_summary.approach_angle\` as the lead-in.
+- 3–4 bullets distilling \`split_ai_summary.next_step\` and any signals from a prior \`research_company\` call into salesperson-voice talking points. Cite \`[source](url)\` inline when known.
+- Final line: \`Recommended channel: <X> — <rationale>\`. Compute the recommendation from what data is available (email present → email; phone present → call; LinkedIn only → DM).
+
+**H5: 📜 History with [Contact name]**
+
+When prior contact-level actions / notes are surfaced (or when \`prospecting_actions_count > 0\`), render a reverse-chronological timeline: \`<date> · <action_type> · <one-line summary>\`. Quote-block recent notes below. If empty: \`*No prior touchpoints with this contact.*\`
+
+**H5: 🏢 History with [Company name]**
+
+Same shape as the contact history, but only include items NOT duplicated from the contact section. If both empty: \`*No company-level history recorded.*\`
+
+**H5: 👥 Other contacts** (only if \`additional_contacts_count > 0\`)
+
+One line: \`+N more contacts at this company — [see them all](leadbay_research_company)\`.
+
+**Closing line** (when enrichment is in progress): \`*Enrichment running — I'll refresh once email/phone lands.*\`
+
+**Hide:** \`id\`, \`lead.id\`, raw \`enrichment.hint\` when redundant with channel pills, history items without descriptions, any field whose value is the string \`"null"\`, deprecated \`other_contacts_count\` (use \`additional_contacts_count\`).
+
+## Linking a contact's name
+
+Two LinkedIn URLs exist and must never be conflated: the **company's** LinkedIn page and an **individual person's** profile.
+
+When the response carries a real contact LinkedIn URL — \`contact.linkedin_page\` is a string that starts with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it) — link the contact's name to that URL.
+
+Otherwise fall back to a LinkedIn people-search URL:
+
+\`\`\`
+https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>
+\`\`\`
+
+URL-encode the params. Strip Inc / LLC / Corp / Ltd / GmbH suffixes from the company name. Append a trailing \` °\` to the rendered name ONLY when the fallback is in use AND \`social_presence.linkedin == false\` (no company LinkedIn → search may not resolve). Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa). The two surfaces are different — conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
+
+When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
+
+\`social_presence\` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+
+
+---
+
+## NEXT STEPS — after the outreach brief
+
+Offer 2–3 follow-ups. Choose based on enrichment state + available channels + history. Always offer the "log outreach" option once the user has clearly contacted someone.
+
+| Observation                                     | Suggest                                                       | Calls                                                  |
+|-------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
+| \`enrichment.triggered && !enrichment.complete\`  | "Refresh now to check enrichment progress"                    | leadbay_prepare_outreach(leadId) — re-call             |
+| Email available                                 | "Draft the outreach email"                                    | (agent self-drafts inline, using split_ai_summary)     |
+| Direct phone available                          | "Draft the 60-second call opener"                             | (agent self-drafts inline)                             |
+| LinkedIn URL available                          | "Draft the LinkedIn DM"                                       | (agent self-drafts inline)                             |
+| Only company line, no direct phone              | "Draft a switchboard script targeting [Contact]"              | (agent self-drafts; flag uncertainty)                  |
+| \`additional_contacts_count > 0\`                 | "Show me the other N contacts at this company"                | leadbay_get_contacts(leadId)                           |
+| History is empty                                | "Pull the strategic overview before drafting"                 | leadbay_research_company(leadId)                       |
+| User reports they reached out                   | "Log this outreach — creates prospecting action + outcome"    | leadbay_report_outreach(leadId, contact_id, ...)       |
+| User adds context for next time                 | "Save a note on the contact or company"                       | leadbay_add_note                                       |
+| After a successful exchange                     | "Update qualification answers based on what you learned"      | leadbay_answer_clarification                           |
+
+The "log outreach" step is the most-important follow-up — it closes the loop and populates history for the next \`leadbay_prepare_outreach\` call. Detect intent from natural language: "I sent the email", "she didn't pick up", "left a voicemail", "they responded yes/no", etc.
 `;
 // endregion: leadbay_prepare_outreach
 
@@ -449,16 +709,256 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 `;
 // endregion: leadbay_promote_lens
 
-// region: leadbay_pull_leads
-export const leadbay_pull_leads: string = `Pull up new leads from the user's last-active lens — the canonical "show me today's prospects" tool. Leadbay works like an inbox: each time the user logs back in, a fresh batch is delivered, paced by how many leads they've actually acted on recently. Pulling more won't produce more; user outreach/skips/saves does. Each returned lead carries a one-line \`qualification_summary\` built from leadbay_ai_agent_responses, plus the rich tags / scores / recommended_contact_title / engagement counters / in-flight flags from the lead summary.
+// region: leadbay_pull_followups
+export const leadbay_pull_followups: string = `Pull KNOWN leads from the user's Monitor view — the re-engagement entry point of the two-entry-point workflow. Use when the user asks "what should I follow up on", "leads I haven't contacted", "leads in [city]", "before my trip", "this month", "what's overdue", or any phrasing that implies pre-existing pipeline context. For NEW leads from the Discover wishlist, use \`leadbay_pull_leads\` instead.
 
-Roughly the top 10 of the batch come pre-qualified (populated qualification_summary + ai_agent_lead_score); leads below the top ~10 carry only the basic firmographic \`score\` — not worse, just resource-saved by the system. Call leadbay_bulk_qualify_leads to deepen any of them on demand.
+Backend: wraps \`GET /1.5/monitor?personal=&liked=&filtered=&count=&page=\` plus, when \`set_filter\` is supplied, a preceding \`POST /1.5/monitor/filter\` to persist the filter server-side. The Monitor filter is a single \`FilterItem\` per user — refreshing the page restores it.
+
+**Filter mechanism — store-then-apply.** Pass \`set_filter: { criteria: FilterCriterion[] }\` to overwrite the server-stored filter, then the composite re-fetches with \`filtered:true\`. \`FilterCriterion\` is the backend's \`anyOf\` over 10 typed criteria: \`size\`, \`keywords\`, \`sector_ids\`, \`location_ids\`, \`custom_field\`, \`custom_field_comparison\`, \`yc\`, \`liked\`, \`last_action\` (filters by MonitorActionType enum), \`last_action_date\` (with \`last_days\` for "last N days").
+
+Practical mapping from user phrasing to criterion:
+
+| User phrase                          | Criterion                                                                 |
+|--------------------------------------|---------------------------------------------------------------------------|
+| "leads in Lyon"                      | \`{type: "location_ids", locations: [<admin_area_id>]}\`                    |
+| "healthcare staffing"                | \`{type: "keywords", keywords: ["healthcare", "staffing"]}\`                |
+| "leads I haven't touched in 30 days" | \`{type: "last_action_date", last_days: 30}\`                               |
+| "leads I liked"                      | \`{type: "liked"}\`                                                         |
+| "leads where I purchased contacts"   | \`{type: "last_action", types: ["PURCHASE_LEAD_CONTACT"]}\`                 |
+| "leads 50–200 employees"             | \`{type: "size", sizes: [{min: 50, max: 200}]}\`                            |
+| "Y Combinator companies"             | \`{type: "yc"}\`                                                            |
+
+Geo filtering requires \`admin_area_id\` resolution (the backend doesn't accept free-text city names in \`location_ids\`). The MCP doesn't expose an admin-area lookup yet — for now, ask the user to pick the geo from the Leadbay app's filter UI, or skip the geo filter and rely on agent post-filtering of the response.
+
+**Pushback exclusion.** Leads with active pushback (\`pushback_status\` set and \`pushback_until > today\`) are excluded from the response. The composite enforces this client-side; \`total_excluded_by_pushback\` in the output reports how many rows were dropped.
+
+WHEN TO USE: when the user is re-engaging pipeline ("what should I follow up on", "leads in [city]", "stale leads"), or wants to filter their monitored leads by city / sector / recency / action type / liked.
+
+WHEN NOT TO USE: for NEW leads from the wishlist — that's \`leadbay_pull_leads\` (discovery). The two surfaces overlap but rank differently; pulling the wrong one wastes the user's time.
+
+---
+
+## RENDERING — follow-ups table, status-badge driven
+
+Markdown table with FOUR columns, sorted by \`last_monitor_action_at\` desc. **NO score bar in this view** — discovery owns the \`▰❖▱\` visual identity; follow-up uses status badges. Active-pushback leads are already excluded server-side.
+
+**Active-filters line** ABOVE the table, \` · \`-separated chips from \`active_filters.criteria\`:
+
+| Criterion type        | Chip                       |
+|-----------------------|----------------------------|
+| \`location_ids\`        | 📍 \\<resolved name\\>       |
+| \`sector_ids\`          | 🏷 \\<sector name\\>         |
+| \`keywords\`            | 🔍 \\<keyword\\>             |
+| \`size\`                | 👥 \\<min\\>–\\<max\\>         |
+| \`last_action_date\`    | 📅 \\<window\\>              |
+| \`last_action\`         | 🎯 \\<action types\\>        |
+| \`liked\` / \`yc\`        | ⭐ liked / 🏅 YC           |
+| \`custom_field*\`       | ⚙ \\<field name\\>          |
+
+Render \`*No filters applied.*\` when empty.
+
+**Column 1 — Status** (DERIVED from existing fields, priority order):
+
+1. \`epilogue_status == "EPILOGUE_INTEREST_VALIDATED_OR_MEETING_PLANED"\` → 🎯 Meeting booked
+2. \`epilogue_status == "EPILOGUE_COULD_NOT_REACH_STILL_TRYING"\` → ⚡ Trying to reach
+3. \`epilogue_status == "EPILOGUE_STILL_CHASING"\` + last_prospecting_action_at within 14d → 🟢 In progress
+4. \`epilogue_status == "EPILOGUE_NOT_INTERESTED_LOST"\` → ❄ Not interested (usually filtered out)
+5. \`epilogue_status == null\` + \`last_prospecting_action_at == null\` → ✨ New
+6. \`epilogue_status == null\` + \`last_prospecting_action_at > 60d\` → 💤 Dormant
+7. Otherwise → 🔥 Hot
+
+Append \`<relative time>\` of \`last_monitor_action_at\` (\`today\`/\`Nd\`/\`Nw\`/\`Nmo\`). For ✨, show \`new\`. Line 2: **[Company](website)** bold. Line 3: short location · compact size.
+
+**Column 2 — AI take** (3 lines from \`split_ai_summary\` verbatim, \`<br>\`-separated):
+
+- Line 1: emoji + **bold split_ai_summary.worth_pursuing**. Emoji from leading word: \`Yes…\`→✅, \`No…\`→❌, \`Maybe…\`→🤔, else→💡.
+- Line 2: *italic split_ai_summary.approach_angle* (≤ 18 words).
+- Line 3: **Next:** split_ai_summary.next_step.
+- Fallback when null: render \`ai_summary\` italic, no emoji.
+
+**Column 3 — History & notes**
+
+- Line 1: \`<relative time> ago · <last_prospecting_action>\` (humanize: snake_case → Title Case; drop \`LEAD_\` prefix). When null: \`*Never touched.*\`
+- Line 2 (when \`epilogue_status\` set): \`📌 Outcome: <user-facing label> · <relative time>\` — NEVER show the wire-format \`EPILOGUE_*\` value.
+- Line 3 (when a recent note surfaces): \`📝 *<note clipped ≤ 14 words>* (<rel time>)\`.
+- If neither: \`*0 prior touches · 0 notes*\`.
+
+**Column 4 — Contacts** (max 3 lines, recommended_contact first):
+
+\`\`\`
+★ [Name](linkedin_page or people-search) · ☎ phone · 📧 email
+\`\`\`
+
+Markers: \`★\` recommended, \`💎\` hot in web_insights key_people. Channel pills: \`☎ phone\` (rec.phone_number → lead.phone_numbers[0] \`(co)\` → \`⚪ phone\`); \`📧 email\` (rec.email → \`⚪ email\`). When no visible contact has email/direct phone: append \`*enrich first*\` in italic.
+
+**Hide:** \`id\`, \`location.pos\`, \`web_fetch_in_progress\`, \`enrichment_in_progress\`, \`stale_at\`, \`sector_id\`, zero counters, \`social_presence\` booleans (except °-flag), \`score\`, string \`"null"\`.
+
+**Legend** (user-facing — NEVER say "epilogue"):
+
+🎯 Meeting booked · ⚡ Trying to reach · 🟢 In progress · 💤 Dormant · ✨ New · 🔥 Hot · ❄ Not interested · ★ recommended · 💎 hot in web_insights · ☎ (co) = company line · ⚪ not enriched
+
+## Linking a contact's name
+
+Two LinkedIn URLs exist and must never be conflated: the **company's** LinkedIn page and an **individual person's** profile.
+
+When the response carries a real contact LinkedIn URL — \`contact.linkedin_page\` is a string that starts with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it) — link the contact's name to that URL.
+
+Otherwise fall back to a LinkedIn people-search URL:
+
+\`\`\`
+https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>
+\`\`\`
+
+URL-encode the params. Strip Inc / LLC / Corp / Ltd / GmbH suffixes from the company name. Append a trailing \` °\` to the rendered name ONLY when the fallback is in use AND \`social_presence.linkedin == false\` (no company LinkedIn → search may not resolve). Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa). The two surfaces are different — conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
+
+When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
+
+\`social_presence\` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+
+
+---
+
+## NEXT STEPS — after the follow-ups table
+
+Always include at least one filter-modification offer (users think in filters: by city, by recency, by action type). Filter modification goes through \`set_filter: FilterItem\` which the composite POSTs to \`/monitor/filter\` server-side.
+
+| Observation                                   | Suggest                                                  | Calls                                                                                              |
+|-----------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------------------------------------------|
+| Always (top of menu)                          | "Prep outreach for [top row's contact]"                  | leadbay_prepare_outreach(leadId)                                                                   |
+| User named a city / sector / timeframe        | "Refilter by [their phrase]"                             | leadbay_pull_followups(set_filter: { criteria: [...] })                                            |
+| \`pagination.has_more == true\`                 | "Pull the next page"                                     | leadbay_pull_followups(page = current + 1)                                                         |
+| ≥3 rows ✨ (never-touched)                    | "Surface only never-touched leads"                       | set_filter with \`last_action_date.last_days = 0\`                                                   |
+| ≥3 rows ⚡ (Trying to reach)                  | "Focus on overdue commitments"                           | set_filter with \`last_action.types = ["EPILOGUE_COULD_NOT_REACH_STILL_TRYING"]\`                    |
+| User planning a trip / in a city              | "Group by city for trip planning"                        | set_filter with \`location_ids\` (requires admin_area_id)                                            |
+| All rows last action > 60d                    | "Re-qualify — context may have changed"                  | leadbay_bulk_qualify_leads([leadId, ...])                                                          |
+| One obvious priority row                      | "Take me to that lead's full brief"                      | leadbay_prepare_outreach(leadId) / leadbay_research_lead(leadId)                                   |
+| User wants to defer a lead                    | "Snooze [Company] for 3 / 6 / 12 months"                 | leadbay_set_pushback({ lead_ids:[leadId], status:"3" })                                            |
+| User completed outreach mid-flow              | "Log the outreach + record the outcome"                  | leadbay_report_outreach                                                                            |
+| Discovery mode might fit better               | "Looking for NEW leads instead? Switch to discovery."    | leadbay_pull_leads                                                                                 |
+
+Always offer at least one of: prep outreach, refilter, pushback. Pushback is the canonical way to honor "not now" / "next quarter" — leads with active pushback are excluded from this view until expiry.
+`;
+// endregion: leadbay_pull_followups
+
+// region: leadbay_pull_leads
+export const leadbay_pull_leads: string = `Pull up new leads from the user's last-active lens — the canonical "show me today's prospects" tool. Leadbay works like an inbox: each time the user logs back in, a fresh batch is delivered, paced by how many leads they've actually acted on recently. Pulling more won't produce more; user outreach/skips/saves does. Each returned lead carries a one-line \`qualification_summary\` built from leadbay_ai_agent_responses, plus the rich tags / scores / engagement counters / in-flight flags from the lead summary.
+
+Roughly the top 10 of the batch come pre-qualified (populated qualification_summary + ai_agent_lead_score); leads below the top ~10 carry only the basic firmographic \`score\` — not worse, just resource-saved by the system. Call leadbay_bulk_qualify_leads to deepen any of them on demand — a healthy daily rhythm is to bulk-qualify the rows without ❖ caps so tomorrow's top-10 list is richer.
+
+Every lead carries \`recommended_contact\` (with \`linkedin_page\` when the backend has it), \`phone_numbers\` (when available), \`split_ai_summary.{worth_pursuing, approach_angle, next_step}\` (when AI-qualified), and \`social_urls\` per-platform (linkedin, instagram, tiktok, facebook, twitter, crunchbase). Use them — they're already in the response, you don't need a second call.
 
 WHEN TO USE: as the agent's default opening move when the user wants to see leads, or as a daily check-in for what's new today.
 
 WHEN NOT TO USE: when the user has named a specific lens — pass \`lensId\` to override the auto-resolution. Replaces the older leadbay_find_prospects (removed in v0.2.0).
 
-The active lens can change between calls (5-min cache + backend \`last_requested_lens\`). If a multi-step workflow depends on staying on one lens, **capture \`lensId\` from the first response and pass it explicitly to every subsequent Leadbay call** — including re-pulls, bulk qualifies, and research. Re-pulling without \`lensId\` after a long-running tool may silently switch to a different lens and discard prior work.
+The active lens can change between calls (5-min cache + backend \`last_requested_lens\`). If a multi-step workflow depends on staying on one lens, **capture \`response.lens.id\` from the first response and pass it as the \`lensId\` argument on every subsequent Leadbay call** — including re-pulls, bulk qualifies, and research. (Field-name caveat: response nests it as \`lens.id\`; the parameter is \`lensId\`.) Re-pulling without \`lensId\` after a long-running tool may silently switch to a different lens and discard prior work.
+
+---
+
+## RENDERING — markdown table, three columns, score-bar driven
+
+Present the response as a markdown table sorted by \`score\` descending, with exactly three columns. Do not summarize in prose. Do not show the numeric score anywhere.
+
+## Score-bar (10-segment, inline-code wrapped)
+
+Wrap a 10-glyph bar in a SINGLE inline-code span (backticks). The inline-code styling is what gives the bar contrast in most chat renderers — HTML \`<span>\` is stripped inside table cells.
+
+Glyphs (use these exact characters; do not substitute):
+
+- \`▰\` — firmographic-only fill
+- \`❖\` — AI-booster cap (placed at the RIGHT END of the filled run, never the front)
+- \`▱\` — empty
+
+Computation:
+
+\`\`\`
+total_filled  = round(score / 10), clamped to 0..10
+ai_segments   = round(qualification_summary.avg_qualification_boost / 3.3),
+                clamped to [0, total_filled]
+normal_filled = total_filled − ai_segments
+bar = "▰" × normal_filled
+    + "❖" × ai_segments
+    + "▱" × (10 − total_filled)
+\`\`\`
+
+If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is null, set \`ai_segments = 0\` (no ❖). Always wrap the bar in backticks. Print the legend \`\` \`▰\` firmographic · \`❖\` AI booster cap · \`▱\` unfilled \`\` once below the table.
+
+
+**Column 1 — Company**
+
+- Line 1: the 10-segment score bar in inline-code backticks (see the score-bar snippet above for the algorithm).
+- Insert \`<br>\` between lines.
+- Line 2: linked company name + \` · \` + short location + \` · \` + compact size.
+  - Link target: \`website\` (prefix \`https://\` if it's a bare hostname). Don't synthesize an app deep-link.
+  - Location: shorten "City of New York" → "NYC"; otherwise "City ST"; state alone only when city missing.
+  - Size: \`"Xk+"\` when \`size.min >= 1000\`, \`"min–max"\` otherwise.
+
+**Column 2 — Why it fits**
+
+- One sentence, ≤ 20 words.
+- Synthesize from (in priority order, whichever is present) the lead's \`short_description\`, top 2 \`tags[].display_name\`, and the gist of \`qualification_summary.best_response_excerpt\`. The trim payload does NOT carry the longer \`description\` field — for that, agent must call \`leadbay_research_lead\` or \`leadbay_research_company\`.
+- Do NOT append \`(boost N)\` — the ❖ cap in column 1 already carries that signal.
+- No bullet lists, no line breaks inside the cell.
+
+**Column 3 — Contact**
+
+\`[Contact name](LINK) · short job title\`. See linking/contact-linkedin for LINK priority and the °-flag fallback.
+
+**Hide from the user (never include in any cell):** \`id\`, \`location.pos\`, \`location.country\` (unless city/state both missing), \`sector_id\`, \`is_hq\`, \`web_fetch_in_progress\`, \`enrichment_in_progress\`, \`highlighted_fields\`, \`custom_fields\`, \`contacts_count\` when 0, \`notes_count\` / \`epilogue_actions_count\` / \`prospecting_actions_count\` when 0, \`stale_at\`, \`deal_insights\`, \`social_presence\` booleans (except as the °-flag signal), \`need_attention\` flags, any field whose value is the string \`"null"\`.
+
+## Linking a contact's name
+
+Two LinkedIn URLs exist and must never be conflated: the **company's** LinkedIn page and an **individual person's** profile.
+
+When the response carries a real contact LinkedIn URL — \`contact.linkedin_page\` is a string that starts with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it) — link the contact's name to that URL.
+
+Otherwise fall back to a LinkedIn people-search URL:
+
+\`\`\`
+https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>
+\`\`\`
+
+URL-encode the params. Strip Inc / LLC / Corp / Ltd / GmbH suffixes from the company name. Append a trailing \` °\` to the rendered name ONLY when the fallback is in use AND \`social_presence.linkedin == false\` (no company LinkedIn → search may not resolve). Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa). The two surfaces are different — conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
+
+When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
+
+\`social_presence\` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+
+
+---
+
+## NEXT STEPS — after rendering the pull_leads table
+
+Pick 2–3 items below based on what was actually observed in the response. Surface them as a short bulleted list — do NOT recite the whole table.
+
+| Observation                                                | Suggest                                                      | Calls                                                  |
+|------------------------------------------------------------|--------------------------------------------------------------|--------------------------------------------------------|
+| \`has_more == true\`                                         | "Pull the next page (page N+1 of M)"                         | leadbay_pull_leads(page = current + 1, lensId = pinned)|
+| ≥ 3 rows have \`qualification_summary.answered == 0\`        | "Deepen AI qualification on the rows without ❖ caps"         | leadbay_bulk_qualify_leads(leadIds=[…])                |
+| User points at a single row                                | "Research [Company] in depth"                                | leadbay_research_lead(leadId)                          |
+| User wants the company-level web view                      | "Pull the company-level research for [Company]"              | leadbay_research_company({leadId} or {companyName})    |
+| Top row has phone AND email                                | "Prepare an outreach for [Contact] — call + email"           | leadbay_prepare_outreach(leadId)                       |
+| Top row has email but no phone                             | "Draft an outreach email for [Contact]"                      | leadbay_prepare_outreach(leadId)                       |
+| Top row has phone but no email                             | "Show [Contact]'s call details + a 60-second opener"         | leadbay_prepare_outreach(leadId)                       |
+| Top row has contacts but no phone/email                    | "Order contact enrichment to surface email/phone first"      | leadbay_enrich_titles(...) or leadbay_prepare_outreach(leadId, enrich:true) |
+| \`computing_scores == true\` or \`computing_wishlist == true\` | "Scores are still being computed — re-pull in ~30s"          | leadbay_pull_leads (retry with same lensId)            |
+| User wants a narrower / wider audience                     | "Adjust the lens filters (sector / size)"                    | leadbay_adjust_audience(...)                           |
+
+If nothing in the menu applies cleanly, suggest only "pull next page" and "research a specific lead in depth" — never invent a tool that doesn't exist.
 `;
 // endregion: leadbay_pull_leads
 
@@ -513,6 +1013,19 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 `;
 // endregion: leadbay_remove_epilogue
 
+// region: leadbay_remove_pushback
+export const leadbay_remove_pushback: string = `Clear an active pushback on one or more leads. They re-enter \`leadbay_pull_followups\` immediately. Use when the user changes their mind ("actually let's reach out now"), or when external context shifts (the company announces hiring / funding / a new product that makes them ripe sooner than the deferral window expected).
+
+Bulk-native: pass up to 1000 lead UUIDs per call. No status enum — pushback is binary (either an active window exists, or it doesn't).
+
+WHEN TO USE: the user wants to revive a snoozed lead now, ahead of the pushback window expiry.
+
+WHEN NOT TO USE: the pushback expired naturally (no API call needed; the lead reappears in \`pull_followups\` automatically).
+
+This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+`;
+// endregion: leadbay_remove_pushback
+
 // region: leadbay_report_outreach
 export const leadbay_report_outreach: string = `Log an outreach action (email, call, message, meeting) on a lead so the human team using Leadbay sees the progress in their UI. Writes a NOTE on the lead and (optionally) sets an EPILOGUE status (still chasing, meeting booked, etc.). Bulk variant: pass \`lead_ids=[uuid,...]\` instead of \`lead_id\` (epilogue is bulk-native; notes fan out per-lead).
 
@@ -529,9 +1042,120 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // region: leadbay_research_company
 export const leadbay_research_company: string = `Deep-dive research on a specific company by NAME (fuzzy match against the active lens's wishlist). Pass \`companyName\` (matches the top-scoring lead with that name) or \`leadId\` (takes precedence when both supplied).
 
-WHEN TO USE: when the user references a company by name and you don't yet have its \`lead_id\`.
+The response carries the rich-lead block (firmographics, \`phone_numbers\`, \`split_ai_summary\`, \`social_urls\`), \`qualification[]\` (Q&A pairs from the AI agent — empty until the lead is qualified), \`contacts[]\` (paid + org, each with a normalized \`linkedin_page\`), \`web_insights\` (keyed by emoji-prefixed section labels — see RENDERING for handling), \`web_insights_fetched_at\` (staleness), and \`recent_activities\` (engagement history).
 
-WHEN NOT TO USE: when you already have the lead_id — use leadbay_research_lead directly (it bundles richer signals + better top-down ordering for the agent).
+WHEN TO USE: when the user references a company by name and you don't yet have its \`lead_id\`, OR when you want a single-record card with web-research signals (business signals, prospecting clues, strategic positioning) rather than a raw lead profile.
+
+WHEN NOT TO USE: when you already have the lead_id and need the bundled deeper lens-scoped data — use leadbay_research_lead.
+
+---
+
+## RENDERING — single-record research card, mode-adaptive
+
+Present as a single-record card, not a table. This tool gets invoked in two distinct user contexts — detect which and adapt the body density accordingly.
+
+**MODE A — Discovery.** The user is evaluating whether to pursue this company as a target. Signals: "tell me about", "what do they do", "is this a fit", "research [company]", arrival via a click-through from \`leadbay_pull_leads\`, no prior outreach context in the conversation. Next step is usually qualify, deep-dive via \`leadbay_research_lead\`, or decide whether to start outreach.
+
+**MODE B — Contact preparation.** The user is about to call or email someone at this company and needs the talking points. Signals: "I'm calling them", "draft an email", "before my call", "outreach prep", "what should I say", or the conversation has already touched on a specific contact. Next step is usually \`leadbay_prepare_outreach\`.
+
+Default to MODE A when uncertain. Always offer the cross-mode pivot at the end so the user can redirect if you guessed wrong.
+
+### Common structure (both modes)
+
+- **Header** (H4 or H5): \`<10-segment score bar>\` \`[Company name](website)\`. Use the score-bar algorithm; the bar lives in a single inline-code span. Prefix \`https://\` to website if it's a bare hostname.
+- **Pill row** (immediately below the header): short location · compact size · social pill chips iterated over \`social_urls\` (each non-null platform becomes \`[<platform-label>](<url>)\`) · \`[website-domain](website)\` · \`☎ phone\` when \`phone_numbers[]\` is non-empty (use the first number). All \` · \`-separated.
+- **Blurb**: render \`description\` (preferred) or \`short_description\` as a single blockquoted paragraph.
+- **Staleness line**: italic, \`"Researched <relative time>"\` from \`web_insights_fetched_at\`. Use \`"today"\` / \`"yesterday"\` / \`"N days ago"\` up to 30 days, then absolute date. Prefix with \`⚠\` if older than 30 days.
+- **Contacts table** (always at the bottom):
+  \`\`\`
+  |   | Name | Title | LinkedIn |
+  \`\`\`
+  Markers in column 1:
+  - \`★\` — \`recommended_contact\` match.
+  - \`💎\` — name fuzzy-matches a \`hot: true\` entry in \`web_insights\` key_people. (Use \`💎\`, not \`🔥\`, to avoid glyph collision with the follow-up status badge.)
+  Sort \`★\` first, then \`💎\`-only rows, then API order. Link the name via \`linkedin_page\` first; fall back to LinkedIn people-search with \`<First>+<Last>+<Company>\`. Append \`°\` only when the fallback is in use AND \`social_presence.linkedin == false\`. Cap to 6 rows; if \`contacts_count > shown\`, end with \`"+N more — ask to see the full list"\`.
+
+### MODE A body (Discovery, fuller, scannable)
+
+Render each non-empty \`web_insights\` section as H5 with the emoji + label intact. Section order: \`🏢 company profile\` → \`📈 business signals\` → \`💡 prospecting clues\` → \`🧩 strategic positioning\` → \`🔎 technologies & innovation\`. Inside each, bullet 3–5 items. Sort \`hot: true\` items first. **Bold** the description text of hot items; leave cold items plain. Render \`source\` as \`[source](url)\` at the end; include \`date\` when present. Omit empty sections. Skip \`🔗 social links\` (already in the pill row) and \`👤 key people\` (already in the contacts table).
+
+### MODE B body (Contact preparation, tighter)
+
+Render exactly two H5 sections:
+
+##### 🎯 Conversation hooks
+
+Distill the 3 most recent / most hot signals from \`📈 business signals\` and \`💡 prospecting clues\` into one-sentence talking points in salesperson voice. Strip the academic framing. Cite the source inline.
+
+##### 👤 About the person *(only when recommended_contact is non-empty)*
+
+2-line summary: their title + any context from \`web_insights\` key_people. If they appear in a hot signal ("X appointed CEO"), surface that prominently.
+
+Skip 🏢 profile, 🧩 strategic positioning, 🔎 technologies in MODE B — context the user doesn't need for the next 30 seconds.
+
+If \`qualification[]\` is non-empty, append one collapsed line: \`"Qualification: N questions answered, avg boost X"\` and offer to expand in NEXT STEPS.
+
+**Hide:** \`id\`, \`lead.id\`, \`contact.id\`, \`lead.location.pos\`, \`web_fetch_in_progress\`, \`enrichment_in_progress\`, \`recommended_contact_title\` (duplicates \`recommended_contact.job_title\`), empty arrays, fields whose value is the string \`"null"\`, \`contact.source\` (internal), insights whose \`source\` is empty.
+
+**Legend (print once below the card):** \`\` \`▰\` firmographic · \`❖\` AI booster · \`▱\` unfilled · ★ recommended · 💎 hot in web_insights · ° = no company LinkedIn (fallback link only) \`\`
+
+## Linking a contact's name
+
+Two LinkedIn URLs exist and must never be conflated: the **company's** LinkedIn page and an **individual person's** profile.
+
+When the response carries a real contact LinkedIn URL — \`contact.linkedin_page\` is a string that starts with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it) — link the contact's name to that URL.
+
+Otherwise fall back to a LinkedIn people-search URL:
+
+\`\`\`
+https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>
+\`\`\`
+
+URL-encode the params. Strip Inc / LLC / Corp / Ltd / GmbH suffixes from the company name. Append a trailing \` °\` to the rendered name ONLY when the fallback is in use AND \`social_presence.linkedin == false\` (no company LinkedIn → search may not resolve). Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa). The two surfaces are different — conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
+
+When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
+
+\`social_presence\` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+
+
+---
+
+## NEXT STEPS — after the research card
+
+Offer 2–3 follow-ups that match the detected mode. Always offer a cross-mode pivot at the end so the user can redirect if you guessed wrong.
+
+### MODE A (Discovery)
+
+| Observation                                            | Suggest                                            | Calls                                              |
+|--------------------------------------------------------|----------------------------------------------------|----------------------------------------------------|
+| \`qualification[]\` is empty                             | "Run AI qualification on this lead"                | leadbay_bulk_qualify_leads([leadId])               |
+| ≥1 hot recent item in 📈 business signals              | "Prepare outreach referencing [signal headline]"   | leadbay_prepare_outreach(leadId)                   |
+| \`contacts_count > len(contacts)\` shown                 | "Pull the full contact list (N more)"              | leadbay_get_contacts(leadId)                       |
+| \`web_insights_fetched_at\` > 30 days                    | "Re-run the web research — this is stale"          | leadbay_research_company(leadId) — refresh         |
+| User wants the deeper lens-scoped bundle               | "Pull the full lead profile (research_lead)"       | leadbay_research_lead(leadId)                      |
+| User is exploring multiple companies                   | "Back to the lead list"                            | leadbay_pull_leads                                 |
+| \`qualification[]\` non-empty                            | "Expand the AI qualification answers"              | (render qualification[] as a sub-card)             |
+
+End MODE A with the pivot offer: \`"Want the contact-prep view for [recommended contact name]?"\`
+
+### MODE B (Contact preparation)
+
+| Observation                                            | Suggest                                            | Calls                                              |
+|--------------------------------------------------------|----------------------------------------------------|----------------------------------------------------|
+| \`phone_numbers[]\` non-empty                            | "Show full call notes + a 60-second opener"        | leadbay_prepare_outreach(leadId)                   |
+| Recommended contact has an email                       | "Draft the outreach email"                         | leadbay_prepare_outreach(leadId)                   |
+| Neither phone nor email for recommended contact        | "Order contact enrichment first"                   | leadbay_prepare_outreach(leadId, enrich:true) or leadbay_enrich_titles |
+| After the user reports a touchpoint                    | "Log the call/email outcome"                       | leadbay_report_outreach                            |
+| Adding pre-call context                                | "Add a note to this lead"                          | leadbay_add_note                                   |
+
+End MODE B with the pivot offer: \`"Want the full strategic overview instead?"\`
 `;
 // endregion: leadbay_research_company
 
@@ -554,6 +1178,38 @@ export const leadbay_resolve_import_rows: string = `Resolve messy CSV-shaped lea
 WHEN TO USE: before importing user-supplied files when domains, names, CRM IDs, registry numbers, or Leadbay IDs may be inconsistently formatted; when the agent needs to pre-resolve messy rows, inspect ambiguous candidates, or prepare LEADBAY_ID values for the import composites. For contact-only files, first derive company website/domain from business contact emails where possible, while ignoring consumer mailbox domains. Deterministic matches get a LEADBAY_ID column inserted so the standard import commits immediately. Ambiguous rows are deliberately left without LEADBAY_ID; inspect candidates and choose one only when the evidence is good. Rows with websites but no match can still be imported; Leadbay may crawl and match them later, and leadbay_import_status can surface late matches.
 
 WHEN NOT TO USE: for prospect discovery from scratch (use leadbay_pull_leads); for one known company profile (use leadbay_research_company / leadbay_research_lead); or when the file already has clean, final LEADBAY_ID/CRM_ID/SIREN mappings and no row-level identity disambiguation is needed.
+
+---
+
+## RENDERING
+
+Present as a markdown table of resolution outcomes per row.
+
+\`\`\`
+| Source row | Match status | Resolved leadId / candidates |
+\`\`\`
+
+Status emoji map:
+
+- \`✓\` unambiguous match — one Leadbay lead, high confidence
+- \`⚠\` ambiguous — multiple candidates returned
+- \`✗\` no match — backend has no candidates; can still import if \`website\` is present
+- \`⏳\` resolving — async resolve still running
+
+For ambiguous rows, list up to 3 candidate names + leadIds inline. Truncate the source row to a short identifier (first non-empty column or domain).
+
+Below the table, a one-liner: \`"Ready: K rows · Ambiguous: A rows · Unmatched: U rows"\`
+
+---
+
+## NEXT STEPS
+
+| Observation                            | Suggest                                                     | Calls                                                  |
+|----------------------------------------|-------------------------------------------------------------|--------------------------------------------------------|
+| All rows resolved cleanly              | "Import these rows now"                                     | leadbay_import_leads(records_for_import, mappings_for_import) |
+| Ambiguous rows present                 | "Inspect candidates for each ambiguous row"                 | (re-call with include_candidate_profiles=true)         |
+| Unmatched rows but websites present    | "Import anyway — Leadbay will crawl and match later"        | leadbay_import_leads (status check after)              |
+| User wants to skip rows they can't ID  | "Drop unmatched rows and import the rest"                   | leadbay_import_leads (with filtered records)           |
 `;
 // endregion: leadbay_resolve_import_rows
 
@@ -589,6 +1245,21 @@ WHEN NOT TO USE: from agent flow — leadbay_report_outreach pairs this with a n
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_set_epilogue_status
+
+// region: leadbay_set_pushback
+export const leadbay_set_pushback: string = `Snooze (pushback) one or more leads for 3, 6, or 12 months. The leads remain in the user's pipeline but are excluded from \`leadbay_pull_followups\` until the pushback window expires. Use this when the user says "not now", "next quarter", "follow up in 3 months", "6 months out", "next year", or any equivalent deferral.
+
+Accepts short labels (\`3\`, \`6\`, \`12\` — months) or the wire-format enum (\`PUSHBACK_3\`, \`PUSHBACK_6\`, \`PUSHBACK_12\`). Bulk-native: pass up to 1000 lead UUIDs per call.
+
+User-facing language: "snooze for 3/6/12 months" (or "pushback" if the user uses the term themselves). Never say "pushback status" in dialogue — say "snooze" or "follow up in N months".
+
+WHEN TO USE: the user explicitly says they want to defer a lead (or a small set of leads) for a known window. Pair with \`leadbay_add_note\` if the user's reason for deferring is worth preserving.
+
+WHEN NOT TO USE: the user is just skipping ONE outreach attempt — that's a normal \`EPILOGUE_COULD_NOT_REACH_STILL_TRYING\` outcome via \`leadbay_report_outreach\`, not a snooze.
+
+This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+`;
+// endregion: leadbay_set_pushback
 
 // region: leadbay_set_user_prompt
 export const leadbay_set_user_prompt: string = `Set the org's intelligence-refinement prompt — free-text instruction that steers Leadbay's lead recommendations beyond firmographics. Admin-only. Setting this clears any pending clarification and triggers a full intelligence regeneration (web search + high-reasoning). \`dry_run:true\` returns the call shape without contacting the backend.
@@ -668,12 +1339,14 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_prepare_outreach,
   leadbay_preview_bulk_enrichment,
   leadbay_promote_lens,
+  leadbay_pull_followups,
   leadbay_pull_leads,
   leadbay_qualify_lead,
   leadbay_qualify_status,
   leadbay_recall_ordered_titles,
   leadbay_refine_prompt,
   leadbay_remove_epilogue,
+  leadbay_remove_pushback,
   leadbay_report_outreach,
   leadbay_research_company,
   leadbay_research_lead,
@@ -681,6 +1354,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_select_leads,
   leadbay_set_active_lens,
   leadbay_set_epilogue_status,
+  leadbay_set_pushback,
   leadbay_set_user_prompt,
   leadbay_update_lens,
   leadbay_update_lens_filter,

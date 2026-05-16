@@ -43,7 +43,7 @@
     "leadbay_token": {
       "type": "string",
       "title": "Leadbay bearer token",
-      "description": "Mint one with: npx -y @leadbay/mcp@0.8 login --email <you> --region <us|fr> (then copy LEADBAY_TOKEN from the credentials file the command writes — path is shown on stderr)",
+      "description": "Mint one with: npx -y @leadbay/mcp@0.9 login --email <you> --region <us|fr> (then copy LEADBAY_TOKEN from the credentials file the command writes — path is shown on stderr)",
       "sensitive": true,
       "required": true
     },

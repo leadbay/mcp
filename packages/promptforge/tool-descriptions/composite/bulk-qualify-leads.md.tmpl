@@ -22,3 +22,20 @@ Context: Leadbay auto-qualifies roughly the top 10 of each daily batch. Leads be
 {{include:headers/tool-when-not-to-use}} to qualify a single specific lead — that's leadbay_qualify_lead (granular, advanced).
 
 {{include:headers/verification-required-if-write}}
+
+---
+
+{{include:rendering/status-inline}}
+
+Specifically for bulk qualify:
+
+- Kicked off async → `"✓ Qualifying N lead(s) (qualify_id <id>) — typically ~M minutes. I'll refresh your leads view when it's done."`
+- Blocking call returned with answers → `"✓ Qualified N lead(s). Refresh your leads to see the new ❖ caps."`
+- Already-qualified short-circuit → `"All N leads are already qualified — no work to do."`
+- 429 mid-fanout → `"⚠ Rate-limited after launching M of N — already-launched leads will complete; re-call later for the rest."`
+
+Do not enumerate the affected leads — that's the job of `leadbay_pull_leads`.
+
+---
+
+{{include:next-steps/bulk-qualify-leads}}

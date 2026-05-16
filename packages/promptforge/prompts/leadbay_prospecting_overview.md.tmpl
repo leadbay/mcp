@@ -1,0 +1,130 @@
+---
+name: leadbay_prospecting_overview
+kind: prompt
+short_description: |
+  Orientation for working with Leadbay from any host — discovery vs.
+  follow-up, the outreach loop, outcome recording, imports, pushback /
+  snooze, and the connected-outreach-tool registry. Trigger when the
+  conversation involves Leadbay leads, prospecting, pipeline, follow-up,
+  outreach, or lens / ICP — anything from "show me my leads" to "what
+  should I follow up on" to "I'll send via lemlist".
+arguments: []
+expected_calls:
+  - leadbay_account_status
+  - leadbay_pull_leads
+  - leadbay_pull_followups
+  - leadbay_research_company
+  - leadbay_research_lead
+  - leadbay_prepare_outreach
+  - leadbay_report_outreach
+  - leadbay_set_pushback
+  - leadbay_remove_pushback
+  - leadbay_bulk_qualify_leads
+  - leadbay_enrich_titles
+  - leadbay_import_leads
+  - leadbay_add_note
+  - leadbay_adjust_audience
+failure_modes:
+  - Drives outreach without asking the user "how did it go?" afterwards — leaving prospecting_actions and epilogue_status stale
+  - Says "epilogue" in user-facing dialogue instead of "outcome"
+  - Says "Monitor" in user-facing dialogue instead of "follow-ups"
+  - Treats a "not now / next quarter" reply as a note instead of routing through the pushback mechanism
+  - Drafts outreach in a generic format when the user has a connected sequencer (lemlist, Outreach.io, etc.) that has its own idiom
+  - Re-pulls leads without passing the captured lensId, allowing a backend lens shift to discard prior work
+  - Skips the STOP byproduct in any multi-step workflow it triggers
+---
+
+# Leadbay Prospecting — Orientation
+
+You are working with Leadbay through the `leadbay_*` MCP tools. This prompt orients you to the user's mental model so you don't re-discover the workflow each session.
+
+{{include:heuristics/long-running-tools}}
+
+## The two entry points
+
+Leadbay supports two parallel ways to find leads to act on. Detect which entry the user wants from their natural language, then route accordingly.
+
+```
+Discovery entry              Follow-up entry
+─────────────────            ───────────────
+leadbay_pull_leads           (re-engagement on the Monitor view —
+(new from the Discover        currently surfaced via the Leadbay app
+ wishlist, lens-driven)       UI; MCP-side composite forthcoming)
+        │                            │
+        │  optional:                 │  filters by user phrasing:
+        │  research_company /        │  geo, sector, recency,
+        │  research_lead             │  liked / pushback / outcome
+        │  (deepen profile)          │
+        └───────────┬────────────────┘
+                    ▼
+            leadbay_prepare_outreach
+            (single-contact brief)
+                    │
+                    ▼
+            user does outreach
+            (agent drafts email / call / DM)
+                    │
+                    ▼
+            leadbay_report_outreach
+            (close the loop — verification + outcome)
+```
+
+**Discovery signals**: "show me my leads", "what's new today", "any new prospects", "let's prospect", no mention of prior context. Route to `leadbay_pull_leads`.
+
+**Follow-up signals**: "what should I follow up on", "leads I haven't contacted", "leads in [city]", "before my trip", "this week", "this month", "what's overdue", explicit mention of recent or pending actions. Route to `leadbay_pull_followups` — the Monitor view of known leads. Apply `set_filter` for geo / sector / recency / action-type refinement; the filter is server-persisted across sessions.
+
+When in doubt, ask. The two paths return overlapping but differently-ranked data; presenting the wrong one wastes the user's time.
+
+## The outreach loop
+
+After `leadbay_prepare_outreach` returns a brief, the agent drafts. Adapt to the user's connected outreach tools — these change the draft idiom:
+
+| Tool                | Channel strength                          | Draft idiom                                             |
+|---------------------|-------------------------------------------|---------------------------------------------------------|
+| **Lemlist**         | Email + LinkedIn + WhatsApp + cold call   | Sequence step (subject + body + step-N timing)          |
+| **Outreach.io**     | Email + call cadence                      | Sequence step; surface intent signals for forecasting   |
+| **Salesloft**       | Email + call + LinkedIn cadence           | Cadence step; pair with deal context if available       |
+| **Apollo**          | Email-first                               | Clean cold email; include prospect signal references    |
+| **HubSpot Sales Hub** | Email + tasks                           | HubSpot sequence email; recommend a task type           |
+| **Instantly**       | Email at scale                            | Deliverability-conscious email (<80 words, no link spam)|
+| **Attio**           | Email + LinkedIn from CRM                 | Outreach record on the Attio person; reference the deal |
+| **Amplemarket**     | 7 channels (email/LI/call/SMS/WA/voice/video) | Per-channel variants; suggest the strongest channel |
+| **Generic / Gmail / Outlook** | Email                           | Clean copy-paste email; no tool-specific syntax         |
+
+**Detect the active tool** in this priority order:
+1. The host's installed-connector / installed-MCP inventory, when available (Claude Desktop, Cowork).
+2. The conversation — what tools has the user mentioned or used recently? ("I'll send via lemlist" → assume lemlist.)
+3. Ask the user when uncertain.
+
+## The outcome / closing-the-loop habit
+
+{{include:iron-laws/outcome-after-outreach}}
+
+User-facing dialogue:
+
+- **Always say "outcome", never "epilogue"** — the backend field is `epilogue_status` of type `EpilogueStatusType` but that's wire-format jargon. The 4 user-facing labels:
+  - `EPILOGUE_INTEREST_VALIDATED_OR_MEETING_PLANED` → **Meeting booked** 🎯
+  - `EPILOGUE_COULD_NOT_REACH_STILL_TRYING` → **Trying to reach** ⚡
+  - `EPILOGUE_NOT_INTERESTED_LOST` → **Not interested** ❄
+  - `EPILOGUE_STILL_CHASING` → **In progress** 🟢
+- **Always say "follow-ups", never "Monitor"** — "Monitor" is internal app jargon; salespeople say "follow-ups".
+
+## "Not now" / snooze / pushback
+
+When the user says "not now", "next quarter", "follow up in 3 / 6 / 12 months", "next year", etc., this is a **pushback** action (not a note). Call `leadbay_set_pushback({lead_ids, status})` where `status` is `3`, `6`, or `12` (months). The lead drops out of `leadbay_pull_followups` until the window expires. Use `leadbay_remove_pushback` to revive a lead ahead of expiry. User-facing dialogue: say "snooze for N months", not "pushback".
+
+## Imports
+
+When the user mentions a CSV / list / their CRM, use the **`leadbay_import_file`** prompt — it walks through scan → resolve → preserve → commit. The single-shot tool `leadbay_import_leads` is for clean, mechanical imports; the prompt handles messy ones.
+
+## AI scoring on the daily batch
+
+Roughly the **top 10** of every `leadbay_pull_leads` response carry full AI qualification (`qualification_summary.answered > 0`, `ai_agent_lead_score`, ❖ caps in the rendered bar). Leads below the top ~10 are NOT worse — the system is saving resources. A healthy daily rhythm: bulk-qualify the rows WITHOUT ❖ caps so tomorrow's top-10 is richer. Use `leadbay_bulk_qualify_leads([leadIds])` for this; default to `wait_for_completion:false` for any count > 5.
+
+## Lens pinning
+
+After your first `leadbay_pull_leads` call, capture `response.lens.id` (the response nests it under `lens`) and pass it explicitly as the `lensId` argument to every subsequent Leadbay call this session. Lens shifts mid-workflow throw away your prior batch — see Rule 1 in the long-running-tools heuristics above.
+
+## What to read once you've matched intent
+
+You don't need to memorize every tool here — each tool's own description carries a RENDERING block (how to present the response) and a NEXT STEPS block (observation → suggestion table). Read the relevant tool's description in full when the user picks an entry point. This overview just gets you to the right starting tool.

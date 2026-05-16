@@ -15,3 +15,23 @@ Retrieve the current state of an async lead import. Pass `handle_id` returned by
 {{include:headers/tool-when-to-use}} after leadbay_import_leads or leadbay_import_and_qualify returns `{status:'running', handle_id}` for the import phase, call this tool later to retrieve progress or the final import result without re-running the import.
 
 {{include:headers/tool-when-not-to-use}} for qualification handles returned as `qualify_id` — use leadbay_qualify_status for those; or when you still want the legacy blocking behavior from leadbay_import_leads with `wait_for_completion=true`.
+
+---
+
+{{include:rendering/status-inline}}
+
+Specifically for import status:
+
+- Running → `"⏳ Import still running — N% complete; check back in ~M minutes."`
+- Complete → `"✓ Import complete — N leads imported, M failed."`
+- Error / failed → `"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."`
+
+---
+
+## NEXT STEPS
+
+| Observation             | Suggest                                | Calls                          |
+|-------------------------|----------------------------------------|--------------------------------|
+| Status: complete        | "See the imported leads"               | leadbay_pull_leads             |
+| Status: running         | "Check again in N minutes"             | leadbay_import_status — re-call|
+| Status: error / failed  | "Diagnose the failure"                 | leadbay_resolve_import_rows    |

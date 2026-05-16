@@ -377,6 +377,21 @@ export interface EpilogueResponsesPayload {
   pagination: PaginationPayload;
 }
 
+// ─── Pushback (snooze a lead for 3 / 6 / 12 months) ───────────────────────
+
+export type PushbackStatusType =
+  | "PUSHBACK_3"
+  | "PUSHBACK_6"
+  | "PUSHBACK_12";
+
+// ─── Monitor filter (server-persisted; see GET/POST /monitor/filter) ─────
+
+// `FilterCriterion` is an anyOf over 10 typed criteria. The MCP just passes
+// the criterion objects through verbatim — the backend validates each one.
+export interface MonitorFilterItem {
+  criteria: Array<Record<string, unknown>>;
+}
+
 export interface ProspectingActionItem {
   lead_id: string;
   type: string;
