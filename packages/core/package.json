@@ -1,6 +1,6 @@
 {
   "name": "@leadbay/core",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "Leadbay shared core: HTTP client and protocol-agnostic tool definitions. Consumed by @leadbay/leadclaw and @leadbay/mcp.",
   "type": "module",
