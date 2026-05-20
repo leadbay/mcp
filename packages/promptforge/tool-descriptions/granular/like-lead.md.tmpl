@@ -1,0 +1,51 @@
+---
+name: leadbay_like_lead
+kind: tool-description
+short_description: |
+  Mark a lead as liked — signals positive interest to the Leadbay
+  scoring engine, influencing future batch composition. Use when the
+  user explicitly approves a lead ("thumbs up", "save this one", "I
+  like this"). Don't use it for snoozing — that's `leadbay_set_pushback`.
+routing:
+  triggers:
+    - "I like this lead"
+    - "thumbs up"
+    - "this one looks good"
+    - "save this one"
+    - "this is a good fit"
+    - "more like this"
+    - "yes to this one"
+  anti_triggers:
+    - phrase: "remind me about this lead later / snooze it"
+      route_to: leadbay_set_pushback
+    - phrase: "not relevant / wrong fit / thumbs down"
+      route_to: leadbay_dislike_lead
+  prefer_when: "user expresses durable positive interest in a specific lead; pass the lead's UUID as `lead_id`"
+  examples:
+    positive:
+      - "I like this lead — show me more like it."
+      - "Thumbs up on Acme Corp, save it."
+      - "This one's a perfect fit, keep them in the rotation."
+    negative:
+      - "Skip this for now, I'll look at it next week."
+      - "Not relevant — wrong industry."
+      - "Just show me the top leads today."
+rendering_hint: |
+  One short confirmation line after the call returns ("👍 Liked **{company_name}** —
+  positive signal sent."), then continue the current flow (don't dump the full
+  lead card again).
+annotations:
+  readOnlyHint: false
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Mark a lead as liked. This is the same action as clicking the thumbs-up on the Leadbay website. The signal is fed back into the scoring engine: liked leads improve the quality of future batches by teaching Leadbay what the user finds relevant.
+
+Pass the lead's UUID as `lead_id`.
+
+{{include:headers/tool-when-to-use}} the user explicitly approves of a lead ("this one looks good", "I like this", "thumbs up", "save this one", "this is a good fit"). Also use after `leadbay_research_lead` reveals strong signals.
+
+{{include:headers/tool-when-not-to-use}} the user is just reading or researching a lead without expressing approval. Use `leadbay_dislike_lead` for negative signals; use `leadbay_set_pushback` for "remind me later" / temporary snooze (like is durable; pushback is reversible).
+
+{{include:headers/verification-required-if-write}}

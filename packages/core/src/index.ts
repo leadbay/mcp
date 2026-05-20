@@ -63,6 +63,8 @@ import { removePushback } from "./tools/remove-pushback.js";
 import { previewBulkEnrichment } from "./tools/preview-bulk-enrichment.js";
 import { launchBulkEnrichment } from "./tools/launch-bulk-enrichment.js";
 import { createCustomField } from "./tools/create-custom-field.js";
+import { likeLead } from "./tools/like-lead.js";
+import { dislikeLead } from "./tools/dislike-lead.js";
 
 // ─── Composite workflow tools — agent-facing surface ─────────────────────
 
@@ -124,7 +126,7 @@ export {
   updateLens, updateLensFilter, createLensDraft, promoteLens, setUserPrompt,
   clearUserPrompt, pickClarification, dismissClarification, setEpilogueStatus,
   removeEpilogue, setPushback, removePushback, previewBulkEnrichment,
-  launchBulkEnrichment,
+  launchBulkEnrichment, likeLead, dislikeLead,
   createCustomField,
   // existing composite
   researchCompany, prepareOutreach,
@@ -190,6 +192,8 @@ export const granularWriteTools: Tool[] = [
   previewBulkEnrichment,
   launchBulkEnrichment,
   createCustomField,
+  likeLead,
+  dislikeLead,
 ];
 
 // Backward-compat alias (existing consumers use granularTools):
@@ -249,6 +253,10 @@ export const compositeWriteTools: Tool[] = [
   // addNote is granular-shaped but file-import prompts depend on it to preserve
   // meaningful source-file notes after imports return lead ids.
   addNote,
+  // likeLead/dislikeLead are granular-shaped but should always be available
+  // to the agent without requiring LEADBAY_MCP_ADVANCED=1.
+  likeLead,
+  dislikeLead,
 ];
 
 // Backward-compat alias for existing consumers.

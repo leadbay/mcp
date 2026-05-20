@@ -261,6 +261,47 @@ WHEN NOT TO USE: as the agent's default lead-discovery entry point — use leadb
 `;
 // endregion: leadbay_discover_leads
 
+// region: leadbay_dislike_lead
+export const leadbay_dislike_lead: string = `## WHEN TO USE
+
+Trigger phrases: "I don't like this lead", "thumbs down", "not relevant", "wrong industry", "too small", "skip this one permanently", "not a fit", "no to this one".
+
+Do NOT use for: "remind me about this lead later / snooze it / not now" → \`leadbay_set_pushback\`; "thumbs up / save this one / this is a good fit" → \`leadbay_like_lead\`.
+
+Prefer when: user expresses durable rejection of a specific lead; pass the lead's UUID as \`lead_id\`. If the user just wants to defer for now, route to \`leadbay_set_pushback\` instead.
+
+Examples that SHOULD invoke this tool:
+- "Thumbs down — wrong industry."
+- "Dislike this one, never show me leads like this again."
+- "Not a fit at all, remove it."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Skip this for now, ask me again next month."
+- "I'll look at this one later."
+- "I like this lead — save it."
+
+## RENDER (quick)
+
+One short confirmation line after the call returns ("👎 Disliked **{company_name}** —
+negative signal sent."), then continue the current flow (don't dump the full
+lead card again).
+
+---
+
+Mark a lead as disliked. This is the same action as clicking the thumbs-down on the Leadbay website. The signal is fed back into the scoring engine: disliked leads teach Leadbay what to filter out, improving the relevance of future batches.
+
+Pass the lead's UUID as \`lead_id\`.
+
+Dislike is a **permanent** negative signal — it influences scoring durably. If the user only wants to defer a lead ("not now", "remind me next month", "I'll look at this one later"), call \`leadbay_set_pushback\` instead; that's reversible and time-bounded.
+
+WHEN TO USE: the user explicitly rejects a lead ("not relevant", "wrong industry", "too small", "thumbs down", "skip this", "not a fit"). Use proactively after \`leadbay_research_lead\` reveals disqualifying signals.
+
+WHEN NOT TO USE: the user simply wants to defer a lead — use \`leadbay_set_pushback\` to snooze instead. Dislike is a permanent negative signal; pushback is a temporary deferral.
+
+This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+`;
+// endregion: leadbay_dislike_lead
+
 // region: leadbay_dismiss_clarification
 export const leadbay_dismiss_clarification: string = `Dismiss the pending clarification without answering. Leadbay proceeds with its best guess. Admin-only.
 
@@ -799,6 +840,45 @@ WHEN NOT TO USE: from agent flow — leadbay_enrich_titles handles selection lif
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_launch_bulk_enrichment
+
+// region: leadbay_like_lead
+export const leadbay_like_lead: string = `## WHEN TO USE
+
+Trigger phrases: "I like this lead", "thumbs up", "this one looks good", "save this one", "this is a good fit", "more like this", "yes to this one".
+
+Do NOT use for: "remind me about this lead later / snooze it" → \`leadbay_set_pushback\`; "not relevant / wrong fit / thumbs down" → \`leadbay_dislike_lead\`.
+
+Prefer when: user expresses durable positive interest in a specific lead; pass the lead's UUID as \`lead_id\`
+
+Examples that SHOULD invoke this tool:
+- "I like this lead — show me more like it."
+- "Thumbs up on Acme Corp, save it."
+- "This one's a perfect fit, keep them in the rotation."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Skip this for now, I'll look at it next week."
+- "Not relevant — wrong industry."
+- "Just show me the top leads today."
+
+## RENDER (quick)
+
+One short confirmation line after the call returns ("👍 Liked **{company_name}** —
+positive signal sent."), then continue the current flow (don't dump the full
+lead card again).
+
+---
+
+Mark a lead as liked. This is the same action as clicking the thumbs-up on the Leadbay website. The signal is fed back into the scoring engine: liked leads improve the quality of future batches by teaching Leadbay what the user finds relevant.
+
+Pass the lead's UUID as \`lead_id\`.
+
+WHEN TO USE: the user explicitly approves of a lead ("this one looks good", "I like this", "thumbs up", "save this one", "this is a good fit"). Also use after \`leadbay_research_lead\` reveals strong signals.
+
+WHEN NOT TO USE: the user is just reading or researching a lead without expressing approval. Use \`leadbay_dislike_lead\` for negative signals; use \`leadbay_set_pushback\` for "remind me later" / temporary snooze (like is durable; pushback is reversible).
+
+This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+`;
+// endregion: leadbay_like_lead
 
 // region: leadbay_list_lenses
 export const leadbay_list_lenses: string = `List all available Leadbay lenses (saved lead-search configurations). Each lens defines a different target market or buyer segment. The lens with \`is_last_active=true\` is used by default for lead discovery.
@@ -1937,6 +2017,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_create_topup_link,
   leadbay_deselect_leads,
   leadbay_discover_leads,
+  leadbay_dislike_lead,
   leadbay_dismiss_clarification,
   leadbay_enrich_contacts,
   leadbay_enrich_titles,
@@ -1960,6 +2041,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_import_leads,
   leadbay_import_status,
   leadbay_launch_bulk_enrichment,
+  leadbay_like_lead,
   leadbay_list_lenses,
   leadbay_list_locations,
   leadbay_list_mappable_fields,

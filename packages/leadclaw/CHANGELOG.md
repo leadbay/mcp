@@ -1,5 +1,9 @@
 # Changelog — @leadbay/leadclaw
 
+## 0.2.6 — 2026-05-18
+
+New `leadbay_like_lead` and `leadbay_dislike_lead` write tools — exposed when `exposeWrite: true`. Picks up `@leadbay/core@0.6.1`. Manifest (`openclaw.plugin.json`): both tools added to `contracts.tools`.
+
 ## 0.2.5 — 2026-04-28
 
 New `leadbay_import_leads` composite write tool — exposed when `exposeWrite: true`.

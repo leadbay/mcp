@@ -1,5 +1,16 @@
 # Changelog — @leadbay/mcp
 
+## 0.10.0-dev.17 — 2026-05-19
+
+**New `leadbay_like_lead` and `leadbay_dislike_lead` write tools**: exposes the thumbs-up / thumbs-down actions already available on the Leadbay website as MCP tools. Agents can now send positive and negative lead signals back to the Leadbay scoring engine to improve future batch quality.
+
+- `leadbay_like_lead` — POSTs to `/leads/{id}/like`. Use when the user approves a lead ("this one looks good", "thumbs up", "I like this").
+- `leadbay_dislike_lead` — POSTs to `/leads/{id}/dislike`. Use when the user rejects a lead ("not relevant", "wrong industry", "thumbs down"). Distinct from `leadbay_set_pushback` which is a temporary deferral, not a permanent negative signal.
+
+Both tools are exposed in the default write surface (no `LEADBAY_MCP_ADVANCED=1` required). Gated by `LEADBAY_MCP_WRITE=1` (default ON since 0.3.0).
+
+Templates upgraded to the 0.10.0-dev.16 routing convention introduced in #42 — both descriptions now carry structured `routing` frontmatter (triggers, anti-triggers, `prefer_when`, ≥3 positive + ≥3 negative example messages) and `rendering_hint`, so promptforge auto-emits a `## WHEN TO USE` + `## RENDER (quick)` header within the first ~600 chars of the generated description.
+
 ## 0.9.1 — 2026-05-16
 
 **B23 fix — prompts no longer override per-tool RENDERING blocks**: 0.9.0 shipped RENDERING + NEXT STEPS blocks on every composite tool description. But agents still rendered prose for the daily-leads workflow, because the orchestrating `leadbay_daily_check_in` prompt's Phase 3 directed motivational one-line summaries that "won" over the per-tool RENDERING block in pull_leads. Phase 3 is rewritten to defer to the canonical pull_leads table layout (score bars, three columns, hide-list) and to add a 2–4 sentence "Today's nudges" paragraph ABOVE the table for the 3 most-promising rows — never in place of it. The same pattern is applied to `leadbay_qualify_top_n` (Phase 3 re-pulls newly-qualified leads via pull_leads and renders the canonical table, with a "Standouts from this batch" line above) and `leadbay_research_a_domain` (Phase 2 renders the research-company-card layout for the deep-dive result, with a 2–3 sentence summary above).
