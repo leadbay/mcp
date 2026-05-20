@@ -8,7 +8,6 @@
       "leadbay_login",
       "leadbay_account_status",
       "leadbay_pull_leads",
-      "leadbay_pull_liked_leads",
       "leadbay_pull_followups",
       "leadbay_research_lead",
       "leadbay_recall_ordered_titles",

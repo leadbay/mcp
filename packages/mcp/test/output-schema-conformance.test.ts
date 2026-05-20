@@ -281,33 +281,6 @@ const CASES: ConformanceCase[] = [
     },
   },
   {
-    toolName: "leadbay_pull_liked_leads",
-    arguments: { count: 5 },
-    setupMocks: () => {
-      mockHttp([
-        {
-          method: "GET",
-          path: /\/1\.5\/monitor\?/,
-          status: 200,
-          body: {
-            items: [
-              {
-                id: "lead-liked-1",
-                name: "ACME LIKED",
-                score: 88,
-                website: "acme-liked.com",
-                liked: true,
-                recommended_contact: null,
-                org_contacts: [],
-              },
-            ],
-            pagination: { page: 0, pages: 1, total: 1 },
-          },
-        },
-      ]);
-    },
-  },
-  {
     toolName: "leadbay_pull_followups",
     arguments: { count: 5 },
     setupMocks: () => {

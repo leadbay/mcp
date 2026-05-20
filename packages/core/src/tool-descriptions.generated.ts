@@ -989,21 +989,6 @@ If nothing in the menu applies cleanly, suggest only "pull next page" and "resea
 `;
 // endregion: leadbay_pull_leads
 
-// region: leadbay_pull_liked_leads
-export const leadbay_pull_liked_leads: string = `Fetch all leads the user has liked, across every lens. Unlike \`leadbay_pull_leads\` which is scoped to a single lens, this tool queries the Monitor backend (\`/monitor?liked=true\`) which tracks likes org-wide — a lead liked from any lens will appear here.
-
-Pass \`personal: true\` to restrict to leads liked by the current user only (default false = org-wide).
-
-Paginated: default 20 per page, max 200. Use \`page\` (0-indexed) and \`has_more\` / \`next_page\` to iterate.
-
-Note on disliked leads: the Leadbay backend does not expose a cross-lens disliked filter. To see disliked state on a specific lead, use \`leadbay_research_lead\` or check the \`disliked\` field on individual leads from \`leadbay_pull_leads\`.
-
-WHEN TO USE: the user asks "show me my liked leads", "which leads did I save?", "leads I approved", "my shortlist", or wants to review past positive signals across lenses.
-
-WHEN NOT TO USE: the user wants fresh new leads from today's batch — use \`leadbay_pull_leads\`. For follow-up leads with activity history, use \`leadbay_pull_followups\`.
-`;
-// endregion: leadbay_pull_liked_leads
-
 // region: leadbay_qualify_lead
 export const leadbay_qualify_lead: string = `Trigger AI qualification for a single lead (web fetch + AI rescore). The operation is asynchronous — results take ~60s. \`forceFetch:true\` re-runs even if recent data exists.
 
@@ -1385,7 +1370,6 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_promote_lens,
   leadbay_pull_followups,
   leadbay_pull_leads,
-  leadbay_pull_liked_leads,
   leadbay_qualify_lead,
   leadbay_qualify_status,
   leadbay_recall_ordered_titles,

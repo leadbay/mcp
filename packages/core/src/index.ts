@@ -87,7 +87,6 @@ import { adjustAudience } from "./composite/adjust-audience.js";
 import { refinePrompt } from "./composite/refine-prompt.js";
 import { answerClarification } from "./composite/answer-clarification.js";
 import { reportOutreach } from "./composite/report-outreach.js";
-import { pullLikedLeads } from "./composite/pull-liked-leads.js";
 
 import type { Tool } from "./types.js";
 
@@ -127,7 +126,7 @@ export {
   // existing composite
   researchCompany, prepareOutreach,
   // new composite reads
-  pullLeads, pullFollowups, pullLikedLeads, researchLead, recallOrderedTitles, accountStatus,
+  pullLeads, pullFollowups, researchLead, recallOrderedTitles, accountStatus,
   bulkEnrichStatus, qualifyStatus, importStatus, resolveImportRows,
   // new composite writes
   bulkQualifyLeads, enrichTitles, adjustAudience, refinePrompt,
@@ -204,7 +203,6 @@ granularTools.forEach((t) => {
 export const compositeReadTools: Tool[] = [
   pullLeads,
   pullFollowups,
-  pullLikedLeads,
   researchLead,
   recallOrderedTitles,
   accountStatus,
