@@ -27,6 +27,11 @@ import {
   EMBEDDED_SENTRY_DSN,
 } from "./telemetry-constants.js";
 import {
+  EV_MCP_UPDATE_CHECK,
+  EV_MCP_UPDATE_DISMISSED,
+  EV_MCP_UPDATE_INSTALL_CLICKED,
+  EV_MCP_UPDATE_PROMPTED,
+  EV_MCP_VERSION_UPDATED,
   EV_QUOTA_HIT,
   EV_STARTUP,
   EV_TOOL_CALL,
@@ -36,6 +41,11 @@ import {
   type StartupProps,
   type ToolCallProps,
   type TopupLinkProps,
+  type UpdateCheckProps,
+  type UpdateDismissedProps,
+  type UpdateInstallClickedProps,
+  type UpdatePromptedProps,
+  type VersionUpdatedProps,
 } from "./telemetry-events.js";
 
 export interface TelemetryHandle {
@@ -49,6 +59,15 @@ export interface TelemetryHandle {
   captureTopupLink(props: TopupLinkProps): void;
   captureStartup(props: StartupProps): void;
   captureException(err: unknown, ctx: ExceptionCtx): void;
+  // Auto-update lifecycle. Optional on the interface so out-of-tree
+  // TelemetryHandle implementations don't have to implement them; the
+  // update-check site null-checks before calling. NOOP_TELEMETRY +
+  // the real PostHog impl both provide them.
+  captureUpdateCheck?(props: UpdateCheckProps): void;
+  captureUpdatePrompted?(props: UpdatePromptedProps): void;
+  captureUpdateInstallClicked?(props: UpdateInstallClickedProps): void;
+  captureUpdateDismissed?(props: UpdateDismissedProps): void;
+  captureVersionUpdated?(props: VersionUpdatedProps): void;
   shutdown(): Promise<void>;
 }
 
@@ -59,6 +78,11 @@ export const NOOP_TELEMETRY: TelemetryHandle = {
   captureTopupLink: () => {},
   captureStartup: () => {},
   captureException: () => {},
+  captureUpdateCheck: () => {},
+  captureUpdatePrompted: () => {},
+  captureUpdateInstallClicked: () => {},
+  captureUpdateDismissed: () => {},
+  captureVersionUpdated: () => {},
   shutdown: async () => {},
 };
 
@@ -283,6 +307,21 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
     },
     captureStartup(props) {
       emit(EV_STARTUP, { ...props });
+    },
+    captureUpdateCheck(props) {
+      emit(EV_MCP_UPDATE_CHECK, { ...props });
+    },
+    captureUpdatePrompted(props) {
+      emit(EV_MCP_UPDATE_PROMPTED, { ...props });
+    },
+    captureUpdateInstallClicked(props) {
+      emit(EV_MCP_UPDATE_INSTALL_CLICKED, { ...props });
+    },
+    captureUpdateDismissed(props) {
+      emit(EV_MCP_UPDATE_DISMISSED, { ...props });
+    },
+    captureVersionUpdated(props) {
+      emit(EV_MCP_VERSION_UPDATED, { ...props });
     },
     captureException(err, ctx) {
       if (!sentryReady) return;

@@ -55,6 +55,27 @@ export const accountStatus: Tool<Record<string, never>> = {
         type: "object",
         properties: { region: { type: "string" } },
       },
+      // Auto-update block. Populated by the MCP server wrapper (NOT this
+      // composite) when a newer release is published on GitHub AND the
+      // user hasn't suppressed it. When present, the agent should prompt
+      // the user via ask_user_input_v0 with three options and route the
+      // chosen action through leadbay_acknowledge_update.
+      update_available: {
+        type: ["object", "null"],
+        properties: {
+          current_version: { type: "string" },
+          latest_version: { type: "string" },
+          mcpb_url: {
+            type: "string",
+            description: "Direct download URL for the .mcpb installer asset.",
+          },
+          release_url: {
+            type: "string",
+            description: "GitHub release page (changelog).",
+          },
+        },
+        required: ["current_version", "latest_version", "mcpb_url", "release_url"],
+      },
     },
     required: ["user", "organization"],
   },

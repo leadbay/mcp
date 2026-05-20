@@ -13,6 +13,8 @@ import {
 } from "@leadbay/core";
 import { buildServer } from "./server.js";
 import { initTelemetry } from "./telemetry.js";
+import { createDefaultUpdateStateStore } from "./update-state.js";
+import { checkForUpdate, recordRunningVersion } from "./update-check.js";
 
 // __LEADBAY_MCP_VERSION__ is replaced at build time by tsup with the string
 // literal from packages/mcp/package.json#version. Single source of truth —
@@ -1393,6 +1395,32 @@ async function main(): Promise<void> {
   // Fails loudly unless LEADBAY_BULK_STORE_ALLOW_MEMORY=1 is set.
   const bulkTracker = await createDefaultBulkStore({ logger });
 
+  // Auto-update state — best-effort; falls back to in-memory when
+  // ~/.leadbay is unwritable. Created BEFORE the version-check kicks
+  // off below so checkForUpdate can persist its result.
+  const updateStateStore = await createDefaultUpdateStateStore({ logger });
+  // Fire-and-forget: detect "this boot is on a newer version than the
+  // previous boot" → emit `mcp version updated` PostHog event. Works
+  // even when offline. Runs before the GitHub check so the event fires
+  // promptly on a fresh upgrade.
+  void recordRunningVersion(VERSION, updateStateStore, telemetry).catch((err) => {
+    logger.warn?.(
+      `update_state.record_version_failed ${err?.message ?? err}`
+    );
+  });
+  // Fire-and-forget GitHub releases check. Throttled to ~1h via state.
+  // Hard opt-out: LEADBAY_UPDATE_CHECK_DISABLED=1.
+  if (process.env.LEADBAY_UPDATE_CHECK_DISABLED !== "1") {
+    void checkForUpdate({
+      currentVersion: VERSION,
+      stateStore: updateStateStore,
+      telemetry,
+      logger,
+    }).catch((err) => {
+      logger.warn?.(`update_check.unexpected ${err?.message ?? err}`);
+    });
+  }
+
   const server = buildServer(client, {
     includeAdvanced,
     includeWrite,
@@ -1400,6 +1428,7 @@ async function main(): Promise<void> {
     bulkTracker,
     version: VERSION,
     telemetry,
+    updateStateStore,
   });
   const transport = new StdioServerTransport();
   logger.info?.(

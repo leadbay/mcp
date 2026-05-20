@@ -6,6 +6,14 @@ export const EV_TOOL_CALL = "mcp tool called";
 export const EV_QUOTA_HIT = "mcp quota hit";
 export const EV_TOPUP_LINK = "mcp topup link created";
 export const EV_STARTUP = "mcp startup";
+// Auto-update lifecycle. Five events let dashboards build the funnel
+// (check → prompted → install_clicked OR dismissed) and the conversion
+// (version_updated fires on the next boot under the new VERSION).
+export const EV_MCP_UPDATE_CHECK = "mcp update check";
+export const EV_MCP_UPDATE_PROMPTED = "mcp update prompted";
+export const EV_MCP_UPDATE_INSTALL_CLICKED = "mcp update install_clicked";
+export const EV_MCP_UPDATE_DISMISSED = "mcp update dismissed";
+export const EV_MCP_VERSION_UPDATED = "mcp version updated";
 
 export type ToolCallFormat = "json" | "markdown" | "error-envelope";
 
@@ -40,4 +48,34 @@ export type StartupAuthState = "ok" | "missing" | "expired" | "probe_failed";
 export interface StartupProps {
   auth_state: StartupAuthState;
   region: string;
+}
+
+export interface UpdateCheckProps {
+  current_version: string;
+  latest_version?: string;
+  /** Populated only on the failure path (network error / non-2xx). */
+  check_error?: string;
+}
+
+export interface UpdatePromptedProps {
+  current_version: string;
+  latest_version: string;
+}
+
+export interface UpdateInstallClickedProps {
+  current_version: string;
+  latest_version: string;
+}
+
+export type UpdateDismissAction = "remind_tomorrow" | "skip";
+
+export interface UpdateDismissedProps {
+  current_version: string;
+  latest_version: string;
+  action: UpdateDismissAction;
+}
+
+export interface VersionUpdatedProps {
+  from_version: string;
+  to_version: string;
 }

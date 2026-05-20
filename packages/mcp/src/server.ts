@@ -33,6 +33,13 @@ import {
   type ToolLogger,
 } from "@leadbay/core";
 import { NOOP_TELEMETRY, type TelemetryHandle } from "./telemetry.js";
+import type { UpdateStateStore } from "./update-state.js";
+import {
+  checkForUpdate,
+  getCachedUpdateInfo,
+  type UpdateInfo,
+} from "./update-check.js";
+import { buildAcknowledgeUpdateTool } from "./update-tool.js";
 
 // SERVER_INSTRUCTIONS is now BUILT from the actual exposed tool set (see
 // buildServerInstructions below). 0.2.x shipped a single static string that
@@ -104,6 +111,25 @@ function buildStartHereParagraph(has: (name: string) => boolean): string {
     "those actions require write tools, currently disabled. Re-enable by removing `LEADBAY_MCP_WRITE=0` from your " +
     "MCP client config and restarting the client. Also: do not promise to log outreach — the report_outreach tool " +
     "is not available in this configuration."
+  );
+}
+
+function buildUpdateAvailableParagraph(has: (name: string) => boolean): string | null {
+  // Only emit the routing instruction when the acknowledge tool is actually
+  // exposed — keeps the agent prompt free of dead references when bin.ts
+  // omits updateStateStore (offline embeds, tests).
+  if (!has("leadbay_acknowledge_update")) return null;
+  return (
+    "MCP auto-update: when `leadbay_account_status` returns an `update_available` field " +
+    "(`{ current_version, latest_version, mcpb_url, release_url }`), a newer MCP server release " +
+    "is published and the user has NOT suppressed it. Surface a prompt via `ask_user_input_v0` " +
+    "with EXACTLY these three options: \"Install now\", \"Remind me tomorrow\", \"Skip this version\". " +
+    "Map the user's choice to `leadbay_acknowledge_update({ action: 'install' | 'remind_tomorrow' | 'skip', version: latest_version })`. " +
+    "On 'install', the tool returns `mcpb_url` — render it as a clickable markdown link the user " +
+    "can open in Claude Desktop (the .mcpb extension triggers the native installer). The user does " +
+    "NOT need to restart anything before clicking — the new server takes effect on the next MCP " +
+    "session. Prompt the user ONCE per session per version — don't re-prompt within the same chat " +
+    "after they've acknowledged."
   );
 }
 
@@ -243,6 +269,8 @@ export function buildServerInstructions(exposed: Set<string>): string {
   parts.push(buildScoringParagraph(has));
   parts.push(buildStartHereParagraph(has));
   parts.push(buildRhythmParagraph(has));
+  const updateParagraph = buildUpdateAvailableParagraph(has);
+  if (updateParagraph) parts.push(updateParagraph);
   const promptsCatalog = buildPromptsCatalogParagraph(has);
   if (promptsCatalog) parts.push(promptsCatalog);
   parts.push(RESOURCES_PARAGRAPH);
@@ -275,6 +303,12 @@ interface BuildServerOptions {
   // omitted (tests + offline embeds). The CLI builds the real handle via
   // initTelemetry() in bin.ts and passes it here.
   telemetry?: TelemetryHandle;
+  // Auto-update state store. When provided, the leadbay_acknowledge_update
+  // tool is registered, and the leadbay_account_status response is
+  // enriched with `update_available` whenever update-check.ts has cached
+  // a newer release. Omitted in tests + embeds that don't want auto-update
+  // surface area; the server stays functional either way.
+  updateStateStore?: UpdateStateStore;
 }
 
 function formatErrorForLLM(err: any): string {
@@ -326,6 +360,20 @@ export function buildServer(
     if (opts.includeWrite) {
       exposedTools.push(...granularWriteTools);
     }
+  }
+  // Auto-update tool — only registered when bin.ts provides a state
+  // store. Tests + embeds that omit it never see the tool (keeping the
+  // exposed catalogue lean) and also never see update_available
+  // injection, since both share the same gate.
+  if (opts.updateStateStore) {
+    exposedTools.push(
+      buildAcknowledgeUpdateTool({
+        stateStore: opts.updateStateStore,
+        telemetry: opts.telemetry ?? NOOP_TELEMETRY,
+        currentVersion: opts.version ?? "0.0.0-dev",
+        logger: opts.logger,
+      })
+    );
   }
   // Test-only injection point.
   if (opts.extraTools) {
@@ -467,6 +515,60 @@ export function buildServer(
   // initTelemetry() and emits to PostHog + Sentry.
   const telemetry: TelemetryHandle = opts.telemetry ?? NOOP_TELEMETRY;
 
+  // Track versions we've already emitted `mcp update prompted` for in
+  // this server lifetime. Without this, every account_status call after
+  // a new release lands would fire the event — dashboards would lose
+  // the funnel signal. Set is per-server (per-process) so a restart
+  // re-prompts the analytics layer; that's intentional — restart = new
+  // session = new opportunity to convert.
+  const promptedVersionsThisSession = new Set<string>();
+  const serverVersion = opts.version ?? "0.0.0-dev";
+
+  // Fire-and-forget background re-check on every tool call. The
+  // checkForUpdate() itself throttles to 24h via state.last_check_time,
+  // so the cost when state is fresh is one disk read; when stale, one
+  // GitHub roundtrip. The in-flight guard inside update-check.ts
+  // prevents concurrent tool calls from racing. Never blocks the
+  // current call: the freshest result is what the NEXT account_status
+  // call sees, not this one. Opt-out: LEADBAY_UPDATE_CHECK_DISABLED=1.
+  const UPDATE_CHECK_DISABLED = process.env.LEADBAY_UPDATE_CHECK_DISABLED === "1";
+  const maybeRefreshUpdate = (): void => {
+    if (UPDATE_CHECK_DISABLED) return;
+    if (!opts.updateStateStore) return;
+    void checkForUpdate({
+      currentVersion: serverVersion,
+      stateStore: opts.updateStateStore,
+      telemetry,
+      logger: opts.logger,
+    }).catch((err: any) => {
+      opts.logger?.warn?.(
+        `update_check.unexpected ${err?.message ?? err}`
+      );
+    });
+  };
+
+  const maybeAttachUpdate = (toolName: string, result: unknown): void => {
+    if (toolName !== "leadbay_account_status") return;
+    if (!opts.updateStateStore) return; // gate symmetric with tool registration
+    if (
+      result === null ||
+      typeof result !== "object" ||
+      Array.isArray(result)
+    ) {
+      return;
+    }
+    const info: UpdateInfo | null = getCachedUpdateInfo();
+    if (!info) return;
+    (result as Record<string, unknown>).update_available = info;
+    if (!promptedVersionsThisSession.has(info.latest_version)) {
+      promptedVersionsThisSession.add(info.latest_version);
+      telemetry.captureUpdatePrompted?.({
+        current_version: serverVersion,
+        latest_version: info.latest_version,
+      });
+    }
+  };
+
   // A LeadbayError surfaced either via throw OR via the `{ error: true,
   // code, ... }` envelope shape (see formatErrorForLLM). Either way it
   // represents a business outcome (QUOTA_EXCEEDED, NOT_FOUND, AUTH_EXPIRED,
@@ -484,6 +586,11 @@ export function buildServer(
     // gating moves to the stderr-write step.
     const callStart = Date.now();
     const name = req.params.name;
+    // Fire-and-forget update re-check on every tool call. checkForUpdate
+    // itself returns immediately if last_check_time is within 24h, so
+    // the steady-state cost is one disk read. When stale, one GitHub
+    // roundtrip — never awaited, never blocks the tool.
+    maybeRefreshUpdate();
     const tool = toolByName.get(name);
     if (!tool) {
       return {
@@ -559,6 +666,11 @@ export function buildServer(
         progress,
         elicit,
       });
+      // Inject `update_available` into account_status returns when an
+      // upgrade is cached. Other tools pass through untouched. Done
+      // BEFORE the error/markdown/json branching so the field appears
+      // in either the JSON serialization OR structuredContent.
+      maybeAttachUpdate(name, result);
       // Leadbay tools may return error envelopes ({ error: true, code, ... })
       // rather than throwing. Surface those as MCP isError so the LLM doesn't
       // treat them as success.
