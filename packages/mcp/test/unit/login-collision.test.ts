@@ -15,7 +15,7 @@ const CFG = (email: string, region: "us" | "fr", token = "u.tok") => ({
   mcpServers: {
     leadbay: {
       command: "npx",
-      args: ["-y", "@leadbay/mcp@0.3"],
+      args: ["-y", "@leadbay/mcp@0.10"],
       env: { LEADBAY_TOKEN: token, LEADBAY_REGION: region },
     },
   },

@@ -1,5 +1,13 @@
 # Changelog — @leadbay/mcp
 
+## 0.10.1 — 2026-05-20
+
+Documentation + version-pin sweep paired with hardening the release pipeline. No functional changes to the published binary.
+
+- **Pin bumps**: every `npx -y @leadbay/mcp@<old>` reference in `bin.ts` (install command output, error hints, doctor instructions, generated client configs), `README.md`, `server.json` (MCP Registry manifest), `packages/dxt/manifest.template.json`, and `.claude-plugin/plugins/leadbay/.claude-plugin/plugin.json` is now `@0.10`. New installs land on the latest minor.
+- **Release pipeline migrated to npm Trusted Publishers OIDC** (`.github/workflows/release.yml`): npm revoked Classic tokens on Dec 9 2025 and Granular tokens with the "Bypass 2FA" flag still hit known publish-rejection bugs ([npm/cli#9268](https://github.com/npm/cli/issues/9268)). The publish step now uses OIDC via the [Trusted Publishers binding](https://docs.npmjs.com/trusted-publishers) configured per-package on npmjs.com. Runtime bumped to Node 24 in publish jobs for the bundled npm ≥ 11.5 that speaks the OIDC handshake (Node 22's npm 10 can't, and self-upgrade via `npm install -g npm@latest` consistently breaks on the runner image).
+- **Auto-release** (existing `.github/workflows/auto-tag.yml` — unchanged in this release, documented here): merges to `main` that bump `packages/mcp/package.json#version` automatically push `mcp-v<ver>` and dispatch `release.yml` on the tag, which publishes to npm + MCP Registry + uploads the .dxt to a GitHub Release. No manual tagging needed.
+
 ## 0.10.0 — 2026-05-19
 
 First stable cut of the 0.10 line. Consolidates everything since 0.9.1: host-native widget rendering, structured routing schema, the top-up flow, like/dislike write tools, the `research_lead` split, and PostHog + Sentry telemetry. See dev-iteration commits for granular per-PR history; this is the npm-shipped consolidation.
