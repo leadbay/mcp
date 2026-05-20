@@ -114,9 +114,7 @@ jobs:
         working-directory: packages/mcp
         run: |
           set -euo pipefail
-          # `--force` works around a MODULE_NOT_FOUND (promise-retry) error
-          # when npm upgrades itself in-place on the runner's pre-baked image.
-          sudo npm install -g npm@latest --force
+          npm install -g npm@latest
           VERSION=$(node -p "require('./package.json').version")
           # Idempotent: if @leadbay/mcp@$VERSION is already on npm, skip.
           if npm view "@leadbay/mcp@$VERSION" version --silent 2>/dev/null; then
@@ -239,9 +237,7 @@ jobs:
         working-directory: packages/leadclaw
         run: |
           set -euo pipefail
-          # `--force` works around a MODULE_NOT_FOUND (promise-retry) error
-          # when npm upgrades itself in-place on the runner's pre-baked image.
-          sudo npm install -g npm@latest --force
+          npm install -g npm@latest
           VERSION=$(node -p "require('./package.json').version")
           # Idempotent: if @leadbay/leadclaw@$VERSION is already on npm, skip.
           # Handles the retry-after-ClawHub-failure case without manual intervention.
