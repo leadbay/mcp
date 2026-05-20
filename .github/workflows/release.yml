@@ -119,10 +119,15 @@ jobs:
         working-directory: packages/mcp
         run: |
           set -euo pipefail
+          # Install npm@latest into the setup-node prefix (writable; no
+          # sudo). The runner image bundles npm 10.x with Node 22, but
+          # Trusted Publishers OIDC requires npm ≥ 11.5.1. Using `sudo`
+          # would install to /usr/local — outside setup-node's PATH —
+          # leaving the next `npm` call still pointing at 10.x.
           # `--force` works around a MODULE_NOT_FOUND (promise-retry)
-          # error when npm upgrades itself in-place on the runner image.
-          sudo npm install -g npm@latest --force
-          npm --version
+          # error when npm upgrades itself in-place.
+          npm install -g npm@latest --force
+          echo "npm $(npm --version) at $(which npm)"
           VERSION=$(node -p "require('./package.json').version")
           # Idempotent: if @leadbay/mcp@$VERSION is already on npm, skip.
           if npm view "@leadbay/mcp@$VERSION" version --silent 2>/dev/null; then
