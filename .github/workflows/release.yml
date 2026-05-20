@@ -76,7 +76,9 @@ jobs:
         with:
           node-version: 22
           registry-url: "https://registry.npmjs.org"
-          always-auth: true
+          # DO NOT set `always-auth: true` — it writes a .npmrc line
+          # `_authToken=${NODE_AUTH_TOKEN}` that preempts the Trusted
+          # Publishers OIDC handshake even when the env var is empty.
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Build
@@ -105,15 +107,24 @@ jobs:
         # Uses npm Trusted Publishers (OIDC) — no NPM_TOKEN required.
         # Requires `id-token: write` (granted at job level) AND a Trusted
         # Publisher binding configured on npmjs.com for @leadbay/mcp pointing
-        # at this repo + workflow + ref. NODE_AUTH_TOKEN is deliberately NOT
-        # set: when present it preempts the OIDC handshake, so leaving it
-        # unset is what lets `npm publish` fall through to OIDC.
+        # at this repo + workflow + ref. NODE_AUTH_TOKEN is deliberately
+        # unset (defensive — setup-node@v4 can leak it via its .npmrc setup
+        # even when no env block sets it; an empty value here makes the
+        # `_authToken=` line resolve to empty and lets OIDC take over).
         # `npm install -g npm@latest` is required because Trusted Publishers
         # OIDC support landed in npm ≥ 11.5.1 (July 2025) and the runner's
         # bundled npm 10.x can't do the handshake.
         working-directory: packages/mcp
+        env:
+          NODE_AUTH_TOKEN: ""
         run: |
           set -euo pipefail
+          # Remove setup-node's auto-generated .npmrc so it can't supply
+          # an empty _authToken= that npm reads as "use token auth, with
+          # an empty token" and races OIDC. The user-level ~/.npmrc on
+          # the runner is empty by default, so deleting this one leaves
+          # npm publish to discover the GitHub Actions OIDC env on its own.
+          rm -f "$RUNNER_TEMP/.npmrc" || true
           # `--force` works around a MODULE_NOT_FOUND (promise-retry) error
           # when npm upgrades itself in-place on the runner's pre-baked image.
           sudo npm install -g npm@latest --force
@@ -211,7 +222,8 @@ jobs:
         with:
           node-version: 22
           registry-url: "https://registry.npmjs.org"
-          always-auth: true
+          # See @leadbay/mcp publish-job comment: always-auth would write
+          # an _authToken line that preempts Trusted Publishers OIDC.
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Build
@@ -237,8 +249,11 @@ jobs:
         # Publish step for the why. Requires a Trusted Publisher binding on
         # npmjs.com for @leadbay/leadclaw pointing at this repo + workflow.
         working-directory: packages/leadclaw
+        env:
+          NODE_AUTH_TOKEN: ""
         run: |
           set -euo pipefail
+          rm -f "$RUNNER_TEMP/.npmrc" || true
           # `--force` works around a MODULE_NOT_FOUND (promise-retry) error
           # when npm upgrades itself in-place on the runner's pre-baked image.
           sudo npm install -g npm@latest --force
