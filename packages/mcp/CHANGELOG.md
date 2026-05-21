@@ -1,5 +1,14 @@
 # Changelog — @leadbay/mcp
 
+## 0.11.0 — 2026-05-20
+
+In-server auto-update flow: the MCP server now self-polls GitHub releases (24h throttle, ETag-aware, in-flight guarded) and surfaces an `update_available` block on `leadbay_account_status` when a newer version is published — both at boot AND on every tool call, so long-running Claude Desktop sessions still pick up new releases without restart.
+
+- **New tool — `leadbay_acknowledge_update`**: records the user's choice from the `ask_user_input_v0` prompt. `action: 'install'` returns the `.mcpb` download URL (Claude Desktop's native installer opens on click); `'remind_tomorrow'` snoozes 24h; `'skip'` permanently suppresses that version. State persists to `~/.leadbay/update-state.json` (0o600, atomic write, symlink-rejecting; mirrors `bulk-store.ts`).
+- **Five new PostHog events** for the funnel + conversion: `mcp_update_check`, `mcp_update_prompted`, `mcp_update_install_clicked`, `mcp_update_dismissed`, `mcp_version_updated` (fires on the next boot under a newer `VERSION` constant — works regardless of how the user upgraded: `.mcpb`, npm, npx).
+- **Routing instruction** appended to `buildServerInstructions`: when `update_available` is present on `leadbay_account_status`, the agent prompts via `ask_user_input_v0` with three options and routes the choice through `leadbay_acknowledge_update`. Opt-out: `LEADBAY_UPDATE_CHECK_DISABLED=1`.
+- **Pin bumps**: every `@leadbay/mcp@0.10` reference across `bin.ts`, `server.json`, `README.md`, `packages/dxt/manifest.template.json`, `.claude-plugin/.../plugin.json`, and the root `README.md` is now `@0.11`.
+
 ## 0.10.1 — 2026-05-20
 
 Documentation + version-pin sweep paired with hardening the release pipeline. No functional changes to the published binary.

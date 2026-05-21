@@ -35,7 +35,7 @@ Start a conversation — the agent will ask for your Leadbay email and password 
 ### Via MCP (Claude Desktop, Cursor, Cowork, any MCP client)
 
 ```bash
-npx -y @leadbay/mcp@0.10 install --email you@yourcompany.com --region us
+npx -y @leadbay/mcp@0.11 install --email you@yourcompany.com --region us
 ```
 
 The installer auto-detects which MCP clients you have (Claude Desktop, Cursor, Claude Code), prompts you per-target, and writes the token into each client's config. Add `--no-write` to disable the composite write tools. Full per-client setup, env vars, troubleshooting, and a tour of the MCP primitives is in [`packages/mcp/README.md`](packages/mcp/README.md).
