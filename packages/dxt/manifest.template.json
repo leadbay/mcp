@@ -1,5 +1,5 @@
 {
-  "manifest_version": "0.2",
+  "manifest_version": "0.3",
   "name": "leadbay",
   "display_name": "Leadbay",
   "version": "{{VERSION}}",

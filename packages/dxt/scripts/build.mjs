@@ -15,6 +15,7 @@
 // server mode. When DXT invokes `node server/index.js`, process.argv[1] is
 // server/index.js and no subcommand is passed → the server starts.
 import { mkdirSync, writeFileSync, readFileSync, rmSync, createWriteStream, existsSync, copyFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -65,7 +66,14 @@ async function main() {
       __LEADBAY_MCP_VERSION__: JSON.stringify(version),
     },
     banner: {
-      js: "#!/usr/bin/env node",
+      // esbuild leaves some CommonJS dependencies (notably Sentry /
+      // OpenTelemetry) with dynamic require("perf_hooks") calls even in an
+      // ESM bundle. Claude Desktop runs this file directly, so provide a
+      // module-local require backed by Node's createRequire.
+      js:
+        "#!/usr/bin/env node\n" +
+        "import { createRequire as __leadbayCreateRequire } from 'node:module';\n" +
+        "const require = __leadbayCreateRequire(import.meta.url);",
     },
     logLevel: "info",
   });
@@ -98,7 +106,15 @@ async function main() {
     console.error("Fix: pnpm --filter @leadbay/promptforge build && pnpm --filter @leadbay/core build, then rebuild.\n");
     process.exit(1);
   }
+  const versionOut = execFileSync("node", [join(STAGE_DIR, "server", "index.js"), "--version"], {
+    encoding: "utf8",
+  }).trim();
+  if (versionOut !== version) {
+    console.error(`\n✗ Staged server --version returned ${JSON.stringify(versionOut)}; expected ${version}`);
+    process.exit(1);
+  }
   console.log("✓ Bundle sanity check passed (RENDERING + NEXT STEPS + ❖ + IRON LAW present)");
+  console.log("✓ Staged server starts successfully");
 
   // 4. Zip.
   // iter-27: Anthropic renamed DXT → MCPB (Model Context Protocol Bundle)

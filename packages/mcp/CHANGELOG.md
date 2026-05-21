@@ -1,5 +1,13 @@
 # Changelog — @leadbay/mcp
 
+## 0.12.1 — 2026-05-21
+
+MCPB hotfix for Claude Desktop.
+
+- **Fix packaged-server startup**: the MCPB bundle now injects a Node `createRequire` shim before esbuild's ESM wrapper so CommonJS dependencies can still require Node built-ins such as `perf_hooks`. This fixes the Claude Desktop disconnect where the server exited during initialization.
+- **Packaging guardrail**: `@leadbay/dxt build` now runs the staged `server/index.js --version` before zipping, and the smoke suite extracts the MCPB and completes a real MCP initialize/tools-list handshake.
+- **Manifest refresh**: MCPB manifests now declare `manifest_version: "0.3"` and the smoke assertions match the current MCPB manifest spec.
+
 ## 0.12.0 — 2026-05-21
 
 Campaign and field-sales workflow release.
