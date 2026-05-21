@@ -70,7 +70,7 @@ EXAMPLE Claude Desktop config (~/Library/Application Support/Claude/claude_deskt
     "mcpServers": {
       "leadbay": {
         "command": "npx",
-        "args": ["-y", "@leadbay/mcp@0.11"],
+        "args": ["-y", "@leadbay/mcp@0.12"],
         "env": {
           "LEADBAY_TOKEN": "lb_...",
           "LEADBAY_REGION": "us",
@@ -524,7 +524,7 @@ async function runLogin(args: string[]): Promise<number> {
     mcpServers: {
       leadbay: {
         command: "npx",
-        args: ["-y", "@leadbay/mcp@0.11"],
+        args: ["-y", "@leadbay/mcp@0.12"],
         env: {
           LEADBAY_TOKEN: result.token,
           LEADBAY_REGION: result.region,
@@ -561,7 +561,7 @@ async function runLogin(args: string[]): Promise<number> {
         `  claude mcp add leadbay --scope user \\\n` +
         `    --env LEADBAY_TOKEN=${result.token} \\\n` +
         `    --env LEADBAY_REGION=${result.region} \\\n` +
-        `    -- npx -y @leadbay/mcp@0.11\n\n` +
+        `    -- npx -y @leadbay/mcp@0.12\n\n` +
         `Restart your MCP client to pick up the new server.\n`
     );
     return 0;
@@ -678,7 +678,7 @@ async function runLogin(args: string[]): Promise<number> {
         `  claude mcp add leadbay --scope user \\\n` +
         `    --env LEADBAY_TOKEN=$(jq -r .mcpServers.leadbay.env.LEADBAY_TOKEN ${quotedPath}) \\\n` +
         `    --env LEADBAY_REGION=${result.region} \\\n` +
-        `    -- npx -y @leadbay/mcp@0.11\n`
+        `    -- npx -y @leadbay/mcp@0.12\n`
     );
   }
   process.stderr.write(
@@ -926,7 +926,7 @@ export function buildClaudeCodeAddArgs(
     `LEADBAY_TELEMETRY_ENABLED=${telemetryEnabled ? "true" : "false"}`,
   ];
   if (!includeWrite) args.push("--env", `LEADBAY_MCP_WRITE=0`);
-  args.push("--", "npx", "-y", "@leadbay/mcp@0.11");
+  args.push("--", "npx", "-y", "@leadbay/mcp@0.12");
   return args;
 }
 
@@ -1000,7 +1000,7 @@ async function installInJsonConfig(
 
     parsed.mcpServers.leadbay = {
       command: "npx",
-      args: ["-y", "@leadbay/mcp@0.11"],
+      args: ["-y", "@leadbay/mcp@0.12"],
       env,
     };
 
@@ -1232,7 +1232,7 @@ async function runInstall(args: string[]): Promise<number> {
   }
   process.stderr.write(
     `\nThe token was written into client config files but never printed to your terminal.\n` +
-      `Verify with: LEADBAY_TOKEN=$(...) npx -y @leadbay/mcp@0.11 doctor\n` +
+      `Verify with: LEADBAY_TOKEN=$(...) npx -y @leadbay/mcp@0.12 doctor\n` +
       `Restart your MCP client(s) to pick up the new server.\n` +
       `If you ever leak the token, run \`leadbay-mcp login --email <you> --region <us|fr>\` to mint a fresh one (which invalidates the prior session).\n`
   );

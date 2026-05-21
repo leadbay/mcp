@@ -1,5 +1,9 @@
 # Changelog — @leadbay/leadclaw
 
+## 0.2.7 — 2026-05-21
+
+Campaign workflow contract release. Adds `leadbay_tour_plan`, `leadbay_list_campaigns`, `leadbay_campaign_progression`, `leadbay_campaign_call_sheet`, `leadbay_create_campaign`, and `leadbay_add_leads_to_campaign` to `openclaw.plugin.json#contracts.tools`, picking up the new shared campaign/tour composites from `@leadbay/core`.
+
 ## 0.2.6 — 2026-05-18
 
 New `leadbay_like_lead` and `leadbay_dislike_lead` write tools — exposed when `exposeWrite: true`. Picks up `@leadbay/core@0.6.1`. Manifest (`openclaw.plugin.json`): both tools added to `contracts.tools`.
