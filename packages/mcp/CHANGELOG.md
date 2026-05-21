@@ -1,5 +1,15 @@
 # Changelog — @leadbay/mcp
 
+## 0.12.0 — 2026-05-21
+
+Campaign and field-sales workflow release.
+
+- **Campaign workflows**: adds campaign creation/listing, add-leads, progression summaries, and a `leadbay_campaign_call_sheet` composite that returns phone-ready, LinkedIn-ready, and map-ready lead/contact payloads.
+- **Agent routing + skills**: adds the `leadbay_work_campaign`, `leadbay_plan_tour_in_city`, and `leadbay_setup_team_prospecting` prompt/skill flows so agents start with readiness checks, route to the right workflow tool, and keep outreach reporting grounded in verified user action.
+- **Progression accuracy**: contacted/already-contacted summaries now use outreach/prospecting signals instead of treating contact coverage as outreach completion.
+- **Coverage**: adds workflow audits, prompt-eval coverage for `leadbay_work_campaign`, live campaign smoke coverage, and focused unit tests for the new campaign progression/call-sheet composites.
+- **Pin bumps**: every `@leadbay/mcp@0.11` install/runtime reference in docs, generated client config, DXT, and Claude plugin metadata is now `@0.12`.
+
 ## 0.11.0 — 2026-05-20
 
 In-server auto-update flow: the MCP server now self-polls GitHub releases (24h throttle, ETag-aware, in-flight guarded) and surfaces an `update_available` block on `leadbay_account_status` when a newer version is published — both at boot AND on every tool call, so long-running Claude Desktop sessions still pick up new releases without restart.
