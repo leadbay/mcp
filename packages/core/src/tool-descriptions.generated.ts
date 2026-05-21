@@ -46,6 +46,53 @@ WHEN NOT TO USE: as a pre-flight gate before bulk ops — operations themselves 
 `;
 // endregion: leadbay_account_status
 
+// region: leadbay_add_leads_to_campaign
+export const leadbay_add_leads_to_campaign: string = `## WHEN TO USE
+
+Trigger phrases: "add these leads to my <name> campaign", "attach these to <campaign>", "put these 5 in the Q2 Push campaign", "add to existing campaign".
+
+Do NOT use for: "create a new campaign (not attach to an existing one)" → \`leadbay_create_campaign\`; "remove a lead from a campaign" → \`leadbay_create_campaign\`; "list which campaigns I have" → \`leadbay_list_campaigns\`.
+
+Prefer when: user names an existing campaign (or supplies a campaign_id) AND a set of leads to attach. If they want a new campaign, use create_campaign with seed lead_ids instead
+
+Examples that SHOULD invoke this tool:
+- "Add the three new Tulsa leads to my 'OK Sweep' campaign."
+- "Attach these qualified leads to campaign id 1f12...?"
+- "Put the top 5 of today's batch into my Q2 Push."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Create a new campaign with these 9 leads."
+- "What campaigns do I have?"
+- "Show progression on my Limoges Tour."
+
+## RENDER (quick)
+
+One-line confirmation: ✅ Added N leads to <campaign-name>
+(M already present). If \`added === 0 && already_present > 0\` ("all
+already in"), surface that as a no-op note instead of a success
+banner. Offer NEXT STEPS chip for "View progression"
+(campaign_progression) or "Add more".
+
+---
+
+Attach a list of \`lead_ids\` to an existing campaign. Wraps \`POST /campaigns/{id}/leads\`. The backend dedups against \`campaign_leads\`, so callers can safely retry without creating duplicates — the response separates \`added\` (newly attached) from \`already_present\` (no-op).
+
+**Lead UUID source**: pass UUIDs returned from \`leadbay_pull_leads\` (\`lead.id\`), \`leadbay_pull_followups\` (\`lead.id\`), \`leadbay_tour_plan\` (\`monitor_leads[].id\` / \`discover_leads[].id\`), \`leadbay_research_lead_by_id\` / \`_by_name_fuzzy\` (\`lead.id\`). Backend \`ensureLeadsExist\` rejects unknown UUIDs with 404 — typo'd or fabricated IDs throw \`NOT_FOUND\`.
+
+**Why batch vs. one-at-a-time**: every call rebuilds membership server-side and may regenerate the AI-suggested name (\`maybeRegenerateAiName\`). Prefer one call with N leads over N calls with one lead each.
+
+**Side effect**: \`ensureLeadsInMonitor(orgId, leadIds)\` is called after a successful add — leads not already in the Monitor view get added there. This means adding a "fresh Discover" lead to a campaign moves it into the user's known-pipeline view.
+
+---
+
+WHEN TO USE: the user has an existing campaign (created earlier in the session or visible via \`leadbay_list_campaigns\`) and wants to attach more leads to it.
+
+WHEN NOT TO USE: to create a NEW campaign (use \`leadbay_create_campaign\` with \`lead_ids\` seeded); to list campaigns (\`leadbay_list_campaigns\`); to view per-lead progression (\`leadbay_campaign_progression\`); to remove leads (not currently exposed in the MCP — direct backend \`DELETE /campaigns/{id}/leads\` would be needed).
+
+**Response**: \`{added: number, already_present: number}\`. Use both counts in the confirmation — silent dedup hides useful information from the user.
+`;
+// endregion: leadbay_add_leads_to_campaign
+
 // region: leadbay_add_note
 export const leadbay_add_note: string = `Add a note to a lead. Notes are visible to the whole organization in Leadbay.
 
@@ -166,6 +213,220 @@ Exactly two offers — keep it terse, this is a status tool:
 `;
 // endregion: leadbay_bulk_qualify_leads
 
+// region: leadbay_campaign_call_sheet
+export const leadbay_campaign_call_sheet: string = `## WHEN TO USE
+
+Trigger phrases: "show me my campaign as a call sheet", "list of people to call in <campaign>", "cold-calling cheat sheet", "work this campaign", "let's call through my <campaign>", "calling session for <campaign>".
+
+Do NOT use for: "campaign progression pulse only (no contacts)" → \`leadbay_campaign_progression\`; "create a new campaign" → \`leadbay_create_campaign\`; "list all my campaigns" → \`leadbay_list_campaigns\`.
+
+Prefer when: user wants an actionable call-ready view of ONE campaign with phones + LinkedIn ready to click. Pair with the \`leadbay_work_campaign\` prompt for the full dictation+epilogue loop
+
+Examples that SHOULD invoke this tool:
+- "Show me my Limoges Tour campaign as a call sheet."
+- "I'm about to do a calling session — render the Q2 Push campaign."
+- "Give me phones + LinkedIn for everyone in my OK Sweep campaign."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Quick pulse on how my campaigns are doing."
+- "Save these 9 leads as a new campaign."
+- "Tell me about Acme Corp."
+
+## RENDER (quick)
+
+Per-lead CARD sorted by AI score desc. Heading \`### ⚡ **<Company>**
+— <City>, <State>\`; one-line "★ Next step: …" from
+split_ai_summary; then a 4-col table of contacts:
+Contact / Phone / Role / Recent. Cell 1 stacks linked name + email
++ (if constructed) LinkedIn marker °. Phone is \`[bare](tel:URL)\`.
+Recent stacks last note + lead headline. Top of page = summary chip
+from \`summary\` + readiness flags.
+
+---
+
+Build a cold-calling cheat sheet for one campaign. The composite joins two backend reads — \`/campaigns/{id}/contacts\` (per-contact phones, LinkedIn URLs, emails, job titles, recent notes) and \`/campaigns/{id}/leads\` (per-lead AI next-step, location, score, progress) — into a single call-ready payload aligned to the lead's page order.
+
+**Per-lead block** carries:
+
+- \`lead_id\`, \`lead_name\`, \`score\`, \`ai_agent_lead_score\`
+- \`location\` (\`city\`, \`state\`, \`country\`, \`full\`, \`pos[lat,lng]\`)
+- \`website\`, \`company_phone_numbers[]\` (often empty; use per-contact phones)
+- \`next_step\` / \`approach_angle\` / \`worth_pursuing\` (from \`split_ai_summary\` — the structured calling angle)
+- \`progress\` (\`total_contacts\` = reachable contact coverage; \`in_progress\` / \`declined\` / \`headline\` = outreach state — use those, not \`total_contacts\`, to tell whether the lead has been touched)
+- \`affiliation.own_campaigns[]\` + \`other_users_campaign_count\` (overlap warning — avoid double-touching)
+- \`contacts[]\` — every reachable contact for this lead, sorted: AI-pinned first, then recommended, then by phone availability. Each contact has:
+  - \`first_name\`, \`last_name\`, \`full_name\`, \`job_title\`
+  - \`phone_number\` (bare, e.g. \`"+1 512-792-7708"\`), \`phone_tel_url\` (canonical, e.g. \`"tel:+15127927708"\`)
+  - \`email\`, \`mailto_url\`
+  - \`linkedin_url\` + \`linkedin_url_source\` (\`"leadbay"\` when the backend has it, \`"constructed"\` when fallback-built from name + company)
+  - \`recent_notes[]\` — recent notes about this contact (often empty on cold campaigns)
+
+**Map mode**: the response also carries \`map_locations[]\` — already-shaped entries for \`places_map_display_v0\` (\`{name, address, latitude, longitude, notes}\`). When the user wants a route ("plot my call list on a map"), pass \`map_locations\` directly into the widget without reshaping.
+
+**Cross-campaign overlap warning**: when a contact's lead shows \`affiliation.other_users_campaign_count > 0\`, surface that ("⚠ 2 teammates also have this lead in their own campaigns") so the rep can coordinate before calling.
+
+---
+
+## RENDER — call-sheet markdown (PRIMARY)
+
+This is a cold-calling surface. The user wants to scan → pick → tap-to-call → dictate outcome → next. Render one CARD per lead, sorted by AI score:
+
+\`\`\`
+### ⚡ **<Company Name>** — <City>, <State>
+
+**Score <ai_agent_lead_score or score>** · ★ Next step: <next_step>
+
+| Contact | Phone | Role | Recent |
+|---|---|---|---|
+| **[<First Last>](<linkedin_url>)**<br>✉ [<email>](<mailto_url>) | [<phone bare>](<phone_tel_url>) | <job_title> | 📝 "<last_note truncated>" (<rel_date>)<br>📞 <last_action_headline> |
+| **[<First Last>](<linkedin_url>)** | [<phone bare>](<phone_tel_url>) | <job_title> | _(no notes)_ |
+
+<short callout — "📞 0 prior touches" / "⚠ Also in 2 teammates' campaigns" if applicable>
+
+---
+\`\`\`
+
+**Cell 1 — Contact (stacked content)**:
+- Line 1: \`**[<First Last>](<linkedin_url>)**\` — MUST always be a markdown link. Use \`contact.linkedin_url\` from the response (the composite already falls back to a \`linkedin.com/search/results/people/?keywords=…\` URL when \`linkedin_page\` is missing — never render a bare name). When \`linkedin_url_source === "constructed"\`, append a trailing \` °\` to the contact name to mark the fallback path.
+- Line 2 (if email present): \`✉ [<email>](<mailto_url>)\` — \`mailto:\` link, auto-linkifies and opens the user's default mail app. Omit the line entirely if \`email === null\` rather than rendering "_no email_".
+
+**Cell 2 — Phone (load-bearing for one-tap calling on mobile)**:
+- Always render as a markdown link \`[bare](tel:URL)\`. The bare text auto-linkifies on most hosts; the explicit \`tel:\` link guarantees one-tap dialing on macOS / iOS / Android.
+- Use the \`phone_tel_url\` from the response (already canonicalized to \`tel:+<digits>\`); do NOT reconstruct.
+- When \`phone_number\` is null but the lead has \`company_phone_numbers[]\`, fall back to the company switchboard with a "(company line)" suffix.
+- When neither contact phone nor company phone is present, render \`_no phone_\` — the rep will know this contact needs enrichment.
+
+**Cell 3 — Role**: \`contact.job_title\`. Render \`—\` when null.
+
+**Cell 4 — Recent (stacked content, history surface)**:
+- Line 1 (if \`contact.recent_notes[0]\` present): \`📝 "<note text, truncated to ~60 chars>" (<relative date>)\`. The relative date uses the note's \`created_at\` ISO timestamp — render as \`3d ago\`, \`2w ago\`, etc. Omit the line entirely if no notes.
+- Line 2 (if \`last_action_headline\` on the lead-level block present): \`📞 <headline>\` — e.g. \`📞 CONTACTED\`, \`📞 MEETING_BOOKED\`. This is the LEAD's most recent interaction headline, not the contact's. Helpful for context but the per-contact note above is more specific.
+- When both are absent, omit the cell content entirely — don't render \`_(no activity)_\` for every cold contact; it's noise.
+
+**Sort + filter**:
+- Top of the page: ONE-line summary chip from \`summary\` — \`📋 12 leads · 23 contacts · 9 with a phone · 7 with an email · 3 already touched\`.
+- Lead cards sorted by AI score desc; contacts within each card sorted AI-pinned > recommended > has-phone.
+- If \`last_action_headline\` is present OR \`progress.in_progress > 0\` OR \`progress.declined > 0\`, render the card with a 📞 prefix instead of ⚡ — at-a-glance "already touched" vs "still cold". Do not use \`progress.total_contacts\`; that is contact coverage, not outreach history.
+
+## RENDER — map widget (SECONDARY, when user asks for a route)
+
+When the user says "plot my call list on a map" / "where are these leads" / "route my calling tour", route to \`places_map_display_v0\` using the \`map_locations\` array verbatim:
+
+\`\`\`
+places_map_display_v0({
+  locations: response.map_locations,
+  travel_mode: "driving"
+})
+\`\`\`
+
+The composite has already built the notes string per place card (one sentence with the top contact's phone inline). After the widget, emit the standard call-sheet card list below it for the rich detail — the carousel renders bare phones as \`tel:\` but strips markdown.
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` (Claude) | Result has ≥2 leads with \`location.city\` set, and the user's intent is geographic / "in person" / travel | \`{name: lead.company_name, address: "<city>, <country>", place_id: lead.location.place_id ?? omit, notes: <one-sentence pitch>}\` per location |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude) | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | \`{questions: [{question: "What next?", type: "single_select", options: [<2-4 short button labels>]}]}\`; max 3 questions per call |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+
+
+---
+
+## NEXT STEPS — wire the dictation+epilogue loop
+
+After the user reports a call ("Called Bree, she wants pricing"), route to \`leadbay_report_outreach\` with BOTH \`note\` (the call summary) AND \`epilogue_status\` in one call. The four epilogue values:
+
+- \`STILL_CHASING\` — still pursuing, no decision yet.
+- \`COULD_NOT_REACH_STILL_TRYING\` — voicemail / no answer.
+- \`INTEREST_VALIDATED_OR_MEETING_PLANED\` — qualified / meeting booked.
+- \`NOT_INTERESTED_LOST\` — declined / not a fit.
+
+The \`verification\` field is REQUIRED — pass \`{source: "user_confirmed", ref: <user's exact words>}\` since calls don't have message-ids.
+
+WHEN TO USE: the user wants to actually WORK a campaign — calling session, dictation loop, follow-up sequence. Pair with the \`leadbay_work_campaign\` prompt for the end-to-end orchestrator (pick campaign → render → call → record loop).
+
+WHEN NOT TO USE: for cross-campaign pulse (use \`leadbay_list_campaigns\`); for the slim progression view without contacts (\`leadbay_campaign_progression\` — same per-lead progress but no phone/LinkedIn fan-out); to log outreach AFTER a call (chain into \`leadbay_report_outreach\`).
+
+**Response envelope**: \`{campaign_id, leads[], map_locations[], summary, pagination, _meta}\`.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+`;
+// endregion: leadbay_campaign_call_sheet
+
+// region: leadbay_campaign_progression
+export const leadbay_campaign_progression: string = `## WHEN TO USE
+
+Trigger phrases: "how is my <name> campaign doing", "campaign progression", "lead-by-lead status on <campaign>", "who in <campaign> have I contacted", "what's stuck in my campaign".
+
+Do NOT use for: "pulse across all campaigns (not one)" → \`leadbay_list_campaigns\`; "log an outreach event" → \`leadbay_report_outreach\`.
+
+Prefer when: user named (or just selected from list_campaigns) ONE campaign and wants per-lead status. Use list_campaigns for the cross-campaign overview
+
+Examples that SHOULD invoke this tool:
+- "Walk me through the Limoges Tour campaign — who have I touched?"
+- "Show progression on campaign 1f12...?"
+- "What's stuck in my Q2 Push?"
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Show me all my campaigns."
+- "Create a new campaign."
+- "Log that I emailed Acme."
+
+## RENDER (quick)
+
+Two-tier render. Top: one-line summary
+("Limoges Tour: 9 leads · 4 contacted · 1 meeting · 0 declined").
+Then a markdown table per lead:
+| Lead | Score | Contacts | Last action | Also in |
+Each row's "Also in" column lists \`affiliation.own_campaigns[]\`
+names (with a ⚠ suffix if \`other_users_campaign_count > 0\`,
+indicating teammates also have it). Sort by progress.headline
+recency or by score desc — pick whichever surfaces "needs
+attention" leads first.
+
+---
+
+Per-lead progression view for one campaign. Wraps \`GET /campaigns/{id}/leads\` (paginated). For every lead in the campaign:
+
+- **lead** — full \`LeadPayload\` (same shape \`pull_leads\` / \`pull_followups\` return), so the agent has score, contacts, ai_summary, location, etc. without an extra round trip.
+- **progress** — \`{total_contacts, in_progress, declined, headline}\`. \`total_contacts\` is reachable contact coverage; do not treat it as prior outreach. \`headline\` is the most recent \`InteractionType\` (CONTACTED / MEETING_BOOKED / DECLINED / etc.) and is the load-bearing field for "what stage is this lead at".
+- **affiliation** — \`{own_campaigns: CampaignRefPayload[], other_users_campaign_count}\`. \`own_campaigns\` lists OTHER campaigns of yours this lead is in (overlap detection — avoids the rep doubling outreach across two of their own campaigns). \`other_users_campaign_count\` is how many teammates also have this lead in one of THEIR campaigns. This is the only cross-user signal the campaign API exposes.
+
+The composite also adds a \`summary\` block computed across the current page (\`{page_size, contacted, in_progress, declined}\`) so a quick "how is this campaign doing" prompt doesn't need to roll up the items array itself.
+
+**Pagination**: \`count\` defaults to 50; \`page\` is 0-indexed. For campaigns with hundreds of leads, page through and concatenate the summary counts.
+
+---
+
+WHEN TO USE: after \`leadbay_list_campaigns\` (or when the user named a specific campaign): the manager wants per-lead status to spot leads needing re-engagement, leads stuck, or leads that progressed to a meeting.
+
+WHEN NOT TO USE: for cross-campaign pulse (use \`leadbay_list_campaigns\`); to drill into a lead's full timeline (use \`leadbay_get_lead_activities\` or \`leadbay_research_lead_by_id\`); to log outreach (\`leadbay_report_outreach\`).
+
+**Response**: \`{items, pagination, summary, _meta}\`. Use the \`summary\` for the one-line headline; use \`items\` for the per-lead table.
+`;
+// endregion: leadbay_campaign_progression
+
 // region: leadbay_clear_selection
 export const leadbay_clear_selection: string = `Clear the user's transient selection.
 
@@ -187,6 +448,58 @@ WHEN NOT TO USE: to replace with a different prompt — just call leadbay_refine
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_clear_user_prompt
+
+// region: leadbay_create_campaign
+export const leadbay_create_campaign: string = `## WHEN TO USE
+
+Trigger phrases: "create a campaign called <name>", "save these leads as a campaign", "make a campaign for my <city> trip", "track these leads together", "group these leads into a named campaign", "persist these leads".
+
+Do NOT use for: "list my existing campaigns" → \`leadbay_list_campaigns\`; "add leads to an existing campaign" → \`leadbay_add_leads_to_campaign\`; "log an outreach event" → \`leadbay_report_outreach\`.
+
+Prefer when: user wants to persist a hand-picked set of leads as a named cohort they'll work through. Often follows leadbay_pull_leads / leadbay_tour_plan / leadbay_research_lead_by_id
+
+Examples that SHOULD invoke this tool:
+- "Save these 9 leads as a campaign called 'Limoges Tour – May 24'."
+- "Create a campaign for the qualified leads I just picked."
+- "Make a campaign for my SF visit and add those three accounts."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "What campaigns do I have?"
+- "Add three more leads to my 'Q2 Push' campaign."
+- "I just emailed Acme — log it."
+
+## RENDER (quick)
+
+One-line confirmation: ✅ Created **<name>** with N leads · <id-short>.
+If the backend AI-generated the name (no \`name\` passed), surface that:
+"AI-suggested name: <name>". Offer a NEXT STEPS chip for "Add more
+leads" or "Open in web UI". Don't dump the full campaign payload as a
+table — the user only needs the confirmation + the id for follow-up.
+
+---
+
+Create a new campaign — a server-persisted grouping of leads the user (or their manager) plans to work systematically. Wraps \`POST /campaigns\` (see \`.context/campaigns-probe/API.md\` for the discovered shape). Body is snake_case (the backend's \`apiJson\` uses \`JsonNamingStrategy.SnakeCase\`); this composite handles that translation — agents pass camelCase via the input schema but the wire is snake_case.
+
+**Name behavior**:
+- Pass \`name\` explicitly when the user named it ("Limoges Tour – May 24"). Max 255 chars.
+- Omit \`name\` AND pass non-empty \`lead_ids\` → backend calls \`SuggestCampaignName.generate()\` to AI-pick a name from the seed leads. Returned as both \`name\` (final) and \`ai_generated_name\` (the suggestion, in case the user wants to rename later).
+- Omit both → backend assigns a default (e.g. "Untitled campaign").
+
+**Seed leads vs. empty**:
+- Seed with \`lead_ids: [...]\` when the user already picked the leads (chain after \`leadbay_tour_plan\`, \`leadbay_pull_leads\`, \`leadbay_research_lead_by_id\`).
+- Create empty (\`lead_ids: []\`, default) and add later via \`leadbay_add_leads_to_campaign\` — useful when the user named the campaign first and wants to populate it incrementally.
+
+**Scope**: campaigns are created in the caller's organization and \`created_by = caller_user_id\`. The list endpoint (\`leadbay_list_campaigns\`) is filtered to the creator — campaigns ARE NOT shared with teammates by default. For #3630 US3 "manager creates a campaign for a rep", today's MCP workaround is to name campaigns descriptively ("North-East – John") and have the rep visit /app to access via the web UI; cross-user assignment would need backend work.
+
+---
+
+WHEN TO USE: the user wants to persist a hand-picked set of leads as a named cohort they'll work through systematically. Typical chains: \`tour_plan → create_campaign(lead_ids=[...selected])\` for trip planning, or \`pull_leads → research_lead_by_id → create_campaign\` for incremental promising-lead curation.
+
+WHEN NOT TO USE: to LIST existing campaigns (use \`leadbay_list_campaigns\`); to ADD leads to an existing one (use \`leadbay_add_leads_to_campaign\`); to LOG an outreach event (use \`leadbay_report_outreach\`); to view per-lead campaign progression (use \`leadbay_campaign_progression\`).
+
+**Response**: full \`CampaignPayload\` — \`{id, name, ai_generated_name?, ai_name_count, archived, created_by, created_at, updated_at, last_accessed_at}\`. Echo \`id\` back to the user as the handle for follow-up tool calls.
+`;
+// endregion: leadbay_create_campaign
 
 // region: leadbay_create_custom_field
 export const leadbay_create_custom_field: string = `Create an org-level CRM custom field for imports, then use the returned \`mapping_value\` in leadbay_import_leads / leadbay_import_and_qualify mappings. Use when the user's file contains valuable columns that do not fit Leadbay's standard fields, such as source-system deep links, source record IDs, campaign provenance, or user-requested enrichment attributes.
@@ -887,6 +1200,49 @@ WHEN NOT TO USE: the user is just reading or researching a lead without expressi
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_like_lead
+
+// region: leadbay_list_campaigns
+export const leadbay_list_campaigns: string = `## WHEN TO USE
+
+Trigger phrases: "what campaigns do I have", "list my campaigns", "show me my active campaigns", "campaign overview", "what's in flight", "pulse on my campaigns".
+
+Do NOT use for: "create a new campaign" → \`leadbay_create_campaign\`; "drill into one specific campaign's progression" → \`leadbay_campaign_progression\`.
+
+Prefer when: user wants the pulse / overview view across all their campaigns. Use campaign_progression to drill into one
+
+Examples that SHOULD invoke this tool:
+- "What campaigns am I running?"
+- "Show me my active campaigns and how they're doing."
+- "Quick pulse on my campaigns."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Create a 'Q2 Push' campaign."
+- "How are leads progressing in my Limoges Tour?"
+- "Today's fresh leads."
+
+## RENDER (quick)
+
+Render as a compact markdown table sorted by \`updated_at\` desc:
+| Campaign | Leads | Contacted | Meetings | Declined | Updated |
+Each row links to "View progression" via a NEXT STEPS chip that
+passes the campaign_id back into \`leadbay_campaign_progression\`.
+Suppress archived rows unless \`archived: true\` was passed.
+
+---
+
+List the caller's campaigns with roll-up stats. Wraps \`GET /campaigns\` (with \`?archived=true\` to surface archived ones). Each entry is \`CampaignWithStatsPayload\`: the campaign object + \`lead_count\`, \`contact_count\`, \`contacted\` (leads with any logged outreach), \`meeting_booked\` (leads with a recorded meeting outcome), \`declined\` (leads with a recorded decline).
+
+**Scope warning**: this list is filtered server-side to campaigns the calling user CREATED. Other users in the same organization with their own campaigns are not surfaced. The web UI may aggregate differently for admins; the MCP-exposed view is creator-scoped. This matters for #3630 US3 "manager-led prospecting governance" — a manager can list their own campaigns but not see a rep's. Cross-user visibility would need backend work.
+
+---
+
+WHEN TO USE: the user wants the cross-campaign pulse — what cohorts are in flight, how active each is, which need attention.
+
+WHEN NOT TO USE: for per-lead progression inside ONE campaign (use \`leadbay_campaign_progression\`); to create a campaign (\`leadbay_create_campaign\`); to add leads to one (\`leadbay_add_leads_to_campaign\`).
+
+**Response**: \`{campaigns: CampaignWithStats[], _meta}\`. Sort by \`updated_at desc\` when rendering — recency is the manager's natural lens.
+`;
+// endregion: leadbay_list_campaigns
 
 // region: leadbay_list_lenses
 export const leadbay_list_lenses: string = `List all available Leadbay lenses (saved lead-search configurations). Each lens defines a different target market or buyer segment. The lens with \`is_last_active=true\` is used by default for lead discovery.
@@ -2176,6 +2532,104 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 `;
 // endregion: leadbay_set_user_prompt
 
+// region: leadbay_tour_plan
+export const leadbay_tour_plan: string = `## WHEN TO USE
+
+Trigger phrases: "I'm visiting <city> in <N> days", "field tour in <city>", "plan a tour in <city>", "who should I meet in <city>", "mix of customers and prospects in <city>", "tour itinerary", "3 customers + 3 prospects + 3 new in <city>", "field sales tour".
+
+Do NOT use for: "follow-ups only on the map (no new prospects mixed in)" → \`leadbay_followups_map\`; "new leads only, no geography" → \`leadbay_pull_leads\`; "research one specific account I picked" → \`leadbay_research_lead_by_id\`.
+
+Prefer when: user wants both KNOWN accounts AND NEW discovery in one geographic view. If they only want one side, route to followups_map or pull_leads instead
+
+Examples that SHOULD invoke this tool:
+- "I'm flying to Limoges in 4 days — give me 3 customers, 3 qualified prospects, and 3 new high-potential."
+- "Plan my tour next Tuesday in Lyon: known accounts plus discoveries."
+- "Build a mixed itinerary for Berlin — I want both follow-ups and fresh leads."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Show me my follow-ups for the SF trip."
+- "What's new in today's batch?"
+- "Tell me about Acme Corp."
+
+## RENDER (quick)
+
+Route the union of monitor_leads + discover_leads into
+\`places_map_display_v0\` — same recipe as followups_map (lat/lng
+split, full address, short notes). Tag each entry's notes with a
+mode badge: "★ Customer" / "★ Qualified" / "✦ New" (split Monitor
+by last_monitor_action; Discover = New). Below the widget: one
+intro sentence + per-group chat-prose list with LinkedIn-linked
+contact names.
+
+---
+
+Build a single-call mixed-mode itinerary for a field sales tour. Combines \`leadbay_pull_followups\` (Monitor leads in the city — known accounts) with \`leadbay_pull_leads\` (Discover wishlist — new prospects, then client-side filtered by city) so the agent can answer the canonical #3630 US1 ask: *"I'm visiting Limoges in 4 days — propose 3 customers + 3 qualified prospects + 3 new high-potential discoveries."*
+
+**Geo resolution** is identical to \`leadbay_followups_map\`: pass \`city\` (any admin level — city, state, country, region — the \`/geo/search\` resolver picks the best match), or a pre-resolved \`city_id\`. Ambiguous matches surface as \`status: "ambiguous_locations"\` + \`location_ambiguities[]\`; pick an id and re-call with \`city_id\`.
+
+**Counts**: \`followups_count\` (default 6 — generous so the agent can split into "customers + qualified" client-side) and \`discover_count\` (default 6 after client-side geo filter). The composite over-pulls Discover (30 raw) because the wishlist endpoint has no server-side geo filter — it then filters by \`location.city/state/country/full\` substring match against the requested city. The \`discover_filter_note\` string in the response tells the agent the match ratio so it can be honest about coverage ("matched 3/30 by city/state" vs. "matched 12/30").
+
+**What \`tour_plan\` does NOT do**: it doesn't persist the tour as a campaign artifact. To do that — create a "Limoges Tour – May 24" campaign and attach the selected accounts — chain into \`leadbay_create_campaign({lead_ids: [...selected_ids], name: 'Limoges Tour – <date>'})\` after the user picks. See the \`leadbay_plan_tour_in_city\` prompt for the full end-to-end orchestrator.
+
+---
+
+## RENDER — host-native map widget (REQUIRED, preferred)
+
+Identical to \`leadbay_followups_map\`. Pass the union \`monitor_leads + discover_leads\` into \`places_map_display_v0\`. The mode information goes in the per-lead \`notes\` string as a **leading badge**:
+
+- \`★ Customer\` — Monitor lead with an existing \`last_monitor_action\` history (engaged / past interaction).
+- \`★ Qualified\` — Monitor lead with a high \`ai_agent_lead_score\` or \`score\` but no recent action.
+- \`✦ New\` — Discover lead from \`discover_leads\`.
+
+Then the rest of the notes string follows the standard recipe: ONE sentence, sector/fit + contact ask, bare phone + email auto-linkified. Example:
+
+\`\`\`
+✦ New — Strong mid-size hardware distributor fit. Reach Marie Dupont, Sales Director: +33 5 55 12 34 56, m.dupont@example.fr.
+\`\`\`
+
+Skip any lead whose \`location.pos\` is null (no lat/lng → no pin) — list them as a "+ N leads without coordinates" footer below the widget.
+
+## Chat prose AFTER the widget (where markdown DOES render)
+
+Group the leads into THREE sections (Customers / Qualified Prospects / New Discoveries) and emit a short chat-prose list per group with LinkedIn-linked contact name + bare phone/email pills. This is the "Notes from Claude" companion that the carousel can't render. Mirror the \`followups_map\` recipe exactly — score callout, contact name as markdown link, \`·\`-separated channel pills.
+
+If the user said something like "3+3+3", honor that split. If \`followups_count\` returned fewer Customers than asked, fill from Qualified.
+
+## RENDER — fallback for hosts without \`places_map_display_v0\`
+
+Emit per-lead markdown blocks grouped by mode, in the standard place-card-friendly format (\`### **Company** · City, State\`, mode badge + score, contact line, channel lines). Hosts that auto-detect addresses (Claude.ai web, cowork) build their own carousel from these blocks.
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` (Claude) | Result has ≥2 leads with \`location.city\` set, and the user's intent is geographic / "in person" / travel | \`{name: lead.company_name, address: "<city>, <country>", place_id: lead.location.place_id ?? omit, notes: <one-sentence pitch>}\` per location |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude) | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | \`{questions: [{question: "What next?", type: "single_select", options: [<2-4 short button labels>]}]}\`; max 3 questions per call |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+
+
+---
+
+WHEN TO USE: the user signals a *mixed* tour-planning intent — they want both known accounts AND fresh discoveries on one geographic view, typically for a planned visit.
+
+WHEN NOT TO USE: if the user only wants follow-ups (use \`leadbay_followups_map\`), only wants new leads (use \`leadbay_pull_leads\`), wants research on one specific account (\`leadbay_research_lead_by_id\`), or wants to persist the tour as a campaign artifact (chain into \`leadbay_create_campaign\` after this).
+
+**Response envelope**: \`{city, city_id, monitor_leads, discover_leads, discover_filter_note, _meta}\` on happy path; \`{status: "ambiguous_locations", location_ambiguities, ...}\` when the passed \`city\` matched multiple admin areas.
+`;
+// endregion: leadbay_tour_plan
+
 // region: leadbay_update_lens
 export const leadbay_update_lens: string = `Update lens metadata (name, description, mode flags). Does NOT change the audience filter — use leadbay_update_lens_filter for that.
 
@@ -2201,13 +2655,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // Map for legacy callers; prefer importing the named constant directly.
 export const TOOL_DESCRIPTIONS = {
   leadbay_account_status,
+  leadbay_add_leads_to_campaign,
   leadbay_add_note,
   leadbay_adjust_audience,
   leadbay_answer_clarification,
   leadbay_bulk_enrich_status,
   leadbay_bulk_qualify_leads,
+  leadbay_campaign_call_sheet,
+  leadbay_campaign_progression,
   leadbay_clear_selection,
   leadbay_clear_user_prompt,
+  leadbay_create_campaign,
   leadbay_create_custom_field,
   leadbay_create_lens,
   leadbay_create_lens_draft,
@@ -2239,6 +2697,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_import_status,
   leadbay_launch_bulk_enrichment,
   leadbay_like_lead,
+  leadbay_list_campaigns,
   leadbay_list_lenses,
   leadbay_list_locations,
   leadbay_list_mappable_fields,
@@ -2266,6 +2725,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_set_epilogue_status,
   leadbay_set_pushback,
   leadbay_set_user_prompt,
+  leadbay_tour_plan,
   leadbay_update_lens,
   leadbay_update_lens_filter,
 } as const;

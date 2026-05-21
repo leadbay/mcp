@@ -1,0 +1,148 @@
+---
+name: leadbay_campaign_call_sheet
+kind: tool-description
+short_description: |
+  Cold-calling cheat sheet for a campaign — joins
+  `/campaigns/{id}/contacts` + `/campaigns/{id}/leads` into one
+  call-ready payload. Each lead block carries the AI next-step + every
+  reachable contact (name, phone with `tel:` URL, LinkedIn, role).
+  Optional `map_locations` is ready to pass into
+  `places_map_display_v0` for a geographic call route.
+routing:
+  triggers:
+    - "show me my campaign as a call sheet"
+    - "list of people to call in <campaign>"
+    - "cold-calling cheat sheet"
+    - "work this campaign"
+    - "let's call through my <campaign>"
+    - "calling session for <campaign>"
+  anti_triggers:
+    - phrase: "campaign progression pulse only (no contacts)"
+      route_to: leadbay_campaign_progression
+    - phrase: "create a new campaign"
+      route_to: leadbay_create_campaign
+    - phrase: "list all my campaigns"
+      route_to: leadbay_list_campaigns
+  prefer_when: "user wants an actionable call-ready view of ONE campaign with phones + LinkedIn ready to click. Pair with the `leadbay_work_campaign` prompt for the full dictation+epilogue loop"
+  examples:
+    positive:
+      - "Show me my Limoges Tour campaign as a call sheet."
+      - "I'm about to do a calling session — render the Q2 Push campaign."
+      - "Give me phones + LinkedIn for everyone in my OK Sweep campaign."
+    negative:
+      - "Quick pulse on how my campaigns are doing."
+      - "Save these 9 leads as a new campaign."
+      - "Tell me about Acme Corp."
+rendering_hint: |
+  Per-lead CARD sorted by AI score desc. Heading `### ⚡ **<Company>**
+  — <City>, <State>`; one-line "★ Next step: …" from
+  split_ai_summary; then a 4-col table of contacts:
+  Contact / Phone / Role / Recent. Cell 1 stacks linked name + email
+  + (if constructed) LinkedIn marker °. Phone is `[bare](tel:URL)`.
+  Recent stacks last note + lead headline. Top of page = summary chip
+  from `summary` + readiness flags.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Build a cold-calling cheat sheet for one campaign. The composite joins two backend reads — `/campaigns/{id}/contacts` (per-contact phones, LinkedIn URLs, emails, job titles, recent notes) and `/campaigns/{id}/leads` (per-lead AI next-step, location, score, progress) — into a single call-ready payload aligned to the lead's page order.
+
+**Per-lead block** carries:
+
+- `lead_id`, `lead_name`, `score`, `ai_agent_lead_score`
+- `location` (`city`, `state`, `country`, `full`, `pos[lat,lng]`)
+- `website`, `company_phone_numbers[]` (often empty; use per-contact phones)
+- `next_step` / `approach_angle` / `worth_pursuing` (from `split_ai_summary` — the structured calling angle)
+- `progress` (`total_contacts` = reachable contact coverage; `in_progress` / `declined` / `headline` = outreach state — use those, not `total_contacts`, to tell whether the lead has been touched)
+- `affiliation.own_campaigns[]` + `other_users_campaign_count` (overlap warning — avoid double-touching)
+- `contacts[]` — every reachable contact for this lead, sorted: AI-pinned first, then recommended, then by phone availability. Each contact has:
+  - `first_name`, `last_name`, `full_name`, `job_title`
+  - `phone_number` (bare, e.g. `"+1 512-792-7708"`), `phone_tel_url` (canonical, e.g. `"tel:+15127927708"`)
+  - `email`, `mailto_url`
+  - `linkedin_url` + `linkedin_url_source` (`"leadbay"` when the backend has it, `"constructed"` when fallback-built from name + company)
+  - `recent_notes[]` — recent notes about this contact (often empty on cold campaigns)
+
+**Map mode**: the response also carries `map_locations[]` — already-shaped entries for `places_map_display_v0` (`{name, address, latitude, longitude, notes}`). When the user wants a route ("plot my call list on a map"), pass `map_locations` directly into the widget without reshaping.
+
+**Cross-campaign overlap warning**: when a contact's lead shows `affiliation.other_users_campaign_count > 0`, surface that ("⚠ 2 teammates also have this lead in their own campaigns") so the rep can coordinate before calling.
+
+---
+
+## RENDER — call-sheet markdown (PRIMARY)
+
+This is a cold-calling surface. The user wants to scan → pick → tap-to-call → dictate outcome → next. Render one CARD per lead, sorted by AI score:
+
+```
+### ⚡ **<Company Name>** — <City>, <State>
+
+**Score <ai_agent_lead_score or score>** · ★ Next step: <next_step>
+
+| Contact | Phone | Role | Recent |
+|---|---|---|---|
+| **[<First Last>](<linkedin_url>)**<br>✉ [<email>](<mailto_url>) | [<phone bare>](<phone_tel_url>) | <job_title> | 📝 "<last_note truncated>" (<rel_date>)<br>📞 <last_action_headline> |
+| **[<First Last>](<linkedin_url>)** | [<phone bare>](<phone_tel_url>) | <job_title> | _(no notes)_ |
+
+<short callout — "📞 0 prior touches" / "⚠ Also in 2 teammates' campaigns" if applicable>
+
+---
+```
+
+**Cell 1 — Contact (stacked content)**:
+- Line 1: `**[<First Last>](<linkedin_url>)**` — MUST always be a markdown link. Use `contact.linkedin_url` from the response (the composite already falls back to a `linkedin.com/search/results/people/?keywords=…` URL when `linkedin_page` is missing — never render a bare name). When `linkedin_url_source === "constructed"`, append a trailing ` °` to the contact name to mark the fallback path.
+- Line 2 (if email present): `✉ [<email>](<mailto_url>)` — `mailto:` link, auto-linkifies and opens the user's default mail app. Omit the line entirely if `email === null` rather than rendering "_no email_".
+
+**Cell 2 — Phone (load-bearing for one-tap calling on mobile)**:
+- Always render as a markdown link `[bare](tel:URL)`. The bare text auto-linkifies on most hosts; the explicit `tel:` link guarantees one-tap dialing on macOS / iOS / Android.
+- Use the `phone_tel_url` from the response (already canonicalized to `tel:+<digits>`); do NOT reconstruct.
+- When `phone_number` is null but the lead has `company_phone_numbers[]`, fall back to the company switchboard with a "(company line)" suffix.
+- When neither contact phone nor company phone is present, render `_no phone_` — the rep will know this contact needs enrichment.
+
+**Cell 3 — Role**: `contact.job_title`. Render `—` when null.
+
+**Cell 4 — Recent (stacked content, history surface)**:
+- Line 1 (if `contact.recent_notes[0]` present): `📝 "<note text, truncated to ~60 chars>" (<relative date>)`. The relative date uses the note's `created_at` ISO timestamp — render as `3d ago`, `2w ago`, etc. Omit the line entirely if no notes.
+- Line 2 (if `last_action_headline` on the lead-level block present): `📞 <headline>` — e.g. `📞 CONTACTED`, `📞 MEETING_BOOKED`. This is the LEAD's most recent interaction headline, not the contact's. Helpful for context but the per-contact note above is more specific.
+- When both are absent, omit the cell content entirely — don't render `_(no activity)_` for every cold contact; it's noise.
+
+**Sort + filter**:
+- Top of the page: ONE-line summary chip from `summary` — `📋 12 leads · 23 contacts · 9 with a phone · 7 with an email · 3 already touched`.
+- Lead cards sorted by AI score desc; contacts within each card sorted AI-pinned > recommended > has-phone.
+- If `last_action_headline` is present OR `progress.in_progress > 0` OR `progress.declined > 0`, render the card with a 📞 prefix instead of ⚡ — at-a-glance "already touched" vs "still cold". Do not use `progress.total_contacts`; that is contact coverage, not outreach history.
+
+## RENDER — map widget (SECONDARY, when user asks for a route)
+
+When the user says "plot my call list on a map" / "where are these leads" / "route my calling tour", route to `places_map_display_v0` using the `map_locations` array verbatim:
+
+```
+places_map_display_v0({
+  locations: response.map_locations,
+  travel_mode: "driving"
+})
+```
+
+The composite has already built the notes string per place card (one sentence with the top contact's phone inline). After the widget, emit the standard call-sheet card list below it for the rich detail — the carousel renders bare phones as `tel:` but strips markdown.
+
+{{include:gates/builtin-widgets}}
+
+---
+
+## NEXT STEPS — wire the dictation+epilogue loop
+
+After the user reports a call ("Called Bree, she wants pricing"), route to `leadbay_report_outreach` with BOTH `note` (the call summary) AND `epilogue_status` in one call. The four epilogue values:
+
+- `STILL_CHASING` — still pursuing, no decision yet.
+- `COULD_NOT_REACH_STILL_TRYING` — voicemail / no answer.
+- `INTEREST_VALIDATED_OR_MEETING_PLANED` — qualified / meeting booked.
+- `NOT_INTERESTED_LOST` — declined / not a fit.
+
+The `verification` field is REQUIRED — pass `{source: "user_confirmed", ref: <user's exact words>}` since calls don't have message-ids.
+
+{{include:headers/tool-when-to-use}} the user wants to actually WORK a campaign — calling session, dictation loop, follow-up sequence. Pair with the `leadbay_work_campaign` prompt for the end-to-end orchestrator (pick campaign → render → call → record loop).
+
+{{include:headers/tool-when-not-to-use}} for cross-campaign pulse (use `leadbay_list_campaigns`); for the slim progression view without contacts (`leadbay_campaign_progression` — same per-lead progress but no phone/LinkedIn fan-out); to log outreach AFTER a call (chain into `leadbay_report_outreach`).
+
+**Response envelope**: `{campaign_id, leads[], map_locations[], summary, pagination, _meta}`.
+
+{{include:linking/contact-linkedin}}

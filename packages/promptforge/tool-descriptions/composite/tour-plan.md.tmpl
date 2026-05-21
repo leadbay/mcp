@@ -1,0 +1,96 @@
+---
+name: leadbay_tour_plan
+kind: tool-description
+short_description: |
+  Build a mixed-mode field-sales itinerary for a city — Monitor
+  follow-ups (known accounts) + fresh Discover leads (new prospects)
+  in one call. The single entry point for "I'm visiting <city> in N
+  days — who should I meet". Pairs with the
+  `leadbay_plan_tour_in_city` prompt and renders via
+  `places_map_display_v0`.
+routing:
+  triggers:
+    - "I'm visiting <city> in <N> days"
+    - "field tour in <city>"
+    - "plan a tour in <city>"
+    - "who should I meet in <city>"
+    - "mix of customers and prospects in <city>"
+    - "tour itinerary"
+    - "3 customers + 3 prospects + 3 new in <city>"
+    - "field sales tour"
+  anti_triggers:
+    - phrase: "follow-ups only on the map (no new prospects mixed in)"
+      route_to: leadbay_followups_map
+    - phrase: "new leads only, no geography"
+      route_to: leadbay_pull_leads
+    - phrase: "research one specific account I picked"
+      route_to: leadbay_research_lead_by_id
+  prefer_when: "user wants both KNOWN accounts AND NEW discovery in one geographic view. If they only want one side, route to followups_map or pull_leads instead"
+  examples:
+    positive:
+      - "I'm flying to Limoges in 4 days — give me 3 customers, 3 qualified prospects, and 3 new high-potential."
+      - "Plan my tour next Tuesday in Lyon: known accounts plus discoveries."
+      - "Build a mixed itinerary for Berlin — I want both follow-ups and fresh leads."
+    negative:
+      - "Show me my follow-ups for the SF trip."
+      - "What's new in today's batch?"
+      - "Tell me about Acme Corp."
+rendering_hint: |
+  Route the union of monitor_leads + discover_leads into
+  `places_map_display_v0` — same recipe as followups_map (lat/lng
+  split, full address, short notes). Tag each entry's notes with a
+  mode badge: "★ Customer" / "★ Qualified" / "✦ New" (split Monitor
+  by last_monitor_action; Discover = New). Below the widget: one
+  intro sentence + per-group chat-prose list with LinkedIn-linked
+  contact names.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Build a single-call mixed-mode itinerary for a field sales tour. Combines `leadbay_pull_followups` (Monitor leads in the city — known accounts) with `leadbay_pull_leads` (Discover wishlist — new prospects, then client-side filtered by city) so the agent can answer the canonical #3630 US1 ask: *"I'm visiting Limoges in 4 days — propose 3 customers + 3 qualified prospects + 3 new high-potential discoveries."*
+
+**Geo resolution** is identical to `leadbay_followups_map`: pass `city` (any admin level — city, state, country, region — the `/geo/search` resolver picks the best match), or a pre-resolved `city_id`. Ambiguous matches surface as `status: "ambiguous_locations"` + `location_ambiguities[]`; pick an id and re-call with `city_id`.
+
+**Counts**: `followups_count` (default 6 — generous so the agent can split into "customers + qualified" client-side) and `discover_count` (default 6 after client-side geo filter). The composite over-pulls Discover (30 raw) because the wishlist endpoint has no server-side geo filter — it then filters by `location.city/state/country/full` substring match against the requested city. The `discover_filter_note` string in the response tells the agent the match ratio so it can be honest about coverage ("matched 3/30 by city/state" vs. "matched 12/30").
+
+**What `tour_plan` does NOT do**: it doesn't persist the tour as a campaign artifact. To do that — create a "Limoges Tour – May 24" campaign and attach the selected accounts — chain into `leadbay_create_campaign({lead_ids: [...selected_ids], name: 'Limoges Tour – <date>'})` after the user picks. See the `leadbay_plan_tour_in_city` prompt for the full end-to-end orchestrator.
+
+---
+
+## RENDER — host-native map widget (REQUIRED, preferred)
+
+Identical to `leadbay_followups_map`. Pass the union `monitor_leads + discover_leads` into `places_map_display_v0`. The mode information goes in the per-lead `notes` string as a **leading badge**:
+
+- `★ Customer` — Monitor lead with an existing `last_monitor_action` history (engaged / past interaction).
+- `★ Qualified` — Monitor lead with a high `ai_agent_lead_score` or `score` but no recent action.
+- `✦ New` — Discover lead from `discover_leads`.
+
+Then the rest of the notes string follows the standard recipe: ONE sentence, sector/fit + contact ask, bare phone + email auto-linkified. Example:
+
+```
+✦ New — Strong mid-size hardware distributor fit. Reach Marie Dupont, Sales Director: +33 5 55 12 34 56, m.dupont@example.fr.
+```
+
+Skip any lead whose `location.pos` is null (no lat/lng → no pin) — list them as a "+ N leads without coordinates" footer below the widget.
+
+## Chat prose AFTER the widget (where markdown DOES render)
+
+Group the leads into THREE sections (Customers / Qualified Prospects / New Discoveries) and emit a short chat-prose list per group with LinkedIn-linked contact name + bare phone/email pills. This is the "Notes from Claude" companion that the carousel can't render. Mirror the `followups_map` recipe exactly — score callout, contact name as markdown link, `·`-separated channel pills.
+
+If the user said something like "3+3+3", honor that split. If `followups_count` returned fewer Customers than asked, fill from Qualified.
+
+## RENDER — fallback for hosts without `places_map_display_v0`
+
+Emit per-lead markdown blocks grouped by mode, in the standard place-card-friendly format (`### **Company** · City, State`, mode badge + score, contact line, channel lines). Hosts that auto-detect addresses (Claude.ai web, cowork) build their own carousel from these blocks.
+
+{{include:gates/builtin-widgets}}
+
+---
+
+{{include:headers/tool-when-to-use}} the user signals a *mixed* tour-planning intent — they want both known accounts AND fresh discoveries on one geographic view, typically for a planned visit.
+
+{{include:headers/tool-when-not-to-use}} if the user only wants follow-ups (use `leadbay_followups_map`), only wants new leads (use `leadbay_pull_leads`), wants research on one specific account (`leadbay_research_lead_by_id`), or wants to persist the tour as a campaign artifact (chain into `leadbay_create_campaign` after this).
+
+**Response envelope**: `{city, city_id, monitor_leads, discover_leads, discover_filter_note, _meta}` on happy path; `{status: "ambiguous_locations", location_ambiguities, ...}` when the passed `city` matched multiple admin areas.

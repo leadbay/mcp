@@ -23,17 +23,25 @@ import {
 
 const ROUTING_HEAD_WINDOW = 600;
 
-// The 7 user-facing composites we deliberately backfilled with routing
-// frontmatter. The audit ensures none of them regresses. Other tools
-// MAY add routing later — when they do, append here.
+// User-facing tools we deliberately backfilled with routing frontmatter.
+// The audit ensures none of them regresses. Other tools MAY add routing
+// later — when they do, append here.
 const TOOLS_WITH_ROUTING = new Set([
-  "leadbay_pull_leads",
-  "leadbay_pull_followups",
-  "leadbay_followups_map",
-  "leadbay_research_lead_by_id",
-  "leadbay_research_lead_by_name_fuzzy",
   "leadbay_prepare_outreach",
   "leadbay_account_status",
+  "leadbay_add_leads_to_campaign",
+  "leadbay_campaign_call_sheet",
+  "leadbay_campaign_progression",
+  "leadbay_create_campaign",
+  "leadbay_dislike_lead",
+  "leadbay_followups_map",
+  "leadbay_like_lead",
+  "leadbay_list_campaigns",
+  "leadbay_pull_followups",
+  "leadbay_pull_leads",
+  "leadbay_research_lead_by_id",
+  "leadbay_research_lead_by_name_fuzzy",
+  "leadbay_tour_plan",
 ]);
 
 const ALL_TOOLS: Tool[] = [

@@ -516,6 +516,58 @@ Tell me the outreach was logged, name the verification.source used, and surface 
 `;
 // endregion: leadbay_log_outreach
 
+// region: leadbay_plan_tour_in_city
+export const leadbay_plan_tour_in_city: string = `
+Plan a field sales tour for me in **{{arg:city}}**{{arg:date_paren}}.
+
+GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
+
+If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
+
+
+# PHASE 1 — BUILD THE ITINERARY
+
+Call \`leadbay_tour_plan({city: "{{arg:city}}"})\` with the default counts (6 follow-ups + 6 discover). If the response is \`status: "ambiguous_locations"\`, surface the candidates and ask me to pick one, then re-call with \`city_id\`.
+
+Split the returned \`monitor_leads\` into two buckets client-side using \`last_monitor_action\`:
+
+- **Customers** — leads with any \`last_monitor_action\` history (CONTACTED, MEETING_BOOKED, etc.). Treat as known accounts with prior engagement.
+- **Qualified prospects** — leads with high \`ai_agent_lead_score\` (or \`score\`) but no recent action.
+
+\`discover_leads\` are the **New** bucket.
+
+Aim for a 3+3+3 split if possible. If the customers bucket has fewer than 3, fill from qualified. If discover_filter_note indicates a low match ratio for the city, mention it: "Only N/30 fresh leads matched your city" — better honest than padded.
+
+# PHASE 2 — RENDER THE MAP
+
+Route the union of \`monitor_leads + discover_leads\` into \`places_map_display_v0\` (when the host exposes it). Per-lead \`notes\` string:
+
+- \`★ Customer — <one-sentence sector + why-now>. Reach <name>, <role>: <bare phone>, <bare email>.\`
+- \`★ Qualified — <one-sentence>. Reach <name>...\`
+- \`✦ New — <one-sentence>. Reach <name>...\`
+
+Skip leads with \`location.pos === null\` (no coordinates → no pin) — list them as "+ N leads without coordinates" below the widget.
+
+Below the widget, emit a chat-prose summary grouped by mode (Customers / Qualified / New), with LinkedIn-linked contact name + bare phone/email pills per lead. Use the canonical \`linking/contact-linkedin\` rules.
+
+# PHASE 3 — DRAFT IN-AREA OUTREACH (optional, ask first)
+
+After the map, ask me ONCE: "Want me to draft 'I'll be in {{arg:city}}{{arg:date_paren}}' outreach for the top accounts?" If I say yes, for each of the top 3 leads (1 Customer / 1 Qualified / 1 New), call \`leadbay_prepare_outreach(leadId)\` and route the draft through \`message_compose_v1\` with a single variant labeled "In-area visit" — body opens with the visit context, references the AI-summary angle, ends with a clear ask (15-min coffee / on-site stopover).
+
+Serialize the prepare_outreach calls (max 3 in parallel — see the long-running-tools rule).
+
+# PHASE 4 — PERSIST AS A CAMPAIGN (optional, ask first)
+
+After drafts, ask me ONCE: "Save these 9 accounts as a campaign called '**{{arg:city}} Tour{{arg:date_dash}}**'?" If I say yes, call \`leadbay_create_campaign({lead_ids: [...all_nine_lead_ids], name: "{{arg:city}} Tour{{arg:date_dash}}"})\`. Surface the returned \`id\` + \`name\` as a confirmation line, and offer the NEXT STEPS chip "View progression" (which routes to \`leadbay_campaign_progression\`).
+
+If I declined the campaign step, end the turn — the map + drafts are enough for an ad-hoc trip.
+
+# PHASE 5 — STOP
+
+Done. The map is the surface; the drafts are the action; the campaign is the persistence layer for managerial follow-up after the trip.
+`;
+// endregion: leadbay_plan_tour_in_city
+
 // region: leadbay_prospecting_overview
 export const leadbay_prospecting_overview: string = `
 # Leadbay Prospecting — Orientation
@@ -903,16 +955,179 @@ The card itself handles the signal callouts (\`📈 business signals\`, \`💡 p
 `;
 // endregion: leadbay_research_a_domain
 
+// region: leadbay_setup_team_prospecting
+export const leadbay_setup_team_prospecting: string = `
+Set up manager-led prospecting for me: turn the audience into a lens, validate candidates, then persist as named campaigns.
+
+Audience: **{{arg:audience}}**
+{{arg:rep_split_block}}
+
+GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
+
+If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
+
+
+# PHASE 1 — INTERPRET INTENT INTO A LENS
+
+Call \`leadbay_refine_prompt({user_prompt: "{{arg:audience}}"})\`. This handles the clarification protocol natively — if the system needs more info (e.g. industry disambiguation, geography precision), it returns \`status: "clarification_needed"\` with options. Surface those to me; on my answer, re-call \`leadbay_refine_prompt\` until the prompt converges.
+
+When the prompt has converged, call \`leadbay_create_lens({user_prompt: <refined>, name: "<short descriptive name>"})\` to create a draft lens, then \`leadbay_promote_lens({lensId})\` to make it the active lens.
+
+# PHASE 2 — PULL + VALIDATE CANDIDATES
+
+Call \`leadbay_pull_leads({count: 20, lensId: <the new lens id>})\` to surface the top 20 candidates from the freshly-created lens. Render with the canonical \`pull_leads\` table layout.
+
+Ask me ONCE: "Want me to deep-research the top N for validation?" If yes, call \`leadbay_research_lead_by_id\` serialized over the top 3-5 (one at a time, max 3 in parallel per the long-running-tools rule). Surface a research summary per lead.
+
+Then ask me ONCE: "Which of these should we drop?" If I name leads to drop, exclude them from the working set. The remaining is the validated set.
+
+# PHASE 3 — DECIDE THE CAMPAIGN SHAPE
+
+If I provided a \`rep_split\` ("one campaign per rep: John gets Tulsa, Sarah gets OKC"), partition the validated leads accordingly. If I didn't, ask ONCE: "Create one campaign for the whole batch, or split per rep / region / sector?" — surface 2-4 options via \`ask_user_input_v0\` when available, else as a bulleted list.
+
+For each campaign-shape decision, derive a name. Templates:
+- Whole batch: \`"<lens-name> – <YYYY-MM-DD>"\`
+- Per rep: \`"<lens-name> – <RepName>"\`
+- Per region: \`"<lens-name> – <RegionName>"\`
+
+# PHASE 4 — PERSIST
+
+For each campaign-shape partition, call \`leadbay_create_campaign({lead_ids: [...partition], name: "<derived>"})\`. Surface the returned \`id\` + \`name\` per campaign as a confirmation line.
+
+# PHASE 5 — BE HONEST ABOUT SCOPE
+
+Once the campaigns are created, surface this caveat in plain prose:
+
+> Campaign visibility is currently scoped to the user who CREATED the campaign — the reps won't see these in their own MCP \`leadbay_list_campaigns\` calls. They CAN see them in the web UI at app.leadbay.ai → Campaigns. Cross-user MCP visibility would need backend work; flag this as a #3630 US3 product gap if your reps work primarily through MCP.
+
+End with a NEXT STEPS chip via \`ask_user_input_v0\`: "View progression on one of these now?" → routes to \`leadbay_campaign_progression\`.
+
+# PHASE 6 — STOP
+
+Done. The lens is live, the validated cohort is persisted as named campaigns, and the manager knows where the cross-user-visibility gap is.
+`;
+// endregion: leadbay_setup_team_prospecting
+
+// region: leadbay_work_campaign
+export const leadbay_work_campaign: string = `
+Work my **{{arg:campaign_or_default}}** campaign as an outreach session{{arg:mode_paren}}.
+
+GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
+
+If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
+
+
+# PHASE 0 — PICK THE CAMPAIGN
+
+If I gave you a name or id, resolve it. Otherwise call \`leadbay_list_campaigns()\` and surface the active campaigns as a \`single_select\` via \`ask_user_input_v0\` (cap at 4 — sort by \`updated_at\` desc, archived hidden):
+
+> Which campaign do you want to work?
+> - <Name 1> · <N leads> · last touched <date>
+> - <Name 2> · <N leads> · last touched <date>
+> - …
+
+When the user picks, capture the \`campaign_id\`. If \`{{arg:campaign}}\` is a name, fuzzy-match against \`campaigns[].campaign.name\`. On ambiguous matches, surface a \`single_select\` instead of guessing.
+
+# PHASE 1 — FETCH + ASSESS READINESS (the load-bearing phase)
+
+Call \`leadbay_campaign_call_sheet({campaign_id})\`. The response carries \`summary\` + \`readiness\` — use them to figure out what the user CAN actually do today, then PROPOSE the right session mode rather than auto-rendering.
+
+**Read the summary numbers**:
+- \`total_leads\`, \`total_contacts\`
+- \`leads_with_phone\` — can call from this many leads
+- \`leads_with_email\` — can email this many
+- \`leads_with_coords\` — can map this many
+- \`leads_without_contacts\` — these need enrichment before any outreach is possible
+- \`leads_already_contacted\` — these have prior touches; the rep may want to skip them for cold work
+
+**Read the \`readiness\` booleans** (pre-computed thresholds):
+- \`ready_for_calling\` (phone coverage ≥60%) — call session viable
+- \`ready_for_emailing\` (email coverage ≥60%) — email session viable
+- \`needs_enrichment\` (≥30% no-contacts OR both phone+email coverage <40%) — enrichment recommended first
+- \`travel_friendly\` (≥5 geocoded leads AND coord coverage ≥60%) — map mode worth proposing
+
+**One-line situation report** (always emit BEFORE the proposal):
+
+\`\`\`
+📋 <total_leads> leads · 📞 <leads_with_phone> with a phone · ✉ <leads_with_email> with an email · 🗺 <leads_with_coords> with coords · 🔴 <leads_without_contacts> need enrichment · ✅ <leads_already_contacted> already touched
+\`\`\`
+
+**Then PROPOSE the right modes via \`ask_user_input_v0\`** (2-4 options, sorted by what makes the most sense for THIS campaign's data):
+
+- "📞 Start calling now" — IF \`ready_for_calling\`. Top option when phones are there.
+- "✉ Email session instead" — IF \`ready_for_emailing\` AND \`email_ratio > phone_ratio\`. Don't surface this when calling is more obvious.
+- "🔧 Enrich titles first" — IF \`needs_enrichment\`. Top option when most leads have no contacts. Phrase as "<N> leads have no reachable contact yet — enrich titles before we start?" so the user understands the cost.
+- "🗺 View on a map" — IF \`travel_friendly\` **AND** the user hasn't previously signaled disinterest in maps (check your conversation memory; if you've seen the user dismiss map renders before in this session or saved a "no maps" preference, drop this option).
+
+If the MCP prompt argument \`mode\` was actually supplied, skip the proposal and jump to the matching mode below. If \`mode\` was omitted, do not treat \`call_sheet\` as implicit user consent — propose first.
+
+# PHASE 2A — CALL-SHEET MODE (default after "📞 Start calling now")
+
+Render per the \`leadbay_campaign_call_sheet\` RENDERING block — one CARD per lead with the 4-col contact table (Contact / Phone / Role / Recent). The phone in column 2 MUST be \`[bare](tel:URL)\` (use \`contact.phone_tel_url\` verbatim — the composite has already canonicalized it). The contact name in column 1 MUST be \`[Name](linkedin_url)\`. Email stacks under the name when present (\`✉ [email](mailto_url)\`). Recent stacks \`📝 last note\` + \`📞 last_action_headline\`.
+
+End the turn with the standby line:
+
+> Ready to start calling. Tell me what happened after each call — I'll record the note + outcome.
+
+# PHASE 2B — EMAIL-SHEET MODE (after "✉ Email session instead")
+
+Same data, slightly different render emphasis: drop the Phone column, put \`✉ [email](mailto_url)\` as column 2. Below each lead's table, generate a SUGGESTED short email draft per the next-step — but DON'T send. Drafts are for the user to copy-paste / send themselves.
+
+# PHASE 2C — ENRICH-FIRST MODE (after "🔧 Enrich titles first")
+
+Extract \`leadIds\` from \`sheet.leads[].lead_id\`, then call \`leadbay_enrich_titles({leadIds, …})\` (consult its description for titles / email / phone selection; do not pass \`campaign_id\`, because that is not part of the tool schema). Surface progress to the user. When complete, automatically loop back to Phase 1 (re-fetch the call sheet, re-assess readiness, re-propose).
+
+# PHASE 2D — MAP MODE (after "🗺 View on a map")
+
+Pass \`response.map_locations\` directly to \`places_map_display_v0\` — the composite has already built the per-pin notes string with the top contact's phone inline. After the widget, emit the standard 4-col card list anyway so the rich detail is still scannable.
+
+# PHASE 3 — RECORD OUTCOMES, ONE AT A TIME (after the user starts dictating)
+
+When the user says something like *"Called Bree, voicemail, trying again Tuesday"* or *"Talked to John, wants pricing sent next week"*, parse:
+
+1. **Which lead** — by company name OR contact name (cross-reference with the cards you just rendered).
+2. **The note** — the user's exact words about what happened (the SDR's voice — don't paraphrase).
+3. **The outcome** — pick ONE of these four epilogue values based on what the user said:
+   - \`STILL_CHASING\` — pursuing, no decision yet ("trying again", "they'll get back to me")
+   - \`COULD_NOT_REACH_STILL_TRYING\` — voicemail, no answer, wrong number, gatekeeper blocked
+   - \`INTEREST_VALIDATED_OR_MEETING_PLANED\` — meeting booked, quote requested, "send me more info"
+   - \`NOT_INTERESTED_LOST\` — declined, "not now", "not a fit", "remove from list"
+
+Call \`leadbay_report_outreach({lead_id, note: <user's words>, epilogue_status: <picked>, verification: {source: "user_confirmed", ref: <user's exact words verbatim>}})\`. Confirm in ONE line: *"✅ Logged: <Company> → <epilogue>. Next?"*
+
+Then wait for the next dictation. Don't ask "anything else?" — just acknowledge and wait.
+
+# PHASE 4 — STOP
+
+When the user says "done" / "that's it" / "wrapping up" / similar, surface a session summary chip:
+
+> Session complete — N calls logged: X meetings booked · Y still chasing · Z couldn't reach · W declined.
+
+Optional: offer to review the \`leadbay_campaign_progression\` for the same campaign to see the updated counts.
+
+# Iron laws
+
+- The \`verification\` field on \`leadbay_report_outreach\` is REQUIRED. For calls (no message id), always use \`{source: "user_confirmed", ref: <user's verbatim words>}\`. Skipping it is forbidden; fabricating a gmail_message_id for a call is forbidden.
+- ONE call → ONE \`leadbay_report_outreach\` invocation. Don't batch; each call has its own note + outcome.
+- Map mode is OPT-IN, never automatic. The user invokes it via the proposal options or by passing \`mode=map\`.
+- If you've seen the user dismiss / dislike map renders earlier in the session, don't propose map mode again.
+- If the user dictates an outcome that doesn't cleanly map to one of the four epilogue values, ASK ONCE before guessing.
+`;
+// endregion: leadbay_work_campaign
+
 // Prompt metadata (descriptions + arguments) for MCP listings.
 export const PROMPT_META = {
   leadbay_daily_check_in: {"name":"leadbay_daily_check_in","short_description":"Run the canonical daily check-in: account state, fresh batch, triage\ntop 10, deep-dive every promising one, offer contact enrichment. The\nmorning DISCOVERY workflow (new leads from the lens wishlist). Trigger\non \"leadbay leads\", \"best NEW leads\", \"what's new today\", \"show me the\nday's batch\", \"let's prospect\". Do NOT trigger on follow-up phrasings\n(\"what should I follow up on\", \"before my trip\") — those go to\n`leadbay_followup_check_in`.\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_research_lead_by_id","leadbay_bulk_qualify_leads","leadbay_enrich_contacts"],"failure_modes":["Calls leadbay_report_outreach without explicit user authorization","Surfaces fewer than 10 leads when more are available, or fails to top up via leadbay_qualify_top_n when the batch is short","Replaces the canonical pull_leads table layout with prose per row (the per-tool RENDERING block is the structural contract; \"Today's nudges\" goes above it, not in place of it)","Skips the nudge paragraph entirely — the table alone is fine but adding the nudge is the value-add","Skips deep research on promising leads (Phase 4) — the agent must call leadbay_research_lead_by_id on each, not just one","Triggers contact enrichment without asking the user first (it consumes quota)","Skips the STOP byproduct and proposes next actions on its own","Fires 10 parallel leadbay_research_lead_by_id calls and treats \"stream closed\" errors as terminal — must serialize and retry singletons","Re-pulls leadbay_pull_leads without passing the captured lensId, allowing a backend lens shift to discard the Phase 2 batch","Treats a \"Request timed out\" from leadbay_bulk_qualify_leads as terminal instead of retrying with wait_for_completion:false + qualify_status polling","Triggers on a follow-up query (e.g., \"leads I should follow up with\") that should have routed to `leadbay_followup_check_in` — the two entry points are different data sources (Discover wishlist vs Monitor view) per §1.6"]},
   leadbay_followup_check_in: {"name":"leadbay_followup_check_in","short_description":"Run the canonical follow-up check-in: surface KNOWN leads from the\nMonitor view that need re-engagement today, ranked by AI urgency,\nwith the canonical pull_followups table layout. Trigger when the\nuser asks \"follow up\", \"already known leads\", \"leads I haven't\ncontacted\", \"leads in [city]\", \"before my trip\", \"this week\",\n\"this month\", \"what's overdue\", \"who should I re-engage\", or\nanything that implies pre-existing pipeline context.\n","arguments":[],"expected_calls":["leadbay_pull_followups","leadbay_research_lead_by_id","leadbay_prepare_outreach"],"failure_modes":["Calls leadbay_pull_leads (the Discover entry point) instead of leadbay_pull_followups — these are different data sources; the Discover queue does NOT contain Monitor's known-but-cold pipeline","Iterates pages of leadbay_pull_leads filtering by engagement_count to \"fake\" a follow-up view (a real bug observed in 0.9.0 — the right move is to call pull_followups directly)","Replaces the canonical pull_followups table layout with prose per row (the per-tool RENDERING block is the structural contract; commentary belongs above or below)","Skips the cross-mode pivot offer at the end (\"Want to see NEW leads from your wishlist instead?\" routes to leadbay_pull_leads)"]},
   leadbay_import_file: {"name":"leadbay_import_file","short_description":"Import a user-supplied CSV/file into Leadbay through five phases with\nevidence gates — scan, derive, resolve identities, preserve & commit,\nthen optionally qualify and report. The job is to maximize how many\nrows the Leadbay system actually ingests and matches.\n","arguments":[{"name":"file","description":"Path or user-visible name of the CSV/file to import. If omitted, use the file the user attached or referenced.","required":false},{"name":"instruction","description":"Additional user goal, e.g. \"then qualify the leads\", \"preserve owner phone as a custom field\", or \"only import restaurants in Manhattan\".","required":false}],"expected_calls":["leadbay_resolve_import_rows","leadbay_list_mappable_fields","leadbay_create_custom_field","leadbay_import_leads","leadbay_import_and_qualify","leadbay_add_note","leadbay_import_status"],"failure_modes":["Picks LEADBAY_ID from score alone, name-only, fuzzy-name-only, root-domain-only, brand-only, postcode-only, or city-only evidence","Drops meaningful business notes or CRM record links instead of preserving them as custom fields or lead notes","Treats a consumer mailbox domain (gmail.com, hotmail.com, ...) as the company domain","Skips deriving company_domain from a business email when no website column exists (this kills match rate)","Skips the COLUMN PRESERVATION PLAN byproduct before importing","Skips the DECISION LOG byproduct before writing LEADBAY_ID","Returns the imported records WITHOUT writing LEADBAY_ID values back into the user's file (leaves the user no audit trail of what matched)","Fabricates leadIds, contact emails, or mapping IDs not present in the file or a tool response"]},
   leadbay_log_outreach: {"name":"leadbay_log_outreach","short_description":"Log outreach (an email I sent, a call I made, a meeting I had) on a\nspecific lead. Captures verification so the SDR pipeline trusts the entry.\n","arguments":[{"name":"lead_id","description":"The lead UUID. Get it from leadbay_pull_leads or leadbay_research_lead_by_id.","required":true},{"name":"summary","description":"1-2 sentences describing what I did (e.g. 'Sent intro email to CTO citing recent Hornsea contract').","required":true}],"expected_calls":["leadbay_report_outreach"],"failure_modes":["Calls leadbay_report_outreach without first collecting a verification source","Fabricates a gmail_message_id or calendar_event_id (the human team treats verification as canonical)","Records outreach to a different lead_id than the one the user supplied","Skips the dry_run step when the user is unsure what would be sent"]},
+  leadbay_plan_tour_in_city: {"name":"leadbay_plan_tour_in_city","short_description":"Plan a field sales tour: in one flow, surface follow-ups + fresh\nDiscover leads in the target city via `leadbay_tour_plan`, render\nto a map, draft in-area outreach via `leadbay_prepare_outreach`,\nand optionally persist the selected accounts as a named campaign\nvia `leadbay_create_campaign`. Closes #3630 US1 end-to-end.\n","arguments":[{"name":"city","description":"City or region the user is visiting (e.g. 'Limoges', 'Bay Area'). Used as the geo filter for both Monitor and Discover lookups.","required":true},{"name":"date","description":"When the visit is (e.g. 'May 24', 'next Thursday'). Surfaced in the outreach drafts as 'I'll be in <city> on <date>'.","required":false}],"expected_calls":["leadbay_tour_plan","leadbay_research_lead_by_id","leadbay_prepare_outreach","leadbay_create_campaign"],"failure_modes":["Calls leadbay_followups_map (Monitor-only) instead of leadbay_tour_plan — loses the Discover (fresh-lead) half that the user explicitly asked for","Calls leadbay_pull_leads then drops the geo filter — returns the lens-wide wishlist instead of city-relevant fresh leads","Skips the campaign-persist step (\"would you like to save these as a tour?\") — leaves the rep with a one-shot map but no follow-up artifact","Creates a campaign WITHOUT asking the user first — the persist step is high-intent; offer it, don't assume","Fabricates lead_ids when seeding the campaign instead of using the ids returned by tour_plan"]},
   leadbay_prospecting_overview: {"name":"leadbay_prospecting_overview","short_description":"Orientation for working with Leadbay from any host — discovery vs.\nfollow-up, the outreach loop, outcome recording, imports, pushback /\nsnooze, and the connected-outreach-tool registry. Trigger when the\nconversation involves Leadbay leads, prospecting, pipeline, follow-up,\noutreach, or lens / ICP — anything from \"show me my leads\" to \"what\nshould I follow up on\" to \"I'll send via lemlist\".\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_pull_followups","leadbay_research_lead_by_id","leadbay_research_lead_by_name_fuzzy","leadbay_prepare_outreach","leadbay_report_outreach","leadbay_set_pushback","leadbay_remove_pushback","leadbay_bulk_qualify_leads","leadbay_enrich_titles","leadbay_import_leads","leadbay_add_note","leadbay_adjust_audience"],"failure_modes":["Drives outreach without asking the user \"how did it go?\" afterwards — leaving prospecting_actions and epilogue_status stale","Says \"epilogue\" in user-facing dialogue instead of \"outcome\"","Says \"Monitor\" in user-facing dialogue instead of \"follow-ups\"","Treats a \"not now / next quarter\" reply as a note instead of routing through the pushback mechanism","Drafts outreach in a generic format when the user has a connected sequencer (lemlist, Outreach.io, etc.) that has its own idiom","Re-pulls leads without passing the captured lensId, allowing a backend lens shift to discard prior work","Skips the STOP byproduct in any multi-step workflow it triggers","Calls leadbay_pull_leads (Discover wishlist) for a follow-up query, or leadbay_pull_followups (Monitor view) for a discovery query — the two entry points read from different backend tables; the right orchestrators are leadbay_daily_check_in (discovery) and leadbay_followup_check_in (follow-up)"]},
   leadbay_qualify_top_n: {"name":"leadbay_qualify_top_n","short_description":"Bulk-qualify the top N un-qualified leads in the active lens. Uses\nleadbay_bulk_qualify_leads with a sensible default budget.\n","arguments":[{"name":"count","description":"How many leads to qualify (default 10, max 25). Higher counts may take 5+ minutes.","required":false}],"expected_calls":["leadbay_bulk_qualify_leads","leadbay_qualify_status","leadbay_pull_leads","leadbay_research_lead_by_id"],"failure_modes":["Picks a count larger than the user asked for (or larger than the max 25)","Glosses over still-running leads in the summary instead of naming them","Recommends a lead from the existing qualified pool instead of one from this batch's actual results","Replaces the canonical pull_leads table with prose when rendering the newly-qualified batch (the per-tool RENDERING block is the structural contract; \"standouts\" commentary sits above it)","Expands the qualify-status sentence into a card or table instead of the one-line status-inline render"]},
   leadbay_refine_audience: {"name":"leadbay_refine_audience","short_description":"Refine the kind of leads Leadbay surfaces beyond firmographics, with a\nfree-text instruction. Handles the clarification round-trip if the new\nprompt is ambiguous.\n","arguments":[{"name":"instruction","description":"The refinement (e.g. 'focus on hospitals running their own IT'). Set to plain English.","required":true}],"expected_calls":["leadbay_refine_prompt","leadbay_account_status"],"failure_modes":["Calls leadbay_answer_clarification on the user's behalf instead of surfacing the clarification verbatim","Glosses over the clarification options instead of presenting them as offered","Promises immediate effect when status='applied' actually triggers an async intelligence recompute"]},
   leadbay_research_a_domain: {"name":"leadbay_research_a_domain","short_description":"Import a company by domain and run deep qualification + research in one\npass. Use when a colleague mentions a name and you want everything Leadbay\nknows about it.\n","arguments":[{"name":"domain","description":"The company's primary domain (e.g. 'acme.com'). Protocol/path are stripped.","required":true}],"expected_calls":["leadbay_import_and_qualify","leadbay_research_lead_by_id"],"failure_modes":["Fabricates qualification answers not present in any tool response","Reports certainty about fit when qualification didn't actually run (e.g. quota_blocked)","Skips the research step after import completes","Renders the research_lead_by_id result as a freeform narrative instead of the canonical research-company-card layout (the card with header score bar, pill row, signal sections, contacts table is the structural contract; commentary belongs ABOVE or BELOW it)","Enumerates every imported lead in prose instead of the terse single-record summary from the import-result rendering snippet"]},
+  leadbay_setup_team_prospecting: {"name":"leadbay_setup_team_prospecting","short_description":"Manager-led prospecting setup: conversationally turn a natural-language\naudience ask into a Leadbay lens, validate the candidate leads, and\npersist them as one or more named campaigns the rep(s) can work\nthrough. Closes #3630 US3 end-to-end (within the current\ncreator-scoped campaign visibility model).\n","arguments":[{"name":"audience","description":"Natural-language audience description (e.g. 'plumbing companies with 10-50 employees in Seine-Maritime'). The lens-creation step (`leadbay_refine_prompt` → `leadbay_create_lens`) interprets it.","required":true},{"name":"rep_split","description":"Optional: how to split the validated leads into per-rep campaigns. Free text — e.g. 'split by city' or 'one campaign per rep: John gets Tulsa, Sarah gets OKC'.","required":false}],"expected_calls":["leadbay_refine_prompt","leadbay_create_lens","leadbay_promote_lens","leadbay_pull_leads","leadbay_research_lead_by_id","leadbay_create_campaign","leadbay_add_leads_to_campaign"],"failure_modes":["Skips the validation step — creates a campaign of unvetted leads from a freshly-created lens without giving the manager a chance to drop weak fits","Creates ONE campaign for all reps without asking about the split — the user explicitly mentioned per-rep distribution and the prompt should honor it","Pretends the backend supports cross-user assignment — campaigns are owned by the caller (creator-scoped). Surface this honestly instead of fabricating an assignment model","Asks ALL clarifying questions inline before tool calls — instead, run the lens refinement loop with `leadbay_refine_prompt` which handles the clarification protocol natively"]},
+  leadbay_work_campaign: {"name":"leadbay_work_campaign","short_description":"Work a campaign as a real outreach session: pick the campaign,\nassess what the user has (phones / emails / coords), then PROPOSE\nthe right session mode (call sheet, email sheet, enrich titles\nfirst, map). After they pick, render — and as they dictate\noutcomes per lead, record both note + epilogue via\n`leadbay_report_outreach` in one round trip.\n","arguments":[{"name":"campaign","description":"Campaign name (fuzzy match against your own campaigns) or campaign UUID. Omit to list and pick interactively.","required":false},{"name":"mode","description":"Optional: skip the readiness-assessment proposal and jump directly into 'call_sheet' / 'email_sheet' / 'map' / 'enrich_first'. Omit (recommended) and let the prompt propose based on the data.","required":false}],"expected_calls":["leadbay_list_campaigns","leadbay_campaign_call_sheet","leadbay_enrich_titles","leadbay_report_outreach"],"failure_modes":["Renders the call sheet immediately without proposing the right mode — if 60% of leads have no contacts, calling is futile; enrich first. Always assess `readiness` first.","Auto-renders the map widget without asking — maps are intrusive when the user just wants to scroll a list. Map mode is a proposed option, not a default.","Proposes map mode after the user has previously said they don't like maps — check conversation memory before adding 'View on a map' to the options list.","Calls `leadbay_campaign_progression` instead of `leadbay_campaign_call_sheet` — progression has counts but no phones / LinkedIn / call-ready data; the user can't actually dial from progression rows.","Renders contacts WITHOUT making the phone number a `[bare](tel:URL)` link — on mobile that breaks one-tap calling, which is the whole point of the cheat sheet.","Records outreach WITHOUT epilogue_status — leaves the lead's pipeline state unchanged; the rep then sees the same lead surfaced again next session.","Records outreach WITHOUT verification — verification.source/ref is REQUIRED. For calls, pass `{source: 'user_confirmed', ref: <user's exact words>}`.","Loops through ALL leads in a 50-lead campaign before recording any outreach — the call-then-record loop must be per-lead, not batched."]},
 } as const;
 
 export type PromptName = keyof typeof PROMPT_META;
@@ -925,10 +1140,13 @@ export const PROMPT_CATALOG_BULLETS = {
   leadbay_followup_check_in: `- \`leadbay_followup_check_in\`: Run the canonical follow-up check-in: surface KNOWN leads from the Monitor view that need re-engagement today, ranked by AI urgency, with the canonical pull_followups table layout. Trigger when the user asks "follow up", "already known leads", "leads I haven't contacted", "leads in [city]", "before my trip", "this week", "this month", "what's overdue", "who should I re-engage", or anything that implies pre-existing pipeline context.`,
   leadbay_import_file: `- \`leadbay_import_file\` (optional args: file, instruction): Import a user-supplied CSV/file into Leadbay through five phases with evidence gates — scan, derive, resolve identities, preserve & commit, then optionally qualify and report. The job is to maximize how many rows the Leadbay system actually ingests and matches.`,
   leadbay_log_outreach: `- \`leadbay_log_outreach\` (required args: lead_id, summary): Log outreach (an email I sent, a call I made, a meeting I had) on a specific lead. Captures verification so the SDR pipeline trusts the entry.`,
+  leadbay_plan_tour_in_city: `- \`leadbay_plan_tour_in_city\` (required args: city; optional args: date): Plan a field sales tour: in one flow, surface follow-ups + fresh Discover leads in the target city via \`leadbay_tour_plan\`, render to a map, draft in-area outreach via \`leadbay_prepare_outreach\`, and optionally persist the selected accounts as a named campaign via \`leadbay_create_campaign\`. Closes #3630 US1 end-to-end.`,
   leadbay_prospecting_overview: `- \`leadbay_prospecting_overview\`: Orientation for working with Leadbay from any host — discovery vs. follow-up, the outreach loop, outcome recording, imports, pushback / snooze, and the connected-outreach-tool registry. Trigger when the conversation involves Leadbay leads, prospecting, pipeline, follow-up, outreach, or lens / ICP — anything from "show me my leads" to "what should I follow up on" to "I'll send via lemlist".`,
   leadbay_qualify_top_n: `- \`leadbay_qualify_top_n\` (optional args: count): Bulk-qualify the top N un-qualified leads in the active lens. Uses leadbay_bulk_qualify_leads with a sensible default budget.`,
   leadbay_refine_audience: `- \`leadbay_refine_audience\` (required args: instruction): Refine the kind of leads Leadbay surfaces beyond firmographics, with a free-text instruction. Handles the clarification round-trip if the new prompt is ambiguous.`,
   leadbay_research_a_domain: `- \`leadbay_research_a_domain\` (required args: domain): Import a company by domain and run deep qualification + research in one pass. Use when a colleague mentions a name and you want everything Leadbay knows about it.`,
+  leadbay_setup_team_prospecting: `- \`leadbay_setup_team_prospecting\` (required args: audience; optional args: rep_split): Manager-led prospecting setup: conversationally turn a natural-language audience ask into a Leadbay lens, validate the candidate leads, and persist them as one or more named campaigns the rep(s) can work through. Closes #3630 US3 end-to-end (within the current creator-scoped campaign visibility model).`,
+  leadbay_work_campaign: `- \`leadbay_work_campaign\` (optional args: campaign, mode): Work a campaign as a real outreach session: pick the campaign, assess what the user has (phones / emails / coords), then PROPOSE the right session mode (call sheet, email sheet, enrich titles first, map). After they pick, render — and as they dictate outcomes per lead, record both note + epilogue via \`leadbay_report_outreach\` in one round trip.`,
 } as const;
 
 export const PROMPT_CATALOG_INSTRUCTIONS: string = `This server exposes the following workflow prompts via \`prompts/list\` and \`prompts/get\`. Some MCP clients render them as slash commands; if your client does not, you (the agent) should invoke them directly via \`prompts/get\` when the user's request matches one of the triggers described below.
@@ -937,7 +1155,10 @@ export const PROMPT_CATALOG_INSTRUCTIONS: string = `This server exposes the foll
 - \`leadbay_followup_check_in\`: Run the canonical follow-up check-in: surface KNOWN leads from the Monitor view that need re-engagement today, ranked by AI urgency, with the canonical pull_followups table layout. Trigger when the user asks "follow up", "already known leads", "leads I haven't contacted", "leads in [city]", "before my trip", "this week", "this month", "what's overdue", "who should I re-engage", or anything that implies pre-existing pipeline context.
 - \`leadbay_import_file\` (optional args: file, instruction): Import a user-supplied CSV/file into Leadbay through five phases with evidence gates — scan, derive, resolve identities, preserve & commit, then optionally qualify and report. The job is to maximize how many rows the Leadbay system actually ingests and matches.
 - \`leadbay_log_outreach\` (required args: lead_id, summary): Log outreach (an email I sent, a call I made, a meeting I had) on a specific lead. Captures verification so the SDR pipeline trusts the entry.
+- \`leadbay_plan_tour_in_city\` (required args: city; optional args: date): Plan a field sales tour: in one flow, surface follow-ups + fresh Discover leads in the target city via \`leadbay_tour_plan\`, render to a map, draft in-area outreach via \`leadbay_prepare_outreach\`, and optionally persist the selected accounts as a named campaign via \`leadbay_create_campaign\`. Closes #3630 US1 end-to-end.
 - \`leadbay_prospecting_overview\`: Orientation for working with Leadbay from any host — discovery vs. follow-up, the outreach loop, outcome recording, imports, pushback / snooze, and the connected-outreach-tool registry. Trigger when the conversation involves Leadbay leads, prospecting, pipeline, follow-up, outreach, or lens / ICP — anything from "show me my leads" to "what should I follow up on" to "I'll send via lemlist".
 - \`leadbay_qualify_top_n\` (optional args: count): Bulk-qualify the top N un-qualified leads in the active lens. Uses leadbay_bulk_qualify_leads with a sensible default budget.
 - \`leadbay_refine_audience\` (required args: instruction): Refine the kind of leads Leadbay surfaces beyond firmographics, with a free-text instruction. Handles the clarification round-trip if the new prompt is ambiguous.
-- \`leadbay_research_a_domain\` (required args: domain): Import a company by domain and run deep qualification + research in one pass. Use when a colleague mentions a name and you want everything Leadbay knows about it.`;
+- \`leadbay_research_a_domain\` (required args: domain): Import a company by domain and run deep qualification + research in one pass. Use when a colleague mentions a name and you want everything Leadbay knows about it.
+- \`leadbay_setup_team_prospecting\` (required args: audience; optional args: rep_split): Manager-led prospecting setup: conversationally turn a natural-language audience ask into a Leadbay lens, validate the candidate leads, and persist them as one or more named campaigns the rep(s) can work through. Closes #3630 US3 end-to-end (within the current creator-scoped campaign visibility model).
+- \`leadbay_work_campaign\` (optional args: campaign, mode): Work a campaign as a real outreach session: pick the campaign, assess what the user has (phones / emails / coords), then PROPOSE the right session mode (call sheet, email sheet, enrich titles first, map). After they pick, render — and as they dictate outcomes per lead, record both note + epilogue via \`leadbay_report_outreach\` in one round trip.`;

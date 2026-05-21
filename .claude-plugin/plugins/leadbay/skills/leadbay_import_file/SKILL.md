@@ -4,7 +4,7 @@ description: "Import a user-supplied CSV/file into Leadbay through five phases w
 ---
 
 
-Import the user's Leadbay file<if the user named one, render as " (<filename>)" with a leading space; otherwise empty. Source: Path or user-visible name of the CSV/file to import. If omitted, use the file the user attached or referenced.> and satisfy this instruction: <the user-supplied value if any; otherwise a sensible default. Source: Additional user goal, e.g. "then qualify the leads", "preserve owner phone as a custom field", or "only import restaurants in Manhattan".>.
+Import the user's Leadbay file<if the user supplied this argument, render the short parenthetical or inline clause derived from it; otherwise empty. Source: Path or user-visible name of the CSV/file to import. If omitted, use the file the user attached or referenced.> and satisfy this instruction: <the user-supplied value if any; otherwise a sensible default. Source: Additional user goal, e.g. "then qualify the leads", "preserve owner phone as a custom field", or "only import restaurants in Manhattan".>.
 
 # GOAL — what we're actually trying to do
 

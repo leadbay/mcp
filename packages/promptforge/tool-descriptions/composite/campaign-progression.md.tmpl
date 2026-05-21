@@ -1,0 +1,64 @@
+---
+name: leadbay_campaign_progression
+kind: tool-description
+short_description: |
+  Per-lead progression inside one campaign. For each lead: contact
+  counts (total / in-progress / declined), the most recent
+  interaction headline, and affiliation overlap (which OTHER
+  campaigns this lead is also in, plus a teammate-overlap count).
+  The drill-down view for managerial follow-up.
+routing:
+  triggers:
+    - "how is my <name> campaign doing"
+    - "campaign progression"
+    - "lead-by-lead status on <campaign>"
+    - "who in <campaign> have I contacted"
+    - "what's stuck in my campaign"
+  anti_triggers:
+    - phrase: "pulse across all campaigns (not one)"
+      route_to: leadbay_list_campaigns
+    - phrase: "log an outreach event"
+      route_to: leadbay_report_outreach
+  prefer_when: "user named (or just selected from list_campaigns) ONE campaign and wants per-lead status. Use list_campaigns for the cross-campaign overview"
+  examples:
+    positive:
+      - "Walk me through the Limoges Tour campaign — who have I touched?"
+      - "Show progression on campaign 1f12...?"
+      - "What's stuck in my Q2 Push?"
+    negative:
+      - "Show me all my campaigns."
+      - "Create a new campaign."
+      - "Log that I emailed Acme."
+rendering_hint: |
+  Two-tier render. Top: one-line summary
+  ("Limoges Tour: 9 leads · 4 contacted · 1 meeting · 0 declined").
+  Then a markdown table per lead:
+  | Lead | Score | Contacts | Last action | Also in |
+  Each row's "Also in" column lists `affiliation.own_campaigns[]`
+  names (with a ⚠ suffix if `other_users_campaign_count > 0`,
+  indicating teammates also have it). Sort by progress.headline
+  recency or by score desc — pick whichever surfaces "needs
+  attention" leads first.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Per-lead progression view for one campaign. Wraps `GET /campaigns/{id}/leads` (paginated). For every lead in the campaign:
+
+- **lead** — full `LeadPayload` (same shape `pull_leads` / `pull_followups` return), so the agent has score, contacts, ai_summary, location, etc. without an extra round trip.
+- **progress** — `{total_contacts, in_progress, declined, headline}`. `total_contacts` is reachable contact coverage; do not treat it as prior outreach. `headline` is the most recent `InteractionType` (CONTACTED / MEETING_BOOKED / DECLINED / etc.) and is the load-bearing field for "what stage is this lead at".
+- **affiliation** — `{own_campaigns: CampaignRefPayload[], other_users_campaign_count}`. `own_campaigns` lists OTHER campaigns of yours this lead is in (overlap detection — avoids the rep doubling outreach across two of their own campaigns). `other_users_campaign_count` is how many teammates also have this lead in one of THEIR campaigns. This is the only cross-user signal the campaign API exposes.
+
+The composite also adds a `summary` block computed across the current page (`{page_size, contacted, in_progress, declined}`) so a quick "how is this campaign doing" prompt doesn't need to roll up the items array itself.
+
+**Pagination**: `count` defaults to 50; `page` is 0-indexed. For campaigns with hundreds of leads, page through and concatenate the summary counts.
+
+---
+
+{{include:headers/tool-when-to-use}} after `leadbay_list_campaigns` (or when the user named a specific campaign): the manager wants per-lead status to spot leads needing re-engagement, leads stuck, or leads that progressed to a meeting.
+
+{{include:headers/tool-when-not-to-use}} for cross-campaign pulse (use `leadbay_list_campaigns`); to drill into a lead's full timeline (use `leadbay_get_lead_activities` or `leadbay_research_lead_by_id`); to log outreach (`leadbay_report_outreach`).
+
+**Response**: `{items, pagination, summary, _meta}`. Use the `summary` for the one-line headline; use `items` for the per-lead table.

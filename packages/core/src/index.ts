@@ -75,6 +75,12 @@ import { prepareOutreach } from "./composite/prepare-outreach.js";
 import { pullLeads } from "./composite/pull-leads.js";
 import { pullFollowups } from "./composite/pull-followups.js";
 import { followupsMap } from "./composite/followups-map.js";
+import { tourPlan } from "./composite/tour-plan.js";
+import { createCampaign } from "./composite/create-campaign.js";
+import { addLeadsToCampaign } from "./composite/add-leads-to-campaign.js";
+import { listCampaigns } from "./composite/list-campaigns.js";
+import { campaignProgression } from "./composite/campaign-progression.js";
+import { campaignCallSheet } from "./composite/campaign-call-sheet.js";
 import { researchLeadById } from "./composite/research-lead-by-id.js";
 import { researchLeadByNameFuzzy } from "./composite/research-lead-by-name-fuzzy.js";
 import { recallOrderedTitles } from "./composite/recall-ordered-titles.js";
@@ -213,6 +219,10 @@ export const compositeReadTools: Tool[] = [
   pullLeads,
   pullFollowups,
   followupsMap,
+  tourPlan,
+  listCampaigns,
+  campaignProgression,
+  campaignCallSheet,
   researchLeadById,
   researchLeadByNameFuzzy,
   recallOrderedTitles,
@@ -257,6 +267,10 @@ export const compositeWriteTools: Tool[] = [
   // to the agent without requiring LEADBAY_MCP_ADVANCED=1.
   likeLead,
   dislikeLead,
+  // Campaign write composites — persist a hand-picked cohort of leads.
+  // Backend POST endpoints; gated behind LEADBAY_MCP_WRITE=1 in MCP.
+  createCampaign,
+  addLeadsToCampaign,
 ];
 
 // Backward-compat alias for existing consumers.

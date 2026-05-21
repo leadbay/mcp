@@ -985,6 +985,24 @@ const OPT_OUT: Record<string, string> = {
     "Single-field {url} response from POST /stripe/topup_checkout; the conformance signal is trivially the URL string. Live-probed shape lives in the tool source comment.",
   leadbay_open_billing_portal:
     "Single-field {url} response from GET /stripe/portal; sibling of create_topup_link with identical conformance signal.",
+  // Tour planning + campaign trio (added for #3630 US1/US3). Each composes
+  // existing tools or wraps a single live-probed POST/GET — the conformance
+  // signal would just re-assert pullFollowups/pullLeads or the snake_case
+  // CampaignPayload shape, which is documented in
+  // .context/campaigns-probe/API.md. Per-tool execution shapes are
+  // exercised by the live smoke E2E (test/smoke/live.test.ts).
+  leadbay_tour_plan:
+    "Glue over pullFollowups + pullLeads — conformance signal duplicates those tools'.",
+  leadbay_create_campaign:
+    "Single POST /campaigns wrapping the live-probed CampaignPayload shape.",
+  leadbay_add_leads_to_campaign:
+    "Single POST /campaigns/{id}/leads with {added, already_present} response.",
+  leadbay_list_campaigns:
+    "Single GET /campaigns returning CampaignWithStatsPayload[]; envelope-level shape.",
+  leadbay_campaign_progression:
+    "Single GET /campaigns/{id}/leads — paginated CampaignLeadPayload items.",
+  leadbay_campaign_call_sheet:
+    "Joins GET /campaigns/{id}/contacts + /leads into a call-ready payload; per-contact shape exercised by live-campaigns smoke (test/smoke/live-campaigns.test.ts).",
 };
 
 // -----------------------------------------------------------------------

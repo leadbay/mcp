@@ -39,6 +39,9 @@ describe("prompts/* capability (P2 prompts)", () => {
       "leadbay_import_file",
       "leadbay_refine_audience",
       "leadbay_log_outreach",
+      "leadbay_plan_tour_in_city",
+      "leadbay_setup_team_prospecting",
+      "leadbay_work_campaign",
       "leadbay_qualify_top_n",
     ]);
     // Each prompt has a description.
@@ -95,6 +98,31 @@ describe("prompts/* capability (P2 prompts)", () => {
     expect(text).toContain("Salesforce");
     // The new GOAL section explicitly teaches what a job-well-done looks like.
     expect(text).toContain("augmented file");
+  });
+
+  it("prompts/get(work_campaign) keeps omitted mode as readiness-first", async () => {
+    const { mcpClient } = await connect();
+    const listed = await mcpClient.listPrompts();
+    const workCampaign = listed.prompts.find((p) => p.name === "leadbay_work_campaign");
+    expect(workCampaign?.arguments?.find((a) => a.name === "mode")?.description).toContain("email_sheet");
+    expect(workCampaign?.arguments?.find((a) => a.name === "mode")?.description).toContain("enrich_first");
+
+    const defaultResult = await mcpClient.getPrompt({
+      name: "leadbay_work_campaign",
+      arguments: { campaign: "Q2 Push" },
+    });
+    const defaultText = (defaultResult.messages[0].content as any).text;
+    expect(defaultText).toContain("Work my **Q2 Push** campaign as an outreach session.");
+    expect(defaultText).toContain("do not treat `call_sheet` as implicit user consent");
+    expect(defaultText).toContain("leadbay_enrich_titles({leadIds");
+    expect(defaultText).not.toContain("leadbay_enrich_titles({campaign_id");
+
+    const mapResult = await mcpClient.getPrompt({
+      name: "leadbay_work_campaign",
+      arguments: { campaign: "Q2 Push", mode: "map" },
+    });
+    const mapText = (mapResult.messages[0].content as any).text;
+    expect(mapText).toContain("Work my **Q2 Push** campaign as an outreach session (mode: map).");
   });
 
   it("prompts/get with missing required argument errors", async () => {

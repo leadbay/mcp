@@ -1,0 +1,67 @@
+---
+name: leadbay_create_campaign
+kind: tool-description
+short_description: |
+  Create a named campaign — a persistent grouping of leads the user
+  (or their manager) plans to work systematically. Seed it with
+  lead_ids at creation (the backend AI-suggests a name from them) or
+  start empty and add leads later via
+  `leadbay_add_leads_to_campaign`. Persists the user's prospecting
+  decisions across sessions.
+routing:
+  triggers:
+    - "create a campaign called <name>"
+    - "save these leads as a campaign"
+    - "make a campaign for my <city> trip"
+    - "track these leads together"
+    - "group these leads into a named campaign"
+    - "persist these leads"
+  anti_triggers:
+    - phrase: "list my existing campaigns"
+      route_to: leadbay_list_campaigns
+    - phrase: "add leads to an existing campaign"
+      route_to: leadbay_add_leads_to_campaign
+    - phrase: "log an outreach event"
+      route_to: leadbay_report_outreach
+  prefer_when: "user wants to persist a hand-picked set of leads as a named cohort they'll work through. Often follows leadbay_pull_leads / leadbay_tour_plan / leadbay_research_lead_by_id"
+  examples:
+    positive:
+      - "Save these 9 leads as a campaign called 'Limoges Tour – May 24'."
+      - "Create a campaign for the qualified leads I just picked."
+      - "Make a campaign for my SF visit and add those three accounts."
+    negative:
+      - "What campaigns do I have?"
+      - "Add three more leads to my 'Q2 Push' campaign."
+      - "I just emailed Acme — log it."
+rendering_hint: |
+  One-line confirmation: ✅ Created **<name>** with N leads · <id-short>.
+  If the backend AI-generated the name (no `name` passed), surface that:
+  "AI-suggested name: <name>". Offer a NEXT STEPS chip for "Add more
+  leads" or "Open in web UI". Don't dump the full campaign payload as a
+  table — the user only needs the confirmation + the id for follow-up.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: false
+  openWorldHint: true
+---
+Create a new campaign — a server-persisted grouping of leads the user (or their manager) plans to work systematically. Wraps `POST /campaigns` (see `.context/campaigns-probe/API.md` for the discovered shape). Body is snake_case (the backend's `apiJson` uses `JsonNamingStrategy.SnakeCase`); this composite handles that translation — agents pass camelCase via the input schema but the wire is snake_case.
+
+**Name behavior**:
+- Pass `name` explicitly when the user named it ("Limoges Tour – May 24"). Max 255 chars.
+- Omit `name` AND pass non-empty `lead_ids` → backend calls `SuggestCampaignName.generate()` to AI-pick a name from the seed leads. Returned as both `name` (final) and `ai_generated_name` (the suggestion, in case the user wants to rename later).
+- Omit both → backend assigns a default (e.g. "Untitled campaign").
+
+**Seed leads vs. empty**:
+- Seed with `lead_ids: [...]` when the user already picked the leads (chain after `leadbay_tour_plan`, `leadbay_pull_leads`, `leadbay_research_lead_by_id`).
+- Create empty (`lead_ids: []`, default) and add later via `leadbay_add_leads_to_campaign` — useful when the user named the campaign first and wants to populate it incrementally.
+
+**Scope**: campaigns are created in the caller's organization and `created_by = caller_user_id`. The list endpoint (`leadbay_list_campaigns`) is filtered to the creator — campaigns ARE NOT shared with teammates by default. For #3630 US3 "manager creates a campaign for a rep", today's MCP workaround is to name campaigns descriptively ("North-East – John") and have the rep visit /app to access via the web UI; cross-user assignment would need backend work.
+
+---
+
+{{include:headers/tool-when-to-use}} the user wants to persist a hand-picked set of leads as a named cohort they'll work through systematically. Typical chains: `tour_plan → create_campaign(lead_ids=[...selected])` for trip planning, or `pull_leads → research_lead_by_id → create_campaign` for incremental promising-lead curation.
+
+{{include:headers/tool-when-not-to-use}} to LIST existing campaigns (use `leadbay_list_campaigns`); to ADD leads to an existing one (use `leadbay_add_leads_to_campaign`); to LOG an outreach event (use `leadbay_report_outreach`); to view per-lead campaign progression (use `leadbay_campaign_progression`).
+
+**Response**: full `CampaignPayload` — `{id, name, ai_generated_name?, ai_name_count, archived, created_by, created_at, updated_at, last_accessed_at}`. Echo `id` back to the user as the handle for follow-up tool calls.

@@ -1,0 +1,55 @@
+---
+name: leadbay_list_campaigns
+kind: tool-description
+short_description: |
+  List the caller's campaigns with roll-up stats (lead count,
+  contact count, contacted / meeting-booked / declined counts). The
+  manager's "what's in flight" view. Scoped to the calling user —
+  teammates' campaigns are not surfaced (backend filters by
+  `created_by`).
+routing:
+  triggers:
+    - "what campaigns do I have"
+    - "list my campaigns"
+    - "show me my active campaigns"
+    - "campaign overview"
+    - "what's in flight"
+    - "pulse on my campaigns"
+  anti_triggers:
+    - phrase: "create a new campaign"
+      route_to: leadbay_create_campaign
+    - phrase: "drill into one specific campaign's progression"
+      route_to: leadbay_campaign_progression
+  prefer_when: "user wants the pulse / overview view across all their campaigns. Use campaign_progression to drill into one"
+  examples:
+    positive:
+      - "What campaigns am I running?"
+      - "Show me my active campaigns and how they're doing."
+      - "Quick pulse on my campaigns."
+    negative:
+      - "Create a 'Q2 Push' campaign."
+      - "How are leads progressing in my Limoges Tour?"
+      - "Today's fresh leads."
+rendering_hint: |
+  Render as a compact markdown table sorted by `updated_at` desc:
+  | Campaign | Leads | Contacted | Meetings | Declined | Updated |
+  Each row links to "View progression" via a NEXT STEPS chip that
+  passes the campaign_id back into `leadbay_campaign_progression`.
+  Suppress archived rows unless `archived: true` was passed.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+List the caller's campaigns with roll-up stats. Wraps `GET /campaigns` (with `?archived=true` to surface archived ones). Each entry is `CampaignWithStatsPayload`: the campaign object + `lead_count`, `contact_count`, `contacted` (leads with any logged outreach), `meeting_booked` (leads with a recorded meeting outcome), `declined` (leads with a recorded decline).
+
+**Scope warning**: this list is filtered server-side to campaigns the calling user CREATED. Other users in the same organization with their own campaigns are not surfaced. The web UI may aggregate differently for admins; the MCP-exposed view is creator-scoped. This matters for #3630 US3 "manager-led prospecting governance" — a manager can list their own campaigns but not see a rep's. Cross-user visibility would need backend work.
+
+---
+
+{{include:headers/tool-when-to-use}} the user wants the cross-campaign pulse — what cohorts are in flight, how active each is, which need attention.
+
+{{include:headers/tool-when-not-to-use}} for per-lead progression inside ONE campaign (use `leadbay_campaign_progression`); to create a campaign (`leadbay_create_campaign`); to add leads to one (`leadbay_add_leads_to_campaign`).
+
+**Response**: `{campaigns: CampaignWithStats[], _meta}`. Sort by `updated_at desc` when rendering — recency is the manager's natural lens.

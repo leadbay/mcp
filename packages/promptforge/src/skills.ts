@@ -32,7 +32,11 @@ const ARG_PATTERN = /\{\{arg:([a-z_][a-z0-9_]*)\}\}/g;
  */
 const DERIVED_HINTS: Record<string, (baseDescription: string) => string> = {
   paren: (d) =>
-    `<if the user named one, render as " (<filename>)" with a leading space; otherwise empty. Source: ${d}>`,
+    `<if the user supplied this argument, render the short parenthetical or inline clause derived from it; otherwise empty. Source: ${d}>`,
+  block: (d) =>
+    `<if the user supplied this argument, render the short block derived from it; otherwise empty. Source: ${d}>`,
+  dash: (d) =>
+    `<if the user supplied this argument, render the dash-prefixed phrase derived from it; otherwise empty. Source: ${d}>`,
   or_default: (d) =>
     `<the user-supplied value if any; otherwise a sensible default. Source: ${d}>`,
 };
