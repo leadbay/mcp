@@ -13,22 +13,18 @@ routing:
     - "look up <Company>"
     - "research <Company>"
     - "what do we know about <Company>"
-    - "find <Company> in my pipeline"
-    - "tell me about <Company>"
   anti_triggers:
-    - phrase: "user picked a row from a previous list (you have leadId)"
+    - phrase: "picked row with leadId"
       route_to: leadbay_research_lead_by_id
     - phrase: "draft outreach for <Contact>"
       route_to: leadbay_prepare_outreach
-  prefer_when: "user names a company in prose without a Leadbay id — composite fuzzy-matches against the active lens's wishlist."
+  prefer_when: "company name in prose and no Leadbay id yet"
   examples:
     positive:
       - "Look up Acme Corp for me."
-      - "What do we know about Globex?"
       - "Find Initech in my pipeline."
     negative:
       - "Tell me about that lead I just picked."
-      - "Show me today's prospects."
       - "Draft outreach to Acme's CTO."
 annotations:
   readOnlyHint: true

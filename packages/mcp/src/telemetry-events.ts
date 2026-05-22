@@ -14,6 +14,9 @@ export const EV_MCP_UPDATE_PROMPTED = "mcp update prompted";
 export const EV_MCP_UPDATE_INSTALL_CLICKED = "mcp update install_clicked";
 export const EV_MCP_UPDATE_DISMISSED = "mcp update dismissed";
 export const EV_MCP_VERSION_UPDATED = "mcp version updated";
+export const EV_AGENT_MEMORY_CAPTURED = "agent_memory_captured";
+export const EV_AGENT_MEMORY_RECALLED = "agent_memory_recalled";
+export const EV_AGENT_MEMORY_PRUNED = "agent_memory_pruned";
 
 export type ToolCallFormat = "json" | "markdown" | "error-envelope";
 
@@ -34,6 +37,25 @@ export interface QuotaHitProps {
 
 export interface TopupLinkProps {
   tool: string;
+}
+
+export interface AgentMemoryCapturedProps {
+  source?: string;
+  scope?: string;
+  key?: string;
+  type?: string;
+  account_id_hash?: string;
+}
+
+export interface AgentMemoryRecalledProps {
+  entries_returned?: number;
+  total_active?: number;
+  account_id_hash?: string;
+}
+
+export interface AgentMemoryPrunedProps {
+  action?: string;
+  account_id_hash?: string;
 }
 
 export interface ExceptionCtx {

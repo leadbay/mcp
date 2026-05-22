@@ -35,6 +35,9 @@ describe("resources/* capability (P3 resources)", () => {
     const taste = listed.resources.find((r) => r.uri === "org://taste-profile");
     expect(taste).toBeDefined();
     expect(taste!.mimeType).toBe("application/json");
+    const memory = listed.resources.find((r) => r.uri === "agent-memory://summary");
+    expect(memory).toBeDefined();
+    expect(memory!.mimeType).toBe("text/markdown");
   });
 
   it("resources/templates/list returns lead:// and lens:// templates", async () => {

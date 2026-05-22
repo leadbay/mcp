@@ -22,6 +22,7 @@ import {
 } from "@leadbay/core";
 
 const ROUTING_HEAD_WINDOW = 600;
+const MEMORY_POINTER = "**Memory:** recall + capture via `leadbay_agent_memory_*` tools.";
 
 // User-facing tools we deliberately backfilled with routing frontmatter.
 // The audit ensures none of them regresses. Other tools MAY add routing
@@ -78,6 +79,18 @@ describe("audit: routing block in first 600 chars", () => {
       const head = t.description.slice(0, ROUTING_HEAD_WINDOW);
       if (!head.match(/Trigger phrases: "/)) {
         violations.push(`${t.name}: WHEN TO USE block has no trigger phrases`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it("every routed tool carries the shared agent-memory pointer in the first 600 chars", () => {
+    const violations: string[] = [];
+    for (const t of ALL_TOOLS) {
+      if (!TOOLS_WITH_ROUTING.has(t.name)) continue;
+      const head = t.description.slice(0, ROUTING_HEAD_WINDOW);
+      if (!head.includes(MEMORY_POINTER)) {
+        violations.push(`${t.name}: missing memory pointer in first ${ROUTING_HEAD_WINDOW} chars`);
       }
     }
     expect(violations).toEqual([]);

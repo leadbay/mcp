@@ -12,24 +12,19 @@ routing:
   triggers:
     - "tell me about this lead"
     - "deep dive on the lead I just picked"
-    - "is <lead> a fit"
-    - "should I pursue <lead>"
     - "everything you know about lead <UUID>"
-    - "research this lead"
   anti_triggers:
-    - phrase: "user names a company in prose without a Leadbay lead id"
+    - phrase: "company name without lead id"
       route_to: leadbay_research_lead_by_name_fuzzy
     - phrase: "draft outreach for <Contact>"
       route_to: leadbay_prepare_outreach
-  prefer_when: "user already picked a row from pull_leads/pull_followups — you have the UUID. Pass it via `leadId`."
+  prefer_when: "user picked a row and you have its UUID; pass `leadId`"
   examples:
     positive:
       - "Tell me everything about that lead I just picked."
-      - "Deep dive on the lead at the top of my list."
       - "Is this one actually a fit — what does the AI think?"
     negative:
       - "Look up Acme Corp for me."
-      - "What do we know about Globex?"
       - "Show me today's leads."
 annotations:
   readOnlyHint: true

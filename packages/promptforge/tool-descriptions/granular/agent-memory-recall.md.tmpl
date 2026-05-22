@@ -1,0 +1,18 @@
+---
+name: leadbay_agent_memory_recall
+kind: tool-description
+short_description: |
+  Recall consolidated local Leadbay agent memory for this account. Use
+  before lead recommendations or outreach when `_meta.agent_memory` is not
+  already available in the session.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: false
+---
+Recall the top consolidated agent-memory signals for this Leadbay account.
+
+The normal path is ambient: leadbay_account_status, leadbay_pull_leads, leadbay_pull_followups, leadbay_prepare_outreach, and leadbay_research_lead_by_id attach `_meta.agent_memory.summary` automatically. Use this explicit recall tool when you need a focused read by `key` / `type`, or when no leads-touching tool has run yet in the current session.
+
+Return value includes `summary` markdown, `top_keys`, `total_active`, and `entries_returned`. Mention the specific memory applied when it changes ranking, filtering, or outreach wording.

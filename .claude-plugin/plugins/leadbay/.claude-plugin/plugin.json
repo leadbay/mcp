@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "leadbay",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "AI lead discovery, qualification, and outreach prep on your Leadbay account.",
   "author": {
     "name": "Leadbay",
@@ -15,7 +15,7 @@
   "mcpServers": {
     "leadbay": {
       "command": "npx",
-      "args": ["-y", "@leadbay/mcp@0.12"],
+      "args": ["-y", "@leadbay/mcp@0.13"],
       "env": {
         "LEADBAY_TOKEN": "${user_config.leadbay_token}",
         "LEADBAY_REGION": "${user_config.leadbay_region}",
@@ -27,7 +27,7 @@
     "leadbay_token": {
       "type": "string",
       "title": "Leadbay bearer token",
-      "description": "Mint with: npx -y @leadbay/mcp@0.12 login --email <you> --region <us|fr>",
+      "description": "Mint with: npx -y @leadbay/mcp@0.13 login --email <you> --region <us|fr>",
       "sensitive": true,
       "required": true
     },

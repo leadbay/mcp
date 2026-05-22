@@ -3,6 +3,7 @@ import type { Tool, ToolContext } from "../types.js";
 import { getLeadProfile } from "../tools/get-lead-profile.js";
 import { getContacts } from "../tools/get-contacts.js";
 import { enrichContacts } from "../tools/enrich-contacts.js";
+import { withAgentMemoryMeta } from "../agent-memory/index.js";
 
 import { leadbay_prepare_outreach as PREPARE_OUTREACH_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -112,6 +113,10 @@ export const prepareOutreach: Tool<PrepareOutreachParams> = {
           error: { type: ["string", "null"] },
           hint: { type: ["string", "null"] },
         },
+      },
+      _meta: {
+        type: "object",
+        description: "Operator context: agent memory summary when enabled.",
       },
     },
     required: [
@@ -243,7 +248,7 @@ export const prepareOutreach: Tool<PrepareOutreachParams> = {
         (recommendedContact.email || recommendedContact.phone_number)
     );
 
-    return {
+    return withAgentMemoryMeta(client, {
       lead: leadBlock,
       recommended_contact: recommendedContact,
       additional_contacts_count: additional,
@@ -259,6 +264,6 @@ export const prepareOutreach: Tool<PrepareOutreachParams> = {
             ? "Enrichment running (~60s). Re-call leadbay_prepare_outreach with the same leadId (no enrich) and check enrichment.complete."
             : null,
       },
-    };
+    }, ctx);
   },
 };

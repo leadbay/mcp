@@ -9,6 +9,7 @@ export {
 } from "./client.js";
 export type { CreateClientConfig, TasteProfileResult } from "./client.js";
 export * from "./types.js";
+export * from "./agent-memory/index.js";
 
 // ─── Granular tools — 1:1 with Leadbay API endpoints ─────────────────────
 
@@ -41,6 +42,9 @@ import { getEnrichmentJobTitles } from "./tools/get-enrichment-job-titles.js";
 import { listMappableFields } from "./tools/list-mappable-fields.js";
 import { createTopupLink } from "./tools/create-topup-link.js";
 import { openBillingPortal } from "./tools/open-billing-portal.js";
+import { agentMemoryRecall } from "./tools/agent-memory-recall.js";
+import { agentMemoryCapture } from "./tools/agent-memory-capture.js";
+import { agentMemoryReview } from "./tools/agent-memory-review.js";
 
 // New write tools (autoplan §E5) — gated behind LEADBAY_MCP_WRITE=1 in MCP
 import { selectLeads } from "./tools/select-leads.js";
@@ -127,6 +131,7 @@ export {
   getSelectionIds, getEnrichmentJobTitles,
   listMappableFields,
   createTopupLink, openBillingPortal,
+  agentMemoryRecall, agentMemoryCapture, agentMemoryReview,
   // new granular writes
   selectLeads, deselectLeads, clearSelection, setActiveLens, createLens,
   updateLens, updateLensFilter, createLensDraft, promoteLens, setUserPrompt,
@@ -137,15 +142,25 @@ export {
   // existing composite
   prepareOutreach,
   // new composite reads
-  pullLeads, pullFollowups, followupsMap, researchLeadById, researchLeadByNameFuzzy,
+  pullLeads, pullFollowups, followupsMap, tourPlan, listCampaigns,
+  campaignProgression, campaignCallSheet, researchLeadById, researchLeadByNameFuzzy,
   recallOrderedTitles, accountStatus,
   bulkEnrichStatus, qualifyStatus, importStatus, resolveImportRows,
   // new composite writes
   bulkQualifyLeads, enrichTitles, adjustAudience, refinePrompt,
   answerClarification, reportOutreach, importLeads, importAndQualify,
+  createCampaign, addLeadsToCampaign,
 };
 
 // ─── Tool catalogues ─────────────────────────────────────────────────────
+
+// Agent memory tools are always exposed: local-file recall/capture/review is
+// part of the agent protocol, not an advanced backend API surface.
+export const agentMemoryTools: Tool[] = [
+  agentMemoryRecall,
+  agentMemoryCapture,
+  agentMemoryReview,
+];
 
 // Granular reads (advanced — gated by LEADBAY_MCP_ADVANCED=1 in MCP).
 export const granularReadTools: Tool[] = [
@@ -199,14 +214,13 @@ export const granularWriteTools: Tool[] = [
   previewBulkEnrichment,
   launchBulkEnrichment,
   createCustomField,
-  likeLead,
-  dislikeLead,
 ];
 
 // Backward-compat alias (existing consumers use granularTools):
 // includes login + reads + writes for OpenClaw which always exposes everything.
 export const granularTools: Tool[] = [
   login,
+  ...agentMemoryTools,
   ...granularReadTools,
   ...granularWriteTools,
 ];

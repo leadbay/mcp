@@ -46,11 +46,11 @@ describe("buildClaudeCodeAddArgs — Claude Code registration argv", () => {
     expect(args).toContain("LEADBAY_MCP_WRITE=0");
   });
 
-  it("pins the @leadbay/mcp@0.12 npx target", () => {
+  it("pins the @leadbay/mcp@0.13 npx target", () => {
     const args = buildClaudeCodeAddArgs("tok", "us", true, true);
     const sep = args.indexOf("--");
     expect(sep).toBeGreaterThan(0);
-    expect(args.slice(sep + 1)).toEqual(["npx", "-y", "@leadbay/mcp@0.12"]);
+    expect(args.slice(sep + 1)).toEqual(["npx", "-y", "@leadbay/mcp@0.13"]);
   });
 
   it("token and region are NOT placed after the `--` separator (would be passed to npx, not claude)", () => {

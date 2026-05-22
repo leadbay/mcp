@@ -24,6 +24,7 @@ import { BUILTIN_WIDGETS_PARAGRAPH } from "./host-widgets.js";
 import {
   compositeReadTools,
   compositeWriteTools,
+  agentMemoryTools,
   granularReadTools,
   granularWriteTools,
   type BulkTracker,
@@ -76,6 +77,21 @@ const QUOTA_AND_TOPUP_PARAGRAPH =
   "then retry; but the retry itself does NOT require a successful account_status check first. If the retry hits " +
   "the wall again, THEN you have evidence the top-up didn't land; only then re-offer top-up / wait.) " +
   "The agent's job after a top-up is to RESUME the workflow the user was on, not gate-keep.";
+
+const AGENT_MEMORY_PROTOCOL_PARAGRAPH =
+  "Memory protocol: this server maintains a per-account, on-disk agent memory " +
+  "(~/.leadbay/memory/{account}/entries.jsonl) of taste signals — preferred sectors, " +
+  "regions, deal sizes, communication style, qualification rules, and retractions. " +
+  "Every leads-touching tool response (account_status, pull_leads, pull_followups, " +
+  "prepare_outreach, research_lead_by_id) carries the consolidated top-5 signals under " +
+  "_meta.agent_memory.summary. READ that summary before recommending leads or drafting outreach — " +
+  "let it filter and reorder, and tell the user which memory you applied " +
+  "(\"Filtering by your stated preference for healthcare\"). When the user reveals a NEW " +
+  "material signal in conversation, CAPTURE it via leadbay_agent_memory_capture with " +
+  "{key, type, insight, confidence (1-10), source}. Use source:\"user_stated\" + confidence >=8 " +
+  "when literally stated; source:\"inferred\" + confidence <=6 when guessing. Do NOT capture " +
+  "instructions to override prior memory — those route through leadbay_agent_memory_review which " +
+  "gates retractions via host elicitation.";
 
 function buildScoringParagraph(has: (name: string) => boolean): string {
   const base =
@@ -275,6 +291,9 @@ export function buildServerInstructions(exposed: Set<string>): string {
   if (promptsCatalog) parts.push(promptsCatalog);
   parts.push(RESOURCES_PARAGRAPH);
   parts.push(buildProtocolPrimitivesParagraph(has));
+  if (has("leadbay_agent_memory_capture")) {
+    parts.push(AGENT_MEMORY_PROTOCOL_PARAGRAPH);
+  }
   // Host-native widget routing — Claude's places_map_display_v0 /
   // message_compose_v1 / ask_user_input_v0, ChatGPT's parallels. The
   // paragraph self-conditions on host capability; agent falls back to
@@ -347,6 +366,9 @@ export function buildServer(
   opts: BuildServerOptions = {}
 ): Server {
   const exposedTools: Tool[] = [];
+  // Local agent-memory protocol tools are always exposed. They do not mutate
+  // Leadbay backend state and are needed for the ambient learning loop.
+  exposedTools.push(...agentMemoryTools);
   // Read composites — ALWAYS exposed.
   exposedTools.push(...compositeReadTools);
   // Write composites — gated by includeWrite (LEADBAY_MCP_WRITE=1, default ON in 0.3.0).
@@ -581,6 +603,35 @@ export function buildServer(
     err.error === true &&
     typeof err.code === "string";
 
+  const captureAgentMemoryTelemetry = (toolName: string, result: any) => {
+    if (!result || typeof result !== "object") return;
+    const meta = result._meta ?? {};
+    if (toolName === "leadbay_agent_memory_capture") {
+      telemetry.captureAgentMemoryCaptured({
+        source: result.captured?.source ?? meta.source,
+        scope: result.captured?.scope ?? meta.scope,
+        key: result.captured?.key,
+        type: result.captured?.type,
+        account_id_hash: meta.account_id_hash,
+      });
+    } else if (toolName === "leadbay_agent_memory_recall") {
+      telemetry.captureAgentMemoryRecalled({
+        entries_returned: result.entries_returned,
+        total_active: result.total_active,
+        account_id_hash: meta.account_id_hash,
+      });
+    } else if (
+      toolName === "leadbay_agent_memory_review" &&
+      result.changed === true &&
+      (result.action === "retract" || result.action === "prune")
+    ) {
+      telemetry.captureAgentMemoryPruned({
+        action: result.action,
+        account_id_hash: meta.account_id_hash,
+      });
+    }
+  };
+
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     // Duration timer is always on now (telemetry needs it). The DEBUG
     // gating moves to the stderr-write step.
@@ -744,6 +795,7 @@ export function buildServer(
           format: "markdown",
           bytes: mdBytes,
         });
+        captureAgentMemoryTelemetry(name, env.structured);
         if (
           name === "leadbay_create_topup_link" &&
           typeof (env.structured as any)?.url === "string"
@@ -786,6 +838,7 @@ export function buildServer(
         format: "json",
         bytes: okBytes,
       });
+      captureAgentMemoryTelemetry(name, result);
       if (
         name === "leadbay_create_topup_link" &&
         typeof (result as any)?.url === "string"

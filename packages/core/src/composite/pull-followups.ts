@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, MonitorFilterItem } from "../types.js";
+import { withAgentMemoryMeta } from "../agent-memory/index.js";
 
 import { leadbay_pull_followups as PULL_FOLLOWUPS_DESCRIPTION } from "../tool-descriptions.generated.js";
 import { resolveLocations } from "./_geo-helpers.js";
@@ -185,6 +186,7 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
         properties: {
           region: { type: "string" },
           latency_ms: { type: ["number", "null"] },
+          agent_memory: { type: "object" },
         },
       },
     },
@@ -212,7 +214,7 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
     if (geoTexts.length > 0) {
       const { resolved, ambiguities } = await resolveLocations(client, geoTexts);
       if (ambiguities.length > 0) {
-        return {
+        return withAgentMemoryMeta(client, {
           status: "ambiguous_locations" as const,
           location_ambiguities: ambiguities,
           leads: [],
@@ -223,7 +225,7 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
             region: client.region,
             latency_ms: client.lastMeta?.latency_ms ?? null,
           },
-        };
+        }, ctx);
       }
       if (resolved.length > 0) {
         effectiveSetFilter = mergeLocationIds(effectiveSetFilter, resolved);
@@ -308,7 +310,7 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
           : lead.org_contacts ?? null,
       }));
 
-    return {
+    return withAgentMemoryMeta(client, {
       active_filters: activeFilter,
       leads,
       pagination: monitor.pagination ?? null,
@@ -317,6 +319,6 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
         region: client.region,
         latency_ms: client.lastMeta?.latency_ms ?? null,
       },
-    };
+    }, ctx);
   },
 };

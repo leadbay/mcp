@@ -8,18 +8,18 @@ short_description: |
   count separately.
 routing:
   triggers:
-    - "add these leads to my <name> campaign"
+    - "add leads to <name> campaign"
     - "attach these to <campaign>"
-    - "put these 5 in the Q2 Push campaign"
+    - "put these in Q2 Push"
     - "add to existing campaign"
   anti_triggers:
-    - phrase: "create a new campaign (not attach to an existing one)"
+    - phrase: "create a new campaign"
       route_to: leadbay_create_campaign
-    - phrase: "remove a lead from a campaign"
+    - phrase: "remove lead from campaign"
       route_to: leadbay_create_campaign
-    - phrase: "list which campaigns I have"
+    - phrase: "list campaigns"
       route_to: leadbay_list_campaigns
-  prefer_when: "user names an existing campaign (or supplies a campaign_id) AND a set of leads to attach. If they want a new campaign, use create_campaign with seed lead_ids instead"
+  prefer_when: "existing campaign plus lead ids to attach; for a new campaign, use create_campaign"
   examples:
     positive:
       - "Add the three new Tulsa leads to my 'OK Sweep' campaign."

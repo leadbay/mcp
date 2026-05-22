@@ -10,20 +10,19 @@ short_description: |
   `places_map_display_v0` for a geographic call route.
 routing:
   triggers:
-    - "show me my campaign as a call sheet"
-    - "list of people to call in <campaign>"
+    - "campaign call sheet"
+    - "people to call in <campaign>"
     - "cold-calling cheat sheet"
     - "work this campaign"
-    - "let's call through my <campaign>"
     - "calling session for <campaign>"
   anti_triggers:
-    - phrase: "campaign progression pulse only (no contacts)"
+    - phrase: "campaign pulse only"
       route_to: leadbay_campaign_progression
-    - phrase: "create a new campaign"
+    - phrase: "create campaign"
       route_to: leadbay_create_campaign
-    - phrase: "list all my campaigns"
+    - phrase: "list campaigns"
       route_to: leadbay_list_campaigns
-  prefer_when: "user wants an actionable call-ready view of ONE campaign with phones + LinkedIn ready to click. Pair with the `leadbay_work_campaign` prompt for the full dictation+epilogue loop"
+  prefer_when: "user wants one campaign with phone + LinkedIn contacts ready to call"
   examples:
     positive:
       - "Show me my Limoges Tour campaign as a call sheet."

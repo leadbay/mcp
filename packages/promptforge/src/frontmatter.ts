@@ -69,6 +69,10 @@ export const FrontmatterSchema = z.object({
   // Structured routing rules — promptforge auto-emits a `## WHEN TO
   // USE` block at the head of the description from this data.
   routing: RoutingSchema.optional(),
+  // Agent-memory routing/prompt protocol. Defaults to "enabled" for tools
+  // with routing, "disabled" otherwise; explicit disabled is for tools whose
+  // first-600-char window cannot carry the shared pointer.
+  memory_protocol: z.enum(["enabled", "disabled"]).optional(),
   // Compact rendering recipe (1–3 sentences). Promptforge auto-emits
   // a `## RENDER (quick)` block. The detailed RENDERING block stays
   // in the body via {{include:rendering/...}}.

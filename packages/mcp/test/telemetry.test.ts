@@ -459,6 +459,9 @@ describe("NOOP_TELEMETRY", () => {
     expect(() =>
       NOOP_TELEMETRY.captureStartup({ auth_state: "ok", region: "us" })
     ).not.toThrow();
+    expect(() => NOOP_TELEMETRY.captureAgentMemoryCaptured({ key: "x" })).not.toThrow();
+    expect(() => NOOP_TELEMETRY.captureAgentMemoryRecalled({ entries_returned: 1 })).not.toThrow();
+    expect(() => NOOP_TELEMETRY.captureAgentMemoryPruned({ action: "prune" })).not.toThrow();
     expect(() => NOOP_TELEMETRY.captureException(new Error("e"), { tool: "x" })).not.toThrow();
     await expect(NOOP_TELEMETRY.shutdown()).resolves.toBeUndefined();
   });

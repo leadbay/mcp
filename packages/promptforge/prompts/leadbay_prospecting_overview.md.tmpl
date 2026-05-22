@@ -35,6 +35,8 @@ failure_modes:
   - Calls leadbay_pull_leads (Discover wishlist) for a follow-up query, or leadbay_pull_followups (Monitor view) for a discovery query — the two entry points read from different backend tables; the right orchestrators are leadbay_daily_check_in (discovery) and leadbay_followup_check_in (follow-up)
 ---
 
+{{include:headers/agent-memory-preamble}}
+
 # Leadbay Prospecting — Orientation
 
 You are working with Leadbay through the `leadbay_*` MCP tools. This prompt orients you to the user's mental model so you don't re-discover the workflow each session.

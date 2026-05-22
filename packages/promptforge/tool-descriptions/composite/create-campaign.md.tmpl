@@ -12,18 +12,17 @@ routing:
   triggers:
     - "create a campaign called <name>"
     - "save these leads as a campaign"
-    - "make a campaign for my <city> trip"
-    - "track these leads together"
-    - "group these leads into a named campaign"
+    - "campaign for my <city> trip"
+    - "group these leads"
     - "persist these leads"
   anti_triggers:
-    - phrase: "list my existing campaigns"
+    - phrase: "list campaigns"
       route_to: leadbay_list_campaigns
-    - phrase: "add leads to an existing campaign"
+    - phrase: "add to existing campaign"
       route_to: leadbay_add_leads_to_campaign
-    - phrase: "log an outreach event"
+    - phrase: "log outreach"
       route_to: leadbay_report_outreach
-  prefer_when: "user wants to persist a hand-picked set of leads as a named cohort they'll work through. Often follows leadbay_pull_leads / leadbay_tour_plan / leadbay_research_lead_by_id"
+  prefer_when: "user wants to persist picked leads as a named cohort to work later"
   examples:
     positive:
       - "Save these 9 leads as a campaign called 'Limoges Tour – May 24'."

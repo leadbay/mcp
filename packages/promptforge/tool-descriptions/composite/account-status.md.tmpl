@@ -10,22 +10,18 @@ routing:
     - "what's my account status"
     - "how much quota do I have"
     - "what lens am I on"
-    - "am I an admin"
-    - "is intelligence still regenerating"
     - "I topped up / I bought credits / I added credits"
   anti_triggers:
-    - phrase: "show me leads / today's prospects"
+    - phrase: "show me leads"
       route_to: leadbay_pull_leads
-  prefer_when: "user opens with a meta question about themselves / their workspace — typically as a daily check-in opener"
+  prefer_when: "meta question about account, quota, active lens, or top-up recovery"
   examples:
     positive:
       - "What's my account status?"
       - "How much quota do I have left this week?"
-      - "Is my intelligence still regenerating?"
     negative:
       - "Show me today's leads."
       - "What should I follow up on?"
-      - "Run the daily check-in."
 rendering_hint: |
   Compact markdown: org name + admin badge on line 1; active lens on
   line 2; per-window quota usage as `(used / cap)` chips for

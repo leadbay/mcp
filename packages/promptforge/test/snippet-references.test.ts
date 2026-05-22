@@ -63,6 +63,9 @@ describe("audit: snippet references", () => {
     // via another snippet. Walk the include graph.
     const referenced = new Set<string>();
     const queue: string[] = [];
+    // This snippet is injected by assembler.ts for routed tools, not by a
+    // literal {{include:...}} in a template.
+    referenced.add("headers/agent-memory-pointer");
     for (const tmpl of allTemplates) {
       const body = readFileSync(tmpl, "utf8");
       for (const r of listSnippetsReferenced(body)) {

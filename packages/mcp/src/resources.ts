@@ -8,6 +8,7 @@
  *   - lead://{uuid}/profile — a single lead's full profile JSON
  *   - lens://{id}/definition — a lens's filter + scoring config
  *   - org://taste-profile — the org's qualification questions + tags
+ *   - agent-memory://summary — consolidated local agent memory markdown
  *
  * The first two are templates (dynamic URIs); the third is a singleton
  * concrete resource always-listed.
@@ -20,11 +21,15 @@ import type {
   ResourceTemplate,
   ReadResourceResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { LeadbayClient } from "@leadbay/core";
+import {
+  resolveAgentMemorySummary,
+  type LeadbayClient,
+} from "@leadbay/core";
 
 const LEAD_URI_RE = /^lead:\/\/([0-9a-f-]{36})\/profile$/i;
 const LENS_URI_RE = /^lens:\/\/(\d+)\/definition$/;
 const ORG_TASTE_URI = "org://taste-profile";
+const AGENT_MEMORY_SUMMARY_URI = "agent-memory://summary";
 
 export function listResources(): Resource[] {
   return [
@@ -34,6 +39,13 @@ export function listResources(): Resource[] {
       description:
         "The org's qualification questions, intent tags, and ICP signals — the agent's knowledge base for what makes a lead a fit.",
       mimeType: "application/json",
+    },
+    {
+      uri: AGENT_MEMORY_SUMMARY_URI,
+      name: "Agent memory summary",
+      description:
+        "Consolidated top Leadbay agent-memory signals for this account. Local-file, read-only resource.",
+      mimeType: "text/markdown",
     },
   ];
 }
@@ -69,6 +81,22 @@ function jsonContent(uri: string, value: unknown): ReadResourceResult {
   };
 }
 
+function textContent(
+  uri: string,
+  mimeType: string,
+  text: string
+): ReadResourceResult {
+  return {
+    contents: [
+      {
+        uri,
+        mimeType,
+        text,
+      },
+    ],
+  };
+}
+
 export async function readResource(
   uri: string,
   client: LeadbayClient
@@ -76,6 +104,14 @@ export async function readResource(
   if (uri === ORG_TASTE_URI) {
     const taste = await client.resolveTasteProfile();
     return jsonContent(uri, taste);
+  }
+
+  if (uri === AGENT_MEMORY_SUMMARY_URI) {
+    const me = await client.resolveMe();
+    const memory = await resolveAgentMemorySummary({
+      accountId: me.organization.id,
+    });
+    return textContent(uri, "text/markdown", memory.summary);
   }
 
   const leadMatch = LEAD_URI_RE.exec(uri);
@@ -103,6 +139,6 @@ export async function readResource(
   }
 
   throw new Error(
-    `Unsupported resource URI: ${uri}. Supported schemes: lead://{uuid}/profile, lens://{id}/definition, org://taste-profile.`
+    `Unsupported resource URI: ${uri}. Supported schemes: lead://{uuid}/profile, lens://{id}/definition, org://taste-profile, agent-memory://summary.`
   );
 }

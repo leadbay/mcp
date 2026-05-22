@@ -10,22 +10,20 @@ short_description: |
   `places_map_display_v0`.
 routing:
   triggers:
-    - "I'm visiting <city> in <N> days"
+    - "visiting <city> in <N> days"
     - "field tour in <city>"
     - "plan a tour in <city>"
     - "who should I meet in <city>"
-    - "mix of customers and prospects in <city>"
+    - "customers plus prospects in <city>"
     - "tour itinerary"
-    - "3 customers + 3 prospects + 3 new in <city>"
-    - "field sales tour"
   anti_triggers:
-    - phrase: "follow-ups only on the map (no new prospects mixed in)"
+    - phrase: "follow-ups only, no new prospects"
       route_to: leadbay_followups_map
-    - phrase: "new leads only, no geography"
+    - phrase: "new leads only"
       route_to: leadbay_pull_leads
-    - phrase: "research one specific account I picked"
+    - phrase: "research one account"
       route_to: leadbay_research_lead_by_id
-  prefer_when: "user wants both KNOWN accounts AND NEW discovery in one geographic view. If they only want one side, route to followups_map or pull_leads instead"
+  prefer_when: "user wants known accounts plus new discoveries in one geographic itinerary"
   examples:
     positive:
       - "I'm flying to Limoges in 4 days — give me 3 customers, 3 qualified prospects, and 3 new high-potential."

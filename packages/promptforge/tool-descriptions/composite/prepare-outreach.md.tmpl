@@ -9,25 +9,21 @@ routing:
   triggers:
     - "draft outreach for <Contact>"
     - "write an email to <Contact>"
-    - "prep me to call <Contact>"
     - "outreach package for <Company>"
-    - "I'm about to reach out to <X>"
   anti_triggers:
-    - phrase: "research a lead I haven't picked yet"
+    - phrase: "research before drafting"
       route_to: leadbay_research_lead_by_id
-    - phrase: "log outreach I already sent"
+    - phrase: "log sent outreach"
       route_to: leadbay_report_outreach
-    - phrase: "enrich a batch of contacts"
+    - phrase: "bulk enrich contacts"
       route_to: leadbay_enrich_titles
-  prefer_when: "user is about to act — has picked the lead AND the contact. Single-lead, action-imminent context"
+  prefer_when: "single picked lead/contact; action-imminent drafting context"
   examples:
     positive:
       - "Draft an email to Sarah at Acme."
-      - "Help me write outreach for John Smith."
       - "I'm about to call Acme's CTO — prep me."
     negative:
       - "I just sent that email — log it."
-      - "Enrich the contacts on these 20 leads."
       - "Research the Acme lead before I commit."
 rendering_hint: |
   Route the draft through `message_compose_v1` (Claude's email composer)

@@ -10,32 +10,21 @@ short_description: |
 routing:
   triggers:
     - "I'm going to <city>"
-    - "this week's trip"
-    - "leads I should visit in person"
     - "visit in person"
-    - "show me followups in <city / state / country>"
-    - "leads in Texas / California / France / Bavaria etc."
-    - "leads near <city>"
     - "map of leads"
-    - "show me on a map"
-    - "itinerary"
     - "plan my itinerary"
-    - "trip itinerary"
-    - "where are my leads"
   anti_triggers:
-    - phrase: "default follow-up table / status view"
+    - phrase: "default follow-up table"
       route_to: leadbay_pull_followups
-    - phrase: "new leads / today's prospects"
+    - phrase: "new prospects"
       route_to: leadbay_pull_leads
-  prefer_when: "user signals geographic / map-style intent — even a passive 'before my trip' mention counts"
+  prefer_when: "geographic, travel, in-person, itinerary, or map intent"
   examples:
     positive:
       - "I'm flying to New York Thursday — who should I meet in person?"
-      - "Show my leads on a map for the SF trip."
       - "Who can I visit while I'm in Chicago next week?"
     negative:
       - "What should I follow up on this week?"
-      - "Show me today's new prospects."
       - "Tell me about Acme Corp."
 rendering_hint: |
   Two render surfaces — host picks. Primary: route to Claude's

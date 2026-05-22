@@ -1,5 +1,20 @@
 # Changelog — @leadbay/mcp
 
+## 0.13.0 — 2026-05-21
+
+- **Agent memory v1**: added always-on recall/capture/review tools backed by
+  local append-only JSONL at `~/.leadbay/memory/{account_id}/`.
+- Leads-touching tool responses now attach `_meta.agent_memory.summary` with
+  the consolidated top signals unless `LEADBAY_AGENT_MEMORY=off` is set.
+- Server instructions, prompt descriptions, and workflow prompts now teach the
+  memory protocol, including capture of new taste signals and review-gated
+  retractions.
+- Added `agent-memory://summary` resource and PostHog events for memory
+  capture/recall/prune.
+- **Pin bumps**: every active `@leadbay/mcp@0.12` install/runtime reference in
+  docs, generated client config, DXT, MCP Registry metadata, and Claude plugin
+  metadata is now `@0.13`.
+
 ## 0.12.1 — 2026-05-21
 
 MCPB hotfix for Claude Desktop.

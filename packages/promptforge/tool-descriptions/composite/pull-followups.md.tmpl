@@ -9,29 +9,20 @@ routing:
   triggers:
     - "what should I follow up on"
     - "leads I've already worked"
-    - "leads I haven't contacted"
     - "what's overdue"
-    - "stale leads"
-    - "before my trip"
-    - "this month"
-    - "what's going on with my pipeline"
     - "leads in <city / state / country>"
   anti_triggers:
-    - phrase: "show me leads / new leads / today's prospects"
+    - phrase: "new leads / today's prospects"
       route_to: leadbay_pull_leads
-    - phrase: "I'm going to <city> / in person / trip"
+    - phrase: "map / trip / in person"
       route_to: leadbay_followups_map
-    - phrase: "Texas / California / France etc. — place names go in `city`, NOT `keywords`"
-      route_to: leadbay_pull_followups
-  prefer_when: "user names a city / sector / recency window → pass `city` (or `set_filter`) so the result is narrowed AND persists for the next session"
+  prefer_when: "known Monitor leads; pass `city` or `set_filter` for geo/sector/recency"
   examples:
     positive:
       - "What should I follow up on this week?"
-      - "Which leads have I not contacted in 30 days?"
       - "What's overdue in my pipeline?"
     negative:
       - "Show me today's new leads."
-      - "I'm flying to Berlin Thursday — who can I meet?"
       - "Draft an email to Sarah at Acme."
 rendering_hint: |
   4-col markdown table sorted by `last_monitor_action_at` desc, NO

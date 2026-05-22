@@ -36,6 +36,12 @@ import {
   EV_STARTUP,
   EV_TOOL_CALL,
   EV_TOPUP_LINK,
+  EV_AGENT_MEMORY_CAPTURED,
+  EV_AGENT_MEMORY_RECALLED,
+  EV_AGENT_MEMORY_PRUNED,
+  type AgentMemoryCapturedProps,
+  type AgentMemoryPrunedProps,
+  type AgentMemoryRecalledProps,
   type ExceptionCtx,
   type QuotaHitProps,
   type StartupProps,
@@ -58,6 +64,9 @@ export interface TelemetryHandle {
   captureQuotaHit(props: QuotaHitProps): void;
   captureTopupLink(props: TopupLinkProps): void;
   captureStartup(props: StartupProps): void;
+  captureAgentMemoryCaptured(props: AgentMemoryCapturedProps): void;
+  captureAgentMemoryRecalled(props: AgentMemoryRecalledProps): void;
+  captureAgentMemoryPruned(props: AgentMemoryPrunedProps): void;
   captureException(err: unknown, ctx: ExceptionCtx): void;
   // Auto-update lifecycle. Optional on the interface so out-of-tree
   // TelemetryHandle implementations don't have to implement them; the
@@ -77,6 +86,9 @@ export const NOOP_TELEMETRY: TelemetryHandle = {
   captureQuotaHit: () => {},
   captureTopupLink: () => {},
   captureStartup: () => {},
+  captureAgentMemoryCaptured: () => {},
+  captureAgentMemoryRecalled: () => {},
+  captureAgentMemoryPruned: () => {},
   captureException: () => {},
   captureUpdateCheck: () => {},
   captureUpdatePrompted: () => {},
@@ -307,6 +319,15 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
     },
     captureStartup(props) {
       emit(EV_STARTUP, { ...props });
+    },
+    captureAgentMemoryCaptured(props) {
+      emit(EV_AGENT_MEMORY_CAPTURED, { ...props });
+    },
+    captureAgentMemoryRecalled(props) {
+      emit(EV_AGENT_MEMORY_RECALLED, { ...props });
+    },
+    captureAgentMemoryPruned(props) {
+      emit(EV_AGENT_MEMORY_PRUNED, { ...props });
     },
     captureUpdateCheck(props) {
       emit(EV_MCP_UPDATE_CHECK, { ...props });

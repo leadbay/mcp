@@ -1,0 +1,17 @@
+---
+name: leadbay_agent_memory_review
+kind: tool-description
+short_description: |
+  Review local Leadbay agent memory and, with user confirmation, retract
+  stale entries or promote a user-scoped signal to org scope.
+annotations:
+  readOnlyHint: false
+  destructiveHint: false
+  idempotentHint: false
+  openWorldHint: false
+---
+Review the local agent-memory ledger for this Leadbay account.
+
+Default action is `list`: return the consolidated entries and summary. For user-confirmed cleanup, use `action:"retract"` or `action:"prune"` with `entry_id` (preferred) or `key` + `type`; the tool appends a tombstone rather than editing history. For sharing a learning more broadly in v1, use `action:"promote"`; this appends an org-scoped copy locally.
+
+Retractions and promotions require host elicitation when available, or `user_confirmation` containing the user's literal confirmation when the host cannot elicit. Do not use this tool to silently rewrite memory.

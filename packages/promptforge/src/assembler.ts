@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parseTemplate, type Frontmatter, type ParsedTemplate, type Routing, FrontmatterError } from "./frontmatter.js";
 import { resolveSnippets } from "./snippets.js";
@@ -9,7 +9,10 @@ import { resolveSnippets } from "./snippets.js";
  * sees routing BEFORE the body and well within the first ~600 chars
  * (the chunk every host reads even on truncation). See /CLAUDE.md.
  */
-function emitRoutingBlock(routing: Routing | undefined): string {
+function emitRoutingBlock(
+  routing: Routing | undefined,
+  memoryPointer?: string
+): string {
   if (!routing) return "";
   const lines: string[] = ["## WHEN TO USE"];
   if (routing.triggers && routing.triggers.length > 0) {
@@ -24,6 +27,9 @@ function emitRoutingBlock(routing: Routing | undefined): string {
   }
   if (routing.prefer_when) {
     lines.push(`Prefer when: ${routing.prefer_when.trim()}`);
+  }
+  if (memoryPointer) {
+    lines.push(memoryPointer.trim());
   }
   if (routing.examples) {
     const positives = routing.examples.positive ?? [];
@@ -56,9 +62,18 @@ function emitRenderHintBlock(hint: string | undefined): string {
  * body. If neither is set, returns the body unchanged so existing
  * templates that don't use the new frontmatter fields are unaffected.
  */
-export function applyDescriptionHeader(fm: Frontmatter, body: string): string {
+export function applyDescriptionHeader(
+  fm: Frontmatter,
+  body: string,
+  opts: { memoryPointer?: string } = {}
+): string {
   const blocks: string[] = [];
-  const routing = emitRoutingBlock(fm.routing);
+  const memoryProtocol =
+    fm.memory_protocol ?? (fm.routing ? "enabled" : "disabled");
+  const routing = emitRoutingBlock(
+    fm.routing,
+    memoryProtocol === "enabled" ? opts.memoryPointer : undefined
+  );
   if (routing) blocks.push(routing);
   const renderHint = emitRenderHintBlock(fm.rendering_hint);
   if (renderHint) blocks.push(renderHint);
@@ -193,6 +208,10 @@ export function assemble(opts: AssembleOptions): AssembleResult {
   const snippetsRoot = join(root, "snippets");
   const promptDir = join(root, "prompts");
   const toolDir = join(root, "tool-descriptions");
+  const memoryPointerPath = join(snippetsRoot, "headers", "agent-memory-pointer.md");
+  const memoryPointer = existsSync(memoryPointerPath)
+    ? readFileSync(memoryPointerPath, "utf8").trim()
+    : "";
 
   // Mutating tools = anything with destructiveHint:true OR readOnlyHint:false in its annotations.
   // For now we pass it as registeredToolNames; calling code may pass a sub-set explicitly later.
@@ -237,7 +256,7 @@ export function assemble(opts: AssembleOptions): AssembleResult {
     // their body verbatim — no auto-emitted blocks.
     const finalBody =
       expectedKind === "tool-description"
-        ? applyDescriptionHeader(parsed.frontmatter, resolved)
+        ? applyDescriptionHeader(parsed.frontmatter, resolved, { memoryPointer })
         : resolved;
 
     const artifact: AssembledArtifact = {

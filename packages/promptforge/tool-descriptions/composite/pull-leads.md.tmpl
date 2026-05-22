@@ -10,28 +10,19 @@ routing:
   triggers:
     - "show me leads"
     - "today's prospects"
-    - "what's new today"
-    - "let's prospect"
     - "best new leads"
-    - "my batch"
   anti_triggers:
     - phrase: "leads I should follow up with"
       route_to: leadbay_pull_followups
-    - phrase: "leads I've already worked"
-      route_to: leadbay_pull_followups
     - phrase: "I'm going to <city>"
       route_to: leadbay_followups_map
-    - phrase: "in person"
-      route_to: leadbay_followups_map
-  prefer_when: "user has named a specific lens — pass `lensId` and pin it for the rest of the session"
+  prefer_when: "fresh Discover leads; if a lens is named, pass `lensId` and pin it"
   examples:
     positive:
       - "Show me today's leads."
-      - "What's in my inbox this morning?"
       - "Pull my best new prospects."
     negative:
       - "Which leads should I follow up with this week?"
-      - "Show leads I've already contacted."
       - "I'm flying to Berlin Thursday — who should I meet?"
 rendering_hint: |
   3-col markdown table sorted by `score` desc — DO NOT print the numeric

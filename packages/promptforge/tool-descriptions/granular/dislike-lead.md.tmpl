@@ -13,15 +13,15 @@ routing:
     - "not relevant"
     - "wrong industry"
     - "too small"
-    - "skip this one permanently"
+    - "skip permanently"
     - "not a fit"
     - "no to this one"
   anti_triggers:
-    - phrase: "remind me about this lead later / snooze it / not now"
+    - phrase: "remind me later / snooze / not now"
       route_to: leadbay_set_pushback
-    - phrase: "thumbs up / save this one / this is a good fit"
+    - phrase: "thumbs up / save this one"
       route_to: leadbay_like_lead
-  prefer_when: "user expresses durable rejection of a specific lead; pass the lead's UUID as `lead_id`. If the user just wants to defer for now, route to `leadbay_set_pushback` instead."
+  prefer_when: "durable rejection of a specific lead; pass `lead_id`. For temporary deferral, route to `leadbay_set_pushback`."
   examples:
     positive:
       - "Thumbs down — wrong industry."

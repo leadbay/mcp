@@ -6,6 +6,7 @@ import type {
   AiAgentResponse,
   LeadPayload,
 } from "../types.js";
+import { withAgentMemoryMeta } from "../agent-memory/index.js";
 
 import { leadbay_pull_leads as PULL_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -136,6 +137,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
         properties: {
           region: { type: "string" },
           latency_ms: { type: ["number", "null"] },
+          agent_memory: { type: "object" },
         },
       },
     },
@@ -242,7 +244,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
     const hasMore = currentPage < totalPages - 1;
     const nextPage = hasMore ? currentPage + 1 : null;
 
-    return {
+    return withAgentMemoryMeta(client, {
       lens: { id: lensId },
       leads: res.items.map((lead) => ({
         ...trimmed(lead),
@@ -257,6 +259,6 @@ export const pullLeads: Tool<PullLeadsParams> = {
         region: client.region,
         latency_ms: client.lastMeta?.latency_ms ?? null,
       },
-    };
+    }, ctx);
   },
 };

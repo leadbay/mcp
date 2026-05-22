@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.13.0 — 2026-05-21 — Agent memory v1
+
+- Added local-file agent memory for Leadbay MCP: append-only JSONL entries
+  under `~/.leadbay/memory/{account_id}/`, consolidated at read time with
+  dedupe, confidence decay, validation bonuses, contradiction penalties, and
+  tombstones.
+- Added always-on `leadbay_agent_memory_recall`,
+  `leadbay_agent_memory_capture`, and `leadbay_agent_memory_review` tools.
+- Leads-touching tools now attach `_meta.agent_memory.summary` unless
+  `LEADBAY_AGENT_MEMORY=off` is set, so agents can apply remembered taste
+  signals without an extra recall round trip.
+- Promptforge now injects a shared memory pointer into routed tool
+  descriptions and a memory preamble into Leadbay workflow prompts.
+- Active MCP install/runtime pins are bumped from `@leadbay/mcp@0.12` to
+  `@leadbay/mcp@0.13`.
+
 ## 0.8.0 — 2026-05-15 — Skills + initialize catalog + daily check-in resilience
 
 Two correlated workflow upgrades shipped together: (1) the six MCP

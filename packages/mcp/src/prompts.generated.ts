@@ -6,6 +6,11 @@
 
 // region: leadbay_daily_check_in
 export const leadbay_daily_check_in: string = `
+## MEMORY
+
+Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new taste signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+
+
 Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask focused on NEW leads from the Discover wishlist: "get me leadbay leads", "best NEW leads to prospect today", "what's new today", "show me my batch", "let's prospect". For follow-up phrasings ("what should I follow up on", "leads I've already worked", "before my trip"), this is the wrong prompt — route to \`leadbay_followup_check_in\` instead. If the user's intent is ambiguous ("what should I work on?"), ASK once before picking an entry point.
 
 # Resilience rules for Leadbay long-running tools
@@ -156,6 +161,11 @@ Do not propose a next action. Do not call any more tools. Hand control back to t
 
 // region: leadbay_followup_check_in
 export const leadbay_followup_check_in: string = `
+## MEMORY
+
+Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new taste signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+
+
 Run the Leadbay follow-up check-in for me. Treat this prompt the same way for any equivalent ask: "leads I should follow up with", "already known leads", "what's overdue", "before my trip to [city]", "leads I haven't contacted", "who should I re-engage today".
 
 # Resilience rules for Leadbay long-running tools
@@ -570,6 +580,11 @@ Done. The map is the surface; the drafts are the action; the campaign is the per
 
 // region: leadbay_prospecting_overview
 export const leadbay_prospecting_overview: string = `
+## MEMORY
+
+Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new taste signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+
+
 # Leadbay Prospecting — Orientation
 
 You are working with Leadbay through the \`leadbay_*\` MCP tools. This prompt orients you to the user's mental model so you don't re-discover the workflow each session.
@@ -842,6 +857,11 @@ If the response status is \`applied\`, tell me Leadbay is regenerating intellige
 
 // region: leadbay_research_a_domain
 export const leadbay_research_a_domain: string = `
+## MEMORY
+
+Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new taste signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+
+
 IRON LAW — NO FABRICATION. Every lead id, contact email, custom field id, mapping decision, and tool argument must trace to a value you read from the file the user attached or to an output from a leadbay_* tool call in this session. Do not invent values. Do not "fill in" a missing leadId with a name match. Do not synthesize a CRM id from a guess. If a value is missing, leave the field blank and say so.
 
 
