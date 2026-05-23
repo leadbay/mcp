@@ -4,7 +4,7 @@
  * Guards the published archive's shape so a broken manifest doesn't ship:
  *   - manifest_version / name / version wire-match
  *   - server entry_point file is actually in the archive
- *   - user_config.leadbay_token is marked sensitive
+ *   - OAuth bootstrap is enabled without token / region install fields
  *
  * Gated on the .dxt existing — `pnpm --filter @leadbay/dxt build` produces it;
  * if not built, this test is skipped (same pattern as npx-entrypoint.test.ts).
@@ -95,16 +95,16 @@ describe.skipIf(!dxtPath)("@leadbay/dxt — .dxt bundle shape", () => {
     }
   });
 
-  it("leadbay_token user_config is marked sensitive and required", () => {
+  it("enables OAuth bootstrap without token / region install fields", () => {
     const manifest = JSON.parse(readFromZip(dxtPath!, "manifest.json"));
-    expect(manifest.user_config.leadbay_token.sensitive).toBe(true);
-    expect(manifest.user_config.leadbay_token.required).toBe(true);
-  });
-
-  it("leadbay_region defaults to fr without unsupported enum keys", () => {
-    const manifest = JSON.parse(readFromZip(dxtPath!, "manifest.json"));
-    expect(manifest.user_config.leadbay_region.default).toBe("fr");
-    expect(manifest.user_config.leadbay_region.enum).toBeUndefined();
+    expect(manifest.server.mcp_config.env.LEADBAY_OAUTH_BOOTSTRAP).toBe("1");
+    expect(manifest.server.mcp_config.env.LEADBAY_OAUTH_STAGING).toBeUndefined();
+    expect(manifest.server.mcp_config.env.LEADBAY_BASE_URL).toBeUndefined();
+    expect(manifest.server.mcp_config.env.LEADBAY_TOKEN).toBeUndefined();
+    expect(manifest.server.mcp_config.env.LEADBAY_REGION).toBeUndefined();
+    expect(manifest.user_config.leadbay_token).toBeUndefined();
+    expect(manifest.user_config.leadbay_region).toBeUndefined();
+    expect(Object.keys(manifest.user_config)).toEqual(["leadbay_mcp_write"]);
   });
 });
 

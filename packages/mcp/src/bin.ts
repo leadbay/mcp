@@ -15,6 +15,20 @@ import { buildServer } from "./server.js";
 import { initTelemetry } from "./telemetry.js";
 import { createDefaultUpdateStateStore } from "./update-state.js";
 import { checkForUpdate, recordRunningVersion } from "./update-check.js";
+import { oauthLogin, inferRegionViaStargate } from "./oauth.js";
+
+// Regional OAuth base URLs. Production is the default path; staging remains
+// available for `login --oauth --staging` and staging MCPB validation.
+const OAUTH_BASE_URLS = {
+  prod: {
+    us: "https://api-us.leadbay.app",
+    fr: "https://api-fr.leadbay.app",
+  },
+  staging: {
+    us: "https://api-us-staging.leadbay.app",
+    fr: "https://staging.api.leadbay.app",
+  },
+} as const;
 
 // __LEADBAY_MCP_VERSION__ is replaced at build time by tsup with the string
 // literal from packages/mcp/package.json#version. Single source of truth —
@@ -70,7 +84,7 @@ EXAMPLE Claude Desktop config (~/Library/Application Support/Claude/claude_deskt
     "mcpServers": {
       "leadbay": {
         "command": "npx",
-        "args": ["-y", "@leadbay/mcp@0.13"],
+        "args": ["-y", "@leadbay/mcp@0.16"],
         "env": {
           "LEADBAY_TOKEN": "lb_...",
           "LEADBAY_REGION": "us",
@@ -193,9 +207,171 @@ export function makeBrokenClient(
   return new BrokenLeadbayClient(stubError, baseUrl, region);
 }
 
+// Try to populate LEADBAY_TOKEN / REGION / BASE_URL from the on-disk
+// credentials file (the one OAuth bootstrap writes). When the MCP server is
+// launched by Claude Desktop's .mcpb install without any pre-set env, this
+// lets the second run (and every run after) skip the OAuth dance entirely.
+//
+// Returns true when env was populated from disk.
+function hydrateEnvFromCredentialsFile(): boolean {
+  if (process.env.LEADBAY_TOKEN) return false;
+  try {
+    const { existsSync, readFileSync } = require_("node:fs") as typeof import("node:fs");
+    const { path } = resolveOAuthBootstrapCredentialsPath();
+    if (!existsSync(path)) return false;
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    const env = parsed?.mcpServers?.leadbay?.env;
+    if (!env || typeof env !== "object") return false;
+    if (typeof env.LEADBAY_TOKEN === "string" && env.LEADBAY_TOKEN.length > 0) {
+      process.env.LEADBAY_TOKEN = env.LEADBAY_TOKEN;
+    }
+    if (!process.env.LEADBAY_REGION && typeof env.LEADBAY_REGION === "string") {
+      process.env.LEADBAY_REGION = env.LEADBAY_REGION;
+    }
+    if (!process.env.LEADBAY_BASE_URL && typeof env.LEADBAY_BASE_URL === "string") {
+      process.env.LEADBAY_BASE_URL = env.LEADBAY_BASE_URL;
+    }
+    return !!process.env.LEADBAY_TOKEN;
+  } catch {
+    return false;
+  }
+}
+
+function resolveOAuthBootstrapCredentialsPath(): { path: string; legacy: boolean } {
+  const resolved = resolveDefaultCredentialsPath();
+  if (process.env.LEADBAY_OAUTH_STAGING !== "1") return resolved;
+  const { dirname, join } = require_("node:path") as typeof import("node:path");
+  return {
+    path: join(dirname(resolved.path), "credentials.staging.json"),
+    legacy: resolved.legacy,
+  };
+}
+
+// OAuth bootstrap: when an MCPB opts in with LEADBAY_OAUTH_BOOTSTRAP=1 and no
+// token is available from env or disk, run the browser-loopback OAuth flow
+// inline so the server can come up authenticated. This is what makes the .mcpb
+// install a "click Install -> click Allow in browser -> done" experience
+// instead of "go run a CLI first".
+//
+// Region/auth-server resolution priority:
+//   1. LEADBAY_BASE_URL env -> use it directly (escape hatch / persisted config)
+//   2. LEADBAY_REGION env -> map to prod or staging regional URL
+//   3. stargate /user_info -> GeoIP-detect, map to prod or staging regional URL
+async function bootstrapOAuthIfMissing(logger: ToolLogger): Promise<boolean> {
+  if (process.env.LEADBAY_TOKEN) return false;
+
+  const { hostname } = await import("node:os");
+  process.stderr.write(
+    `\n[leadbay-mcp@${VERSION}] No token found — starting OAuth login in your browser…\n` +
+      `  (This is a one-time setup. The resulting token will be persisted at\n` +
+      `   ${(() => { try { return resolveOAuthBootstrapCredentialsPath().path; } catch { return "<credentials file>"; } })()}\n` +
+      `   so subsequent launches start instantly.)\n\n`
+  );
+
+  // Pick the auth-server base URL.
+  const envBaseUrl = process.env.LEADBAY_BASE_URL;
+  const envRegion = process.env.LEADBAY_REGION;
+  const isStaging =
+    process.env.LEADBAY_OAUTH_STAGING === "1" ||
+    (!!envBaseUrl && /staging/.test(envBaseUrl));
+  let region: "us" | "fr";
+  let authServerBaseUrl: string;
+
+  try {
+    if (envBaseUrl) {
+      // Explicit base URL wins — derive region for the persisted record.
+      authServerBaseUrl = envBaseUrl;
+      region = /(-fr|staging\.api)/.test(envBaseUrl) ? "fr" : "us";
+    } else if (envRegion === "us" || envRegion === "fr") {
+      region = envRegion;
+      authServerBaseUrl = OAUTH_BASE_URLS[isStaging ? "staging" : "prod"][region];
+    } else {
+      region = await inferRegionViaStargate({ staging: isStaging });
+      authServerBaseUrl = OAUTH_BASE_URLS[isStaging ? "staging" : "prod"][region];
+    }
+
+    const { accessToken } = await oauthLogin({
+      authServerBaseUrl,
+      clientName: `Leadbay MCP @ ${hostname()}`,
+      log: (m) => process.stderr.write(m),
+    });
+
+    // Persist to ~/.config/leadbay/credentials.json so future launches are silent.
+    try {
+      const { writeFileSync, mkdirSync, chmodSync } = require_("node:fs") as typeof import("node:fs");
+      const { dirname } = require_("node:path") as typeof import("node:path");
+      const { path } = resolveOAuthBootstrapCredentialsPath();
+      const envBlock: Record<string, string> = {
+        LEADBAY_TOKEN: accessToken,
+        LEADBAY_REGION: region,
+      };
+      if (isStaging || envBaseUrl) envBlock.LEADBAY_BASE_URL = authServerBaseUrl;
+      const config = {
+        mcpServers: {
+          leadbay: {
+            command: "npx",
+            args: ["-y", `@leadbay/mcp@${VERSION.split(".").slice(0, 2).join(".")}`],
+            env: envBlock,
+          },
+        },
+      };
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+      try { chmodSync(path, 0o600); } catch { /* FAT32 etc. */ }
+      process.stderr.write(`[leadbay-mcp] Persisted credentials to ${path}\n`);
+    } catch (err: any) {
+      process.stderr.write(
+        `[leadbay-mcp warn] OAuth succeeded but persisting the token failed (${err?.message ?? err}). ` +
+          `You'll be prompted to re-authorize on next launch.\n`
+      );
+    }
+
+    process.env.LEADBAY_TOKEN = accessToken;
+    process.env.LEADBAY_REGION = region;
+    if (isStaging || envBaseUrl) process.env.LEADBAY_BASE_URL = authServerBaseUrl;
+    logger.info?.(`OAuth bootstrap complete — region=${region}`);
+    return true;
+  } catch (err: any) {
+    process.stderr.write(
+      `[leadbay-mcp] OAuth bootstrap failed: ${err?.message ?? err}\n` +
+        `  The server will start but tools will return AUTH_MISSING until you authorize.\n`
+    );
+    return false;
+  }
+}
+
 export async function resolveClientFromEnv(logger: ToolLogger): Promise<ResolvedClient> {
+  if (process.env.LEADBAY_OAUTH_BOOTSTRAP === "1") {
+    hydrateEnvFromCredentialsFile();
+    if (!process.env.LEADBAY_TOKEN) {
+      await bootstrapOAuthIfMissing(logger);
+    }
+  }
+
   const token = process.env.LEADBAY_TOKEN;
   if (!token) {
+    if (process.env.LEADBAY_OAUTH_BOOTSTRAP === "1") {
+      process.stderr.write(
+        "leadbay-mcp: OAuth authorization is required but no token is available.\n" +
+          "  Restart the Claude Desktop extension to authorize Leadbay in your browser.\n" +
+          "\n" +
+          "Run `leadbay-mcp --help` for the full config template.\n"
+      );
+      const regionEnv = process.env.LEADBAY_REGION;
+      const region: "us" | "fr" = regionEnv === "fr" ? "fr" : "us";
+      return {
+        client: makeBrokenClient(
+          {
+            error: true,
+            code: "AUTH_MISSING",
+            message: "Leadbay OAuth authorization has not completed.",
+            hint: "Restart the Claude Desktop extension and complete the Leadbay OAuth browser authorization.",
+          },
+          region
+        ),
+        authState: "missing",
+      };
+    }
     // Don't process.exit — Claude Desktop / Cursor would surface this as
     // "Server disconnected" with no actionable info. Return a broken
     // client so the server still answers `initialize` + `tools/list`,
@@ -392,7 +568,7 @@ export function resolveDefaultCredentialsPath(): { path: string; legacy: boolean
 // other identity signal).
 export function checkLoginCollision(
   existingConfig: unknown,
-  email: string,
+  email: string | undefined,
   region: "us" | "fr"
 ): string | null {
   if (!existingConfig || typeof existingConfig !== "object") {
@@ -405,7 +581,10 @@ export function checkLoginCollision(
     typeof cfg.mcpServers?.leadbay?.env?.LEADBAY_REGION === "string"
       ? cfg.mcpServers.leadbay.env.LEADBAY_REGION
       : undefined;
-  if (existingEmail !== undefined && existingEmail !== email) {
+  // Compare emails only when both sides supplied one. The OAuth flow has no
+  // email (the user proved identity via the browser), so a fresh OAuth login
+  // landing on a file with a legacy email shouldn't false-alarm.
+  if (existingEmail !== undefined && email !== undefined && existingEmail !== email) {
     return `existing email=${existingEmail} (this login is email=${email})`;
   }
   if (existingRegion !== undefined && existingRegion !== region) {
@@ -436,15 +615,22 @@ export function computeFreshDefaultPath(): string {
 }
 
 async function runLogin(args: string[]): Promise<number> {
+  const useOAuth = hasFlag(args, "oauth");
+  const useStaging = hasFlag(args, "staging");
   const email = parseFlag(args, "email");
   const defaultPathPreview = (() => {
     try { return resolveDefaultCredentialsPath().path; } catch { return "<HOME>/.config/leadbay/credentials.json"; }
   })();
-  if (!email) {
+  // OAuth flow doesn't need --email; the user proves identity via the browser.
+  if (!email && !useOAuth) {
     process.stderr.write(
       "Usage: leadbay-mcp login --email you@example.com [--region us|fr] [--allow-region-fallback]\n" +
         "                        [--write-config PATH] [--unsafe-print-token] [--force] [--quiet]\n" +
+        "       leadbay-mcp login --oauth [--region us|fr] [--staging] [--write-config PATH] [--force] [--quiet]\n" +
         "  Then enter your password (hidden), or pipe it via stdin / set $LEADBAY_PASSWORD.\n" +
+        "  --oauth             Use OAuth Authorization Code + PKCE in your browser instead of email/password.\n" +
+        "                      Region is auto-detected via stargate GeoIP; pass --region to override.\n" +
+        "  --staging           Point at staging.leadbay.app endpoints. Use with --oauth for testing.\n" +
         "  --region            Pin the backend (us|fr); avoids sending your password to a backend you don't use.\n" +
         "                      Defaults to $LEADBAY_REGION if set; otherwise asks you to pass --allow-region-fallback.\n" +
         "  --allow-region-fallback   Try us, then fr (or fr, then us). Your password hits BOTH backends if the\n" +
@@ -476,7 +662,7 @@ async function runLogin(args: string[]): Promise<number> {
     return 2;
   }
 
-  if (!pinnedRegion && !allowFallback) {
+  if (!pinnedRegion && !allowFallback && !useOAuth) {
     process.stderr.write(
       "leadbay-mcp login: refusing to auto-detect region without consent.\n" +
         "  Avoiding silent credential cross-leak: by default, --region (or $LEADBAY_REGION) must be set\n" +
@@ -489,47 +675,89 @@ async function runLogin(args: string[]): Promise<number> {
     return 2;
   }
 
-  const password = await readPassword();
-  if (!password) {
-    process.stderr.write("leadbay-mcp login: empty password\n");
-    return 2;
-  }
+  let result: { region: "us" | "fr"; baseUrl: string; token: string; verified: boolean };
 
-  let result;
-  try {
-    if (pinnedRegion && !allowFallback) {
-      // Pinned: directly use that region; no fallback even on 401.
-      const { REGIONS } = await import("@leadbay/core");
-      const baseUrl = REGIONS[pinnedRegion];
-      const c = createClient({ region: pinnedRegion });
-      // Use the existing client transport for a single login attempt.
-      const token = await loginAt(baseUrl, email, password);
-      result = { region: pinnedRegion, baseUrl, token, verified: true };
-      void c;
+  if (useOAuth) {
+    // Region: explicit --region wins. Otherwise probe stargate by GeoIP — no
+    // email needed (the consent flow happens in the user's already-logged-in
+    // browser, which is bound to its own regional session anyway).
+    let region: "us" | "fr";
+    if (pinnedRegion) {
+      region = pinnedRegion;
     } else {
-      // Either pinned with explicit fallback consent, or no pin + consent.
-      result = await resolveRegion(email, password, pinnedRegion ?? undefined);
+      try {
+        process.stderr.write("Detecting your region from stargate…\n");
+        region = await inferRegionViaStargate({ staging: useStaging });
+        process.stderr.write(`Detected region: ${region.toUpperCase()}\n`);
+      } catch (err: any) {
+        process.stderr.write(`leadbay-mcp@${VERSION} login --oauth: ${err?.message ?? String(err)}\n`);
+        await reportCliFailure("__oauth_login__", err);
+        return 1;
+      }
     }
-  } catch (err: any) {
-    process.stderr.write(`leadbay-mcp@${VERSION} login: ${err?.message ?? String(err)}\n`);
-    await reportCliFailure("__login__", err);
-    return 1;
+    const baseUrl = OAUTH_BASE_URLS[useStaging ? "staging" : "prod"][region];
+    try {
+      const { hostname } = await import("node:os");
+      const clientName = `Leadbay MCP @ ${hostname()}`;
+      const { accessToken } = await oauthLogin({
+        authServerBaseUrl: baseUrl,
+        clientName,
+        log: (m) => process.stderr.write(m),
+      });
+      result = { region, baseUrl, token: accessToken, verified: true };
+    } catch (err: any) {
+      process.stderr.write(`leadbay-mcp@${VERSION} login --oauth: ${err?.message ?? String(err)}\n`);
+      await reportCliFailure("__oauth_login__", err);
+      return 1;
+    }
+  } else {
+    const password = await readPassword();
+    if (!password) {
+      process.stderr.write("leadbay-mcp login: empty password\n");
+      return 2;
+    }
+
+    try {
+      if (pinnedRegion && !allowFallback) {
+        // Pinned: directly use that region; no fallback even on 401.
+        const { REGIONS } = await import("@leadbay/core");
+        const baseUrl = REGIONS[pinnedRegion];
+        const c = createClient({ region: pinnedRegion });
+        // Use the existing client transport for a single login attempt.
+        const token = await loginAt(baseUrl, email!, password);
+        result = { region: pinnedRegion, baseUrl, token, verified: true };
+        void c;
+      } else {
+        // Either pinned with explicit fallback consent, or no pin + consent.
+        result = await resolveRegion(email!, password, pinnedRegion ?? undefined);
+      }
+    } catch (err: any) {
+      process.stderr.write(`leadbay-mcp@${VERSION} login: ${err?.message ?? String(err)}\n`);
+      await reportCliFailure("__login__", err);
+      return 1;
+    }
   }
 
   // Stamp `email` at the envelope root so future re-logins on the same account
   // can detect "same account, different token" (every loginAt() mints a fresh
   // token; collision detection by token equality always failed). MCP clients
-  // ignore unknown top-level fields, so this is safe to add.
+  // ignore unknown top-level fields, so this is safe to add. OAuth flow has
+  // no email (the user proved identity via the browser, not in the CLI), so
+  // we omit the field — the collision check tolerates that.
+  const envBlock: Record<string, string> = {
+    LEADBAY_TOKEN: result.token,
+    LEADBAY_REGION: result.region,
+  };
+  // When pointing at staging, persist LEADBAY_BASE_URL so the user's MCP
+  // client doesn't silently snap back to prod (where this token is invalid).
+  if (useStaging) envBlock.LEADBAY_BASE_URL = result.baseUrl;
   const config = {
-    email,
+    ...(email ? { email } : {}),
     mcpServers: {
       leadbay: {
         command: "npx",
-        args: ["-y", "@leadbay/mcp@0.13"],
-        env: {
-          LEADBAY_TOKEN: result.token,
-          LEADBAY_REGION: result.region,
-        },
+        args: ["-y", "@leadbay/mcp@0.16"],
+        env: envBlock,
       },
     },
   };
@@ -562,7 +790,7 @@ async function runLogin(args: string[]): Promise<number> {
         `  claude mcp add leadbay --scope user \\\n` +
         `    --env LEADBAY_TOKEN=${result.token} \\\n` +
         `    --env LEADBAY_REGION=${result.region} \\\n` +
-        `    -- npx -y @leadbay/mcp@0.13\n\n` +
+        `    -- npx -y @leadbay/mcp@0.16\n\n` +
         `Restart your MCP client to pick up the new server.\n`
     );
     return 0;
@@ -679,7 +907,7 @@ async function runLogin(args: string[]): Promise<number> {
         `  claude mcp add leadbay --scope user \\\n` +
         `    --env LEADBAY_TOKEN=$(jq -r .mcpServers.leadbay.env.LEADBAY_TOKEN ${quotedPath}) \\\n` +
         `    --env LEADBAY_REGION=${result.region} \\\n` +
-        `    -- npx -y @leadbay/mcp@0.13\n`
+        `    -- npx -y @leadbay/mcp@0.16\n`
     );
   }
   process.stderr.write(
@@ -927,7 +1155,7 @@ export function buildClaudeCodeAddArgs(
     `LEADBAY_TELEMETRY_ENABLED=${telemetryEnabled ? "true" : "false"}`,
   ];
   if (!includeWrite) args.push("--env", `LEADBAY_MCP_WRITE=0`);
-  args.push("--", "npx", "-y", "@leadbay/mcp@0.13");
+  args.push("--", "npx", "-y", "@leadbay/mcp@0.16");
   return args;
 }
 
@@ -1001,7 +1229,7 @@ async function installInJsonConfig(
 
     parsed.mcpServers.leadbay = {
       command: "npx",
-      args: ["-y", "@leadbay/mcp@0.13"],
+      args: ["-y", "@leadbay/mcp@0.16"],
       env,
     };
 
@@ -1245,7 +1473,7 @@ async function runInstall(args: string[]): Promise<number> {
   }
   process.stderr.write(
     `\nThe token was written into client config files but never printed to your terminal.\n` +
-      `Verify with: LEADBAY_TOKEN=$(...) npx -y @leadbay/mcp@0.13 doctor\n` +
+      `Verify with: LEADBAY_TOKEN=$(...) npx -y @leadbay/mcp@0.16 doctor\n` +
       `Restart your MCP client(s) to pick up the new server.\n` +
       `If you ever leak the token, run \`leadbay-mcp login --email <you> --region <us|fr>\` to mint a fresh one (which invalidates the prior session).\n`
   );

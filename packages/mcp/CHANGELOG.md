@@ -1,5 +1,23 @@
 # Changelog — @leadbay/mcp
 
+## 0.16.0 — 2026-05-28
+
+- **OAuth login** (`leadbay-mcp login --oauth`): browser-based Authorization
+  Code + PKCE flow with Dynamic Client Registration (RFC 7591). No password
+  ever touches the CLI. The resulting `o.<token>` is interchangeable with the
+  legacy bearer token.
+- Region is auto-detected via stargate GeoIP (`stargate.leadbay.app/1.0/user_info`)
+  for OAuth. Pass `--region us|fr` to override if you're on a VPN or travelling.
+- Pass `--staging` together with `--oauth` to point at `staging.leadbay.app` for
+  testing.
+- The Claude Desktop `.dxt` / `.mcpb` bundle now opts into OAuth bootstrap on
+  first launch. The install dialog no longer asks for a bearer token, region, or
+  backend URL; it only exposes the write-tools toggle.
+- Existing email-password `login` flow is unchanged and remains available for
+  manual installs and CI.
+- **Pin bumps**: active `@leadbay/mcp@0.13` install/runtime references in docs,
+  generated client config, and MCP Registry metadata now point at `@0.16`.
+
 ## 0.15.0 — 2026-05-27
 
 - **Sentry observability**: every non-2xx Leadbay API outcome now lands in
