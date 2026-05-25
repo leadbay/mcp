@@ -31,6 +31,7 @@ const TOOLS_WITH_ROUTING = new Set([
   "leadbay_prepare_outreach",
   "leadbay_account_status",
   "leadbay_add_leads_to_campaign",
+  "leadbay_remove_leads_from_campaign",
   "leadbay_campaign_call_sheet",
   "leadbay_campaign_progression",
   "leadbay_create_campaign",

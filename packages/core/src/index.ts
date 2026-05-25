@@ -82,6 +82,7 @@ import { followupsMap } from "./composite/followups-map.js";
 import { tourPlan } from "./composite/tour-plan.js";
 import { createCampaign } from "./composite/create-campaign.js";
 import { addLeadsToCampaign } from "./composite/add-leads-to-campaign.js";
+import { removeLeadsFromCampaign } from "./composite/remove-leads-from-campaign.js";
 import { listCampaigns } from "./composite/list-campaigns.js";
 import { campaignProgression } from "./composite/campaign-progression.js";
 import { campaignCallSheet } from "./composite/campaign-call-sheet.js";
@@ -150,7 +151,7 @@ export {
   // new composite writes
   bulkQualifyLeads, enrichTitles, adjustAudience, refinePrompt,
   answerClarification, reportOutreach, reportFriction, importLeads, importAndQualify,
-  createCampaign, addLeadsToCampaign,
+  createCampaign, addLeadsToCampaign, removeLeadsFromCampaign,
 };
 
 // ─── Tool catalogues ─────────────────────────────────────────────────────
@@ -292,6 +293,7 @@ export const compositeWriteTools: Tool[] = [
   // Backend POST endpoints; gated behind LEADBAY_MCP_WRITE=1 in MCP.
   createCampaign,
   addLeadsToCampaign,
+  removeLeadsFromCampaign,
 ];
 
 // Backward-compat alias for existing consumers.

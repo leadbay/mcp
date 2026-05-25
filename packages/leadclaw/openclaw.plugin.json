@@ -16,6 +16,7 @@
       "leadbay_campaign_call_sheet",
       "leadbay_create_campaign",
       "leadbay_add_leads_to_campaign",
+      "leadbay_remove_leads_from_campaign",
       "leadbay_research_lead_by_id",
       "leadbay_recall_ordered_titles",
       "leadbay_bulk_enrich_status",

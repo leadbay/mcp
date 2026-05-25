@@ -16,7 +16,7 @@ routing:
     - phrase: "create a new campaign"
       route_to: leadbay_create_campaign
     - phrase: "remove lead from campaign"
-      route_to: leadbay_create_campaign
+      route_to: leadbay_remove_leads_from_campaign
     - phrase: "list campaigns"
       route_to: leadbay_list_campaigns
   prefer_when: "existing campaign plus lead ids to attach; for a new campaign, use create_campaign"
@@ -53,6 +53,6 @@ Attach a list of `lead_ids` to an existing campaign. Wraps `POST /campaigns/{id}
 
 {{include:headers/tool-when-to-use}} the user has an existing campaign (created earlier in the session or visible via `leadbay_list_campaigns`) and wants to attach more leads to it.
 
-{{include:headers/tool-when-not-to-use}} to create a NEW campaign (use `leadbay_create_campaign` with `lead_ids` seeded); to list campaigns (`leadbay_list_campaigns`); to view per-lead progression (`leadbay_campaign_progression`); to remove leads (not currently exposed in the MCP — direct backend `DELETE /campaigns/{id}/leads` would be needed).
+{{include:headers/tool-when-not-to-use}} to create a NEW campaign (use `leadbay_create_campaign` with `lead_ids` seeded); to list campaigns (`leadbay_list_campaigns`); to view per-lead progression (`leadbay_campaign_progression`); to remove leads (use `leadbay_remove_leads_from_campaign`).
 
 **Response**: `{added: number, already_present: number}`. Use both counts in the confirmation — silent dedup hides useful information from the user.
