@@ -101,6 +101,7 @@ import { adjustAudience } from "./composite/adjust-audience.js";
 import { refinePrompt } from "./composite/refine-prompt.js";
 import { answerClarification } from "./composite/answer-clarification.js";
 import { reportOutreach } from "./composite/report-outreach.js";
+import { reportFriction } from "./composite/report-friction.js";
 
 import type { Tool } from "./types.js";
 
@@ -148,7 +149,7 @@ export {
   bulkEnrichStatus, qualifyStatus, importStatus, resolveImportRows,
   // new composite writes
   bulkQualifyLeads, enrichTitles, adjustAudience, refinePrompt,
-  answerClarification, reportOutreach, importLeads, importAndQualify,
+  answerClarification, reportOutreach, reportFriction, importLeads, importAndQualify,
   createCampaign, addLeadsToCampaign,
 };
 
@@ -258,6 +259,12 @@ export const compositeReadTools: Tool[] = [
   createTopupLink,
   openBillingPortal,
   prepareOutreach,
+  // Friction reporting — ALWAYS exposed (must work even in read-only
+  // deployments because the most valuable signal is "the tool I tried
+  // didn't deliver"). Does not mutate Leadbay state; emits a PostHog
+  // event only. Companion to leadbay_report_outreach (which DOES write
+  // to the backend and stays gated behind LEADBAY_MCP_WRITE).
+  reportFriction,
 ];
 
 // Composite write tools — always-exposed in OpenClaw, gated in MCP behind

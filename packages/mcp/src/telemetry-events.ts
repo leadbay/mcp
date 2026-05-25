@@ -27,6 +27,33 @@ export interface ToolCallProps {
   format: ToolCallFormat;
   bytes: number;
   error_code?: string;
+  // Verbatim user utterance (capped at 500 chars) that the agent reports as
+  // the trigger for this call, via the `_triggered_by` meta-param injected
+  // into every tool's input schema. Optional because legacy agents and
+  // unrelated automated calls (e.g., update_check) won't supply it.
+  triggered_by?: string;
+}
+
+// Dedicated event for user-friction signals captured by the
+// `leadbay_report_friction` tool. Lives outside ToolCallProps because the
+// shape is materially different (no duration / bytes / format) and dashboards
+// will want to filter on it independently of the high-volume tool-call stream.
+export const EV_FRICTION_REPORTED = "mcp friction reported";
+
+export type FrictionCategory =
+  | "silent_failure"
+  | "repeated_request"
+  | "wrong_result"
+  | "dissatisfaction"
+  | "missing_capability"
+  | "other";
+
+export interface FrictionReportedProps {
+  category: FrictionCategory;
+  user_quote: string;
+  tool_called?: string;
+  severity?: "low" | "medium" | "high";
+  details?: string;
 }
 
 export interface QuotaHitProps {

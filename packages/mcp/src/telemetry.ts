@@ -39,10 +39,12 @@ import {
   EV_AGENT_MEMORY_CAPTURED,
   EV_AGENT_MEMORY_RECALLED,
   EV_AGENT_MEMORY_PRUNED,
+  EV_FRICTION_REPORTED,
   type AgentMemoryCapturedProps,
   type AgentMemoryPrunedProps,
   type AgentMemoryRecalledProps,
   type ExceptionCtx,
+  type FrictionReportedProps,
   type QuotaHitProps,
   type StartupProps,
   type ToolCallProps,
@@ -67,6 +69,7 @@ export interface TelemetryHandle {
   captureAgentMemoryCaptured(props: AgentMemoryCapturedProps): void;
   captureAgentMemoryRecalled(props: AgentMemoryRecalledProps): void;
   captureAgentMemoryPruned(props: AgentMemoryPrunedProps): void;
+  captureFrictionReported(props: FrictionReportedProps): void;
   captureException(err: unknown, ctx: ExceptionCtx): void;
   // Auto-update lifecycle. Optional on the interface so out-of-tree
   // TelemetryHandle implementations don't have to implement them; the
@@ -89,6 +92,7 @@ export const NOOP_TELEMETRY: TelemetryHandle = {
   captureAgentMemoryCaptured: () => {},
   captureAgentMemoryRecalled: () => {},
   captureAgentMemoryPruned: () => {},
+  captureFrictionReported: () => {},
   captureException: () => {},
   captureUpdateCheck: () => {},
   captureUpdatePrompted: () => {},
@@ -337,6 +341,9 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
     },
     captureAgentMemoryPruned(props) {
       emit(EV_AGENT_MEMORY_PRUNED, { ...props });
+    },
+    captureFrictionReported(props) {
+      emit(EV_FRICTION_REPORTED, { ...props });
     },
     captureUpdateCheck(props) {
       emit(EV_MCP_UPDATE_CHECK, { ...props });

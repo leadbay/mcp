@@ -27,6 +27,7 @@
       "leadbay_refine_prompt",
       "leadbay_answer_clarification",
       "leadbay_report_outreach",
+      "leadbay_report_friction",
       "leadbay_import_leads",
       "leadbay_import_and_qualify",
       "leadbay_import_status",

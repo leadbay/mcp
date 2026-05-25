@@ -477,6 +477,23 @@ const CASES: ConformanceCase[] = [
     },
   },
   {
+    // Friction reporting is local — no backend HTTP roundtrip. The
+    // composite synthesizes `{ reported, message, _friction, _meta }`
+    // and the MCP server captures `_friction` as a PostHog event in a
+    // separate code path. This case asserts the output-schema shape;
+    // the telemetry capture is exercised in server.test.ts.
+    toolName: "leadbay_report_friction",
+    arguments: {
+      category: "silent_failure",
+      user_quote: "still nothing — third time asking for Wisconsin leads",
+      tool_called: "leadbay_pull_leads",
+      severity: "medium",
+    },
+    setupMocks: () => {
+      mockHttp([]);
+    },
+  },
+  {
     toolName: "leadbay_recall_ordered_titles",
     arguments: { leadIds: ["lead-9"] },
     setupMocks: () => {
