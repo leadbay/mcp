@@ -113,7 +113,7 @@ export const EVAL_TOUCHFILES: Record<string, string[]> = {
 };
 
 export const GLOBAL_TOUCHFILES = [
-  "packages/mcp/test/eval/helpers/session-runner.ts",
+  "packages/mcp/test/eval/helpers/cli-session-runner.ts",
   "packages/mcp/test/eval/helpers/evidence.ts",
   "packages/mcp/test/eval/helpers/eval-collector.ts",
   "packages/mcp/test/eval/helpers/touchfiles.ts",

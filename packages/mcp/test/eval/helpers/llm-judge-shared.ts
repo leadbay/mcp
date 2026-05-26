@@ -1,24 +1,19 @@
 /**
  * Shared utilities for any LLM-as-judge call inside the eval suite.
  *
+ * The judge always runs via the `claude` CLI — the same binary Claude Code
+ * uses. No ANTHROPIC_API_KEY required; Claude Code's auth (subscription or
+ * API key) is transparently reused by the child process.
+ *
  * Three things this module enforces:
- * - Untrusted-text wrapping: any data sourced from a previous model
- *   (sent body, intercepted backend payload, agent prose) is wrapped in
- *   <<<UNTRUSTED_*>>> sentinels with explicit instructions to the judge
- *   to treat the content as data, not commands. Defeats injection.
+ * - Untrusted-text wrapping: agent prose / tool outputs are wrapped in
+ *   <<<UNTRUSTED_*>>> sentinels so the judge treats them as data, not commands.
  * - Defensive output parsing: numeric scores clamped to [1,5];
  *   non-numeric coerced to 1; failure_modes_present filtered to the
  *   exact vocabulary supplied by the frontmatter rubric.
- * - Retry/timeout policy: one retry with exponential backoff on
- *   transient errors (429, JSON parse, timeout) per the eng-review T2
- *   decision. On second failure: judge_scores undefined, L3 incomplete.
- *
- * Backend selection (in priority order):
- *   1. claude CLI — default when available in PATH (works inside Claude Code)
- *   2. ANTHROPIC_API_KEY env var — overrides CLI when set (for CI)
- *   3. Neither → throws with a clear error message.
+ * - Retry policy: one retry with exponential backoff on transient errors
+ *   (JSON parse, timeout) per eng-review T2 decision.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import { execSync } from "node:child_process";
 import { JUDGE_RETRY_DELAYS_MS } from "./budget-thresholds.js";
 
@@ -80,7 +75,7 @@ function classifyError(err: unknown): JudgeError {
 }
 
 // ---------------------------------------------------------------------------
-// Backend detection
+// CLI execution
 // ---------------------------------------------------------------------------
 
 /** Returns true if the `claude` CLI binary is available in PATH. */
@@ -94,122 +89,49 @@ export function hasCLI(): boolean {
 }
 
 /**
- * Returns an Anthropic SDK client if ANTHROPIC_API_KEY is set, or null.
- * Call hasCLI() first — CLI takes priority over the API key.
- */
-export function makeAnthropicClientIfAvailable(): Anthropic | null {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return null;
-  return new Anthropic({ apiKey: key });
-}
-
-/**
  * Shell out to `claude -p "<prompt>"` and return stdout.
- * Only used for single-turn judge calls. Multi-turn sessions still
- * require the Anthropic SDK (see session-runner.ts).
+ * Used for all judge calls — Claude Code's auth is reused transparently.
  */
-export function callClaudeCLI(prompt: string): string {
-  return execSync(`claude -p ${JSON.stringify(prompt)}`, {
+export function callClaudeCLI(prompt: string, model?: string): string {
+  const modelFlag = model ? `--model ${JSON.stringify(model)}` : "";
+  return execSync(`claude -p ${JSON.stringify(prompt)} ${modelFlag}`.trim(), {
     encoding: "utf8",
-    timeout: 60_000,
+    timeout: 90_000,
   });
 }
 
-export interface JudgeCallOpts<T> {
-  client: Anthropic;
-  model: string;
-  prompt: string;
-  parser: (raw: string) => T;     // throws on malformed; classifier handles retry
-  max_tokens?: number;
-}
+// ---------------------------------------------------------------------------
+// Judge call with retry
+// ---------------------------------------------------------------------------
 
-export interface JudgeCallAutoOpts<T> {
-  /** Provide an explicit client to force SDK path (e.g. in CI with key set). */
-  client?: Anthropic;
-  model: string;
+export interface JudgeCallOpts<T> {
   prompt: string;
+  model?: string;
   parser: (raw: string) => T;
-  max_tokens?: number;
 }
 
 /**
- * Run a judge call with retry policy per eng-review T2.
+ * Run a judge call via the claude CLI with retry policy per eng-review T2.
  * One retry with exponential backoff (delays in JUDGE_RETRY_DELAYS_MS).
- * Returns ok=false on second failure; caller writes
- * judge_scores: undefined and L3 stays incomplete.
+ * Returns ok=false on second failure.
  */
 export async function callJudge<T>(opts: JudgeCallOpts<T>): Promise<JudgeOutcome<T>> {
   let lastError: { error: JudgeError; message: string } | null = null;
-  const attempts = JUDGE_RETRY_DELAYS_MS.length + 1; // initial + retries
+  const attempts = JUDGE_RETRY_DELAYS_MS.length + 1;
+
   for (let attempt = 0; attempt < attempts; attempt++) {
     if (attempt > 0) {
       await delay(JUDGE_RETRY_DELAYS_MS[attempt - 1]);
     }
     try {
-      const response = await opts.client.messages.create({
-        model: opts.model,
-        max_tokens: opts.max_tokens ?? 1024,
-        messages: [{ role: "user", content: opts.prompt }],
-      });
-      const block = response.content.find((c) => c.type === "text");
-      const raw = block && "text" in block ? block.text : "";
+      const raw = callClaudeCLI(opts.prompt, opts.model);
       const value = opts.parser(raw);
-      return {
-        ok: true,
-        value,
-        raw,
-        tokens_in: response.usage.input_tokens,
-        tokens_out: response.usage.output_tokens,
-      };
+      return { ok: true, value, raw, tokens_in: 0, tokens_out: 0 };
     } catch (err) {
       lastError = { error: classifyError(err), message: String((err as Error)?.message ?? err) };
-      if (lastError.error === "content_filter") break; // never retry content-filter
+      if (lastError.error === "content_filter") break;
     }
   }
+
   return { ok: false, error: lastError!.error, message: lastError!.message };
-}
-
-/**
- * Like callJudge but selects the backend automatically:
- *   1. Explicit `client` → SDK path (CI override)
- *   2. ANTHROPIC_API_KEY set → SDK path
- *   3. claude CLI in PATH → CLI path (no token count available)
- *   4. Neither → returns ok=false with error="unknown"
- */
-export async function callJudgeAuto<T>(
-  opts: JudgeCallAutoOpts<T>,
-): Promise<JudgeOutcome<T>> {
-  // Priority 1+2: explicit client or env key → SDK path
-  const client = opts.client ?? makeAnthropicClientIfAvailable();
-  if (client) {
-    return callJudge({ client, model: opts.model, prompt: opts.prompt, parser: opts.parser, max_tokens: opts.max_tokens });
-  }
-
-  // Priority 3: claude CLI
-  if (hasCLI()) {
-    let lastError: { error: JudgeError; message: string } | null = null;
-    const attempts = JUDGE_RETRY_DELAYS_MS.length + 1;
-    for (let attempt = 0; attempt < attempts; attempt++) {
-      if (attempt > 0) {
-        await delay(JUDGE_RETRY_DELAYS_MS[attempt - 1]);
-      }
-      try {
-        const raw = callClaudeCLI(opts.prompt);
-        const value = opts.parser(raw);
-        return { ok: true, value, raw, tokens_in: 0, tokens_out: 0 };
-      } catch (err) {
-        lastError = { error: classifyError(err), message: String((err as Error)?.message ?? err) };
-        if (lastError.error === "content_filter") break;
-      }
-    }
-    return { ok: false, error: lastError!.error, message: lastError!.message };
-  }
-
-  // Priority 4: nothing available
-  return {
-    ok: false,
-    error: "unknown",
-    message:
-      "No execution backend found. Either run inside Claude Code (claude CLI in PATH) or set ANTHROPIC_API_KEY.",
-  };
 }

@@ -9,7 +9,6 @@
  * wrapped in <<<UNTRUSTED_*>>> blocks and a focused question; output is
  * JSON-only.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import { callJudge, constrainEnumArray, wrapUntrusted } from "./llm-judge-shared.js";
 import type { MCPEvidence } from "./evidence.js";
 
@@ -20,7 +19,6 @@ export interface DriftJudgeInput {
   user_intent: string;
   main_evidence: MCPEvidence;
   branch_evidence: MCPEvidence;
-  client?: Anthropic;
   model?: string;
 }
 
@@ -61,11 +59,9 @@ export async function runDriftJudge(input: DriftJudgeInput): Promise<DriftJudgeO
     `{"label":"intentional_improvement"|"refactor_no_quality_change"|"regression","changed_axes":[<short strings>],"reasoning":"<2-4 sentences naming specific diffs>"}`,
   ].join("\n");
 
-  const client = input.client ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? "" });
   const model = input.model ?? "claude-opus-4-7";  // Opus only for periodic drift (eng-review)
 
   const outcome = await callJudge({
-    client,
     model,
     prompt,
     parser: (raw) => {
