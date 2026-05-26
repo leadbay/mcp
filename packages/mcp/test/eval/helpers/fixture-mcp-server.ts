@@ -72,15 +72,13 @@ const originalRequest = https.request.bind(https);
   );
 
   if (!entry) {
-    // No fixture matched — fall through to real HTTPS (won't work in eval
-    // but gives a clear network error rather than silent hang).
+    // No fixture matched — emit a clear error so the client doesn't hang.
     const req = new EventEmitter() as ReturnType<typeof https.request>;
-    setImmediate(() =>
-      (req as unknown as EventEmitter).emit(
-        "error",
-        new Error(`fixture-mcp-server: no fixture matched ${method} ${path}`),
-      ),
-    );
+    const noMatchErr = new Error(`fixture-mcp-server: no fixture matched ${method} ${path}`);
+    (req as unknown as { write: (c: string | Buffer) => void }).write = () => {};
+    (req as unknown as { end: () => void }).end = () => {
+      setImmediate(() => (req as unknown as EventEmitter).emit("error", noMatchErr));
+    };
     return req;
   }
 

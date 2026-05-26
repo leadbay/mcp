@@ -146,7 +146,7 @@ export async function runScenarioEval(opts: RunScenarioEvalOpts): Promise<void> 
       lines.push("  criteria:");
       for (const c of judgeOutcome.value.per_criterion) {
         lines.push(`    [${c.pass ? "✓" : "✗"}] ${c.criterion}`);
-        if (!c.pass) lines.push(`        → ${c.reasoning}`);
+        lines.push(`        → ${c.reasoning}`);
       }
     }
     lines.push(`  tools called: ${sessionResult.evidence.tool_calls.map((t) => t.name).join(" → ")}`);

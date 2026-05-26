@@ -222,14 +222,12 @@ export async function runSessionCLI(opts: CLISessionOpts): Promise<CLISessionRes
       "--verbose",
       "--mcp-config", mcpConfigPath,
       "--dangerously-skip-permissions",
-      // Use --strict-mcp-config so only our fixture server is loaded,
-      // ignoring any user-global MCP configs that might interfere.
       "--strict-mcp-config",
-      // Disable slash commands / skills to prevent superpowers injection.
       "--disable-slash-commands",
-      // Eval-specific settings: clears all hooks and disables plugins so
-      // superpowers/context7 don't inject Skill/ToolSearch/LSP directives.
       "--settings", evalSettingsPath,
+      // Only allow tools from our fixture MCP server — blocks Bash, Glob,
+      // Read, Edit, Skill, ToolSearch, LSP etc. from superpowers/Claude Code.
+      "--allowedTools", "mcp__leadbay-eval-fixtures__*",
     ];
     if (modelFlag) args.push("--model", modelFlag);
 

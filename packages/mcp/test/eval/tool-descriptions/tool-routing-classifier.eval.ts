@@ -50,7 +50,9 @@ function buildToolList(): Array<{ name: string; description: string; input_schem
 
 const mode = describeIfSelected("tool-routing", selectTouchedKeys());
 
-describe.skipIf(mode === "skip")("eval: tool-routing classifier", () => {
+const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
+
+describe.skipIf(mode === "skip" || !hasApiKey)("eval: tool-routing classifier", () => {
   const tools = buildToolList();
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? "" });
 

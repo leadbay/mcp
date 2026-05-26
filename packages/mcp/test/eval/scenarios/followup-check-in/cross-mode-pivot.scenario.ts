@@ -6,8 +6,17 @@
  * This is a single-prompt scenario that fixtures both the initial
  * follow-up pull AND the discovery refresh; the agent is expected to
  * call both during the session.
+ *
+ * Fixture paths match the actual LeadbayClient API calls:
+ *   - pull_followups: GET /1.5/monitor?... (regex — query params vary)
+ *   - pull_leads:     GET /lenses/{lensId}/leads/wishlist?count=20&page=0&contacts=true
+ *                     + GET /leads/{id}/ai_agent_responses (per lead, soft-fail)
  */
 import type { ScenarioFixture } from "../daily-check-in/clean-batch.scenario.js";
+
+const ORG_ID = "org_cmp_001";
+const LENS_ID = 55;
+const P = (path: string) => `/1.5${path}`;
 
 export const SCENARIO: ScenarioFixture<Record<string, never>> = {
   name: "cross-mode-pivot",
@@ -15,6 +24,28 @@ export const SCENARIO: ScenarioFixture<Record<string, never>> = {
   tier: "gate",
   args: {},
   backendFixtures: [
+    // ── pull_leads resolveDefaultLens: GET /users/me ──────────────────────
+    // (consumed when the agent pivots to pull_leads after the followup check-in)
+    {
+      method: "GET",
+      path: P("/users/me"),
+      status: 200,
+      body: {
+        id: "user_cmp_001",
+        email: "demo@leadbay.ai",
+        name: "Demo User",
+        admin: false,
+        manager: false,
+        organization: {
+          id: ORG_ID,
+          name: "Leadbay Demo Org",
+          ai_agent_enabled: true,
+          computing_intelligence: false,
+        },
+        last_requested_lens: LENS_ID,
+      },
+    },
+    // ── pull_followups: GET /monitor?... (regex — query params vary) ──────
     {
       method: "GET",
       path: /\/1\.5\/monitor/,
@@ -45,28 +76,51 @@ export const SCENARIO: ScenarioFixture<Record<string, never>> = {
         has_more: false,
       },
     },
+    // ── pull_leads (pivot): GET /lenses/{lensId}/leads/wishlist ──────────
     {
-      method: "POST",
-      path: "/v1/leads/discover",
+      method: "GET",
+      path: P(`/lenses/${LENS_ID}/leads/wishlist?count=20&page=0&contacts=true`),
       status: 200,
       body: {
-        lens: { id: "lens_pivot", name: "Default" },
-        leads: [
+        items: [
           {
-            lead_id: "d1",
+            id: "d1",
             name: "Fresh Co",
-            website: "fresh.example",
             score: 0.85,
             ai_agent_lead_score: 0.9,
-            location: { city: "Berlin", state: "DE" },
-            size: { min: 50, max: 200 },
             short_description: "Fresh from the wishlist.",
+            location: { city: "Berlin", country: "DE", full: "Berlin, Germany", pos: null, state: null },
+            size: { low: 50, high: 200, min: 50, max: 200, label: "50-200" },
+            website: "https://fresh.example",
+            liked: false,
+            disliked: false,
+            new: true,
             tags: [],
-            qualification_summary: { answered: 4, best_response_excerpt: "Strong fit." },
+            contacts_count: 0,
+            org_contacts_count: 0,
             recommended_contact: null,
           },
         ],
+        pagination: { page: 0, count: 20, total: 1, has_more: false },
+        computing_wishlist: false,
+        computing_scores: false,
       },
+    },
+    // ── pull_leads: ai_agent_responses per lead (soft-fail OK) ───────────
+    {
+      method: "GET",
+      path: P(`/leads/d1/ai_agent_responses`),
+      status: 200,
+      body: [
+        {
+          question: "Is this a strong B2B fit?",
+          lead_id: "d1",
+          score: 18,
+          response: "Strong fit.",
+          computed_at: "2026-05-01T00:00:00Z",
+          question_created_at: "2026-01-01T00:00:00Z",
+        },
+      ],
     },
   ],
   mission: {
