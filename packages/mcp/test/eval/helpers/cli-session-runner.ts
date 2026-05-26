@@ -148,6 +148,12 @@ interface StreamResultEvent {
   result: string;
   stop_reason?: string;
   total_cost_usd?: number;
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
 }
 
 type StreamEvent =
@@ -198,6 +204,8 @@ export async function runSessionCLI(opts: CLISessionOpts): Promise<CLISessionRes
 
   // Write temp dir for MCP config.
   const tmpDir = mkdtempSync("/tmp/leadbay-eval-");
+  let totalTokensIn = 0;
+  let totalTokensOut = 0;
   let terminal_reason: TerminalReason = "agent_stopped";
 
   try {
@@ -342,6 +350,11 @@ export async function runSessionCLI(opts: CLISessionOpts): Promise<CLISessionRes
               // The CLI result event carries the final text in `result` field.
               // Fall back to the last non-empty assistant turn if result is empty.
               finalText = (ev.result && ev.result.length > 0) ? ev.result : lastAssistantText;
+              // result.usage is the authoritative session-total token count.
+              if (ev.usage) {
+                totalTokensIn = ev.usage.input_tokens;
+                totalTokensOut = ev.usage.output_tokens;
+              }
             }
             done = true;
             proc.stdin.end();
@@ -369,7 +382,7 @@ export async function runSessionCLI(opts: CLISessionOpts): Promise<CLISessionRes
     evidence.final_agent_message = finalText;
     evidence.session.terminal_reason = terminal_reason;
 
-    appendTranscript({ kind: "session-end", terminal_reason, turns: turn });
+    appendTranscript({ kind: "session-end", terminal_reason, turns: turn, tokens_in: totalTokensIn, tokens_out: totalTokensOut });
     writeFileSync(transcriptPath, transcriptLines.join("\n") + "\n", "utf8");
   } finally {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }

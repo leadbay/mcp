@@ -504,6 +504,14 @@ function buildFallbackPrompt(
     "RUBRIC:",
     rubric,
     "",
+    "SCORING RUBRIC:",
+    "  mission_match:        5=all criteria met, 4=minor gap, 3=partial, 2=major gap, 1=wrong task",
+    "  instruction_adherence:5=perfect, 4=minor deviation, 3=some ignored, 2=major ignored, 1=all ignored",
+    "  no_fabrication:       5=only tool-grounded claims, 4=one unsupported inference, 3=several, 2=significant, 1=pervasive",
+    "                        IMPORTANT: tool errors / missing data → agent acknowledging uncertainty is NOT fabrication (score 5).",
+    "                        Only deduct if agent stated facts NOT present in any tool response.",
+    "  tool_selection_fit:   5=correct tools in correct order, 4=minor inefficiency, 3=wrong tool once, 2=wrong tools often, 1=irrelevant",
+    "",
     "Respond with ONLY valid JSON in this exact shape:",
     JSON.stringify({
       per_criterion: scenario.success_criteria.map((c) => ({
