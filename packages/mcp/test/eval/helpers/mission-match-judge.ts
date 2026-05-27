@@ -308,11 +308,11 @@ export async function runMissionMatchJudge(
       failure_modes_present: outcome.value.failure_modes_present,
       drift_signals: outcome.value.drift_signals,
       reasoning: outcome.value.reasoning,
-      cost_tokens_in: 0,
-      cost_tokens_out: 0,
+      cost_tokens_in: outcome.tokens_in,
+      cost_tokens_out: outcome.tokens_out,
     },
     raw: outcome.raw,
-    tokens_in: 0,
-    tokens_out: 0,
+    tokens_in: outcome.tokens_in,
+    tokens_out: outcome.tokens_out,
   };
 }

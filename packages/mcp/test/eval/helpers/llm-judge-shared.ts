@@ -92,12 +92,28 @@ export function hasCLI(): boolean {
  * Shell out to `claude -p "<prompt>"` and return stdout.
  * Used for all judge calls — Claude Code's auth is reused transparently.
  */
-export function callClaudeCLI(prompt: string, model?: string): string {
+export interface CLIResult {
+  text: string;
+  tokens_in: number;
+  tokens_out: number;
+}
+
+export function callClaudeCLI(prompt: string, model?: string): CLIResult {
   const modelFlag = model ? `--model ${JSON.stringify(model)}` : "";
-  return execSync(`claude -p ${JSON.stringify(prompt)} ${modelFlag}`.trim(), {
-    encoding: "utf8",
-    timeout: 90_000,
-  });
+  const raw = execSync(
+    `claude -p ${JSON.stringify(prompt)} --output-format json ${modelFlag}`.trim(),
+    { encoding: "utf8", timeout: 90_000 },
+  );
+  try {
+    const parsed = JSON.parse(raw) as { result?: string; usage?: { input_tokens?: number; output_tokens?: number } };
+    return {
+      text: parsed.result ?? raw,
+      tokens_in: parsed.usage?.input_tokens ?? 0,
+      tokens_out: parsed.usage?.output_tokens ?? 0,
+    };
+  } catch {
+    return { text: raw, tokens_in: 0, tokens_out: 0 };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -124,9 +140,9 @@ export async function callJudge<T>(opts: JudgeCallOpts<T>): Promise<JudgeOutcome
       await delay(JUDGE_RETRY_DELAYS_MS[attempt - 1]);
     }
     try {
-      const raw = callClaudeCLI(opts.prompt, opts.model);
-      const value = opts.parser(raw);
-      return { ok: true, value, raw, tokens_in: 0, tokens_out: 0 };
+      const { text, tokens_in, tokens_out } = callClaudeCLI(opts.prompt, opts.model);
+      const value = opts.parser(text);
+      return { ok: true, value, raw: text, tokens_in, tokens_out };
     } catch (err) {
       lastError = { error: classifyError(err), message: String((err as Error)?.message ?? err) };
       if (lastError.error === "content_filter") break;
