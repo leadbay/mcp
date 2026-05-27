@@ -365,8 +365,32 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
       try {
         Sentry.withScope((scope) => {
           scope.setTag("tool", ctx.tool);
+          if (ctx.code) scope.setTag("error_code", ctx.code);
+          if (ctx.endpoint) scope.setTag("endpoint", ctx.endpoint);
+          if (ctx.region) scope.setTag("region", ctx.region);
+          if (ctx.http_status !== undefined) {
+            scope.setTag("http_status", String(ctx.http_status));
+          }
+          if (ctx.source) scope.setTag("source", ctx.source);
           if (me?.organization?.id) {
             scope.setTag("organization", me.organization.id);
+          }
+          if (ctx.message) scope.setExtra("message", ctx.message);
+          if (ctx.hint) scope.setExtra("hint", ctx.hint);
+          if (ctx.triggered_by) scope.setExtra("triggered_by", ctx.triggered_by);
+          if (ctx.latency_ms !== undefined && ctx.latency_ms !== null) {
+            scope.setExtra("latency_ms", ctx.latency_ms);
+          }
+          if (ctx.retry_after !== undefined && ctx.retry_after !== null) {
+            scope.setExtra("retry_after", ctx.retry_after);
+          }
+          // Fingerprint by (surface, tool, code) so business errors of the
+          // same shape group together in Sentry rather than collapsing into
+          // a single mega-issue (they all originate from client.makeError
+          // and share the value-shape — default fingerprinting would dump
+          // every LeadbayError into one bucket).
+          if (ctx.code && ctx.source === "business") {
+            scope.setFingerprint(["mcp", ctx.tool, ctx.code]);
           }
           Sentry.captureException(err);
         });

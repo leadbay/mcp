@@ -651,16 +651,43 @@ export function buildServer(
   };
 
   // A LeadbayError surfaced either via throw OR via the `{ error: true,
-  // code, ... }` envelope shape (see formatErrorForLLM). Either way it
-  // represents a business outcome (QUOTA_EXCEEDED, NOT_FOUND, AUTH_EXPIRED,
-  // FORBIDDEN, BILLING_SUSPENDED, API_ERROR) — captured as PostHog
-  // tool-call event with `error_code`, NOT as a Sentry exception. Plain
-  // throws (TypeError, network errors, parse bugs) DO go to Sentry.
-  const isLeadbayBusinessError = (err: any): err is { error: true; code: string; _meta?: any } =>
+  // code, ... }` envelope shape (see formatErrorForLLM). Every non-2xx
+  // outcome — business or unexpected — lands in Sentry with the full
+  // envelope (code, message, hint, endpoint, region, http_status,
+  // triggered_by, latency, retry_after). The `source` tag distinguishes
+  // bounded LeadbayError codes ("business") from raw throws like
+  // TypeError / EPIPE / JSON parse ("unexpected"), so Sentry's filter can
+  // narrow to actual bugs when triaging.
+  const isLeadbayBusinessError = (err: any): err is { error: true; code: string; message?: string; hint?: string; _meta?: any } =>
     err != null &&
     typeof err === "object" &&
     err.error === true &&
     typeof err.code === "string";
+
+  // Build the Sentry context from either a thrown LeadbayError or a
+  // returned error envelope. Both shapes are identical (`{error: true,
+  // code, message, hint, _meta}`); the helper just narrows the typing
+  // and pulls envelope fields into the ExceptionCtx surface.
+  const buildBusinessCtx = (
+    toolName: string,
+    envelope: { code: string; message?: string; hint?: string; _meta?: any },
+    triggered_by: string | undefined
+  ): import("./telemetry-events.js").ExceptionCtx => {
+    const meta = envelope._meta ?? {};
+    return {
+      tool: toolName,
+      code: envelope.code,
+      message: envelope.message,
+      hint: envelope.hint,
+      endpoint: meta.endpoint,
+      region: meta.region,
+      latency_ms: meta.latency_ms ?? null,
+      retry_after: meta.retry_after ?? null,
+      http_status: meta.http_status,
+      triggered_by,
+      source: "business",
+    };
+  };
 
   const captureFrictionTelemetry = (toolName: string, result: any) => {
     if (toolName !== "leadbay_report_friction") return;
@@ -826,6 +853,10 @@ export function buildServer(
           error_code: envCode,
           triggered_by,
         });
+        telemetry.captureException(
+          result,
+          buildBusinessCtx(name, result as any, triggered_by)
+        );
         if (DEBUG_ON) {
           process.stderr.write(
             `[leadbay-mcp debug] tool=${name} dur=${envDur}ms ok=false code=${envCode}\n`
@@ -954,10 +985,18 @@ export function buildServer(
           error_code: code,
           triggered_by,
         });
+        telemetry.captureException(err, buildBusinessCtx(name, err, triggered_by));
       } else {
         // Unexpected throw — capture to Sentry AND record the tool-call
-        // event so the failure shows up in product analytics too.
-        telemetry.captureException(err, { tool: name });
+        // event so the failure shows up in product analytics too. No
+        // envelope to mine; ship what we have (tool, the thrown Error's
+        // message, the triggered_by) under source=unexpected.
+        telemetry.captureException(err, {
+          tool: name,
+          source: "unexpected",
+          message: typeof err?.message === "string" ? err.message : undefined,
+          triggered_by,
+        });
         telemetry.captureToolCall({
           tool: name,
           ok: false,
