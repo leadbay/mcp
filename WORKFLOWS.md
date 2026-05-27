@@ -36,6 +36,10 @@ success_criteria:
   - "did NOT call leadbay_enrich_contacts without explicit user confirmation"
 ```
 
+```yaml scenario
+prompt: "Show me today's leads"
+```
+
 | 2 | **Follow-up check-in (incl. travel/geo)** — "leads I should follow up with", "before my trip to Berlin", "who should I re-engage" | `leadbay_pull_followups` · `leadbay_followups_map` · `leadbay_research_lead_by_id` · `leadbay_prepare_outreach` · prompt `leadbay_followup_check_in` | `packages/mcp/test/audit/routing-block.test.ts` · `packages/mcp/test/smoke/live.test.ts` · `packages/mcp/test/eval/prompts/leadbay_followup_check_in.eval.ts` | Geo flow renders via the host's `places_map_display_v0` widget. Map covers Monitor leads only — see Partial P1. |
 
 ```yaml expected
@@ -53,6 +57,10 @@ success_criteria:
   - "emitted STOP — awaiting user decision byproduct"
 ```
 
+```yaml scenario
+prompt: "What leads should I follow up with?"
+```
+
 | 3 | **Single-domain deep research** — "tell me about acme.com" | `leadbay_research_lead_by_name_fuzzy` · `leadbay_research_lead_by_id` · prompt `leadbay_research_a_domain` | `packages/mcp/test/research-lead-markdown.test.ts` · `packages/mcp/test/audit/routing-block.test.ts` · `packages/mcp/test/eval/prompts/leadbay_research_a_domain.eval.ts` | |
 
 ```yaml expected
@@ -64,6 +72,10 @@ success_criteria:
   - "called leadbay_research_lead_by_id at least once"
   - "rendered a research card with company name, score, and contact"
   - "did NOT call leadbay_report_outreach"
+```
+
+```yaml scenario
+prompt: "Tell me about jaxpartycompany.com"
 ```
 
 | 4 | **CSV import + AI qualification** — "I have 400 attendees, rank the most promising" | `leadbay_import_leads` · `leadbay_resolve_import_rows` · `leadbay_import_and_qualify` · `leadbay_bulk_qualify_leads` · `leadbay_enrich_titles` · prompt `leadbay_import_file` | `packages/mcp/test/smoke/live.test.ts` · `packages/mcp/test/audit/tool-description-source.test.ts` · `packages/mcp/test/eval/prompts/leadbay_import_file.eval.ts` | Covers #3630 US2 (trade-show prioritization). |
@@ -80,6 +92,10 @@ success_criteria:
   - "did NOT call leadbay_report_outreach"
 ```
 
+```yaml scenario
+prompt: "I have some leads to import"
+```
+
 | 5 | **AI qualification on top-N** — "qualify the top 10 of this batch" | `leadbay_bulk_qualify_leads` · `leadbay_qualify_status` · prompt `leadbay_qualify_top_n` | `packages/mcp/test/smoke/live.test.ts` · `packages/mcp/test/audit/tool-name-convention.test.ts` · `packages/mcp/test/eval/prompts/leadbay_qualify_top_n.eval.ts` | |
 
 ```yaml expected
@@ -93,6 +109,10 @@ success_criteria:
   - "did NOT call leadbay_report_outreach"
 ```
 
+```yaml scenario
+prompt: "Qualify the top 10 leads in my batch"
+```
+
 | 6 | **Audience refinement** — "stop showing me X", "I prefer Y" | `leadbay_refine_prompt` · `leadbay_adjust_audience` · `leadbay_like_lead` · `leadbay_dislike_lead` · `leadbay_set_pushback` · prompt `leadbay_refine_audience` | `packages/mcp/test/audit/tool-name-convention.test.ts` · `packages/mcp/test/audit/tool-description-source.test.ts` · `packages/mcp/test/eval/prompts/leadbay_refine_audience.eval.ts` | |
 
 ```yaml expected
@@ -104,6 +124,10 @@ success_criteria:
   - "called leadbay_refine_prompt at least once with the user's instruction"
   - "confirmed the refinement was applied"
   - "did NOT call leadbay_report_outreach"
+```
+
+```yaml scenario
+prompt: "Stop showing me companies with more than 50 employees"
 ```
 
 | 7 | **Account state / prospecting overview** — "where am I, what should I do next" | `leadbay_account_status` · prompt `leadbay_prospecting_overview` | `packages/mcp/test/audit/routing-block.test.ts` · `packages/mcp/test/smoke/live.test.ts` · `packages/mcp/test/eval/prompts/leadbay_prospecting_overview.eval.ts` | |
@@ -120,6 +144,10 @@ success_criteria:
   - "did NOT call leadbay_report_outreach or any mutating tool"
 ```
 
+```yaml scenario
+prompt: "Give me an overview of my prospecting"
+```
+
 | 8 | **Outreach drafting** — "draft me an email to Acme" (the user's own LLM writes the body; we hand it the brief) | `leadbay_prepare_outreach` · `leadbay_research_lead_by_id` | `packages/mcp/test/audit/routing-block.test.ts` · `packages/mcp/test/smoke/live.test.ts` · `packages/mcp/test/eval/prompts/leadbay_outreach_drafting.eval.ts` | Renders via the host's `message_compose_v1` widget when available. |
 
 ```yaml expected
@@ -133,6 +161,10 @@ success_criteria:
   - "did NOT call leadbay_report_outreach (logging is a separate step)"
 ```
 
+```yaml scenario
+prompt: "Draft me an outreach email for JAX PARTY COMPANY LLC"
+```
+
 | 9 | **Outreach logging + verification** — "I emailed Acme, log it" | `leadbay_report_outreach` · prompt `leadbay_log_outreach` | `packages/mcp/test/report-outreach-elicit.test.ts` · `packages/mcp/test/eval/prompts/leadbay_log_outreach.eval.ts` | Verification iron-law: source + ref required. |
 
 ```yaml expected
@@ -141,6 +173,10 @@ required_calls:
 success_criteria:
   - "called leadbay_report_outreach with source and ref fields populated"
   - "confirmed the outreach was logged"
+```
+
+```yaml scenario
+prompt: "I just emailed JAX PARTY COMPANY LLC, log it"
 ```
 
 | 10 | **Field sales tour planning** (#3630 US1) — "I'm visiting Limoges in 4 days — give me 3 customers + 3 qualified + 3 new on one map" | `leadbay_tour_plan` · `leadbay_followups_map` · `leadbay_prepare_outreach` · `leadbay_create_campaign` · `leadbay_add_leads_to_campaign` · prompt `leadbay_plan_tour_in_city` | `packages/mcp/test/audit/tool-name-convention.test.ts` · `packages/mcp/test/smoke/live-campaigns.test.ts` · `packages/mcp/test/eval/prompts/leadbay_plan_tour_in_city.eval.ts` | Mixed-mode itinerary (Monitor + Discover on one map) + optional persistence as a named tour campaign. |
@@ -159,6 +195,10 @@ success_criteria:
   - "did NOT call leadbay_report_outreach"
 ```
 
+```yaml scenario
+prompt: "I'm visiting Jacksonville in 3 days — plan my visits"
+```
+
 | 11 | **Manager-led prospecting via lens-driven campaigns** (#3630 US3) — manager creates a lens, validates candidates, persists as named campaigns | `leadbay_refine_prompt` · `leadbay_create_lens` · `leadbay_promote_lens` · `leadbay_pull_leads` · `leadbay_research_lead_by_id` · `leadbay_create_campaign` · `leadbay_add_leads_to_campaign` · `leadbay_list_campaigns` · `leadbay_campaign_progression` · prompt `leadbay_setup_team_prospecting` | `packages/mcp/test/audit/tool-name-convention.test.ts` · `packages/mcp/test/smoke/live-campaigns.test.ts` · `packages/mcp/test/eval/prompts/leadbay_work_campaign.eval.ts` · `packages/mcp/test/eval/prompts/leadbay_setup_team_prospecting.eval.ts` | Per-rep visibility is creator-scoped — the prompt surfaces this honestly. Cross-user MCP visibility would need backend work (tracked separately). |
 
 ```yaml expected
@@ -172,6 +212,10 @@ success_criteria:
   - "called leadbay_pull_leads to validate the lens"
   - "created at least one named campaign via leadbay_create_campaign"
   - "did NOT call leadbay_report_outreach"
+```
+
+```yaml scenario
+prompt: "Set up a prospecting campaign for my team"
 ```
 
 ## Needs backend

@@ -29,11 +29,17 @@ export interface WorkflowExpected {
   success_criteria: string[];
 }
 
+export interface WorkflowScenario {
+  workflow_id: number;
+  prompt: string;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 let _cache: Map<number, WorkflowExpected> | null = null;
+let _scenarioCache: Map<number, WorkflowScenario> | null = null;
 
 export function getWorkflowExpected(workflow_id: number): WorkflowExpected {
   if (!_cache) _cache = parseWorkflowsFile();
@@ -50,6 +56,23 @@ export function getWorkflowExpected(workflow_id: number): WorkflowExpected {
 export function getAllWorkflowExpected(): Map<number, WorkflowExpected> {
   if (!_cache) _cache = parseWorkflowsFile();
   return _cache;
+}
+
+export function getWorkflowScenario(workflow_id: number): WorkflowScenario {
+  if (!_scenarioCache) _scenarioCache = parseScenarioBlocks();
+  const entry = _scenarioCache.get(workflow_id);
+  if (!entry) {
+    throw new Error(
+      `workflows-parser: no 'scenario' block found for workflow #${workflow_id} in WORKFLOWS.md. ` +
+        "Add a ```yaml scenario block immediately after the expected block.",
+    );
+  }
+  return entry;
+}
+
+export function getAllWorkflowScenarios(): Map<number, WorkflowScenario> {
+  if (!_scenarioCache) _scenarioCache = parseScenarioBlocks();
+  return _scenarioCache;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,4 +165,82 @@ function parseYamlBlock(workflow_id: number, lines: string[]): WorkflowExpected 
     required_byproducts: result.required_byproducts ?? [],
     success_criteria: result.success_criteria ?? [],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Scenario block parser — handles ```yaml scenario blocks
+// ---------------------------------------------------------------------------
+
+function parseScenarioBlocks(): Map<number, WorkflowScenario> {
+  const source = readFileSync(WORKFLOWS_MD, "utf8");
+  const map = new Map<number, WorkflowScenario>();
+
+  const lines = source.split("\n");
+  let lastRowNum: number | null = null;
+  let inExpectedBlock = false;
+  let inScenarioBlock = false;
+  let blockLines: string[] = [];
+
+  for (const line of lines) {
+    // Detect a Supported table data row: starts with "| <digits> |"
+    const rowMatch = line.match(/^\|\s*(\d+)\s*\|/);
+    if (rowMatch && !inExpectedBlock && !inScenarioBlock) {
+      lastRowNum = parseInt(rowMatch[1], 10);
+      continue;
+    }
+
+    // Detect opening fence for expected block (skip it, but track lastRowNum)
+    if (!inExpectedBlock && !inScenarioBlock && /^```yaml\s+expected\s*$/.test(line.trim())) {
+      inExpectedBlock = true;
+      continue;
+    }
+
+    // Close expected block
+    if (inExpectedBlock && line.trim() === "```") {
+      inExpectedBlock = false;
+      continue;
+    }
+
+    // Detect opening fence for scenario block
+    if (!inExpectedBlock && !inScenarioBlock && /^```yaml\s+scenario\s*$/.test(line.trim())) {
+      inScenarioBlock = true;
+      blockLines = [];
+      continue;
+    }
+
+    // Close scenario block
+    if (inScenarioBlock && line.trim() === "```") {
+      inScenarioBlock = false;
+      if (lastRowNum !== null) {
+        const scenario = parseScenarioYaml(lastRowNum, blockLines);
+        if (scenario) map.set(lastRowNum, scenario);
+      }
+      blockLines = [];
+      continue;
+    }
+
+    if (inScenarioBlock) {
+      blockLines.push(line);
+    }
+  }
+
+  return map;
+}
+
+function parseScenarioYaml(workflow_id: number, lines: string[]): WorkflowScenario | null {
+  for (const line of lines) {
+    // Match "prompt: <value>" (quoted or unquoted)
+    const m = line.match(/^prompt:\s*(.+)$/);
+    if (m) {
+      let value = m[1].trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      return { workflow_id, prompt: value };
+    }
+  }
+  return null;
 }
