@@ -22,6 +22,8 @@ const WORKFLOWS_MD = resolve(REPO_ROOT, "WORKFLOWS.md");
 
 export interface WorkflowExpected {
   workflow_id: number;
+  workflow_name: string;
+  prompt_name: string | null;
   required_calls: string[];
   forbidden_calls: string[];
   required_order: string[];
@@ -122,25 +124,41 @@ function parseWorkflowsFile(): Map<number, WorkflowExpected> {
 }
 
 /**
- * Minimal flat YAML parser — handles only:
- *   key:            (starts a string-array section)
- *     - value       (list item, quoted or unquoted)
+ * Minimal flat YAML parser — handles:
+ *   key: scalar value   (string scalar, quoted or unquoted; "~" → null)
+ *   key:                (starts a string-array section)
+ *     - value           (list item, quoted or unquoted)
  *
  * No nesting, no anchors, no multi-line scalars. Sufficient for these blocks.
  */
 function parseYamlBlock(workflow_id: number, lines: string[]): WorkflowExpected {
-  const result: Record<string, string[]> = {};
+  const arrays: Record<string, string[]> = {};
+  const scalars: Record<string, string | null> = {};
   let currentKey: string | null = null;
 
   for (const line of lines) {
-    // Skip blank lines and comment lines
     if (line.trim() === "" || line.trim().startsWith("#")) continue;
 
-    // Key line: "key:" (no value after colon)
+    // Scalar key line: "key: value" (has non-empty value after colon)
+    const scalarMatch = line.match(/^([a-z_]+):\s+(.+)$/);
+    if (scalarMatch) {
+      currentKey = null; // scalars don't accumulate list items
+      const key = scalarMatch[1];
+      let value: string | null = scalarMatch[2].trim();
+      if (value === "~" || value === "null") value = null;
+      else if ((value.startsWith('"') && value.endsWith('"')) ||
+               (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      scalars[key] = value;
+      continue;
+    }
+
+    // Array key line: "key:" (no value after colon)
     const keyMatch = line.match(/^([a-z_]+):\s*$/);
     if (keyMatch) {
       currentKey = keyMatch[1];
-      result[currentKey] = [];
+      arrays[currentKey] = [];
       continue;
     }
 
@@ -148,22 +166,23 @@ function parseYamlBlock(workflow_id: number, lines: string[]): WorkflowExpected 
     const itemMatch = line.match(/^\s+-\s+(.+)$/);
     if (itemMatch && currentKey) {
       let value = itemMatch[1].trim();
-      // Strip surrounding quotes
       if ((value.startsWith('"') && value.endsWith('"')) ||
           (value.startsWith("'") && value.endsWith("'"))) {
         value = value.slice(1, -1);
       }
-      result[currentKey].push(value);
+      arrays[currentKey].push(value);
     }
   }
 
   return {
     workflow_id,
-    required_calls: result.required_calls ?? [],
-    forbidden_calls: result.forbidden_calls ?? [],
-    required_order: result.required_order ?? [],
-    required_byproducts: result.required_byproducts ?? [],
-    success_criteria: result.success_criteria ?? [],
+    workflow_name: scalars.workflow_name ?? `Workflow #${workflow_id}`,
+    prompt_name: "prompt_name" in scalars ? scalars.prompt_name : null,
+    required_calls: arrays.required_calls ?? [],
+    forbidden_calls: arrays.forbidden_calls ?? [],
+    required_order: arrays.required_order ?? [],
+    required_byproducts: arrays.required_byproducts ?? [],
+    success_criteria: arrays.success_criteria ?? [],
   };
 }
 

@@ -16,7 +16,7 @@
 
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getWorkflowExpected, getWorkflowScenario, type WorkflowExpected } from "../helpers/workflows-parser.js";
+import { getAllWorkflowExpected, getWorkflowExpected, getWorkflowScenario, type WorkflowExpected } from "../helpers/workflows-parser.js";
 import { runSessionLive } from "../helpers/live-session-runner.js";
 import { getPrompt } from "../../../src/prompts.js";
 import { isPyramidComplete, type MCPEvidence, type InvariantResult } from "../helpers/evidence.js";
@@ -30,42 +30,8 @@ const __dirname = dirname(__filename);
 const PROMPTFORGE_ROOT = resolve(__dirname, "..", "..", "..", "..", "promptforge");
 const TRANSCRIPT_DIR = resolve(__dirname, "..", "..", "..", "..", "..", ".context", "evals", "transcripts");
 
-// ---------------------------------------------------------------------------
-// Workflow → prompt name mapping.
-// Workflows without a dedicated MCP prompt (e.g. #8 outreach drafting) map
-// to null — the user message from the scenario block is used directly.
-// ---------------------------------------------------------------------------
-
-const WORKFLOW_PROMPT: Record<number, string | null> = {
-  1:  "leadbay_daily_check_in",
-  2:  "leadbay_followup_check_in",
-  3:  "leadbay_research_a_domain",
-  4:  "leadbay_import_file",
-  5:  "leadbay_qualify_top_n",
-  6:  "leadbay_refine_audience",
-  7:  "leadbay_prospecting_overview",
-  8:  null,   // no dedicated MCP prompt — agent uses tools directly from user message
-  9:  "leadbay_log_outreach",
-  10: "leadbay_plan_tour_in_city",
-  11: "leadbay_setup_team_prospecting",
-};
-
-// Workflow names for the summary table.
-const WORKFLOW_NAME: Record<number, string> = {
-  1:  "Daily lead discovery",
-  2:  "Follow-up check-in",
-  3:  "Single-domain research",
-  4:  "CSV import + qualify",
-  5:  "AI qualify top-N",
-  6:  "Audience refinement",
-  7:  "Prospecting overview",
-  8:  "Outreach drafting",
-  9:  "Outreach logging",
-  10: "Field sales tour",
-  11: "Team prospecting",
-};
-
-const ALL_WORKFLOW_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+// Derived from WORKFLOWS.md at runtime — no hardcoded maps.
+const ALL_WORKFLOW_IDS = [...getAllWorkflowExpected().keys()].sort((a, b) => a - b);
 
 // ---------------------------------------------------------------------------
 // deriveInvariants — builds InvariantResult[] from a WorkflowExpected
@@ -166,13 +132,6 @@ async function runOneWorkflow(
   collector: EvalCollector,
   model?: string,
 ): Promise<WorkflowResult> {
-  const workflowName = WORKFLOW_NAME[id] ?? `Workflow #${id}`;
-  const promptNameOrNull = WORKFLOW_PROMPT[id];
-  // promptNameOrNull may be undefined (key not in map) or null (no dedicated prompt).
-  if (promptNameOrNull === undefined) {
-    return { id, name: workflowName, passed: false, scores: null, durationMs: 0, error: `no prompt mapping for workflow #${id}` };
-  }
-
   let expected: WorkflowExpected;
   let scenarioPrompt: string;
 
@@ -181,8 +140,11 @@ async function runOneWorkflow(
     scenarioPrompt = getWorkflowScenario(id).prompt;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { id, name: workflowName, passed: false, scores: null, durationMs: 0, error: msg };
+    return { id, name: `Workflow #${id}`, passed: false, scores: null, durationMs: 0, error: msg };
   }
+
+  const workflowName = expected.workflow_name;
+  const promptNameOrNull = expected.prompt_name;
 
   // Inject the MCP prompt body as a system prompt so the agent has full
   // phase instructions. The user message (scenarioPrompt) triggers routing;
@@ -351,7 +313,8 @@ async function main(): Promise<void> {
   const results: WorkflowResult[] = [];
 
   for (const id of workflowIds) {
-    console.log(`\nRunning workflow #${id}: ${WORKFLOW_NAME[id] ?? "unknown"}…`);
+    const workflowLabel = getAllWorkflowExpected().get(id)?.workflow_name ?? `Workflow #${id}`;
+    console.log(`\nRunning workflow #${id}: ${workflowLabel}…`);
     const result = await runOneWorkflow(id, collector, model);
     results.push(result);
   }

@@ -15,6 +15,8 @@ This file is normative: a small audit (`packages/mcp/test/audit/workflows.test.t
 | 1 | **Daily lead discovery** — "show me today's leads / fresh prospects / what's in my inbox" | `leadbay_pull_leads` · `leadbay_account_status` · prompt `leadbay_daily_check_in` | `packages/mcp/test/audit/routing-block.test.ts` · `packages/mcp/test/smoke/live.test.ts` | Canonical entry point. |
 
 ```yaml expected
+workflow_name: Daily lead discovery
+prompt_name: leadbay_daily_check_in
 required_calls:
   - leadbay_account_status
   - leadbay_pull_leads
@@ -43,6 +45,8 @@ prompt: "Show me today's leads"
 | 2 | **Follow-up check-in (incl. travel/geo)** — "leads I should follow up with", "before my trip to Berlin", "who should I re-engage" | `leadbay_pull_followups` · `leadbay_followups_map` · `leadbay_research_lead_by_id` · `leadbay_prepare_outreach` · prompt `leadbay_followup_check_in` | `packages/mcp/test/audit/routing-block.test.ts` · `packages/mcp/test/smoke/live.test.ts` | Geo flow renders via the host's `places_map_display_v0` widget. Map covers Monitor leads only — see Partial P1. |
 
 ```yaml expected
+workflow_name: Follow-up check-in
+prompt_name: leadbay_followup_check_in
 required_calls:
   - leadbay_pull_followups
 forbidden_calls:
@@ -61,6 +65,8 @@ prompt: "What leads should I follow up with?"
 | 3 | **Single-domain deep research** — "tell me about acme.com" | `leadbay_research_lead_by_name_fuzzy` · `leadbay_research_lead_by_id` · prompt `leadbay_research_a_domain` | `packages/mcp/test/research-lead-markdown.test.ts` · `packages/mcp/test/audit/routing-block.test.ts` | |
 
 ```yaml expected
+workflow_name: Single-domain research
+prompt_name: leadbay_research_a_domain
 required_calls:
   - leadbay_research_lead_by_id
 forbidden_calls:
@@ -78,6 +84,8 @@ prompt: "Tell me about jaxpartycompany.com"
 | 4 | **CSV import + AI qualification** — "I have 400 attendees, rank the most promising" | `leadbay_import_leads` · `leadbay_resolve_import_rows` · `leadbay_import_and_qualify` · `leadbay_bulk_qualify_leads` · `leadbay_enrich_titles` · prompt `leadbay_import_file` | `packages/mcp/test/smoke/live.test.ts` · `packages/mcp/test/audit/tool-description-source.test.ts` | Covers #3630 US2 (trade-show prioritization). |
 
 ```yaml expected
+workflow_name: CSV import + qualify
+prompt_name: leadbay_import_file
 required_calls:
   - leadbay_import_leads
   - leadbay_bulk_qualify_leads
@@ -96,6 +104,8 @@ prompt: "I have some leads to import"
 | 5 | **AI qualification on top-N** — "qualify the top 10 of this batch" | `leadbay_bulk_qualify_leads` · `leadbay_qualify_status` · prompt `leadbay_qualify_top_n` | `packages/mcp/test/smoke/live.test.ts` · `packages/mcp/test/audit/tool-name-convention.test.ts` | |
 
 ```yaml expected
+workflow_name: AI qualify top-N
+prompt_name: leadbay_qualify_top_n
 required_calls:
   - leadbay_bulk_qualify_leads
 forbidden_calls:
@@ -113,6 +123,8 @@ prompt: "Qualify the top 10 leads in my batch"
 | 6 | **Audience refinement** — "stop showing me X", "I prefer Y" | `leadbay_refine_prompt` · `leadbay_adjust_audience` · `leadbay_like_lead` · `leadbay_dislike_lead` · `leadbay_set_pushback` · prompt `leadbay_refine_audience` | `packages/mcp/test/audit/tool-name-convention.test.ts` · `packages/mcp/test/audit/tool-description-source.test.ts` | |
 
 ```yaml expected
+workflow_name: Audience refinement
+prompt_name: leadbay_refine_audience
 required_calls:
   - leadbay_refine_prompt
 forbidden_calls:
@@ -130,6 +142,8 @@ prompt: "Stop showing me companies with more than 50 employees"
 | 7 | **Account state / prospecting overview** — "where am I, what should I do next" | `leadbay_account_status` · prompt `leadbay_prospecting_overview` | `packages/mcp/test/audit/routing-block.test.ts` · `packages/mcp/test/smoke/live.test.ts` | |
 
 ```yaml expected
+workflow_name: Prospecting overview
+prompt_name: leadbay_prospecting_overview
 required_calls:
   - leadbay_account_status
 forbidden_calls:
@@ -148,6 +162,8 @@ prompt: "Give me an overview of my prospecting"
 | 8 | **Outreach drafting** — "draft me an email to Acme" (the user's own LLM writes the body; we hand it the brief) | `leadbay_prepare_outreach` · `leadbay_research_lead_by_id` | `packages/mcp/test/audit/routing-block.test.ts` · `packages/mcp/test/smoke/live.test.ts` | Renders via the host's `message_compose_v1` widget when available. |
 
 ```yaml expected
+workflow_name: Outreach drafting
+prompt_name: ~
 required_calls:
   - leadbay_prepare_outreach
 forbidden_calls:
@@ -165,6 +181,8 @@ prompt: "Draft me an outreach email for JAX PARTY COMPANY LLC"
 | 9 | **Outreach logging + verification** — "I emailed Acme, log it" | `leadbay_report_outreach` · prompt `leadbay_log_outreach` | `packages/mcp/test/report-outreach-elicit.test.ts` | Verification iron-law: source + ref required. |
 
 ```yaml expected
+workflow_name: Outreach logging
+prompt_name: leadbay_log_outreach
 required_calls:
   - leadbay_report_outreach
 success_criteria:
@@ -179,6 +197,8 @@ prompt: "I just emailed JAX PARTY COMPANY LLC, log it"
 | 10 | **Field sales tour planning** (#3630 US1) — "I'm visiting Limoges in 4 days — give me 3 customers + 3 qualified + 3 new on one map" | `leadbay_tour_plan` · `leadbay_followups_map` · `leadbay_prepare_outreach` · `leadbay_create_campaign` · `leadbay_add_leads_to_campaign` · prompt `leadbay_plan_tour_in_city` | `packages/mcp/test/audit/tool-name-convention.test.ts` · `packages/mcp/test/smoke/live-campaigns.test.ts` | Mixed-mode itinerary (Monitor + Discover on one map) + optional persistence as a named tour campaign. |
 
 ```yaml expected
+workflow_name: Field sales tour
+prompt_name: leadbay_plan_tour_in_city
 required_calls:
   - leadbay_tour_plan
 forbidden_calls:
@@ -199,6 +219,8 @@ prompt: "I'm visiting Jacksonville in 3 days — plan my visits"
 | 11 | **Manager-led prospecting via lens-driven campaigns** (#3630 US3) — manager creates a lens, validates candidates, persists as named campaigns | `leadbay_refine_prompt` · `leadbay_create_lens` · `leadbay_promote_lens` · `leadbay_pull_leads` · `leadbay_research_lead_by_id` · `leadbay_create_campaign` · `leadbay_add_leads_to_campaign` · `leadbay_list_campaigns` · `leadbay_campaign_progression` · prompt `leadbay_setup_team_prospecting` | `packages/mcp/test/audit/tool-name-convention.test.ts` · `packages/mcp/test/smoke/live-campaigns.test.ts` | Per-rep visibility is creator-scoped — the prompt surfaces this honestly. Cross-user MCP visibility would need backend work (tracked separately). |
 
 ```yaml expected
+workflow_name: Team prospecting
+prompt_name: leadbay_setup_team_prospecting
 required_calls:
   - leadbay_pull_leads
   - leadbay_create_campaign
