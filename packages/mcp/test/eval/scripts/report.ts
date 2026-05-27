@@ -663,6 +663,7 @@ function main() {
   const outPath = outputPath ?? path.join(EVALS_ROOT, "eval-report.html");
   fs.writeFileSync(outPath, html, "utf8");
   console.log(outPath);
+  console.log(`\nOpen: xdg-open ${outPath}`);
 }
 
 main();
