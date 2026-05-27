@@ -110,6 +110,11 @@ export interface EvalEntry {
   duration_ms: number;
   cost_usd_session: number;
   cost_usd_judges: number;
+  tokens_session_in: number;
+  tokens_session_cache: number;
+  tokens_session_out: number;
+  tokens_judge_in: number;
+  tokens_judge_out: number;
   turns_used: number;
   tool_call_count: number;
   tool_call_breakdown: Record<string, number>;

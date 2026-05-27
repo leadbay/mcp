@@ -254,6 +254,11 @@ async function runOneWorkflow(
     duration_ms: sessionResult.durationMs,
     cost_usd_session: sessionResult.cost.cost_usd_session,
     cost_usd_judges: 0,
+    tokens_session_in: sessionResult.cost.tokens_in,
+    tokens_session_cache: sessionResult.cost.tokens_cache_read,
+    tokens_session_out: sessionResult.cost.tokens_out,
+    tokens_judge_in: judgeOutcome.ok ? judgeOutcome.tokens_in : 0,
+    tokens_judge_out: judgeOutcome.ok ? judgeOutcome.tokens_out : 0,
     turns_used: sessionResult.evidence.turns.length,
     tool_call_count: sessionResult.evidence.tool_calls.length,
     tool_call_breakdown: breakdown,
@@ -374,9 +379,12 @@ async function main(): Promise<void> {
   const passed = results.filter((r) => r.passed).length;
   const total = results.length;
   console.log(`\n  ${passed}/${total} workflows passed.`);
+  const grandTotalIn = totalSessionIn + totalCacheRead + totalJudgeIn;
+  const grandTotalOut = totalSessionOut + totalJudgeOut;
   console.log(`  Session tokens: ${totalSessionIn.toLocaleString()} in / ${totalCacheRead.toLocaleString()} cache / ${totalSessionOut.toLocaleString()} out`);
   console.log(`  Judge tokens:   ${totalJudgeIn.toLocaleString()} in / ${totalJudgeOut.toLocaleString()} out`);
-  console.log(`  Total out:      ${(totalSessionOut + totalJudgeOut).toLocaleString()} tokens generated\n`);
+  console.log(`  ─────────────────────────────────────────────────────`);
+  console.log(`  Grand total:    ${grandTotalIn.toLocaleString()} in (incl. cache) / ${grandTotalOut.toLocaleString()} out\n`);
 
   if (anyFailed) {
     process.exit(1);

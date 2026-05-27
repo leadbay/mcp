@@ -40,6 +40,11 @@ interface EvalEntry {
   turns_used: number;
   tool_call_count: number;
   tool_call_breakdown: Record<string, number>;
+  tokens_session_in?: number;
+  tokens_session_cache?: number;
+  tokens_session_out?: number;
+  tokens_judge_in?: number;
+  tokens_judge_out?: number;
   model: string;
   evidence: {
     session: { prompt_name: string; fixture_id?: string; terminal_reason: string };
@@ -244,7 +249,8 @@ function loadFullLog(fullLogPath: string | undefined): unknown | null {
 const fullLogRegistry: unknown[] = [];
 
 function renderEntryCard(entry: EvalEntry): string {
-  const { passed, name, duration_ms, turns_used, model, evidence, tool_call_count, tool_call_breakdown } = entry;
+  const { passed, name, duration_ms, turns_used, model, evidence, tool_call_count, tool_call_breakdown,
+    tokens_session_in, tokens_session_cache, tokens_session_out, tokens_judge_in, tokens_judge_out } = entry;
   const { invariants, judge_scores, judge_reasoning, per_criterion, failure_modes_present, tool_calls } = evidence;
 
   const passColor = passed ? "#22c55e" : "#ef4444";
@@ -317,6 +323,9 @@ function renderEntryCard(entry: EvalEntry): string {
     `<span class="meta-item">⏱ ${fmtDuration(duration_ms)}</span>`,
     `<span class="meta-item">turns: ${turns_used}</span>`,
     `<span class="meta-item">tools: ${tool_call_count}</span>`,
+    ...(tokens_session_out !== undefined ? [
+      `<span class="meta-item" title="session: ${(tokens_session_in??0).toLocaleString()} in / ${(tokens_session_cache??0).toLocaleString()} cache / ${(tokens_session_out??0).toLocaleString()} out | judge: ${(tokens_judge_in??0).toLocaleString()} in / ${(tokens_judge_out??0).toLocaleString()} out">🪙 ${((tokens_session_in??0)+(tokens_session_cache??0)+(tokens_session_out??0)+(tokens_judge_in??0)+(tokens_judge_out??0)).toLocaleString()} tok total</span>`,
+    ] : []),
     `<span class="meta-item">model: ${escHtml(model)}</span>`,
     evidence.session.fixture_id ? `<span class="meta-item">fixture: ${escHtml(evidence.session.fixture_id)}</span>` : "",
     `<span class="meta-item">exit: ${escHtml(entry.exit_reason)}</span>`,
