@@ -11,6 +11,11 @@ export interface RequestMeta {
   endpoint: string;
   latency_ms: number | null;
   retry_after: number | null;
+  // HTTP status of the upstream response when the error originated from a
+  // non-2xx (set by mapErrorResponse). Absent for errors that didn't go
+  // through the HTTP layer (NOT_AUTHENTICATED, MOCK_NOT_FOUND, composite-
+  // synthesized codes like LEAD_NOT_FOUND).
+  http_status?: number;
 }
 
 export interface LeadbayError {

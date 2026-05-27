@@ -40,20 +40,40 @@ vi.mock("posthog-node", () => {
   return { PostHog };
 });
 
-const sentryState = vi.hoisted(() => ({
-  init: vi.fn(),
-  setUser: vi.fn(),
-  captureException: vi.fn(),
-  withScope: vi.fn((fn: (s: any) => void) =>
-    fn({
-      setTag: vi.fn(),
-      setUser: vi.fn(),
-      setExtra: vi.fn(),
-    })
-  ),
-  close: vi.fn(async () => true),
-  httpIntegration: vi.fn(() => ({ name: "Http" })),
-}));
+// Sentry mock: each withScope call records the tags/extras/fingerprint/user
+// the production code sets, so tests can assert what Sentry would have
+// stored without faking the rest of the SDK. _scopes is reset in beforeEach.
+const sentryState = vi.hoisted(() => {
+  const scopes: Array<{
+    tags: Record<string, unknown>;
+    extras: Record<string, unknown>;
+    fingerprint?: string[];
+    user?: unknown;
+  }> = [];
+  return {
+    init: vi.fn(),
+    setUser: vi.fn(),
+    captureException: vi.fn(),
+    withScope: vi.fn((fn: (s: any) => void) => {
+      const scope: any = {
+        tags: {} as Record<string, unknown>,
+        extras: {} as Record<string, unknown>,
+        fingerprint: undefined as string[] | undefined,
+        user: undefined as unknown,
+      };
+      scope.setTag = vi.fn((k: string, v: unknown) => { scope.tags[k] = v; });
+      scope.setExtra = vi.fn((k: string, v: unknown) => { scope.extras[k] = v; });
+      scope.setFingerprint = vi.fn((fp: string[]) => { scope.fingerprint = fp; });
+      scope.setUser = vi.fn((u: unknown) => { scope.user = u; });
+      scopes.push(scope);
+      fn(scope);
+      return undefined;
+    }),
+    close: vi.fn(async () => true),
+    httpIntegration: vi.fn(() => ({ name: "Http" })),
+    _scopes: scopes,
+  };
+});
 
 vi.mock("@sentry/node", () => sentryState);
 
@@ -86,6 +106,7 @@ beforeEach(() => {
   sentryState.captureException.mockClear();
   sentryState.withScope.mockClear();
   sentryState.close.mockClear();
+  sentryState._scopes.length = 0;
   savedNodeEnv = process.env.NODE_ENV;
   // Bypass the NODE_ENV=test short-circuit; tests want to drive the
   // real telemetry path (with mocked SDKs).
@@ -156,7 +177,44 @@ const notFoundTool: Tool = {
     code: "NOT_FOUND",
     message: "Lead not found",
     hint: "Check the ID",
+    _meta: {
+      region: "us",
+      endpoint: "GET /leads/abc",
+      latency_ms: 42,
+      retry_after: null,
+      http_status: 404,
+    },
   }),
+};
+
+// Throws a LeadbayError-shaped value (mirrors `throw client.makeError(...)`
+// inside composites like research-lead-by-name-fuzzy). Exercises the catch
+// path in server.ts (vs notFoundTool which exercises the return path).
+const throwBusinessTool: Tool = {
+  name: "leadbay_test_throw_business",
+  description: "Test tool: throws a LeadbayError.",
+  annotations: {
+    title: "ThrowBusiness",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  execute: async () => {
+    throw {
+      error: true,
+      code: "LEAD_NOT_FOUND",
+      message: "No lead matching \"Acme\"",
+      hint: "Top leads: …",
+      _meta: {
+        region: "fr",
+        endpoint: "GET /leads",
+        latency_ms: 200,
+        retry_after: null,
+      },
+    };
+  },
 };
 
 const throwTool: Tool = {
@@ -282,7 +340,7 @@ describe("telemetry — tool call events", () => {
     expect(eventNames.has("mcp startup")).toBe(true);
   });
 
-  it("QUOTA_EXCEEDED envelope fires both 'mcp quota hit' and 'mcp tool called' (no Sentry)", async () => {
+  it("QUOTA_EXCEEDED envelope fires PostHog 'mcp quota hit' + 'mcp tool called' AND Sentry capture (3 events)", async () => {
     mockHttp([{ method: "GET", path: "/1.5/users/me", status: 200, body: ME_RESPONSE }]);
     const { mcpClient, identityDone } = await connect([quotaTool]);
     await identityDone;
@@ -300,10 +358,24 @@ describe("telemetry — tool call events", () => {
     expect(toolEvents[0][0].properties.ok).toBe(false);
     expect(toolEvents[0][0].properties.error_code).toBe("QUOTA_EXCEEDED");
     expect(toolEvents[0][0].properties.format).toBe("error-envelope");
-    expect(sentryState.captureException).not.toHaveBeenCalled();
+    // Sentry: every API failure (business or unexpected) now lands here too,
+    // so a triager has one place to debug. The PostHog dedicated 'mcp quota
+    // hit' event stays — it drives the top-up funnel dashboard and is a
+    // distinct analytics signal, not a duplicate of the Sentry capture.
+    expect(sentryState.captureException).toHaveBeenCalledTimes(1);
+    expect(sentryState._scopes).toHaveLength(1);
+    const scope = sentryState._scopes[0];
+    expect(scope.tags.error_code).toBe("QUOTA_EXCEEDED");
+    expect(scope.tags.source).toBe("business");
+    expect(scope.fingerprint).toEqual([
+      "mcp",
+      "leadbay_test_quota",
+      "QUOTA_EXCEEDED",
+    ]);
+    expect(scope.extras.retry_after).toBe(30);
   });
 
-  it("NOT_FOUND envelope fires only 'mcp tool called' (no quota, no Sentry)", async () => {
+  it("NOT_FOUND envelope fires PostHog 'mcp tool called' AND Sentry with full envelope tags + extras", async () => {
     mockHttp([{ method: "GET", path: "/1.5/users/me", status: 200, body: ME_RESPONSE }]);
     const { mcpClient, identityDone } = await connect([notFoundTool]);
     await identityDone;
@@ -311,14 +383,66 @@ describe("telemetry — tool call events", () => {
     const events = posthogState.capture.mock.calls.map((c: any[]) => c[0].event);
     expect(events).toContain("mcp tool called");
     expect(events).not.toContain("mcp quota hit");
-    expect(sentryState.captureException).not.toHaveBeenCalled();
     const toolEvent = posthogState.capture.mock.calls.find(
       (c: any[]) => c[0].event === "mcp tool called"
     );
     expect(toolEvent[0].properties.error_code).toBe("NOT_FOUND");
+    // Sentry receives the envelope object itself (so Sentry can serialize
+    // it as the exception value) plus a scope decorated with the full
+    // LeadbayError context — code/endpoint/region/http_status as tags
+    // (filterable in Sentry's issue list), message/hint/latency_ms as
+    // extras (visible in the event detail panel), fingerprint grouping
+    // events of the same shape together.
+    expect(sentryState.captureException).toHaveBeenCalledTimes(1);
+    const capturedValue = sentryState.captureException.mock.calls[0][0];
+    expect(capturedValue.code).toBe("NOT_FOUND");
+    expect(sentryState._scopes).toHaveLength(1);
+    const scope = sentryState._scopes[0];
+    expect(scope.tags).toMatchObject({
+      tool: "leadbay_test_not_found",
+      error_code: "NOT_FOUND",
+      endpoint: "GET /leads/abc",
+      region: "us",
+      http_status: "404",
+      source: "business",
+      organization: "org-42",
+    });
+    expect(scope.extras).toMatchObject({
+      message: "Lead not found",
+      hint: "Check the ID",
+      latency_ms: 42,
+    });
+    expect(scope.fingerprint).toEqual([
+      "mcp",
+      "leadbay_test_not_found",
+      "NOT_FOUND",
+    ]);
   });
 
-  it("unexpected throw fires Sentry.captureException AND 'mcp tool called' ok=false", async () => {
+  it("thrown LeadbayError (catch path) fires Sentry with source=business and full envelope", async () => {
+    mockHttp([{ method: "GET", path: "/1.5/users/me", status: 200, body: ME_RESPONSE }]);
+    const { mcpClient, identityDone } = await connect([throwBusinessTool]);
+    await identityDone;
+    await mcpClient.callTool({
+      name: "leadbay_test_throw_business",
+      arguments: {},
+    });
+    expect(sentryState.captureException).toHaveBeenCalledTimes(1);
+    expect(sentryState._scopes).toHaveLength(1);
+    const scope = sentryState._scopes[0];
+    expect(scope.tags.error_code).toBe("LEAD_NOT_FOUND");
+    expect(scope.tags.source).toBe("business");
+    expect(scope.tags.region).toBe("fr");
+    expect(scope.tags.endpoint).toBe("GET /leads");
+    expect(scope.fingerprint).toEqual([
+      "mcp",
+      "leadbay_test_throw_business",
+      "LEAD_NOT_FOUND",
+    ]);
+    expect(scope.extras.message).toBe("No lead matching \"Acme\"");
+  });
+
+  it("unexpected throw fires Sentry with source=unexpected and no error_code tag", async () => {
     mockHttp([{ method: "GET", path: "/1.5/users/me", status: 200, body: ME_RESPONSE }]);
     const { mcpClient, identityDone } = await connect([throwTool]);
     await identityDone;
@@ -331,6 +455,15 @@ describe("telemetry — tool call events", () => {
     );
     expect(toolEvents).toHaveLength(1);
     expect(toolEvents[0][0].properties.ok).toBe(false);
+    expect(sentryState._scopes).toHaveLength(1);
+    const scope = sentryState._scopes[0];
+    expect(scope.tags.source).toBe("unexpected");
+    // Raw throws have no LeadbayError code to tag with — assert the
+    // distinction holds so Sentry's "show bugs only" filter (source!=business)
+    // works reliably.
+    expect(scope.tags.error_code).toBeUndefined();
+    expect(scope.fingerprint).toBeUndefined();
+    expect(scope.extras.message).toBe("kaboom");
   });
 
   it("leadbay_create_topup_link success fires 'mcp topup link created' without leaking URL", async () => {

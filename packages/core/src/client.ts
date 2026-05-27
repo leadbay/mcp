@@ -611,7 +611,9 @@ export class LeadbayClient {
         "AUTH_EXPIRED",
         "Authentication token expired or invalid",
         "Your LEADBAY_TOKEN is no longer valid. Regenerate it: npx -y @leadbay/mcp login --email <you> --region <us|fr>, then restart your MCP client.",
-        endpoint
+        endpoint,
+        null,
+        status
       );
     }
     // 429 is the canonical quota signal in production. 402 is legacy.
@@ -641,7 +643,8 @@ export class LeadbayClient {
           `Check leadbay_account_status / leadbay_get_quota to see which resource window (daily/weekly/monthly) was hit. ` +
           `Once the user has topped up, the previous QUOTA_EXCEEDED is stale — re-call leadbay_account_status to refresh, then RETRY the original operation.`,
         endpoint,
-        retryAfter
+        retryAfter,
+        status
       );
     }
     if (status === 403) {
@@ -654,14 +657,18 @@ export class LeadbayClient {
           "BILLING_SUSPENDED",
           "Account billing is suspended",
           "Your Leadbay account billing is suspended. Contact Leadbay support.",
-          endpoint
+          endpoint,
+          null,
+          status
         );
       }
       return this.makeError(
         "FORBIDDEN",
         "Insufficient permissions",
         "Your token does not have access to this resource. Contact Leadbay support to verify account permissions.",
-        endpoint
+        endpoint,
+        null,
+        status
       );
     }
     if (status === 404) {
@@ -669,14 +676,18 @@ export class LeadbayClient {
         "NOT_FOUND",
         parsed?.message || parsed?.error?.message || "Resource not found",
         "Verify the ID is correct",
-        endpoint
+        endpoint,
+        null,
+        status
       );
     }
     return this.makeError(
       "API_ERROR",
       parsed?.message || parsed?.error?.message || `API error (${status})`,
       "Try again or check the Leadbay API status",
-      endpoint
+      endpoint,
+      null,
+      status
     );
   }
 
@@ -811,7 +822,8 @@ export class LeadbayClient {
     message: string,
     hint: string,
     endpoint?: string,
-    retry_after?: number | null
+    retry_after?: number | null,
+    http_status?: number
   ): LeadbayError {
     const out: LeadbayError = { error: true, code, message, hint };
     if (endpoint || this._region) {
@@ -820,6 +832,7 @@ export class LeadbayClient {
         endpoint: endpoint ?? "",
         latency_ms: this._lastMeta?.latency_ms ?? null,
         retry_after: retry_after ?? null,
+        ...(http_status !== undefined ? { http_status } : {}),
       };
     }
     return out;

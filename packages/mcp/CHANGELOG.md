@@ -1,5 +1,20 @@
 # Changelog — @leadbay/mcp
 
+## 0.15.0 — 2026-05-27
+
+- **Sentry observability**: every non-2xx Leadbay API outcome now lands in
+  Sentry with the full envelope — `code`, `message`, `hint`, `endpoint`,
+  `region`, `http_status`, `latency_ms`, `retry_after`, agent `triggered_by`.
+  Previously business errors (NOT_FOUND, AUTH_EXPIRED, QUOTA_EXCEEDED,
+  FORBIDDEN, LEAD_NOT_FOUND, etc.) only landed in PostHog, and even the
+  unexpected throws that reached Sentry carried only a bare exception with
+  `tool` + `organization` tags. A new `source` tag (`business` vs
+  `unexpected`) plus per-event fingerprint `["mcp", tool, code]` keeps the
+  Sentry issue list groupable.
+- HTTP status now propagates through `LeadbayError._meta.http_status` so
+  `API_ERROR` (catch-all unmapped statuses) is filterable by status in
+  Sentry instead of collapsing into one undifferentiated bucket.
+
 ## 0.13.0 — 2026-05-21
 
 - **Agent memory v1**: added always-on recall/capture/review tools backed by
