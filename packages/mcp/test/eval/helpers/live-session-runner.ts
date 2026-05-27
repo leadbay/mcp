@@ -17,7 +17,7 @@
  * LEADBAY_TOKEN + LEADBAY_REGION env vars passed to the spawned server.
  */
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync, mkdtempSync, rmSync, openSync, writeSync, closeSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync, openSync, writeSync, closeSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID, createHash } from "node:crypto";

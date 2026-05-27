@@ -68,11 +68,11 @@ prompt: "What leads should I follow up with?"
 workflow_name: Single-domain research
 prompt_name: leadbay_research_a_domain
 required_calls:
-  - leadbay_research_lead_by_id
+  - leadbay_research_lead_by_name_fuzzy
 forbidden_calls:
   - leadbay_report_outreach
 success_criteria:
-  - "called leadbay_research_lead_by_id at least once"
+  - "called leadbay_research_lead_by_name_fuzzy or leadbay_research_lead_by_id at least once"
   - "rendered a research card with company name, score, and contact"
   - "did NOT call leadbay_report_outreach"
 ```
