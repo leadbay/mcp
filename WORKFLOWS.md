@@ -1,18 +1,16 @@
 # Leadbay MCP — Supported workflows
 
-This is the canonical map from user intent → MCP assets → tests.
+This is the canonical map from user intent → eval contract. Each row is the human-readable summary; the `yaml expected` + `yaml scenario` blocks below each row are the machine-readable SSoT that `/eval` reads directly.
 
-When an incoming ask matches a row, you have an answer. When it doesn't, add a row (in "Supported", "Partial", "Planned", or "Needs backend") and link the originating issue.
-
-This file is normative: a small audit (`packages/mcp/test/audit/workflows.test.ts`) asserts every backtick'd `leadbay_*` identifier resolves to a registered tool/prompt and every Tests path exists on disk. CI fails when the table drifts from reality.
+This file is normative: `packages/mcp/test/audit/workflows.test.ts` asserts every backtick'd `leadbay_*` identifier resolves to a registered tool/prompt. CI fails when the table drifts from reality.
 
 ---
 
 ## Supported today
 
-| # | User story | MCP assets | Tests | Notes |
-|---|---|---|---|---|
-| 1 | **Daily lead discovery** — "show me today's leads / fresh prospects / what's in my inbox" | `leadbay_pull_leads` · `leadbay_account_status` · prompt `leadbay_daily_check_in` | `packages/mcp/test/audit/routing-block.test.ts` · `packages/mcp/test/smoke/live.test.ts` | Canonical entry point. |
+| # | User story | Prompt | Required calls | Forbidden calls | Scenario |
+|---|---|---|---|---|---|
+| 1 | **Daily lead discovery** — "show me today's leads / fresh prospects / what's in my inbox" | `leadbay_daily_check_in` | `leadbay_account_status` · `leadbay_pull_leads` · `leadbay_research_lead_by_id` | `leadbay_report_outreach` | "Show me today's leads" |
 
 ```yaml expected
 workflow_name: Daily lead discovery
@@ -42,7 +40,7 @@ success_criteria:
 prompt: "Show me today's leads"
 ```
 
-| 2 | **Follow-up check-in (incl. travel/geo)** — "leads I should follow up with", "before my trip to Berlin", "who should I re-engage" | `leadbay_pull_followups` · `leadbay_followups_map` · `leadbay_research_lead_by_id` · `leadbay_prepare_outreach` · prompt `leadbay_followup_check_in` | `packages/mcp/test/audit/routing-block.test.ts` · `packages/mcp/test/smoke/live.test.ts` | Geo flow renders via the host's `places_map_display_v0` widget. Map covers Monitor leads only — see Partial P1. |
+| 2 | **Follow-up check-in (incl. travel/geo)** — "leads I should follow up with", "before my trip to Berlin", "who should I re-engage" | `leadbay_followup_check_in` | `leadbay_pull_followups` | `leadbay_pull_leads` · `leadbay_report_outreach` | "What leads should I follow up with?" |
 
 ```yaml expected
 workflow_name: Follow-up check-in
@@ -62,7 +60,7 @@ success_criteria:
 prompt: "What leads should I follow up with?"
 ```
 
-| 3 | **Single-domain deep research** — "tell me about acme.com" | `leadbay_research_lead_by_name_fuzzy` · `leadbay_research_lead_by_id` · prompt `leadbay_research_a_domain` | `packages/mcp/test/research-lead-markdown.test.ts` · `packages/mcp/test/audit/routing-block.test.ts` | |
+| 3 | **Single-domain deep research** — "tell me about acme.com" | `leadbay_research_a_domain` | `leadbay_research_lead_by_name_fuzzy` | `leadbay_report_outreach` | "Tell me about jaxpartycompany.com" |
 
 ```yaml expected
 workflow_name: Single-domain research
@@ -81,7 +79,7 @@ success_criteria:
 prompt: "Tell me about jaxpartycompany.com"
 ```
 
-| 4 | **CSV import + AI qualification** — "I have 400 attendees, rank the most promising" | `leadbay_import_leads` · `leadbay_resolve_import_rows` · `leadbay_import_and_qualify` · `leadbay_bulk_qualify_leads` · `leadbay_enrich_titles` · prompt `leadbay_import_file` | `packages/mcp/test/smoke/live.test.ts` · `packages/mcp/test/audit/tool-description-source.test.ts` | Covers #3630 US2 (trade-show prioritization). |
+| 4 | **CSV import + AI qualification** — "I have 400 attendees, rank the most promising" | `leadbay_import_file` | `leadbay_import_leads` · `leadbay_bulk_qualify_leads` | `leadbay_report_outreach` | "I have some leads to import" |
 
 ```yaml expected
 workflow_name: CSV import + qualify
@@ -101,7 +99,7 @@ success_criteria:
 prompt: "I have some leads to import"
 ```
 
-| 5 | **AI qualification on top-N** — "qualify the top 10 of this batch" | `leadbay_bulk_qualify_leads` · `leadbay_qualify_status` · prompt `leadbay_qualify_top_n` | `packages/mcp/test/smoke/live.test.ts` · `packages/mcp/test/audit/tool-name-convention.test.ts` | |
+| 5 | **AI qualification on top-N** — "qualify the top 10 of this batch" | `leadbay_qualify_top_n` | `leadbay_bulk_qualify_leads` | `leadbay_report_outreach` | "Qualify the top 10 leads in my batch" |
 
 ```yaml expected
 workflow_name: AI qualify top-N
@@ -120,7 +118,7 @@ success_criteria:
 prompt: "Qualify the top 10 leads in my batch"
 ```
 
-| 6 | **Audience refinement** — "stop showing me X", "I prefer Y" | `leadbay_refine_prompt` · `leadbay_adjust_audience` · `leadbay_like_lead` · `leadbay_dislike_lead` · `leadbay_set_pushback` · prompt `leadbay_refine_audience` | `packages/mcp/test/audit/tool-name-convention.test.ts` · `packages/mcp/test/audit/tool-description-source.test.ts` | |
+| 6 | **Audience refinement** — "stop showing me X", "I prefer Y" | `leadbay_refine_audience` | `leadbay_refine_prompt` | `leadbay_report_outreach` | "Stop showing me companies with more than 50 employees" |
 
 ```yaml expected
 workflow_name: Audience refinement
@@ -139,7 +137,7 @@ success_criteria:
 prompt: "Stop showing me companies with more than 50 employees"
 ```
 
-| 7 | **Account state / prospecting overview** — "where am I, what should I do next" | `leadbay_account_status` · prompt `leadbay_prospecting_overview` | `packages/mcp/test/audit/routing-block.test.ts` · `packages/mcp/test/smoke/live.test.ts` | |
+| 7 | **Account state / prospecting overview** — "where am I, what should I do next" | `leadbay_prospecting_overview` | `leadbay_account_status` | `leadbay_report_outreach` | "Give me an overview of my prospecting" |
 
 ```yaml expected
 workflow_name: Prospecting overview
@@ -159,7 +157,7 @@ success_criteria:
 prompt: "Give me an overview of my prospecting"
 ```
 
-| 8 | **Outreach drafting** — "draft me an email to Acme" (the user's own LLM writes the body; we hand it the brief) | `leadbay_prepare_outreach` · `leadbay_research_lead_by_id` | `packages/mcp/test/audit/routing-block.test.ts` · `packages/mcp/test/smoke/live.test.ts` | Renders via the host's `message_compose_v1` widget when available. |
+| 8 | **Outreach drafting** — "draft me an email to Acme" | *(no dedicated prompt)* | `leadbay_prepare_outreach` | `leadbay_report_outreach` | "Draft me an outreach email for JAX PARTY COMPANY LLC" |
 
 ```yaml expected
 workflow_name: Outreach drafting
@@ -178,7 +176,7 @@ success_criteria:
 prompt: "Draft me an outreach email for JAX PARTY COMPANY LLC"
 ```
 
-| 9 | **Outreach logging + verification** — "I emailed Acme, log it" | `leadbay_report_outreach` · prompt `leadbay_log_outreach` | `packages/mcp/test/report-outreach-elicit.test.ts` | Verification iron-law: source + ref required. |
+| 9 | **Outreach logging + verification** — "I emailed Acme, log it" | `leadbay_log_outreach` | `leadbay_report_outreach` | *(none)* | "I just emailed JAX PARTY COMPANY LLC, log it" |
 
 ```yaml expected
 workflow_name: Outreach logging
@@ -194,7 +192,7 @@ success_criteria:
 prompt: "I just emailed JAX PARTY COMPANY LLC, log it"
 ```
 
-| 10 | **Field sales tour planning** (#3630 US1) — "I'm visiting Limoges in 4 days — give me 3 customers + 3 qualified + 3 new on one map" | `leadbay_tour_plan` · `leadbay_followups_map` · `leadbay_prepare_outreach` · `leadbay_create_campaign` · `leadbay_add_leads_to_campaign` · prompt `leadbay_plan_tour_in_city` | `packages/mcp/test/audit/tool-name-convention.test.ts` · `packages/mcp/test/smoke/live-campaigns.test.ts` | Mixed-mode itinerary (Monitor + Discover on one map) + optional persistence as a named tour campaign. |
+| 10 | **Field sales tour planning** — "I'm visiting Limoges in 4 days — give me 3 customers + 3 qualified + 3 new on one map" | `leadbay_plan_tour_in_city` | `leadbay_tour_plan` | `leadbay_pull_leads` · `leadbay_report_outreach` | "I'm visiting Jacksonville in 3 days — plan my visits" |
 
 ```yaml expected
 workflow_name: Field sales tour
@@ -216,7 +214,7 @@ success_criteria:
 prompt: "I'm visiting Jacksonville in 3 days — plan my visits"
 ```
 
-| 11 | **Manager-led prospecting via lens-driven campaigns** (#3630 US3) — manager creates a lens, validates candidates, persists as named campaigns | `leadbay_refine_prompt` · `leadbay_create_lens` · `leadbay_promote_lens` · `leadbay_pull_leads` · `leadbay_research_lead_by_id` · `leadbay_create_campaign` · `leadbay_add_leads_to_campaign` · `leadbay_list_campaigns` · `leadbay_campaign_progression` · prompt `leadbay_setup_team_prospecting` | `packages/mcp/test/audit/tool-name-convention.test.ts` · `packages/mcp/test/smoke/live-campaigns.test.ts` | Per-rep visibility is creator-scoped — the prompt surfaces this honestly. Cross-user MCP visibility would need backend work (tracked separately). |
+| 11 | **Manager-led prospecting via lens-driven campaigns** — manager creates a lens, validates candidates, persists as named campaigns | `leadbay_setup_team_prospecting` | `leadbay_pull_leads` · `leadbay_create_campaign` | `leadbay_report_outreach` | "Set up a prospecting campaign for my team" |
 
 ```yaml expected
 workflow_name: Team prospecting
@@ -241,19 +239,17 @@ prompt: "Set up a prospecting campaign for my team"
 
 | # | User story | What blocks it | Upstream |
 |---|---|---|---|
-| B1 | **Dormant account revival** (#3630 US4) — re-prioritize Monitor accounts with no visit in 12mo, weighted by recent business signals | Custom-field values are filterable but **absent from list output** (confirmed by @jmfouq in the issue thread). Without that, the "no visit in 12mo" filter and historical-context retrieval can't be threaded into MCP responses. | [#3630 US4 + comment](https://github.com/leadbay/product/issues/3630#issuecomment-4500510555) |
+| B1 | **Dormant account revival** — re-prioritize Monitor accounts with no visit in 12mo, weighted by recent business signals | Custom-field values are filterable but absent from list output. Without that, the "no visit in 12mo" filter can't be threaded into MCP responses. | [#3630 US4](https://github.com/leadbay/product/issues/3630#issuecomment-4500510555) |
 
 ---
 
 ## How to use this doc
 
-1. **Triaging an incoming ask.** Skim the User story columns. If a row matches, the ask is *Supported* / *Partial* / *Planned* / *Needs backend* — answer with the row number + the Notes / What's missing column.
-2. **Adding a new ask.** Add a row in the most accurate table. If you can name a test that already exercises it, it's Supported. If the backend has the primitives but no MCP composite, it's Planned. If the backend is missing the primitives, it's Needs backend — link the product issue.
-3. **Promoting a row.** When a Planned row ships, move it to Supported and add the test pointer. When a Needs-backend row unblocks, decide whether it's planned or already-shippable.
+1. **Triaging an incoming ask.** Skim the User story column. If a row matches, the workflow is supported — look at Required/Forbidden calls for the contract.
+2. **Adding a new workflow.** Add a row to the Supported table with two fenced blocks (`yaml expected` + `yaml scenario`). No TypeScript files needed.
+3. **Promoting a row.** When a Needs-backend row unblocks, move it to Supported and fill in the contract blocks.
 
 ## Running evals
-
-Evals are driven by the `eval-skill` in [leadbay/skills](https://github.com/leadbay/skills/tree/main/eval-skill). Once installed, run from Claude Code:
 
 ```
 /eval --workflow 1
@@ -261,7 +257,7 @@ Evals are driven by the `eval-skill` in [leadbay/skills](https://github.com/lead
 /eval
 ```
 
-The skill reads `yaml expected` + `yaml scenario` blocks from this file directly — no separate TypeScript files needed. Results are saved to `.context/evals/` and viewable via:
+The `/eval` skill reads `yaml expected` + `yaml scenario` blocks from this file directly. Results are saved to `.context/evals/` and viewable via:
 
 ```bash
 pnpm --filter @leadbay/mcp run eval:view
@@ -271,7 +267,7 @@ pnpm --filter @leadbay/mcp run eval:view
 
 ## Adding a new eval
 
-Edit this file only. Add a row to the Supported table with two fenced blocks:
+Edit this file only. Add a row with two fenced blocks:
 
 ````
 ```yaml expected
@@ -291,14 +287,6 @@ prompt: "Do the thing"
 ```
 ````
 
-No TypeScript files to touch. The skill parses this file at runtime.
-
 ## How this stays normative
 
-`packages/mcp/test/audit/workflows.test.ts` parses this file and asserts:
-
-- Every backtick-wrapped `leadbay_*` identifier resolves to a registered tool (from `@leadbay/core`), a registered MCP prompt (from `listPrompts()`), or a Claude Code skill (directory under `.claude-plugin/plugins/leadbay/skills/`). Proposed names for not-yet-shipped tools go in italics, not backticks.
-- Every path in a Tests column exists on disk.
-- The doc renders to valid markdown table syntax (every data row has the same column count as its header).
-
-That's the entire normative contract. No frontmatter schema, no generator, no separate workflow files.
+`packages/mcp/test/audit/workflows.test.ts` parses this file and asserts every backtick-wrapped `leadbay_*` identifier resolves to a registered tool or prompt. Proposed names for not-yet-shipped tools go in italics, not backticks.
