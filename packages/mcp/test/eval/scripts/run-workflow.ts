@@ -124,6 +124,8 @@ interface WorkflowResult {
   passed: boolean;
   scores: { mission_match: number; instruction_adherence: number; no_fabrication: number; tool_selection_fit: number } | null;
   durationMs: number;
+  tokensIn: number;
+  tokensOut: number;
   error?: string;
 }
 
@@ -140,7 +142,7 @@ async function runOneWorkflow(
     scenarioPrompt = getWorkflowScenario(id).prompt;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { id, name: `Workflow #${id}`, passed: false, scores: null, durationMs: 0, error: msg };
+    return { id, name: `Workflow #${id}`, passed: false, scores: null, durationMs: 0, tokensIn: 0, tokensOut: 0, error: msg };
   }
 
   const workflowName = expected.workflow_name;
@@ -175,7 +177,7 @@ async function runOneWorkflow(
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { id, name: workflowName, passed: false, scores: null, durationMs: 0, error: `session failed: ${msg}` };
+    return { id, name: workflowName, passed: false, scores: null, durationMs: 0, tokensIn: 0, tokensOut: 0, error: `session failed: ${msg}` };
   }
 
   // Strip superpowers/Claude Code tool calls (ToolSearch, Skill, LSP, etc.)
@@ -268,6 +270,8 @@ async function runOneWorkflow(
     passed,
     scores: judgeOutcome.ok ? judgeOutcome.value.scores : null,
     durationMs: sessionResult.durationMs,
+    tokensIn: sessionResult.cost.tokens_in,
+    tokensOut: sessionResult.cost.tokens_out,
   };
 }
 
@@ -329,11 +333,13 @@ async function main(): Promise<void> {
   console.log("  Live Eval Summary");
   console.log("═══════════════════════════════════════════════════════════════");
   console.log(
-    `  ${"#".padEnd(3)} ${"Workflow".padEnd(28)} ${"Result".padEnd(8)} ${"MM".padEnd(4)} ${"IA".padEnd(4)} ${"NF".padEnd(4)} ${"TSF".padEnd(4)} ${"Time".padEnd(7)}`
+    `  ${"#".padEnd(3)} ${"Workflow".padEnd(28)} ${"Result".padEnd(8)} ${"MM".padEnd(4)} ${"IA".padEnd(4)} ${"NF".padEnd(4)} ${"TSF".padEnd(4)} ${"Time".padEnd(8)} ${"Tokens in".padEnd(10)} ${"out".padEnd(7)}`
   );
-  console.log("  " + "─".repeat(65));
+  console.log("  " + "─".repeat(80));
 
   let anyFailed = false;
+  let totalTokensIn = 0;
+  let totalTokensOut = 0;
   for (const r of results) {
     const status = r.error ? "ERROR" : r.passed ? "PASS" : "FAIL";
     if (!r.passed) anyFailed = true;
@@ -342,19 +348,22 @@ async function main(): Promise<void> {
     const nf = r.scores ? String(r.scores.no_fabrication) : "-";
     const tsf = r.scores ? String(r.scores.tool_selection_fit) : "-";
     const dur = `${(r.durationMs / 1000).toFixed(1)}s`;
+    totalTokensIn += r.tokensIn;
+    totalTokensOut += r.tokensOut;
     console.log(
-      `  ${pad(String(r.id), 3)} ${pad(r.name, 28)} ${pad(status, 8)} ${pad(mm, 4)} ${pad(ia, 4)} ${pad(nf, 4)} ${pad(tsf, 4)} ${dur}`
+      `  ${pad(String(r.id), 3)} ${pad(r.name, 28)} ${pad(status, 8)} ${pad(mm, 4)} ${pad(ia, 4)} ${pad(nf, 4)} ${pad(tsf, 4)} ${pad(dur, 8)} ${pad(String(r.tokensIn), 10)} ${r.tokensOut}`
     );
     if (r.error) {
       console.log(`      ERROR: ${r.error}`);
     }
   }
 
-  console.log("═══════════════════════════════════════════════════════════════");
+  console.log("═════════════════════════════════════════════════════════════════════════════════");
 
   const passed = results.filter((r) => r.passed).length;
   const total = results.length;
-  console.log(`\n  ${passed}/${total} workflows passed.\n`);
+  console.log(`\n  ${passed}/${total} workflows passed.`);
+  console.log(`  Total tokens: ${totalTokensIn.toLocaleString()} in / ${totalTokensOut.toLocaleString()} out\n`);
 
   if (anyFailed) {
     process.exit(1);
