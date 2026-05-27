@@ -267,3 +267,250 @@ Before committing, run the full workspace pass.
 When the user says "actually fetch", "probe the API", "query live", run
 the call. Don't substitute spec reading for the real response. The test
 account credentials are expendable — never rotate them defensively.
+
+## Architecture
+
+The repo is a pnpm monorepo. `core` is the shared library; `mcp` and `leadclaw` (OpenClaw) are wrappers that expose it to different clients.
+
+```mermaid
+graph TD
+    subgraph inputs["Inputs"]
+        U["User / LLM"]
+        WF["WORKFLOWS.md\n(soft contract)"]
+    end
+
+    subgraph mcp["packages/mcp  (MCP stdio server)"]
+        MCP_S["server.ts\nJSON-RPC entrypoint"]
+        MCP_P["prompts.generated.ts\n(from promptforge)"]
+        MCP_T["tests/\n  audit/ · eval/ · smoke/ · unit/"]
+    end
+
+    subgraph openclaw["packages/leadclaw  (OpenClaw plugin)"]
+        OC["openclaw.plugin.json\n+ contract.test.ts"]
+    end
+
+    subgraph core["packages/core  (shared library)"]
+        COMP["composite/\n  orchestrating tools\n  (multi-call, transforms)"]
+        GRAN["tools/\n  granular tools\n  (single API call)"]
+        CLIENT["client.ts\n  LeadbayClient"]
+        TDESC["tool-descriptions.generated.ts\n  ← DO NOT EDIT"]
+        CORE_T["test/\n  unit/ · integration/"]
+    end
+
+    subgraph promptforge["packages/promptforge  (build-time)"]
+        PF_TMPL["tool-descriptions/**/*.md.tmpl\nprompts/**/*.md.tmpl"]
+        PF_SNIP["snippets/\n  rendering/ · next-steps/\n  linking/ · gates/"]
+        PF_BUILD["pnpm prompts:build"]
+    end
+
+    subgraph api["External"]
+        LB_API["Leadbay API\nhttps://api-us.leadbay.app"]
+    end
+
+    U -->|"stdio JSON-RPC"| MCP_S
+    U -->|"OpenClaw plugin"| OC
+    MCP_S --> COMP
+    MCP_S --> GRAN
+    OC --> COMP
+    OC --> GRAN
+    COMP --> CLIENT
+    GRAN --> CLIENT
+    CLIENT -->|"HTTPS"| LB_API
+    PF_TMPL --> PF_BUILD
+    PF_SNIP --> PF_BUILD
+    PF_BUILD -->|"emits"| TDESC
+    PF_BUILD -->|"emits"| MCP_P
+    TDESC --> COMP
+    TDESC --> GRAN
+    WF -.->|"normative: workflows.test.ts"| MCP_T
+    MCP_T -.->|"exercises"| MCP_S
+    CORE_T -.->|"exercises"| COMP
+    CORE_T -.->|"exercises"| GRAN
+```
+
+`packages/dxt` — Claude Desktop `.dxt` bundle (wraps mcp).
+
+## Build pipeline
+
+```
+pnpm prompts:build       # .md.tmpl → tool-descriptions.generated.ts + prompts.generated.ts
+pnpm -r build            # tsc (core) + tsup (mcp) + esbuild+zip (dxt)
+pnpm -r test             # must be green before every PR
+pnpm -r typecheck        # must be green before every PR
+```
+
+`tsc` vs `tsup`:
+- **`tsc`** — used by `core/` (library): compiles file-by-file, emits `.d.ts` for consumers
+- **`tsup`** — used by `mcp/` (executable): bundles everything into one `dist/bin.js`
+
+## Adding a new tool — 3 files to write
+
+### 1. Tool implementation
+
+`packages/core/src/composite/my-tool.ts`
+
+```typescript
+import type { Tool } from "../types.js";
+import { leadbay_my_tool } from "../tool-descriptions.generated.js";
+
+export const myTool: Tool = {
+  name: "leadbay_my_tool",
+  description: leadbay_my_tool,
+  inputSchema: {
+    type: "object",
+    properties: {
+      someParam: { type: "string", description: "..." },
+    },
+  },
+  annotations: { readOnlyHint: true },
+  execute: async (args, ctx) => {
+    return await ctx.client.get("/some-endpoint");
+  },
+};
+```
+
+### 2. Description template
+
+`packages/promptforge/tool-descriptions/composite/my-tool.md.tmpl`
+
+```markdown
+---
+name: leadbay_my_tool
+kind: tool-description
+short_description: |
+  One-line summary of what this tool does.
+annotations:
+  readOnlyHint: true
+routing:
+  triggers:
+    - "phrase that should invoke this tool"
+  anti_triggers:
+    - phrase: "phrase that sounds similar but routes elsewhere"
+      route_to: leadbay_other_tool
+  prefer_when: "one-sentence disambiguation hint"
+  examples:
+    positive:
+      - "Show me my leads."
+      - "What's new today?"
+    negative:
+      - "Which leads should I follow up with?"
+rendering_hint: |
+  Brief description of how to render the output (table, card, etc.)
+---
+
+What this tool does and when to use it.
+
+{{include:rendering/score-bar}}
+{{include:next-steps/pull-leads}}
+```
+
+The frontmatter fields `routing` and `rendering_hint` are auto-emitted by promptforge as `## WHEN TO USE` and `## RENDER (quick)` blocks — guaranteed to land in the first ~600 chars that every host reads.
+
+### 3. Register in the export catalog
+
+`packages/core/src/index.ts`:
+
+```typescript
+import { myTool } from "./composite/my-tool.js";
+
+export const compositeReadTools: Tool[] = [
+  pullLeads,
+  myTool,      // ← add here
+  ...
+];
+```
+
+Use `compositeReadTools` for read-only tools, `compositeWriteTools` for tools that mutate data.
+
+### After writing the 3 files
+
+```bash
+pnpm prompts:build   # generates tool-descriptions.generated.ts
+pnpm -r build        # compiles everything
+pnpm -r test         # must stay green
+pnpm -r typecheck    # must stay green
+```
+
+If `prompts:build` fails: check `name:` matches filename, `kind: tool-description` is set, every `{{include:...}}` resolves, and `route_to:` values match registered tool names.
+
+Also: add the tool name to `TOOLS_WITH_ROUTING` in `packages/mcp/test/audit/routing-block.test.ts`.
+
+## Composite vs granular
+
+| | Composite | Granular |
+|---|---|---|
+| **Location** | `core/src/composite/` | `core/src/tools/` |
+| **What it is** | High-level workflow | Direct API call |
+| **Exposed by default** | Yes | No (`LEADBAY_MCP_ADVANCED=1`) |
+| **Logic** | Orchestrates multiple calls, transforms, pagination | Single call, near-raw response |
+| **Example** | `pull-leads` — resolves lens, fans out AI scores | `like-lead` — single `POST /leads/:id/like` |
+
+Rule: multiple API calls or business logic → composite. Single relay call → granular.
+
+## Tool exposure — env var gates
+
+| Tools exposed | Condition |
+|---|---|
+| `agentMemoryTools` + `compositeReadTools` | always |
+| `compositeWriteTools` | `LEADBAY_MCP_WRITE=1` (default ON since 0.3.0) |
+| `granularReadTools` + `granularWriteTools` | `LEADBAY_MCP_ADVANCED=1` |
+
+New composite tools automatically inherit the right gate based on which array they're added to.
+
+## Writing tests
+
+Every new tool needs a test file. New tests go in new files — never modify existing test files.
+
+```
+core/test/unit/composite/my-tool.test.ts   # composite tools
+core/test/unit/tools/my-tool.test.ts       # granular tools
+```
+
+Boilerplate:
+
+```typescript
+import { describe, it, expect, beforeEach } from "vitest";
+import { mockHttp, resetHttpMock, httpsMockFactory, getHttpRequests } from "../../harness.js";
+import { vi } from "vitest";
+vi.mock("node:https", () => httpsMockFactory());
+
+import { LeadbayClient } from "../../../src/client.js";
+import { myTool } from "../../../src/composite/my-tool.js";
+
+const BASE = "https://api-us.leadbay.app";
+const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
+
+beforeEach(() => resetHttpMock());
+
+describe("leadbay_my_tool", () => {
+  it("happy path — returns expected shape", async () => {
+    mockHttp([
+      { method: "GET", path: "/my/endpoint", status: 200, body: { items: [{ id: "1" }] } },
+    ]);
+    const result = await myTool.execute(newClient(), { myParam: "value" });
+    expect(result.items).toHaveLength(1);
+  });
+
+  it("empty input — no API call", async () => {
+    mockHttp([]);
+    const result = await myTool.execute(newClient(), { myParam: "" });
+    expect(result.items).toHaveLength(0);
+    expect(getHttpRequests()).toHaveLength(0);
+  });
+
+  it("API error — propagates", async () => {
+    mockHttp([{ method: "GET", path: "/my/endpoint", status: 429, body: { code: "QUOTA_EXCEEDED" } }]);
+    await expect(myTool.execute(newClient(), { myParam: "value" })).rejects.toThrow();
+  });
+});
+```
+
+`mockHttp([...])` declares HTTP responses in order; the harness intercepts `node:https` and throws if the code hits an undeclared endpoint.
+
+Minimum coverage: happy path + edge case (empty input / boundary) + error/4xx when the tool has error-specific behavior.
+
+## WORKFLOWS.md — soft contract
+
+`WORKFLOWS.md` at the repo root is the canonical map of user intent → MCP assets → tests. It is **not** a test file but it is normative: `packages/mcp/test/audit/workflows.test.ts` asserts every backtick-wrapped `leadbay_*` identifier resolves to a registered tool/prompt/skill and every Tests path exists on disk.
+
+When you add a new tool that enables a new user story: add a row to `WORKFLOWS.md` before opening the PR. When you extend an existing workflow: update the relevant row.
