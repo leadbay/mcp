@@ -406,9 +406,11 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
       "--strict-mcp-config",
       "--disable-slash-commands",
       "--settings", evalSettingsPath,
-      // Only allow tools from our live MCP server — blocks Bash, Glob,
-      // Read, Edit, Skill, ToolSearch, LSP etc. from superpowers/Claude Code.
+      // Only allow tools from our live MCP server.
       "--allowedTools", "mcp__leadbay-live__*",
+      // Explicitly block built-in Claude Code tools that leak through despite
+      // --allowedTools (ToolSearch, WebFetch, WebSearch, Bash, Skill, LSP etc.)
+      "--disallowedTools", "ToolSearch,WebFetch,WebSearch,Bash,Read,Edit,Write,Glob,Grep,LS,Skill,LSP,Agent",
     ];
     if (opts.systemPrompt) args.push("--system-prompt", opts.systemPrompt);
     if (modelFlag) args.push("--model", modelFlag);
