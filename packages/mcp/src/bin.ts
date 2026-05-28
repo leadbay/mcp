@@ -1617,7 +1617,7 @@ const isEntrypoint = (() => {
     const entry = process.argv[1];
     if (!entry) return false;
     const entryName = basename(entry).toLowerCase();
-    if (entryName !== "bin.js" && entryName !== "leadbay-mcp") return false;
+    if (entryName !== "bin.js" && entryName !== "leadbay-mcp" && entryName !== "index.js") return false;
     const self = fileURLToPath(import.meta.url);
     return realpathSync(self) === realpathSync(entry);
   } catch {

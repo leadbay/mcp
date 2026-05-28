@@ -39,8 +39,7 @@
     "@modelcontextprotocol/sdk": "1.29.0",
     "@sentry/node": "^9.0.0",
     "hono": "^4.6.14",
-    "posthog-node": "^4.5.0",
-    "electron": "^42.3.0"
+    "posthog-node": "^4.5.0"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
@@ -70,5 +69,8 @@
   },
   "homepage": "https://github.com/leadbay/leadclaw/tree/main/packages/mcp#readme",
   "author": "Leadbay",
-  "license": "MIT"
+  "license": "MIT",
+  "optionalDependencies": {
+    "electron": "^42.3.0"
+  }
 }
