@@ -1654,6 +1654,9 @@ Prefer when: known Monitor leads; pass \`city\` or \`set_filter\` for geo/sector
 Examples that SHOULD invoke this tool:
 - "What should I follow up on this week?"
 - "What's overdue in my pipeline?"
+- "Show me leads I should reach out to today."
+- "Who should I get back to today?"
+- "Leads I should contact today."
 
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Show me today's new leads."
@@ -1849,6 +1852,9 @@ Examples that SHOULD invoke this tool:
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Which leads should I follow up with this week?"
 - "I'm flying to Berlin Thursday — who should I meet?"
+- "Show me leads I should reach out to today."
+- "Who should I get back to today?"
+- "Leads I should contact today."
 
 ## RENDER (quick)
 
