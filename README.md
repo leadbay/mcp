@@ -23,34 +23,38 @@
 
 > **No Leadbay account yet?** [Register here](https://wow.leadbay.ai/?register=true) first.
 
-All install paths require a **Leadbay token**. Mint one first, then wire it into your client.
+### Step 1 — Mint a token (required for everyone)
+
+Requires [Node.js 22+](https://nodejs.org).
+
+```bash
+npx -y @leadbay/mcp@latest login --email you@yourcompany.com --region us
+```
+
+You'll be prompted for your password (hidden, never saved). This writes a token to your machine — you'll paste it in the next step.
+
+> Not sure of your region? Check your Leadbay dashboard URL: `app-us.leadbay.app` → `us`, `app-fr.leadbay.app` → `fr`.
 
 ---
 
-### Option A — Claude Desktop (easiest)
+### Step 2 — Connect your client
+
+#### Claude Desktop
 
 1. Download `leadbay-mcp-*.dxt` from the [Releases page](https://github.com/leadbay/leadclaw/releases/latest)
 2. Double-click it — Claude Desktop opens and asks you to confirm the install
-3. Enter your Leadbay email, password, and region (`us` or `fr`) when prompted
+3. Paste your token and confirm your region when prompted
 4. Restart Claude Desktop, open a new chat, and try: *"Show me today's leads."*
 
----
-
-### Option B — Cursor / Claude Code / any MCP client
-
-Requires [Node.js 22+](https://nodejs.org).
+#### Cursor / Claude Code / any other MCP client
 
 ```bash
 npx -y @leadbay/mcp@latest install --email you@yourcompany.com --region us
 ```
 
-Prompts for your password (hidden, never saved), mints a token, and registers the server into every MCP client it detects (Claude Desktop, Cursor, Claude Code), asking you per-target.
+This mints a token **and** registers the server into every MCP client it detects (Claude Desktop, Cursor, Claude Code), asking you per-target. You can skip Step 1 if you use this path.
 
-> `--region` is required. Check your Leadbay dashboard URL: `app-us.leadbay.app` → `us`, `app-fr.leadbay.app` → `fr`.
-
----
-
-### Option C — Claude Code plugin marketplace
+#### Claude Code plugin marketplace
 
 ```text
 /plugin marketplace add leadbay/leadclaw
