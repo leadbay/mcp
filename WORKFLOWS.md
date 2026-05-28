@@ -258,7 +258,7 @@ prompt: "Set up a prospecting campaign for my team"
 The `/eval` skill reads the `yaml expected` + `yaml scenario` blocks from this file directly. Results are saved to `.context/evals/` and viewable via:
 
 ```bash
-pnpm --filter @leadbay/mcp run eval:view
+open .context/evals/eval-report.html
 ```
 
 **Prerequisites:** `.env.eval` at repo root with `LEADBAY_TOKEN=u.xxx` and `LEADBAY_REGION=us`.

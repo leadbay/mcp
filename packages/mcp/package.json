@@ -23,9 +23,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:smoke": "vitest run --config vitest.smoke.config.ts",
-    "eval":"sh -c 'set -a && . ../../.env.eval && set +a && tsx test/eval/scripts/run-workflow.ts \"$@\"' --",
-    "eval:report": "tsx test/eval/scripts/report.ts",
-    "eval:view": "tsx test/eval/scripts/report.ts && xdg-open /home/arty/orca/workspaces/leadclaw/eval-framework/.context/evals/eval-report.html",
     "prepublishOnly": "pnpm run build && pnpm run typecheck && pnpm run test"
   },
   "dependencies": {
