@@ -1,42 +1,27 @@
-# Fly.io config for the self-hosted Leadbay MCP HTTP server.
-#
-# Deploy:  fly deploy
-# Logs:    fly logs
-# Scale:   fly scale count 1 (default; raise for multi-region)
-#
-# App name is a placeholder — `fly launch` will replace it with the real
-# name picked at app-creation time, or you can set it manually here before
-# the first `fly deploy`.
-
-app = "leadbay-mcp"
-primary_region = "cdg"  # Paris — colocated with api-fr; flip to "iad" for api-us primary.
+app = 'leadbay-mcp-prod'
+primary_region = 'cdg'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  PORT = "8080"
-  NODE_ENV = "production"
-  # Default to ON for write tools (matches stdio default in 0.3.0+).
-  LEADBAY_MCP_WRITE = "1"
+  LEADBAY_MCP_WRITE = '0'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"   # idle → 0 machines to save cost
-  auto_start_machines = true    # first request boots a machine
-  min_machines_running = 0
-  processes = ["app"]
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
 
   [[http_service.checks]]
-    interval = "30s"
-    timeout = "5s"
-    grace_period = "10s"
-    method = "GET"
-    path = "/healthz"
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/healthz'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
-  cpu_kind = "shared"
-  cpus = 1
+  size = 'shared-cpu-1x'
+  memory = '256mb'

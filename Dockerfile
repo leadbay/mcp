@@ -22,7 +22,7 @@ RUN npm install -g pnpm@10.30.3
 
 # Copy lockfile + workspace manifests first so `pnpm install` can be cached
 # across source-only changes.
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/promptforge/package.json packages/promptforge/
 COPY packages/mcp/package.json packages/mcp/
@@ -41,9 +41,9 @@ COPY packages/core packages/core
 COPY packages/promptforge packages/promptforge
 COPY packages/mcp packages/mcp
 
-# tsup bundles @leadbay/core sources directly (noExternal in tsup.config.ts),
-# so we don't need to `tsc` core separately. mcp's `prebuild` script handles
-# building @leadbay/promptforge.
+# Build core first so its dist/ exists when tsup resolves @leadbay/core.
+# mcp's prebuild script handles @leadbay/promptforge.
+RUN pnpm --filter @leadbay/core build
 RUN pnpm --filter @leadbay/mcp build
 
 # Emit a stripped runtime package.json that npm (in the runner) can install

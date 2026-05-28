@@ -22,7 +22,7 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { buildServer } from "./server.js";
 import { resolveClientFromToken } from "./auth-http.js";
-import { parseWriteEnv } from "./bin.js";
+import { parseWriteEnv } from "./env.js";
 
 declare const __LEADBAY_MCP_VERSION__: string;
 const VERSION = typeof __LEADBAY_MCP_VERSION__ !== "undefined" ? __LEADBAY_MCP_VERSION__ : "0.0.0-dev";
@@ -83,6 +83,8 @@ app.all("/mcp", async (c) => {
   const server = await buildServerForRequest(token, region);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
+    // Return JSON responses instead of SSE so non-SSE clients (e.g. Codex) work.
+    enableJsonResponse: true,
   });
 
   // Tear down server + transport when the response closes. Without this the
@@ -102,10 +104,27 @@ app.all("/mcp", async (c) => {
     ? await c.req.json().catch(() => undefined)
     : undefined;
 
+  // Some clients (e.g. Codex v0.133) send only "application/json" but the MCP
+  // spec requires both "application/json" and "text/event-stream". The SDK reads
+  // rawHeaders (not headers), so we must patch both arrays.
+  const accept = env.incoming.headers["accept"] ?? "";
+  if (!accept.includes("text/event-stream")) {
+    const patched = accept ? `${accept}, text/event-stream` : "application/json, text/event-stream";
+    env.incoming.headers["accept"] = patched;
+    const raw = env.incoming.rawHeaders;
+    const idx = raw.findIndex((v, i) => i % 2 === 0 && v.toLowerCase() === "accept");
+    if (idx >= 0) {
+      raw[idx + 1] = patched;
+    } else {
+      raw.push("accept", patched);
+    }
+  }
+
   await transport.handleRequest(env.incoming, env.outgoing, parsedBody);
-  // Hono expects a Response object; the transport has already written to
-  // env.outgoing, so return an empty body — Node has flushed the real one.
-  return new Response(null, { status: env.outgoing.statusCode });
+  // The transport has already written headers + body to env.outgoing.
+  // Tell Hono's Node adapter to skip its own write (otherwise it sets a
+  // wrong Content-Length that breaks strict HTTP clients like Codex/rmcp).
+  return new Response(null, { headers: { "x-hono-already-sent": "1" } });
 });
 
 // Legacy SSE transport. Two endpoints: GET /sse opens the stream, POST

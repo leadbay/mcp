@@ -1,21 +1,13 @@
 // Per-request auth resolver for the hosted HTTP MCP server.
 //
-// Stdio MCP gets its token from $LEADBAY_TOKEN at process boot (see
-// `resolveClientFromEnv` in bin.ts). The hosted HTTP server is multi-tenant
-// and reads a fresh bearer token from each request's `Authorization` header,
-// so it needs the same probe-and-build logic without the env coupling.
-//
-// We intentionally duplicate ~60 lines of bin.ts probe logic here instead of
-// extracting a shared helper — keeps the draft PR's blast radius zero and
-// avoids touching the stdio code path. Dedupe is a follow-up.
+// Stdio MCP gets its token from LEADBAY_TOKEN at process boot. The hosted
+// HTTP server is multi-tenant and reads a fresh bearer token from each request
+// Authorization header. Shared auth-failure helpers live in broken-client.ts so
+// this file never imports the CLI entrypoint.
 
-import {
-  createClient,
-  LeadbayClient,
-  type LeadbayError,
-  type ToolLogger,
-} from "@leadbay/core";
-import { makeBrokenClient, type ResolvedClient } from "./bin.js";
+
+import { createClient, type LeadbayClient, type LeadbayError, type ToolLogger } from "@leadbay/core";
+import { makeBrokenClient, type ResolvedClient } from "./broken-client.js";
 
 export interface ResolveTokenOptions {
   // Optional region pin. Provided by the HTTP transport from a header

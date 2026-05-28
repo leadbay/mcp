@@ -42,19 +42,35 @@ The main leads-touching tools (`leadbay_account_status`,
 `_meta.agent_memory.summary` automatically. Set `LEADBAY_AGENT_MEMORY=off`
 to suppress this ambient metadata.
 
-## 1. Install (one command)
+## 1. Install
+
+For Linux, the recommended path is the native Electron installer via npx:
 
 ```bash
-npx -y @leadbay/mcp@0.13 install --email you@yourcompany.com --region us
+npx -y @leadbay/mcp@latest installer
+```
+
+It downloads the npm package, opens the native Electron installer app, asks for email/region/password, detects installed MCP clients, then installs the selected ones.
+
+From a repo checkout, run the same native installer with:
+
+```bash
+pnpm --filter @leadbay/mcp installer:gui
+```
+
+For terminal-only installs:
+
+```bash
+npx -y @leadbay/mcp@latest install --email you@yourcompany.com --region us
 # (you'll be prompted for your password — it's not echoed)
 ```
 
-That's it. The command:
+These commands:
 
-1. Asks for your password (hidden input).
-2. Mints a bearer token via the Leadbay backend you specified.
-3. Auto-detects which MCP clients you have installed (Claude Code, Claude Desktop, Cursor) and registers the server in each (after asking you per-target). Claude Code is registered with `--scope user` so the server appears in any project, not just where you ran the command.
-4. The token is written into the client config files — **never to your terminal scrollback**.
+1. Ask for your password (hidden input).
+2. Mint a bearer token via the Leadbay backend you specified.
+3. Auto-detect which MCP clients you have installed (Claude Code, Claude Desktop, Cursor, Codex) and register the server in each (after asking you per-target). Claude Code is registered with `--scope user` so the server appears in any project, not just where you ran the command.
+4. Write the token into the client config files — **never to your terminal scrollback**.
 
 Add `--no-write` to disable the composite write tools (`refine_prompt`, `report_outreach`, `adjust_audience`, etc. — ON by default since 0.3.0; pass `--no-write` for a read-only agent). Add `--yes` for non-interactive runs (CI / scripts). Add `--target claude-code,cursor` to scope to specific clients. The legacy `--include-write` flag is accepted but is now a no-op.
 

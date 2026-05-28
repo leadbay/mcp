@@ -161,6 +161,62 @@ jobs:
           gh release upload "$TAG" packages/dxt/dist/*.dxt packages/dxt/dist/*.mcpb --clobber
           echo "Uploaded .dxt and .mcpb to release $TAG"
 
+  build-mcp-installers:
+    name: Build MCP desktop installer (${{ matrix.name }})
+    needs: publish-mcp
+    if: |
+      (startsWith(github.ref, 'refs/tags/mcp-v') || startsWith(github.ref, 'refs/tags/v')) &&
+      github.event.inputs.dry_run != 'true'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+            script: installer:package:linux
+          - name: macOS
+            os: macos-13
+            script: installer:package:mac
+          - name: Windows
+            os: windows-latest
+            script: installer:package:win
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build installer
+        run: pnpm --filter @leadbay/mcp ${{ matrix.script }}
+      - name: Upload installer to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          files=()
+          while IFS= read -r -d "" file; do
+            files+=("$file")
+          done < <(
+            find packages/mcp/dist-native -maxdepth 1 -type f \
+              \( -name "*.AppImage" -o -name "*.deb" -o -name "*.dmg" -o -name "*.exe" -o -name "*.blockmap" -o -name "latest*.yml" \) \
+              -print0
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No installer artifacts found"
+            exit 1
+          fi
+          gh release upload "$TAG" "${files[@]}" --clobber
+          echo "Uploaded ${#files[@]} installer artifact(s) to release $TAG"
+
   publish-mcp-registry:
     name: Publish to MCP Registry
     needs: publish-mcp

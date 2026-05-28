@@ -1,0 +1,50 @@
+name: MCP installer artifacts
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "packages/mcp/**"
+      - ".github/workflows/mcp-installer-artifacts.yml"
+
+jobs:
+  build:
+    name: Build MCP installer (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+            script: installer:package:linux
+          - name: macos
+            os: macos-13
+            script: installer:package:mac
+          - name: windows
+            os: windows-latest
+            script: installer:package:win
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build installer
+        run: pnpm --filter @leadbay/mcp ${{ matrix.script }}
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: leadbay-mcp-installer-${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            packages/mcp/dist-native/*.AppImage
+            packages/mcp/dist-native/*.deb
+            packages/mcp/dist-native/*.dmg
+            packages/mcp/dist-native/*.exe
+            packages/mcp/dist-native/*.blockmap
+            packages/mcp/dist-native/latest*.yml

@@ -8,7 +8,7 @@
  * This is a deliberate behavior change called out in MIGRATION.md.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { parseWriteEnv } from "../../src/bin.js";
+import { parseWriteEnv } from "../../src/env.js";
 
 const KEYS = ["LEADBAY_MCP_WRITE"];
 
