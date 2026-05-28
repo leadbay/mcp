@@ -85,8 +85,27 @@ export interface AgentMemoryPrunedProps {
   account_id_hash?: string;
 }
 
+// Sentry capture context. Carries the LeadbayError envelope's filterable
+// fields (code, endpoint, region, http_status) and the per-event detail
+// (message, hint, triggered_by, latency_ms, retry_after) so a Sentry
+// triager has everything PostHog has — no cross-referencing two surfaces.
+//
+// `source` distinguishes "business" (LeadbayError — bounded codes from
+// mapErrorResponse + composite throws) from "unexpected" (raw throws like
+// TypeError, EPIPE, JSON parse). Sentry filters use it for the "show me
+// only bugs" view.
 export interface ExceptionCtx {
   tool: string;
+  code?: string;
+  message?: string;
+  hint?: string;
+  endpoint?: string;
+  region?: string;
+  latency_ms?: number | null;
+  retry_after?: number | null;
+  http_status?: number;
+  triggered_by?: string;
+  source?: "business" | "unexpected";
 }
 
 // auth_state buckets startups by whether resolveClientFromEnv produced a
