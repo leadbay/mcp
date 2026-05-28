@@ -38,6 +38,3 @@ jobs:
         working-directory: packages/mcp
         run: npm pack --dry-run
 
-      - name: Verify @leadbay/leadclaw tarball is publishable
-        working-directory: packages/leadclaw
-        run: npm pack --dry-run

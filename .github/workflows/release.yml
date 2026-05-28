@@ -1,38 +1,34 @@
 name: release
 
-# Tag-driven publishing for @leadbay/mcp (npm) and @leadbay/leadclaw (npm + ClawHub).
+# Tag-driven publishing for @leadbay/mcp (npm).
 #
 # Tag scheme:
-#   - mcp-v<ver>       → publishes @leadbay/mcp only
-#   - leadclaw-v<ver>  → publishes @leadbay/leadclaw to npm, then ClawHub
-#   - v<ver>           → legacy alias for mcp-v<ver> (from the original release-mcp workflow)
+#   - mcp-v<ver>  → publishes @leadbay/mcp
+#   - v<ver>      → legacy alias for mcp-v<ver>
 #
 # One-time setup (done in repo settings):
-#   - NPM_TOKEN       → npm automation token, scope-owner on @leadbay
-#   - CLAWHUB_TOKEN   → ClawHub publish token with rights to @leadbay/leadclaw
+#   - NPM_TOKEN  → npm automation token, scope-owner on @leadbay
 #
-# No auto-version-bump, no auto-changelog. Bump `package.json` (and
-# `openclaw.plugin.json` for leadclaw) in a normal PR. Tagging is automatic:
-# `auto-tag.yml` watches main, sees the bumped version, and pushes the
-# corresponding tag, which triggers this workflow. Manual `git tag` is only
-# needed for emergency re-publish of a version already on main.
+# No auto-version-bump, no auto-changelog. Bump `packages/mcp/package.json`
+# in a normal PR. Tagging is automatic: `auto-tag.yml` watches main, sees the
+# bumped version, and pushes the corresponding tag, which triggers this workflow.
+# Manual `git tag` is only needed for emergency re-publish of a version already on main.
 
 on:
   push:
     tags:
       - "mcp-v*.*.*"
-      - "leadclaw-v*.*.*"
       - "v*.*.*"
   workflow_dispatch:
     inputs:
       package:
-        description: "Which package to publish (mcp | leadclaw)"
+        description: "Which package to publish (mcp)"
         required: true
         default: "mcp"
         type: choice
-        options: [mcp, leadclaw]
+        options: [mcp]
       dry_run:
-        description: "If true, npm half uses --dry-run (ClawHub has no dry-run; skipped on dry runs)"
+        description: "If true, npm publish uses --dry-run"
         required: false
         default: "false"
 
@@ -201,89 +197,3 @@ jobs:
       - name: Publish
         run: ./mcp-publisher publish packages/mcp/server.json
 
-  publish-leadclaw:
-    name: Publish @leadbay/leadclaw to npm + ClawHub
-    needs: preflight-npm
-    if: |
-      startsWith(github.ref, 'refs/tags/leadclaw-v') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.package == 'leadclaw')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          # Node 24 for bundled npm 11.5+ (Trusted Publishers OIDC).
-          node-version: 24
-          registry-url: "https://registry.npmjs.org"
-          # See @leadbay/mcp publish-job comment: always-auth writes an
-          # _authToken= line that preempts Trusted Publishers OIDC.
-      - name: Install
-        run: pnpm install --frozen-lockfile
-      - name: Build
-        run: pnpm -r build
-      - name: Test
-        run: pnpm -r test
-
-      - name: Verify tag ↔ package.json ↔ openclaw.plugin.json version agreement
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          set -euo pipefail
-          TAG="${GITHUB_REF#refs/tags/leadclaw-v}"
-          PKG=$(node -p "require('./packages/leadclaw/package.json').version")
-          MAN=$(node -p "require('./packages/leadclaw/openclaw.plugin.json').version")
-          if [ "$TAG" != "$PKG" ] || [ "$PKG" != "$MAN" ]; then
-            echo "Version drift: tag=$TAG pkg=$PKG manifest=$MAN — bump all three to match"
-            exit 1
-          fi
-          echo "Aligned: $TAG = $PKG = $MAN"
-
-      - name: Publish to npm
-        # Trusted Publishers OIDC — see @leadbay/mcp publish job for the
-        # full set of preconditions. Requires Trusted Publisher binding
-        # configured on npmjs.com for @leadbay/leadclaw pointing at
-        # leadbay/leadclaw + release.yml.
-        working-directory: packages/leadclaw
-        run: |
-          set -euo pipefail
-          echo "npm $(npm --version) at $(which npm)"
-          VERSION=$(node -p "require('./package.json').version")
-          # Idempotent: if @leadbay/leadclaw@$VERSION is already on npm, skip.
-          # Handles the retry-after-ClawHub-failure case without manual intervention.
-          if npm view "@leadbay/leadclaw@$VERSION" version --silent 2>/dev/null; then
-            echo "@leadbay/leadclaw@$VERSION already on npm — skipping npm publish"
-            exit 0
-          fi
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            npm publish --access public --provenance --dry-run
-          else
-            npm publish --access public --provenance
-          fi
-
-      - name: Install ClawHub CLI
-        if: github.event.inputs.dry_run != 'true'
-        run: npm i -g clawhub@^0.9
-
-      - name: Authenticate ClawHub
-        if: github.event.inputs.dry_run != 'true'
-        env:
-          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
-        run: clawhub login --token "$CLAWHUB_TOKEN" --no-browser
-
-      - name: Publish to ClawHub
-        if: github.event.inputs.dry_run != 'true'
-        run: |
-          set -euo pipefail
-          VERSION=$(node -p "require('./packages/leadclaw/package.json').version")
-          clawhub package publish packages/leadclaw \
-            --version "$VERSION" \
-            --source-repo "$GITHUB_REPOSITORY" \
-            --source-commit "$GITHUB_SHA" \
-            --source-ref "${GITHUB_REF_NAME}" \
-            --source-path packages/leadclaw \
-            --tags latest
