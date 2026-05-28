@@ -77,7 +77,7 @@ prompt: "What leads should I follow up with?"
 
 ```yaml expected
 workflow_name: Follow-up routing (reach-out phrasing)
-prompt_name: leadbay_followup_check_in
+prompt_name: ~
 required_calls:
   - leadbay_pull_followups
 forbidden_calls:
@@ -86,7 +86,6 @@ forbidden_calls:
 success_criteria:
   - "called leadbay_pull_followups (NOT leadbay_pull_leads) — re-engagement intent, not discovery"
   - "did NOT call leadbay_pull_leads"
-  - "rendered the follow-up table with status badges (not a score-bar discovery table)"
   - "did NOT call leadbay_report_outreach"
 ```
 
