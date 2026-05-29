@@ -60,15 +60,16 @@ The installer detects installed clients and only offers real targets it can conf
 Linux uses the command-based installer; no Linux desktop package is published:
 
 ```bash
-npx -y @leadbay/mcp@latest installer
+npx -y @leadbay/mcp@latest installer           # install wizard
+npx -y @leadbay/mcp@latest installer --uninstall  # uninstall wizard
 ```
 
-> **Testing from a local build** (before publishing to npm):
+> **Testing from a local build** (before publishing to npm), run from the repo root after `pnpm -r build`:
 > ```bash
-> node packages/mcp/dist/installer-electron.js           # install wizard
-> node packages/mcp/dist/installer-electron.js --uninstall  # uninstall wizard
+> node packages/mcp/dist/installer-electron.js              # install
+> node packages/mcp/dist/installer-electron.js --uninstall  # uninstall
 > ```
-> `installer-electron.js` is the Electron entry point. `installer-gui.js` is the raw HTTP server — it opens a browser tab, not the Electron window.
+> Use `installer-electron.js` — not `installer-gui.js`. The `gui` file is the raw HTTP server and only opens a browser tab; `installer-electron.js` is the Electron entry point that wraps it in a window.
 
 #### ChatGPT Desktop
 
