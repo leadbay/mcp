@@ -19,6 +19,9 @@ function emitRoutingBlock(
     const phrases = routing.triggers.map((t) => `"${t}"`).join(", ");
     lines.push(`Trigger phrases: ${phrases}.`);
   }
+  if (memoryPointer) {
+    lines.push(memoryPointer.trim());
+  }
   if (routing.anti_triggers && routing.anti_triggers.length > 0) {
     const formatted = routing.anti_triggers
       .map((a) => `"${a.phrase}" → \`${a.route_to}\``)
@@ -27,9 +30,6 @@ function emitRoutingBlock(
   }
   if (routing.prefer_when) {
     lines.push(`Prefer when: ${routing.prefer_when.trim()}`);
-  }
-  if (memoryPointer) {
-    lines.push(memoryPointer.trim());
   }
   if (routing.examples) {
     const positives = routing.examples.positive ?? [];

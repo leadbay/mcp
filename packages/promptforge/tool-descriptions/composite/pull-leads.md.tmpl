@@ -2,20 +2,40 @@
 name: leadbay_pull_leads
 kind: tool-description
 short_description: |
-  Pull new leads — today's prospects, last-active lens. Render as a
-  3-col markdown table sorted by score desc; col 1 is the inline-code
-  10-segment `▰❖▱` bar + linked company + location + size; col 2 is
-  why-fits ≤20 words; col 3 is linked contact + title.
+  Pull NEW leads from the Discover wishlist — fresh prospects, not known
+  pipeline. For KNOWN leads to follow up with, use leadbay_pull_followups.
+  Render as a 3-col markdown table sorted by score desc; col 1 is the
+  inline-code 10-segment `▰❖▱` bar + linked company + location + size;
+  col 2 is why-fits ≤20 words; col 3 is linked contact + title.
 routing:
   triggers:
     - "show me leads"
+    - "show me new leads"
+    - "show me today's leads"
     - "today's prospects"
     - "best new leads"
+    - "fresh leads"
+    - "what's new today"
+  # Anti-triggers use specific phrases (not single words like "reach out") to avoid
+  # intercepting legitimate discovery intent. E.g. "reach out to new leads" should
+  # still fire pull_leads; only "leads I should reach out to" (existing pipeline) → pull_followups.
   anti_triggers:
     - phrase: "leads I should follow up with"
       route_to: leadbay_pull_followups
     - phrase: "I'm going to <city>"
       route_to: leadbay_followups_map
+    - phrase: "leads I should reach out to"
+      route_to: leadbay_pull_followups
+    - phrase: "leads to get back to"
+      route_to: leadbay_pull_followups
+    - phrase: "leads to contact today"
+      route_to: leadbay_pull_followups
+    - phrase: "should I contact"
+      route_to: leadbay_pull_followups
+    - phrase: "reconnect with"
+      route_to: leadbay_pull_followups
+    - phrase: "re-engage"
+      route_to: leadbay_pull_followups
   prefer_when: "fresh Discover leads; if a lens is named, pass `lensId` and pin it"
   examples:
     positive:
@@ -24,6 +44,9 @@ routing:
     negative:
       - "Which leads should I follow up with this week?"
       - "I'm flying to Berlin Thursday — who should I meet?"
+      - "Show me leads I should reach out to today."
+      - "Who should I get back to today?"
+      - "Leads I should contact today."
 rendering_hint: |
   3-col markdown table sorted by `score` desc — DO NOT print the numeric
   score. Col 1 = inline-code 10-segment bar (`▰` firmographic, `❖` AI

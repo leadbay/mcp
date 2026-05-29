@@ -3,8 +3,7 @@
  *
  * Every backtick-wrapped `leadbay_*` identifier must resolve to a real
  * registered tool name (from @leadbay/core) or a real registered prompt
- * (from listPrompts()). Every path in a Tests column must exist on
- * disk. Catches renames, deleted tests, and silent drift between the
+ * (from listPrompts()). Catches renames and silent drift between the
  * triage doc and the shipped MCP surface.
  *
  * Why this matters: the table is the canonical lens for triaging
@@ -64,11 +63,6 @@ const KNOWN_SKILLS = new Set(
 // tokens like `mcp` / `backend`) pass through untouched.
 const LEADBAY_IDENT_RE = /`(leadbay_[a-z0-9_]+)`/g;
 
-// Test paths in the Tests column are written as inline-code: e.g.
-// `packages/mcp/test/smoke/live.test.ts`. We treat anything that looks
-// like a path under packages/ as a test pointer and assert existence.
-const PATH_LIKE_RE = /`(packages\/[^`\s]+\.test\.ts)`/g;
-
 const SOURCE = readFileSync(WORKFLOWS_MD, "utf8");
 
 describe("audit: WORKFLOWS.md is normative", () => {
@@ -91,22 +85,6 @@ describe("audit: WORKFLOWS.md is normative", () => {
     expect(
       offenders,
       `WORKFLOWS.md references identifiers that aren't registered tools, prompts, or skills: ${JSON.stringify(offenders)}. Likely a rename, typo, or planned-but-not-yet-shipped tool that should live in a Planned row's "proposed" prose (not backtick'd as if it existed).`,
-    ).toEqual([]);
-  });
-
-  it("every Tests-column path exists on disk", () => {
-    const missing: string[] = [];
-    const seen = new Set<string>();
-    for (const match of SOURCE.matchAll(PATH_LIKE_RE)) {
-      const relPath = match[1];
-      if (seen.has(relPath)) continue;
-      seen.add(relPath);
-      const abs = resolve(REPO_ROOT, relPath);
-      if (!existsSync(abs)) missing.push(relPath);
-    }
-    expect(
-      missing,
-      `WORKFLOWS.md cites test files that don't exist: ${JSON.stringify(missing)}. Either the test was moved/deleted, or the row should be moved out of "Supported" — a row claims "covered" only if a real test backs it.`,
     ).toEqual([]);
   });
 

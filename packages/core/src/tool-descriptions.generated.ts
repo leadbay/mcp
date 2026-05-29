@@ -9,11 +9,11 @@ export const leadbay_account_status: string = `## WHEN TO USE
 
 Trigger phrases: "what's my account status", "how much quota do I have", "what lens am I on", "I topped up / I bought credits / I added credits".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "show me leads" → \`leadbay_pull_leads\`.
 
 Prefer when: meta question about account, quota, active lens, or top-up recovery
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "What's my account status?"
@@ -51,11 +51,11 @@ export const leadbay_add_leads_to_campaign: string = `## WHEN TO USE
 
 Trigger phrases: "add leads to <name> campaign", "attach these to <campaign>", "put these in Q2 Push", "add to existing campaign".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "create a new campaign" → \`leadbay_create_campaign\`; "remove lead from campaign" → \`leadbay_remove_leads_from_campaign\`; "list campaigns" → \`leadbay_list_campaigns\`.
 
 Prefer when: existing campaign plus lead ids to attach; for a new campaign, use create_campaign
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "Add the three new Tulsa leads to my 'OK Sweep' campaign."
@@ -252,11 +252,11 @@ export const leadbay_campaign_call_sheet: string = `## WHEN TO USE
 
 Trigger phrases: "campaign call sheet", "people to call in <campaign>", "cold-calling cheat sheet", "work this campaign", "calling session for <campaign>".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "campaign pulse only" → \`leadbay_campaign_progression\`; "create campaign" → \`leadbay_create_campaign\`; "list campaigns" → \`leadbay_list_campaigns\`.
 
 Prefer when: user wants one campaign with phone + LinkedIn contacts ready to call
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "Show me my Limoges Tour campaign as a call sheet."
@@ -415,11 +415,11 @@ export const leadbay_campaign_progression: string = `## WHEN TO USE
 
 Trigger phrases: "how is my <name> campaign doing", "campaign progression", "lead-by-lead status on <campaign>", "who in <campaign> have I contacted", "what's stuck in my campaign".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "pulse across all campaigns (not one)" → \`leadbay_list_campaigns\`; "log an outreach event" → \`leadbay_report_outreach\`.
 
 Prefer when: user named (or just selected from list_campaigns) ONE campaign and wants per-lead status. Use list_campaigns for the cross-campaign overview
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "Walk me through the Limoges Tour campaign — who have I touched?"
@@ -492,11 +492,11 @@ export const leadbay_create_campaign: string = `## WHEN TO USE
 
 Trigger phrases: "create a campaign called <name>", "save these leads as a campaign", "campaign for my <city> trip", "group these leads", "persist these leads".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "list campaigns" → \`leadbay_list_campaigns\`; "add to existing campaign" → \`leadbay_add_leads_to_campaign\`; "log outreach" → \`leadbay_report_outreach\`.
 
 Prefer when: user wants to persist picked leads as a named cohort to work later
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "Save these 9 leads as a campaign called 'Limoges Tour – May 24'."
@@ -619,11 +619,11 @@ export const leadbay_dislike_lead: string = `## WHEN TO USE
 
 Trigger phrases: "I don't like this lead", "thumbs down", "not relevant", "wrong industry", "too small", "skip permanently", "not a fit", "no to this one".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "remind me later / snooze / not now" → \`leadbay_set_pushback\`; "thumbs up / save this one" → \`leadbay_like_lead\`.
 
 Prefer when: durable rejection of a specific lead; pass \`lead_id\`. For temporary deferral, route to \`leadbay_set_pushback\`.
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "Thumbs down — wrong industry."
@@ -695,11 +695,11 @@ export const leadbay_followups_map: string = `## WHEN TO USE
 
 Trigger phrases: "I'm going to <city>", "visit in person", "map of leads", "plan my itinerary".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "default follow-up table" → \`leadbay_pull_followups\`; "new prospects" → \`leadbay_pull_leads\`.
 
 Prefer when: geographic, travel, in-person, itinerary, or map intent
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "I'm flying to New York Thursday — who should I meet in person?"
@@ -1209,11 +1209,11 @@ export const leadbay_like_lead: string = `## WHEN TO USE
 
 Trigger phrases: "I like this lead", "thumbs up", "this one looks good", "save this one", "this is a good fit", "more like this", "yes to this one".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "remind me about this lead later / snooze it" → \`leadbay_set_pushback\`; "not relevant / wrong fit / thumbs down" → \`leadbay_dislike_lead\`.
 
 Prefer when: user expresses durable positive interest in a specific lead; pass the lead's UUID as \`lead_id\`
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "I like this lead — show me more like it."
@@ -1250,11 +1250,11 @@ export const leadbay_list_campaigns: string = `## WHEN TO USE
 
 Trigger phrases: "what campaigns do I have", "list my campaigns", "show me my active campaigns", "campaign overview", "what's in flight", "pulse on my campaigns".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "create a new campaign" → \`leadbay_create_campaign\`; "drill into one specific campaign's progression" → \`leadbay_campaign_progression\`.
 
 Prefer when: user wants the pulse / overview view across all their campaigns. Use campaign_progression to drill into one
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "What campaigns am I running?"
@@ -1401,11 +1401,11 @@ export const leadbay_prepare_outreach: string = `## WHEN TO USE
 
 Trigger phrases: "draft outreach for <Contact>", "write an email to <Contact>", "outreach package for <Company>".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "research before drafting" → \`leadbay_research_lead_by_id\`; "log sent outreach" → \`leadbay_report_outreach\`; "bulk enrich contacts" → \`leadbay_enrich_titles\`.
 
 Prefer when: single picked lead/contact; action-imminent drafting context
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "Draft an email to Sarah at Acme."
@@ -1643,17 +1643,20 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // region: leadbay_pull_followups
 export const leadbay_pull_followups: string = `## WHEN TO USE
 
-Trigger phrases: "what should I follow up on", "leads I've already worked", "what's overdue", "leads in <city / state / country>".
+Trigger phrases: "what should I follow up on", "leads I've already worked", "what's overdue", "leads in <city / state / country>", "reach out to today", "should reach out to", "get back to", "contact today", "reconnect with", "re-engage", "leads to contact", "who should I ping".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Do NOT use for: "new leads / today's prospects" → \`leadbay_pull_leads\`; "map / trip / in person" → \`leadbay_followups_map\`.
 
 Prefer when: known Monitor leads; pass \`city\` or \`set_filter\` for geo/sector/recency
 
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
-
 Examples that SHOULD invoke this tool:
 - "What should I follow up on this week?"
 - "What's overdue in my pipeline?"
+- "Show me leads I should reach out to today."
+- "Who should I get back to today?"
+- "Leads I should contact today."
 
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Show me today's new leads."
@@ -1834,13 +1837,13 @@ Always offer at least one of: prep outreach, refilter, pushback. Pushback is the
 // region: leadbay_pull_leads
 export const leadbay_pull_leads: string = `## WHEN TO USE
 
-Trigger phrases: "show me leads", "today's prospects", "best new leads".
-
-Do NOT use for: "leads I should follow up with" → \`leadbay_pull_followups\`; "I'm going to <city>" → \`leadbay_followups_map\`.
-
-Prefer when: fresh Discover leads; if a lens is named, pass \`lensId\` and pin it
+Trigger phrases: "show me leads", "show me new leads", "show me today's leads", "today's prospects", "best new leads", "fresh leads", "what's new today".
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "leads I should follow up with" → \`leadbay_pull_followups\`; "I'm going to <city>" → \`leadbay_followups_map\`; "leads I should reach out to" → \`leadbay_pull_followups\`; "leads to get back to" → \`leadbay_pull_followups\`; "leads to contact today" → \`leadbay_pull_followups\`; "should I contact" → \`leadbay_pull_followups\`; "reconnect with" → \`leadbay_pull_followups\`; "re-engage" → \`leadbay_pull_followups\`.
+
+Prefer when: fresh Discover leads; if a lens is named, pass \`lensId\` and pin it
 
 Examples that SHOULD invoke this tool:
 - "Show me today's leads."
@@ -1849,6 +1852,9 @@ Examples that SHOULD invoke this tool:
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Which leads should I follow up with this week?"
 - "I'm flying to Berlin Thursday — who should I meet?"
+- "Show me leads I should reach out to today."
+- "Who should I get back to today?"
+- "Leads I should contact today."
 
 ## RENDER (quick)
 
@@ -2054,11 +2060,11 @@ export const leadbay_remove_leads_from_campaign: string = `## WHEN TO USE
 
 Trigger phrases: "remove lead from campaign", "take this out of <campaign>", "remove these from Q2 Push", "delete lead from campaign", "clean up campaign".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "add leads to campaign" → \`leadbay_add_leads_to_campaign\`; "create a new campaign" → \`leadbay_create_campaign\`; "list campaigns" → \`leadbay_list_campaigns\`.
 
 Prefer when: user wants to detach one or more leads from an existing campaign
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "Remove the Austin lead from my Q2 Push campaign."
@@ -2112,11 +2118,11 @@ export const leadbay_report_friction: string = `## WHEN TO USE
 
 Trigger phrases: "no, I meant", "still nothing", "third time asking", "this isn't working", "ugh", "why can't I".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "log outreach" → \`leadbay_report_outreach\`; "thumbs up / down" → \`leadbay_like_lead\`; "snooze / pushback" → \`leadbay_set_pushback\`.
 
 Prefer when: user shows frustration OR you notice a tool returned ok but with no useful output — be proactive.
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "No, I meant leads in Wisconsin, not Wyoming."
@@ -2180,11 +2186,11 @@ export const leadbay_research_lead_by_id: string = `## WHEN TO USE
 
 Trigger phrases: "tell me about this lead", "deep dive on the lead I just picked", "everything you know about lead <UUID>".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "company name without lead id" → \`leadbay_research_lead_by_name_fuzzy\`; "draft outreach for <Contact>" → \`leadbay_prepare_outreach\`.
 
 Prefer when: user picked a row and you have its UUID; pass \`leadId\`
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "Tell me everything about that lead I just picked."
@@ -2385,11 +2391,11 @@ export const leadbay_research_lead_by_name_fuzzy: string = `## WHEN TO USE
 
 Trigger phrases: "look up <Company>", "research <Company>", "what do we know about <Company>".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "picked row with leadId" → \`leadbay_research_lead_by_id\`; "draft outreach for <Contact>" → \`leadbay_prepare_outreach\`.
 
 Prefer when: company name in prose and no Leadbay id yet
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "Look up Acme Corp for me."
@@ -2683,11 +2689,11 @@ export const leadbay_tour_plan: string = `## WHEN TO USE
 
 Trigger phrases: "visiting <city> in <N> days", "field tour in <city>", "plan a tour in <city>", "who should I meet in <city>", "customers plus prospects in <city>", "tour itinerary".
 
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
 Do NOT use for: "follow-ups only, no new prospects" → \`leadbay_followups_map\`; "new leads only" → \`leadbay_pull_leads\`; "research one account" → \`leadbay_research_lead_by_id\`.
 
 Prefer when: user wants known accounts plus new discoveries in one geographic itinerary
-
-**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Examples that SHOULD invoke this tool:
 - "I'm flying to Limoges in 4 days — give me 3 customers, 3 qualified prospects, and 3 new high-potential."

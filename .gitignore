@@ -7,7 +7,7 @@ coverage/
 .env.test.local
 # Per-workspace scratch space (probe scripts, live API dumps, plans, notes).
 # May contain credentials and live API responses — never commit.
-.context/
+.context*/
 # Conductor / Claude Code workspace state (scheduled tasks, etc.)
 .claude/
 *.js

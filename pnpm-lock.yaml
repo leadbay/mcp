@@ -63,6 +63,9 @@ importers:
       '@leadbay/core':
         specifier: workspace:*
         version: link:../core
+      '@leadbay/promptforge':
+        specifier: workspace:*
+        version: link:../promptforge
 
   packages/promptforge:
     dependencies:

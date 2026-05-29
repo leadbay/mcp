@@ -32,7 +32,8 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
-    "@leadbay/core": "workspace:*"
+    "@leadbay/core": "workspace:*",
+    "@leadbay/promptforge": "workspace:*"
   },
   "engines": {
     "node": ">=22"

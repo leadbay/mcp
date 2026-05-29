@@ -57,6 +57,12 @@ export interface InvariantResult {
   reason?: string;
 }
 
+export interface CriterionVerdict {
+  criterion: string;
+  pass: boolean;
+  reasoning: string;
+}
+
 export interface JudgeScores {
   mission_match: number;
   instruction_adherence: number;
@@ -79,6 +85,7 @@ export interface MCPEvidence {
 
   // L2 — Witness. Required for pass.
   transcript_path: string;
+  full_log_path?: string;
   turns: TurnRecord[];
   prose_between_tool_calls: ProseBetweenToolCalls[];
 
@@ -87,6 +94,7 @@ export interface MCPEvidence {
   judge_scores?: JudgeScores;
   judge_reasoning?: string;
   failure_modes_present?: string[];
+  per_criterion?: CriterionVerdict[];
 
   // L4 — Optional luxury narrative.
   narrative?: string;
@@ -102,6 +110,11 @@ export interface EvalEntry {
   duration_ms: number;
   cost_usd_session: number;
   cost_usd_judges: number;
+  tokens_session_in: number;
+  tokens_session_cache: number;
+  tokens_session_out: number;
+  tokens_judge_in: number;
+  tokens_judge_out: number;
   turns_used: number;
   tool_call_count: number;
   tool_call_breakdown: Record<string, number>;

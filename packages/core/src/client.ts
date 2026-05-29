@@ -276,13 +276,17 @@ export class LeadbayClient {
   // surface latency/region/retry_after to the agent in their `_meta` block.
   private _lastMeta: RequestMeta | null = null;
 
-  constructor(baseUrl: string, token?: string, region?: "us" | "fr") {
-    this._baseUrl = baseUrl.replace(/\/+$/, "");
-    this.token = token ?? null;
-    this._region = region ?? (
-      baseUrl === REGIONS.us ? "us" :
-      baseUrl === REGIONS.fr ? "fr" : "custom"
-    );
+  constructor(baseUrl: string | { baseUrl: string; bearer?: string; region?: "us" | "fr" }, token?: string, region?: "us" | "fr") {
+    if (typeof baseUrl === "object") {
+      const opts = baseUrl;
+      this._baseUrl = opts.baseUrl.replace(/\/+$/, "");
+      this.token = opts.bearer ?? null;
+      this._region = opts.region ?? (opts.baseUrl === REGIONS.us ? "us" : opts.baseUrl === REGIONS.fr ? "fr" : "custom");
+    } else {
+      this._baseUrl = baseUrl.replace(/\/+$/, "");
+      this.token = token ?? null;
+      this._region = region ?? (baseUrl === REGIONS.us ? "us" : baseUrl === REGIONS.fr ? "fr" : "custom");
+    }
   }
 
   get baseUrl(): string {

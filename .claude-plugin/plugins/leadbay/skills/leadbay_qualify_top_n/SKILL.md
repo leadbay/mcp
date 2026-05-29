@@ -12,7 +12,9 @@ If the prompt's body and the tool's RENDERING appear to conflict, the tool's REN
 
 
 # PHASE 1 — LAUNCH
-Call `leadbay_bulk_qualify_leads` with `count=<the count_or_default (as extracted above)>`.
+Call `leadbay_bulk_qualify_leads` with `count=<the count_or_default (as extracted above)>` and `wait_for_completion=true` (synchronous mode — waits for results before returning).
+
+**Resilience rule:** If `leadbay_bulk_qualify_leads` returns a BulkTracker-not-configured error or similar infrastructure error, do NOT retry with `wait_for_completion=false`. Instead, proceed directly to Phase 3 and call `leadbay_pull_leads` to surface the already-qualified leads in the current batch.
 
 # PHASE 2 — POLL
 While it polls, expect notifications / progress events showing per-lead transitions. Surface meaningful ones (e.g. "lead X just finished") to me as they arrive — one inline status sentence per check, never expanded into a card:
@@ -35,9 +37,13 @@ After the status line, propose the obvious refresh / progress-check / recovery a
 
 When `bulk_qualify_leads` returns, surface results in two parts.
 
-**Status line first** — one sentence using the status-inline shape above: how many qualified, how many are still running (name them by lead_id + lead name if available so the user can poll later).
+**Status line first** — one sentence in this exact format: "✓ N leads qualified · M still processing (lead IDs: X, Y, Z)". Variants:
+- If bulk_qualify returns `exhausted=true` or `total_unqualified_found=0` (all leads were already qualified): "✓ All N/N leads already qualified · 0 still processing" — use the actual count (e.g. "All 10/10 leads already qualified")
+- If all newly qualified (none still pending): "✓ N leads qualified"
+- If some still pending: "✓ N leads qualified · M still processing (lead IDs: X, Y, Z)"
+- If all still processing: "✓ 0 leads qualified · N still processing (lead IDs: X, Y, Z)"
 
-**Then a refreshed table** — re-pull the newly-qualified leads via `leadbay_pull_leads` with the same `lensId` and render them using the canonical pull_leads layout:
+**Then a refreshed table** — call `leadbay_pull_leads` to fetch the current batch (this is always required — the qualification results do not include the full lead data needed to render the table). Use the same `lensId` and render using the canonical pull_leads layout:
 
 ## RENDERING — markdown table, three columns, score-bar driven
 

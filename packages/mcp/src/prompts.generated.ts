@@ -203,6 +203,8 @@ Same resume-check semantics as \`leadbay_daily_check_in\` Phase 0 — if you see
 
 Call \`leadbay_pull_followups\` (NOT \`leadbay_pull_leads\` — those are different entry points; see §1.6 of the prospecting overview). If the user mentioned a city, sector, recency window, or other filter, build a \`FilterItem\` and pass it as \`set_filter\` so the result is narrowed (and the filter persists for the user's next session). If the user said something generic ("anyone I should follow up on?"), call with no \`set_filter\` to get the default Monitor view.
 
+**Disambiguation rule for discovery-sounding phrases in follow-up context:** If the user says "best leads", "top leads", "leads for today", or "show me my leads" while you're already in the follow-up workflow context, they mean their Monitor pipeline — NOT a fresh Discover batch. Use \`leadbay_pull_followups\`, not \`leadbay_pull_leads\`. The cross-mode pivot at the end of Phase 2 lets them switch to Discovery if they intended that.
+
 For geo filters specifically: prefer the \`city\` shortcut on \`leadbay_pull_followups({city: "Berlin"})\` — the composite resolves the free-text city via \`/geo/search\`, returns ambiguities to disambiguate when needed (status: "ambiguous_locations" → pick an id → re-call with \`city_id\`), then merges the resolved admin_area into the Monitor filter as \`location_ids\`. If the user has already given you a numeric id, pass it as \`city_id\`. Don't guess admin_area ids — let the resolver do it.
 
 **TRAVEL / IN-PERSON ROUTING** — when the user's intent is geographic and visual ("I'm going to NYC next week", "leads I should visit in person", "this week's trip", "show me followups in <city>", "plan my itinerary", "trip itinerary", "show on a map", "leads in Texas / California / France", or any phrasing that asks for a map / geographic / trip-planning view — INCLUDING state-, country-, and region-level place names):
@@ -733,7 +735,9 @@ If the prompt's body and the tool's RENDERING appear to conflict, the tool's REN
 
 
 # PHASE 1 — LAUNCH
-Call \`leadbay_bulk_qualify_leads\` with \`count={{arg:count_or_default}}\`.
+Call \`leadbay_bulk_qualify_leads\` with \`count={{arg:count_or_default}}\` and \`wait_for_completion=true\` (synchronous mode — waits for results before returning).
+
+**Resilience rule:** If \`leadbay_bulk_qualify_leads\` returns a BulkTracker-not-configured error or similar infrastructure error, do NOT retry with \`wait_for_completion=false\`. Instead, proceed directly to Phase 3 and call \`leadbay_pull_leads\` to surface the already-qualified leads in the current batch.
 
 # PHASE 2 — POLL
 While it polls, expect notifications / progress events showing per-lead transitions. Surface meaningful ones (e.g. "lead X just finished") to me as they arrive — one inline status sentence per check, never expanded into a card:
@@ -756,9 +760,13 @@ After the status line, propose the obvious refresh / progress-check / recovery a
 
 When \`bulk_qualify_leads\` returns, surface results in two parts.
 
-**Status line first** — one sentence using the status-inline shape above: how many qualified, how many are still running (name them by lead_id + lead name if available so the user can poll later).
+**Status line first** — one sentence in this exact format: "✓ N leads qualified · M still processing (lead IDs: X, Y, Z)". Variants:
+- If bulk_qualify returns \`exhausted=true\` or \`total_unqualified_found=0\` (all leads were already qualified): "✓ All N/N leads already qualified · 0 still processing" — use the actual count (e.g. "All 10/10 leads already qualified")
+- If all newly qualified (none still pending): "✓ N leads qualified"
+- If some still pending: "✓ N leads qualified · M still processing (lead IDs: X, Y, Z)"
+- If all still processing: "✓ 0 leads qualified · N still processing (lead IDs: X, Y, Z)"
 
-**Then a refreshed table** — re-pull the newly-qualified leads via \`leadbay_pull_leads\` with the same \`lensId\` and render them using the canonical pull_leads layout:
+**Then a refreshed table** — call \`leadbay_pull_leads\` to fetch the current batch (this is always required — the qualification results do not include the full lead data needed to render the table). Use the same \`lensId\` and render using the canonical pull_leads layout:
 
 ## RENDERING — markdown table, three columns, score-bar driven
 
