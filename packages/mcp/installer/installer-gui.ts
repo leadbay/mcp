@@ -12,7 +12,7 @@ import {
   uninstallFromCodexConfig,
   uninstallFromJsonConfig,
   uninstallShellExports,
-} from "./bin.js";
+} from "../src/bin.js";
 import { existsSync, readFileSync } from "node:fs";
 import {
   detectClients,
@@ -20,7 +20,7 @@ import {
   HOSTED_MCP_URL,
   type DetectedClient,
 } from "./install-shared.js";
-import { inferRegionViaStargate, oauthLogin } from "./oauth.js";
+import { inferRegionViaStargate, oauthLogin } from "../src/oauth.js";
 
 declare const __LEADBAY_MCP_VERSION__: string;
 

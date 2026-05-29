@@ -19,8 +19,8 @@ import {
   formatInstallOsLabel,
   HOSTED_MCP_URL,
   type DetectedClient,
-} from "./install-shared.js";
-export { detectClaudeDesktopMode, formatInstallOsLabel } from "./install-shared.js";
+} from "../installer/install-shared.js";
+export { detectClaudeDesktopMode, formatInstallOsLabel } from "../installer/install-shared.js";
 import { parseWriteEnv } from "./env.js";
 import { initTelemetry } from "./telemetry.js";
 import { createDefaultUpdateStateStore } from "./update-state.js";
