@@ -56,6 +56,13 @@ interface BulkRecordCommon {
   status: "pending" | "launched" | "complete" | "failed" | "cancelled";
   idempotency_key: string; // sha256 over sorted inputs
   durability: "file" | "memory";
+  // Server-minted notification id (backend ADR docs/adr/notifications.md).
+  // Populated when the launch endpoint returns a BulkLaunchResponse /
+  // BulkWebFetchResponsePayload carrying notification_id. Status composites
+  // can read bulk_progress from the notification (single REST call) rather
+  // than fanning out per-lead. Optional for backward-compat with records
+  // minted before this field existed.
+  notification_id?: string | null;
 }
 
 export interface EnrichBulkRecord extends BulkRecordCommon {
@@ -147,7 +154,7 @@ export interface BulkTracker {
     reused: boolean;
     seconds_since_original?: number;
   }>;
-  markLaunched(bulk_id: string): Promise<BulkRecord>;
+  markLaunched(bulk_id: string, notification_id?: string | null): Promise<BulkRecord>;
   markFailed(bulk_id: string): Promise<void>;
   // iter-21: terminal-state transition for ctx.signal aborts. Idempotent —
   // safe to call repeatedly OR on an already-cancelled / non-existent record.
@@ -843,16 +850,25 @@ export class LocalBulkStore implements BulkTracker {
     });
   }
 
-  async markLaunched(bulk_id: string): Promise<BulkRecord> {
+  async markLaunched(
+    bulk_id: string,
+    notification_id?: string | null
+  ): Promise<BulkRecord> {
     return this.mutex.run(async () => {
       const all = this.prune(await this.readAll());
       const idx = all.findIndex((r) => r.bulk_id === bulk_id);
       if (idx < 0) {
         throw new Error(`bulk_id not found: ${bulk_id}`);
       }
-      all[idx] = { ...all[idx], status: "launched" };
+      all[idx] = {
+        ...all[idx],
+        status: "launched",
+        ...(notification_id ? { notification_id } : {}),
+      };
       await this.writeAll(all);
-      this.logger?.info?.(`bulk.launched bulk_id=${bulk_id}`);
+      this.logger?.info?.(
+        `bulk.launched bulk_id=${bulk_id}${notification_id ? ` notification_id=${notification_id}` : ""}`
+      );
       return all[idx];
     });
   }

@@ -42,6 +42,10 @@ Show the user's account state — admin rights, language, last-active lens, curr
 
 **After a user tops up, do NOT keep refusing — RETRY.** If the user signals they topped up / bought credits / added credits, the previous QUOTA_EXCEEDED is invalidated the moment the Stripe webhook lands. RE-CALL `leadbay_account_status` to pick up the new state AND retry the originally failed call. The retry itself does not require a successful account_status check first — a topped-up user has cleared the throttle whether or not your cached snapshot reflects it yet. If the retry hits the wall again, only then re-offer top-up / wait. **A stale quota snapshot is never a reason to gate-keep a topped-up user.**
 
+**`notifications` block.** The response now includes a top-level `notifications` array listing background work the user (or agent) initiated that has since completed (`bulk_enrich`, `bulk_qualify`, `import`). These are signals to revise prior agent outputs the just-finished work might have made stale — they're NOT a pending-task list for the user. After revising (or confirming nothing is affected), call `leadbay_acknowledge_notification(notification_id)`. Full handling protocol below.
+
+{{include:gates/notifications-inbox}}
+
 {{include:headers/tool-when-to-use}} at the start of a session to know what the agent can/can't do, after a 429 to explain to the user which resource window was exhausted and when it resets (and to offer the top-up alternative), and after the user signals a top-up so the agent can resume the interrupted workflow.
 
 {{include:headers/tool-when-not-to-use}} as a pre-flight gate before bulk ops — operations themselves return 429; this tool is for context, not gating. And: a recent quota snapshot showing "exhausted" is NOT a reason to refuse a write call when the user has just topped up — re-call this tool first, then proceed.

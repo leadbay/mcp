@@ -1,6 +1,18 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool, ToolContext, RequestMeta } from "../types.js";
+import type { BulkProgress, Notification, Tool, ToolContext, RequestMeta } from "../types.js";
 import { isValidBulkId } from "../jobs/bulk-store.js";
+
+async function readNotification(
+  client: LeadbayClient,
+  notificationId: string
+): Promise<Notification | null> {
+  try {
+    const page = await client.listNotifications({ archived: false, count: 50 });
+    return page.items.find((n) => n.id === notificationId) ?? null;
+  } catch {
+    return null;
+  }
+}
 import {
   refreshLeadStates,
   buildQuestionOrder,
@@ -40,6 +52,19 @@ interface QualifyStatusResult {
   // Snapshot of caller-supplied budgets (informational; not enforced by status).
   per_lead_budget_ms?: number;
   total_budget_ms?: number;
+
+  // Backend progress counters (backend ADR docs/adr/notifications.md).
+  // Populated when the launch persisted a notification_id and the
+  // notification is still readable on /notifications. Null on older
+  // bulk records (minted before notification capture) or when the
+  // notification isn't yet visible.
+  notification_id: string | null;
+  bulk_progress: BulkProgress | null;
+  in_progress: boolean | null;
+  // Set when `bulk_progress.quota_hit_count > 0` — surfaces the AI-credits
+  // quota wall distinctly so the agent can offer a top-up rather than
+  // waiting for the next window.
+  quota_hit_hint?: string;
 
   region: "us" | "fr" | "custom";
   _meta: RequestMeta;
@@ -272,6 +297,20 @@ export const qualifyStatus: Tool<
       qualified.push(rest);
     }
 
+    // Read the matching notification when we have one. Best-effort: a
+    // miss falls through to bulk_progress=null (legacy records, or the
+    // notification hasn't landed yet on the REST list endpoint).
+    let bulkProgress: BulkProgress | null = null;
+    let inProgressFlag: boolean | null = null;
+    const notifId = record.notification_id ?? null;
+    if (notifId) {
+      const n = await readNotification(client, notifId);
+      if (n) {
+        bulkProgress = n.bulk_progress;
+        inProgressFlag = n.in_progress;
+      }
+    }
+
     const out: QualifyStatusResult = {
       qualify_id: record.bulk_id,
       launched_at: record.launched_at,
@@ -283,6 +322,9 @@ export const qualifyStatus: Tool<
       still_running,
       failed,
       not_in_lens: [...notInLensSet],
+      notification_id: notifId,
+      bulk_progress: bulkProgress,
+      in_progress: inProgressFlag,
       region: client.region,
       _meta: client.lastMeta ?? {
         region: client.region,
@@ -293,6 +335,10 @@ export const qualifyStatus: Tool<
     };
     if (record.per_lead_budget_ms !== undefined) out.per_lead_budget_ms = record.per_lead_budget_ms;
     if (record.total_budget_ms !== undefined) out.total_budget_ms = record.total_budget_ms;
+    if (bulkProgress && bulkProgress.quota_hit_count > 0) {
+      out.quota_hit_hint =
+        "Some leads hit the AI-credits quota during qualification. Top up via leadbay_create_topup_link to clear the throttle immediately, or wait until the daily/weekly window resets.";
+    }
     return out;
   },
 };

@@ -89,6 +89,11 @@ export interface ImportLeadsResult {
   leads: Array<DomainsLeadEntry | RecordsLeadEntry>;
   not_imported: Array<DomainsNotImportedEntry | RecordsNotImportedEntry>;
   importIds: string[];
+  // Backend ADR docs/adr/notifications.md: one progress notification is
+  // created per import (per chunk in multi-chunk uploads). The MCP's WS
+  // listener captures completion frames automatically; this array is
+  // surfaced for tracing and so callers can correlate explicitly if needed.
+  notification_ids: string[];
   region: "us" | "fr" | "custom";
   cancelled?: boolean;
   dry_run?: boolean;
@@ -99,6 +104,7 @@ export interface ImportLeadsRunningResult {
   status: "running";
   handle_id: string;
   importIds: string[];
+  notification_ids: string[];
   progress: { phase: string; records_processed: number; records_total: number };
   region: "us" | "fr" | "custom";
   reused?: boolean;
@@ -796,6 +802,12 @@ function normalizeFieldsAndCustomShorthand(
 interface ChunkRunOutput {
   importId: string;
   records: ImportRecordPayload[];
+  // Server-minted progress-notification id (backend ADR
+  // docs/adr/notifications.md). One per import — set when
+  // update_mappings returns BulkLaunchResponse. Null when the backend
+  // didn't (or couldn't) produce a notification (e.g. system-initiated
+  // imports). Surfaced upward so the BulkRecord can persist it.
+  notification_id: string | null;
 }
 
 interface UploadedChunk {
@@ -1069,14 +1081,43 @@ async function completeUploadedChunk(
   ctx?.logger?.info?.(`import-leads: preprocess done for importId=${importId}`);
 
   if (dryRun) {
-    return { importId, records: [] };
+    return { importId, records: [], notification_id: null };
   }
 
-  await client.requestVoid(
-    "POST",
-    `/imports/${importId}/update_mappings`,
-    mappings
-  );
+  // Backend ADR docs/adr/notifications.md: update_mappings now creates a
+  // progress notification and returns BulkLaunchResponse { notification_id }.
+  // Capture and persist so the WS listener can correlate the eventual
+  // completion event, and the next agent turn can see the import is done
+  // via `_meta.notifications`.
+  let updateMappingsResp: { notification_id: string | null } | null = null;
+  try {
+    updateMappingsResp = await client.request<{ notification_id: string | null }>(
+      "POST",
+      `/imports/${importId}/update_mappings`,
+      mappings
+    );
+  } catch (err: any) {
+    // Fall back to void semantics if backend hasn't been rolled out yet
+    // (the call may have already succeeded; we just lose the notification id).
+    if (err?.code === "API_ERROR" || err?.code === "NOT_FOUND") {
+      ctx?.logger?.warn?.(
+        `import-leads: update_mappings raw error (${err?.code}); retrying void`
+      );
+      await client.requestVoid(
+        "POST",
+        `/imports/${importId}/update_mappings`,
+        mappings
+      );
+    } else {
+      throw err;
+    }
+  }
+  const importNotificationId = updateMappingsResp?.notification_id ?? null;
+  if (importNotificationId) {
+    ctx?.logger?.info?.(
+      `import-leads: notification_id=${importNotificationId} importId=${importId}`
+    );
+  }
   ctx?.logger?.info?.(`import-leads: mappings committed for importId=${importId}`);
 
   const phaseBudget2 = Math.min(perPhaseBudgetMs, Math.max(1, totalDeadline - Date.now()));
@@ -1096,7 +1137,7 @@ async function completeUploadedChunk(
     `import-leads: ${records.length} records terminal for importId=${importId}`
   );
 
-  return { importId, records };
+  return { importId, records, notification_id: importNotificationId };
 }
 
 interface MatchEntry {
@@ -1184,7 +1225,8 @@ function buildImportLeadsResult(
   matched: Map<number, MatchEntry>,
   notImported: Map<number, NotImportedEntry>,
   dryRun: boolean,
-  cancelled: boolean
+  cancelled: boolean,
+  notificationIds: string[]
 ): ImportLeadsResult {
   const leads: Array<DomainsLeadEntry | RecordsLeadEntry> = [];
   const not_imported: Array<DomainsNotImportedEntry | RecordsNotImportedEntry> = [];
@@ -1248,6 +1290,7 @@ function buildImportLeadsResult(
     leads,
     not_imported,
     importIds,
+    notification_ids: notificationIds,
     region: client.region,
     cancelled: cancelled || undefined,
     dry_run: dryRun || undefined,
@@ -1515,6 +1558,7 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
         leads: [],
         not_imported,
         importIds: [],
+        notification_ids: [],
         region: client.region,
         dry_run: dryRun || undefined,
         _meta: client.lastMeta ?? {
@@ -1593,6 +1637,10 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
         status: "running",
         handle_id: reservation.record.bulk_id,
         importIds,
+        // Notifications fire from update_mappings, which the background
+        // task hasn't called yet at this point. They surface via the WS
+        // listener / catch-up REST on subsequent agent turns.
+        notification_ids: [],
         progress: {
           phase:
             reservation.record.status === "complete"
@@ -1628,6 +1676,7 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
     );
 
     const importIds: string[] = [];
+    const notificationIds: string[] = [];
     const matched = new Map<number, MatchEntry>();
     const notImported = new Map<number, NotImportedEntry>();
 
@@ -1652,6 +1701,9 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
           signal,
           recordImportId
         );
+        if (out.notification_id && !notificationIds.includes(out.notification_id)) {
+          notificationIds.push(out.notification_id);
+        }
         if (!dryRun) {
           reconcileOneChunk(prep, out, matched, notImported);
         }
@@ -1690,7 +1742,8 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
       matched,
       notImported,
       dryRun,
-      cancelled
+      cancelled,
+      notificationIds
     );
   },
 };
@@ -1720,6 +1773,7 @@ async function runImportInBackground(
     void (async () => {
       const bgCtx: ToolContext = { logger: ctx.logger, bulkTracker: tracker };
       const importIds = uploadedChunks.map((chunk) => chunk.importId);
+      const notificationIds: string[] = [];
       const matched = new Map<number, MatchEntry>();
       const notImported = new Map<number, NotImportedEntry>();
       try {
@@ -1735,6 +1789,9 @@ async function runImportInBackground(
             bgCtx,
             undefined
           );
+          if (out.notification_id && !notificationIds.includes(out.notification_id)) {
+            notificationIds.push(out.notification_id);
+          }
           if (!opts.dryRun) {
             reconcileOneChunk(prep, out, matched, notImported);
           }
@@ -1746,7 +1803,8 @@ async function runImportInBackground(
           matched,
           notImported,
           opts.dryRun,
-          false
+          false,
+          notificationIds
         );
         await tracker.markImportComplete(handleId, {
           leads: result.leads,

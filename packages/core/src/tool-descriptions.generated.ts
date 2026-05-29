@@ -40,11 +40,57 @@ Show the user's account state — admin rights, language, last-active lens, curr
 
 **After a user tops up, do NOT keep refusing — RETRY.** If the user signals they topped up / bought credits / added credits, the previous QUOTA_EXCEEDED is invalidated the moment the Stripe webhook lands. RE-CALL \`leadbay_account_status\` to pick up the new state AND retry the originally failed call. The retry itself does not require a successful account_status check first — a topped-up user has cleared the throttle whether or not your cached snapshot reflects it yet. If the retry hits the wall again, only then re-offer top-up / wait. **A stale quota snapshot is never a reason to gate-keep a topped-up user.**
 
+**\`notifications\` block.** The response now includes a top-level \`notifications\` array listing background work the user (or agent) initiated that has since completed (\`bulk_enrich\`, \`bulk_qualify\`, \`import\`). These are signals to revise prior agent outputs the just-finished work might have made stale — they're NOT a pending-task list for the user. After revising (or confirming nothing is affected), call \`leadbay_acknowledge_notification(notification_id)\`. Full handling protocol below.
+
+## GATE — INSPECT \`_meta.notifications\` ON EVERY RESPONSE
+
+Some Leadbay tool responses include a \`_meta.notifications\` array listing **background work the user (or you) initiated that has since completed**. The three relevant kinds:
+
+| Kind | What just finished |
+|---|---|
+| \`bulk_enrich\` | A bulk contact-enrichment job (emails / phone numbers attached to leads' contacts). |
+| \`bulk_qualify\` | A bulk lead-qualification job (web-fetch + AI rescore, producing \`ai_agent_lead_score\` and qualification answers). |
+| \`import\` | A CSV / CRM file import (rows resolved to leads in the user's pipeline). |
+
+**Your job when you see an entry: revise prior outputs the just-finished work might have made stale.** This is NOT a pending-task list. It's a "your earlier answer used data that has now changed" signal.
+
+| Kind | Outputs you've produced that may now be stale — refresh them |
+|---|---|
+| \`bulk_enrich\` | Outreach drafts mentioning these leads' contacts; contact lists; recommended-lead lists citing \`contact_count\`; NEXT STEPS that asked the user to wait for emails / phones. Re-fetch via \`leadbay_get_contacts(leadId)\` for the affected leads. |
+| \`bulk_qualify\` | Lead rankings / shortlists you produced without \`ai_agent_lead_score\`; "today's leads"; followup maps; prepare-outreach picks. Re-pull via \`leadbay_pull_leads\` / \`leadbay_research_lead_by_id\`. |
+| \`import\` | "Available leads" claims; pulls from the affected lens that ran before the import landed; followup planning that needed the imported set. Re-pull via \`leadbay_pull_leads\` / \`leadbay_pull_followups\`. |
+
+**After revising (or after confirming no prior output is affected):** call \`leadbay_acknowledge_notification(notification_id)\` so the entry stops resurfacing on every tool response. Ack-and-move-on is correct even when nothing was stale — that's how the inbox stays focused on what's actually pending.
+
+**Do NOT** interpret these entries as "things waiting for the user." The user expects you to handle them silently. They are signals to YOU — agent — that prior outputs need a refresh.
+
+**Don't poll.** When you launch a long operation (enrichment / qualification / import), simply continue the conversation — the next time you call any tool, the completed-work entry will appear in \`_meta.notifications\`. Status tools (\`leadbay_bulk_enrich_status\`, \`leadbay_qualify_status\`, \`leadbay_import_status\`) exist for the case where you want the answer NOW (mid-conversation), not for ambient polling.
+
+Also surfaced as a top-level \`notifications\` array on \`leadbay_account_status\` — same shape, same handling.
+
+
 WHEN TO USE: at the start of a session to know what the agent can/can't do, after a 429 to explain to the user which resource window was exhausted and when it resets (and to offer the top-up alternative), and after the user signals a top-up so the agent can resume the interrupted workflow.
 
 WHEN NOT TO USE: as a pre-flight gate before bulk ops — operations themselves return 429; this tool is for context, not gating. And: a recent quota snapshot showing "exhausted" is NOT a reason to refuse a write call when the user has just topped up — re-call this tool first, then proceed.
 `;
 // endregion: leadbay_account_status
+
+// region: leadbay_acknowledge_notification
+export const leadbay_acknowledge_notification: string = `Acknowledge a Leadbay notification — i.e. tell the MCP and the backend "I've seen this and acted on it." Wraps \`POST /1.5/notifications/{id}/seen\` (default) or \`/archive\` (when \`archive:true\`) and drops the entry from the local inbox so subsequent \`_meta.notifications\` payloads stop carrying it.
+
+**When to call.** After you read an entry from \`_meta.notifications\` or \`account_status.notifications\` and have revised whatever prior output the just-finished background work might have made stale (outreach drafts, lead lists, "available leads" claims, followup plans). Mark-seen tells the human team's pipeline you handled this and prevents the notification from re-surfacing on every subsequent tool response.
+
+If nothing you produced for the user is affected, ack anyway with \`archive:false\` — the entry should still clear so the inbox stays focused on what's actually pending.
+
+Use \`archive:true\` only when you want the row gone from the FE notification dropdown too (e.g. a non-actionable system notification that's already handled). Default behaviour is \`seen\` — same as the FE dropdown's "click to read" semantics.
+
+WHEN TO USE: immediately after you finish reviewing / revising in response to a \`_meta.notifications[]\` entry. Idempotent — calling twice with the same id is safe.
+
+WHEN NOT TO USE: before doing the revision work; for general "mark all read" sweeps (call once per notification id you've actually consumed).
+
+This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+`;
+// endregion: leadbay_acknowledge_notification
 
 // region: leadbay_add_leads_to_campaign
 export const leadbay_add_leads_to_campaign: string = `## WHEN TO USE
@@ -2961,6 +3007,7 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // Map for legacy callers; prefer importing the named constant directly.
 export const TOOL_DESCRIPTIONS = {
   leadbay_account_status,
+  leadbay_acknowledge_notification,
   leadbay_add_leads_to_campaign,
   leadbay_add_note,
   leadbay_adjust_audience,

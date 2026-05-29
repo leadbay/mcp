@@ -111,6 +111,14 @@ interface ImportAndQualifyResult {
   // Underlying file-import handles (one per chunk). Useful if the agent
   // wants to inspect the wizard's record-level diagnostics directly.
   import_ids: string[];
+  // Server-minted progress notification ids from the import phase (one per
+  // chunk). The MCP's WS listener captures completion frames automatically;
+  // this list is surfaced for tracing. NOTE: the qualify phase still uses
+  // per-lead /web_fetch calls and does NOT create a qualification
+  // notification — only the import notification surfaces via the inbox.
+  // Full coverage requires migrating _qualify-helpers.ts to the
+  // POST /leads/selection/web_fetch endpoint (followup PR).
+  notification_ids: string[];
 
   // What the import returned.
   imported: Array<{ leadId: string; domain?: string; name: string | null; rowId?: string }>;
@@ -589,6 +597,7 @@ export const importAndQualify: Tool<
           ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
           qualify_id: null,
           import_ids: queued.importIds,
+          notification_ids: queued.notification_ids ?? [],
           imported: queued.leads.map((l: any) => ({
             leadId: l.leadId,
             ...(l.domain ? { domain: l.domain } : {}),
@@ -613,6 +622,7 @@ export const importAndQualify: Tool<
         ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
         qualify_id: null,
         import_ids: queued.importIds,
+        notification_ids: queued.notification_ids ?? [],
         imported: [],
         not_imported: [],
         qualified: [],
@@ -667,6 +677,7 @@ export const importAndQualify: Tool<
         ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
         qualify_id: null,
         import_ids: importResult.importIds,
+        notification_ids: importResult.notification_ids ?? [],
         imported: [],
         not_imported: importResult.not_imported.map(toNotImportedEntry),
         qualified: [],
@@ -708,6 +719,7 @@ export const importAndQualify: Tool<
         ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
         qualify_id: null,
         import_ids: importResult.importIds,
+        notification_ids: importResult.notification_ids ?? [],
         imported,
         not_imported,
         qualified: [],
@@ -899,6 +911,7 @@ export const importAndQualify: Tool<
       ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
       qualify_id: reservation.record.bulk_id,
       import_ids: importResult.importIds,
+      notification_ids: importResult.notification_ids ?? [],
       imported,
       not_imported,
       qualified,

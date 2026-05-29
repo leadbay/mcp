@@ -11,6 +11,7 @@ export type { CreateClientConfig, TasteProfileResult } from "./client.js";
 export * from "./types.js";
 export * from "./agent-memory/index.js";
 export { COMPOSITE_FILE_TOOL_NAMES } from "./composite/_composite-file-names.js";
+export * from "./notifications/index.js";
 
 // ─── Granular tools — 1:1 with Leadbay API endpoints ─────────────────────
 
@@ -46,6 +47,7 @@ import { openBillingPortal } from "./tools/open-billing-portal.js";
 import { agentMemoryRecall } from "./tools/agent-memory-recall.js";
 import { agentMemoryCapture } from "./tools/agent-memory-capture.js";
 import { agentMemoryReview } from "./tools/agent-memory-review.js";
+import { acknowledgeNotification } from "./tools/acknowledge-notification.js";
 
 // New write tools (autoplan §E5) — gated behind LEADBAY_MCP_WRITE=1 in MCP
 import { selectLeads } from "./tools/select-leads.js";
@@ -137,6 +139,7 @@ export {
   listMappableFields,
   createTopupLink, openBillingPortal,
   agentMemoryRecall, agentMemoryCapture, agentMemoryReview,
+  acknowledgeNotification,
   // new granular writes
   selectLeads, deselectLeads, clearSelection, setActiveLens, createLens,
   updateLens, updateLensFilter, createLensDraft, promoteLens, setUserPrompt,
@@ -273,6 +276,12 @@ export const compositeReadTools: Tool[] = [
   // event only. Companion to leadbay_report_outreach (which DOES write
   // to the backend and stays gated behind LEADBAY_MCP_WRITE).
   reportFriction,
+  // Notification ack — ALWAYS exposed even though it POSTs to /seen.
+  // _meta.notifications surfaces terminal bulk-progress notifications on
+  // every tool response regardless of write gating; without ack the agent
+  // sees the same entries on every call forever. Pairing the surfacing
+  // channel with the clearing tool is non-optional.
+  acknowledgeNotification,
 ];
 
 // Composite write tools — always-exposed in OpenClaw, gated in MCP behind

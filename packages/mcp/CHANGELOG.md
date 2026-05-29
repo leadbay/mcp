@@ -1,5 +1,19 @@
 # Changelog — @leadbay/mcp
 
+## 0.18.0 — 2026-05-29
+
+Backend long-task notifications are now consumed by the MCP. When the user (or agent) initiates a bulk operation — contact enrichment, lead qualification, CSV / CRM import — the MCP listens to the backend WebSocket for the completion event and surfaces it on the agent's next tool call so prior outputs that depended on the now-finished data can be revised.
+
+- **WS listener** — `wss://api-*.leadbay.app/ws/1.0?t=<ticket>` (ticketed via `GET /auth/ws?v=1.0`), reconnects with exponential backoff, REST catch-up via `GET /notifications` on every (re)connect and on cold start. Opt-out: `LEADBAY_NOTIFICATIONS_WS_DISABLED=1`.
+- **`_meta.notifications` on every tool response** — terminal bulk-progress notifications appear on every successful tool call until the agent acknowledges them. Auto-expires after 24h locally to prevent unbounded growth in unattended automation.
+- **`leadbay_account_status.notifications`** — same entries surfaced as a top-level field so the agent's daily-rhythm check-in sees them without reading `_meta`.
+- **`leadbay_acknowledge_notification(notification_id, archive?)`** — new always-exposed tool. Posts `/notifications/{id}/seen` (default) or `/archive`, removes the entry from the local inbox. The agent calls this *after* it has revised prior outputs the just-finished work might have made stale.
+- **Launch endpoints return `notification_id`** — `leadbay_enrich_titles`, `leadbay_bulk_qualify_leads`, `leadbay_import_leads`, and `leadbay_import_and_qualify` now read the canonical `notification_id` from `BulkLaunchResponse` / `BulkWebFetchResponsePayload` and persist it on the bulk tracker record.
+- **`bulk_qualify_leads` now uses the selection-based bulk endpoint** — replaces per-lead fan-out so the backend creates a single progress notification per call. Per-lead error attribution is coarser at launch (leads outside `queued_ids ∪ skipped_ids` are tagged `not_queued`); the polling phase still pulls concrete per-lead state.
+- **`bulk_enrich_status` fast path** — reads `bulk_progress` from the notification in a single REST call instead of fanning out `get_contacts` per lead. Falls back to the legacy per-lead path for records minted before this PR.
+- **`qualify_status` surfaces `bulk_progress`** — bulk counters (success / failure / quota_hit) appear alongside the existing per-lead refresh. `quota_hit_count > 0` triggers an upgrade-or-wait hint.
+- **Vocabulary**: "notifications" everywhere. Not "pending actions", not "tasks", not "async results" — matches the backend ADR (`docs/adr/notifications.md`).
+
 ## 0.17.0 — 2026-05-29
 
 - **Lens extension** (product#3654): two new composites that expose the

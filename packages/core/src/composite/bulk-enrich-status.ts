@@ -1,7 +1,23 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool, ToolContext } from "../types.js";
+import type { Notification, Tool, ToolContext } from "../types.js";
 import { getContacts } from "../tools/get-contacts.js";
 import { isValidBulkId, type BulkRecord } from "../jobs/bulk-store.js";
+
+// Read a single notification by id from the paginated list endpoint.
+// Backend exposes list + per-id mutations only; this short list pass is
+// cheap (50 rows max) and lets the status tool surface bulk_progress with
+// a single REST call instead of fanning out per-lead.
+async function readNotification(
+  client: LeadbayClient,
+  notificationId: string
+): Promise<Notification | null> {
+  try {
+    const page = await client.listNotifications({ archived: false, count: 50 });
+    return page.items.find((n) => n.id === notificationId) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 import { leadbay_bulk_enrich_status as BULK_ENRICH_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface BulkEnrichStatusParams {
@@ -215,6 +231,81 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
         bulk_id: record.bulk_id,
         launched_at: record.launched_at,
       };
+    }
+
+    // Fast path — when the launch persisted a notification_id (post #1849),
+    // read bulk_progress from the notification with one REST call. This is
+    // O(1) regardless of selection size. We still fall back to the legacy
+    // per-lead fan-out for two cases:
+    //   (a) bulk records minted by older MCP versions (no notification_id),
+    //   (b) the caller passed include_contacts=true and the operation is
+    //       still running — we want to return the partial contact list too.
+    const notifId = record.notification_id ?? null;
+    if (notifId) {
+      const n = await readNotification(client, notifId);
+      if (n && n.bulk_progress) {
+        const bp = n.bulk_progress;
+        const inProgress = n.in_progress;
+        // Once terminal, fetch per-lead contacts so the agent can drive
+        // outreach. Skip the fan-out while still running — the agent will
+        // see the final state surfaced via _meta.notifications anyway.
+        let leads: Array<{ lead_id: string; contacts?: any[] }> = [];
+        if (!inProgress && includeContacts) {
+          leads = await pMap<string, { lead_id: string; contacts?: any[] }>(
+            record.lead_ids,
+            async (leadId) => {
+              try {
+                const out: any = await getContacts.execute(client, { leadId });
+                const contacts: any[] = Array.isArray(out?.contacts) ? out.contacts : [];
+                return { lead_id: leadId, contacts };
+              } catch {
+                return { lead_id: leadId };
+              }
+            },
+            STATUS_FETCH_CONCURRENCY
+          );
+        } else {
+          leads = record.lead_ids.map((id) => ({ lead_id: id }));
+        }
+        ctx?.logger?.info?.(
+          `bulk.status_checked_via_notification bulk_id=${record.bulk_id} notification_id=${notifId} done=${bp.success_count}/${bp.total_count} in_progress=${inProgress} wall_ms=${Date.now() - startMs}`
+        );
+        return {
+          bulk_id: record.bulk_id,
+          notification_id: notifId,
+          launched_at: record.launched_at,
+          status: record.status,
+          durability: record.durability,
+          titles: record.titles,
+          email: record.email,
+          phone: record.phone,
+          lens_id: record.lens_id,
+          leads,
+          overall_progress: {
+            done: bp.success_count + bp.failure_count + bp.quota_hit_count,
+            total: bp.total_count,
+            done_ratio:
+              bp.total_count === 0
+                ? 0
+                : (bp.success_count + bp.failure_count + bp.quota_hit_count) /
+                  bp.total_count,
+          },
+          bulk_progress: bp,
+          in_progress: inProgress,
+          all_done: !inProgress,
+          ...(bp.quota_hit_count > 0
+            ? {
+                quota_hit_hint:
+                  "Some contacts could not be enriched because the AI-credits quota was hit. Top up via leadbay_create_topup_link or wait for the window reset.",
+              }
+            : {}),
+        };
+      }
+      // notification not found yet (race between launch ack and WS) —
+      // fall through to legacy fan-out so the agent still gets an answer.
+      ctx?.logger?.info?.(
+        `bulk_enrich_status: notification ${notifId} not yet visible; falling back to per-lead fan-out`
+      );
     }
 
     // record.status === "launched" — fetch per-lead contacts.

@@ -1,0 +1,27 @@
+---
+name: leadbay_acknowledge_notification
+kind: tool-description
+short_description: |
+  Acknowledge a Leadbay notification after you've revised any prior
+  output the just-finished background work might have made stale.
+  Removes the notification from `_meta.notifications` and
+  `account_status.notifications`, and marks it seen on the backend.
+annotations:
+  readOnlyHint: false
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Acknowledge a Leadbay notification — i.e. tell the MCP and the backend "I've seen this and acted on it." Wraps `POST /1.5/notifications/{id}/seen` (default) or `/archive` (when `archive:true`) and drops the entry from the local inbox so subsequent `_meta.notifications` payloads stop carrying it.
+
+**When to call.** After you read an entry from `_meta.notifications` or `account_status.notifications` and have revised whatever prior output the just-finished background work might have made stale (outreach drafts, lead lists, "available leads" claims, followup plans). Mark-seen tells the human team's pipeline you handled this and prevents the notification from re-surfacing on every subsequent tool response.
+
+If nothing you produced for the user is affected, ack anyway with `archive:false` — the entry should still clear so the inbox stays focused on what's actually pending.
+
+Use `archive:true` only when you want the row gone from the FE notification dropdown too (e.g. a non-actionable system notification that's already handled). Default behaviour is `seen` — same as the FE dropdown's "click to read" semantics.
+
+{{include:headers/tool-when-to-use}} immediately after you finish reviewing / revising in response to a `_meta.notifications[]` entry. Idempotent — calling twice with the same id is safe.
+
+{{include:headers/tool-when-not-to-use}} before doing the revision work; for general "mark all read" sweeps (call once per notification id you've actually consumed).
+
+{{include:headers/verification-required-if-write}}
