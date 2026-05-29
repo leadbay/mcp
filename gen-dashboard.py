@@ -24,6 +24,16 @@ entries.sort(key=lambda e: e.get("_file", ""))
 # Track the most recent run file
 latest_file = entries[-1]["_file"] if entries else None
 
+# Group files within 60 minutes of the newest file as "last session"
+# This makes --improve iterations all show up under "Last run"
+import os as _os
+latest_mtime = _os.path.getmtime(latest_file) if latest_file else 0
+SESSION_WINDOW_SECS = 3600  # 60 minutes
+last_session_files = set(
+    e["_file"] for e in entries
+    if latest_mtime - _os.path.getmtime(e["_file"]) <= SESSION_WINDOW_SECS
+) if latest_file else set()
+
 # ── Aggregate stats ───────────────────────────────────────────────────────────
 total = len(entries)
 passed = sum(1 for e in entries if e.get("passed"))
@@ -68,7 +78,7 @@ for e in entries:
     if "workflow-2b" in e.get("name","") or "workflow-2b" in e.get("evidence",{}).get("session",{}).get("fixture_id",""):
         self_improve_files.add(e.get("_file",""))
 
-latest_count = sum(1 for e in entries if e.get("_file") == latest_file) if latest_file else 0
+latest_count = sum(1 for e in entries if e.get("_file","") in last_session_files) if latest_file else 0
 self_improve_count = sum(1 for e in entries if e.get("_file","") in self_improve_files)
 
 # ── Score color ───────────────────────────────────────────────────────────────
@@ -92,7 +102,7 @@ for e in entries:
 # ── Workflow chip filters ─────────────────────────────────────────────────────
 chip_html = '<button onclick="filterWorkflow(\'\')" id="chip-all" class="chip chip-active">All ({total})</button>'.replace("{total}", str(total))
 if latest_file:
-    chip_html += f'<button onclick="filterLastRun()" id="chip-lastrun" class="chip">Last run ({latest_count})</button>'
+    chip_html += f'<button onclick="filterLastRun()" id="chip-lastrun" class="chip">Last session ({latest_count})</button>'
 if self_improve_files:
     chip_html += f'<button onclick="filterSelfImprove()" id="chip-selfimprove" class="chip">🔄 Self-improve ({self_improve_count})</button>'
 for lbl, cnt in sorted(workflow_counts.items()):
@@ -248,6 +258,7 @@ body {{ background: #0d1117; color: #c9d1d9; font-family: monospace; font-size: 
 <script>
 const ENTRIES = {json.dumps(list(reversed(entries)))};
 const LATEST_FILE = {json.dumps(latest_file or "")};
+const LAST_SESSION_FILES = {json.dumps(list(last_session_files))};
 const SELF_IMPROVE_FILES = {json.dumps(list(self_improve_files))};
 let passFilter = 'all';
 let workflowFilter = '';
@@ -308,7 +319,7 @@ function applyFilters() {{
     let show = true;
     if (passFilter === 'pass' && !p) show = false;
     if (passFilter === 'fail' && p) show = false;
-    if (lastRunFilter && file !== LATEST_FILE) show = false;
+    if (lastRunFilter && !LAST_SESSION_FILES.includes(file)) show = false;
     if (selfImproveFilter && !si) show = false;
     if (!lastRunFilter && !selfImproveFilter && workflowFilter && wf !== workflowFilter) show = false;
     if (q && !name.includes(q)) show = false;

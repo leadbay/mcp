@@ -282,6 +282,34 @@ open .context/evals/eval-report.html
 
 **Prerequisites:** `.env.eval` at repo root with `LEADBAY_TOKEN=u.xxx` and `LEADBAY_REGION=us`.
 
+## Self-improving evals
+
+Add `--improve` to automatically fix any workflow scoring below 5/5 on any judge dimension (MM, IA, NF, TSF):
+
+```
+/eval --workflow 5 --improve
+```
+
+Flow:
+1. Runs the eval as normal (phases 0–7)
+2. Checks all four judge scores (MM, IA, NF, TSF)
+3. **If all 5/5** → prints ✓ and stops
+4. **If any < 5** → loads `/relentless` and immediately starts the self-improvement loop:
+   - Edits the MCP prompt template (`packages/promptforge/prompts/<prompt_name>.md.tmpl`)
+   - Rebuilds (`pnpm prompts:build`)
+   - Re-runs the eval
+   - Loops until all dimensions reach 5/5
+5. Dashboard shows all improvement iterations under the **🔄 Self-improve** filter chip
+
+**What gets improved:** prompt templates only — the `.md.tmpl` source files. Never `.generated.ts` files directly.
+
+**Regression guard:** once the target workflow reaches 5/5, the skill runs `/eval --workflow <others>` to confirm no regressions before stopping.
+
+**Note:** for fully unattended runs (no approval prompts), launch with:
+```bash
+claude --dangerously-skip-permissions
+```
+
 ## Adding a new eval
 
 Add a row to the table and append a contract pair to the contracts section:
