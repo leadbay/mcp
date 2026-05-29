@@ -766,7 +766,7 @@ When \`bulk_qualify_leads\` returns, surface results in two parts.
 - If some still pending: "✓ N leads qualified · M still processing (lead IDs: X, Y, Z)"
 - If all still processing: "✓ 0 leads qualified · N still processing (lead IDs: X, Y, Z)"
 
-**Then a refreshed table** — re-pull the newly-qualified leads via \`leadbay_pull_leads\` with the same \`lensId\` and render them using the canonical pull_leads layout:
+**Then a refreshed table** — call \`leadbay_pull_leads\` to fetch the current batch (this is always required — the qualification results do not include the full lead data needed to render the table). Use the same \`lensId\` and render using the canonical pull_leads layout:
 
 ## RENDERING — markdown table, three columns, score-bar driven
 
