@@ -21,6 +21,7 @@ import {
   type DetectedClient,
 } from "../installer/install-shared.js";
 export { detectClaudeDesktopMode, formatInstallOsLabel } from "../installer/install-shared.js";
+import { makeBrokenClient, type AuthState, type ResolvedClient } from "./broken-client.js";
 import { parseWriteEnv } from "./env.js";
 import { initTelemetry } from "./telemetry.js";
 import { createDefaultUpdateStateStore } from "./update-state.js";
@@ -157,49 +158,10 @@ function exitWithTokenError(): never {
 
 // "Auth state" — describes the outcome of resolveClientFromEnv. The MCP
 // server always boots; auth errors surface as tool-call errors against a
-// broken-client (`expired`/`missing`) so the host shows the server as
-// connected and the agent gets a clear error envelope to render. See
-// makeBrokenClient below.
-export type AuthState = "ok" | "missing" | "expired" | "probe_failed";
-
-export interface ResolvedClient {
-  client: LeadbayClient;
-  authState: AuthState;
-}
-
-// LeadbayClient subclass whose every request method rejects with a
-// pre-baked LeadbayError. The MCP server uses this on startup-auth
-// failures so it can finish the JSON-RPC handshake and surface the
-// failure on first tool call instead of dying mid-`initialize`.
-class BrokenLeadbayClient extends LeadbayClient {
-  private readonly stubError: LeadbayError;
-  constructor(stubError: LeadbayError, baseUrl: string, region: "us" | "fr") {
-    // Placeholder token so the base class's no-token branch (which throws
-    // a different, less-helpful error) is skipped — every request goes
-    // through our overrides below.
-    super(baseUrl, "broken-token-startup-auth-failure", region);
-    this.stubError = stubError;
-  }
-  override async request<T>(): Promise<T> {
-    throw this.stubError;
-  }
-  override async requestVoid(): Promise<void> {
-    throw this.stubError;
-  }
-  override async requestRawBinary<T>(): Promise<T> {
-    throw this.stubError;
-  }
-}
-
-export function makeBrokenClient(
-  stubError: LeadbayError,
-  region: "us" | "fr"
-): LeadbayClient {
-  const baseUrl = region === "fr"
-    ? "https://api-fr.leadbay.app"
-    : "https://api-us.leadbay.app";
-  return new BrokenLeadbayClient(stubError, baseUrl, region);
-}
+// AuthState / ResolvedClient / makeBrokenClient live in broken-client.ts so
+// auth-http.ts can import them without pulling in the full CLI entrypoint.
+export type { AuthState, ResolvedClient } from "./broken-client.js";
+export { makeBrokenClient } from "./broken-client.js";
 
 // Try to populate LEADBAY_TOKEN / REGION / BASE_URL from the on-disk
 // credentials file (the one OAuth bootstrap writes). When the MCP server is
@@ -1335,7 +1297,7 @@ export function mergeCodexConfig(existing: string, block: string): string {
 }
 
 export function mergeShellExportBlock(existing: string, block: string): { content: string; changed: boolean } {
-  const managedBlock = /(^|\n)# Added by leadbay-mcp install\nexport LEADBAY_TOKEN=.*\nexport LEADBAY_REGION=.*\nexport LEADBAY_TELEMETRY_ENABLED=.*\n(?:export LEADBAY_MCP_WRITE=.*\n)?/g;
+  const managedBlock = /(^|\r?\n)# Added by leadbay-mcp install\r?\nexport LEADBAY_TOKEN=.*\r?\nexport LEADBAY_REGION=.*\r?\nexport LEADBAY_TELEMETRY_ENABLED=.*\r?\n(?:export LEADBAY_MCP_WRITE=.*\r?\n)?/g;
   const stripped = existing.replace(managedBlock, (match, prefix: string) => prefix || "");
   if (stripped === existing && existing.includes("LEADBAY_TOKEN=")) {
     return { content: existing, changed: false };
@@ -1411,7 +1373,7 @@ export async function appendShellExports(
       return { ok: true, message: "env exported with setx; restart Codex/terminal" };
     }
 
-    const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
+    const { existsSync, readFileSync, writeFileSync, renameSync } = await import("node:fs");
     const os = await import("node:os");
     const home = os.homedir();
     const preferred = [`${home}/.zshrc`, `${home}/.bashrc`].filter((path) => existsSync(path));
@@ -1423,7 +1385,9 @@ export async function appendShellExports(
       const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
       const merged = mergeShellExportBlock(existing, block);
       if (!merged.changed) continue;
-      writeFileSync(path, merged.content, "utf8");
+      const tmp = `${path}.leadbay.tmp`;
+      writeFileSync(tmp, merged.content, "utf8");
+      renameSync(tmp, path);
       updated.push(path);
     }
 
@@ -1443,7 +1407,7 @@ export async function appendShellExports(
 // Remove the managed shell export block written by `install`. Returns the
 // stripped content and whether anything was actually changed.
 export function stripShellExportBlock(existing: string): { content: string; changed: boolean } {
-  const managedBlock = /(^|\n)# Added by leadbay-mcp install\nexport LEADBAY_TOKEN=.*\nexport LEADBAY_REGION=.*\nexport LEADBAY_TELEMETRY_ENABLED=.*\n(?:export LEADBAY_MCP_WRITE=.*\n)?/g;
+  const managedBlock = /(^|\r?\n)# Added by leadbay-mcp install\r?\nexport LEADBAY_TOKEN=.*\r?\nexport LEADBAY_REGION=.*\r?\nexport LEADBAY_TELEMETRY_ENABLED=.*\r?\n(?:export LEADBAY_MCP_WRITE=.*\r?\n)?/g;
   const stripped = existing.replace(managedBlock, (match, prefix: string) => prefix || "");
   if (stripped === existing) return { content: existing, changed: false };
   return { content: stripped.trimEnd() + (stripped.trimEnd() ? "\n" : ""), changed: true };
@@ -1512,7 +1476,7 @@ export async function uninstallFromCodexConfig(configPath: string): Promise<{ ok
 
 export async function uninstallShellExports(): Promise<{ ok: boolean; message: string }> {
   try {
-    const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
+    const { existsSync, readFileSync, writeFileSync, renameSync } = await import("node:fs");
     const os = await import("node:os");
     const home = os.homedir();
     const candidates = [`${home}/.zshrc`, `${home}/.bashrc`, `${home}/.profile`].filter((p) =>
@@ -1523,7 +1487,9 @@ export async function uninstallShellExports(): Promise<{ ok: boolean; message: s
       const existing = readFileSync(p, "utf8");
       const { content, changed } = stripShellExportBlock(existing);
       if (!changed) continue;
-      writeFileSync(p, content, "utf8");
+      const tmp = `${p}.leadbay.tmp`;
+      writeFileSync(tmp, content, "utf8");
+      renameSync(tmp, p);
       updated.push(p);
     }
     return {

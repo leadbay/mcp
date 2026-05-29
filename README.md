@@ -33,7 +33,7 @@ npx -y -p @leadbay/mcp@latest installer
 
 Click **Sign in with Leadbay**. The installer opens OAuth in your browser, then comes back to the app so you can choose which local agents to configure.
 
-The installer works on macOS, Windows, and Linux. It only shows supported clients that are actually installed on the machine:
+The installer works on macOS and Windows. On Linux, only the command-line install path is available (`npx -y @leadbay/mcp@latest install --oauth`) — no desktop installer window. The installer only shows supported clients that are actually installed on the machine:
 
 | Client | Installer behavior |
 |--------|--------------------|
@@ -53,31 +53,7 @@ Uninstall is scoped to Leadbay. It does not rewrite unrelated client settings or
 
 Use the guided installer above. It writes the local `mcpServers.leadbay` entry in `claude_desktop_config.json` with `npx -y @leadbay/mcp@0.16`, then Claude Desktop runs the published MCP package.
 
-The `.dxt` / `.mcpb` bundle from [Releases](https://github.com/leadbay/leadclaw/releases/latest) remains available as an alternative, but the universal installer path is the recommended path in this PR.
-
-#### Guided installer app
-
-On macOS, Windows, and Linux, launch the guided Electron installer from the npm package:
-
-```bash
-npx -y -p @leadbay/mcp@latest installer              # install wizard
-npx -y -p @leadbay/mcp@latest installer --uninstall  # uninstall wizard
-```
-
-The installer opens Leadbay OAuth in your browser, detects installed clients, and only offers real targets it can configure. It writes local MCP config for Claude Desktop, Claude Code, Cursor, and Codex.
-
-> **Testing from a local build** (before publishing to npm), run from the repo root after `pnpm -r build`:
-> ```bash
-> node packages/mcp/dist/installer-electron.js              # install
-> node packages/mcp/dist/installer-electron.js --uninstall  # uninstall
-> ```
-> Use `installer-electron.js` — not `installer-gui.js`. The `gui` file is the raw HTTP server; `installer-electron.js` is the Electron entry point that wraps it in a window.
->
-> Or use the local script:
-> ```bash
-> pnpm --filter @leadbay/mcp installer
-> pnpm --filter @leadbay/mcp installer -- --uninstall
-> ```
+The `.dxt` / `.mcpb` bundle from [Releases](https://github.com/leadbay/leadclaw/releases/latest) remains available as an alternative.
 
 #### ChatGPT Desktop
 
@@ -110,10 +86,13 @@ Opens the uninstall wizard. Only shows clients that already have Leadbay MCP con
 
 ```text
 /plugin marketplace add leadbay/leadclaw
+```
+
+```text
 /plugin install leadbay@leadbay-leadclaw
 ```
 
-Claude Code prompts for Leadbay auth/config. Registers the MCP server **and** installs six skills (`leadbay_daily_check_in`, `leadbay_research_a_domain`, `leadbay_import_file`, `leadbay_log_outreach`, `leadbay_qualify_top_n`, `leadbay_refine_audience`) that auto-trigger on natural-language asks.
+Claude Code prompts for Leadbay auth/config. Registers the MCP server **and** installs skills (`leadbay_research_a_domain`, `leadbay_import_file`, `leadbay_log_outreach`, `leadbay_qualify_top_n`, `leadbay_refine_audience`, and others) that auto-trigger on natural-language asks.
 
 ## Tools
 
@@ -202,10 +181,22 @@ leadbay_import_leads → leadbay_bulk_qualify_leads                             
 
 ```bash
 pnpm install
-pnpm prompts:build   # .md.tmpl → generated TS
-pnpm -r build        # compile everything
-pnpm -r test         # must be green
-pnpm -r typecheck    # must be green
+```
+
+```bash
+pnpm prompts:build
+```
+
+```bash
+pnpm -r build
+```
+
+```bash
+pnpm -r test
+```
+
+```bash
+pnpm -r typecheck
 ```
 
 ### Test tiers
@@ -221,13 +212,21 @@ See [`CLAUDE.md`](CLAUDE.md) for the full contributor guide: tool structure, tes
 
 All releases are tag-driven — **never run `npm publish` locally.** GitHub Actions owns publishing.
 
+1. Bump `packages/mcp/package.json#version` + add CHANGELOG entry, land PR.
+
 ```bash
-# 1. Bump packages/mcp/package.json#version + add CHANGELOG entry, land PR
 git checkout main && git pull
-git tag mcp-v0.x.0
-git push origin mcp-v0.x.0
-# 2. Watch the release workflow: preflight-npm → publish-mcp
 ```
+
+```bash
+git tag mcp-v0.x.0
+```
+
+```bash
+git push origin mcp-v0.x.0
+```
+
+2. Watch the release workflow: `preflight-npm → publish-mcp`.
 
 For dry runs: Actions → `release` → "Run workflow" → `package: mcp`, `dry_run: true`.
 

@@ -16,6 +16,7 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { serve } from "@hono/node-server";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
@@ -37,8 +38,24 @@ const HOST = process.env.HOST ?? "0.0.0.0";
 interface SseSession {
   transport: SSEServerTransport;
   server: Server;
+  createdAt: number;
 }
 const sseSessions = new Map<string, SseSession>();
+
+// Evict SSE sessions that have been open longer than 30 minutes. Protects
+// against zombie entries where transport.onclose never fires (network drop,
+// half-open TCP) on the 256 MB Fly VM.
+const SSE_SESSION_TTL_MS = 30 * 60 * 1000;
+setInterval(() => {
+  const cutoff = Date.now() - SSE_SESSION_TTL_MS;
+  for (const [id, session] of sseSessions) {
+    if (session.createdAt < cutoff) {
+      sseSessions.delete(id);
+      session.transport.close().catch(() => {});
+      session.server.close().catch(() => {});
+    }
+  }
+}, 5 * 60 * 1000).unref();
 
 function extractBearer(authHeader: string | undefined): string | undefined {
   if (!authHeader) return undefined;
@@ -71,6 +88,11 @@ async function buildServerForRequest(
 const app = new Hono();
 
 app.get("/healthz", (c) => c.json({ ok: true, version: VERSION }));
+
+// Cap request bodies at 1 MB to prevent OOM on the 256 MB Fly VM.
+const MCP_BODY_LIMIT = bodyLimit({ maxSize: 1 * 1024 * 1024 });
+app.use("/mcp", MCP_BODY_LIMIT);
+app.use("/messages", MCP_BODY_LIMIT);
 
 // Streamable HTTP transport. Stateless mode (no sessionIdGenerator) is the
 // simplest fit for ChatGPT custom connectors today — each request is its own
@@ -139,7 +161,7 @@ app.get("/sse", async (c) => {
   await server.connect(transport);
 
   const sessionId = transport.sessionId;
-  sseSessions.set(sessionId, { transport, server });
+  sseSessions.set(sessionId, { transport, server, createdAt: Date.now() });
   transport.onclose = () => {
     sseSessions.delete(sessionId);
     server.close().catch(() => {});

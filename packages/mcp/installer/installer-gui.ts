@@ -129,12 +129,24 @@ async function loginWithOAuth(): Promise<{ ok: boolean; sessionId?: string; regi
   }
 }
 
-function sanitizeOutput(raw: string): string {
+export function sanitizeOutput(raw: string): string {
   return raw.replace(/LEADBAY_TOKEN=("[^"]+"|'[^']+'|[^\s]+)/g, "LEADBAY_TOKEN=<redacted>");
 }
 
 function isManualSetupClient(client: DetectedClient): boolean {
   return client.id === "chatgpt-desktop";
+}
+
+// Reject cross-origin requests. The server binds to 127.0.0.1 only, but a
+// malicious webpage could enumerate the port and POST to /api/oauth-login or
+// /api/install without user consent. Browsers send an Origin header on
+// cross-origin fetches/EventSource requests; we use that + Host to block them.
+function isAllowedOrigin(req: IncomingMessage, expectedHost: string): boolean {
+  const host = req.headers["host"] ?? "";
+  if (host !== expectedHost) return false;
+  const origin = req.headers["origin"];
+  if (!origin) return true; // same-origin browser request or direct tool call
+  return origin === `http://${expectedHost}` || origin === `http://127.0.0.1`;
 }
 
 async function installInto(client: DetectedClient, session: LoginSession, includeWrite: boolean, telemetryEnabled: boolean): Promise<InstallResult> {
@@ -159,7 +171,7 @@ async function installInto(client: DetectedClient, session: LoginSession, includ
   return { id: client.id, label: client.label, ...res };
 }
 
-async function install(body: InstallRequest): Promise<{ ok: boolean; output: string; results?: InstallResult[] }> {
+export async function install(body: InstallRequest): Promise<{ ok: boolean; output: string; results?: InstallResult[] }> {
   cleanupSessions();
   const session = body.sessionId ? sessions.get(body.sessionId) : undefined;
   const clientIds = body.clientIds ?? [];
@@ -478,7 +490,13 @@ async function openBrowser(url: string): Promise<void> {
 }
 
 export async function startInstallerGui(options: InstallerGuiOptions = {}): Promise<InstallerGuiHandle> {
+  let expectedHost = `127.0.0.1:${(options.port ?? PORT) || 0}`;
+
   const server = createServer(async (req, res) => {
+    if (!isAllowedOrigin(req, expectedHost)) {
+      sendJson(res, 403, { ok: false, error: "forbidden" });
+      return;
+    }
     try {
       if (req.method === "GET" && req.url === "/") {
         const raw = pageHtml();
@@ -518,6 +536,7 @@ export async function startInstallerGui(options: InstallerGuiOptions = {}): Prom
       server.off("error", reject);
       const address = server.address();
       const port = typeof address === "object" && address ? address.port : options.port ?? PORT;
+      expectedHost = `127.0.0.1:${port}`;
       const url = `http://127.0.0.1:${port}/`;
       process.stderr.write(`Leadbay MCP installer GUI: ${url}\n`);
       if (options.openBrowser !== false) await openBrowser(url).catch(() => undefined);
@@ -527,7 +546,13 @@ export async function startInstallerGui(options: InstallerGuiOptions = {}): Prom
 }
 
 export async function startUninstallerGui(options: InstallerGuiOptions = {}): Promise<InstallerGuiHandle> {
+  let expectedHost = `127.0.0.1:${(options.port ?? PORT) || 0}`;
+
   const server = createServer(async (req, res) => {
+    if (!isAllowedOrigin(req, expectedHost)) {
+      sendJson(res, 403, { ok: false, error: "forbidden" });
+      return;
+    }
     try {
       if (req.method === "GET" && req.url === "/") {
         const raw = pageUninstallHtml();
@@ -558,6 +583,7 @@ export async function startUninstallerGui(options: InstallerGuiOptions = {}): Pr
       server.off("error", reject);
       const address = server.address();
       const port = typeof address === "object" && address ? address.port : options.port ?? PORT;
+      expectedHost = `127.0.0.1:${port}`;
       const url = `http://127.0.0.1:${port}/`;
       process.stderr.write(`Leadbay MCP uninstaller GUI: ${url}\n`);
       if (options.openBrowser !== false) await openBrowser(url).catch(() => undefined);
