@@ -63,6 +63,13 @@ Linux uses the command-based installer; no Linux desktop package is published:
 npx -y @leadbay/mcp@latest installer
 ```
 
+> **Testing from a local build** (before publishing to npm):
+> ```bash
+> node packages/mcp/dist/installer-electron.js           # install wizard
+> node packages/mcp/dist/installer-electron.js --uninstall  # uninstall wizard
+> ```
+> `installer-electron.js` is the Electron entry point. `installer-gui.js` is the raw HTTP server — it opens a browser tab, not the Electron window.
+
 #### ChatGPT Desktop
 
 ChatGPT Desktop connects to the hosted MCP URL instead of a local config file:

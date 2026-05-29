@@ -8,9 +8,6 @@ module.exports = {
   files: [
     "dist/bin.js",
     "dist/installer-gui.js",
-    "dist/install-shared.js",
-    "dist/broken-client.js",
-    "dist/env.js",
     "installer/electron-main.cjs",
     "package.json",
   ],
