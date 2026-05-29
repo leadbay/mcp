@@ -50,7 +50,7 @@ export const accountStatus: Tool<Record<string, never>> = {
       quota: {
         type: ["object", "null"],
         description:
-          "Per-resource quota state (llm_completion, ai_rescore, web_fetch) across daily/weekly/monthly windows. Null if /quota_status failed (logged in stderr).",
+          "Per-resource quota state (llm_completion, ai_rescore, web_fetch, LENS_EXTRA_REFILL) across daily/weekly/monthly windows. Null if /quota_status failed (logged in stderr). Pre-check the LENS_EXTRA_REFILL entry before calling leadbay_extend_lens.",
       },
       _meta: {
         type: "object",

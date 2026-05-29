@@ -1,5 +1,27 @@
 # Changelog — @leadbay/mcp
 
+## 0.17.0 — 2026-05-29
+
+- **Lens extension** (product#3654): two new composites that expose the
+  backend's agent-driven on-demand lens fill (backend#1844 / api-specs#205).
+  - `leadbay_extend_lens` (write, gated by `LEADBAY_MCP_WRITE=1`) —
+    `POST /lenses/{id}/extra_refill`. Translates the backend's 429
+    `quota_exceeded` / 409 `refresh_in_progress` / 400 `no_valid_seeds`
+    errors into routable `status` envelopes. On 429 the response carries
+    `quota.used_today` + `quota.resets_at` and a message instructing the
+    agent to surface three options to the user (smaller `extra_count` /
+    wait for reset / upgrade plan).
+  - `leadbay_seed_candidates` (read) — internal scaffolding for the
+    extend flow. Returns ranked candidate leads with rich signal
+    (description, sector, tags, qq_answers, engagement). The agent picks
+    3–5 seeds silently and chains to `extend_lens`; the user never
+    reviews the seed list.
+- New prompt `leadbay_extend_my_lens` orchestrates the four-phase flow:
+  quota pre-check → silent seed pick → fire extend → react to status.
+- `leadbay_account_status` description now mentions the per-org daily
+  `LENS_EXTRA_REFILL` quota — pre-check it before calling
+  `leadbay_extend_lens`.
+
 ## 0.16.2 — 2026-05-29
 
 - **Tighter `_triggered_by` description on composite tools.** Live test of

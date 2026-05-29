@@ -32,7 +32,7 @@ prominently if mid-regen.
 
 ---
 
-Show the user's account state — admin rights, language, last-active lens, current quota usage across daily/weekly/monthly windows for llm_completion / ai_rescore / web_fetch resources, and whether the org's intelligence is mid-regeneration. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
+Show the user's account state — admin rights, language, last-active lens, current quota usage across daily/weekly/monthly windows for llm_completion / ai_rescore / web_fetch / LENS_EXTRA_REFILL resources, and whether the org's intelligence is mid-regeneration. **Pre-check \`LENS_EXTRA_REFILL\` here before calling \`leadbay_extend_lens\`** — its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
 
 **Top-ups always beat waiting.** When a quota window is hit, the user has two options: wait for the window reset (\`resets_at\` in each quota entry) OR top up AI credits. Top-ups clear the throttle IMMEDIATELY; they are not subject to the same window. When you tell the user about a 429 / quota exhaustion, ALWAYS surface both options — "wait until <reset>" or "top up now (I can generate the link)" — and let them pick. Never default-recommend "wait until tomorrow" when a 30-second top-up unblocks the same operation.
 
@@ -689,6 +689,105 @@ WHEN NOT TO USE: to enrich a single contact — that's leadbay_enrich_contacts (
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_enrich_titles
+
+// region: leadbay_extend_lens
+export const leadbay_extend_lens: string = `## WHEN TO USE
+
+Trigger phrases: "I want more leads on this lens", "extend the lens", "I need a bigger batch today", "fill more leads, I've burned through these", "more leads like the ones in this lens".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me X" → \`leadbay_refine_prompt\`.
+
+Prefer when: user has bigger appetite than the daily lens fill delivers — additive refill on same criteria
+
+Examples that SHOULD invoke this tool:
+- "Give me more leads on this lens — I want a bigger batch."
+- "Extend the lens, I've burned through what I had."
+- "Add 30 more leads like the ones in this batch."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Show me today's leads."
+- "Narrow the audience to fintech only."
+- "Which leads should I follow up with this week?"
+
+## RENDER (quick)
+
+\`queued\` → ✅ "Queued <N> extra leads on lens <id>. Pull in ~30s." Do NOT
+list \`accepted_seeds\`; they're internal.
+\`quota_exceeded\` → render three options via \`ask_user_input_v0\` (smaller
+count / wait until reset / upgrade).
+\`refresh_in_progress\` → "lens is filling, retry in a minute".
+\`no_valid_seeds\` → silently re-call \`leadbay_seed_candidates\`, retry once.
+
+---
+
+Queue an additive extra-refill on a lens — more leads on the same criteria, without changing the audience. For users whose daily appetite exceeds what the standard fill delivers. Wraps \`POST /lenses/{lensId}/extra_refill\`. The fill happens asynchronously; new leads stream in over ~30s, observable through \`leadbay_pull_leads\`.
+
+**Mandatory chain — agent picks seeds silently.** Unless the user has explicitly said "no seeds, just fill it", the agent MUST call \`leadbay_seed_candidates\` FIRST, pick 3–5 seed leads using the heuristics in that tool's description, and pass them here as \`seed_lead_ids\`. The seed list is **never shown to the user** — the user asked for more leads, not a candidate review meeting. The canonical \`leadbay_extend_my_lens\` prompt drives this chain.
+
+**Seeds are optional at the wire level** — omit or empty array → backend falls back to default centroid strategies (same behaviour as a normal fill). The response's \`accepted_seeds\` echoes the subset that passed validation. Prefer the seeded path because it gives the recommender a signal beyond the lens centroid (which it already biases on).
+
+**Quota gate.** Each call is charged against the per-org daily \`LENS_EXTRA_REFILL\` quota at pre-flight time (FREEMIUM=0 / TIER1=150 / TIER2=1000). The **full requested batch** must fit — there is no partial fulfillment. **Pre-check via \`leadbay_account_status\`**: look at \`quota.org.resources[]\` for the \`LENS_EXTRA_REFILL\` entry to see how much was used today and when it resets.
+
+**Status envelope (translated from raw API errors so the agent routes on \`status\`).**
+
+- \`status: "queued"\` — fill is queued. \`accepted_seeds\` lists IDs that passed validation. NEXT STEP: call \`leadbay_pull_leads\` in ~30s.
+- \`status: "quota_exceeded"\` — daily LENS_EXTRA_REFILL hit. Response carries \`quota: {used_today, resets_at}\` + a \`message\` to surface. **Render three options via \`ask_user_input_v0\`**: (1) smaller \`extra_count\`, (2) wait until \`resets_at\`, (3) upgrade plan (TIER1=150, TIER2=1000). Do NOT silently retry.
+- \`status: "refresh_in_progress"\` — a refresh or extra-refill is already running. Tell the user to wait and call \`leadbay_pull_leads\` in ~30s.
+- \`status: "no_valid_seeds"\` — seeds went stale. Silently re-call \`leadbay_seed_candidates\` and retry once; only surface to the user if the second attempt also fails.
+
+WHEN TO USE: when the user has a bigger appetite than the daily lens fill delivers — they want MORE of the same kind of leads, on demand. Canonical phrasings: "I want more leads on this lens", "extend the lens", "give me a bigger batch today". The \`leadbay_extend_my_lens\` prompt is the user-facing entry point that orchestrates the whole flow.
+
+WHEN NOT TO USE: for daily inbox pulls (\`leadbay_pull_leads\`). Not for audience criteria changes (\`leadbay_adjust_audience\` / \`leadbay_refine_prompt\`). Never call this without seeds unless the user explicitly opted out — the seeded path produces materially better fill.
+
+This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+
+
+---
+
+## NEXT STEPS — after \`leadbay_extend_lens\`
+
+**RENDER NEXT STEPS via \`ask_user_input_v0\` when the host exposes it.**
+
+The (Observation, Suggest, Calls) table below is the source of truth for which moves are valid. Pick the 2–4 most relevant rows based on what the response actually contains, then surface them as a \`single_select\` quick-select widget:
+
+\`\`\`
+ask_user_input_v0({
+  questions: [{
+    question: "What next?",
+    type: "single_select",
+    options: [
+      "<Suggest column from row 1>",
+      "<Suggest column from row 2>",
+      "<Suggest column from row 3>"
+    ]
+  }]
+})
+\`\`\`
+
+When the user picks an option, you call the matching tool from the \`Calls\` column. Constraints carried over from the widget contract: 2–4 mutually-exclusive options per question, button-sized labels (≤6 words), max 3 questions per call.
+
+**Fallback prose mode** — when the host doesn't expose \`ask_user_input_v0\` (or it returned an error): surface the same 2–3 picks as a short bulleted list of "Suggest" phrasings. The table itself stays internal; never recite the whole table to the user.
+
+---
+
+
+
+Pick the row matching the response \`status\`. Seed-picking is internal; do NOT add chips that imply the user reviewed candidates.
+
+| \`status\`                | Suggest                                                       | Calls                                                  |
+|-------------------------|---------------------------------------------------------------|--------------------------------------------------------|
+| \`queued\`                | "Pull leads in ~30s to see the new ones"                      | \`leadbay_pull_leads()\` (after a short wait)            |
+| \`quota_exceeded\`        | "Try with a smaller \`extra_count\`"                            | \`leadbay_extend_lens(extra_count=<smaller>)\`           |
+| \`quota_exceeded\`        | "Wait until the daily quota resets at \`<resets_at>\`"          | (no call — surface the reset time to the user)         |
+| \`quota_exceeded\`        | "Upgrade plan for a higher daily limit"                       | (no call — direct user to contact account manager / sales) |
+| \`refresh_in_progress\`   | "Lens is already filling — pull leads in a minute"            | \`leadbay_pull_leads()\` (after a short wait)            |
+| \`no_valid_seeds\`        | (silent retry — re-call \`leadbay_seed_candidates\` then \`leadbay_extend_lens\`) | internal — only surface if the second attempt also fails |
+
+If nothing matches cleanly, default to "pull leads now to see what's queued" — never invent a tool that doesn't exist.
+`;
+// endregion: leadbay_extend_lens
 
 // region: leadbay_followups_map
 export const leadbay_followups_map: string = `## WHEN TO USE
@@ -2625,6 +2724,59 @@ Below the table, a one-liner: \`"Ready: K rows · Ambiguous: A rows · Unmatched
 `;
 // endregion: leadbay_resolve_import_rows
 
+// region: leadbay_seed_candidates
+export const leadbay_seed_candidates: string = `## WHEN TO USE
+
+Trigger phrases: "(internal) agent decided to extend the lens — fetch seed candidates".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me X" → \`leadbay_refine_prompt\`.
+
+Prefer when: agent is mid-\`leadbay_extend_my_lens\` flow and needs to pick seeds before calling \`leadbay_extend_lens\`
+
+Examples that SHOULD invoke this tool:
+- "(agent-internal) user asked for more leads — fetch seeds before calling extend_lens"
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Show me today's leads."
+- "Restrict the audience to fintech only."
+- "Which leads should I follow up with this week?"
+
+## RENDER (quick)
+
+DO NOT RENDER TO THE USER. This is internal data the agent reasons over
+before calling \`leadbay_extend_lens\`. No table, no list of company names,
+no "here are your candidates". The user asked for more leads; surface the
+*outcome* of extend_lens, not the picking step.
+
+---
+
+**INTERNAL TOOL — do not surface candidates to the user.** The user asked for more leads on the lens (a higher daily appetite than the standard fill delivers), not to manually review candidates. This tool exists so the agent can pick seeds *silently*, then chain to \`leadbay_extend_lens\`. Picking is an agent decision; the user only sees the extend confirmation.
+
+Backed by \`GET /lenses/{lensId}/seed_candidates\`. By construction every lead returned is a valid input to \`extra_refill\` (same eligibility query). Defaults to the user's last-active lens.
+
+**Pick 3–5 seeds that represent the *kind* of leads the user wants more of**, using these signals in priority order:
+
+1. **\`engagement\`** (load-bearing) — \`liked: true\`, \`org_contacts_count > 0\`, and \`prospecting_actions_count > 0\` mean the user (or their team) already validated this lead. These are the strongest signal.
+2. **\`qq_answers\`** — what the AI agent already answered when qualifying this lead. Match candidates whose answers align with the target profile.
+3. **\`tags\`** — purchase-intent alignment, ordered by score (most-relevant first).
+4. **\`sector\`, \`size_min\`, \`size_max\`** — shape similarity to known-good prospects.
+5. **\`ai_agent_score\`** — overall AI fit (0–99); null when the lead has not been AI-rescored.
+6. **\`description\`** — short company blurb for the final tie-breaker.
+
+**Default heuristic** (no explicit user steering): top 3 by engagement (prefer \`liked: true\`; break ties by \`org_contacts_count + prospecting_actions_count\`), then fill to 5 with the top \`ai_agent_score\` rows whose \`tags\` overlap the engagement leaders' tags.
+
+**Once seeds are picked, call \`leadbay_extend_lens\` immediately with \`seed_lead_ids=[...picked lead_ids]\`.** Do not pause for user approval; the user wants more leads, not a seed-review meeting.
+
+WHEN TO USE: only as the scaffolding step inside an extend-the-lens flow. The \`leadbay_extend_my_lens\` prompt orchestrates this; agents called this tool by themselves should be rare.
+
+WHEN NOT TO USE: when the user wants to CHANGE the audience (sector / size / criteria) — route to \`leadbay_adjust_audience\` or \`leadbay_refine_prompt\`. Not for the daily inbox pull — route to \`leadbay_pull_leads\`. Never as a "here are some candidates, which do you want?" user-facing surface.
+
+Response shape (relayed verbatim from the backend): \`{ candidates: [{lead_id, name, description?, sector?, size_min?, size_max?, website?, ai_agent_score?, tags[], qq_answers[], org_lead_status?, engagement: {liked, org_contacts_count, prospecting_actions_count}}] }\`.
+`;
+// endregion: leadbay_seed_candidates
+
 // region: leadbay_select_leads
 export const leadbay_select_leads: string = `Add leads to the user's transient selection (used by selection-scoped bulk operations). Accepts 1-1000 \`leadIds\` per call.
 
@@ -2833,6 +2985,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_dismiss_clarification,
   leadbay_enrich_contacts,
   leadbay_enrich_titles,
+  leadbay_extend_lens,
   leadbay_followups_map,
   leadbay_get_clarification,
   leadbay_get_contacts,
@@ -2879,6 +3032,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_research_lead_by_id,
   leadbay_research_lead_by_name_fuzzy,
   leadbay_resolve_import_rows,
+  leadbay_seed_candidates,
   leadbay_select_leads,
   leadbay_set_active_lens,
   leadbay_set_epilogue_status,

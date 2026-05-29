@@ -101,6 +101,8 @@ import { enrichTitles } from "./composite/enrich-titles.js";
 import { bulkEnrichStatus } from "./composite/bulk-enrich-status.js";
 import { adjustAudience } from "./composite/adjust-audience.js";
 import { refinePrompt } from "./composite/refine-prompt.js";
+import { seedCandidates } from "./composite/seed-candidates.js";
+import { extendLens } from "./composite/extend-lens.js";
 import { answerClarification } from "./composite/answer-clarification.js";
 import { reportOutreach } from "./composite/report-outreach.js";
 import { reportFriction } from "./composite/report-friction.js";
@@ -153,6 +155,7 @@ export {
   bulkQualifyLeads, enrichTitles, adjustAudience, refinePrompt,
   answerClarification, reportOutreach, reportFriction, importLeads, importAndQualify,
   createCampaign, addLeadsToCampaign, removeLeadsFromCampaign,
+  seedCandidates, extendLens,
 };
 
 // ─── Tool catalogues ─────────────────────────────────────────────────────
@@ -248,6 +251,9 @@ export const compositeReadTools: Tool[] = [
   qualifyStatus,
   importStatus,
   resolveImportRows,
+  // seed-candidates is a read-only discovery surface for the extend flow.
+  // Always exposed so the agent can show candidates even in read-only deployments.
+  seedCandidates,
   // listMappableFields is granular-shaped but the import composites depend on
   // it for discoverability; expose it always-on so agents can find custom fields
   // without needing LEADBAY_MCP_ADVANCED=1.
@@ -295,6 +301,9 @@ export const compositeWriteTools: Tool[] = [
   createCampaign,
   addLeadsToCampaign,
   removeLeadsFromCampaign,
+  // Lens extend — agent-driven on-demand fill (additive). Gated behind
+  // LEADBAY_MCP_WRITE=1. Subject to per-org daily LENS_EXTRA_REFILL quota.
+  extendLens,
 ];
 
 // Backward-compat alias for existing consumers.

@@ -903,6 +903,62 @@ const CASES: ConformanceCase[] = [
       ]);
     },
   },
+  {
+    toolName: "leadbay_seed_candidates",
+    arguments: { lensId: 42, limit: 10, _triggered_by: "test: seed_candidates conformance" },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/lenses/42/seed_candidates?limit=10",
+          status: 200,
+          body: {
+            candidates: [
+              {
+                lead_id: "11111111-1111-1111-1111-111111111111",
+                name: "Acme Industries",
+                description: "Industrial supplies.",
+                sector: "Manufacturing",
+                size_min: 50,
+                size_max: 200,
+                website: "https://acme.example",
+                ai_agent_score: 78,
+                tags: ["expansion-stage"],
+                qq_answers: [],
+                org_lead_status: null,
+                engagement: {
+                  liked: true,
+                  org_contacts_count: 2,
+                  prospecting_actions_count: 3,
+                },
+              },
+            ],
+          },
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_extend_lens",
+    arguments: {
+      lensId: 42,
+      seed_lead_ids: ["11111111-1111-1111-1111-111111111111"],
+      extra_count: 20,
+      _triggered_by: "test: extend_lens conformance",
+    },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "POST",
+          path: "/1.5/lenses/42/extra_refill",
+          status: 200,
+          body: {
+            accepted_seeds: ["11111111-1111-1111-1111-111111111111"],
+          },
+        },
+      ]);
+    },
+  },
 ];
 
 // -----------------------------------------------------------------------

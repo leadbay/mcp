@@ -19,6 +19,7 @@ export const COMPOSITE_FILE_TOOL_NAMES: ReadonlySet<string> = new Set([
   "leadbay_campaign_progression",
   "leadbay_create_campaign",
   "leadbay_enrich_titles",
+  "leadbay_extend_lens",
   "leadbay_followups_map",
   "leadbay_import_and_qualify",
   "leadbay_import_leads",
@@ -36,5 +37,6 @@ export const COMPOSITE_FILE_TOOL_NAMES: ReadonlySet<string> = new Set([
   "leadbay_research_lead_by_id",
   "leadbay_research_lead_by_name_fuzzy",
   "leadbay_resolve_import_rows",
+  "leadbay_seed_candidates",
   "leadbay_tour_plan",
 ]);
