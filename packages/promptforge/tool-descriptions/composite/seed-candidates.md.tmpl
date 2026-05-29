@@ -2,17 +2,13 @@
 name: leadbay_seed_candidates
 kind: tool-description
 short_description: |
-  List ranked candidate leads the agent may pick as seeds for a lens
-  extra-refill (`leadbay_extend_lens`). Each candidate carries enough
-  signal (description, sector, tags, qq_answers, engagement) to rank
-  fit without per-lead follow-up calls.
+  INTERNAL scaffolding for `leadbay_extend_lens` — fetch ranked candidate
+  leads currently in the lens so the agent can pick 3–5 seeds itself,
+  silently, and chain to the extend call. Do NOT surface the candidate
+  list to the user; the user asked for "more leads", not "pick seeds".
 routing:
   triggers:
-    - "get more leads on this lens"
-    - "extend this lens"
-    - "more leads like these"
-    - "find similar prospects to <company>"
-    - "I want more of this kind of lead"
+    - "(internal) agent decided to extend the lens — fetch seed candidates"
   anti_triggers:
     - phrase: "show me today's leads"
       route_to: leadbay_pull_leads
@@ -22,50 +18,44 @@ routing:
       route_to: leadbay_adjust_audience
     - phrase: "stop showing me X"
       route_to: leadbay_refine_prompt
-  prefer_when: "user wants MORE leads of the same kind (additive fill), not a different audience"
+  prefer_when: "agent is mid-`leadbay_extend_my_lens` flow and needs to pick seeds before calling `leadbay_extend_lens`"
   examples:
     positive:
-      - "I want more leads like these top 3 — what seeds should I pick?"
-      - "Get me more of this kind of prospect."
-      - "Extend my lens — show me candidate seeds first."
+      - "(agent-internal) user asked for more leads — fetch seeds before calling extend_lens"
     negative:
       - "Show me today's leads."
       - "Restrict the audience to fintech only."
       - "Which leads should I follow up with this week?"
 rendering_hint: |
-  3-col markdown table sorted by validated-engagement first (liked → contacts → actions),
-  then `ai_agent_score` desc. Col 1 = linked company name + sector · size chip.
-  Col 2 = engagement chips (♥ if liked, N contacts, N actions) + short description.
-  Col 3 = top 2 tags + ai_agent_score badge.
-next_steps: extend-lens
+  DO NOT RENDER TO THE USER. This is internal data the agent reasons over
+  before calling `leadbay_extend_lens`. No table, no list of company names,
+  no "here are your candidates". The user asked for more leads; surface the
+  *outcome* of extend_lens, not the picking step.
 annotations:
   readOnlyHint: true
   destructiveHint: false
   idempotentHint: true
   openWorldHint: true
 ---
-List ranked candidate leads the agent may pick as seeds for a lens extra-refill — companion to `leadbay_extend_lens`. Backed by `GET /lenses/{lensId}/seed_candidates`; by construction every lead returned is a valid input to `extra_refill` (same eligibility query).
+**INTERNAL TOOL — do not surface candidates to the user.** The user asked for more leads on the lens (a higher daily appetite than the standard fill delivers), not to manually review candidates. This tool exists so the agent can pick seeds *silently*, then chain to `leadbay_extend_lens`. Picking is an agent decision; the user only sees the extend confirmation.
 
-**Pick 3–5 seeds that represent the *kind* of leads the user wants more of.** The candidates carry enough signal to rank fit on similarity axes the lens centroid does not already encode:
+Backed by `GET /lenses/{lensId}/seed_candidates`. By construction every lead returned is a valid input to `extra_refill` (same eligibility query). Defaults to the user's last-active lens.
 
-- **`engagement`** (load-bearing) — `liked: true`, `org_contacts_count > 0`, and `prospecting_actions_count > 0` mean the user (or their team) already validated this lead. These are the strongest seed signal.
-- **`qq_answers`** — what the AI agent already answered when qualifying this lead. Match candidates whose answers align with the target profile.
-- **`sector`, `size_min`, `size_max`** — shape similarity to known-good prospects.
-- **`tags`** — purchase-intent alignment, ordered by score (most-relevant first).
-- **`ai_agent_score`** — overall AI fit (0–99). Null when the lead has not been AI-rescored.
+**Pick 3–5 seeds that represent the *kind* of leads the user wants more of**, using these signals in priority order:
 
-**Default seed-picking heuristic** when the user hasn't named specific leads: pick the top 3 by `engagement` (prefer `liked` true, break ties by `org_contacts_count + prospecting_actions_count`), then fill to 5 with the top `ai_agent_score` rows whose `tags` align with the target.
+1. **`engagement`** (load-bearing) — `liked: true`, `org_contacts_count > 0`, and `prospecting_actions_count > 0` mean the user (or their team) already validated this lead. These are the strongest signal.
+2. **`qq_answers`** — what the AI agent already answered when qualifying this lead. Match candidates whose answers align with the target profile.
+3. **`tags`** — purchase-intent alignment, ordered by score (most-relevant first).
+4. **`sector`, `size_min`, `size_max`** — shape similarity to known-good prospects.
+5. **`ai_agent_score`** — overall AI fit (0–99); null when the lead has not been AI-rescored.
+6. **`description`** — short company blurb for the final tie-breaker.
 
-{{include:headers/tool-when-to-use}} when the user wants more leads on the current (or named) lens without changing the audience criteria. Discovery flow: `account_status` (pre-check `LENS_EXTRA_REFILL` quota) → `seed_candidates` (see candidates) → user picks (or agent picks per heuristic) → `extend_lens` (fire the additive fill).
+**Default heuristic** (no explicit user steering): top 3 by engagement (prefer `liked: true`; break ties by `org_contacts_count + prospecting_actions_count`), then fill to 5 with the top `ai_agent_score` rows whose `tags` overlap the engagement leaders' tags.
 
-{{include:headers/tool-when-not-to-use}} when the user wants to CHANGE the audience (sector / size / criteria) — route to `leadbay_adjust_audience` or `leadbay_refine_prompt`. Not for the daily inbox pull — route to `leadbay_pull_leads`.
+**Once seeds are picked, call `leadbay_extend_lens` immediately with `seed_lead_ids=[...picked lead_ids]`.** Do not pause for user approval; the user wants more leads, not a seed-review meeting.
 
-The response is the SeedCandidates payload verbatim: `{ candidates: [{lead_id, name, description?, sector?, size_min?, size_max?, website?, ai_agent_score?, tags[], qq_answers[], org_lead_status?, engagement: {liked, org_contacts_count, prospecting_actions_count}}] }`. Pass the chosen `lead_id`s as `seed_lead_ids` to `leadbay_extend_lens`.
+{{include:headers/tool-when-to-use}} only as the scaffolding step inside an extend-the-lens flow. The `leadbay_extend_my_lens` prompt orchestrates this; agents called this tool by themselves should be rare.
 
----
+{{include:headers/tool-when-not-to-use}} when the user wants to CHANGE the audience (sector / size / criteria) — route to `leadbay_adjust_audience` or `leadbay_refine_prompt`. Not for the daily inbox pull — route to `leadbay_pull_leads`. Never as a "here are some candidates, which do you want?" user-facing surface.
 
-{{include:rendering/seed-candidates-table}}
-
----
-
-{{include:next-steps/extend-lens}}
+Response shape (relayed verbatim from the backend): `{ candidates: [{lead_id, name, description?, sector?, size_min?, size_max?, website?, ai_agent_score?, tags[], qq_answers[], org_lead_status?, engagement: {liked, org_contacts_count, prospecting_actions_count}}] }`.
