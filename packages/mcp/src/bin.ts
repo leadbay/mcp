@@ -1202,15 +1202,23 @@ export function buildClaudeCodeRemoveArgs(): string[] {
   return ["mcp", "remove", "leadbay", "--scope", "user"];
 }
 
-async function runClaudeMcp(args: string[]): Promise<{ code: number | null; stderr: string; spawnError?: string }> {
+async function runClaudeMcp(args: string[]): Promise<{ code: number | null; stdout: string; stderr: string; spawnError?: string }> {
   const cp = await import("node:child_process");
   return await new Promise((resolve) => {
     const child = cp.spawn("claude", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
     let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk.toString()));
     child.stderr.on("data", (chunk) => (stderr += chunk.toString()));
-    child.on("close", (code) => resolve({ code, stderr }));
-    child.on("error", (err) => resolve({ code: null, stderr, spawnError: err.message }));
+    child.on("close", (code) => resolve({ code, stdout, stderr }));
+    child.on("error", (err) => resolve({ code: null, stdout, stderr, spawnError: err.message }));
   });
+}
+
+export async function isLeadbayConfiguredInClaudeCode(): Promise<boolean> {
+  const result = await runClaudeMcp(["mcp", "list"]);
+  if (result.spawnError || result.code !== 0) return false;
+  return /^leadbay:/m.test(result.stdout);
 }
 
 export async function installInClaudeCode(

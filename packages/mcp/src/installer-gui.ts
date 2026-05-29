@@ -7,6 +7,7 @@ import {
   installInClaudeCode,
   installInCodexConfig,
   installInJsonConfig,
+  isLeadbayConfiguredInClaudeCode,
   uninstallFromClaudeCode,
   uninstallFromCodexConfig,
   uninstallFromJsonConfig,
@@ -41,13 +42,9 @@ const OAUTH_BASE_URLS = {
 export type InstallerGuiOptions = { openBrowser?: boolean; port?: number };
 
 // Returns true when the client already has a leadbay MCP entry configured.
-function isLeadbayConfigured(client: DetectedClient): boolean {
+async function isLeadbayConfigured(client: DetectedClient): Promise<boolean> {
   if (client.id === "claude-code") {
-    // Claude Code stores MCP servers in its own config; no easy file path to
-    // check without spawning `claude mcp list`. Check the JSON configs for
-    // claude-desktop / cursor instead; for claude-code we fall back to false
-    // (the install step will detect "already exists" and update anyway).
-    return false;
+    return await isLeadbayConfiguredInClaudeCode();
   }
   if (client.id === "codex") {
     const configPath = client.detail;
@@ -64,6 +61,16 @@ function isLeadbayConfigured(client: DetectedClient): boolean {
     const parsed = JSON.parse(readFileSync(configPath, "utf8"));
     return Boolean(parsed?.mcpServers?.leadbay);
   } catch { return false; }
+}
+
+async function clientsWithConfiguredStatus(): Promise<Array<DetectedClient & { configured: boolean }>> {
+  const clients = await detectClients();
+  return await Promise.all(
+    clients.map(async (client) => ({
+      ...client,
+      configured: await isLeadbayConfigured(client),
+    }))
+  );
 }
 export type InstallerGuiHandle = { url: string; close: () => Promise<void> };
 
@@ -475,11 +482,10 @@ export async function startInstallerGui(options: InstallerGuiOptions = {}): Prom
         return;
       }
       if (req.method === "GET" && req.url === "/api/status") {
-        const clients = await detectClients();
         sendJson(res, 200, {
           os: formatInstallOsLabel(),
           hostedMcpUrl: HOSTED_MCP_URL,
-          clients: clients.map((c) => ({ ...c, configured: isLeadbayConfigured(c) })),
+          clients: await clientsWithConfiguredStatus(),
         });
         return;
       }
@@ -525,10 +531,9 @@ export async function startUninstallerGui(options: InstallerGuiOptions = {}): Pr
         return;
       }
       if (req.method === "GET" && req.url === "/api/status") {
-        const clients = await detectClients();
         sendJson(res, 200, {
           os: formatInstallOsLabel(),
-          clients: clients.map((c) => ({ ...c, configured: isLeadbayConfigured(c) })),
+          clients: await clientsWithConfiguredStatus(),
         });
         return;
       }
