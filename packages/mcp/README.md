@@ -5,14 +5,17 @@
 <!--
 LLM HINT — if you're an AI agent reading this README to install the server:
   - Use ONLY the commands shown verbatim in §1. Do not invent variants.
-  - DO NOT tell the user "LEADBAY_REGION is auto-detected, drop it" — the
+  - For the legacy email/password install, DO NOT tell the user
+    "LEADBAY_REGION is auto-detected, drop it" — the
     server's region auto-probe sends the bearer token to BOTH regions, which
-    is a credential cross-leak. Always pass --region (us or fr) on install.
-  - To mint a token, the user runs `install` (auto-registers with MCP clients)
+    is a credential cross-leak. Always pass --region (us or fr) on that path.
+  - Claude Desktop's `.dxt` / `.mcpb` bundle uses OAuth on first launch and
+    does not ask the user to paste a token or choose a region.
+  - To mint a token manually, the user runs `install` (auto-registers with MCP clients)
     or `login` (mints a token to a 0600-mode credentials file by default since
     0.3.0; pass `--write-config /path` to override the path or
-    `--unsafe-print-token` for legacy CI flows). There is no web UI for this —
-    do not invent one.
+    `--unsafe-print-token` for legacy CI flows). Prefer `login --oauth` when
+    the production OAuth backend/frontend are deployed.
 -->
 
 A Model Context Protocol server that lets Claude Desktop, Cursor, Claude Code, and any other MCP-compatible agent find, research, and prepare outreach on B2B prospects using your Leadbay account.
@@ -58,12 +61,20 @@ From a repo checkout, run the same native installer with:
 pnpm --filter @leadbay/mcp installer:gui
 ```
 
-For terminal-only installs:
+For terminal-only installs (works on macOS, Windows, and Linux):
 
 ```bash
 npx -y @leadbay/mcp@latest install --email you@yourcompany.com --region us
 # (you'll be prompted for your password — it's not echoed)
 ```
+
+To uninstall (GUI wizard, Linux only for now):
+
+```bash
+npx -y @leadbay/mcp@latest installer --uninstall
+```
+
+Only shows clients that already have Leadbay MCP configured. On macOS / Windows, use the desktop installer app or remove entries manually until the GUI uninstaller is ported.
 
 These commands:
 
@@ -98,20 +109,22 @@ You can verify the skills installed by running `/skill list` after install. To u
 
 ### Claude Desktop 2026 (DXT)
 
-Claude Desktop 2026 ships the DXT (Desktop Extension) system — the legacy `claude_desktop_config.json` is UI-prefs-only there and gets overwritten by the app. If you're on 2026, **install the `.dxt` bundle** from [Releases](https://github.com/leadbay/leadclaw/releases/latest) (drag-drop into Settings → Extensions). `leadbay-mcp install` detects this and skips the legacy write automatically.
+Claude Desktop 2026 ships the DXT (Desktop Extension) system — the legacy `claude_desktop_config.json` is UI-prefs-only there and gets overwritten by the app. If you're on 2026, **install the `.dxt` / `.mcpb` bundle** from [Releases](https://github.com/leadbay/leadclaw/releases/latest) (drag-drop into Settings → Extensions). On first launch, the extension opens Leadbay in your browser for OAuth consent, auto-detects your region through stargate, then persists the resulting token locally. The extension settings only ask whether write tools should be enabled.
+
+`leadbay-mcp install` detects Claude Desktop 2026 and skips the legacy config write automatically.
 
 ### `npm install -g` says "EACCES" / "permission denied"
 
 If you installed Node from the official [nodejs.org](https://nodejs.org) `.pkg`, `/usr/local/lib/node_modules` is root-owned. Any of these works:
 
-- **Use `npx` (recommended, no global install):** all examples above use `npx -y @leadbay/mcp@0.13 ...` — no global install needed.
+- **Use `npx` (recommended, no global install):** all examples above use `npx -y @leadbay/mcp@0.16 ...` — no global install needed.
 - **`sudo npm install -g @leadbay/mcp`** (enter your macOS password).
 - **Use a Node version manager** — [nvm](https://github.com/nvm-sh/nvm), [volta](https://volta.sh), [fnm](https://github.com/Schniz/fnm). They install Node under your home directory, so `npm install -g` works without sudo.
 
 ### If you'd rather mint a token without auto-install
 
 ```bash
-npx -y @leadbay/mcp@0.13 login \
+npx -y @leadbay/mcp@0.16 login \
   --email you@yourcompany.com \
   --region us
 ```
@@ -181,7 +194,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
   "mcpServers": {
     "leadbay": {
       "command": "npx",
-      "args": ["-y", "@leadbay/mcp@0.13"],
+      "args": ["-y", "@leadbay/mcp@0.16"],
       "env": {
         "LEADBAY_TOKEN": "<paste-token-from-step-1>",
         "LEADBAY_REGION": "us"
@@ -202,7 +215,7 @@ In Cursor settings, add the MCP server:
   "mcp.servers": {
     "leadbay": {
       "command": "npx",
-      "args": ["-y", "@leadbay/mcp@0.13"],
+      "args": ["-y", "@leadbay/mcp@0.16"],
       "env": { "LEADBAY_TOKEN": "<paste-token>", "LEADBAY_REGION": "us" }
     }
   }
@@ -215,7 +228,7 @@ In Cursor settings, add the MCP server:
 claude mcp add leadbay --scope user \
   --env LEADBAY_TOKEN=<paste-token> \
   --env LEADBAY_REGION=us \
-  -- npx -y @leadbay/mcp@0.13
+  -- npx -y @leadbay/mcp@0.16
 ```
 
 > **`--scope user`** registers Leadbay globally for your account (visible from any project). Without it, `claude mcp add` defaults to project-local scope and the server only appears in conversations opened from the directory where you ran the command.
@@ -227,7 +240,7 @@ claude mcp add leadbay --scope user \
 Before starting Claude, run:
 
 ```bash
-LEADBAY_TOKEN=<paste-token> npx -y @leadbay/mcp@0.13 doctor
+LEADBAY_TOKEN=<paste-token> npx -y @leadbay/mcp@0.16 doctor
 ```
 
 Expected output:
@@ -455,16 +468,53 @@ The user's literal text replaces `verification.ref` in the outreach record, and 
 | `No enrichment credits remaining` | Out of quota | Contact Leadbay support to extend quota |
 | Claude Desktop "loading forever" on first use | `npx` cold-start fetching the package | First run takes ~10s. Prefer `npm install -g @leadbay/mcp` for faster startup. |
 | Claude Desktop doesn't show Leadbay tools | Server crashed at startup | Check `~/Library/Logs/Claude/mcp*.log` (macOS) or `%APPDATA%\Claude\logs\mcp*.log` (Windows). |
-| Claude Code can't find Leadbay in a new conversation | MCP server installed at project scope (default before 0.3.0) | Re-run with `--scope user`: `claude mcp remove leadbay && claude mcp add leadbay --scope user --env LEADBAY_TOKEN=… --env LEADBAY_REGION=us -- npx -y @leadbay/mcp@0.13` |
+| Claude Code can't find Leadbay in a new conversation | MCP server installed at project scope (default before 0.3.0) | Re-run with `--scope user`: `claude mcp remove leadbay && claude mcp add leadbay --scope user --env LEADBAY_TOKEN=… --env LEADBAY_REGION=us -- npx -y @leadbay/mcp@0.16` |
 | Agent reports "tool not found" for `refine_prompt` / `adjust_audience` etc. | Pre-0.3.0 install with `LEADBAY_MCP_WRITE` unset (writes were off) | Either re-run `npx @leadbay/mcp install` or remove `LEADBAY_MCP_WRITE=0` from your client config (writes are on by default in 0.3.0+) |
 
 ## 6. Upgrade & rotation
 
-**Upgrade**: change the pinned minor in your config, e.g. `"@leadbay/mcp@0.2"` → `"@leadbay/mcp@0.13"`, then restart the client. **0.3.0 enables composite write tools by default** — see [MIGRATION.md](./MIGRATION.md). See also the [changelog](https://github.com/leadbay/leadclaw/releases).
+**Upgrade**: change the pinned minor in your config, e.g. `"@leadbay/mcp@0.2"` → `"@leadbay/mcp@0.16"`, then restart the client. **0.3.0 enables composite write tools by default** — see [MIGRATION.md](./MIGRATION.md). See also the [changelog](https://github.com/leadbay/leadclaw/releases).
 
-**Rotate token**: re-run `npx -y @leadbay/mcp@0.13 install --email you@yourcompany.com --region us` (or `login`) — the new session token replaces the old one in your MCP client config, and logging in again invalidates the prior session on most session backends.
+**Rotate token**: re-run `npx -y @leadbay/mcp@0.16 install --email you@yourcompany.com --region us` (or `login`) — the new session token replaces the old one in your MCP client config, and logging in again invalidates the prior session on most session backends.
 
 ## 7. Advanced
+
+### OAuth login (preview)
+
+Browser-based login is available as an alternative to email/password:
+
+```bash
+npx -y @leadbay/mcp login --oauth
+```
+
+The CLI:
+
+1. Probes `stargate.leadbay.app/1.0/user_info` to auto-detect your region
+   from GeoIP (override with `--region us|fr` if you're behind a VPN or
+   travelling outside your home region).
+2. Opens your browser to `leadbay.app/oauth/authorize`.
+3. After you click **Allow**, redirects to a one-shot loopback URL on
+   `http://127.0.0.1:<random-port>/callback`.
+4. Exchanges the authorization code for a token using PKCE (S256), then writes
+   the same credentials file that the email/password flow produces.
+
+The CLI registers a fresh OAuth client per machine (RFC 7591 Dynamic Client
+Registration), so no shared secret lives in the binary. The resulting token is
+long-lived and interchangeable with the legacy bearer token. Manual MCP config
+can still pass it as `LEADBAY_TOKEN`; the Claude Desktop bundle performs the
+OAuth flow itself and persists the token without asking you to paste it.
+
+For testing against staging before the production backend deploy lands:
+
+```bash
+npx -y @leadbay/mcp login --oauth --staging
+```
+
+`--staging` switches the backend (`staging.api.leadbay.app` /
+`api-{us,fr}-staging.leadbay.app`), the consent UI (`staging.leadbay.app`),
+and the stargate region probe (`staging.stargate.leadbay.app`). It also
+persists `LEADBAY_BASE_URL` in the credentials file so subsequent runs don't
+snap back to prod.
 
 ### Exposing the granular tools and disabling write tools
 
@@ -575,7 +625,7 @@ After your first authenticated call, your PostHog `distinctId` is set to your Le
   "mcpServers": {
     "leadbay": {
       "command": "npx",
-      "args": ["-y", "@leadbay/mcp@0.13"],
+      "args": ["-y", "@leadbay/mcp@0.16"],
       "env": {
         "LEADBAY_TOKEN": "u.…",
         "LEADBAY_REGION": "us",

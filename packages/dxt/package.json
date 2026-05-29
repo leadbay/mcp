@@ -6,6 +6,7 @@
   "description": "Builds the Leadbay .dxt bundle (Claude Desktop 2026 extension format) from @leadbay/mcp.",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:staging": "node scripts/build-staging.mjs",
     "typecheck": "node -e \"1\"",
     "test": "node -e \"1\""
   },

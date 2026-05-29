@@ -8,7 +8,7 @@ Package name: Leadbay
 
 Package identifier: `leadbay`
 
-Version: `0.6.2`
+Version: `0.16.0`
 
 Publisher: Leadbay
 
@@ -24,21 +24,21 @@ License: MIT
 
 Runtime: Node.js >= 22
 
-Bundle format: MCPB, emitted from the DXT-compatible manifest with `dxt_version: 0.2`.
+Bundle format: MCPB, emitted from `manifest_version: 0.3`.
 
 MCPB release URL:
 
-`https://github.com/leadbay/leadclaw/releases/download/mcp-v0.6.2/leadbay-0.6.2.mcpb`
+`https://github.com/leadbay/leadclaw/releases/download/mcp-v0.16.0/leadbay-0.16.0.mcpb`
 
 SHA-256:
 
-`d46e02f7ad0d0a61c13746e9a653c7009e89df658199ef1b13f97b2b05417caa`
+TODO after release.
 
 Compute after release:
 
 ```bash
-gh release download mcp-v0.6.2 --pattern 'leadbay-0.6.2.mcpb'
-openssl dgst -sha256 leadbay-0.6.2.mcpb
+gh release download mcp-v0.16.0 --pattern 'leadbay-0.16.0.mcpb'
+openssl dgst -sha256 leadbay-0.16.0.mcpb
 ```
 
 ## Descriptions
@@ -49,7 +49,7 @@ Leadbay lets Claude find, research, qualify, and prepare outreach for B2B prospe
 
 Long description:
 
-Leadbay MCP connects Claude Desktop to Leadbay for B2B lead discovery, qualification, research, and outreach prep. Users provide a Leadbay bearer token and region during extension setup. Claude can check account status, pull fresh leads, research companies and contacts, prepare outreach-ready email and LinkedIn drafts, and optionally log or update Leadbay state when write tools are enabled. Version 0.6.2 includes MCP annotations, typed outputs, prompts, resources, progress notifications, cancellation support, and elicitation for safer agent workflows.
+Leadbay MCP connects Claude Desktop to Leadbay for B2B lead discovery, qualification, research, and outreach prep. On first launch, the extension opens Leadbay in the user's browser for OAuth consent and auto-detects the user's region through stargate. Claude can check account status, pull fresh leads, research companies and contacts, prepare outreach-ready email and LinkedIn drafts, and optionally log or update Leadbay state when write tools are enabled. Version 0.13.0 includes MCP annotations, typed outputs, prompts, resources, progress notifications, cancellation support, elicitation, and local agent memory for safer agent workflows.
 
 ## Manifest notes
 
@@ -57,26 +57,26 @@ Manifest file: `packages/dxt/manifest.template.json`
 
 Validated fields:
 
-- `dxt_version: 0.2` retained for current Claude Desktop compatibility.
+- `manifest_version: 0.3`
 - `name: leadbay`
-- `version: 0.6.2` rendered during build.
+- `version: 0.16.0` rendered during build.
 - `server.type: node`
 - `compatibility.runtimes.node: >=22`
-- `user_config.leadbay_token` marked sensitive and required.
-- `user_config.leadbay_region` defaults to `fr`.
+- `server.mcp_config.env.LEADBAY_OAUTH_BOOTSTRAP: "1"` enables browser OAuth on first launch.
+- No token, region, or backend URL user-config fields are exposed.
 - `user_config.leadbay_mcp_write` defaults to `true`.
 
 ## Authentication
 
-Authentication type: Bearer token.
+Authentication type: OAuth 2.0 Authorization Code + PKCE.
 
-Token mint command: `npx -y @leadbay/mcp@0.6 login --email <you> --region <us|fr>`
+The bundled server performs Dynamic Client Registration, opens `https://leadbay.app/oauth/authorize`, receives the authorization code on a loopback redirect, exchanges it for an opaque Leadbay OAuth token, and persists the token in the user's local Leadbay credentials file.
 
-The extension prompts for the bearer token and Leadbay region on install. No OAuth scopes are requested by the extension.
+No OAuth scopes are requested by the extension yet; any granted token has the same account access as the user's Leadbay session.
 
 ## Security and privacy
 
-The MCPB bundle contains the server code and static assets. User secrets are provided through Claude Desktop extension configuration. Leadbay MCP sends requests only to the Leadbay backend region selected by the user. Composite write tools are enabled by default and can be disabled in extension settings.
+The MCPB bundle contains the server code and static assets. OAuth tokens are minted locally through the user's browser session and stored in the user's local Leadbay credentials file. Leadbay MCP sends requests only to the regional Leadbay backend inferred by stargate or stored with the credential. Composite write tools are enabled by default and can be disabled in extension settings.
 
 ## Screenshots
 

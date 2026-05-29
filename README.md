@@ -73,19 +73,24 @@ https://leadbay-mcp-prod.fly.dev/mcp
 
 Use the token from Step 1 in the connector auth flow.
 
-#### Terminal-only install / automation
+#### Terminal-only install / automation (all platforms)
 
 ```bash
 npx -y @leadbay/mcp@latest install --email you@yourcompany.com --region us
 ```
 
-#### Uninstall (Linux)
+Works on macOS, Windows, and Linux. Mints a token and registers the server into every detected MCP client, asking per-target. Pass `--yes` to skip prompts (CI/scripts). Pass `--target claude-code,cursor` to scope to specific clients.
+
+#### Uninstall
 
 ```bash
+# macOS / Windows / Linux — GUI wizard (Linux only for now)
 npx -y @leadbay/mcp@latest installer --uninstall
 ```
 
-Opens the same GUI wizard as the installer, but in uninstall mode. Only shows clients that already have Leadbay MCP configured. Select the ones to clean up and click "Remove selected" — it de-registers Claude Code, strips the JSON stanza from Claude Desktop / Cursor configs, removes the `[mcp_servers.leadbay]` TOML block from Codex, and strips the managed `export LEADBAY_*` block from `~/.zshrc` / `~/.bashrc`.
+Opens the uninstall wizard in your browser. Only shows clients that already have Leadbay MCP configured — select the ones to clean up and click "Remove selected". De-registers Claude Code, strips the JSON stanza from Claude Desktop / Cursor configs, removes the `[mcp_servers.leadbay]` TOML block from Codex, and strips the managed `export LEADBAY_*` block from `~/.zshrc` / `~/.bashrc`.
+
+> On macOS / Windows, use the desktop installer app or remove entries manually until the GUI uninstaller is ported.
 
 This mints a token **and** registers the server into every MCP client it detects, asking you per-target. You can skip Step 1 if you use this path.
 
