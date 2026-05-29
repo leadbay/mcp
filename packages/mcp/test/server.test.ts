@@ -409,11 +409,15 @@ describe("resolveClientFromEnv — region auto-probe", () => {
     LEADBAY_TOKEN?: string;
     LEADBAY_REGION?: string;
     LEADBAY_BASE_URL?: string;
+    LEADBAY_OAUTH_BOOTSTRAP?: string;
+    LEADBAY_OAUTH_STAGING?: string;
   }) {
     const saved = {
       LEADBAY_TOKEN: process.env.LEADBAY_TOKEN,
       LEADBAY_REGION: process.env.LEADBAY_REGION,
       LEADBAY_BASE_URL: process.env.LEADBAY_BASE_URL,
+      LEADBAY_OAUTH_BOOTSTRAP: process.env.LEADBAY_OAUTH_BOOTSTRAP,
+      LEADBAY_OAUTH_STAGING: process.env.LEADBAY_OAUTH_STAGING,
     };
     // Assigning `undefined` to process.env.X coerces to the string
     // "undefined" (truthy) — delete the key instead so the missing-token
@@ -424,6 +428,10 @@ describe("resolveClientFromEnv — region auto-probe", () => {
     else process.env.LEADBAY_REGION = env.LEADBAY_REGION;
     if (env.LEADBAY_BASE_URL === undefined) delete process.env.LEADBAY_BASE_URL;
     else process.env.LEADBAY_BASE_URL = env.LEADBAY_BASE_URL;
+    if (env.LEADBAY_OAUTH_BOOTSTRAP === undefined) delete process.env.LEADBAY_OAUTH_BOOTSTRAP;
+    else process.env.LEADBAY_OAUTH_BOOTSTRAP = env.LEADBAY_OAUTH_BOOTSTRAP;
+    if (env.LEADBAY_OAUTH_STAGING === undefined) delete process.env.LEADBAY_OAUTH_STAGING;
+    else process.env.LEADBAY_OAUTH_STAGING = env.LEADBAY_OAUTH_STAGING;
     try {
       const mod = await import("../src/bin.js");
       const silent = { info: () => {}, warn: () => {}, error: () => {} };

@@ -3,8 +3,8 @@
   "name": "leadbay",
   "display_name": "Leadbay",
   "version": "{{VERSION}}",
-  "description": "AI lead discovery, qualification, and outreach prep. Ask Claude to find, research, and prepare outreach on B2B prospects using your Leadbay account.",
-  "long_description": "Leadbay MCP surfaces your Leadbay inbox to Claude — fresh daily batches of AI-qualified leads, deep research on any company or contact, outreach-ready prep (email + LinkedIn), and outreach logging. Requires a Leadbay account (https://leadbay.ai).",
+  "description": "AI lead discovery, qualification, and outreach prep. Sign in with Leadbay OAuth, then ask Claude to find, research, and prepare outreach on B2B prospects.",
+  "long_description": "Leadbay MCP surfaces your Leadbay inbox to Claude — fresh daily batches of AI-qualified leads, deep research on any company or contact, outreach-ready prep (email + LinkedIn), and outreach logging. On first launch, Claude Desktop opens Leadbay in your browser so you can authorize access with OAuth. Requires a Leadbay account (https://leadbay.ai).",
   "icon": "icon.png",
   "author": {
     "name": "Leadbay",
@@ -33,27 +33,12 @@
       "command": "node",
       "args": ["${__dirname}/server/index.js"],
       "env": {
-        "LEADBAY_TOKEN": "${user_config.leadbay_token}",
-        "LEADBAY_REGION": "${user_config.leadbay_region}",
+        "LEADBAY_OAUTH_BOOTSTRAP": "1",
         "LEADBAY_MCP_WRITE": "${user_config.leadbay_mcp_write}"
       }
     }
   },
   "user_config": {
-    "leadbay_token": {
-      "type": "string",
-      "title": "Leadbay bearer token",
-      "description": "Mint one with: npx -y @leadbay/mcp@0.13 login --email <you> --region <us|fr> (then copy LEADBAY_TOKEN from the credentials file the command writes — path is shown on stderr)",
-      "sensitive": true,
-      "required": true
-    },
-    "leadbay_region": {
-      "type": "string",
-      "title": "Region",
-      "description": "Leadbay backend for your account (us or fr). If you don't know, try fr first — EU accounts are the default.",
-      "default": "fr",
-      "required": true
-    },
     "leadbay_mcp_write": {
       "type": "boolean",
       "title": "Enable write tools",
