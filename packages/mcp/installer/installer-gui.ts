@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { installInClaudeCode, isLeadbayConfiguredInClaudeCode, uninstallFromClaudeCode } from "./install-claude-code.js";
 import { installInJsonConfig, uninstallFromJsonConfig } from "./install-json-config.js";
@@ -147,12 +148,17 @@ const LOCAL_BIN_PATH: string | undefined = (() => {
   const flag = process.argv.find(a => a === "--local" || a.startsWith("--local="));
   if (!flag) return undefined;
   const explicit = flag.startsWith("--local=") ? flag.slice("--local=".length) : "";
-  if (explicit) return explicit;
-  // Default: dist/bin.js next to this file (works whether running from src or dist).
-  const { resolve } = require("node:path");
-  const { fileURLToPath } = require("node:url");
-  const here = typeof __dirname !== "undefined" ? __dirname : resolve(fileURLToPath(import.meta.url), "..");
-  return resolve(here, "..", "dist", "bin.js");
+  if (explicit) {
+    // Resolve against cwd so relative paths become absolute before being
+    // written into client configs (clients launch from their own directory).
+    return resolvePath(process.cwd(), explicit);
+  }
+  // Bare --local: resolve dist/bin.js next to this bundle. Uses static ESM
+  // imports (no require()) so this works in the bundled ESM output.
+  const here = typeof __dirname !== "undefined"
+    ? __dirname
+    : resolvePath(fileURLToPath(import.meta.url), "..");
+  return resolvePath(here, "..", "dist", "bin.js");
 })();
 
 async function installInto(client: DetectedClient, session: LoginSession, includeWrite: boolean, telemetryEnabled: boolean): Promise<InstallResult> {
