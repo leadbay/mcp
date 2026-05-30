@@ -26,5 +26,8 @@
   "engines": {
     "node": ">=22"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron", "esbuild"]
+  },
   "license": "MIT"
 }

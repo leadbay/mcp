@@ -47,9 +47,6 @@
   "optionalDependencies": {
     "electron": "^42.3.0"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": ["electron", "esbuild"]
-  },
   "engines": {
     "node": ">=22"
   },
