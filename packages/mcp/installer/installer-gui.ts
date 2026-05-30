@@ -142,10 +142,23 @@ function isAllowedOrigin(req: IncomingMessage, expectedHost: string): boolean {
   return origin === `http://${expectedHost}` || origin === `http://127.0.0.1`;
 }
 
+// Resolved once at startup from --local / --local=PATH on process.argv.
+const LOCAL_BIN_PATH: string | undefined = (() => {
+  const flag = process.argv.find(a => a === "--local" || a.startsWith("--local="));
+  if (!flag) return undefined;
+  const explicit = flag.startsWith("--local=") ? flag.slice("--local=".length) : "";
+  if (explicit) return explicit;
+  // Default: dist/bin.js next to this file (works whether running from src or dist).
+  const { resolve } = require("node:path");
+  const { fileURLToPath } = require("node:url");
+  const here = typeof __dirname !== "undefined" ? __dirname : resolve(fileURLToPath(import.meta.url), "..");
+  return resolve(here, "..", "dist", "bin.js");
+})();
+
 async function installInto(client: DetectedClient, session: LoginSession, includeWrite: boolean, telemetryEnabled: boolean): Promise<InstallResult> {
   let res: { ok: boolean; message: string };
   if (client.id === "claude-code") {
-    res = await installInClaudeCode(session.token, session.region, includeWrite, telemetryEnabled);
+    res = await installInClaudeCode(session.token, session.region, includeWrite, telemetryEnabled, LOCAL_BIN_PATH);
   } else if (client.id === "codex") {
     const configRes = await installInCodexConfig(client.configPath ?? client.detail, includeWrite, telemetryEnabled);
     if (!configRes.ok) {
@@ -160,7 +173,7 @@ async function installInto(client: DetectedClient, session: LoginSession, includ
     res = { ok: true, message: "manual setup required; add this MCP URL in ChatGPT Settings > Apps: " + HOSTED_MCP_URL };
   } else if (client.id === "claude-desktop" && client.mode?.dxt && client.supportDir) {
     const dxtResult = await removeDxtExtension(client.supportDir);
-    const jsonResult = await installInJsonConfig(client.configPath!, session.token, session.region, includeWrite, telemetryEnabled);
+    const jsonResult = await installInJsonConfig(client.configPath!, session.token, session.region, includeWrite, telemetryEnabled, LOCAL_BIN_PATH);
     if (!jsonResult.ok) {
       res = jsonResult;
     } else {
@@ -172,7 +185,7 @@ async function installInto(client: DetectedClient, session: LoginSession, includ
       };
     }
   } else {
-    res = await installInJsonConfig(client.configPath!, session.token, session.region, includeWrite, telemetryEnabled);
+    res = await installInJsonConfig(client.configPath!, session.token, session.region, includeWrite, telemetryEnabled, LOCAL_BIN_PATH);
   }
   return { id: client.id, label: client.label, ...res };
 }
