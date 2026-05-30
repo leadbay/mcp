@@ -21,6 +21,37 @@ import {
   type DetectedClient,
 } from "../installer/install-shared.js";
 export { detectClaudeDesktopMode, formatInstallOsLabel } from "../installer/install-shared.js";
+export {
+  buildClaudeCodeAddArgs,
+  buildClaudeCodeRemoveArgs,
+  installInClaudeCode,
+  isLeadbayConfiguredInClaudeCode,
+  uninstallFromClaudeCode,
+} from "../installer/install-claude-code.js";
+export {
+  installInJsonConfig,
+  stripJsonMcpEntry,
+  uninstallFromJsonConfig,
+} from "../installer/install-json-config.js";
+export {
+  buildCodexConfigBlock,
+  buildShellExportBlock,
+  mergeCodexConfig,
+  mergeShellExportBlock,
+  stripCodexBlock,
+  stripShellExportBlock,
+  installInCodexConfig,
+  appendShellExports,
+  uninstallFromCodexConfig,
+  uninstallShellExports,
+} from "../installer/install-codex.js";
+export { removeDxtExtension } from "../installer/install-dxt.js";
+export { parseInstallSelection, readChoice, updateInstallWizardState } from "../installer/install-wizard.js";
+import { installInClaudeCode } from "../installer/install-claude-code.js";
+import { installInJsonConfig } from "../installer/install-json-config.js";
+import { installInCodexConfig, appendShellExports } from "../installer/install-codex.js";
+import { removeDxtExtension } from "../installer/install-dxt.js";
+import { chooseInstallClients, readChoice } from "../installer/install-wizard.js";
 import { makeBrokenClient, type AuthState, type ResolvedClient } from "./broken-client.js";
 import { parseWriteEnv } from "./env.js";
 import { initTelemetry } from "./telemetry.js";
@@ -102,7 +133,7 @@ EXAMPLE Claude Desktop config (~/Library/Application Support/Claude/claude_deskt
     "mcpServers": {
       "leadbay": {
         "command": "npx",
-        "args": ["-y", "@leadbay/mcp@0.16"],
+        "args": ["-y", "@leadbay/mcp@latest"],
         "env": {
           "LEADBAY_TOKEN": "lb_...",
           "LEADBAY_REGION": "us",
@@ -432,6 +463,11 @@ export async function resolveClientFromEnv(logger: ToolLogger): Promise<Resolved
   }
 }
 
+import { createRequire } from "node:module";
+function require_(mod: string): any {
+  return (createRequire(import.meta.url) as any)(mod);
+}
+
 // Read a password from stdin without echoing (TTY) or from $LEADBAY_PASSWORD
 // when the env var is set. Falls through to plain readline if stdin isn't a TTY
 // (e.g. piped input — `echo pwd | leadbay-mcp login --email …`).
@@ -499,124 +535,14 @@ function hasFlag(args: string[], name: string): boolean {
   return args.some((a) => a === `--${name}`);
 }
 
-function isInteractiveInstall(): boolean {
-  return process.stdin.isTTY === true && process.stdout.isTTY === true;
-}
-
-export function parseInstallSelection(input: string, clientCount: number): number[] | null {
-  const normalized = input.trim().toLowerCase();
-  if (normalized === "" || normalized === "a" || normalized === "all") {
-    return Array.from({ length: clientCount }, (_, i) => i);
-  }
-  if (normalized === "n" || normalized === "none" || normalized === "q" || normalized === "quit") {
-    return [];
-  }
-
-  const selected = new Set<number>();
-  for (const part of normalized.split(/[\s,]+/).filter(Boolean)) {
-    const n = Number(part);
-    if (!Number.isInteger(n) || n < 1 || n > clientCount) return null;
-    selected.add(n - 1);
-  }
-  return [...selected].sort((a, b) => a - b);
-}
-
 function ansi(text: string, code: string, enabled: boolean): string {
   return enabled ? `\x1b[${code}m${text}\x1b[0m` : text;
 }
 
-export function updateInstallWizardState(
-  key: string,
-  cursor: number,
-  selected: boolean[]
-): { cursor: number; selected: boolean[]; done: boolean; cancel: boolean } {
-  const count = selected.length;
-  if (key === "\u0003" || key === "q") return { cursor, selected, done: false, cancel: true };
-  if (key === "\r" || key === "\n") return { cursor, selected, done: true, cancel: false };
-  if (key === "\x1B[A" || key === "k") {
-    return { cursor: (cursor - 1 + count) % count, selected, done: false, cancel: false };
-  }
-  if (key === "\x1B[B" || key === "j") {
-    return { cursor: (cursor + 1) % count, selected, done: false, cancel: false };
-  }
-  if (key === " ") {
-    const next = [...selected];
-    next[cursor] = !next[cursor];
-    return { cursor, selected: next, done: false, cancel: false };
-  }
-  if (key === "a") return { cursor, selected: selected.map(() => true), done: false, cancel: false };
-  if (key === "n") return { cursor, selected: selected.map(() => false), done: false, cancel: false };
-  return { cursor, selected, done: false, cancel: false };
+function isInteractiveInstall(): boolean {
+  return process.stdin.isTTY === true && process.stdout.isTTY === true;
 }
 
-function renderInstallWizard(
-  osLabel: string,
-  clients: DetectedClient[],
-  cursor: number,
-  selected: boolean[],
-  useColor: boolean
-): string {
-  const lines = [
-    ansi("Leadbay MCP installer", "1;36", useColor),
-    `OS: ${osLabel}`,
-    ansi("Arrows move, Space selects, Enter confirms", "2", useColor),
-    "",
-  ];
-  clients.forEach((client, index) => {
-    const active = index === cursor;
-    const checked = selected[index];
-    const pointer = active ? ansi(">", "36", useColor) : " ";
-    const box = checked ? ansi("[x]", "32", useColor) : "[ ]";
-    const label = active ? ansi(client.label, "1", useColor) : client.label;
-    lines.push(`${pointer} ${box} ${label.padEnd(16)} ${client.detail}`);
-  });
-  return `${lines.join("\n")}\n`;
-}
-
-async function chooseInstallClients(clients: DetectedClient[]): Promise<DetectedClient[]> {
-  const stdin = process.stdin;
-  const useColor = process.stderr.isTTY === true && process.env.NO_COLOR !== "1";
-  let cursor = 0;
-  let selected = clients.map(() => true);
-
-  const render = () => {
-    process.stderr.write("\x1b[2J\x1b[H");
-    process.stderr.write(renderInstallWizard(formatInstallOsLabel(), clients, cursor, selected, useColor));
-  };
-
-  process.stderr.write("\x1b[?25l");
-  if (stdin.isTTY) stdin.setRawMode(true);
-  stdin.resume();
-  stdin.setEncoding("utf8");
-  render();
-
-  return await new Promise<DetectedClient[]>((resolve) => {
-    const cleanup = () => {
-      stdin.removeListener("data", onData);
-      if (stdin.isTTY) stdin.setRawMode(false);
-      stdin.pause();
-      process.stderr.write("\x1b[?25h");
-    };
-    const onData = (key: string) => {
-      const next = updateInstallWizardState(key, cursor, selected);
-      cursor = next.cursor;
-      selected = next.selected;
-      if (next.cancel) {
-        cleanup();
-        process.stderr.write("\n");
-        process.exit(130);
-      }
-      if (next.done) {
-        cleanup();
-        process.stderr.write("\n");
-        resolve(clients.filter((_, index) => selected[index]));
-        return;
-      }
-      render();
-    };
-    stdin.on("data", onData);
-  });
-}
 
 // Resolve the platform-correct default credentials path (DX-voice T3, 0.3.0).
 // Order: $XDG_CONFIG_HOME → macOS Application Support → %APPDATA% → ~/.config.
@@ -831,7 +757,7 @@ async function runLogin(args: string[]): Promise<number> {
     mcpServers: {
       leadbay: {
         command: "npx",
-        args: ["-y", "@leadbay/mcp@0.16"],
+        args: ["-y", "@leadbay/mcp@latest"],
         env: envBlock,
       },
     },
@@ -865,7 +791,7 @@ async function runLogin(args: string[]): Promise<number> {
         `  claude mcp add leadbay --scope user \\\n` +
         `    --env LEADBAY_TOKEN=${result.token} \\\n` +
         `    --env LEADBAY_REGION=${result.region} \\\n` +
-        `    -- npx -y @leadbay/mcp@0.16\n\n` +
+        `    -- npx -y @leadbay/mcp@latest\n\n` +
         `Restart your MCP client to pick up the new server.\n`
     );
     return 0;
@@ -982,7 +908,7 @@ async function runLogin(args: string[]): Promise<number> {
         `  claude mcp add leadbay --scope user \\\n` +
         `    --env LEADBAY_TOKEN=$(jq -r .mcpServers.leadbay.env.LEADBAY_TOKEN ${quotedPath}) \\\n` +
         `    --env LEADBAY_REGION=${result.region} \\\n` +
-        `    -- npx -y @leadbay/mcp@0.16\n`
+        `    -- npx -y @leadbay/mcp@latest\n`
     );
   }
   process.stderr.write(
@@ -1034,473 +960,6 @@ export async function loginAt(baseUrl: string, email: string, password: string):
     r.write(body);
     r.end();
   });
-}
-
-// ─── install: one-shot mint + register ────────────────────────────────────
-
-export function buildCodexConfigBlock(
-  includeWrite: boolean,
-  telemetryEnabled: boolean,
-  version: string
-): string {
-  const envVars = ["LEADBAY_TOKEN", "LEADBAY_REGION", "LEADBAY_TELEMETRY_ENABLED"];
-  if (!includeWrite) envVars.push("LEADBAY_MCP_WRITE");
-  const envVarsToml = envVars.map((v) => `"${v}"`).join(", ");
-  return (
-    `[mcp_servers.leadbay]\n` +
-    `command = "npx"\n` +
-    `args = ["-y", "@leadbay/mcp@${version}"]\n` +
-    `env_vars = [${envVarsToml}]\n`
-  );
-}
-
-function shellQuote(value: string): string {
-  return "\"" + value.replace(/([\"\\$`])/g, "\\$1") + "\"";
-}
-
-export function buildShellExportBlock(
-  token: string,
-  region: "us" | "fr",
-  includeWrite: boolean,
-  telemetryEnabled: boolean
-): string {
-  const lines = [
-    "",
-    "# Added by leadbay-mcp install",
-    `export LEADBAY_TOKEN=${shellQuote(token)}`,
-    `export LEADBAY_REGION=${shellQuote(region)}`,
-    `export LEADBAY_TELEMETRY_ENABLED=${shellQuote(telemetryEnabled ? "true" : "false")}`,
-  ];
-  if (!includeWrite) {
-    lines.push(`export LEADBAY_MCP_WRITE=${shellQuote("0")}`);
-  }
-  lines.push("");
-  return lines.join("\n");
-}
-
-// CommonJS-style require shim — keeps `node:child_process` import path local
-// (avoids top-level require / dynamic import cost).
-function require_(mod: string): any {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  return (createRequire(import.meta.url) as any)(mod);
-}
-import { createRequire } from "node:module";
-
-async function readChoice(prompt: string, def = true): Promise<boolean> {
-  const isTTY = process.stdin.isTTY === true && process.stdout.isTTY === true;
-  if (!isTTY) return def; // non-interactive: take default
-  process.stderr.write(`${prompt} ${def ? "[Y/n]" : "[y/N]"} `);
-  process.stdin.setRawMode(true);
-  process.stdin.resume();
-  process.stdin.setEncoding("utf8");
-  return await new Promise<boolean>((resolve) => {
-    const onData = (k: string) => {
-      // Enter → take default
-      if (k === "\r" || k === "\n") {
-        process.stdin.setRawMode(false);
-        process.stdin.pause();
-        process.stdin.removeListener("data", onData);
-        process.stderr.write(def ? "y\n" : "n\n");
-        return resolve(def);
-      }
-      if (k === "\u0003" || k === "\u0004") {
-        process.stdin.setRawMode(false);
-        process.stdin.pause();
-        process.stderr.write("\n");
-        process.exit(130);
-      }
-      const lower = k.toLowerCase();
-      if (lower === "y" || lower === "n") {
-        process.stdin.setRawMode(false);
-        process.stdin.pause();
-        process.stdin.removeListener("data", onData);
-        process.stderr.write(`${lower}\n`);
-        return resolve(lower === "y");
-      }
-    };
-    process.stdin.on("data", onData);
-  });
-}
-
-// Build the argv passed to `claude mcp add`. Extracted as a pure function so
-// the contract — `--scope user`, env layout, npx version pin, write opt-out —
-// can be unit-tested without spawning anything.
-//
-// --scope user registers Leadbay globally for the user's account so the MCP
-// server is visible from any directory / new conversation. Without this,
-// claude mcp add defaults to project-local scope and Leadbay invisibly
-// disappears in fresh chats opened elsewhere — Ludo's #3504 third complaint.
-//
-// Default in 0.3.0 is writes-on; LEADBAY_MCP_WRITE is only injected when
-// explicitly disabled (so the env block stays minimal for the common case).
-export function buildClaudeCodeAddArgs(
-  token: string,
-  region: "us" | "fr",
-  includeWrite: boolean,
-  telemetryEnabled: boolean
-): string[] {
-  const args = [
-    "mcp",
-    "add",
-    "leadbay",
-    "--scope",
-    "user",
-    "--env",
-    `LEADBAY_TOKEN=${token}`,
-    "--env",
-    `LEADBAY_REGION=${region}`,
-    // Always written explicitly (not just when opting out) so MCP-client
-    // config UIs can render it as a toggle the user can flip without
-    // editing the file by hand.
-    "--env",
-    `LEADBAY_TELEMETRY_ENABLED=${telemetryEnabled ? "true" : "false"}`,
-  ];
-  if (!includeWrite) args.push("--env", `LEADBAY_MCP_WRITE=0`);
-  args.push("--", "npx", "-y", "@leadbay/mcp@0.16");
-  return args;
-}
-
-export function buildClaudeCodeRemoveArgs(): string[] {
-  return ["mcp", "remove", "leadbay", "--scope", "user"];
-}
-
-async function runClaudeMcp(args: string[]): Promise<{ code: number | null; stdout: string; stderr: string; spawnError?: string }> {
-  const cp = await import("node:child_process");
-  return await new Promise((resolve) => {
-    const child = cp.spawn("claude", args, { stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => (stdout += chunk.toString()));
-    child.stderr.on("data", (chunk) => (stderr += chunk.toString()));
-    child.on("close", (code) => resolve({ code, stdout, stderr }));
-    child.on("error", (err) => resolve({ code: null, stdout, stderr, spawnError: err.message }));
-  });
-}
-
-export async function isLeadbayConfiguredInClaudeCode(): Promise<boolean> {
-  const result = await runClaudeMcp(["mcp", "list"]);
-  if (result.spawnError || result.code !== 0) return false;
-  return /^leadbay:/m.test(result.stdout);
-}
-
-export async function installInClaudeCode(
-  token: string,
-  region: "us" | "fr",
-  includeWrite: boolean,
-  telemetryEnabled: boolean
-): Promise<{ ok: boolean; message: string }> {
-  const args = buildClaudeCodeAddArgs(token, region, includeWrite, telemetryEnabled);
-  const first = await runClaudeMcp(args);
-  if (first.spawnError) return { ok: false, message: `failed to spawn claude: ${first.spawnError}` };
-  if (first.code === 0) return { ok: true, message: "registered" };
-
-  const stderr = first.stderr.trim();
-  if (!/already exists/i.test(stderr)) {
-    return { ok: false, message: `claude mcp add exited ${first.code}: ${stderr.slice(0, 200)}` };
-  }
-
-  const removed = await runClaudeMcp(buildClaudeCodeRemoveArgs());
-  if (removed.spawnError) return { ok: false, message: `failed to spawn claude: ${removed.spawnError}` };
-  if (removed.code !== 0) {
-    return { ok: false, message: `claude mcp remove exited ${removed.code}: ${removed.stderr.trim().slice(0, 200)}` };
-  }
-
-  const second = await runClaudeMcp(args);
-  if (second.spawnError) return { ok: false, message: `failed to spawn claude: ${second.spawnError}` };
-  return {
-    ok: second.code === 0,
-    message: second.code === 0
-      ? "updated"
-      : `claude mcp add exited ${second.code}: ${second.stderr.trim().slice(0, 200)}`,
-  };
-}
-
-interface MCPConfigShape {
-  mcpServers?: Record<string, {
-    command: string;
-    args?: string[];
-    env?: Record<string, string>;
-  }>;
-  // Cursor uses the same shape under "mcpServers" too.
-}
-
-export async function installInJsonConfig(
-  configPath: string,
-  token: string,
-  region: "us" | "fr",
-  includeWrite: boolean,
-  telemetryEnabled: boolean
-): Promise<{ ok: boolean; message: string }> {
-  try {
-    const { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } = await import("node:fs");
-    const { dirname } = await import("node:path");
-
-    let parsed: MCPConfigShape = {};
-    let preserved: any = {};
-    const existed = existsSync(configPath);
-    if (existed) {
-      const raw = readFileSync(configPath, "utf8");
-      try {
-        preserved = JSON.parse(raw);
-        parsed = preserved;
-      } catch {
-        return { ok: false, message: `existing ${configPath} is not valid JSON; refusing to overwrite` };
-      }
-    } else {
-      mkdirSync(dirname(configPath), { recursive: true });
-    }
-
-    parsed.mcpServers = parsed.mcpServers ?? {};
-    const env: Record<string, string> = {
-      LEADBAY_TOKEN: token,
-      LEADBAY_REGION: region,
-      // Always written so MCP-client config UIs can render it as a toggle.
-      LEADBAY_TELEMETRY_ENABLED: telemetryEnabled ? "true" : "false",
-    };
-    // Default in 0.3.0 is writes-on; only set the env when explicitly disabled.
-    if (!includeWrite) env.LEADBAY_MCP_WRITE = "0";
-
-    parsed.mcpServers.leadbay = {
-      command: "npx",
-      args: ["-y", "@leadbay/mcp@0.16"],
-      env,
-    };
-
-    // Atomic-ish write: write to .tmp then rename, restore mode if pre-existed.
-    const tmp = configPath + ".tmp";
-    writeFileSync(tmp, JSON.stringify(parsed, null, 2) + "\n", "utf8");
-    const { renameSync, chmodSync } = await import("node:fs");
-    renameSync(tmp, configPath);
-    // Tighten perms: existing config may already be 0644; leave it. But for
-    // newly-created configs (didn't exist before), enforce 0600.
-    try {
-      const st = statSync(configPath);
-      if ((st.mode & 0o777) > 0o600 && Object.keys(preserved).length === 0) {
-        chmodSync(configPath, 0o600);
-      }
-    } catch { /* best-effort */ }
-
-    return { ok: true, message: existed ? "updated" : "registered" };
-  } catch (err: any) {
-    return { ok: false, message: err?.message ?? String(err) };
-  }
-}
-
-
-export function mergeCodexConfig(existing: string, block: string): string {
-  const withoutLeadbay = existing.replace(
-    /(^|\r?\n)\[mcp_servers\.leadbay\]\r?\n[\s\S]*?(?=\r?\n\[|$)/g,
-    (match, prefix: string) => prefix && match.startsWith(prefix) ? prefix : ""
-  );
-  const trimmed = withoutLeadbay.trimEnd();
-  return `${trimmed ? `${trimmed}\n\n` : ""}${block.trimEnd()}\n`;
-}
-
-export function mergeShellExportBlock(existing: string, block: string): { content: string; changed: boolean } {
-  const managedBlock = /(^|\r?\n)# Added by leadbay-mcp install\r?\nexport LEADBAY_TOKEN=.*\r?\nexport LEADBAY_REGION=.*\r?\nexport LEADBAY_TELEMETRY_ENABLED=.*\r?\n(?:export LEADBAY_MCP_WRITE=.*\r?\n)?/g;
-  const stripped = existing.replace(managedBlock, (match, prefix: string) => prefix || "");
-  if (stripped === existing && existing.includes("LEADBAY_TOKEN=")) {
-    return { content: existing, changed: false };
-  }
-  const trimmed = stripped.trimEnd();
-  return {
-    content: `${trimmed ? `${trimmed}\n` : ""}${block}`,
-    changed: true,
-  };
-}
-
-export async function installInCodexConfig(
-  configPath: string,
-  includeWrite: boolean,
-  telemetryEnabled: boolean
-): Promise<{ ok: boolean; message: string }> {
-  try {
-    const { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, renameSync, chmodSync } = await import("node:fs");
-    const { dirname } = await import("node:path");
-
-    let existing = "";
-    const existed = existsSync(configPath);
-    if (existed) {
-      existing = readFileSync(configPath, "utf8");
-    } else {
-      mkdirSync(dirname(configPath), { recursive: true });
-    }
-    const hadLeadbayConfig = /(^|\r?\n)\[mcp_servers\.leadbay\]\r?\n/.test(existing);
-
-    const next = mergeCodexConfig(
-      existing,
-      buildCodexConfigBlock(includeWrite, telemetryEnabled, VERSION)
-    );
-    const tmp = `${configPath}.tmp`;
-    writeFileSync(tmp, next, "utf8");
-    renameSync(tmp, configPath);
-    try {
-      const st = statSync(configPath);
-      if (!existed || (st.mode & 0o777) > 0o600) {
-        chmodSync(configPath, 0o600);
-      }
-    } catch { /* best-effort */ }
-
-    return { ok: true, message: hadLeadbayConfig ? "updated" : "registered" };
-  } catch (err: any) {
-    return { ok: false, message: err?.message ?? String(err) };
-  }
-}
-
-export async function appendShellExports(
-  token: string,
-  region: "us" | "fr",
-  includeWrite: boolean,
-  telemetryEnabled: boolean
-): Promise<{ ok: boolean; message: string }> {
-  try {
-    const cp = await import("node:child_process");
-    if (process.platform === "win32") {
-      const values: Record<string, string> = {
-        LEADBAY_TOKEN: token,
-        LEADBAY_REGION: region,
-        LEADBAY_TELEMETRY_ENABLED: telemetryEnabled ? "true" : "false",
-      };
-      if (!includeWrite) values.LEADBAY_MCP_WRITE = "0";
-      for (const [key, value] of Object.entries(values)) {
-        const ok = await new Promise<boolean>((resolve) => {
-          const child = cp.spawn("setx", [key, value], { stdio: "ignore" });
-          child.on("close", (code) => resolve(code === 0));
-          child.on("error", () => resolve(false));
-        });
-        if (!ok) return { ok: false, message: `failed to set ${key} with setx` };
-      }
-      return { ok: true, message: "env exported with setx; restart Codex/terminal" };
-    }
-
-    const { existsSync, readFileSync, writeFileSync, renameSync } = await import("node:fs");
-    const os = await import("node:os");
-    const home = os.homedir();
-    const preferred = [`${home}/.zshrc`, `${home}/.bashrc`].filter((path) => existsSync(path));
-    const paths = preferred.length ? preferred : [`${home}/.profile`];
-    const block = buildShellExportBlock(token, region, includeWrite, telemetryEnabled);
-    const updated: string[] = [];
-
-    for (const path of paths) {
-      const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
-      const merged = mergeShellExportBlock(existing, block);
-      if (!merged.changed) continue;
-      const tmp = `${path}.leadbay.tmp`;
-      writeFileSync(tmp, merged.content, "utf8");
-      renameSync(tmp, path);
-      updated.push(path);
-    }
-
-    return {
-      ok: true,
-      message: updated.length
-        ? `env exported to ${updated.join(", ")}; restart Codex/terminal or source the file`
-        : "env exports already present",
-    };
-  } catch (err: any) {
-    return { ok: false, message: err?.message ?? String(err) };
-  }
-}
-
-// ─── uninstall helpers ────────────────────────────────────────────────────────
-
-// Remove the managed shell export block written by `install`. Returns the
-// stripped content and whether anything was actually changed.
-export function stripShellExportBlock(existing: string): { content: string; changed: boolean } {
-  const managedBlock = /(^|\r?\n)# Added by leadbay-mcp install\r?\nexport LEADBAY_TOKEN=.*\r?\nexport LEADBAY_REGION=.*\r?\nexport LEADBAY_TELEMETRY_ENABLED=.*\r?\n(?:export LEADBAY_MCP_WRITE=.*\r?\n)?/g;
-  const stripped = existing.replace(managedBlock, (match, prefix: string) => prefix || "");
-  if (stripped === existing) return { content: existing, changed: false };
-  return { content: stripped.trimEnd() + (stripped.trimEnd() ? "\n" : ""), changed: true };
-}
-
-// Remove the [mcp_servers.leadbay] block from a Codex TOML file.
-export function stripCodexBlock(existing: string): { content: string; changed: boolean } {
-  const stripped = existing.replace(
-    /(^|\r?\n)\[mcp_servers\.leadbay\]\r?\n[\s\S]*?(?=\r?\n\[|$)/g,
-    (match, prefix: string) => (prefix && match.startsWith(prefix) ? prefix : "")
-  );
-  if (stripped === existing) return { content: existing, changed: false };
-  const trimmed = stripped.trimEnd();
-  return { content: trimmed ? trimmed + "\n" : "", changed: true };
-}
-
-// Remove leadbay from a JSON MCP config (Claude Desktop / Cursor shape).
-export function stripJsonMcpEntry(existing: string): { content: string; changed: boolean } {
-  let parsed: any;
-  try {
-    parsed = JSON.parse(existing);
-  } catch {
-    return { content: existing, changed: false };
-  }
-  if (!parsed?.mcpServers?.leadbay) return { content: existing, changed: false };
-  delete parsed.mcpServers.leadbay;
-  return { content: JSON.stringify(parsed, null, 2) + "\n", changed: true };
-}
-
-export async function uninstallFromClaudeCode(): Promise<{ ok: boolean; message: string }> {
-  const result = await runClaudeMcp(buildClaudeCodeRemoveArgs());
-  if (result.spawnError) return { ok: false, message: `failed to spawn claude: ${result.spawnError}` };
-  if (result.code === 0) return { ok: true, message: "removed" };
-  const stderr = result.stderr.trim();
-  if (/not found|does not exist|no server/i.test(stderr)) return { ok: true, message: "already absent" };
-  return { ok: false, message: `claude mcp remove exited ${result.code}: ${stderr.slice(0, 200)}` };
-}
-
-export async function uninstallFromJsonConfig(configPath: string): Promise<{ ok: boolean; message: string }> {
-  try {
-    const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
-    if (!existsSync(configPath)) return { ok: true, message: "config not found — nothing to do" };
-    const existing = readFileSync(configPath, "utf8");
-    const { content, changed } = stripJsonMcpEntry(existing);
-    if (!changed) return { ok: true, message: "leadbay entry not present" };
-    writeFileSync(configPath, content, "utf8");
-    return { ok: true, message: "removed" };
-  } catch (err: any) {
-    return { ok: false, message: err?.message ?? String(err) };
-  }
-}
-
-export async function uninstallFromCodexConfig(configPath: string): Promise<{ ok: boolean; message: string }> {
-  try {
-    const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
-    if (!existsSync(configPath)) return { ok: true, message: "config not found — nothing to do" };
-    const existing = readFileSync(configPath, "utf8");
-    const { content, changed } = stripCodexBlock(existing);
-    if (!changed) return { ok: true, message: "leadbay block not present" };
-    writeFileSync(configPath, content, "utf8");
-    return { ok: true, message: "removed from TOML" };
-  } catch (err: any) {
-    return { ok: false, message: err?.message ?? String(err) };
-  }
-}
-
-export async function uninstallShellExports(): Promise<{ ok: boolean; message: string }> {
-  try {
-    const { existsSync, readFileSync, writeFileSync, renameSync } = await import("node:fs");
-    const os = await import("node:os");
-    const home = os.homedir();
-    const candidates = [`${home}/.zshrc`, `${home}/.bashrc`, `${home}/.profile`].filter((p) =>
-      existsSync(p)
-    );
-    const updated: string[] = [];
-    for (const p of candidates) {
-      const existing = readFileSync(p, "utf8");
-      const { content, changed } = stripShellExportBlock(existing);
-      if (!changed) continue;
-      const tmp = `${p}.leadbay.tmp`;
-      writeFileSync(tmp, content, "utf8");
-      renameSync(tmp, p);
-      updated.push(p);
-    }
-    return {
-      ok: true,
-      message: updated.length
-        ? `removed from ${updated.join(", ")}; restart terminal or source the file`
-        : "managed export block not found in shell files",
-    };
-  } catch (err: any) {
-    return { ok: false, message: err?.message ?? String(err) };
-  }
 }
 
 export async function runUninstall(_args: string[]): Promise<number> {
@@ -1691,7 +1150,7 @@ export async function runInstall(args: string[]): Promise<number> {
     if (c.id === "claude-code") {
       res = await installInClaudeCode(token, region, includeWrite, telemetryEnabled);
     } else if (c.id === "codex") {
-      const configRes = await installInCodexConfig(c.detail, includeWrite, telemetryEnabled);
+      const configRes = await installInCodexConfig(c.configPath ?? c.detail, includeWrite, telemetryEnabled);
       if (!configRes.ok) {
         res = configRes;
       } else {
@@ -1705,10 +1164,15 @@ export async function runInstall(args: string[]): Promise<number> {
         ok: true,
         message: "manual setup required; add this MCP URL in ChatGPT Settings > Apps: " + HOSTED_MCP_URL,
       };
+    } else if (c.id === "claude-desktop" && c.mode?.dxt && c.supportDir) {
+      const dxtResult = await removeDxtExtension(c.supportDir);
+      const jsonResult = await installInJsonConfig(c.configPath!, token, region, includeWrite, telemetryEnabled);
+      res = jsonResult.ok
+        ? { ok: true, message: dxtResult.removed ? `DXT extension removed; ${jsonResult.message}` : jsonResult.message }
+        : jsonResult;
     } else {
       // claude-desktop and cursor both use the same JSON shape.
-      const path = c.detail.split(" ")[0];
-      res = await installInJsonConfig(path, token, region, includeWrite, telemetryEnabled);
+      res = await installInJsonConfig(c.configPath!, token, region, includeWrite, telemetryEnabled);
     }
     results.push({ id: c.id, label: c.label, ...res });
   }
@@ -1738,7 +1202,7 @@ export async function runInstall(args: string[]): Promise<number> {
   }
   process.stderr.write(
     `\nThe Leadbay credential was written into client config files but never printed to your terminal.\n` +
-      `Verify with: LEADBAY_TOKEN=$(...) npx -y @leadbay/mcp@0.16 doctor\n` +
+      `Verify with: LEADBAY_TOKEN=$(...) npx -y @leadbay/mcp@latest doctor\n` +
       `Restart your MCP client(s) to pick up the new server.\n` +
       `If you ever leak the credential, run \`leadbay-mcp login --oauth\` to create a fresh one.\n`
   );

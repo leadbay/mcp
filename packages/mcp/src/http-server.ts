@@ -116,37 +116,42 @@ app.all("/mcp", async (c) => {
     server.close().catch(() => {});
   });
 
-  await server.connect(transport);
+  try {
+    await server.connect(transport);
 
-  // Hono's Node adapter exposes the underlying req/res via `c.env.incoming`
-  // and `c.env.outgoing` (see @hono/node-server). The MCP transport needs
-  // those raw Node objects.
-  const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
-  const parsedBody = c.req.header("content-type")?.includes("application/json")
-    ? await c.req.json().catch(() => undefined)
-    : undefined;
+    // Hono's Node adapter exposes the underlying req/res via `c.env.incoming`
+    // and `c.env.outgoing` (see @hono/node-server). The MCP transport needs
+    // those raw Node objects.
+    const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
+    const parsedBody = c.req.header("content-type")?.includes("application/json")
+      ? await c.req.json().catch(() => undefined)
+      : undefined;
 
-  // Some clients (e.g. Codex v0.133) send only "application/json" but the MCP
-  // spec requires both "application/json" and "text/event-stream". The SDK reads
-  // rawHeaders (not headers), so we must patch both arrays.
-  const accept = env.incoming.headers["accept"] ?? "";
-  if (!accept.includes("text/event-stream")) {
-    const patched = accept ? `${accept}, text/event-stream` : "application/json, text/event-stream";
-    env.incoming.headers["accept"] = patched;
-    const raw = env.incoming.rawHeaders;
-    const idx = raw.findIndex((v, i) => i % 2 === 0 && v.toLowerCase() === "accept");
-    if (idx >= 0) {
-      raw[idx + 1] = patched;
-    } else {
-      raw.push("accept", patched);
+    // Some clients (e.g. Codex v0.133) send only "application/json" but the MCP
+    // spec requires both "application/json" and "text/event-stream". The SDK reads
+    // rawHeaders (not headers), so we must patch both arrays.
+    const accept = env.incoming.headers["accept"] ?? "";
+    if (!accept.includes("text/event-stream")) {
+      const patched = accept ? `${accept}, text/event-stream` : "application/json, text/event-stream";
+      env.incoming.headers["accept"] = patched;
+      const raw = env.incoming.rawHeaders;
+      const idx = raw.findIndex((v, i) => i % 2 === 0 && v.toLowerCase() === "accept");
+      if (idx >= 0) {
+        raw[idx + 1] = patched;
+      } else {
+        raw.push("accept", patched);
+      }
     }
-  }
 
-  await transport.handleRequest(env.incoming, env.outgoing, parsedBody);
-  // The transport has already written headers + body to env.outgoing.
-  // Tell Hono's Node adapter to skip its own write (otherwise it sets a
-  // wrong Content-Length that breaks strict HTTP clients like Codex/rmcp).
-  return new Response(null, { headers: { "x-hono-already-sent": "1" } });
+    await transport.handleRequest(env.incoming, env.outgoing, parsedBody);
+    // The transport has already written headers + body to env.outgoing.
+    // Tell Hono's Node adapter to skip its own write (otherwise it sets a
+    // wrong Content-Length that breaks strict HTTP clients like Codex/rmcp).
+    return new Response(null, { headers: { "x-hono-already-sent": "1" } });
+  } finally {
+    transport.close().catch(() => {});
+    server.close().catch(() => {});
+  }
 });
 
 // Legacy SSE transport. Two endpoints: GET /sse opens the stream, POST
@@ -167,9 +172,10 @@ app.get("/sse", async (c) => {
     server.close().catch(() => {});
   };
 
-  // Transport owns env.outgoing until the client disconnects; return a
-  // sentinel so Hono doesn't try to write anything else.
-  return new Response(null, { status: 200 });
+  // Transport has written headers + endpoint event to env.outgoing and owns
+  // the stream until the client disconnects. Use the same sentinel as /mcp so
+  // Hono's Node adapter does not attempt a second header write.
+  return new Response(null, { headers: { "x-hono-already-sent": "1" } });
 });
 
 app.post("/messages", async (c) => {
@@ -184,7 +190,8 @@ app.post("/messages", async (c) => {
   const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
   const body = await c.req.json().catch(() => undefined);
   await session.transport.handlePostMessage(env.incoming, env.outgoing, body);
-  return new Response(null, { status: env.outgoing.statusCode });
+  // handlePostMessage has already written the response to env.outgoing.
+  return new Response(null, { headers: { "x-hono-already-sent": "1" } });
 });
 
 // Stable boot log for Fly to surface in the dashboard.

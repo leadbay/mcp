@@ -2,17 +2,10 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import {
-  appendShellExports,
-  installInClaudeCode,
-  installInCodexConfig,
-  installInJsonConfig,
-  isLeadbayConfiguredInClaudeCode,
-  uninstallFromClaudeCode,
-  uninstallFromCodexConfig,
-  uninstallFromJsonConfig,
-  uninstallShellExports,
-} from "../src/bin.js";
+import { installInClaudeCode, isLeadbayConfiguredInClaudeCode, uninstallFromClaudeCode } from "./install-claude-code.js";
+import { installInJsonConfig, uninstallFromJsonConfig } from "./install-json-config.js";
+import { appendShellExports, installInCodexConfig, uninstallFromCodexConfig, uninstallShellExports } from "./install-codex.js";
+import { removeDxtExtension } from "./install-dxt.js";
 import { existsSync, readFileSync } from "node:fs";
 import {
   detectClients,
@@ -55,8 +48,8 @@ async function isLeadbayConfigured(client: DetectedClient): Promise<boolean> {
   }
   if (client.id === "chatgpt-desktop") return false;
   // claude-desktop and cursor: JSON config
-  const configPath = client.detail.split(" ")[0];
-  if (!existsSync(configPath)) return false;
+  const configPath = client.configPath;
+  if (!configPath || !existsSync(configPath)) return false;
   try {
     const parsed = JSON.parse(readFileSync(configPath, "utf8"));
     return Boolean(parsed?.mcpServers?.leadbay);
@@ -154,7 +147,7 @@ async function installInto(client: DetectedClient, session: LoginSession, includ
   if (client.id === "claude-code") {
     res = await installInClaudeCode(session.token, session.region, includeWrite, telemetryEnabled);
   } else if (client.id === "codex") {
-    const configRes = await installInCodexConfig(client.detail, includeWrite, telemetryEnabled);
+    const configRes = await installInCodexConfig(client.configPath ?? client.detail, includeWrite, telemetryEnabled);
     if (!configRes.ok) {
       res = configRes;
     } else {
@@ -165,8 +158,21 @@ async function installInto(client: DetectedClient, session: LoginSession, includ
     }
   } else if (client.id === "chatgpt-desktop") {
     res = { ok: true, message: "manual setup required; add this MCP URL in ChatGPT Settings > Apps: " + HOSTED_MCP_URL };
+  } else if (client.id === "claude-desktop" && client.mode?.dxt && client.supportDir) {
+    const dxtResult = await removeDxtExtension(client.supportDir);
+    const jsonResult = await installInJsonConfig(client.configPath!, session.token, session.region, includeWrite, telemetryEnabled);
+    if (!jsonResult.ok) {
+      res = jsonResult;
+    } else {
+      res = {
+        ok: true,
+        message: dxtResult.removed
+          ? `DXT extension removed; ${jsonResult.message}`
+          : jsonResult.message,
+      };
+    }
   } else {
-    res = await installInJsonConfig(client.detail.split(" ")[0], session.token, session.region, includeWrite, telemetryEnabled);
+    res = await installInJsonConfig(client.configPath!, session.token, session.region, includeWrite, telemetryEnabled);
   }
   return { id: client.id, label: client.label, ...res };
 }
@@ -290,13 +296,13 @@ async function streamUninstall(url: URL, res: ServerResponse): Promise<void> {
     if (client.id === "claude-code") {
       res2 = await uninstallFromClaudeCode();
     } else if (client.id === "codex") {
-      const tomlRes = await uninstallFromCodexConfig(client.detail);
+      const tomlRes = await uninstallFromCodexConfig(client.configPath ?? client.detail);
       const shellRes = await uninstallShellExports();
       res2 = tomlRes.ok && shellRes.ok
         ? { ok: true, message: `${tomlRes.message}; ${shellRes.message}` }
         : { ok: false, message: `toml: ${tomlRes.message}; shell: ${shellRes.message}` };
     } else {
-      res2 = await uninstallFromJsonConfig(client.detail.split(" ")[0]);
+      res2 = await uninstallFromJsonConfig(client.configPath!);
     }
     if (res2.ok) {
       okCount += 1;

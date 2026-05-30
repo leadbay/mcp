@@ -5,8 +5,13 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 async function runBrowserFallback(args: string[]): Promise<void> {
-  const { startInstallerGui } = await import("./installer-gui.js");
-  await startInstallerGui({ openBrowser: !args.includes("--no-open") });
+  const { startInstallerGui, startUninstallerGui } = await import("./installer-gui.js");
+  const opts = { openBrowser: !args.includes("--no-open") };
+  if (args.includes("--uninstall")) {
+    await startUninstallerGui(opts);
+  } else {
+    await startInstallerGui(opts);
+  }
 }
 
 async function main(): Promise<void> {

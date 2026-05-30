@@ -14,8 +14,13 @@ export interface DesktopMode {
 export interface DetectedClient {
   id: "claude-code" | "claude-desktop" | "cursor" | "codex" | "chatgpt-desktop";
   label: string;
+  /** Human-readable display string shown in the UI. May contain spaces or annotations like "(will be created)". */
   detail: string;
+  /** Absolute path to the config file to read/write. Always set for file-based clients; absent for chatgpt-desktop. */
+  configPath?: string;
   mode?: DesktopMode;
+  /** Platform support dir for Claude Desktop (e.g. ~/.config/Claude). Only set for claude-desktop. */
+  supportDir?: string;
 }
 
 export function formatInstallOsLabel(
@@ -165,7 +170,7 @@ export async function detectClients(): Promise<DetectedClient[]> {
       : `${claudeSupportDir}/claude_desktop_config.json`;
   const mode = detectClaudeDesktopMode(claudeSupportDir);
   if (await isClaudeDesktopInstalled(home)) {
-    out.push({ id: "claude-desktop", label: "Claude Desktop", detail: claudeDesktopPath, mode });
+    out.push({ id: "claude-desktop", label: "Claude Desktop", detail: claudeDesktopPath, configPath: claudeDesktopPath, mode, supportDir: claudeSupportDir });
   }
 
   if (await isChatGptDesktopInstalled(home)) {
@@ -178,6 +183,7 @@ export async function detectClients(): Promise<DetectedClient[]> {
       id: "cursor",
       label: "Cursor",
       detail: existsSync(cursorPath) ? cursorPath : `${cursorPath} (will be created)`,
+      configPath: cursorPath,
     });
   }
 
@@ -185,7 +191,7 @@ export async function detectClients(): Promise<DetectedClient[]> {
   const codexDir = process.platform === "win32" ? `${process.env.USERPROFILE ?? home}\\.codex` : `${home}/.codex`;
   if (codexBin) {
     const codexConfigPath = process.platform === "win32" ? `${codexDir}\\config.toml` : `${codexDir}/config.toml`;
-    out.push({ id: "codex", label: "Codex", detail: codexConfigPath });
+    out.push({ id: "codex", label: "Codex", detail: codexConfigPath, configPath: codexConfigPath });
   }
 
   return out;
