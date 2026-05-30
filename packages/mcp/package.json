@@ -5,10 +5,14 @@
   "description": "Model Context Protocol (MCP) server for Leadbay — AI lead discovery, qualification, and enrichment for Claude Desktop, Cursor, and Claude Code.",
   "type": "module",
   "bin": {
-    "leadbay-mcp": "dist/bin.js"
+    "leadbay-mcp": "dist/bin.js",
+    "leadbay-mcp-http": "dist/http-server.js",
+    "installer": "dist/installer-electron.js",
+    "leadbay-mcp-installer": "dist/installer-electron.js"
   },
   "files": [
     "dist/",
+    "installer/electron-main.cjs",
     "README.md",
     "MIGRATION.md",
     "CHANGELOG.md",
@@ -18,16 +22,21 @@
     "access": "public"
   },
   "scripts": {
-    "prebuild": "pnpm --filter @leadbay/promptforge build",
+    "prebuild": "pnpm --filter @leadbay/core build",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:smoke": "vitest run --config vitest.smoke.config.ts",
-    "prepublishOnly": "pnpm run build && pnpm run typecheck && pnpm run test"
+    "prepublishOnly": "pnpm run build && pnpm run typecheck && pnpm run test",
+    "installer": "pnpm run build && electron --no-sandbox installer/electron-main.cjs",
+    "installer:gui": "pnpm run installer",
+    "installer:gui:web": "pnpm run build && node dist/installer-gui.js"
   },
   "dependencies": {
+    "@hono/node-server": "^1.13.7",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@sentry/node": "^9.0.0",
+    "hono": "^4.6.14",
     "posthog-node": "^4.5.0"
   },
   "devDependencies": {
@@ -58,5 +67,8 @@
   },
   "homepage": "https://github.com/leadbay/leadclaw/tree/main/packages/mcp#readme",
   "author": "Leadbay",
-  "license": "MIT"
+  "license": "MIT",
+  "optionalDependencies": {
+    "electron": "^42.3.0"
+  }
 }

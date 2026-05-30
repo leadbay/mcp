@@ -8,7 +8,7 @@
  *      --no-write flips to LEADBAY_MCP_WRITE=0
  */
 import { describe, it, expect } from "vitest";
-import { buildClaudeCodeAddArgs } from "../../src/bin.js";
+import { buildClaudeCodeAddArgs, buildClaudeCodeRemoveArgs } from "../../src/bin.js";
 
 describe("buildClaudeCodeAddArgs — Claude Code registration argv", () => {
   it("includes --scope user (so Leadbay is visible from any project)", () => {
@@ -46,11 +46,11 @@ describe("buildClaudeCodeAddArgs — Claude Code registration argv", () => {
     expect(args).toContain("LEADBAY_MCP_WRITE=0");
   });
 
-  it("pins the @leadbay/mcp@0.16 npx target", () => {
+  it("uses @leadbay/mcp@latest npx target", () => {
     const args = buildClaudeCodeAddArgs("tok", "us", true, true);
     const sep = args.indexOf("--");
     expect(sep).toBeGreaterThan(0);
-    expect(args.slice(sep + 1)).toEqual(["npx", "-y", "@leadbay/mcp@0.16"]);
+    expect(args.slice(sep + 1)).toEqual(["npx", "-y", "@leadbay/mcp@latest"]);
   });
 
   it("token and region are NOT placed after the `--` separator (would be passed to npx, not claude)", () => {
@@ -59,5 +59,12 @@ describe("buildClaudeCodeAddArgs — Claude Code registration argv", () => {
     const afterSep = args.slice(sep + 1);
     expect(afterSep.some((a) => a.includes("LEADBAY_TOKEN"))).toBe(false);
     expect(afterSep.some((a) => a.includes("LEADBAY_REGION"))).toBe(false);
+  });
+});
+
+
+describe("buildClaudeCodeRemoveArgs", () => {
+  it("removes the user-scoped leadbay server before re-adding it", () => {
+    expect(buildClaudeCodeRemoveArgs()).toEqual(["mcp", "remove", "leadbay", "--scope", "user"]);
   });
 });

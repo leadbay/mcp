@@ -23,17 +23,27 @@
 
 > **No Leadbay account yet?** [Register here](https://wow.leadbay.ai/?register=true) first.
 
-### Step 1 — Mint a token (required for everyone)
+### Step 1 — Connect Leadbay with the universal installer
 
 Requires [Node.js 22+](https://nodejs.org).
 
 ```bash
-npx -y @leadbay/mcp@latest login --email you@yourcompany.com --region us
+npx -y -p @leadbay/mcp@latest installer
 ```
 
-You'll be prompted for your password (hidden, never saved). This writes a token to your machine — you'll paste it in the next step.
+Click **Sign in with Leadbay**. The installer opens OAuth in your browser, then comes back to the app so you can choose which local agents to configure.
 
-> Not sure of your region? Check your Leadbay dashboard URL: `app-us.leadbay.app` → `us`, `app-fr.leadbay.app` → `fr`.
+The installer works on macOS and Windows. On Linux, only the command-line install path is available (`npx -y @leadbay/mcp@latest install --oauth`) — no desktop installer window. The installer only shows supported clients that are actually installed on the machine:
+
+| Client | Installer behavior |
+|--------|--------------------|
+| Claude Code | Registers/removes `leadbay` with `claude mcp add/remove --scope user` |
+| Claude Desktop | Writes/removes only the `mcpServers.leadbay` entry in `claude_desktop_config.json` |
+| Cursor | Writes/removes only the `mcpServers.leadbay` entry in Cursor's MCP config |
+| Codex | Writes/removes only the `[mcp_servers.leadbay]` block in `~/.codex/config.toml` and the Leadbay-managed shell export block |
+| ChatGPT Desktop | Uses the hosted MCP URL, no local config write |
+
+Uninstall is scoped to Leadbay. It does not rewrite unrelated client settings or remove other MCP servers.
 
 ---
 
@@ -41,27 +51,48 @@ You'll be prompted for your password (hidden, never saved). This writes a token 
 
 #### Claude Desktop
 
-1. Download `leadbay-mcp-*.dxt` from the [Releases page](https://github.com/leadbay/leadclaw/releases/latest)
-2. Double-click it — Claude Desktop opens and asks you to confirm the install
-3. Paste your token and confirm your region when prompted
-4. Restart Claude Desktop, open a new chat, and try: *"Show me today's leads."*
+Use the guided installer above. It writes the local `mcpServers.leadbay` entry in `claude_desktop_config.json` with `npx -y @leadbay/mcp@0.16`, then Claude Desktop runs the published MCP package.
 
-#### Cursor / Claude Code / any other MCP client
+The `.dxt` / `.mcpb` bundle from [Releases](https://github.com/leadbay/leadclaw/releases/latest) remains available as an alternative.
 
-```bash
-npx -y @leadbay/mcp@latest install --email you@yourcompany.com --region us
+#### ChatGPT Desktop
+
+ChatGPT Desktop connects to the hosted MCP URL instead of a local config file:
+
+```text
+https://leadbay-mcp-prod.fly.dev/mcp
 ```
 
-This mints a token **and** registers the server into every MCP client it detects (Claude Desktop, Cursor, Claude Code), asking you per-target. You can skip Step 1 if you use this path.
+Use the connector auth flow to approve Leadbay.
+
+#### Terminal-only install / automation (all platforms)
+
+```bash
+npx -y @leadbay/mcp@latest install --oauth
+```
+
+Works on macOS, Windows, and Linux. Opens OAuth in your browser and registers the server into every detected MCP client, asking per-target. Pass `--yes` to skip prompts after auth. Pass `--target claude-code,cursor` to scope to specific clients.
+
+#### Uninstall
+
+```bash
+npx -y -p @leadbay/mcp@latest installer --uninstall
+```
+
+Opens the uninstall wizard. Only shows clients that already have Leadbay MCP configured — select the ones to clean up and click "Remove selected". De-registers Claude Code, strips the JSON stanza from Claude Desktop / Cursor configs, removes the `[mcp_servers.leadbay]` TOML block from Codex, and strips the managed `export LEADBAY_*` block from `~/.zshrc` / `~/.bashrc`.
+
 
 #### Claude Code plugin marketplace
 
 ```text
 /plugin marketplace add leadbay/leadclaw
+```
+
+```text
 /plugin install leadbay@leadbay-leadclaw
 ```
 
-Claude Code prompts for your token and region. Registers the MCP server **and** installs six skills (`leadbay_daily_check_in`, `leadbay_research_a_domain`, `leadbay_import_file`, `leadbay_log_outreach`, `leadbay_qualify_top_n`, `leadbay_refine_audience`) that auto-trigger on natural-language asks.
+Claude Code prompts for Leadbay auth/config. Registers the MCP server **and** installs skills (`leadbay_research_a_domain`, `leadbay_import_file`, `leadbay_log_outreach`, `leadbay_qualify_top_n`, `leadbay_refine_audience`, and others) that auto-trigger on natural-language asks.
 
 ## Tools
 
@@ -85,6 +116,7 @@ Claude Code prompts for your token and region. Registers the MCP server **and** 
 | `leadbay_import_status` | Status of a running import job |
 | `leadbay_resolve_import_rows` | Resolve import rows to lead IDs |
 | `leadbay_list_mappable_fields` | List CRM fields available for mapping |
+| `leadbay_recall_ordered_titles` | List job titles previously enriched by the org (use before `leadbay_enrich_titles`) |
 | `leadbay_create_topup_link` | Generate a Stripe top-up link (quota recovery) |
 | `leadbay_open_billing_portal` | Open the billing portal |
 
@@ -122,11 +154,11 @@ The MCP server automatically uses your **active lens** (the last lens you used i
 
 | Env var | Required | Description |
 |---------|----------|-------------|
-| `LEADBAY_TOKEN` | Yes | Bearer token (set by the installer) |
+| `LEADBAY_TOKEN` | Yes | Local OAuth bearer credential (set by the installer) |
 | `LEADBAY_REGION` | Yes | `us` or `fr` |
 | `LEADBAY_MCP_WRITE` | No | Set to `0` to disable write tools (default: on) |
 | `LEADBAY_MCP_ADVANCED` | No | Set to `1` to expose granular tools (default: off) |
-| `LEADBAY_API_BASE_URL` | No | Override API URL (for staging/dev) |
+| `LEADBAY_BASE_URL` | No | Override API URL (for staging/dev) |
 
 ## Workflows
 
@@ -149,10 +181,22 @@ leadbay_import_leads → leadbay_bulk_qualify_leads                             
 
 ```bash
 pnpm install
-pnpm prompts:build   # .md.tmpl → generated TS
-pnpm -r build        # compile everything
-pnpm -r test         # must be green
-pnpm -r typecheck    # must be green
+```
+
+```bash
+pnpm prompts:build
+```
+
+```bash
+pnpm -r build
+```
+
+```bash
+pnpm -r test
+```
+
+```bash
+pnpm -r typecheck
 ```
 
 ### Test tiers
@@ -168,14 +212,22 @@ See [`CLAUDE.md`](CLAUDE.md) for the full contributor guide: tool structure, tes
 
 All releases are tag-driven — **never run `npm publish` locally.** GitHub Actions owns publishing.
 
+1. Bump `packages/mcp/package.json#version` + add CHANGELOG entry, land PR.
+
 ```bash
-# 1. Bump packages/mcp/package.json#version + add CHANGELOG entry, land PR
 git checkout main && git pull
-git tag mcp-v0.x.0
-git push origin mcp-v0.x.0
-# 2. Watch the release workflow: preflight-npm → publish-mcp
 ```
+
+```bash
+git tag mcp-v0.x.0
+```
+
+```bash
+git push origin mcp-v0.x.0
+```
+
+2. Watch the release workflow: `preflight-npm → publish-mcp`.
 
 For dry runs: Actions → `release` → "Run workflow" → `package: mcp`, `dry_run: true`.
 
-Full runbook (token setup, failure modes, manual re-runs): [`RELEASE.md`](RELEASE.md).
+Full runbook (auth setup, failure modes, manual re-runs): [`RELEASE.md`](RELEASE.md).

@@ -187,7 +187,7 @@ function nameMatchesFile(parsed: ParsedTemplate): void {
   //   - underscores in the name may be written as dashes in the filename
   const expected = parsed.frontmatter.name;
   const rel = relative(process.cwd(), parsed.sourcePath);
-  const stem = rel.split("/").pop()!.replace(/\.md\.tmpl$/, "");
+  const stem = rel.split(/[\\/]/).pop()!.replace(/\.md\.tmpl$/, "");
   const candidates = new Set<string>([
     expected,
     expected.replace(/^leadbay_/, ""),

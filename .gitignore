@@ -16,3 +16,5 @@ coverage/
 !src/**
 !test/**
 !vitest.config.ts
+packages/mcp/dist-native/
+docs/superpowers/

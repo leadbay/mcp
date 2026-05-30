@@ -157,6 +157,7 @@ jobs:
           gh release upload "$TAG" packages/dxt/dist/*.dxt packages/dxt/dist/*.mcpb --clobber
           echo "Uploaded .dxt and .mcpb to release $TAG"
 
+
   publish-mcp-registry:
     name: Publish to MCP Registry
     needs: publish-mcp

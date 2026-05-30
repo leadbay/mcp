@@ -49,8 +49,16 @@
   the 60-70% null rate the optional-everywhere `triggered_by` field
   carries on `mcp tool called`.
 
-## 0.16.0 — 2026-05-28
+## 0.16.0 — 2026-05-29
 
+- **Guided installer wizard**: Electron GUI (browser fallback) for install and uninstall. Detects Claude Code, Claude Desktop, Cursor, Codex, and ChatGPT Desktop automatically. OAuth sign-in built in — no token copy-paste.
+- **Hosted MCP server**: Hono HTTP server at `https://leadbay-mcp-prod.fly.dev/mcp` for ChatGPT Desktop and other remote-MCP clients. Supports Streamable HTTP (`POST /mcp`) and legacy SSE (`GET /sse`, `POST /messages`).
+- **Installer logic reorganised**: all install/uninstall logic moved from `src/bin.ts` into dedicated files under `installer/` (`install-claude-code.ts`, `install-json-config.ts`, `install-codex.ts`, `install-dxt.ts`, `install-wizard.ts`). `bin.ts` is now a thin MCP server entrypoint.
+- **DXT extension removal**: when Claude Desktop 2026 DXT markers are detected, the installer removes the Leadbay DXT bundle (`Claude Extensions/local.dxt.leadbay.leadbay/` + registry entry) and writes `claude_desktop_config.json` as the authoritative config source.
+- **macOS path fix**: `DetectedClient` now carries a `configPath` field; dropped the `detail.split(" ")[0]` pattern that truncated paths containing spaces (e.g. `~/Library/Application Support/Claude/...`).
+- **SSE double-write fix**: `/sse` and `/messages` now return the `x-hono-already-sent` sentinel so Hono's Node adapter does not attempt a second header write after `SSEServerTransport` has already written headers.
+- **Browser fallback uninstall fix**: `runBrowserFallback()` now opens the uninstaller GUI when `--uninstall` is passed, matching the Electron main process.
+- **`@latest` pin**: all generated client configs now use `npx -y @leadbay/mcp@latest` instead of a hardcoded minor version.
 - **OAuth login** (`leadbay-mcp login --oauth`): browser-based Authorization
   Code + PKCE flow with Dynamic Client Registration (RFC 7591). No password
   ever touches the CLI. The resulting `o.<token>` is interchangeable with the

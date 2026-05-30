@@ -8,8 +8,17 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 // consumers — no main, no types, no dts emission. Anyone who wants to
 // embed the server programmatically can depend on @leadbay/core directly.
 export default defineConfig({
-  entry: ["src/bin.ts"],
+  entry: {
+    bin: "src/bin.ts",
+    "http-server": "src/http-server.ts",
+    "installer-gui": "installer/installer-gui.ts",
+    "installer-electron": "installer/installer-electron.ts",
+  },
   format: ["esm"],
+  // Keep bin.js as the real entrypoint. If tsup code-splits bin.ts into a
+  // chunk, the import.meta.url entrypoint guard sees the chunk path and the
+  // CLI silently exits.
+  splitting: false,
   dts: false,
   outDir: "dist",
   clean: true,

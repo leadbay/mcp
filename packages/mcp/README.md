@@ -5,7 +5,7 @@
 <!--
 LLM HINT — if you're an AI agent reading this README to install the server:
   - Use ONLY the commands shown verbatim in §1. Do not invent variants.
-  - For the legacy email/password install, DO NOT tell the user
+  - Prefer OAuth install paths. For the legacy email/password install, DO NOT tell the user
     "LEADBAY_REGION is auto-detected, drop it" — the
     server's region auto-probe sends the bearer token to BOTH regions, which
     is a credential cross-leak. Always pass --region (us or fr) on that path.
@@ -20,9 +20,7 @@ LLM HINT — if you're an AI agent reading this README to install the server:
 
 A Model Context Protocol server that lets Claude Desktop, Cursor, Claude Code, and any other MCP-compatible agent find, research, and prepare outreach on B2B prospects using your Leadbay account.
 
-> **0.6.x — what's new**: a comprehensive MCP-spec coverage upgrade. Every tool now declares **annotations** (`readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`) so capable clients pick the right confirmation UX. The 5 highest-traffic composites ship **`outputSchema` + `structuredContent`** for typed agent consumption. New surfaces: **`prompts/*`** (5 canned slash-commands), **`resources/*`** (`lead://`, `lens://`, `org://taste-profile`), **`notifications/progress`** (per-lead streaming during `bulk_qualify_leads`), **`notifications/cancelled` → `ToolContext.signal`** (client cancels actually stop polling), **`elicitation/create`** (server can ask the user directly). Schema strictness: every `inputSchema` now declares `additionalProperties: false`. `research_lead.qualification[]` ships `boost_score` (canonical) + `score_scale: "-10|0|10|20"` + a deprecated `score_0_to_10` alias. Pagination payloads include `has_more` + `next_page`. `research_lead` includes a `truncated` + `truncation_hint` budget guard. **Behavior callout**: extra unknown fields in tool inputs are now rejected. See [MIGRATION.md](./MIGRATION.md).
-
-> **0.3.0 behavior change** — composite write tools (`refine_prompt`, `report_outreach`, `adjust_audience`, `bulk_qualify_leads`, `enrich_titles`, `answer_clarification`, `import_leads`) are **ON by default**. Set `LEADBAY_MCP_WRITE=0` (or `--no-write` on `install`) to restore the previous read-only behavior. `leadbay-mcp install` now also registers Claude Code at `--scope user` so Leadbay is visible from any project. See [MIGRATION.md](./MIGRATION.md).
+> **Upgrading?** See [CHANGELOG](../../CHANGELOG.md) and [MIGRATION.md](./MIGRATION.md) for version-specific behavior changes. Key callout: composite write tools are **ON by default** since 0.3.0 — set `LEADBAY_MCP_WRITE=0` to restore read-only behavior.
 
 ## Agent memory
 
@@ -45,25 +43,58 @@ The main leads-touching tools (`leadbay_account_status`,
 `_meta.agent_memory.summary` automatically. Set `LEADBAY_AGENT_MEMORY=off`
 to suppress this ambient metadata.
 
-## 1. Install (one command)
+## 1. Install
+
+On macOS and Windows, launch the guided Electron installer from the npm package:
 
 ```bash
-npx -y @leadbay/mcp@0.16 install --email you@yourcompany.com --region us
-# (you'll be prompted for your password — it's not echoed)
+npx -y -p @leadbay/mcp@latest installer
 ```
 
-That's it. The command:
+It downloads the npm package, opens the installer app, signs in with Leadbay OAuth in your browser, detects installed MCP clients, then installs the selected ones.
 
-1. Asks for your password (hidden input).
-2. Mints a bearer token via the Leadbay backend you specified.
-3. Auto-detects which MCP clients you have installed (Claude Code, Claude Desktop, Cursor) and registers the server in each (after asking you per-target). Claude Code is registered with `--scope user` so the server appears in any project, not just where you ran the command.
-4. The token is written into the client config files — **never to your terminal scrollback**.
+On Linux, use the terminal-only path instead (no desktop installer window):
+
+```bash
+npx -y @leadbay/mcp@latest install --oauth
+```
+
+From a repo checkout, run the same native installer with:
+
+```bash
+pnpm --filter @leadbay/mcp installer
+```
+
+```bash
+pnpm --filter @leadbay/mcp installer -- --uninstall
+```
+
+For terminal-only installs (works on macOS, Windows, and Linux):
+
+```bash
+npx -y @leadbay/mcp@latest install --oauth
+```
+
+To uninstall with the same guided app:
+
+```bash
+npx -y -p @leadbay/mcp@latest installer --uninstall
+```
+
+Only shows clients that already have Leadbay MCP configured.
+
+These commands:
+
+1. Open Leadbay OAuth in your browser.
+2. Exchange the browser approval for a local MCP credential.
+3. Auto-detect which MCP clients you have installed (Claude Code, Claude Desktop, Cursor, Codex) and register the server in each (after asking you per-target). Claude Code is registered with `--scope user` so the server appears in any project, not just where you ran the command.
+4. Write the credential into the client config files — **never to your terminal scrollback**.
 
 Add `--no-write` to disable the composite write tools (`refine_prompt`, `report_outreach`, `adjust_audience`, etc. — ON by default since 0.3.0; pass `--no-write` for a read-only agent). Add `--yes` for non-interactive runs (CI / scripts). Add `--target claude-code,cursor` to scope to specific clients. The legacy `--include-write` flag is accepted but is now a no-op.
 
-`--region us|fr` is required by default — it pins which Leadbay backend gets your password and avoids a silent cross-region credential leak. If you really don't know your region, opt in with `--allow-region-fallback` (your password will hit BOTH backends if the first 401s).
+OAuth auto-detects your region through stargate. Pass `--region us|fr` only if you need to override it.
 
-The token is **session-scoped** (full account access, password-equivalent). Treat it like your password. To rotate, re-run `npx -y @leadbay/mcp install` — minting a fresh token invalidates the prior session.
+To rotate the local MCP credential, re-run `npx -y @leadbay/mcp install --oauth`.
 
 **Don't have a Leadbay account?** [Register here](https://wow.leadbay.ai/?register=true).
 
@@ -71,10 +102,13 @@ The token is **session-scoped** (full account access, password-equivalent). Trea
 
 ```text
 /plugin marketplace add leadbay/leadclaw
+```
+
+```text
 /plugin install leadbay@leadbay-leadclaw
 ```
 
-Claude Code prompts for your token and region through the plugin's `userConfig`. This is equivalent to the npm/CLI install above; users who already ran `leadbay-mcp login` can reuse that token.
+Claude Code prompts for Leadbay auth/config through the plugin's `userConfig`. This is equivalent to the npm/CLI install above.
 
 The plugin install gives you **two surfaces in one shot**:
 
@@ -83,11 +117,11 @@ The plugin install gives you **two surfaces in one shot**:
 
 You can verify the skills installed by running `/skill list` after install. To uninstall everything, `/plugin uninstall leadbay@leadbay-leadclaw` removes the MCP server registration **and** the skills together.
 
-### Claude Desktop 2026 (DXT)
+### Claude Desktop
 
-Claude Desktop 2026 ships the DXT (Desktop Extension) system — the legacy `claude_desktop_config.json` is UI-prefs-only there and gets overwritten by the app. If you're on 2026, **install the `.dxt` / `.mcpb` bundle** from [Releases](https://github.com/leadbay/leadclaw/releases/latest) (drag-drop into Settings → Extensions). On first launch, the extension opens Leadbay in your browser for OAuth consent, auto-detects your region through stargate, then persists the resulting token locally. The extension settings only ask whether write tools should be enabled.
+The guided installer writes the local `mcpServers.leadbay` entry in `claude_desktop_config.json` with `npx -y @leadbay/mcp@0.16`, like the Linux flow. Restart Claude Desktop after install.
 
-`leadbay-mcp install` detects Claude Desktop 2026 and skips the legacy config write automatically.
+The `.dxt` / `.mcpb` bundle from [Releases](https://github.com/leadbay/leadclaw/releases/latest) remains available as an alternative install path.
 
 ### `npm install -g` says "EACCES" / "permission denied"
 
@@ -97,17 +131,77 @@ If you installed Node from the official [nodejs.org](https://nodejs.org) `.pkg`,
 - **`sudo npm install -g @leadbay/mcp`** (enter your macOS password).
 - **Use a Node version manager** — [nvm](https://github.com/nvm-sh/nvm), [volta](https://volta.sh), [fnm](https://github.com/Schniz/fnm). They install Node under your home directory, so `npm install -g` works without sudo.
 
-### If you'd rather mint a token without auto-install
+### If you'd rather authenticate without auto-install
 
 ```bash
-npx -y @leadbay/mcp@0.16 login \
-  --email you@yourcompany.com \
-  --region us
+npx -y @leadbay/mcp@0.16 login --oauth
 ```
 
-Default writes a `0600`-mode JSON file at the platform-correct credentials path (`$XDG_CONFIG_HOME/leadbay/credentials.json` on Linux, `~/Library/Application Support/leadbay/credentials.json` on macOS, `%APPDATA%\leadbay\credentials.json` on Windows). Pass `--write-config /some/path.json` to override the path. Pass `--unsafe-print-token` for legacy CI flows that scrape stdout (the token will end up in scrollback / logs — only use this if you have to). Pass `--force` to overwrite an existing file from a different account.
+Default writes a `0600`-mode JSON file at the platform-correct credentials path (`$XDG_CONFIG_HOME/leadbay/credentials.json` on Linux, `~/Library/Application Support/leadbay/credentials.json` on macOS, `%APPDATA%\leadbay\credentials.json` on Windows). Pass `--write-config /some/path.json` to override the path. Pass `--force` to overwrite an existing file from a different account. The legacy email/password path still exists for scripts that cannot use a browser.
 
-## 2. Quickstart
+## 2. Updating the hosted MCP
+
+The hosted MCP at `https://leadbay-mcp-prod.fly.dev/mcp` can be updated in two ways.
+
+### Deploy from this repo
+
+Use this when you want Fly to run the exact code in the current checkout or after merging to `main`:
+
+```bash
+fly deploy --app leadbay-mcp-prod
+```
+
+```bash
+curl https://leadbay-mcp-prod.fly.dev/healthz
+```
+
+This is the current production path. Fly builds the repo `Dockerfile`, bundles `packages/mcp`, and starts `node dist/http-server.js`.
+
+### Deploy from a published npm package
+
+Use this when you want the remote MCP to run a package that has already been published to npm. Prefer pinning an exact version so production deploys are reproducible:
+
+```dockerfile
+FROM node:22-slim
+
+WORKDIR /app
+RUN npm install -g @leadbay/mcp@0.15.0
+
+ENV NODE_ENV=production
+ENV PORT=8080
+EXPOSE 8080
+
+CMD ["leadbay-mcp-http"]
+```
+
+Then point Fly at that Dockerfile and deploy:
+
+```toml
+[build]
+  dockerfile = 'Dockerfile.npm'
+```
+
+```bash
+fly deploy --app leadbay-mcp-prod
+```
+
+```bash
+curl https://leadbay-mcp-prod.fly.dev/healthz
+```
+
+Avoid `@latest` for production unless you intentionally want Fly deploys to pick up whatever version npm currently marks as latest:
+
+```dockerfile
+RUN npm install -g @leadbay/mcp@latest
+```
+
+That is convenient for quick tests, but less safe for production because the deployed version is no longer visible from a repo diff.
+
+## 3. Quickstart
+
+Prefer the installer in [§1](#1-install). If you need to hand-write config,
+first authenticate with `npx -y @leadbay/mcp@0.16 login --oauth`, then copy the
+`LEADBAY_TOKEN` and `LEADBAY_REGION` values from the credentials file it writes.
 
 ### Claude Desktop
 
@@ -120,7 +214,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
       "command": "npx",
       "args": ["-y", "@leadbay/mcp@0.16"],
       "env": {
-        "LEADBAY_TOKEN": "<paste-token-from-step-1>",
+        "LEADBAY_TOKEN": "<paste-oauth-token>",
         "LEADBAY_REGION": "us"
       }
     }
@@ -140,7 +234,7 @@ In Cursor settings, add the MCP server:
     "leadbay": {
       "command": "npx",
       "args": ["-y", "@leadbay/mcp@0.16"],
-      "env": { "LEADBAY_TOKEN": "<paste-token>", "LEADBAY_REGION": "us" }
+      "env": { "LEADBAY_TOKEN": "<paste-oauth-token>", "LEADBAY_REGION": "us" }
     }
   }
 }
@@ -150,7 +244,7 @@ In Cursor settings, add the MCP server:
 
 ```bash
 claude mcp add leadbay --scope user \
-  --env LEADBAY_TOKEN=<paste-token> \
+  --env LEADBAY_TOKEN=<paste-oauth-token> \
   --env LEADBAY_REGION=us \
   -- npx -y @leadbay/mcp@0.16
 ```
@@ -164,7 +258,7 @@ claude mcp add leadbay --scope user \
 Before starting Claude, run:
 
 ```bash
-LEADBAY_TOKEN=<paste-token> npx -y @leadbay/mcp@0.16 doctor
+LEADBAY_TOKEN=<paste-oauth-token> npx -y @leadbay/mcp@0.16 doctor
 ```
 
 Expected output:
@@ -176,7 +270,23 @@ Leadbay connection OK.
   AI credits:    420 / 1000
 ```
 
-## 3. Example prompts that work
+### ChatGPT Desktop / remote-MCP clients
+
+Leadbay runs a hosted MCP server that any remote-MCP client can connect to without a local install:
+
+```
+https://leadbay-mcp-prod.fly.dev/mcp
+```
+
+**ChatGPT Desktop**: open Settings → Apps → Add app → paste the URL above.
+
+The server authenticates each request from the `Authorization: Bearer <token>` header your client sends automatically once you sign in via ChatGPT's OAuth prompt. No token to copy-paste, no local Node install needed.
+
+**Updates are automatic** — the hosted server is always running the latest published release. You never need to update a config file or restart anything on your side.
+
+If your client requires a region header, add `X-Leadbay-Region: us` or `X-Leadbay-Region: fr` to match your Leadbay account's region.
+
+## 4. Example prompts that work
 
 > *Find me 20 SaaS companies in Berlin that match my Ideal Buyer Profile.*
 
@@ -184,7 +294,7 @@ Leadbay connection OK.
 
 > *Prepare an outreach package for Acme Corp — include the recommended contact with enriched email if we have credits.*
 
-## 3a. Spec primitives in action
+## 5. Spec primitives in action
 
 > If you're building or auditing an MCP integration, this section shows what each spec primitive looks like on the wire when calling `@leadbay/mcp`. Every example is the actual JSON-RPC frame your client sends or receives — copy verbatim into a debugger.
 
@@ -382,12 +492,12 @@ Client returns:
 
 The user's literal text replaces `verification.ref` in the outreach record, and the response carries `confirmed_via: "elicit"` for the SDR audit trail.
 
-## 4. Troubleshooting
+## 6. Troubleshooting
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| `LEADBAY_TOKEN environment variable is required` | Token missing from config env | Add `LEADBAY_TOKEN` to the `env` block, restart client |
-| `Authentication token expired or invalid` | Token revoked or wrong region | Re-mint a token: `npx -y @leadbay/mcp install --email <you> --region <us\|fr>`; verify `LEADBAY_REGION` |
+| `LEADBAY_TOKEN environment variable is required` | Local MCP credential missing from config env | Re-run `npx -y @leadbay/mcp install --oauth`, restart client |
+| `Authentication token expired or invalid` | Credential revoked or wrong region | Re-authenticate: `npx -y @leadbay/mcp install --oauth`; verify `LEADBAY_REGION` |
 | `Leadbay doctor: could not reach any Leadbay region` | Wrong region OR network blocked | Run `doctor` with `LEADBAY_REGION=fr` to auto-probe. Check `https://api-us.leadbay.app` reachable. |
 | `No enrichment credits remaining` | Out of quota | Contact Leadbay support to extend quota |
 | Claude Desktop "loading forever" on first use | `npx` cold-start fetching the package | First run takes ~10s. Prefer `npm install -g @leadbay/mcp` for faster startup. |
@@ -395,17 +505,17 @@ The user's literal text replaces `verification.ref` in the outreach record, and 
 | Claude Code can't find Leadbay in a new conversation | MCP server installed at project scope (default before 0.3.0) | Re-run with `--scope user`: `claude mcp remove leadbay && claude mcp add leadbay --scope user --env LEADBAY_TOKEN=… --env LEADBAY_REGION=us -- npx -y @leadbay/mcp@0.16` |
 | Agent reports "tool not found" for `refine_prompt` / `adjust_audience` etc. | Pre-0.3.0 install with `LEADBAY_MCP_WRITE` unset (writes were off) | Either re-run `npx @leadbay/mcp install` or remove `LEADBAY_MCP_WRITE=0` from your client config (writes are on by default in 0.3.0+) |
 
-## 5. Upgrade & rotation
+## 7. Upgrade & rotation
 
 **Upgrade**: change the pinned minor in your config, e.g. `"@leadbay/mcp@0.2"` → `"@leadbay/mcp@0.16"`, then restart the client. **0.3.0 enables composite write tools by default** — see [MIGRATION.md](./MIGRATION.md). See also the [changelog](https://github.com/leadbay/leadclaw/releases).
 
-**Rotate token**: re-run `npx -y @leadbay/mcp@0.16 install --email you@yourcompany.com --region us` (or `login`) — the new session token replaces the old one in your MCP client config, and logging in again invalidates the prior session on most session backends.
+**Rotate local credential**: re-run `npx -y @leadbay/mcp@0.16 install --oauth` (or `login --oauth`) — the new credential replaces the old one in your MCP client config.
 
-## 6. Advanced
+## 8. Advanced
 
-### OAuth login (preview)
+### OAuth login
 
-Browser-based login is available as an alternative to email/password:
+Browser-based login is the recommended auth path:
 
 ```bash
 npx -y @leadbay/mcp login --oauth
@@ -464,20 +574,23 @@ To unlock the **granular API tools** (`leadbay_list_lenses`, `leadbay_discover_l
 
 `leadbay_import_leads` is a **write tool** (exposed by default since 0.3.0; set `LEADBAY_MCP_WRITE=0` to hide it) for the case where you have a list of company domains from another system (CRM, analytics, email correspondents, etc.) and want stable Leadbay `leadId`s to chain into qualification:
 
-```bash
-# 1. Set up
-export LEADBAY_TOKEN="<your-token>"
-export LEADBAY_REGION="us"
-# LEADBAY_MCP_WRITE defaults to "1" (ON) since 0.3.0 — no need to set it.
+Set up your environment:
 
-# 2. Wire in your MCP client per §2 above. Then ask the agent:
-#    "Import these domains: apple.com, microsoft.com, salesforce.com.
-#     Then qualify the matched leads."
-#
-#    The agent calls leadbay_import_leads({ domains: [...] }), gets back
-#    { leads: [{domain, leadId, name}], not_imported: [{domain, reason}], importIds, _meta },
-#    then chains leads.map(l => l.leadId) into leadbay_bulk_qualify_leads.
+```bash
+export LEADBAY_TOKEN="<your-token>"
 ```
+
+```bash
+export LEADBAY_REGION="us"
+```
+
+(`LEADBAY_MCP_WRITE` defaults to `"1"` (ON) since 0.3.0 — no need to set it.)
+
+Then wire in your MCP client per [§2](#2-updating-the-hosted-mcp) and ask the agent:
+
+> "Import these domains: apple.com, microsoft.com, salesforce.com. Then qualify the matched leads."
+
+The agent calls `leadbay_import_leads({ domains: [...] })`, gets back `{ leads: [{domain, leadId, name}], not_imported: [{domain, reason}], importIds, _meta }`, then chains `leads.map(l => l.leadId)` into `leadbay_bulk_qualify_leads`.
 
 **⚠️ Writes user state.** Internally wraps Leadbay's CRM-import wizard (the only domain-import primitive the backend ships today). Each call:
 
@@ -512,15 +625,15 @@ Use `dry_run: true` to validate domain formatting and wizard reachability withou
 | `LEADBAY_MOCK` | no | unset | `"1"` serves all reads from on-disk fixtures (dev only) |
 | `LEADBAY_MOCK_DIR` | no | `./.context/leadbay-live-shapes/` | Fixture dir for mock mode |
 | `LEADBAY_LOG_LEVEL` | no | `error` | `debug` \| `info` \| `error`, logs to stderr |
+| `LEADBAY_TIMEOUT_MS` | no | (client default) | Per-request timeout override |
 
 > ⚠️ **Set `LEADBAY_REGION` explicitly.** If you don't, the server probes BOTH `api-us.leadbay.app` and `api-fr.leadbay.app` in parallel with your bearer token attached, sending the token to a backend that doesn't own your account. The `install` and `login` subcommands enforce `--region` for exactly this reason; the runtime auto-probe is a backwards-compat fallback, not a recommended setting.
-| `LEADBAY_TIMEOUT_MS` | no | (client default) | Per-request timeout override |
 
 ### Security
 
 - Tokens live only in your MCP client's config file — they never traverse the network except to `api-{region}.leadbay.app`.
 - The `leadbay_login` tool from the OpenClaw adapter is **not** registered on MCP: exposing a credential-taking tool to an LLM is a prompt-injection risk. Use the token path above.
-- The `leadbay_add_note` and `leadbay_enrich_contacts` tools are write actions flagged `optional: true`. If your client supports per-tool opt-in, leave them disabled until you need them.
+- The `leadbay_add_note` tool is a write action flagged `optional: true`. If your client supports per-tool opt-in, leave it disabled until you need it. `leadbay_enrich_contacts` is a granular tool exposed only when `LEADBAY_MCP_ADVANCED=1`.
 
 ### Privacy & telemetry
 
@@ -566,7 +679,7 @@ Accepted values: `"true"|"1"|"yes"|"on"` enable; `"false"|"0"|"no"|"off"` disabl
 
 Contact data fetched through this server stays local to your MCP client session — telemetry never carries it. Requests to Leadbay are subject to the [Leadbay privacy policy](https://leadbay.ai/privacy).
 
-## 7. For maintainers — publishing
+## 9. For maintainers — publishing
 
 Releases are tag-driven via `.github/workflows/release.yml`. Bump `packages/mcp/package.json#version`, update `packages/mcp/CHANGELOG.md`, land on `main`, then:
 
