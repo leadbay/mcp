@@ -2,25 +2,35 @@
 //
 // Exposes the same tool catalog as the stdio server (bin.ts) but over HTTP
 // so multi-tenant hosts (ChatGPT custom connectors, web clients) can connect.
-// Each request carries its own bearer token in the Authorization header; we
-// build a fresh LeadbayClient + MCP Server per session and tear them down on
-// close.
+//
+// Auth: MCP OAuth 2.0 proxy — the server acts as an MCP Authorization Server
+// that proxies the OAuth flow to the regional Leadbay OAuth server. Clients
+// (ChatGPT Desktop, Claude.ai, etc.) discover endpoints via the standard
+// /.well-known/oauth-authorization-server metadata document and perform PKCE.
+// The resulting Leadbay access token is then verified per-request.
 //
 // Endpoints:
-//   POST /mcp                  Streamable HTTP transport (current MCP spec)
-//   GET  /sse, POST /messages  Legacy SSE transport (older hosts)
-//   GET  /healthz              Liveness probe for Fly/Render
+//   GET  /.well-known/oauth-authorization-server  MCP OAuth metadata
+//   GET  /.well-known/oauth-protected-resource     Protected resource metadata
+//   POST /oauth/register                           Dynamic client registration (proxy)
+//   GET  /oauth/authorize                          Authorization redirect (proxy)
+//   POST /oauth/token                              Token exchange (proxy)
+//   POST /mcp                                      Streamable HTTP transport
+//   GET  /sse, POST /messages                      Legacy SSE transport
+//   GET  /healthz                                  Liveness probe
 //
 // Run: `node dist/http-server.js` (PORT defaults to 8080).
 
 import { randomUUID } from "node:crypto";
+import express from "express";
+import type { Request, Response, NextFunction } from "express";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { Hono } from "hono";
-import { bodyLimit } from "hono/body-limit";
-import { serve } from "@hono/node-server";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { mcpAuthRouter, mcpAuthMetadataRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
+import { ProxyOAuthServerProvider } from "@modelcontextprotocol/sdk/server/auth/providers/proxyProvider.js";
+import type { OAuthClientInformationFull } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { buildServer } from "./server.js";
 import { resolveClientFromToken } from "./auth-http.js";
 import { parseWriteEnv } from "./env.js";
@@ -31,10 +41,89 @@ const VERSION = typeof __LEADBAY_MCP_VERSION__ !== "undefined" ? __LEADBAY_MCP_V
 const PORT = Number(process.env.PORT ?? 8080);
 const HOST = process.env.HOST ?? "0.0.0.0";
 
-// In-memory session map for the legacy SSE transport. Streamable HTTP keeps
-// its own session table inside the transport instance, so we only need to
-// track SSE sessions ourselves (the POST /messages endpoint needs to route
-// the body to the right transport by sessionId).
+// The public URL of this server — used as the OAuth issuer and in metadata.
+// On Fly this is set via an env var; locally it falls back to localhost.
+const SERVER_URL = (process.env.MCP_SERVER_URL ?? `http://localhost:${PORT}`).replace(/\/$/, "");
+
+// Leadbay OAuth server base URL. Default: US region.
+// Set LEADBAY_OAUTH_BASE_URL on the Fly app to pin a region.
+const LEADBAY_OAUTH_BASE = (process.env.LEADBAY_OAUTH_BASE_URL ?? "https://api-us.leadbay.app").replace(/\/$/, "");
+
+// ─── OAuth proxy provider ────────────────────────────────────────────────────
+
+// In-memory store for registered OAuth clients (DCR).
+// Production could swap this for Redis; for a single-instance Fly VM this is fine.
+const registeredClients = new Map<string, OAuthClientInformationFull>();
+
+const oauthProvider = new ProxyOAuthServerProvider({
+  endpoints: {
+    authorizationUrl: `${LEADBAY_OAUTH_BASE}/oauth/authorize`,
+    tokenUrl: `${LEADBAY_OAUTH_BASE}/oauth/token`,
+    revocationUrl: `${LEADBAY_OAUTH_BASE}/oauth/revoke`,
+    registrationUrl: `${LEADBAY_OAUTH_BASE}/oauth/register`,
+  },
+  verifyAccessToken: async (token: string) => {
+    // Verify by calling Leadbay /users/me — same as the per-request path.
+    // We probe both regions so the server works regardless of account region.
+    const { createClient } = await import("@leadbay/core");
+    const probe = async (region: "us" | "fr") => {
+      const client = createClient({ token, region });
+      const me = await client.request<{ id: string; organization: { id: string } }>("GET", "/users/me");
+      return { client, me, region };
+    };
+    try {
+      const { me, region } = await Promise.any([probe("us"), probe("fr")]);
+      return {
+        token,
+        clientId: "leadbay-mcp",
+        scopes: [],
+        expiresAt: undefined,
+        extra: { userId: me.id, organizationId: me.organization.id, region },
+      };
+    } catch {
+      throw new Error("Invalid or expired Leadbay access token");
+    }
+  },
+  getClient: async (clientId: string) => {
+    return registeredClients.get(clientId);
+  },
+});
+
+// ─── Express app ─────────────────────────────────────────────────────────────
+
+const app = express();
+
+app.get("/healthz", (_req, res) => {
+  res.json({ ok: true, version: VERSION });
+});
+
+// MCP OAuth authorization server endpoints (/.well-known/*, /oauth/*, etc.)
+app.use(mcpAuthRouter({
+  provider: oauthProvider,
+  issuerUrl: new URL(SERVER_URL),
+  serviceDocumentationUrl: new URL("https://github.com/leadbay/leadclaw#readme"),
+  scopesSupported: [],
+  resourceName: "Leadbay MCP",
+}));
+
+// Protected resource metadata (points clients at this server's OAuth endpoints)
+app.use(mcpAuthMetadataRouter({
+  oauthMetadata: {
+    issuer: SERVER_URL,
+    authorization_endpoint: `${SERVER_URL}/oauth/authorize`,
+    token_endpoint: `${SERVER_URL}/oauth/token`,
+    registration_endpoint: `${SERVER_URL}/oauth/register`,
+    response_types_supported: ["code"],
+    code_challenge_methods_supported: ["S256"],
+    token_endpoint_auth_methods_supported: ["none"],
+  },
+  resourceServerUrl: new URL(`${SERVER_URL}/mcp`),
+  serviceDocumentationUrl: new URL("https://github.com/leadbay/leadclaw#readme"),
+  resourceName: "Leadbay MCP",
+}));
+
+// ─── Session map for legacy SSE transport ────────────────────────────────────
+
 interface SseSession {
   transport: SSEServerTransport;
   server: Server;
@@ -42,9 +131,6 @@ interface SseSession {
 }
 const sseSessions = new Map<string, SseSession>();
 
-// Evict SSE sessions that have been open longer than 30 minutes. Protects
-// against zombie entries where transport.onclose never fires (network drop,
-// half-open TCP) on the 256 MB Fly VM.
 const SSE_SESSION_TTL_MS = 30 * 60 * 1000;
 setInterval(() => {
   const cutoff = Date.now() - SSE_SESSION_TTL_MS;
@@ -57,20 +143,21 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000).unref();
 
-function extractBearer(authHeader: string | undefined): string | undefined {
-  if (!authHeader) return undefined;
-  const m = /^Bearer\s+(.+)$/i.exec(authHeader);
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function extractBearer(req: Request): string | undefined {
+  const auth = req.headers["authorization"];
+  if (!auth) return undefined;
+  const m = /^Bearer\s+(.+)$/i.exec(auth);
   return m ? m[1].trim() : undefined;
 }
 
-function extractRegion(headerValue: string | undefined): "us" | "fr" | undefined {
-  if (headerValue === "us" || headerValue === "fr") return headerValue;
+function extractRegion(req: Request): "us" | "fr" | undefined {
+  const v = req.headers["x-leadbay-region"];
+  if (v === "us" || v === "fr") return v;
   return undefined;
 }
 
-// Build a fresh MCP server bound to the caller's bearer token. One server per
-// session — keeps tenant isolation explicit and avoids any cross-request
-// state leaking through the LeadbayClient.
 async function buildServerForRequest(
   token: string | undefined,
   region: "us" | "fr" | undefined
@@ -78,126 +165,102 @@ async function buildServerForRequest(
   const resolved = await resolveClientFromToken(token, { region });
   const includeWrite = parseWriteEnv();
   const includeAdvanced = process.env.LEADBAY_MCP_ADVANCED === "1";
-  return buildServer(resolved.client, {
-    version: VERSION,
-    includeWrite,
-    includeAdvanced,
-  });
+  return buildServer(resolved.client, { version: VERSION, includeWrite, includeAdvanced });
 }
 
-const app = new Hono();
+// Body limit middleware (1 MB)
+const rawBodyMiddleware = express.raw({
+  type: ["application/json", "application/*+json"],
+  limit: "1mb",
+});
 
-app.get("/healthz", (c) => c.json({ ok: true, version: VERSION }));
+// ─── MCP Streamable HTTP transport ───────────────────────────────────────────
 
-// Cap request bodies at 1 MB to prevent OOM on the 256 MB Fly VM.
-const MCP_BODY_LIMIT = bodyLimit({ maxSize: 1 * 1024 * 1024 });
-app.use("/mcp", MCP_BODY_LIMIT);
-app.use("/messages", MCP_BODY_LIMIT);
+app.all("/mcp", rawBodyMiddleware, async (req: Request, res: Response) => {
+  const token = extractBearer(req);
+  const region = extractRegion(req);
 
-// Streamable HTTP transport. Stateless mode (no sessionIdGenerator) is the
-// simplest fit for ChatGPT custom connectors today — each request is its own
-// MCP session. If we need long-lived state we can flip to stateful later by
-// passing `sessionIdGenerator: randomUUID`.
-app.all("/mcp", async (c) => {
-  const token = extractBearer(c.req.header("authorization"));
-  const region = extractRegion(c.req.header("x-leadbay-region"));
-
-  const server = await buildServerForRequest(token, region);
+  const mcpServer = await buildServerForRequest(token, region);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
-    // Return JSON responses instead of SSE so non-SSE clients (e.g. Codex) work.
     enableJsonResponse: true,
   });
 
-  // Tear down server + transport when the response closes. Without this the
-  // LeadbayClient would linger until GC.
-  c.req.raw.signal.addEventListener("abort", () => {
+  res.on("close", () => {
     transport.close().catch(() => {});
-    server.close().catch(() => {});
+    mcpServer.close().catch(() => {});
   });
 
   try {
-    await server.connect(transport);
+    await mcpServer.connect(transport);
 
-    // Hono's Node adapter exposes the underlying req/res via `c.env.incoming`
-    // and `c.env.outgoing` (see @hono/node-server). The MCP transport needs
-    // those raw Node objects.
-    const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
-    const parsedBody = c.req.header("content-type")?.includes("application/json")
-      ? await c.req.json().catch(() => undefined)
-      : undefined;
-
-    // Some clients (e.g. Codex v0.133) send only "application/json" but the MCP
-    // spec requires both "application/json" and "text/event-stream". The SDK reads
-    // rawHeaders (not headers), so we must patch both arrays.
-    const accept = env.incoming.headers["accept"] ?? "";
+    // Patch Accept header for clients that omit text/event-stream
+    const accept = (req.headers["accept"] as string) ?? "";
     if (!accept.includes("text/event-stream")) {
       const patched = accept ? `${accept}, text/event-stream` : "application/json, text/event-stream";
-      env.incoming.headers["accept"] = patched;
-      const raw = env.incoming.rawHeaders;
-      const idx = raw.findIndex((v, i) => i % 2 === 0 && v.toLowerCase() === "accept");
-      if (idx >= 0) {
-        raw[idx + 1] = patched;
-      } else {
-        raw.push("accept", patched);
-      }
+      req.headers["accept"] = patched;
+      const raw = (req as any).rawHeaders as string[];
+      const idx = raw.findIndex((v: string, i: number) => i % 2 === 0 && v.toLowerCase() === "accept");
+      if (idx >= 0) raw[idx + 1] = patched;
+      else raw.push("accept", patched);
     }
 
-    await transport.handleRequest(env.incoming, env.outgoing, parsedBody);
-    // The transport has already written headers + body to env.outgoing.
-    // Tell Hono's Node adapter to skip its own write (otherwise it sets a
-    // wrong Content-Length that breaks strict HTTP clients like Codex/rmcp).
-    return new Response(null, { headers: { "x-hono-already-sent": "1" } });
-  } finally {
+    const body = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
+    await transport.handleRequest(req as unknown as IncomingMessage, res as unknown as ServerResponse, body);
+  } catch (err: any) {
+    if (!res.headersSent) {
+      res.status(500).json({ error: err?.message ?? "Internal server error" });
+    }
     transport.close().catch(() => {});
-    server.close().catch(() => {});
+    mcpServer.close().catch(() => {});
   }
 });
 
-// Legacy SSE transport. Two endpoints: GET /sse opens the stream, POST
-// /messages?sessionId=... feeds JSON-RPC messages in.
-app.get("/sse", async (c) => {
-  const token = extractBearer(c.req.header("authorization"));
-  const region = extractRegion(c.req.header("x-leadbay-region"));
+// ─── Legacy SSE transport ────────────────────────────────────────────────────
 
-  const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
-  const transport = new SSEServerTransport("/messages", env.outgoing);
-  const server = await buildServerForRequest(token, region);
-  await server.connect(transport);
+app.get("/sse", async (req: Request, res: Response) => {
+  const token = extractBearer(req);
+  const region = extractRegion(req);
+
+  const transport = new SSEServerTransport("/messages", res as unknown as ServerResponse);
+  const mcpServer = await buildServerForRequest(token, region);
+  await mcpServer.connect(transport);
 
   const sessionId = transport.sessionId;
-  sseSessions.set(sessionId, { transport, server, createdAt: Date.now() });
+  sseSessions.set(sessionId, { transport, server: mcpServer, createdAt: Date.now() });
   transport.onclose = () => {
     sseSessions.delete(sessionId);
-    server.close().catch(() => {});
+    mcpServer.close().catch(() => {});
   };
-
-  // Transport has written headers + endpoint event to env.outgoing and owns
-  // the stream until the client disconnects. Use the same sentinel as /mcp so
-  // Hono's Node adapter does not attempt a second header write.
-  return new Response(null, { headers: { "x-hono-already-sent": "1" } });
+  // Transport owns the response stream — do not call res.end() here.
 });
 
-app.post("/messages", async (c) => {
-  const sessionId = c.req.query("sessionId");
+app.post("/messages", rawBodyMiddleware, async (req: Request, res: Response) => {
+  const sessionId = req.query["sessionId"] as string | undefined;
   if (!sessionId) {
-    return c.json({ error: "missing sessionId" }, 400);
+    res.status(400).json({ error: "missing sessionId" });
+    return;
   }
   const session = sseSessions.get(sessionId);
   if (!session) {
-    return c.json({ error: "unknown sessionId" }, 404);
+    res.status(404).json({ error: "unknown sessionId" });
+    return;
   }
-  const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
-  const body = await c.req.json().catch(() => undefined);
-  await session.transport.handlePostMessage(env.incoming, env.outgoing, body);
-  // handlePostMessage has already written the response to env.outgoing.
-  return new Response(null, { headers: { "x-hono-already-sent": "1" } });
+  const body = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
+  await session.transport.handlePostMessage(
+    req as unknown as IncomingMessage,
+    res as unknown as ServerResponse,
+    body
+  );
 });
 
-// Stable boot log for Fly to surface in the dashboard.
+// ─── Boot ────────────────────────────────────────────────────────────────────
+
 const _boot = randomUUID();
-serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) => {
+app.listen(PORT, HOST, () => {
   process.stderr.write(
-    `leadbay-mcp-http ${VERSION} listening on http://${info.address}:${info.port} (boot=${_boot})\n`
+    `leadbay-mcp-http ${VERSION} listening on http://${HOST}:${PORT} (boot=${_boot})\n` +
+    `OAuth issuer: ${SERVER_URL}\n` +
+    `Proxying OAuth to: ${LEADBAY_OAUTH_BASE}\n`
   );
 });
