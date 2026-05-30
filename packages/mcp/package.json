@@ -42,8 +42,13 @@
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
     "@leadbay/core": "workspace:*",
-    "@leadbay/promptforge": "workspace:*",
+    "@leadbay/promptforge": "workspace:*"
+  },
+  "optionalDependencies": {
     "electron": "^42.3.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron", "esbuild"]
   },
   "engines": {
     "node": ">=22"
