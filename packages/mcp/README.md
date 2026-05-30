@@ -270,6 +270,22 @@ Leadbay connection OK.
   AI credits:    420 / 1000
 ```
 
+### ChatGPT Desktop / remote-MCP clients
+
+Leadbay runs a hosted MCP server that any remote-MCP client can connect to without a local install:
+
+```
+https://leadbay-mcp-prod.fly.dev/mcp
+```
+
+**ChatGPT Desktop**: open Settings → Apps → Add app → paste the URL above.
+
+The server authenticates each request from the `Authorization: Bearer <token>` header your client sends automatically once you sign in via ChatGPT's OAuth prompt. No token to copy-paste, no local Node install needed.
+
+**Updates are automatic** — the hosted server is always running the latest published release. You never need to update a config file or restart anything on your side.
+
+If your client requires a region header, add `X-Leadbay-Region: us` or `X-Leadbay-Region: fr` to match your Leadbay account's region.
+
 ## 4. Example prompts that work
 
 > *Find me 20 SaaS companies in Berlin that match my Ideal Buyer Profile.*
