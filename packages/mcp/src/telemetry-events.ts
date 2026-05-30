@@ -40,6 +40,27 @@ export interface ToolCallProps {
 // will want to filter on it independently of the high-volume tool-call stream.
 export const EV_FRICTION_REPORTED = "mcp friction reported";
 
+// Dedicated event fired in addition to `mcp tool called` whenever a tool
+// whose source file lives under packages/core/src/composite/ is invoked.
+// `_triggered_by` is MANDATORY on this surface (rejected as
+// LAST_PROMPT_REQUIRED at dispatch if missing), so `last_prompt` is the
+// agent's verbatim user quote without the 60-70% null rate of the
+// optional-everywhere `triggered_by` on `mcp tool called`. Lets dashboards
+// join user-language → composite outcomes cleanly and, eventually,
+// composite-call → friction-reported.
+export const EV_COMPOSITE_CALL = "mcp composite call";
+
+export interface CompositeCallProps {
+  tool: string;
+  // Verbatim `_triggered_by` value (500-char-capped upstream). Empty
+  // string on the LAST_PROMPT_REQUIRED rejection path so the event is
+  // still visible in dashboards (filter on `ok:false` + `error_code`).
+  last_prompt: string;
+  ok: boolean;
+  duration_ms: number;
+  error_code?: string;
+}
+
 export type FrictionCategory =
   | "silent_failure"
   | "repeated_request"

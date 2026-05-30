@@ -160,6 +160,7 @@ describe("schema strictness — additionalProperties:false (P1.2)", () => {
             ref: "test",
             sneaky: "should-be-rejected",
           } as any,
+          _triggered_by: "test trigger",
         },
       });
     } catch (err: any) {

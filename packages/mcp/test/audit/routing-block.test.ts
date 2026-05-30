@@ -45,6 +45,11 @@ const TOOLS_WITH_ROUTING = new Set([
   "leadbay_research_lead_by_id",
   "leadbay_research_lead_by_name_fuzzy",
   "leadbay_tour_plan",
+  // leadbay_seed_candidates is INTERNAL scaffolding for leadbay_extend_lens —
+  // users never invoke it directly. Routing frontmatter still exists to help
+  // the agent know when NOT to call it, but the ≥2-positive-example audit
+  // doesn't apply because there is no user-facing trigger phrase.
+  "leadbay_extend_lens",
 ]);
 
 const ALL_TOOLS: Tool[] = [

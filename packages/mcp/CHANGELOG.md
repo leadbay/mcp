@@ -1,5 +1,54 @@
 # Changelog — @leadbay/mcp
 
+## 0.17.0 — 2026-05-29
+
+- **Lens extension** (product#3654): two new composites that expose the
+  backend's agent-driven on-demand lens fill (backend#1844 / api-specs#205).
+  - `leadbay_extend_lens` (write, gated by `LEADBAY_MCP_WRITE=1`) —
+    `POST /lenses/{id}/extra_refill`. Translates the backend's 429
+    `quota_exceeded` / 409 `refresh_in_progress` / 400 `no_valid_seeds`
+    errors into routable `status` envelopes. On 429 the response carries
+    `quota.used_today` + `quota.resets_at` and a message instructing the
+    agent to surface three options to the user (smaller `extra_count` /
+    wait for reset / upgrade plan).
+  - `leadbay_seed_candidates` (read) — internal scaffolding for the
+    extend flow. Returns ranked candidate leads with rich signal
+    (description, sector, tags, qq_answers, engagement). The agent picks
+    3–5 seeds silently and chains to `extend_lens`; the user never
+    reviews the seed list.
+- New prompt `leadbay_extend_my_lens` orchestrates the four-phase flow:
+  quota pre-check → silent seed pick → fire extend → react to status.
+- `leadbay_account_status` description now mentions the per-org daily
+  `LENS_EXTRA_REFILL` quota — pre-check it before calling
+  `leadbay_extend_lens`.
+
+## 0.16.2 — 2026-05-29
+
+- **Tighter `_triggered_by` description on composite tools.** Live test of
+  0.16.1 showed Claude shipping the literal string `"user"` as
+  `_triggered_by` — technically non-empty, but useless for analytics. The
+  description now explicitly forbids single-word labels (`user`, `agent`,
+  `leads`, `request`, etc.), gives a GOOD/BAD example pair, and tells the
+  agent to pass `<no user message>` when it's acting without a fresh user
+  turn (memory recall, scheduled run, self-initiated retry) so the
+  agent-initiated path is auditable instead of falsely attributed.
+
+## 0.16.1 — 2026-05-29
+
+- **`_triggered_by` is now MANDATORY on every composite-file tool** (the 28
+  tools whose source lives under `packages/core/src/composite/`). Calls
+  without it are rejected pre-dispatch as `LAST_PROMPT_REQUIRED`. Granular
+  and agent-memory tools keep `_triggered_by` optional. Stronger
+  description text on the schema property tells the agent to quote
+  verbatim and strip secrets (`[REDACTED]`).
+- **New PostHog event `mcp composite call`** with `last_prompt` attached
+  (the trimmed verbatim user quote). Fires on every composite-tool
+  invocation, success or error. Lives alongside the existing
+  `mcp tool called` event — no regression on the broader pipeline. Lets
+  dashboards filter user-language against composite outcomes without
+  the 60-70% null rate the optional-everywhere `triggered_by` field
+  carries on `mcp tool called`.
+
 ## 0.16.0 — 2026-05-29
 
 - **Guided installer wizard**: Electron GUI (browser fallback) for install and uninstall. Detects Claude Code, Claude Desktop, Cursor, Codex, and ChatGPT Desktop automatically. OAuth sign-in built in — no token copy-paste.
@@ -10,9 +59,6 @@
 - **SSE double-write fix**: `/sse` and `/messages` now return the `x-hono-already-sent` sentinel so Hono's Node adapter does not attempt a second header write after `SSEServerTransport` has already written headers.
 - **Browser fallback uninstall fix**: `runBrowserFallback()` now opens the uninstaller GUI when `--uninstall` is passed, matching the Electron main process.
 - **`@latest` pin**: all generated client configs now use `npx -y @leadbay/mcp@latest` instead of a hardcoded minor version.
-
-## 0.16.0 — 2026-05-28
-
 - **OAuth login** (`leadbay-mcp login --oauth`): browser-based Authorization
   Code + PKCE flow with Dynamic Client Registration (RFC 7591). No password
   ever touches the CLI. The resulting `o.<token>` is interchangeable with the

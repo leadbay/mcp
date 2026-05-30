@@ -164,6 +164,7 @@ describe("elicitation/create round-trip (P2 elicitInput)", () => {
         prompt: "focus on hospitals",
         clarification_poll_attempts: 1,
         clarification_poll_gap_ms: 5,
+        _triggered_by: "test trigger",
       },
     });
     expect((result as any).isError).not.toBe(true);

@@ -75,7 +75,7 @@ describe("audit: agent memory protocol", () => {
     const { mcpClient } = await connect();
     const result = await mcpClient.callTool({
       name: "leadbay_account_status",
-      arguments: {},
+      arguments: { _triggered_by: "test trigger" },
     });
     const parsed = JSON.parse((result.content as any[])[0].text);
     expect(parsed._meta.agent_memory).toMatchObject({

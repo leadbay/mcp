@@ -118,7 +118,7 @@ describe("outputSchema on top 5 composites (P2: structured output)", () => {
     const { mcpClient } = await connect();
     const result = await mcpClient.callTool({
       name: "leadbay_account_status",
-      arguments: {},
+      arguments: { _triggered_by: "test trigger" },
     });
     expect((result as any).isError).not.toBe(true);
     expect((result as any).content).toBeDefined();
@@ -169,6 +169,7 @@ describe("outputSchema on top 5 composites (P2: structured output)", () => {
       arguments: {
         domains: [{ domain: "apple.com" }],
         wait_for_completion: false,
+        _triggered_by: "test trigger",
       },
     });
     expect((result as any).isError).not.toBe(true);
@@ -195,6 +196,7 @@ describe("outputSchema on top 5 composites (P2: structured output)", () => {
         leadIds: ["lead-1"],
         lensId: 42,
         wait_for_completion: false,
+        _triggered_by: "test trigger",
       },
     });
     expect((result as any).isError).not.toBe(true);

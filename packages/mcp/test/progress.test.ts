@@ -145,7 +145,7 @@ describe("notifications/progress (P2 progress streaming)", () => {
     await mcpClient.callTool(
       {
         name: "leadbay_enrich_titles",
-        arguments: { titles: ["CTO"], leadIds: ["lead-1"] },
+        arguments: { titles: ["CTO"], leadIds: ["lead-1"], _triggered_by: "test trigger" },
         _meta: { progressToken: "et-1" },
       },
       undefined,

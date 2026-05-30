@@ -196,7 +196,7 @@ describe("tools/call — composite round-trip", () => {
     const { mcpClient } = await connect();
     const result = await mcpClient.callTool({
       name: "leadbay_pull_leads",
-      arguments: { count: 10 },
+      arguments: { count: 10, _triggered_by: "test trigger" },
     });
     expect(result.isError).toBeFalsy();
     const content = result.content as any[];
@@ -240,7 +240,7 @@ describe("tools/call — error envelopes", () => {
     const { mcpClient } = await connect();
     const result = await mcpClient.callTool({
       name: "leadbay_pull_leads",
-      arguments: {},
+      arguments: { _triggered_by: "test trigger" },
     });
     expect(result.isError).toBe(true);
     const content = result.content as any[];

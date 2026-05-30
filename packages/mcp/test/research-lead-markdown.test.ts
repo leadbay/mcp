@@ -104,7 +104,7 @@ describe("research_lead response_format='markdown' (iter25)", () => {
     const { mcpClient } = await connect();
     const result = await mcpClient.callTool({
       name: "leadbay_research_lead_by_id",
-      arguments: { leadId: "lead-1", lensId: 42 },
+      arguments: { leadId: "lead-1", lensId: 42, _triggered_by: "test trigger" },
     });
     expect((result as any).isError).not.toBe(true);
     const text = (result as any).content[0].text;
@@ -121,7 +121,7 @@ describe("research_lead response_format='markdown' (iter25)", () => {
     const { mcpClient } = await connect();
     const result = await mcpClient.callTool({
       name: "leadbay_research_lead_by_id",
-      arguments: { leadId: "lead-1", lensId: 42, response_format: "markdown" },
+      arguments: { leadId: "lead-1", lensId: 42, response_format: "markdown", _triggered_by: "test trigger" },
     });
     expect((result as any).isError).not.toBe(true);
     const text = (result as any).content[0].text;
@@ -140,7 +140,7 @@ describe("research_lead response_format='markdown' (iter25)", () => {
     const { mcpClient } = await connect();
     const result = await mcpClient.callTool({
       name: "leadbay_research_lead_by_id",
-      arguments: { leadId: "lead-1", lensId: 42, response_format: "markdown" },
+      arguments: { leadId: "lead-1", lensId: 42, response_format: "markdown", _triggered_by: "test trigger" },
     });
     expect((result as any).structuredContent).toBeDefined();
     const sc = (result as any).structuredContent as any;
@@ -153,12 +153,12 @@ describe("research_lead response_format='markdown' (iter25)", () => {
     const { mcpClient } = await connect();
     const r1 = await mcpClient.callTool({
       name: "leadbay_research_lead_by_id",
-      arguments: { leadId: "lead-1", lensId: 42 },
+      arguments: { leadId: "lead-1", lensId: 42, _triggered_by: "test trigger" },
     });
     HAPPY_PATH_MOCKS();
     const r2 = await mcpClient.callTool({
       name: "leadbay_research_lead_by_id",
-      arguments: { leadId: "lead-1", lensId: 42, response_format: "markdown" },
+      arguments: { leadId: "lead-1", lensId: 42, response_format: "markdown", _triggered_by: "test trigger" },
     });
     const jsonLen = (r1 as any).content[0].text.length;
     const mdLen = (r2 as any).content[0].text.length;

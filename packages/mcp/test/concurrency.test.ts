@@ -74,7 +74,7 @@ describe("MCP server — concurrency", () => {
       promises.push(
         mcpClient.callTool({
           name: "leadbay_pull_leads",
-          arguments: { count: 5 },
+          arguments: { count: 5, _triggered_by: "test trigger" },
         })
       );
     }

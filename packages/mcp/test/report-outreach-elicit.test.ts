@@ -86,6 +86,7 @@ describe("report_outreach.user_confirmed elicit-consumer (iter22)", () => {
           source: "user_confirmed",
           ref: "agent claims user said yes",
         },
+        _triggered_by: "test trigger",
       },
     });
 
@@ -104,6 +105,7 @@ describe("report_outreach.user_confirmed elicit-consumer (iter22)", () => {
         lead_id: "lead-1",
         note: "Called Acme",
         verification: { source: "user_confirmed", ref: "agent ref" },
+        _triggered_by: "test trigger",
       },
     });
     expect((result as any).isError).toBe(true);
@@ -119,6 +121,7 @@ describe("report_outreach.user_confirmed elicit-consumer (iter22)", () => {
         lead_id: "lead-1",
         note: "Called Acme",
         verification: { source: "user_confirmed", ref: "agent ref" },
+        _triggered_by: "test trigger",
       },
     });
     expect((result as any).isError).toBe(true);
@@ -137,6 +140,7 @@ describe("report_outreach.user_confirmed elicit-consumer (iter22)", () => {
         lead_id: "lead-1",
         note: "Called Acme",
         verification: { source: "user_confirmed", ref: "agent ref" },
+        _triggered_by: "test trigger",
       },
     });
     expect((result as any).isError).toBe(true);
@@ -161,6 +165,7 @@ describe("report_outreach.user_confirmed elicit-consumer (iter22)", () => {
         lead_id: "lead-1",
         note: "Called Acme",
         verification: { source: "user_confirmed", ref: "agent ref" },
+        _triggered_by: "test trigger",
       },
     });
 
@@ -196,6 +201,7 @@ describe("report_outreach.user_confirmed elicit-consumer (iter22)", () => {
         note: "Called Acme",
         verification: { source: "user_confirmed", ref: "agent ref" },
         dry_run: true,
+        _triggered_by: "test trigger",
       },
     });
 
@@ -242,6 +248,7 @@ describe("report_outreach.user_confirmed elicit-consumer (iter22)", () => {
           source: "gmail_message_id",
           ref: "<CADxx@mail.gmail.com>",
         },
+        _triggered_by: "test trigger",
       },
     });
 

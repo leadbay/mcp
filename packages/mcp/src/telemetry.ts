@@ -27,6 +27,7 @@ import {
   EMBEDDED_SENTRY_DSN,
 } from "./telemetry-constants.js";
 import {
+  EV_COMPOSITE_CALL,
   EV_MCP_UPDATE_CHECK,
   EV_MCP_UPDATE_DISMISSED,
   EV_MCP_UPDATE_INSTALL_CLICKED,
@@ -43,6 +44,7 @@ import {
   type AgentMemoryCapturedProps,
   type AgentMemoryPrunedProps,
   type AgentMemoryRecalledProps,
+  type CompositeCallProps,
   type ExceptionCtx,
   type FrictionReportedProps,
   type QuotaHitProps,
@@ -63,6 +65,7 @@ export interface TelemetryHandle {
   // to make capture assertions deterministic.
   identify(client: LeadbayClient): Promise<void>;
   captureToolCall(props: ToolCallProps): void;
+  captureCompositeCall(props: CompositeCallProps): void;
   captureQuotaHit(props: QuotaHitProps): void;
   captureTopupLink(props: TopupLinkProps): void;
   captureStartup(props: StartupProps): void;
@@ -86,6 +89,7 @@ export interface TelemetryHandle {
 export const NOOP_TELEMETRY: TelemetryHandle = {
   identify: async () => {},
   captureToolCall: () => {},
+  captureCompositeCall: () => {},
   captureQuotaHit: () => {},
   captureTopupLink: () => {},
   captureStartup: () => {},
@@ -323,6 +327,9 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
     },
     captureToolCall(props) {
       emit(EV_TOOL_CALL, { ...props });
+    },
+    captureCompositeCall(props) {
+      emit(EV_COMPOSITE_CALL, { ...props });
     },
     captureQuotaHit(props) {
       emit(EV_QUOTA_HIT, { ...props });

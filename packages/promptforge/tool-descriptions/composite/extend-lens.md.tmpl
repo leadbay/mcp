@@ -1,0 +1,72 @@
+---
+name: leadbay_extend_lens
+kind: tool-description
+short_description: |
+  Queue an additive extra-refill on a lens (more leads, same criteria),
+  for users whose daily appetite exceeds the standard batch. The agent
+  picks 3–5 seeds silently via `leadbay_seed_candidates` before calling
+  this; the user never reviews the seed list. Subject to the per-org
+  daily `LENS_EXTRA_REFILL` quota. On 429, the response is a translated
+  envelope with three options (smaller / wait for reset / upgrade).
+routing:
+  triggers:
+    - "I want more leads on this lens"
+    - "extend the lens"
+    - "I need a bigger batch today"
+    - "fill more leads, I've burned through these"
+    - "more leads like the ones in this lens"
+  anti_triggers:
+    - phrase: "show me today's leads"
+      route_to: leadbay_pull_leads
+    - phrase: "narrow the audience"
+      route_to: leadbay_adjust_audience
+    - phrase: "stop showing me X"
+      route_to: leadbay_refine_prompt
+  prefer_when: "user has bigger appetite than the daily lens fill delivers — additive refill on same criteria"
+  examples:
+    positive:
+      - "Give me more leads on this lens — I want a bigger batch."
+      - "Extend the lens, I've burned through what I had."
+      - "Add 30 more leads like the ones in this batch."
+    negative:
+      - "Show me today's leads."
+      - "Narrow the audience to fintech only."
+      - "Which leads should I follow up with this week?"
+rendering_hint: |
+  `queued` → ✅ "Queued <N> extra leads on lens <id>. Pull in ~30s." Do NOT
+  list `accepted_seeds`; they're internal.
+  `quota_exceeded` → render three options via `ask_user_input_v0` (smaller
+  count / wait until reset / upgrade).
+  `refresh_in_progress` → "lens is filling, retry in a minute".
+  `no_valid_seeds` → silently re-call `leadbay_seed_candidates`, retry once.
+next_steps: extend-lens
+annotations:
+  readOnlyHint: false
+  destructiveHint: false
+  idempotentHint: false
+  openWorldHint: true
+---
+Queue an additive extra-refill on a lens — more leads on the same criteria, without changing the audience. For users whose daily appetite exceeds what the standard fill delivers. Wraps `POST /lenses/{lensId}/extra_refill`. The fill happens asynchronously; new leads stream in over ~30s, observable through `leadbay_pull_leads`.
+
+**Mandatory chain — agent picks seeds silently.** Unless the user has explicitly said "no seeds, just fill it", the agent MUST call `leadbay_seed_candidates` FIRST, pick 3–5 seed leads using the heuristics in that tool's description, and pass them here as `seed_lead_ids`. The seed list is **never shown to the user** — the user asked for more leads, not a candidate review meeting. The canonical `leadbay_extend_my_lens` prompt drives this chain.
+
+**Seeds are optional at the wire level** — omit or empty array → backend falls back to default centroid strategies (same behaviour as a normal fill). The response's `accepted_seeds` echoes the subset that passed validation. Prefer the seeded path because it gives the recommender a signal beyond the lens centroid (which it already biases on).
+
+**Quota gate.** Each call is charged against the per-org daily `LENS_EXTRA_REFILL` quota at pre-flight time (FREEMIUM=0 / TIER1=150 / TIER2=1000). The **full requested batch** must fit — there is no partial fulfillment. **Pre-check via `leadbay_account_status`**: look at `quota.org.resources[]` for the `LENS_EXTRA_REFILL` entry to see how much was used today and when it resets.
+
+**Status envelope (translated from raw API errors so the agent routes on `status`).**
+
+- `status: "queued"` — fill is queued. `accepted_seeds` lists IDs that passed validation. NEXT STEP: call `leadbay_pull_leads` in ~30s.
+- `status: "quota_exceeded"` — daily LENS_EXTRA_REFILL hit. Response carries `quota: {used_today, resets_at}` + a `message` to surface. **Render three options via `ask_user_input_v0`**: (1) smaller `extra_count`, (2) wait until `resets_at`, (3) upgrade plan (TIER1=150, TIER2=1000). Do NOT silently retry.
+- `status: "refresh_in_progress"` — a refresh or extra-refill is already running. Tell the user to wait and call `leadbay_pull_leads` in ~30s.
+- `status: "no_valid_seeds"` — seeds went stale. Silently re-call `leadbay_seed_candidates` and retry once; only surface to the user if the second attempt also fails.
+
+{{include:headers/tool-when-to-use}} when the user has a bigger appetite than the daily lens fill delivers — they want MORE of the same kind of leads, on demand. Canonical phrasings: "I want more leads on this lens", "extend the lens", "give me a bigger batch today". The `leadbay_extend_my_lens` prompt is the user-facing entry point that orchestrates the whole flow.
+
+{{include:headers/tool-when-not-to-use}} for daily inbox pulls (`leadbay_pull_leads`). Not for audience criteria changes (`leadbay_adjust_audience` / `leadbay_refine_prompt`). Never call this without seeds unless the user explicitly opted out — the seeded path produces materially better fill.
+
+{{include:headers/verification-required-if-write}}
+
+---
+
+{{include:next-steps/extend-lens}}
