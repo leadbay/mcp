@@ -11,7 +11,9 @@ export async function installInJsonConfig(
   token: string,
   region: "us" | "fr",
   includeWrite: boolean,
-  telemetryEnabled: boolean
+  telemetryEnabled: boolean,
+  /** Absolute path to a local dist/bin.js for dev testing. Uses npx when unset. */
+  localBinPath?: string
 ): Promise<{ ok: boolean; message: string }> {
   try {
     const { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } = await import("node:fs");
@@ -42,11 +44,9 @@ export async function installInJsonConfig(
     // Default in 0.3.0 is writes-on; only set the env when explicitly disabled.
     if (!includeWrite) env.LEADBAY_MCP_WRITE = "0";
 
-    parsed.mcpServers.leadbay = {
-      command: "npx",
-      args: ["-y", "@leadbay/mcp@latest"],
-      env,
-    };
+    parsed.mcpServers.leadbay = localBinPath
+      ? { command: "node", args: [localBinPath], env }
+      : { command: "npx", args: ["-y", "@leadbay/mcp@latest"], env };
 
     // Atomic-ish write: write to .tmp then rename, restore mode if pre-existed.
     const tmp = configPath + ".tmp";

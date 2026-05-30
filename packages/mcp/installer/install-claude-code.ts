@@ -4,7 +4,9 @@ export function buildClaudeCodeAddArgs(
   token: string,
   region: "us" | "fr",
   includeWrite: boolean,
-  telemetryEnabled: boolean
+  telemetryEnabled: boolean,
+  /** Absolute path to a local dist/bin.js for dev testing. Uses npx when unset. */
+  localBinPath?: string
 ): string[] {
   const args = [
     "mcp",
@@ -20,7 +22,11 @@ export function buildClaudeCodeAddArgs(
     `LEADBAY_TELEMETRY_ENABLED=${telemetryEnabled ? "true" : "false"}`,
   ];
   if (!includeWrite) args.push("--env", `LEADBAY_MCP_WRITE=0`);
-  args.push("--", "npx", "-y", "@leadbay/mcp@latest");
+  if (localBinPath) {
+    args.push("--", "node", localBinPath);
+  } else {
+    args.push("--", "npx", "-y", "@leadbay/mcp@latest");
+  }
   return args;
 }
 

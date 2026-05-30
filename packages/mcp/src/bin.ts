@@ -986,13 +986,26 @@ export async function runInstall(args: string[]): Promise<number> {
   const useOAuth = hasFlag(args, "oauth");
   const useStaging = hasFlag(args, "staging");
   const email = parseFlag(args, "email");
+  const localFlag = parseFlag(args, "local");
+  // Resolve --local to an absolute path to the local dist/bin.js.
+  // Accepts --local (auto-resolves from __dirname) or --local=/abs/path/to/bin.js.
+  let localBinPath: string | undefined;
+  if (localFlag !== undefined) {
+    const { resolve } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const selfDir = typeof __dirname !== "undefined"
+      ? __dirname
+      : resolve(fileURLToPath(import.meta.url), "..");
+    localBinPath = localFlag || resolve(selfDir, "bin.js");
+    process.stderr.write(`[leadbay-mcp] --local: using local build at ${localBinPath}\n`);
+  }
   if (!email && !useOAuth) {
     process.stderr.write(
       "Usage: leadbay-mcp install --oauth [--region us|fr]\n" +
         "       leadbay-mcp install --email you@example.com [--region us|fr]\n" +
         "                          [--allow-region-fallback] [--no-write] [--no-telemetry]\n" +
         "                          [--target claude-code,claude-desktop,cursor,codex]\n" +
-        "                          [--yes] [--force-legacy]\n" +
+        "                          [--yes] [--force-legacy] [--local[=path/to/bin.js]]\n" +
         "  Authenticates with Leadbay and registers the MCP server with your installed clients (at user scope).\n" +
         "  --oauth             Use browser OAuth instead of email/password.\n" +
         "  --staging           Point OAuth at staging Leadbay endpoints.\n" +
@@ -1004,6 +1017,9 @@ export async function runInstall(args: string[]): Promise<number> {
         "                      Defaults to ON: helps Leadbay improve the MCP. Events are\n" +
         "                      tied to your Leadbay email; tool args, response bodies,\n" +
         "                      and lead PII are NEVER captured.\n" +
+        "  --local[=PATH]      Install from local build instead of npx @leadbay/mcp@latest.\n" +
+        "                      PATH defaults to the dist/bin.js next to the current script.\n" +
+        "                      Used for development: test your local changes without publishing.\n" +
         "  --include-write     (deprecated since 0.3.0; now a no-op — writes are on by default).\n" +
         "  --yes               Don't ask before installing into each detected client.\n" +
         "  --force-legacy      Deprecated compatibility flag; install updates detected clients by default.\n"
@@ -1148,7 +1164,7 @@ export async function runInstall(args: string[]): Promise<number> {
     }
     let res: { ok: boolean; message: string };
     if (c.id === "claude-code") {
-      res = await installInClaudeCode(token, region, includeWrite, telemetryEnabled);
+      res = await installInClaudeCode(token, region, includeWrite, telemetryEnabled, localBinPath);
     } else if (c.id === "codex") {
       const configRes = await installInCodexConfig(c.configPath ?? c.detail, includeWrite, telemetryEnabled);
       if (!configRes.ok) {
@@ -1166,13 +1182,13 @@ export async function runInstall(args: string[]): Promise<number> {
       };
     } else if (c.id === "claude-desktop" && c.mode?.dxt && c.supportDir) {
       const dxtResult = await removeDxtExtension(c.supportDir);
-      const jsonResult = await installInJsonConfig(c.configPath!, token, region, includeWrite, telemetryEnabled);
+      const jsonResult = await installInJsonConfig(c.configPath!, token, region, includeWrite, telemetryEnabled, localBinPath);
       res = jsonResult.ok
         ? { ok: true, message: dxtResult.removed ? `DXT extension removed; ${jsonResult.message}` : jsonResult.message }
         : jsonResult;
     } else {
       // claude-desktop and cursor both use the same JSON shape.
-      res = await installInJsonConfig(c.configPath!, token, region, includeWrite, telemetryEnabled);
+      res = await installInJsonConfig(c.configPath!, token, region, includeWrite, telemetryEnabled, localBinPath);
     }
     results.push({ id: c.id, label: c.label, ...res });
   }
