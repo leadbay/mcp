@@ -10,14 +10,16 @@ async function main(): Promise<void> {
     : await startInstallerGui(opts);
 
   // Exit when install completes or when the user hits Ctrl+C.
+  let completed = false;
   await Promise.race([
-    handle.done,
+    handle.done.then(() => { completed = true; }),
     new Promise<void>((resolve) => {
       process.once("SIGINT", () => resolve());
       process.once("SIGTERM", () => resolve());
     }),
   ]);
   await handle.close().catch(() => undefined);
+  process.stderr.write(completed ? "\nInstallation complete. Exiting.\n" : "\nExiting.\n");
 }
 
 const isEntrypoint = (() => {
