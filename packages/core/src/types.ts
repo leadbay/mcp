@@ -355,7 +355,9 @@ export interface FilterPayload {
 
 export interface SectorPayload {
   id: string;
-  name: string;
+  // The backend can (and does) return entries with a null/missing name — the
+  // taxonomy is not guaranteed clean. Typed honestly so callers must guard.
+  name?: string | null;
   // The /sectors/all endpoint may also surface aliases / parent ids — kept
   // permissive.
   [k: string]: unknown;

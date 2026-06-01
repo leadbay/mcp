@@ -25,7 +25,13 @@ interface SectorAmbiguity {
   matches: Array<{ id: string; name: string; score: number }>;
 }
 
-function tokens(s: string): string[] {
+function tokens(s: string | null | undefined): string[] {
+  // Guard: the sector taxonomy (and, defensively, the user's input array) can
+  // carry null/undefined names. Without this, tokens(s.name) throws
+  // "Cannot read properties of undefined (reading 'toLowerCase')" and the whole
+  // resolveSectors → tool call dies while scanning the taxonomy — regardless of
+  // what the user actually asked for.
+  if (!s) return [];
   return s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 }
 
@@ -41,7 +47,7 @@ function bestMatches(
       let overlap = 0;
       for (const t of want) if (have.has(t)) overlap += 1;
       const score = overlap / Math.max(want.size, 1);
-      return { id: s.id, name: s.name, score };
+      return { id: s.id, name: s.name ?? "", score };
     })
     .filter((m) => m.score > 0)
     .sort((a, b) => b.score - a.score);
@@ -50,7 +56,8 @@ function bestMatches(
 
 async function resolveSectors(
   client: LeadbayClient,
-  texts: string[]
+  texts: string[],
+  ctx?: ToolContext
 ): Promise<{ resolved: string[]; ambiguities: SectorAmbiguity[] }> {
   const looksLikeId = (s: string) => /^\d+$/.test(s);
   const direct = texts.filter(looksLikeId);
@@ -63,6 +70,16 @@ async function resolveSectors(
     "GET",
     `/sectors/all?lang=${encodeURIComponent(lang)}&includeInvisible=false`
   );
+
+  // Surface bad backend data without changing behavior: the guard in tokens()
+  // already makes null-name entries harmless, but a non-zero count here tells
+  // us the taxonomy itself is dirty.
+  const nullNames = taxonomy.filter((s) => !s.name).length;
+  if (nullNames > 0) {
+    ctx?.logger?.warn?.(
+      `adjust_audience: /sectors/all returned ${nullNames}/${taxonomy.length} sector(s) with a null/missing name`
+    );
+  }
 
   const resolved = [...direct];
   const ambiguities: SectorAmbiguity[] = [];
@@ -245,19 +262,35 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
     ];
     const excludeTexts = params.exclude_sectors ?? [];
 
-    const includeRes = await resolveSectors(client, includeTexts);
-    const excludeRes = await resolveSectors(client, excludeTexts);
+    const includeRes = await resolveSectors(client, includeTexts, ctx);
+    const excludeRes = await resolveSectors(client, excludeTexts, ctx);
     const ambiguities = [
       ...includeRes.ambiguities,
       ...excludeRes.ambiguities,
     ];
 
     if (ambiguities.length > 0) {
+      // Distinguish the two unresolved cases so the agent gets an actionable
+      // message: no-match (matches: []) vs genuine multi-match ambiguity.
+      const noMatch = ambiguities.filter((a) => a.matches.length === 0);
+      const multi = ambiguities.filter((a) => a.matches.length > 0);
+      const parts: string[] = [];
+      if (noMatch.length > 0) {
+        const names = noMatch.map((a) => `"${a.sector_text}"`).join(", ");
+        parts.push(
+          `Couldn't find a sector matching ${names}. Ask the user to rephrase or pick a known sector, then re-call with sector_ids=...`
+        );
+      }
+      if (multi.length > 0) {
+        const names = multi.map((a) => `"${a.sector_text}"`).join(", ");
+        parts.push(
+          `${names} matched multiple sectors. Pick from the matches and re-call with sector_ids=...`
+        );
+      }
       return {
         status: "ambiguous_sectors",
         sector_ambiguities: ambiguities,
-        message:
-          "One or more sector names matched multiple sectors. Pick from the matches and re-call with sector_ids=...",
+        message: parts.join(" "),
       };
     }
 
