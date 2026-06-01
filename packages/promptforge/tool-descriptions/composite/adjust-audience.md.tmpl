@@ -2,18 +2,50 @@
 name: leadbay_adjust_audience
 kind: tool-description
 short_description: |
-  Restrict (or expand) the lens audience by sector / size. Free-text sectors
+  Edit an EXISTING lens's audience by sector / size. Free-text sectors
   auto-resolve against the taxonomy; ambiguous matches are surfaced rather
-  than guessed. Filter MERGES with existing criteria.
+  than guessed. Filter MERGES with existing criteria. Pass `lensName` to edit
+  a lens by name; otherwise edits the active lens.
 annotations:
   readOnlyHint: false
   destructiveHint: true
   idempotentHint: true
   openWorldHint: true
+routing:
+  triggers:
+    - "narrow the audience to <sector>"
+    - "add <sector> to my <name> lens"
+    - "remove <sector> from this lens"
+    - "only show me companies of <size>"
+    - "stop including <sector>"
+    - "broaden this lens to also include <sector>"
+  anti_triggers:
+    - phrase: "create a new lens called X"
+      route_to: leadbay_new_lens
+    - phrase: "make a new audience for Y"
+      route_to: leadbay_new_lens
+    - phrase: "show me / list / switch my lenses"
+      route_to: leadbay_my_lenses
+    - phrase: "focus on a kind of company beyond sector/size (e.g. 'hospitals running their own IT')"
+      route_to: leadbay_refine_prompt
+  prefer_when: "user wants to change an EXISTING lens's sectors/sizes. If the user NAMES a lens ('my Joinery lens'), you MUST pass lensName with that name — do NOT edit the active lens. To create a brand-new lens use leadbay_new_lens instead."
+  examples:
+    positive:
+      - "Add fintech to my Joinery lens."
+      - "Narrow my audience to manufacturing companies, 50–500 people."
+      - "Stop including retail in this lens."
+    negative:
+      - "Create a lens called Joinery for fintech."
+      - "Show me my lenses."
+      - "Focus on hospitals that run their own IT."
+rendering_hint: |
+  On `applied`: confirm the lens edited (name) + the sectors/sizes added as
+  chips. On `ambiguous_sectors` / `ambiguous_lens` / `lens_not_found`: surface
+  the candidates and ask the user to pick, then re-call with the id/exact name.
 ---
 Restrict (or expand) the lens audience by sector / size. Free-text sectors are auto-resolved against the sector taxonomy; ambiguous matches are surfaced to the agent rather than guessed silently. Permission routing is hidden: the default lens auto-clones to a new user lens; an org-level lens defaults to a per-user draft (admins can override with `save_for_org:true`). Filter MERGES with existing criteria (unrelated criteria are not dropped).
 
-**Targeting a lens.** By default this edits the user's ACTIVE lens. To edit a DIFFERENT lens by name without switching to it, pass `lensName` (e.g. "add fintech to my Joinery lens" → `lensName:"Joinery"`). The name resolves against the user's lenses (case-insensitive, exact then unique-substring); it is edit-only and does NOT change which lens is active. An unmatched name returns `status:"lens_not_found"` with the lens list, and a name matching several returns `status:"ambiguous_lens"` with the candidates — surface them and re-call with the exact `lensName` or a `lensId`. Use `leadbay_my_lenses` if the user first wants to SEE or SWITCH lenses.
+**Targeting a lens — READ THIS.** By default this edits the user's ACTIVE lens. **If the user names a lens** ("add fintech to my **Joinery** lens", "in my Nordics lens, exclude retail"), you MUST pass `lensName` with that name (`lensName:"Joinery"`). Do NOT silently edit the active lens when a different one was named — that corrupts the wrong audience and is a top friction source. The name resolves against the user's lenses (case-insensitive, exact then unique-substring); it is edit-only and does NOT change which lens is active. An unmatched name returns `status:"lens_not_found"` with the lens list, and a name matching several returns `status:"ambiguous_lens"` with the candidates — surface them and re-call with the exact `lensName` or a `lensId`. Use `leadbay_my_lenses` if the user first wants to SEE or SWITCH lenses. To CREATE a brand-new lens, use `leadbay_new_lens` — not this tool.
 
 {{include:headers/tool-when-to-use}} when the user wants to see different kinds of leads (sector / size / etc.).
 

@@ -2,14 +2,41 @@
 name: leadbay_refine_prompt
 kind: tool-description
 short_description: |
-  Refine the kind of leads Leadbay surfaces, beyond firmographics. Sets
-  the org's user_prompt and may raise a clarification question the
-  composite polls for. Admin-only.
+  Refine the kind of leads Leadbay surfaces, beyond firmographics (qualitative
+  intent, not sector/size). Sets the org's user_prompt and may raise a
+  clarification question the composite polls for. Admin-only.
 annotations:
   readOnlyHint: false
   destructiveHint: true
   idempotentHint: false
   openWorldHint: true
+routing:
+  triggers:
+    - "focus on companies that <qualitative trait>"
+    - "I prefer leads that <behavior/characteristic>"
+    - "prioritize companies running their own IT"
+    - "deprioritize companies that just raised"
+  anti_triggers:
+    - phrase: "create a new lens / a lens specialized into <X>"
+      route_to: leadbay_new_lens
+    - phrase: "add/remove <sector> to/from my <name> lens"
+      route_to: leadbay_adjust_audience
+    - phrase: "narrow the audience to <sector> / <size>"
+      route_to: leadbay_adjust_audience
+    - phrase: "show me / list / switch my lenses"
+      route_to: leadbay_my_lenses
+  prefer_when: "ADMIN-ONLY. Qualitative refinement of the active lens that sector/size can't express. Creating/naming/listing/switching/sector-editing a lens routes elsewhere. Non-admin user → do NOT pick this."
+  examples:
+    positive:
+      - "Focus on hospitals that run their own IT in-house."
+      - "Prioritize companies that have recently expanded headcount."
+    negative:
+      - "Create a lens specialized in automobile."
+      - "Add fintech to my Joinery lens."
+      - "Show me my lenses."
+rendering_hint: |
+  On success: confirm the refinement applied to the active lens. If a
+  clarification was raised, surface its question (route via ask_user_input_v0).
 ---
 Refine the kind of leads Leadbay surfaces, beyond firmographics. Free-text instruction (e.g. "focus on hospitals running their own IT"). Sets the org's `user_prompt`; if the new prompt produces ambiguous criteria, Leadbay raises a clarification question, which this composite polls for and surfaces. Admin-only on the backend (will return 403 for non-admins).
 

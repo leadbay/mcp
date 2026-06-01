@@ -9,19 +9,23 @@ routing:
   triggers:
     - "create a lens"
     - "create a new lens called <name>"
+    - "create a lens specialized in/into <X>"
     - "make me a new audience for <X>"
     - "set up a lens for <sector>"
     - "new lens named <name>"
+    - "I want a lens just for <X>"
   anti_triggers:
-    - phrase: "narrow the audience"
+    - phrase: "narrow the audience / add or remove a sector on an EXISTING lens"
       route_to: leadbay_adjust_audience
     - phrase: "add <sector> to my <name> lens"
       route_to: leadbay_adjust_audience
-    - phrase: "show me my lenses"
+    - phrase: "focus on a qualitative trait beyond sector/size"
+      route_to: leadbay_refine_prompt
+    - phrase: "show me / list / switch my lenses"
       route_to: leadbay_my_lenses
     - phrase: "more leads on this lens"
       route_to: leadbay_extend_lens
-  prefer_when: "user wants a brand-new lens; to EDIT an existing one (by name) use leadbay_adjust_audience with lensName"
+  prefer_when: "user wants a brand-new lens (create/make/set up, often 'specialized in <X>'). Editing an existing lens → leadbay_adjust_audience (use lensName). Qualitative refinement → refine_prompt (admin-only)."
   examples:
     positive:
       - "Create a lens called Joinery for the fintech sector."

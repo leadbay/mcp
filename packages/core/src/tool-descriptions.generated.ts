@@ -107,9 +107,37 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_add_note
 
 // region: leadbay_adjust_audience
-export const leadbay_adjust_audience: string = `Restrict (or expand) the lens audience by sector / size. Free-text sectors are auto-resolved against the sector taxonomy; ambiguous matches are surfaced to the agent rather than guessed silently. Permission routing is hidden: the default lens auto-clones to a new user lens; an org-level lens defaults to a per-user draft (admins can override with \`save_for_org:true\`). Filter MERGES with existing criteria (unrelated criteria are not dropped).
+export const leadbay_adjust_audience: string = `## WHEN TO USE
 
-**Targeting a lens.** By default this edits the user's ACTIVE lens. To edit a DIFFERENT lens by name without switching to it, pass \`lensName\` (e.g. "add fintech to my Joinery lens" → \`lensName:"Joinery"\`). The name resolves against the user's lenses (case-insensitive, exact then unique-substring); it is edit-only and does NOT change which lens is active. An unmatched name returns \`status:"lens_not_found"\` with the lens list, and a name matching several returns \`status:"ambiguous_lens"\` with the candidates — surface them and re-call with the exact \`lensName\` or a \`lensId\`. Use \`leadbay_my_lenses\` if the user first wants to SEE or SWITCH lenses.
+Trigger phrases: "narrow the audience to <sector>", "add <sector> to my <name> lens", "remove <sector> from this lens", "only show me companies of <size>", "stop including <sector>", "broaden this lens to also include <sector>".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "create a new lens called X" → \`leadbay_new_lens\`; "make a new audience for Y" → \`leadbay_new_lens\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`; "focus on a kind of company beyond sector/size (e.g. 'hospitals running their own IT')" → \`leadbay_refine_prompt\`.
+
+Prefer when: user wants to change an EXISTING lens's sectors/sizes. If the user NAMES a lens ('my Joinery lens'), you MUST pass lensName with that name — do NOT edit the active lens. To create a brand-new lens use leadbay_new_lens instead.
+
+Examples that SHOULD invoke this tool:
+- "Add fintech to my Joinery lens."
+- "Narrow my audience to manufacturing companies, 50–500 people."
+- "Stop including retail in this lens."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Create a lens called Joinery for fintech."
+- "Show me my lenses."
+- "Focus on hospitals that run their own IT."
+
+## RENDER (quick)
+
+On \`applied\`: confirm the lens edited (name) + the sectors/sizes added as
+chips. On \`ambiguous_sectors\` / \`ambiguous_lens\` / \`lens_not_found\`: surface
+the candidates and ask the user to pick, then re-call with the id/exact name.
+
+---
+
+Restrict (or expand) the lens audience by sector / size. Free-text sectors are auto-resolved against the sector taxonomy; ambiguous matches are surfaced to the agent rather than guessed silently. Permission routing is hidden: the default lens auto-clones to a new user lens; an org-level lens defaults to a per-user draft (admins can override with \`save_for_org:true\`). Filter MERGES with existing criteria (unrelated criteria are not dropped).
+
+**Targeting a lens — READ THIS.** By default this edits the user's ACTIVE lens. **If the user names a lens** ("add fintech to my **Joinery** lens", "in my Nordics lens, exclude retail"), you MUST pass \`lensName\` with that name (\`lensName:"Joinery"\`). Do NOT silently edit the active lens when a different one was named — that corrupts the wrong audience and is a top friction source. The name resolves against the user's lenses (case-insensitive, exact then unique-substring); it is edit-only and does NOT change which lens is active. An unmatched name returns \`status:"lens_not_found"\` with the lens list, and a name matching several returns \`status:"ambiguous_lens"\` with the candidates — surface them and re-call with the exact \`lensName\` or a \`lensId\`. Use \`leadbay_my_lenses\` if the user first wants to SEE or SWITCH lenses. To CREATE a brand-new lens, use \`leadbay_new_lens\` — not this tool.
 
 WHEN TO USE: when the user wants to see different kinds of leads (sector / size / etc.).
 
@@ -1611,13 +1639,13 @@ invent a tool that doesn't exist.
 // region: leadbay_new_lens
 export const leadbay_new_lens: string = `## WHEN TO USE
 
-Trigger phrases: "create a lens", "create a new lens called <name>", "make me a new audience for <X>", "set up a lens for <sector>", "new lens named <name>".
+Trigger phrases: "create a lens", "create a new lens called <name>", "create a lens specialized in/into <X>", "make me a new audience for <X>", "set up a lens for <sector>", "new lens named <name>", "I want a lens just for <X>".
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "narrow the audience" → \`leadbay_adjust_audience\`; "add <sector> to my <name> lens" → \`leadbay_adjust_audience\`; "show me my lenses" → \`leadbay_my_lenses\`; "more leads on this lens" → \`leadbay_extend_lens\`.
+Do NOT use for: "narrow the audience / add or remove a sector on an EXISTING lens" → \`leadbay_adjust_audience\`; "add <sector> to my <name> lens" → \`leadbay_adjust_audience\`; "focus on a qualitative trait beyond sector/size" → \`leadbay_refine_prompt\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`; "more leads on this lens" → \`leadbay_extend_lens\`.
 
-Prefer when: user wants a brand-new lens; to EDIT an existing one (by name) use leadbay_adjust_audience with lensName
+Prefer when: user wants a brand-new lens (create/make/set up, often 'specialized in <X>'). Editing an existing lens → leadbay_adjust_audience (use lensName). Qualitative refinement → refine_prompt (admin-only).
 
 Examples that SHOULD invoke this tool:
 - "Create a lens called Joinery for the fintech sector."
@@ -2379,7 +2407,33 @@ WHEN NOT TO USE: when you already know the exact titles you want to enrich.
 // endregion: leadbay_recall_ordered_titles
 
 // region: leadbay_refine_prompt
-export const leadbay_refine_prompt: string = `Refine the kind of leads Leadbay surfaces, beyond firmographics. Free-text instruction (e.g. "focus on hospitals running their own IT"). Sets the org's \`user_prompt\`; if the new prompt produces ambiguous criteria, Leadbay raises a clarification question, which this composite polls for and surfaces. Admin-only on the backend (will return 403 for non-admins).
+export const leadbay_refine_prompt: string = `## WHEN TO USE
+
+Trigger phrases: "focus on companies that <qualitative trait>", "I prefer leads that <behavior/characteristic>", "prioritize companies running their own IT", "deprioritize companies that just raised".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "create a new lens / a lens specialized into <X>" → \`leadbay_new_lens\`; "add/remove <sector> to/from my <name> lens" → \`leadbay_adjust_audience\`; "narrow the audience to <sector> / <size>" → \`leadbay_adjust_audience\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`.
+
+Prefer when: ADMIN-ONLY. Qualitative refinement of the active lens that sector/size can't express. Creating/naming/listing/switching/sector-editing a lens routes elsewhere. Non-admin user → do NOT pick this.
+
+Examples that SHOULD invoke this tool:
+- "Focus on hospitals that run their own IT in-house."
+- "Prioritize companies that have recently expanded headcount."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Create a lens specialized in automobile."
+- "Add fintech to my Joinery lens."
+- "Show me my lenses."
+
+## RENDER (quick)
+
+On success: confirm the refinement applied to the active lens. If a
+clarification was raised, surface its question (route via ask_user_input_v0).
+
+---
+
+Refine the kind of leads Leadbay surfaces, beyond firmographics. Free-text instruction (e.g. "focus on hospitals running their own IT"). Sets the org's \`user_prompt\`; if the new prompt produces ambiguous criteria, Leadbay raises a clarification question, which this composite polls for and surfaces. Admin-only on the backend (will return 403 for non-admins).
 
 WHEN TO USE: when audience filters (leadbay_adjust_audience) aren't enough.
 
