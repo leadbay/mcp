@@ -66,7 +66,7 @@ async function clientsWithConfiguredStatus(): Promise<Array<DetectedClient & { c
     }))
   );
 }
-export type InstallerGuiHandle = { url: string; close: () => Promise<void> };
+export type InstallerGuiHandle = { url: string; close: () => Promise<void>; done: Promise<void> };
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   const raw = JSON.stringify(body);
@@ -224,7 +224,7 @@ export async function install(body: InstallRequest): Promise<{ ok: boolean; outp
   return { ok: results.some((result) => result.ok), output: sanitizeOutput(output), results };
 }
 
-async function streamInstall(url: URL, res: ServerResponse): Promise<void> {
+async function streamInstall(url: URL, res: ServerResponse, onDone?: () => void): Promise<void> {
   cleanupSessions();
   res.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
@@ -238,18 +238,13 @@ async function streamInstall(url: URL, res: ServerResponse): Promise<void> {
   const telemetryEnabled = url.searchParams.get("telemetry") !== "0";
   const emit = (level: LogLevel, message: string) => sendSse(res, { level, message: sanitizeOutput(message) });
 
-  if (!session) {
-    emit("error", "Login expired. Go back and sign in again.");
-    emit("done", "Install stopped.");
-    res.end();
-    return;
-  }
-  if (!clientIds.length) {
-    emit("error", "Select at least one agent.");
-    emit("done", "Install stopped.");
-    res.end();
-    return;
-  }
+  // abort: recoverable error — close the stream but leave the server running so the user can retry.
+  const abort = (msg: string) => { emit("done", msg); res.end(); };
+  // finish: successful completion — close stream and signal the process to exit.
+  const finish = (msg: string) => { emit("done", msg); res.end(); onDone?.(); };
+
+  if (!session) { emit("error", "Login expired. Go back and sign in again."); abort("Install stopped."); return; }
+  if (!clientIds.length) { emit("error", "Select at least one agent."); abort("Install stopped."); return; }
 
   emit("info", `Connected to ${session.accountLabel}.`);
   emit("info", `Write tools ${includeWrite ? "enabled" : "disabled"}; telemetry ${telemetryEnabled ? "enabled" : "disabled"}.`);
@@ -258,31 +253,25 @@ async function streamInstall(url: URL, res: ServerResponse): Promise<void> {
   const detected = await detectClients();
   const selected = detected.filter((client) => clientIds.includes(client.id));
   const selectedHasOnlyManualSetup = selected.length > 0 && selected.every(isManualSetupClient);
-  if (!selected.length) {
-    emit("error", "No selected agents were detected on this machine.");
-    emit("done", "Install stopped.");
-    res.end();
-    return;
-  }
+  if (!selected.length) { emit("error", "No selected agents were detected on this machine."); abort("Install stopped."); return; }
 
   let okCount = 0;
   for (const client of selected) {
     emit("active", isManualSetupClient(client) ? `Preparing ${client.label} manual setup...` : `Installing ${client.label}...`);
     const result = await installInto(client, session, includeWrite, telemetryEnabled);
-    if (result.ok) {
-      okCount += 1;
-      emit("success", `${result.label}: ${result.message}`);
-    } else {
-      emit("error", `${result.label}: ${result.message}`);
-    }
+    if (result.ok) { okCount += 1; emit("success", `${result.label}: ${result.message}`); }
+    else { emit("error", `${result.label}: ${result.message}`); }
   }
 
-  emit(okCount > 0 ? "success" : "error", selectedHasOnlyManualSetup ? "Manual ChatGPT setup instructions ready." : `${okCount}/${selected.length} agent(s) installed, updated, or prepared.`);
-  emit("done", selectedHasOnlyManualSetup ? "Follow the manual setup instructions shown above." : "Restart your MCP client(s) to pick up the new server.");
-  res.end();
+  const summary = selectedHasOnlyManualSetup ? "Manual ChatGPT setup instructions ready." : `${okCount}/${selected.length} agent(s) installed, updated, or prepared.`;
+  const closing = selectedHasOnlyManualSetup ? "Follow the manual setup instructions shown above." : "Restart your MCP client(s) to pick up the new server.";
+  emit(okCount > 0 ? "success" : "error", summary);
+  // Only exit the process when at least one install succeeded — all-failed is
+  // recoverable and the user should be able to retry in the same wizard.
+  if (okCount > 0) { finish(closing); } else { abort(closing); }
 }
 
-async function streamUninstall(url: URL, res: ServerResponse): Promise<void> {
+async function streamUninstall(url: URL, res: ServerResponse, onDone?: () => void): Promise<void> {
   res.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
     "cache-control": "no-cache, no-transform",
@@ -291,22 +280,14 @@ async function streamUninstall(url: URL, res: ServerResponse): Promise<void> {
 
   const clientIds = (url.searchParams.get("clients") ?? "").split(",").filter(Boolean);
   const emit = (level: LogLevel, message: string) => sendSse(res, { level, message });
+  const abort = (msg: string) => { emit("done", msg); res.end(); };
+  const finish = (msg: string) => { emit("done", msg); res.end(); onDone?.(); };
 
-  if (!clientIds.length) {
-    emit("error", "Select at least one agent.");
-    emit("done", "Uninstall stopped.");
-    res.end();
-    return;
-  }
+  if (!clientIds.length) { emit("error", "Select at least one agent."); abort("Uninstall stopped."); return; }
 
   const detected = await detectClients();
   const selected = detected.filter((c) => clientIds.includes(c.id));
-  if (!selected.length) {
-    emit("error", "No selected agents were detected on this machine.");
-    emit("done", "Uninstall stopped.");
-    res.end();
-    return;
-  }
+  if (!selected.length) { emit("error", "No selected agents were detected on this machine."); abort("Uninstall stopped."); return; }
 
   let okCount = 0;
   for (const client of selected) {
@@ -323,17 +304,12 @@ async function streamUninstall(url: URL, res: ServerResponse): Promise<void> {
     } else {
       res2 = await uninstallFromJsonConfig(client.configPath!);
     }
-    if (res2.ok) {
-      okCount += 1;
-      emit("success", `${client.label}: ${res2.message}`);
-    } else {
-      emit("error", `${client.label}: ${res2.message}`);
-    }
+    if (res2.ok) { okCount += 1; emit("success", `${client.label}: ${res2.message}`); }
+    else { emit("error", `${client.label}: ${res2.message}`); }
   }
 
   emit(okCount > 0 ? "success" : "error", `${okCount}/${selected.length} agent(s) removed.`);
-  emit("done", "Restart your MCP client(s) to complete the removal.");
-  res.end();
+  finish("Restart your MCP client(s) to complete the removal.");
 }
 
 function pageUninstallHtml(): string {
@@ -545,48 +521,35 @@ async function openBrowser(url: string): Promise<void> {
   process.stderr.write(`\n  Open this URL in your browser to continue:\n  ${url}\n\n`);
 }
 
-export async function startInstallerGui(options: InstallerGuiOptions = {}): Promise<InstallerGuiHandle> {
+function makeGuiServer(
+  options: InstallerGuiOptions,
+  pageContent: () => string,
+  extraRoutes: (req: import("node:http").IncomingMessage, res: ServerResponse, onDone: () => void) => Promise<boolean>,
+  logLabel: string
+): Promise<InstallerGuiHandle> {
   let expectedHost = `127.0.0.1:${(options.port ?? PORT) || 0}`;
+  let resolveDone!: () => void;
+  const done = new Promise<void>((r) => { resolveDone = r; });
+  // Give the browser 1.5 s to render the final message before we kill the server.
+  const onDone = () => setTimeout(() => { resolveDone(); }, 1500);
 
   const server = createServer(async (req, res) => {
-    if (!isAllowedOrigin(req, expectedHost)) {
-      sendJson(res, 403, { ok: false, error: "forbidden" });
-      return;
-    }
+    if (!isAllowedOrigin(req, expectedHost)) { sendJson(res, 403, { ok: false, error: "forbidden" }); return; }
     try {
       if (req.method === "GET" && req.url === "/") {
-        const raw = pageHtml();
+        const raw = pageContent();
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "content-length": Buffer.byteLength(raw) });
         res.end(raw);
         return;
       }
-      if (req.method === "GET" && req.url === "/api/status") {
-        sendJson(res, 200, {
-          os: formatInstallOsLabel(),
-          hostedMcpUrl: HOSTED_MCP_URL,
-          clients: await clientsWithConfiguredStatus(),
-        });
-        return;
-      }
-      if (req.method === "POST" && req.url === "/api/oauth-login") {
-        sendJson(res, 200, await loginWithOAuth());
-        return;
-      }
-      if (req.method === "POST" && req.url === "/api/install") {
-        sendJson(res, 200, await install((await readJson(req)) as InstallRequest));
-        return;
-      }
-      if (req.method === "GET" && req.url?.startsWith("/api/install-stream")) {
-        await streamInstall(new URL(req.url, "http://127.0.0.1"), res);
-        return;
-      }
+      if (await extraRoutes(req, res, onDone)) return;
       sendJson(res, 404, { ok: false, error: "not found" });
     } catch (err: any) {
       sendJson(res, 500, { ok: false, error: err?.message ?? String(err) });
     }
   });
 
-  return await new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(options.port ?? PORT, "127.0.0.1", async () => {
       server.off("error", reject);
@@ -594,89 +557,40 @@ export async function startInstallerGui(options: InstallerGuiOptions = {}): Prom
       const port = typeof address === "object" && address ? address.port : options.port ?? PORT;
       expectedHost = `127.0.0.1:${port}`;
       const url = `http://127.0.0.1:${port}/`;
-      process.stderr.write(`Leadbay MCP installer GUI: ${url}\n`);
+      process.stderr.write(`Leadbay MCP ${logLabel} GUI: ${url}\n`);
       if (options.openBrowser !== false) await openBrowser(url).catch(() => undefined);
-      resolve({ url, close: () => new Promise((closeResolve, closeReject) => server.close((err) => (err ? closeReject(err) : closeResolve()))) });
+      resolve({ url, done, close: () => new Promise((res, rej) => server.close((e) => e ? rej(e) : res())) });
     });
   });
 }
 
-export async function startUninstallerGui(options: InstallerGuiOptions = {}): Promise<InstallerGuiHandle> {
-  let expectedHost = `127.0.0.1:${(options.port ?? PORT) || 0}`;
-
-  const server = createServer(async (req, res) => {
-    if (!isAllowedOrigin(req, expectedHost)) {
-      sendJson(res, 403, { ok: false, error: "forbidden" });
-      return;
+export function startInstallerGui(options: InstallerGuiOptions = {}): Promise<InstallerGuiHandle> {
+  return makeGuiServer(options, pageHtml, async (req, res, onDone) => {
+    if (req.method === "GET" && req.url === "/api/status") {
+      sendJson(res, 200, { os: formatInstallOsLabel(), hostedMcpUrl: HOSTED_MCP_URL, clients: await clientsWithConfiguredStatus() });
+      return true;
     }
-    try {
-      if (req.method === "GET" && req.url === "/") {
-        const raw = pageUninstallHtml();
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "content-length": Buffer.byteLength(raw) });
-        res.end(raw);
-        return;
-      }
-      if (req.method === "GET" && req.url === "/api/status") {
-        sendJson(res, 200, {
-          os: formatInstallOsLabel(),
-          clients: await clientsWithConfiguredStatus(),
-        });
-        return;
-      }
-      if (req.method === "GET" && req.url?.startsWith("/api/uninstall-stream")) {
-        await streamUninstall(new URL(req.url, "http://127.0.0.1"), res);
-        return;
-      }
-      sendJson(res, 404, { ok: false, error: "not found" });
-    } catch (err: any) {
-      sendJson(res, 500, { ok: false, error: err?.message ?? String(err) });
+    if (req.method === "POST" && req.url === "/api/oauth-login") { sendJson(res, 200, await loginWithOAuth()); return true; }
+    if (req.method === "POST" && req.url === "/api/install") { sendJson(res, 200, await install((await readJson(req)) as InstallRequest)); return true; }
+    if (req.method === "GET" && req.url?.startsWith("/api/install-stream")) {
+      await streamInstall(new URL(req.url, "http://127.0.0.1"), res, onDone);
+      return true;
     }
-  });
-
-  return await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(options.port ?? PORT, "127.0.0.1", async () => {
-      server.off("error", reject);
-      const address = server.address();
-      const port = typeof address === "object" && address ? address.port : options.port ?? PORT;
-      expectedHost = `127.0.0.1:${port}`;
-      const url = `http://127.0.0.1:${port}/`;
-      process.stderr.write(`Leadbay MCP uninstaller GUI: ${url}\n`);
-      if (options.openBrowser !== false) await openBrowser(url).catch(() => undefined);
-      resolve({ url, close: () => new Promise((closeResolve, closeReject) => server.close((err) => (err ? closeReject(err) : closeResolve()))) });
-    });
-  });
-}
-
-async function main(): Promise<void> {
-  const uninstall = process.argv.includes("--uninstall");
-  const handle = uninstall
-    ? await startUninstallerGui({ openBrowser: !process.argv.includes("--no-open") })
-    : await startInstallerGui({ openBrowser: !process.argv.includes("--no-open") });
-
-  // Keep the process alive until the user closes the browser tab or hits Ctrl+C.
-  // Without this, Node exits immediately after main() returns and the HTTP
-  // server dies before the browser can connect.
-  await new Promise<void>((resolve) => {
-    process.once("SIGINT", () => resolve());
-    process.once("SIGTERM", () => resolve());
-  });
-  await handle.close().catch(() => undefined);
-}
-
-const isEntrypoint = (() => {
-  try {
-    const entry = process.argv[1];
-    if (!entry) return false;
-    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(entry);
-  } catch {
     return false;
-  }
-})();
-
-if (isEntrypoint) {
-  main().catch((err) => {
-    process.stderr.write(`leadbay-mcp-installer: ${err?.message ?? err}\n`);
-    process.exit(1);
-  });
+  }, "installer");
 }
+
+export function startUninstallerGui(options: InstallerGuiOptions = {}): Promise<InstallerGuiHandle> {
+  return makeGuiServer(options, pageUninstallHtml, async (req, res, onDone) => {
+    if (req.method === "GET" && req.url === "/api/status") {
+      sendJson(res, 200, { os: formatInstallOsLabel(), clients: await clientsWithConfiguredStatus() });
+      return true;
+    }
+    if (req.method === "GET" && req.url?.startsWith("/api/uninstall-stream")) {
+      await streamUninstall(new URL(req.url, "http://127.0.0.1"), res, onDone);
+      return true;
+    }
+    return false;
+  }, "uninstaller");
+}
+

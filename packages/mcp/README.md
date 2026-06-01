@@ -699,7 +699,44 @@ Accepted values: `"true"|"1"|"yes"|"on"` enable; `"false"|"0"|"no"|"off"` disabl
 
 Contact data fetched through this server stays local to your MCP client session — telemetry never carries it. Requests to Leadbay are subject to the [Leadbay privacy policy](https://leadbay.ai/privacy).
 
-## 9. For maintainers — publishing
+## 9. For developers — testing a local build
+
+Use this when you want to test changes to the MCP server in your real MCP clients (Claude Desktop, Claude Code, Cursor, Codex) without publishing to npm.
+
+### 1. Build
+
+```bash
+pnpm install
+pnpm build
+```
+
+### 2. Run the installer with `--local`
+
+```bash
+pnpm --filter @leadbay/mcp installer -- --local
+```
+
+This opens the installer wizard in your browser. Sign in with OAuth, select your clients, and click Install. The wizard writes `node /absolute/path/to/dist/bin.js` into each client's config instead of the usual `npx @leadbay/mcp@latest` invocation.
+
+### 3. Restart your MCP client
+
+Restart Claude Desktop / Claude Code / Cursor / Codex to pick up the new config.
+
+### Revert to the published version
+
+Run the installer again **without** `--local` to switch back to npm:
+
+```bash
+pnpm --filter @leadbay/mcp installer
+```
+
+Or use the published package directly:
+
+```bash
+npx -y -p @leadbay/mcp@latest installer
+```
+
+## 10. For maintainers — publishing
 
 Releases are tag-driven via `.github/workflows/release.yml`. Bump `packages/mcp/package.json#version`, update `packages/mcp/CHANGELOG.md`, land on `main`, then:
 
