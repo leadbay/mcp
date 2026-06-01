@@ -1,0 +1,8 @@
+# Generated dashboard artifacts — never commit (may contain user data; the
+# generator re-creates them on every run).
+*.html
+*.data.json
+
+# Local deps for the dashboard server (installed in CI/Docker, not committed).
+node_modules/
+package-lock.json

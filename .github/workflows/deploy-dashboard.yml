@@ -1,0 +1,29 @@
+name: deploy-dashboard
+
+# Auto-deploy the MCP telemetry dashboard (issue #3688) to Fly.io whenever the
+# dashboard sources change on main. Also runnable on demand from the Actions tab.
+#
+# Requires repo secret FLY_API_TOKEN (a Fly deploy token scoped to the
+# leadbay-mcp-dashboard app). The PostHog key + basic-auth password are NOT
+# here — they live as Fly secrets on the app and survive deploys untouched.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/mcp/scripts/**"
+      - ".github/workflows/deploy-dashboard.yml"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    concurrency: deploy-dashboard # never run two deploys at once
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy to Fly
+        run: flyctl deploy --ha=false --config fly.toml --dockerfile Dockerfile
+        working-directory: packages/mcp/scripts
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

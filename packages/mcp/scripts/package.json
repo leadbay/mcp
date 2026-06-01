@@ -1,0 +1,13 @@
+{
+  "name": "@leadbay/mcp-dashboard",
+  "private": true,
+  "type": "module",
+  "description": "PostHog MCP telemetry dashboard generator + Fly-hosted server (issue #3688)",
+  "scripts": {
+    "generate": "tsx posthog-dashboard.ts",
+    "serve": "tsx dashboard-server.ts"
+  },
+  "dependencies": {
+    "tsx": "4.22.4"
+  }
+}

@@ -1,0 +1,38 @@
+# fly.toml app configuration file generated for leadbay-mcp-dashboard on 2026-06-01T13:30:19-07:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'leadbay-mcp-dashboard'
+primary_region = 'cdg'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  DASHBOARD_DAYS = '30'
+  DASHBOARD_REFRESH_MS = '60000'
+  PORT = '8080'
+  POSTHOG_HOST = 'https://eu.posthog.com'
+  POSTHOG_PROJECT_ID = '23333'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '20s'
+    method = 'GET'
+    path = '/healthz'
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 256
