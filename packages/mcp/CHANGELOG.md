@@ -1,5 +1,9 @@
 # Changelog — @leadbay/mcp
 
+## 0.17.1 — 2026-06-01
+
+- **Publish fix**: the `installer` npm bin (`npx -y -p @leadbay/mcp@latest installer`) was missing from the 0.17.0 tarball because the package was published before the installer wizard merged. This patch re-publishes with the correct bin entries.
+
 ## 0.17.0 — 2026-05-29
 
 - **Lens extension** (product#3654): two new composites that expose the
