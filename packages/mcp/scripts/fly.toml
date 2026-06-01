@@ -11,7 +11,7 @@ primary_region = 'cdg'
 
 [env]
   DASHBOARD_DAYS = '30'
-  DASHBOARD_REFRESH_MS = '60000'
+  DASHBOARD_REFRESH_MS = '300000'
   PORT = '8080'
   POSTHOG_HOST = 'https://eu.posthog.com'
   POSTHOG_PROJECT_ID = '23333'
@@ -32,7 +32,7 @@ primary_region = 'cdg'
 
 [[vm]]
   size = 'shared-cpu-1x'
-  memory = '256mb'
+  memory = '512mb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 256
+  memory_mb = 512

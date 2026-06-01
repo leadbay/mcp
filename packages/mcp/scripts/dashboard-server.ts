@@ -24,7 +24,7 @@
 
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
-import { readFileSync, mkdtempSync } from "node:fs";
+import { readFileSync, mkdtempSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,9 +37,18 @@ const USER = process.env.DASHBOARD_USER;
 const PASS = process.env.DASHBOARD_PASSWORD;
 
 const here = dirname(fileURLToPath(import.meta.url));
-const GENERATOR = join(here, "posthog-dashboard.ts");
 const workdir = mkdtempSync(join(tmpdir(), "mcp-dash-"));
 const OUT_HTML = join(workdir, "dashboard.html");
+
+// Prefer the precompiled JS generator (run with plain node — no per-refresh
+// tsx/esbuild compile, which is what OOM-killed the small machine). Fall back
+// to tsx + the .ts source for local dev where nothing is compiled.
+const COMPILED = join(here, "posthog-dashboard.js"); // present in the Docker image (dist/)
+const SOURCE = join(here, "posthog-dashboard.ts");
+const useCompiled = existsSync(COMPILED);
+const GENERATOR_ARGV: string[] = useCompiled
+  ? [COMPILED]
+  : [join(here, "node_modules", "tsx", "dist", "cli.mjs"), SOURCE];
 
 if (!process.env.POSTHOG_PERSONAL_API_KEY) {
   console.error("Missing POSTHOG_PERSONAL_API_KEY (set as a Fly secret).");
@@ -67,15 +76,7 @@ function regenerate(): Promise<void> {
   return new Promise((resolve) => {
     const child = spawn(
       process.execPath,
-      [
-        // Resolve tsx from node_modules at runtime; the Docker image installs it.
-        join(here, "node_modules", "tsx", "dist", "cli.mjs"),
-        GENERATOR,
-        "--days",
-        DAYS,
-        "--out",
-        OUT_HTML,
-      ],
+      [...GENERATOR_ARGV, "--days", DAYS, "--out", OUT_HTML],
       { env: process.env, stdio: ["ignore", "ignore", "pipe"] }
     );
     let stderr = "";

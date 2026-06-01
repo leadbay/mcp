@@ -6,3 +6,6 @@
 # Local deps for the dashboard server (installed in CI/Docker, not committed).
 node_modules/
 package-lock.json
+
+# Compiled output (esbuild, build-time only)
+dist/
