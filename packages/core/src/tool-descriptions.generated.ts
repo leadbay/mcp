@@ -1659,13 +1659,17 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-On \`created\`: confirm "Created **<name>**." and list the applied sectors/sizes
-as chips. On \`ambiguous_sectors\`: surface the candidate sectors to pick from —
-the lens was NOT created yet. Offer "switch to it" as a next step.
+On \`preview\` (default — NOTHING created yet): show the lens that WILL be
+created (name + resolved sectors/sizes as chips) and ASK the user to confirm
+via ask_user_input_v0 ("Create this lens?" / "Change something"). Only on
+"yes" re-call with confirm:true. On \`created\`: confirm "Created **<name>**."
+On \`ambiguous_sectors\`: surface the candidate sectors to pick from.
 
 ---
 
-Create a brand-new lens (saved audience) and apply its sector/size criteria in a single call. Clones a base lens (the user's active/default lens unless \`base\` is given), names it, and applies the filter.
+Create a brand-new lens (saved audience) and apply its sector/size criteria. Clones a base lens (the user's active/default lens unless \`base\` is given), names it, and applies the filter.
+
+**Confirm before creating — two-step by default.** A call WITHOUT \`confirm:true\` is a dry run: it resolves the sectors/sizes and returns \`status:"preview"\` with \`will_create\` (what it WOULD build) — **nothing is created**. Show that to the user, get an explicit yes (ask via \`ask_user_input_v0\`), then re-call the SAME args with \`confirm:true\` to actually create. Never pass \`confirm:true\` on the first call — the user must see the preview first. (Sector ambiguity is still surfaced in the preview step, so they pick before confirming.)
 
 **Sectors resolve first.** Free-text \`sectors\`/\`exclude_sectors\` are auto-resolved against the taxonomy. If any don't resolve, the tool returns \`status:"ambiguous_sectors"\` with the candidates and **does NOT create the lens** — so re-calling after picking the right sector won't leave orphan half-built lenses. To discover valid sector labels up front, use \`leadbay_list_sectors\`.
 
@@ -1734,6 +1738,8 @@ follow-ups. On \`ambiguous_sectors\`, the only move is to pick a sector and re-c
 
 | Observation                       | Suggest                                  | Calls                                                  |
 |-----------------------------------|------------------------------------------|--------------------------------------------------------|
+| \`preview\` (not yet created)       | "Yes, create this lens"                  | \`leadbay_new_lens(...same args..., confirm=true)\`      |
+| \`preview\` (not yet created)       | "Change the sectors/size first"          | (re-ask the user, then \`leadbay_new_lens\` with new args) |
 | Lens created                      | "Switch to it and pull leads"            | \`leadbay_my_lenses(switchToLensId=<new id>)\` then \`leadbay_pull_leads()\` |
 | Lens created                      | "Refine the audience further"            | \`leadbay_adjust_audience(lensName=<new name>, ...)\`    |
 | Lens created                      | "Leave it; keep my current lens active"  | (no call)                                              |

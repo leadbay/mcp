@@ -991,7 +991,7 @@ const CASES: ConformanceCase[] = [
   {
     // Create with one sector + explicit base (skips resolveDefaultLens).
     toolName: "leadbay_new_lens",
-    arguments: { name: "Joinery", sectors: ["Fintech"], base: 42, _triggered_by: "test: new_lens conformance" },
+    arguments: { name: "Joinery", sectors: ["Fintech"], base: 42, confirm: true, _triggered_by: "test: new_lens conformance" },
     setupMocks: () => {
       mockHttp([
         {

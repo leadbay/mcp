@@ -44,6 +44,7 @@ describe("leadbay_new_lens", () => {
       name: "Joinery",
       sectors: ["Fintech"],
       base: 42,
+      confirm: true,
     });
 
     expect(result.status).toBe("created");
@@ -95,6 +96,7 @@ describe("leadbay_new_lens", () => {
     const result: any = await newLens.execute(newClient(), {
       name: "Empty lens",
       base: 42,
+      confirm: true,
     });
 
     expect(result.status).toBe("created");
@@ -110,11 +112,32 @@ describe("leadbay_new_lens", () => {
       { method: "POST", path: "/1.5/lenses", status: 200, body: { id: 888, name: "From 123", user_id: "u-1" } },
     ]);
 
-    await newLens.execute(newClient(), { name: "From 123", base: 123 });
+    await newLens.execute(newClient(), { name: "From 123", base: 123, confirm: true });
 
     const createPost = getHttpRequests().find(
       (r) => r.method === "POST" && r.path === "/1.5/lenses"
     );
     expect(JSON.parse(createPost!.body!)).toMatchObject({ base: "123" });
+  });
+
+  it("preview — without confirm, returns the plan and creates NOTHING", async () => {
+    mockHttp([
+      { method: "GET", path: "/1.5/users/me", status: 200, body: ME },
+      { method: "GET", path: "/1.5/sectors/all?lang=en&includeInvisible=false", status: 200, body: SECTORS },
+      // No POST mocks — if the tool tried to create, the harness would throw.
+    ]);
+
+    const result: any = await newLens.execute(newClient(), {
+      name: "Joinery",
+      sectors: ["Fintech"],
+      sizes: [{ max: 1000 }],
+      base: 42,
+    });
+
+    expect(result.status).toBe("preview");
+    expect(result.will_create.name).toBe("Joinery");
+    expect(result.will_create.sectors).toContain("1");
+    // Nothing was written.
+    expect(getHttpRequests().some((r) => r.method === "POST")).toBe(false);
   });
 });

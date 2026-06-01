@@ -7,6 +7,8 @@ follow-ups. On `ambiguous_sectors`, the only move is to pick a sector and re-cal
 
 | Observation                       | Suggest                                  | Calls                                                  |
 |-----------------------------------|------------------------------------------|--------------------------------------------------------|
+| `preview` (not yet created)       | "Yes, create this lens"                  | `leadbay_new_lens(...same args..., confirm=true)`      |
+| `preview` (not yet created)       | "Change the sectors/size first"          | (re-ask the user, then `leadbay_new_lens` with new args) |
 | Lens created                      | "Switch to it and pull leads"            | `leadbay_my_lenses(switchToLensId=<new id>)` then `leadbay_pull_leads()` |
 | Lens created                      | "Refine the audience further"            | `leadbay_adjust_audience(lensName=<new name>, ...)`    |
 | Lens created                      | "Leave it; keep my current lens active"  | (no call)                                              |

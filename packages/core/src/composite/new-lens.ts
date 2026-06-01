@@ -26,6 +26,7 @@ interface NewLensParams {
   sizes?: Array<{ min?: number; max?: number }>;
   base?: number; // lens id to clone from; defaults to the active/default lens
   description?: string;
+  confirm?: boolean; // MUST be true to actually create; default = preview only
 }
 
 const EMPTY_FILTER: FilterPayload = {
@@ -71,6 +72,11 @@ export const newLens: Tool<NewLensParams> = {
           "Lens id to clone from. Defaults to the active/default lens.",
       },
       description: { type: "string", description: "Optional lens description." },
+      confirm: {
+        type: "boolean",
+        description:
+          "Safety gate. Defaults to false → the tool returns a PREVIEW and creates nothing. Show the preview to the user, get their explicit go-ahead, then re-call the SAME args with confirm:true to actually create the lens.",
+      },
     },
     required: ["name"],
     additionalProperties: false,
@@ -78,12 +84,18 @@ export const newLens: Tool<NewLensParams> = {
   outputSchema: {
     type: "object",
     description:
-      "'created' on success; 'ambiguous_sectors' when free-text sectors didn't resolve (re-call with sector ids — the lens was NOT created).",
+      "'preview' (default, NOTHING created — confirm with the user then re-call with confirm:true); 'created' on success; 'ambiguous_sectors' when free-text sectors didn't resolve (re-call with sector ids — the lens was NOT created).",
     properties: {
-      status: { type: "string", description: "'created' or 'ambiguous_sectors'." },
+      status: { type: "string", description: "'preview', 'created', or 'ambiguous_sectors'." },
+      will_create: {
+        type: "object",
+        description:
+          "On 'preview': what WILL be created — {name, description, sectors, exclude_sectors, sizes}. Nothing has been written yet.",
+      },
+      filter_preview: { type: "object", description: "On 'preview': the FilterPayload that would be applied." },
       lens: {
         type: "object",
-        description: "The created lens: {id, name}.",
+        description: "On 'created': the created lens {id, name}.",
       },
       sector_ambiguities: {
         type: "array",
@@ -91,7 +103,7 @@ export const newLens: Tool<NewLensParams> = {
           "On 'ambiguous_sectors': per text {sector_text, matches:[{id,name,score}]}.",
         items: { type: "object" },
       },
-      filter_applied: { type: "object", description: "The FilterPayload POSTed to the new lens." },
+      filter_applied: { type: "object", description: "On 'created': the FilterPayload POSTed to the new lens." },
       message: { type: "string" },
       _meta: { type: "object" },
     },
@@ -140,10 +152,38 @@ export const newLens: Tool<NewLensParams> = {
       };
     }
 
-    // 2. Resolve the base lens to clone from.
+    // Build the filter that WOULD be applied (used both for the preview and,
+    // on confirm, the actual write).
+    const merged = mergeFilter(
+      EMPTY_FILTER,
+      includeRes.resolved,
+      excludeRes.resolved,
+      params.sizes
+    );
+
+    // 2. Confirmation gate — never create silently. Unless confirm:true, return
+    //    a preview of exactly what will be created and let the agent confirm
+    //    with the user (via ask_user_input_v0) before re-calling with confirm.
+    if (params.confirm !== true) {
+      return {
+        status: "preview",
+        will_create: {
+          name: params.name,
+          description: params.description ?? null,
+          sectors: includeRes.resolved,
+          exclude_sectors: excludeRes.resolved,
+          sizes: merged.lens_filter.items[0].criteria.find((c) => c.type === "size") ?? null,
+        },
+        filter_preview: merged,
+        message: `About to create "${params.name}". Confirm with the user, then re-call with confirm:true.`,
+        _meta: { region: client.region },
+      };
+    }
+
+    // 3. Resolve the base lens to clone from.
     const base = params.base ?? (await client.resolveDefaultLens());
 
-    // 3. Create the lens.
+    // 4. Create the lens.
     // The backend's POST /lenses deserializer requires `base` as a STRING
     // (lens ids are strings server-side, e.g. "39107"); sending a number
     // yields 400 "JSON deserialization error". Coerce here — the rest of the
@@ -154,13 +194,7 @@ export const newLens: Tool<NewLensParams> = {
       description: params.description,
     });
 
-    // 4. Apply the filter (sectors/sizes) to the fresh lens.
-    const merged = mergeFilter(
-      EMPTY_FILTER,
-      includeRes.resolved,
-      excludeRes.resolved,
-      params.sizes
-    );
+    // 5. Apply the filter (sectors/sizes) to the fresh lens.
     const hasCriteria = merged.lens_filter.items[0].criteria.length > 0;
     if (hasCriteria) {
       // POST /filter wants the unwrapped {items:[...]} body, not the envelope.
