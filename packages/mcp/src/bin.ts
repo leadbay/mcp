@@ -133,7 +133,7 @@ EXAMPLE Claude Desktop config (~/Library/Application Support/Claude/claude_deskt
     "mcpServers": {
       "leadbay": {
         "command": "npx",
-        "args": ["-y", "@leadbay/mcp@latest"],
+        "args": ["-y", "-p", "@leadbay/mcp@latest", "leadbay-mcp"],
         "env": {
           "LEADBAY_TOKEN": "lb_...",
           "LEADBAY_REGION": "us",
@@ -757,7 +757,7 @@ async function runLogin(args: string[]): Promise<number> {
     mcpServers: {
       leadbay: {
         command: "npx",
-        args: ["-y", "@leadbay/mcp@latest"],
+        args: ["-y", "-p", "@leadbay/mcp@latest", "leadbay-mcp"],
         env: envBlock,
       },
     },

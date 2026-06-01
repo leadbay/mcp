@@ -508,10 +508,41 @@ function pageHtml(): string {
 
 async function openBrowser(url: string): Promise<void> {
   const { spawn } = await import("node:child_process");
-  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
-  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
-  const child = spawn(command, args, { stdio: "ignore", detached: true });
-  child.unref();
+
+  // Returns true only if the process exits 0. On Linux, xdg-open and friends
+  // may be installed but exit non-zero when they cannot find a browser or
+  // display — treating those as failures lets the loop fall through to the
+  // next candidate and ultimately print the manual URL hint.
+  const trySpawn = (command: string, args: string[]): Promise<boolean> =>
+    new Promise((resolve) => {
+      try {
+        const child = spawn(command, args, { stdio: "ignore", detached: true });
+        child.unref();
+        child.on("error", () => resolve(false));
+        child.on("close", (code) => resolve(code === 0));
+      } catch {
+        resolve(false);
+      }
+    });
+
+  if (process.platform === "darwin") {
+    await trySpawn("open", [url]);
+    return;
+  }
+
+  if (process.platform === "win32") {
+    await trySpawn("cmd", ["/c", "start", "", url]);
+    return;
+  }
+
+  // Linux: try candidates in order.
+  const candidates = ["xdg-open", "sensible-browser", "google-chrome", "chromium-browser", "firefox"];
+  for (const cmd of candidates) {
+    if (await trySpawn(cmd, [url])) return;
+  }
+
+  // Nothing worked — print a prominent hint so the user knows what to do.
+  process.stderr.write(`\n  Open this URL in your browser to continue:\n  ${url}\n\n`);
 }
 
 export async function startInstallerGui(options: InstallerGuiOptions = {}): Promise<InstallerGuiHandle> {

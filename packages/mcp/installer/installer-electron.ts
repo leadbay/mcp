@@ -14,10 +14,15 @@ async function runBrowserFallback(args: string[]): Promise<void> {
   }
 }
 
+function hasDisplay(): boolean {
+  if (process.platform !== "linux") return true;
+  return !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const mainPath = resolve(dirname(fileURLToPath(import.meta.url)), "../installer/electron-main.cjs");
-  if (!existsSync(mainPath) || args.includes("--browser")) {
+  if (!existsSync(mainPath) || args.includes("--browser") || !hasDisplay()) {
     await runBrowserFallback(args);
     return;
   }

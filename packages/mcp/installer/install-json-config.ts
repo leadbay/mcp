@@ -46,7 +46,7 @@ export async function installInJsonConfig(
 
     parsed.mcpServers.leadbay = localBinPath
       ? { command: "node", args: [localBinPath], env }
-      : { command: "npx", args: ["-y", "@leadbay/mcp@latest"], env };
+      : { command: "npx", args: ["-y", "-p", "@leadbay/mcp@latest", "leadbay-mcp"], env };
 
     // Atomic-ish write: write to .tmp then rename, restore mode if pre-existed.
     const tmp = configPath + ".tmp";

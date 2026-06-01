@@ -150,9 +150,16 @@ jobs:
           # gh release upload needs a release to exist. Create it if the tag
           # wasn't already promoted to a release (auto-tag.yml only pushes tags).
           if ! gh release view "$TAG" >/dev/null 2>&1; then
+            # Extract the changelog section for this version (text between
+            # the matching "## X.Y.Z" header and the next "## " header).
+            VERSION="${TAG#mcp-v}"
+            NOTES=$(awk "/^## ${VERSION}/{found=1; next} found && /^## /{exit} found{print}" packages/mcp/CHANGELOG.md | sed '/^[[:space:]]*$/{ N; /^\n$/d }' | head -60)
+            if [ -z "$NOTES" ]; then
+              NOTES="See [CHANGELOG.md](https://github.com/leadbay/leadclaw/blob/main/packages/mcp/CHANGELOG.md) for details."
+            fi
             gh release create "$TAG" \
               --title "$TAG" \
-              --notes "Automated release for $TAG — see CHANGELOG.md"
+              --notes "$NOTES"
           fi
           gh release upload "$TAG" packages/dxt/dist/*.dxt packages/dxt/dist/*.mcpb --clobber
           echo "Uploaded .dxt and .mcpb to release $TAG"

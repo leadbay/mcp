@@ -1,5 +1,11 @@
 # Changelog — @leadbay/mcp
 
+## 0.17.2 — 2026-06-01
+
+- **Linux installer fix**: skip Electron when no display is available (`$DISPLAY`/`$WAYLAND_DISPLAY` unset) and go straight to browser fallback — eliminates the double GUI URL on headless Linux terminals.
+- **Browser open fallbacks**: on Linux, try `xdg-open` → `sensible-browser` → `google-chrome` → `chromium-browser` → `firefox` in order. If all fail, print a clear "Open this URL in your browser" message instead of silently doing nothing.
+- **GitHub release notes**: release body now contains the actual CHANGELOG section for the version instead of "see CHANGELOG.md".
+
 ## 0.17.1 — 2026-06-01
 
 - **Publish fix**: the `installer` npm bin (`npx -y -p @leadbay/mcp@latest installer`) was missing from the 0.17.0 tarball because the package was published before the installer wizard merged. This patch re-publishes with the correct bin entries.

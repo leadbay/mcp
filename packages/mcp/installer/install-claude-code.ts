@@ -25,7 +25,7 @@ export function buildClaudeCodeAddArgs(
   if (localBinPath) {
     args.push("--", "node", localBinPath);
   } else {
-    args.push("--", "npx", "-y", "@leadbay/mcp@latest");
+    args.push("--", "npx", "-y", "-p", "@leadbay/mcp@latest", "leadbay-mcp");
   }
   return args;
 }
