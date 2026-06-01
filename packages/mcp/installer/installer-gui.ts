@@ -238,10 +238,13 @@ async function streamInstall(url: URL, res: ServerResponse, onDone?: () => void)
   const telemetryEnabled = url.searchParams.get("telemetry") !== "0";
   const emit = (level: LogLevel, message: string) => sendSse(res, { level, message: sanitizeOutput(message) });
 
+  // abort: recoverable error — close the stream but leave the server running so the user can retry.
+  const abort = (msg: string) => { emit("done", msg); res.end(); };
+  // finish: successful completion — close stream and signal the process to exit.
   const finish = (msg: string) => { emit("done", msg); res.end(); onDone?.(); };
 
-  if (!session) { emit("error", "Login expired. Go back and sign in again."); finish("Install stopped."); return; }
-  if (!clientIds.length) { emit("error", "Select at least one agent."); finish("Install stopped."); return; }
+  if (!session) { emit("error", "Login expired. Go back and sign in again."); abort("Install stopped."); return; }
+  if (!clientIds.length) { emit("error", "Select at least one agent."); abort("Install stopped."); return; }
 
   emit("info", `Connected to ${session.accountLabel}.`);
   emit("info", `Write tools ${includeWrite ? "enabled" : "disabled"}; telemetry ${telemetryEnabled ? "enabled" : "disabled"}.`);
@@ -250,7 +253,7 @@ async function streamInstall(url: URL, res: ServerResponse, onDone?: () => void)
   const detected = await detectClients();
   const selected = detected.filter((client) => clientIds.includes(client.id));
   const selectedHasOnlyManualSetup = selected.length > 0 && selected.every(isManualSetupClient);
-  if (!selected.length) { emit("error", "No selected agents were detected on this machine."); finish("Install stopped."); return; }
+  if (!selected.length) { emit("error", "No selected agents were detected on this machine."); abort("Install stopped."); return; }
 
   let okCount = 0;
   for (const client of selected) {
@@ -273,13 +276,14 @@ async function streamUninstall(url: URL, res: ServerResponse, onDone?: () => voi
 
   const clientIds = (url.searchParams.get("clients") ?? "").split(",").filter(Boolean);
   const emit = (level: LogLevel, message: string) => sendSse(res, { level, message });
+  const abort = (msg: string) => { emit("done", msg); res.end(); };
   const finish = (msg: string) => { emit("done", msg); res.end(); onDone?.(); };
 
-  if (!clientIds.length) { emit("error", "Select at least one agent."); finish("Uninstall stopped."); return; }
+  if (!clientIds.length) { emit("error", "Select at least one agent."); abort("Uninstall stopped."); return; }
 
   const detected = await detectClients();
   const selected = detected.filter((c) => clientIds.includes(c.id));
-  if (!selected.length) { emit("error", "No selected agents were detected on this machine."); finish("Uninstall stopped."); return; }
+  if (!selected.length) { emit("error", "No selected agents were detected on this machine."); abort("Uninstall stopped."); return; }
 
   let okCount = 0;
   for (const client of selected) {
