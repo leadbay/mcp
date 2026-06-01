@@ -1,52 +1,25 @@
-import { existsSync, realpathSync } from "node:fs";
-import { spawn } from "node:child_process";
-import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-
-async function runBrowserFallback(args: string[]): Promise<void> {
-  const { startInstallerGui, startUninstallerGui } = await import("./installer-gui.js");
-  const opts = { openBrowser: !args.includes("--no-open") };
-  if (args.includes("--uninstall")) {
-    await startUninstallerGui(opts);
-  } else {
-    await startInstallerGui(opts);
-  }
-}
-
-function hasDisplay(): boolean {
-  if (process.platform !== "linux") return true;
-  return !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
-}
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const mainPath = resolve(dirname(fileURLToPath(import.meta.url)), "../installer/electron-main.cjs");
-  if (!existsSync(mainPath) || args.includes("--browser") || !hasDisplay()) {
-    await runBrowserFallback(args);
-    return;
-  }
+  const { startInstallerGui, startUninstallerGui } = await import("./installer-gui.js");
+  const opts = { openBrowser: !args.includes("--no-open") };
+  const handle = args.includes("--uninstall")
+    ? await startUninstallerGui(opts)
+    : await startInstallerGui(opts);
 
-  let electronPath: string;
-  try {
-    const require = createRequire(import.meta.url);
-    electronPath = require("electron");
-  } catch {
-    await runBrowserFallback(args);
-    return;
-  }
-
-  await new Promise<void>((resolve, reject) => {
-    const electronArgs = process.platform === "linux" && process.env.LEADBAY_INSTALLER_ELECTRON_SANDBOX !== "1"
-      ? ["--no-sandbox", mainPath, ...args]
-      : [mainPath, ...args];
-    const child = spawn(electronPath, electronArgs, { stdio: "inherit", env: process.env });
-    child.on("error", reject);
-    child.on("exit", (code, signal) => {
-      if (signal) process.exit(128 + (signal === "SIGINT" ? 2 : signal === "SIGTERM" ? 15 : 0));
-      process.exit(code ?? 0);
-    });
-  });
+  // Exit when install completes or when the user hits Ctrl+C.
+  let completed = false;
+  await Promise.race([
+    handle.done.then(() => { completed = true; }),
+    new Promise<void>((resolve) => {
+      process.once("SIGINT", () => resolve());
+      process.once("SIGTERM", () => resolve());
+    }),
+  ]);
+  await handle.close().catch(() => undefined);
+  process.stderr.write(completed ? "\nInstallation complete. Exiting.\n" : "\nExiting.\n");
 }
 
 const isEntrypoint = (() => {
