@@ -648,35 +648,3 @@ export async function startUninstallerGui(options: InstallerGuiOptions = {}): Pr
   });
 }
 
-async function main(): Promise<void> {
-  const uninstall = process.argv.includes("--uninstall");
-  const handle = uninstall
-    ? await startUninstallerGui({ openBrowser: !process.argv.includes("--no-open") })
-    : await startInstallerGui({ openBrowser: !process.argv.includes("--no-open") });
-
-  // Keep the process alive until the user closes the browser tab or hits Ctrl+C.
-  // Without this, Node exits immediately after main() returns and the HTTP
-  // server dies before the browser can connect.
-  await new Promise<void>((resolve) => {
-    process.once("SIGINT", () => resolve());
-    process.once("SIGTERM", () => resolve());
-  });
-  await handle.close().catch(() => undefined);
-}
-
-const isEntrypoint = (() => {
-  try {
-    const entry = process.argv[1];
-    if (!entry) return false;
-    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(entry);
-  } catch {
-    return false;
-  }
-})();
-
-if (isEntrypoint) {
-  main().catch((err) => {
-    process.stderr.write(`leadbay-mcp-installer: ${err?.message ?? err}\n`);
-    process.exit(1);
-  });
-}

@@ -5,11 +5,16 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const { startInstallerGui, startUninstallerGui } = await import("./installer-gui.js");
   const opts = { openBrowser: !args.includes("--no-open") };
-  if (args.includes("--uninstall")) {
-    await startUninstallerGui(opts);
-  } else {
-    await startInstallerGui(opts);
-  }
+  const handle = args.includes("--uninstall")
+    ? await startUninstallerGui(opts)
+    : await startInstallerGui(opts);
+
+  // Keep the process alive until the user closes the browser tab or Ctrl+C.
+  await new Promise<void>((resolve) => {
+    process.once("SIGINT", () => resolve());
+    process.once("SIGTERM", () => resolve());
+  });
+  await handle.close().catch(() => undefined);
 }
 
 const isEntrypoint = (() => {
