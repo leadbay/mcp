@@ -118,4 +118,36 @@ describe("leadbay_adjust_audience — lensName targeting", () => {
     expect(result.status).toBe("applied");
     expect(result.lens_used.id).toBe(4242);
   });
+
+  it("named edit of the DEFAULT lens clones but does NOT switch the active lens", async () => {
+    // "edit my Default lens" → can't edit default → clone. But because the user
+    // targeted BY NAME (edit-only), the active lens must NOT change: no
+    // update_last_requested. (P2 regression)
+    const DEFAULT_LENS = { id: 4242, name: "Default audience", is_default: true, default: true };
+    mockHttp([
+      { method: "GET", path: "/1.5/users/me", status: 200, body: ME },
+      { method: "GET", path: "/1.5/lenses", status: 200, body: [DEFAULT_LENS] },
+      { method: "GET", path: "/1.5/sectors/all?lang=en&includeInvisible=false", status: 200, body: SECTORS },
+      { method: "GET", path: "/1.5/lenses/4242", status: 200, body: DEFAULT_LENS },
+      { method: "GET", path: "/1.5/lenses/4242/filter", status: 200, body: EMPTY_FILTER },
+      // clone
+      { method: "POST", path: "/1.5/lenses", status: 200, body: { id: 5000, name: "Default audience", user_id: "u-1" } },
+      // filter applied to the clone
+      { method: "POST", path: "/1.5/lenses/5000/filter", status: 200, body: {} },
+      // NOTE: deliberately NO update_last_requested mock — if the tool tried it,
+      // the harness would throw (no script matched).
+    ]);
+
+    const result: any = await adjustAudience.execute(newClient(), {
+      lensName: "Default audience",
+      sectors: ["Fintech"],
+    });
+
+    expect(result.status).toBe("applied");
+    expect(result.lens_used.active_lens_changed).toBe(false);
+    expect(
+      getHttpRequests().some((r) => r.path.includes("update_last_requested"))
+    ).toBe(false);
+    expect(result.message).toMatch(/active lens is unchanged/i);
+  });
 });

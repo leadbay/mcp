@@ -360,6 +360,13 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
     const startingLensId =
       params.lensId ?? namedLensId ?? me.last_requested_lens ?? (await client.resolveDefaultLens());
 
+    // When the user targeted a lens BY NAME, the edit must not change which lens
+    // is active (the lensName contract is edit-only). If editing that lens forces
+    // a clone/draft, we still must NOT call update_last_requested — otherwise the
+    // user is silently switched onto the new clone/draft. Guard the active-switch
+    // on this flag below.
+    const isNamedEdit = namedLensId != null && params.lensId == null;
+
     // Resolve free-text sectors (taxonomy lookup with fuzzy matching).
     const includeTexts = [
       ...(params.sectors ?? []),
@@ -442,11 +449,14 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
         `/lenses/${targetLensId}/filter`,
         mergedBody
       );
-      // Set as active.
-      await client.requestVoid(
-        "POST",
-        `/lenses/${targetLensId}/update_last_requested`
-      );
+      // Set as active — UNLESS this was a named edit (lensName is edit-only and
+      // must not change the active lens).
+      if (!isNamedEdit) {
+        await client.requestVoid(
+          "POST",
+          `/lenses/${targetLensId}/update_last_requested`
+        );
+      }
     } else if (isUserLevel) {
       try {
         await client.requestVoid(
@@ -468,10 +478,12 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
             `/lenses/${targetLensId}/filter`,
             mergedBody
           );
-          await client.requestVoid(
-            "POST",
-            `/lenses/${targetLensId}/update_last_requested`
-          );
+          if (!isNamedEdit) {
+            await client.requestVoid(
+              "POST",
+              `/lenses/${targetLensId}/update_last_requested`
+            );
+          }
         } else {
           throw err;
         }
@@ -509,10 +521,12 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
           }
           throw err;
         }
-        await client.requestVoid(
-          "POST",
-          `/lenses/${targetLensId}/update_last_requested`
-        );
+        if (!isNamedEdit) {
+          await client.requestVoid(
+            "POST",
+            `/lenses/${targetLensId}/update_last_requested`
+          );
+        }
       } else {
         // Admin + save_for_org=true → direct mutation.
         try {
@@ -527,9 +541,20 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
       }
     }
 
-    // Cache invalidation — the active lens may have changed.
-    client.invalidateMe();
+    // Cache invalidation. The active lens only changed when we actually called
+    // update_last_requested (i.e. NOT a named edit). Always drop the default-lens
+    // cache (lens set/contents changed); only drop /me when active may have moved.
+    if (!isNamedEdit) client.invalidateMe();
     client.invalidateDefaultLens();
+
+    // A named edit that forced a clone/draft did NOT switch the active lens, and
+    // the edit landed on a NEW lens rather than the one named — say so plainly.
+    const namedEditForkedMessage =
+      isNamedEdit && (wasNew || wasDraft)
+        ? ` Note: "${lens.name}" can't be edited in place, so the change was applied to a ${
+            wasDraft ? "personal draft" : "new copy"
+          } (id ${targetLensId}); your active lens is unchanged.`
+        : "";
 
     return {
       status: "applied",
@@ -538,14 +563,16 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
         name: lens.name,
         was_draft: wasDraft,
         was_new: wasNew,
+        active_lens_changed: !isNamedEdit && (wasNew || wasDraft),
         save_for_org: params.save_for_org === true && isAdmin && isOrgLevel,
       },
       filter_applied: merged,
-      message: wasDraft
-        ? "Applied to your personal draft of the org lens (your view only)."
-        : wasNew
-        ? `Created a new user-level lens "${lens.name}" with the filter (you can rename via leadbay_update_lens).`
-        : "Applied directly to the lens.",
+      message:
+        (wasDraft
+          ? "Applied to your personal draft of the org lens (your view only)."
+          : wasNew
+          ? `Created a new user-level lens "${lens.name}" with the filter (you can rename via leadbay_update_lens).`
+          : "Applied directly to the lens.") + namedEditForkedMessage,
       _meta: { region: client.region },
     };
   },

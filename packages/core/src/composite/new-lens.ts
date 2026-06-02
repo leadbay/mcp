@@ -86,7 +86,7 @@ export const newLens: Tool<NewLensParams> = {
     description:
       "'preview' (default, NOTHING created — confirm with the user then re-call with confirm:true); 'created' on success; 'ambiguous_sectors' when free-text sectors didn't resolve (re-call with sector ids — the lens was NOT created).",
     properties: {
-      status: { type: "string", description: "'preview', 'created', or 'ambiguous_sectors'." },
+      status: { type: "string", description: "'preview', 'created', 'ambiguous_sectors', or 'orphan_created' (filter write failed + cleanup failed)." },
       will_create: {
         type: "object",
         description:
@@ -194,15 +194,42 @@ export const newLens: Tool<NewLensParams> = {
       description: params.description,
     });
 
-    // 5. Apply the filter (sectors/sizes) to the fresh lens.
+    // 5. Apply the filter (sectors/sizes) to the fresh lens. If this fails the
+    //    lens exists but has no criteria — an orphan that contradicts the
+    //    confirm-preview promise of creating the REQUESTED lens. Roll back by
+    //    deleting the just-created lens; if cleanup also fails, surface an
+    //    explicit orphan result so the user can recover.
     const hasCriteria = merged.lens_filter.items[0].criteria.length > 0;
     if (hasCriteria) {
-      // POST /filter wants the unwrapped {items:[...]} body, not the envelope.
-      await client.requestVoid(
-        "POST",
-        `/lenses/${created.id}/filter`,
-        filterWriteBody(merged)
-      );
+      try {
+        // POST /filter wants the unwrapped {items:[...]} body, not the envelope.
+        await client.requestVoid(
+          "POST",
+          `/lenses/${created.id}/filter`,
+          filterWriteBody(merged)
+        );
+      } catch (err) {
+        ctx?.logger?.warn?.(
+          `new_lens: filter write on new lens ${created.id} failed: ${
+            (err as { message?: string })?.message
+          } — rolling back`
+        );
+        try {
+          await client.requestVoid("DELETE", `/lenses/${created.id}`);
+        } catch {
+          client.invalidateDefaultLens();
+          return {
+            status: "orphan_created",
+            lens: { id: created.id, name: created.name },
+            message: `Created "${created.name}" but applying its filter failed, and cleanup also failed. The lens exists with no criteria — delete it via leadbay_my_lenses(deleteLensId:"${created.id}", confirm:true) or set its audience with leadbay_adjust_audience.`,
+            _meta: { region: client.region },
+          };
+        }
+        client.invalidateDefaultLens();
+        // Rolled back cleanly — re-throw so the caller sees the real failure
+        // (quota/validation/transient) rather than a misleading success.
+        throw err;
+      }
     }
 
     // The lens list cache the client maintains is now stale.
