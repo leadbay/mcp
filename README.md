@@ -59,13 +59,23 @@ Everything below is for contributors and anyone running LeadMCP from source or w
 
 ## Install a local version with the custom installer
 
-The same package ships a CLI installer that works headlessly across every platform (macOS, Windows, Linux) and registers the server into every detected MCP client:
+To run your local checkout (instead of the published package), first build it from source:
 
 ```bash
-npx -y @leadbay/mcp@latest install --oauth
+pnpm install
+pnpm prompts:build
+pnpm -r build
 ```
 
-It opens OAuth in your browser and asks per-target before writing anything. Useful flags:
+Then point the installer at your freshly built version with `--local`:
+
+```bash
+pnpm --filter @leadbay/mcp installer -- --local
+```
+
+`--local` registers the MCP client(s) against the build in your working tree rather than `@leadbay/mcp@latest`. OAuth is handled automatically — you don't need to pass `--oauth`. The installer asks per-target before writing anything.
+
+Useful flags:
 
 - `--yes` — skip the per-client prompts after auth.
 - `--target claude-code,cursor` — scope the install to specific clients.
