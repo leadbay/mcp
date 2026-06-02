@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="logo.png" alt="LeadClaw" width="200">
+  <img src="logo.png" alt="LeadMCP" width="200">
 </p>
 
-<h1 align="center">LeadClaw</h1>
-<p align="center">MCP server that gives your B2B outreach agent superpowers. LeadClaw lets your agent tap into Leadbay's rich knowledge base of companies, turning outreach activity from senseless spamming into meaningful connections.</p>
+<h1 align="center">LeadMCP</h1>
+<p align="center">MCP server that gives your B2B outreach agent superpowers. LeadMCP lets your agent tap into Leadbay's rich knowledge base of companies, turning outreach activity from senseless spamming into meaningful connections.</p>
 <p align="center">Ask your agent for new leads, and it will pull highly qualified companies that score well against your target profile and meet your qualification criteria.</p>
 <p align="center">Everything is personalized—nothing to configure. Leadbay runs advanced AI agents on your website and leverages deep B2B sales expertise to optimize how leads are sourced for you.</p>
 <p align="center">Tell your agent which leads you want it to prospect, connect your communication channels, and it will source contacts from Leadbay and handle outreach on your behalf. Enjoy the outreach you no longer have to do.
@@ -11,29 +11,66 @@
 
 ---
 
-> **New to Leadbay?** [Create your account here](https://wow.leadbay.ai/?register=true) before installing.
+# For users
 
-## How Leadbay thinks (mental model for your agent)
+Get LeadMCP running inside your AI assistant in a couple of minutes. No coding required.
 
-- **Inbox, not a database.** Each day your user logs back in, a fresh batch of leads is delivered. Batch size is paced by how many leads the user has actually acted on recently — some workflows produce a big stream of smaller prospects, others a narrow stream of bigger ones. Pulling more won't produce more; acting on leads does.
-- **Two scoring layers.** Every lead ships with a basic `score` (firmographic — already decent, usually correlates with AI). Roughly the top 10 of each batch are also AI-qualified (targeted web research + qualification questions → `ai_agent_lead_score`). Leads below the top 10 aren't worse — the system is saving resources. The agent can request deeper qualification (`leadbay_bulk_qualify_leads`) or contact enrichment (`leadbay_enrich_titles`) on any lead that looks worth it.
-- **Daily rhythm.** The agent works best as a daily check-in: pull fresh leads, skim the auto-qualified top, deepen 1-3 promising ones, propose outreach, then log what actually got sent via `leadbay_report_outreach`. If your host supports scheduling, set up a daily run.
+> **No Leadbay account yet?** [Create one here](https://wow.leadbay.ai/?register=true) first — you'll need it to sign in during setup.
 
-## Install
+## Install in Claude (recommended)
 
-> **No Leadbay account yet?** [Register here](https://wow.leadbay.ai/?register=true) first.
+The fastest way to get started is the one-click Claude extension.
 
-### Step 1 — Connect Leadbay with the universal installer
+**1. Download the extension**
 
-Requires [Node.js 22+](https://nodejs.org).
+👉 **[Download the latest LeadMCP for Claude (.dxt)](https://github.com/leadbay/leadclaw/releases/latest)**
+
+On the releases page, click the file ending in **`.dxt`** to download it.
+
+**2. Install it**
+
+Double-click the downloaded `.dxt` file. Claude opens and shows an install dialog — click **Install**, and you're done.
+
+**If the double-click doesn't open Claude**, install it manually:
+
+1. Open Claude and go to your **profile → Settings → Extensions**.
+2. Open **Advanced settings**.
+3. Choose **Install extension…** and select the `.dxt` file you downloaded.
+
+**3. Sign in**
+
+Claude will prompt you to connect Leadbay. Sign in with your Leadbay account and you're ready — just ask your agent for leads.
+
+## Using another assistant?
+
+LeadMCP also works with Claude Desktop, ChatGPT Desktop, Cursor, and Codex. The **universal installer** sets everything up for you and lets you sign in with Leadbay:
 
 ```bash
 npx -y -p @leadbay/mcp@latest installer
 ```
 
-Click **Sign in with Leadbay**. The installer opens OAuth in your browser, then comes back to the app so you can choose which local agents to configure.
+It opens a window where you click **Sign in with Leadbay**, then pick which assistants to connect. Available on macOS and Windows.
 
-The installer works on macOS and Windows. On Linux, only the command-line install path is available (`npx -y @leadbay/mcp@latest install --oauth`) — no desktop installer window. The installer only shows supported clients that are actually installed on the machine:
+---
+
+# For developers
+
+Everything below is for contributors and anyone running LeadMCP from source or wiring it into automation.
+
+## Install a local version with the custom installer
+
+The same package ships a CLI installer that works headlessly across every platform (macOS, Windows, Linux) and registers the server into every detected MCP client:
+
+```bash
+npx -y @leadbay/mcp@latest install --oauth
+```
+
+It opens OAuth in your browser and asks per-target before writing anything. Useful flags:
+
+- `--yes` — skip the per-client prompts after auth.
+- `--target claude-code,cursor` — scope the install to specific clients.
+
+The installer only touches clients that are actually installed on the machine:
 
 | Client | Installer behavior |
 |--------|--------------------|
@@ -43,21 +80,9 @@ The installer works on macOS and Windows. On Linux, only the command-line instal
 | Codex | Writes/removes only the `[mcp_servers.leadbay]` block in `~/.codex/config.toml` and the Leadbay-managed shell export block |
 | ChatGPT Desktop | Uses the hosted MCP URL, no local config write |
 
-Uninstall is scoped to Leadbay. It does not rewrite unrelated client settings or remove other MCP servers.
+### Connecting specific clients
 
----
-
-### Step 2 — Connect your client
-
-#### Claude Desktop
-
-Use the guided installer above. It writes the local `mcpServers.leadbay` entry in `claude_desktop_config.json` with `npx -y @leadbay/mcp@0.16`, then Claude Desktop runs the published MCP package.
-
-The `.dxt` / `.mcpb` bundle from [Releases](https://github.com/leadbay/leadclaw/releases/latest) remains available as an alternative.
-
-#### ChatGPT Desktop
-
-ChatGPT Desktop connects to the hosted MCP URL instead of a local config file:
+**ChatGPT Desktop** connects to the hosted MCP URL instead of a local config file:
 
 ```text
 https://leadbay-mcp-prod.fly.dev/mcp
@@ -65,24 +90,7 @@ https://leadbay-mcp-prod.fly.dev/mcp
 
 Use the connector auth flow to approve Leadbay.
 
-#### Terminal-only install / automation (all platforms)
-
-```bash
-npx -y @leadbay/mcp@latest install --oauth
-```
-
-Works on macOS, Windows, and Linux. Opens OAuth in your browser and registers the server into every detected MCP client, asking per-target. Pass `--yes` to skip prompts after auth. Pass `--target claude-code,cursor` to scope to specific clients.
-
-#### Uninstall
-
-```bash
-npx -y -p @leadbay/mcp@latest installer --uninstall
-```
-
-Opens the uninstall wizard. Only shows clients that already have Leadbay MCP configured — select the ones to clean up and click "Remove selected". De-registers Claude Code, strips the JSON stanza from Claude Desktop / Cursor configs, removes the `[mcp_servers.leadbay]` TOML block from Codex, and strips the managed `export LEADBAY_*` block from `~/.zshrc` / `~/.bashrc`.
-
-
-#### Claude Code plugin marketplace
+**Claude Code plugin marketplace:**
 
 ```text
 /plugin marketplace add leadbay/leadclaw
@@ -93,6 +101,20 @@ Opens the uninstall wizard. Only shows clients that already have Leadbay MCP con
 ```
 
 Claude Code prompts for Leadbay auth/config. Registers the MCP server **and** installs skills (`leadbay_research_a_domain`, `leadbay_import_file`, `leadbay_log_outreach`, `leadbay_qualify_top_n`, `leadbay_refine_audience`, and others) that auto-trigger on natural-language asks.
+
+### Uninstall
+
+```bash
+npx -y -p @leadbay/mcp@latest installer --uninstall
+```
+
+Opens the uninstall wizard — only shows clients that already have Leadbay MCP configured. De-registers Claude Code, strips the JSON stanza from Claude Desktop / Cursor configs, removes the `[mcp_servers.leadbay]` TOML block from Codex, and strips the managed `export LEADBAY_*` block from `~/.zshrc` / `~/.bashrc`. Uninstall is scoped to Leadbay — it never rewrites unrelated client settings or removes other MCP servers.
+
+## How Leadbay thinks (mental model for your agent)
+
+- **Inbox, not a database.** Each day your user logs back in, a fresh batch of leads is delivered. Batch size is paced by how many leads the user has actually acted on recently — some workflows produce a big stream of smaller prospects, others a narrow stream of bigger ones. Pulling more won't produce more; acting on leads does.
+- **Two scoring layers.** Every lead ships with a basic `score` (firmographic — already decent, usually correlates with AI). Roughly the top 10 of each batch are also AI-qualified (targeted web research + qualification questions → `ai_agent_lead_score`). Leads below the top 10 aren't worse — the system is saving resources. The agent can request deeper qualification (`leadbay_bulk_qualify_leads`) or contact enrichment (`leadbay_enrich_titles`) on any lead that looks worth it.
+- **Daily rhythm.** The agent works best as a daily check-in: pull fresh leads, skim the auto-qualified top, deepen 1-3 promising ones, propose outreach, then log what actually got sent via `leadbay_report_outreach`. If your host supports scheduling, set up a daily run.
 
 ## Tools
 
@@ -182,7 +204,7 @@ leadbay_import_leads → leadbay_bulk_qualify_leads                             
 - Node.js 22+
 - A [Leadbay account](https://wow.leadbay.ai/?register=true)
 
-## Development
+## Building from source
 
 ```bash
 pnpm install
