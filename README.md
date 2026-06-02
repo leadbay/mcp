@@ -116,6 +116,7 @@ Claude Code prompts for Leadbay auth/config. Registers the MCP server **and** in
 | `leadbay_import_status` | Status of a running import job |
 | `leadbay_resolve_import_rows` | Resolve import rows to lead IDs |
 | `leadbay_list_mappable_fields` | List CRM fields available for mapping |
+| `leadbay_list_sectors` | List the sector taxonomy (real labels to target — no guessing) |
 | `leadbay_recall_ordered_titles` | List job titles previously enriched by the org (use before `leadbay_enrich_titles`) |
 | `leadbay_create_topup_link` | Generate a Stripe top-up link (quota recovery) |
 | `leadbay_open_billing_portal` | Open the billing portal |
@@ -126,7 +127,9 @@ Claude Code prompts for Leadbay auth/config. Registers the MCP server **and** in
 |------|-------------|
 | `leadbay_bulk_qualify_leads` | Trigger AI qualification on a batch of leads |
 | `leadbay_enrich_titles` | Enrich contact job titles |
-| `leadbay_adjust_audience` | Adjust the active lens audience |
+| `leadbay_my_lenses` | List, switch, rename/describe, or delete your lenses (delete is confirm-gated) |
+| `leadbay_new_lens` | Create a new named lens with sectors/sizes (previews & confirms before creating) |
+| `leadbay_adjust_audience` | Adjust a lens audience by sector/size — pass `lensName` to edit a lens by name (edit-only, doesn't switch your active lens) |
 | `leadbay_refine_prompt` | Refine the qualification prompt |
 | `leadbay_answer_clarification` | Answer a clarification question from Leadbay |
 | `leadbay_report_outreach` | Log outreach activity (required after every contact) |
@@ -147,6 +150,8 @@ Low-level single-API-call tools for power users and integrations. Enabled by set
 ## How it works
 
 The MCP server automatically uses your **active lens** (the last lens you used in Leadbay). Just call `leadbay_pull_leads` and it works — no lens configuration needed.
+
+You can also manage lenses directly from chat: `leadbay_my_lenses` lists them and switches/renames/deletes; `leadbay_new_lens` creates a named one with sector/size criteria; and `leadbay_adjust_audience` edits an existing lens (the active one, or any lens by name via `lensName`). Sector names resolve against the live taxonomy — `leadbay_list_sectors` surfaces the real labels.
 
 `leadbay_research_lead_by_id` bundles multiple API calls (lead details + AI qualification + contacts) into a single response. If some data isn't available yet, it returns partial results instead of failing.
 
