@@ -174,10 +174,13 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-Compact markdown: org name + admin badge on line 1; active lens on
-line 2; per-window quota usage as \`(used / cap)\` chips for
-llm_completion · ai_rescore · web_fetch. Surface regeneration flag
-prominently if mid-regen.
+Compact markdown: org name + admin badge, then active lens. Then a
+small quota table grouped by resource (llm_completion · ai_rescore ·
+web_fetch, plus lens_extra_refill / contact_enrichment_* if present)
+with Daily / Weekly / Monthly columns of the used \`count\`. The API
+returns USAGE only — no cap field, \`plan\` may be null; never invent a
+denominator and never read missing caps / null plan as "unlimited" or
+"no quota". Note the nearest \`resets_at\`; surface mid-regen prominently.
 
 ---
 
