@@ -70,12 +70,15 @@ async function listWithActive(
 export const myLenses: Tool<MyLensesParams> = {
   name: "leadbay_my_lenses",
   annotations: {
-    title: "List, switch, or rename your lenses",
-    // No args → pure read. switch/rename mutate, so not flagged read-only, but
-    // they never destroy data and re-calling with the same args is a no-op.
+    title: "List, switch, edit, or delete your lenses",
+    // No args → pure read. The delete mode issues DELETE /lenses/:id (an
+    // irreversible side effect), so the tool is destructive — clients must
+    // treat it as approval-required, not auto-run. The delete path is itself
+    // confirm-gated (preview unless confirm:true). switch/edit are not
+    // idempotent across modes either, so don't claim idempotency.
     readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: true,
+    destructiveHint: true,
+    idempotentHint: false,
     openWorldHint: true,
   },
   description: MY_LENSES_DESCRIPTION,
