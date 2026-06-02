@@ -152,6 +152,7 @@ export {
   // new composite reads
   pullLeads, pullFollowups, followupsMap, tourPlan, listCampaigns,
   campaignProgression, campaignCallSheet, researchLeadById, researchLeadByNameFuzzy,
+  accountHistory,
   recallOrderedTitles, accountStatus,
   bulkEnrichStatus, qualifyStatus, importStatus, resolveImportRows,
   // new composite writes
