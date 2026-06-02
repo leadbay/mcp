@@ -24,13 +24,13 @@ routing:
       - "Show me today's leads."
       - "What should I follow up on?"
 rendering_hint: |
-  Compact markdown: org name + admin badge, then active lens. Then a
-  small quota table grouped by resource (llm_completion · ai_rescore ·
-  web_fetch, plus lens_extra_refill / contact_enrichment_* if present)
-  with Daily / Weekly / Monthly columns of the used `count`. The API
-  returns USAGE only — no cap field, `plan` may be null; never invent a
-  denominator and never read missing caps / null plan as "unlimited" or
-  "no quota". Note the nearest `resets_at`; surface mid-regen prominently.
+  ALWAYS render quota.resources as a markdown table, never prose: rows =
+  resources (llm_completion · ai_rescore · web_fetch, + others if present),
+  cols = Daily / Weekly / Monthly used `count`. Above: org + admin, then
+  active lens. `count` is amount USED; there is NO cap field and `plan`
+  may be null — NEVER invent a denominator or call a missing cap / null
+  plan "unlimited" or "no limits". If any `count` > 0 you MUST show the
+  numbers; never say "no usage" or "nothing throttled". Note `resets_at`.
 annotations:
   readOnlyHint: true
   destructiveHint: false
