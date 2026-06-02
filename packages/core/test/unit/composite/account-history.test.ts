@@ -137,6 +137,33 @@ describe("leadbay_account_history", () => {
     expect(res.activities.total).toBe(1);
   });
 
+  it("malformed-but-200 history — null/missing items degrade, don't throw", async () => {
+    // The .catch() only covers REJECTED requests. A 200 with a malformed body
+    // (notes = {} not an array, activities.items = null) must still degrade
+    // to empty rather than throwing at .map / .length.
+    mockHttp([
+      mockLensResolution(),
+      ...mockResearchSubResources(LEAD),
+      { method: "GET", path: `/1.5/leads/${LEAD}/notes`, status: 200, body: {} },
+      {
+        method: "GET",
+        path: new RegExp(`/1\\.5/leads/${LEAD}/activities\\?count=50`),
+        status: 200,
+        body: { items: null, pagination: null },
+      },
+    ]);
+
+    const res: any = await accountHistory.execute(newClient(), { leadId: LEAD });
+
+    expect(res.notes).toEqual([]);
+    expect(res._meta.notes_count).toBe(0);
+    expect(res.activities.activities).toEqual([]);
+    expect(res.activities.total).toBe(0);
+    expect(res._meta.activities_returned).toBe(0);
+    // card still returns intact
+    expect(res.lead.id).toBe(LEAD);
+  });
+
   it("error — research itself 4xx propagates (load-bearing)", async () => {
     mockHttp([
       mockLensResolution(),

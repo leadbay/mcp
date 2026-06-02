@@ -48,7 +48,10 @@ export const accountHistory: Tool<AccountHistoryParams> = {
     ctx?: ToolContext
   ) => {
     const leadId = params.leadId;
-    const count = Math.min(params.activityCount ?? 50, 100);
+    // Clamp both ends: upper to the backend max, lower to 1 so a 0/negative/
+    // NaN activityCount can't produce a degenerate `?count=` the backend may
+    // 4xx on (which .catch would silently flatten into "no activity").
+    const count = Math.max(1, Math.min(Math.floor(params.activityCount ?? 50), 100));
 
     // research is load-bearing — if it throws, the whole card fails (the
     // agent has nothing to narrate). notes + activities degrade gracefully:
@@ -71,6 +74,14 @@ export const accountHistory: Tool<AccountHistoryParams> = {
 
     const r = research as Record<string, any>;
 
+    // The .catch() above only fires on a REJECTED request. A 200 with a
+    // malformed body (null, {}, items:null — truncation, proxy stub, partial
+    // backend) flows past it, so guard the shapes here before mapping. This is
+    // what actually delivers the "degrade gracefully" promise; without it a
+    // single malformed-but-200 response would throw uncaught and sink the card.
+    const noteList: NotePayload[] = Array.isArray(notes) ? notes : [];
+    const activityItems = Array.isArray(activities?.items) ? activities.items : [];
+
     return {
       lead: {
         id: r.firmographics?.id ?? leadId,
@@ -85,15 +96,15 @@ export const accountHistory: Tool<AccountHistoryParams> = {
       contacts: r.contacts ?? null,
       engagement: r.engagement ?? null,
       // Historical context — the part research only counts/summarizes.
-      notes,
+      notes: noteList,
       activities: {
-        activities: activities.items.map((a) => ({ type: a.type, date: a.date })),
-        total: activities.pagination?.total ?? 0,
+        activities: activityItems.map((a) => ({ type: a.type, date: a.date })),
+        total: activities?.pagination?.total ?? 0,
       },
       _meta: {
         region: client.region,
-        notes_count: notes.length,
-        activities_returned: activities.items.length,
+        notes_count: noteList.length,
+        activities_returned: activityItems.length,
       },
     };
   },
