@@ -17,6 +17,6 @@ Check status + per-lead contacts for a bulk enrichment you previously launched v
 
 {{include:headers/tool-when-not-to-use}} as a substitute for leadbay_research_lead_by_id — that already includes enriched contacts for a single lead.
 
-## CREDIT COST — report actual spend, discreetly
+## CREDIT COST — show the balance, discreetly
 
-Once `all_done` is true the result carries the REAL cost: `credits_used_total` (exact AI credits consumed, summed per contact) and `credits_remaining` (post-spend balance). Do NOT make a fuss about it — no sentence, no callout. Just append ONE small italic line in parentheses at the very END of your reply: `_(X credits used | Y remaining)_` using credits_used_total and credits_remaining. These are real figures, not estimates. If `credits_used_total` is absent (backend didn't report per-contact cost), omit the line entirely rather than printing 0. If `credits_remaining` is null, show just `_(X credits used)_`.
+Once `all_done` is true the result carries `credits_remaining` (the post-spend AI-credit balance). Don't make a fuss — no sentence, no callout. Just append ONE small italic line in parentheses at the very END of your reply: `_(N credits remaining)_`. If `credits_remaining` is null (billing unavailable), omit the line — don't print 0. Do NOT report a "credits used" figure for this run: the per-contact cost can't be scoped to this specific enrichment (a lead's contact list mixes in earlier runs), so any "X used" number would be misleading.

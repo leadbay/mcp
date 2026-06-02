@@ -2,12 +2,11 @@
  * Credit-cost visibility around enrichment (BEFORE balance/volume, AFTER spend).
  *
  * Covers:
- *  - bulk_enrich_status aggregates enrichment.credits_used into credits_used_total
- *    and re-reads credits_remaining once all_done (forced /users/me).
- *  - older backend that omits credits_used → no credits_used_total field, no crash.
+ *  - bulk_enrich_status re-reads credits_remaining once all_done (forced /users/me)
+ *    and does NOT report a per-run "credits used" (can't be scoped to this bulk).
  *  - enrich_titles dry_run / discover surface credits_remaining + enrichable_contacts
  *    BEFORE launch (no fabricated cost estimate).
- *  - the sumCreditsUsed / readCreditsRemaining helpers in isolation.
+ *  - the readCreditsRemaining helper in isolation.
  *
  * New file (existing test files are never modified).
  */
@@ -21,10 +20,7 @@ import { LeadbayClient } from "../../../src/client.js";
 import { enrichTitles } from "../../../src/composite/enrich-titles.js";
 import { bulkEnrichStatus } from "../../../src/composite/bulk-enrich-status.js";
 import { InMemoryBulkStore } from "../../../src/jobs/bulk-store.js";
-import {
-  sumCreditsUsed,
-  readCreditsRemaining,
-} from "../../../src/composite/_credits-helpers.js";
+import { readCreditsRemaining } from "../../../src/composite/_credits-helpers.js";
 
 const BASE = "https://api-us.leadbay.app";
 const LENS_ID = 7;
@@ -57,39 +53,7 @@ function contact(id: string, enrichment: any) {
 
 beforeEach(() => resetHttpMock());
 
-// ─── helpers in isolation ───────────────────────────────────────────────────
-
-describe("sumCreditsUsed", () => {
-  it("sums reported credits_used and flags any_reported", () => {
-    const r = sumCreditsUsed([
-      contact("a", { done: true, credits_used: 2 }),
-      contact("b", { done: true, credits_used: 3 }),
-    ]);
-    expect(r).toEqual({ total: 5, any_reported: true });
-  });
-
-  it("ignores contacts without credits_used; any_reported false when none report", () => {
-    const r = sumCreditsUsed([
-      contact("a", { done: true }),
-      contact("b", { done: false }),
-      contact("c", null),
-    ]);
-    expect(r).toEqual({ total: 0, any_reported: false });
-  });
-
-  it("mixed: counts reported, skips missing; any_reported true", () => {
-    const r = sumCreditsUsed([
-      contact("a", { done: true, credits_used: 4 }),
-      contact("b", { done: true }), // older backend — no credits_used
-    ]);
-    expect(r).toEqual({ total: 4, any_reported: true });
-  });
-
-  it("non-array input → zero, not_reported (does not crash)", () => {
-    expect(sumCreditsUsed(undefined)).toEqual({ total: 0, any_reported: false });
-    expect(sumCreditsUsed(null)).toEqual({ total: 0, any_reported: false });
-  });
-});
+// ─── helper in isolation ────────────────────────────────────────────────────
 
 describe("readCreditsRemaining", () => {
   it("returns ai_credits from billing", async () => {
@@ -124,10 +88,10 @@ describe("readCreditsRemaining", () => {
   });
 });
 
-// ─── AFTER: bulk_enrich_status surfaces actual spend ────────────────────────
+// ─── AFTER: bulk_enrich_status surfaces balance only (no per-run cost) ───────
 
-describe("bulk_enrich_status — credits_used_total + credits_remaining", () => {
-  it("aggregates credits_used and re-reads balance when all_done", async () => {
+describe("bulk_enrich_status — credits_remaining only", () => {
+  it("re-reads balance when all_done and does NOT report a credits-used figure", async () => {
     const tracker = new InMemoryBulkStore();
     const { record } = await tracker.findOrCreatePending({
       lead_ids: [LEAD_A, LEAD_B],
@@ -180,11 +144,16 @@ describe("bulk_enrich_status — credits_used_total + credits_remaining", () => 
     );
 
     expect(status.all_done).toBe(true);
-    expect(status.credits_used_total).toBe(5);
     expect(status.credits_remaining).toBe(95);
+    // No per-run cost figure — would conflate historical enrichments.
+    expect(status.credits_used_total).toBeUndefined();
+    expect(status.credits_used).toBeUndefined();
   });
 
-  it("older backend without credits_used → no credits_used_total field, no crash", async () => {
+  it("does not over-report cost when a lead carries prior-run enriched contacts", async () => {
+    // The bug scenario: LEAD_A already has a CFO contact enriched earlier
+    // (credits_used: 9). This bulk only ordered the CEO. getContacts returns
+    // BOTH. We must NOT surface 9 (or 9+anything) as this run's spend.
     const tracker = new InMemoryBulkStore();
     const { record } = await tracker.findOrCreatePending({
       lead_ids: [LEAD_A],
@@ -201,7 +170,10 @@ describe("bulk_enrich_status — credits_used_total + credits_remaining", () => 
         method: "GET",
         path: /\/leads\/lead-a\/contacts\?IncludeEnriched=true/,
         status: 200,
-        body: [contact("c1", { done: true })], // no credits_used
+        body: [
+          contact("prior-cfo", { done: true, credits_used: 9 }), // earlier run
+          contact("this-ceo", { done: true, credits_used: 1 }), // this run
+        ],
       },
       {
         method: "GET",
@@ -213,7 +185,7 @@ describe("bulk_enrich_status — credits_used_total + credits_remaining", () => 
         method: "GET",
         path: "/1.5/users/me",
         status: 200,
-        body: { id: "u", organization: { id: "org-1", billing: { ai_credits: 7 } } },
+        body: { id: "u", organization: { id: "org-1", billing: { ai_credits: 50 } } },
       },
     ]);
 
@@ -224,9 +196,9 @@ describe("bulk_enrich_status — credits_used_total + credits_remaining", () => 
     );
 
     expect(status.all_done).toBe(true);
+    // Balance is the only cost signal; no inflated "10 credits used".
+    expect(status.credits_remaining).toBe(50);
     expect(status.credits_used_total).toBeUndefined();
-    // balance is still re-read when done
-    expect(status.credits_remaining).toBe(7);
   });
 });
 
