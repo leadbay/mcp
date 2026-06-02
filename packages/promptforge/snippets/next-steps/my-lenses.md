@@ -9,6 +9,7 @@ quick-select options (each option = a lens name → `leadbay_my_lenses(switchToL
 | Observation                          | Suggest                                  | Calls                                                |
 |--------------------------------------|------------------------------------------|------------------------------------------------------|
 | User wants a different lens          | "Switch to <lens name>"                  | `leadbay_my_lenses(switchToLensId=<id>)`             |
+| User wants to rename a lens          | "Rename <lens> to <new name>"            | `leadbay_my_lenses(renameLensId=<id>, newName=<X>)`  |
 | User wants leads on the active lens  | "Pull today's leads"                     | `leadbay_pull_leads()`                               |
 | User wants to change the audience    | "Adjust this lens's audience"            | `leadbay_adjust_audience(...)`                       |
 | User wants more of the same          | "Get a bigger batch on this lens"        | `leadbay_extend_lens(...)`                           |
