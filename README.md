@@ -11,6 +11,14 @@
 
 ---
 
+## How Leadbay thinks (mental model for your agent)
+
+- **Inbox, not a database.** Each day your user logs back in, a fresh batch of leads is delivered. Batch size is paced by how many leads the user has actually acted on recently — some workflows produce a big stream of smaller prospects, others a narrow stream of bigger ones. Pulling more won't produce more; acting on leads does.
+- **Two scoring layers.** Every lead ships with a basic `score` (firmographic — already decent, usually correlates with AI). Roughly the top 10 of each batch are also AI-qualified (targeted web research + qualification questions → `ai_agent_lead_score`). Leads below the top 10 aren't worse — the system is saving resources. The agent can request deeper qualification (`leadbay_bulk_qualify_leads`) or contact enrichment (`leadbay_enrich_titles`) on any lead that looks worth it.
+- **Daily rhythm.** The agent works best as a daily check-in: pull fresh leads, skim the auto-qualified top, deepen 1-3 promising ones, propose outreach, then log what actually got sent via `leadbay_report_outreach`. If your host supports scheduling, set up a daily run.
+
+---
+
 # For users
 
 Get LeadMCP running inside your AI assistant in a couple of minutes. No coding required.
@@ -109,7 +117,17 @@ The GUI/CLI installers only touch clients that are actually installed on the mac
 | Cursor | Writes/removes only the `mcpServers.leadbay` entry in Cursor's MCP config |
 | Codex | Writes/removes only the `[mcp_servers.leadbay]` block in `~/.codex/config.toml` and the Leadbay-managed shell export block |
 
-The Claude Code plugin marketplace path installs skills (`leadbay_research_a_domain`, `leadbay_import_file`, `leadbay_log_outreach`, `leadbay_qualify_top_n`, `leadbay_refine_audience`, and others) that auto-trigger on natural-language asks.
+### Claude Code plugin marketplace
+
+```bash
+/plugin marketplace add leadbay/leadclaw
+```
+
+```bash
+/plugin install leadbay@leadbay-leadclaw
+```
+
+Claude Code prompts for Leadbay auth/config. Registers the MCP server **and** installs skills (`leadbay_research_a_domain`, `leadbay_import_file`, `leadbay_log_outreach`, `leadbay_qualify_top_n`, `leadbay_refine_audience`, and others) that auto-trigger on natural-language asks.
 
 ### Uninstall
 
@@ -118,12 +136,6 @@ npx -y -p @leadbay/mcp@latest installer --uninstall
 ```
 
 Opens the uninstall wizard — only shows clients that already have Leadbay MCP configured. De-registers Claude Code, strips the JSON stanza from Claude Desktop / Cursor configs, removes the `[mcp_servers.leadbay]` TOML block from Codex, and strips the managed `export LEADBAY_*` block from `~/.zshrc` / `~/.bashrc`. Uninstall is scoped to Leadbay — it never rewrites unrelated client settings or removes other MCP servers.
-
-## How Leadbay thinks (mental model for your agent)
-
-- **Inbox, not a database.** Each day your user logs back in, a fresh batch of leads is delivered. Batch size is paced by how many leads the user has actually acted on recently — some workflows produce a big stream of smaller prospects, others a narrow stream of bigger ones. Pulling more won't produce more; acting on leads does.
-- **Two scoring layers.** Every lead ships with a basic `score` (firmographic — already decent, usually correlates with AI). Roughly the top 10 of each batch are also AI-qualified (targeted web research + qualification questions → `ai_agent_lead_score`). Leads below the top 10 aren't worse — the system is saving resources. The agent can request deeper qualification (`leadbay_bulk_qualify_leads`) or contact enrichment (`leadbay_enrich_titles`) on any lead that looks worth it.
-- **Daily rhythm.** The agent works best as a daily check-in: pull fresh leads, skim the auto-qualified top, deepen 1-3 promising ones, propose outreach, then log what actually got sent via `leadbay_report_outreach`. If your host supports scheduling, set up a daily run.
 
 ## Tools
 
