@@ -59,7 +59,7 @@ Requires [Node.js 22+](https://nodejs.org). Then run:
 npx -y -p @leadbay/mcp@latest installer
 ```
 
-It opens a window where you click **Sign in with Leadbay**, then pick which assistants to connect. Available on macOS and Windows.
+It opens in your browser where you click **Sign in with Leadbay**, then pick which assistants to connect. Works on macOS, Windows, and Linux.
 
 **To uninstall**, run the same installer with `--uninstall`:
 
@@ -95,16 +95,14 @@ pnpm --filter @leadbay/mcp installer -- --local
 
 ## All install methods
 
-Every supported way to connect LeadMCP, from one-click to fully manual:
+Every supported way to connect LeadMCP:
 
 | Method | Command / action | Platforms | Notes |
 |--------|------------------|-----------|-------|
 | **`.dxt` / `.mcpb` bundle** | Download from [Releases](https://github.com/leadbay/leadclaw/releases/latest), double-click → **Install** | Claude Desktop | One-click. The recommended path for end users. |
-| **Guided installer (GUI)** | `npx -y -p @leadbay/mcp@latest installer` | macOS, Windows | Electron wizard: sign in with Leadbay, pick clients. |
-| **Headless CLI install** | `npx -y @leadbay/mcp@latest install --oauth` | macOS, Windows, Linux | One-shot: browser OAuth + register every detected client; confirms before each write. The only path on Linux. |
+| **Guided installer (GUI)** | `npx -y -p @leadbay/mcp@latest installer` | macOS, Windows, Linux | Browser wizard: sign in with Leadbay, pick clients. Works for everyone. |
 | **Local dev build** | `pnpm --filter @leadbay/mcp installer -- --local` | macOS, Windows, Linux | Registers clients against your local build. OAuth automatic. Build from source first (above). |
 | **Claude Code plugin marketplace** | `/plugin marketplace add leadbay/leadclaw` then `/plugin install leadbay@leadbay-leadclaw` | Claude Code | Registers the MCP server **and** installs auto-triggering skills. |
-| **Manual config** | Mint a token with `npx -y @leadbay/mcp@latest login --oauth`, then paste the `mcpServers.leadbay` entry into your client config | Any | Lower-level; use when you want to edit the config file yourself. |
 
 ### What each installer writes per client
 
