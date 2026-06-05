@@ -54,17 +54,103 @@ const DAYS = parseInt(argVal("--days", "30"), 10);
 const OUT = resolve(process.cwd(), argVal("--out", "mcp-dashboard.html"));
 const WRITE_JSON = argv.includes("--json");
 
+// ── Date range ───────────────────────────────────────────────────────────────
+// The window can be given two ways:
+//   --start YYYY-MM-DD --end YYYY-MM-DD   explicit range (end is exclusive)
+//   --days N                              last N days (default; --end defaults to today)
+// Explicit dates win. We resolve everything to concrete YYYY-MM-DD bounds so the
+// snapshot queries ("active at end", "new in window") share the exact same edges
+// and the UI can echo the chosen range back. now()/new Date() are avoided in the
+// generator's query strings — we pass real dates so results are deterministic.
+const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
+const argStart = argVal("--start", "");
+const argEnd = argVal("--end", "");
+// End defaults to tomorrow (so "today" is fully included, end being exclusive).
+const END = argEnd || isoDate(new Date(Date.now() + 86_400_000));
+const START =
+  argStart ||
+  isoDate(new Date(new Date(END).getTime() - DAYS * 86_400_000));
+// Human label for the header, e.g. "May 1 – May 31, 2026 (31 days)".
+const rangeDays = Math.max(
+  1,
+  Math.round((new Date(END).getTime() - new Date(START).getTime()) / 86_400_000)
+);
+const RANGE_LABEL = `${START} → ${END} (${rangeDays} days)`;
+
 // ── HogQL query helper ──────────────────────────────────────────────────────
+// Hardened against the failure that hung whole-dashboard generation: a single
+// PostHog request with NO timeout would hang forever when PostHog throttled us
+// after a burst of queries, so the subprocess never exited and the server
+// looped on "Generating…". Now every request has a hard timeout, and 429 /
+// 5xx are retried with backoff (PostHog caps concurrency at 3 per team).
 type Row = unknown[];
-async function hogql(query: string): Promise<Row[]> {
-  const res = await fetch(`${HOST}/api/projects/${PROJECT_ID}/query/`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query: { kind: "HogQLQuery", query } }),
+const QUERY_TIMEOUT_MS = 25_000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Serialize all queries through a single chain with a small pacing delay. PostHog
+// caps concurrency at 3/team and rate-limits bursts; pacing ~120ms apart keeps us
+// under the wall, which is FAR cheaper than tripping it and eating 1.5s×N backoffs
+// (that storm is what pushed recent-window ranges past the generation timeout).
+const QUERY_PACING_MS = 120;
+let queueTail: Promise<unknown> = Promise.resolve();
+function hogql(query: string): Promise<Row[]> {
+  const run = queueTail.then(async () => {
+    await sleep(QUERY_PACING_MS);
+    return hogqlOnce(query);
   });
+  // Keep the chain alive even if one query rejects.
+  queueTail = run.catch(() => undefined);
+  return run;
+}
+
+async function hogqlOnce(query: string, attempt = 0): Promise<Row[]> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), QUERY_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${HOST}/api/projects/${PROJECT_ID}/query/`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query: { kind: "HogQLQuery", query } }),
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    // Timeout (abort) or network blip — retry a couple times before giving up.
+    if (attempt < 3) {
+      await sleep(1000 * (attempt + 1));
+      return hogqlOnce(query, attempt + 1);
+    }
+    throw new Error(`PostHog request failed after ${attempt + 1} tries: ${(err as Error).message}`);
+  }
+  clearTimeout(timer);
+  // 429: PostHog tells us how long to wait (Retry-After header or "available in
+  // N seconds" in the body). If that wait is SHORT, sleep it off and retry. If
+  // it's LONG (the key is hard rate-limited), there's no point grinding the
+  // remaining ~20 panel queries — each would 429 too and only push the reset
+  // further out. Throw a distinct THROTTLED error so main() aborts the whole run
+  // fast and the server keeps serving the last good cache instead of looping.
+  if (res.status === 429) {
+    const body = await res.clone().text().catch(() => "");
+    const hdr = parseInt(res.headers.get("retry-after") ?? "", 10);
+    const m = body.match(/available in (\d+) seconds/);
+    const waitS = Number.isFinite(hdr) ? hdr : m ? parseInt(m[1], 10) : 5;
+    if (waitS <= 15 && attempt < 4) {
+      await sleep(waitS * 1000 + 500);
+      return hogqlOnce(query, attempt + 1);
+    }
+    const e = new Error(`THROTTLED: PostHog rate limit, retry in ~${waitS}s`);
+    (e as Error & { throttled?: number }).throttled = waitS;
+    throw e;
+  }
+  // Transient server error → short backoff and retry.
+  if (res.status >= 500 && attempt < 4) {
+    await sleep(1500 * (attempt + 1));
+    return hogqlOnce(query, attempt + 1);
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`PostHog query failed (${res.status}): ${body.slice(0, 300)}`);
@@ -74,9 +160,29 @@ async function hogql(query: string): Promise<Row[]> {
   return json.results ?? [];
 }
 
-// Common WHERE clause: MCP surface only, within the lookback window.
-const WINDOW = `timestamp >= now() - interval ${DAYS} day`;
+// Common WHERE clause: events within the selected range [START, END).
+// Explicit dates (not now()-interval) keep the window deterministic and let the
+// snapshot panel reuse the exact same edges.
+const WINDOW = `timestamp >= '${START}' AND timestamp < '${END}'`;
 const MCP_ONLY = `event LIKE 'mcp %' OR event LIKE 'agent_memory_%'`;
+
+// "MCP users active in the window": anyone who fired an MCP / agent-memory event
+// inside [START, END). The subscription panels are scoped to THIS set — so the
+// counts answer "of MCP users active this period, how many bought T1 / sit on
+// freemium / etc." Changing the range changes who's counted.
+const MCP_USERS = `
+  SELECT DISTINCT distinct_id FROM events
+  WHERE (event LIKE 'mcp %' OR event LIKE 'agent_memory_%')
+        AND timestamp >= '${START}' AND timestamp < '${END}'`;
+const IS_MCP_USER = `distinct_id IN (${MCP_USERS})`;
+
+// Canonical tier source: each account's latest quota_plan_changed.new_plan AS OF
+// the end of the range — i.e. the tier they were on at END. Restricted to MCP
+// users active in the window. stripe_subscription_created carries no tier.
+const LATEST_PLAN_PER_USER = `
+  SELECT distinct_id, argMax(properties.new_plan, timestamp) AS plan
+  FROM events WHERE event='quota_plan_changed' AND timestamp < '${END}' AND ${IS_MCP_USER}
+  GROUP BY distinct_id`;
 
 // ── Panel definitions ───────────────────────────────────────────────────────
 // Each panel runs a query and is rendered by `kind`. Adding a metric = one
@@ -85,7 +191,7 @@ interface Panel {
   id: string;
   title: string;
   subtitle?: string;
-  kind: "stackedBar" | "line" | "table" | "friction" | "donut" | "funnel" | "hbar";
+  kind: "stackedBar" | "line" | "multiline" | "table" | "friction" | "donut" | "funnel" | "hbar" | "snapshot";
   columns?: string[];
   wide?: boolean; // span full grid width (for tables with many columns)
   query: string;
@@ -93,10 +199,210 @@ interface Panel {
 }
 
 const panels: Panel[] = [
+  // ── Subscription / billing overview (MCP users only) ──────────────────────
+  // Where MCP users sit by plan tier, and their subscription + top-up activity.
+  // Every panel below is filtered to accounts that have touched the MCP (via
+  // IS_MCP_USER) — so these answer "how are MCP users monetising", not the
+  // whole product. They sit at the top, above the tool-usage telemetry.
+  {
+    // Headline snapshot — the answer to "for this window, how many users bought
+    // T1/T2 and how many are active freemium". Two metrics per tier:
+    //   • New in window  — first reached this tier inside [START, END)
+    //   • Active at end  — tier they sit on as of END (snapshot)
+    // Plus active freemium = on FREEMIUM at END *and* used the MCP in the window.
+    // Data is assembled in main() from two queries (see buildSnapshot), so the
+    // query field is unused; rendered by the "snapshot" kind as big stat cards.
+    id: "subscription-snapshot",
+    title: "Subscription snapshot",
+    subtitle: `MCP users active in range · ${RANGE_LABEL}`,
+    kind: "snapshot",
+    wide: true,
+    query: "",
+  },
+  {
+    id: "accounts-by-tier",
+    title: "Accounts by plan tier",
+    subtitle: `MCP users active in range · tier as of ${END}`,
+    kind: "donut",
+    query: `
+      SELECT plan, count() AS accounts
+      FROM (${LATEST_PLAN_PER_USER})
+      WHERE plan != '' AND plan IS NOT NULL
+      GROUP BY plan ORDER BY accounts DESC`,
+  },
+  {
+    id: "subscription-summary",
+    title: "Subscriptions & top-ups",
+    subtitle: `MCP users active in range · counts + revenue · ${RANGE_LABEL}`,
+    kind: "table",
+    columns: ["Metric", "Count", "Accounts", "€"],
+    query: `
+      SELECT metric, n, accounts, eur FROM (
+        SELECT 0 AS ord, 'New accounts' AS metric, count() AS n, count(DISTINCT distinct_id) AS accounts, '' AS eur
+          FROM events WHERE event='wow user create account' AND ${WINDOW} AND ${IS_MCP_USER}
+        UNION ALL
+        SELECT 1, 'New subscriptions', count(), count(DISTINCT distinct_id), ''
+          FROM events WHERE event='stripe_subscription_created' AND ${WINDOW} AND ${IS_MCP_USER}
+        UNION ALL
+        SELECT 2, 'Subscription updates', count(), count(DISTINCT distinct_id), ''
+          FROM events WHERE event='stripe_subscription_updated' AND ${WINDOW} AND ${IS_MCP_USER}
+        UNION ALL
+        SELECT 3, 'Upgrades to paid', count(), count(DISTINCT distinct_id), ''
+          FROM events WHERE event='quota_plan_changed' AND properties.new_plan IN ('TIER1','TIER2')
+                AND (properties.old_plan IS NULL OR properties.old_plan NOT IN ('TIER1','TIER2'))
+                AND ${WINDOW} AND ${IS_MCP_USER}
+        UNION ALL
+        SELECT 4, 'Top-ups (purchased)', count(), count(DISTINCT distinct_id),
+               concat('€', toString(round(sum(toInt(properties.payment_amount_cents))/100)))
+          FROM events WHERE event='topup_purchased' AND ${WINDOW} AND ${IS_MCP_USER}
+        UNION ALL
+        SELECT 5, 'Top-ups (initiated)', count(), count(DISTINCT distinct_id), ''
+          FROM events WHERE event='topup_init' AND ${WINDOW} AND ${IS_MCP_USER}
+      ) ORDER BY ord ASC`,
+  },
+  {
+    id: "topups-by-tier",
+    title: "Top-ups by plan tier",
+    subtitle: `MCP users active in range · which tier buys credits · ${RANGE_LABEL}`,
+    kind: "table",
+    columns: ["Plan tier", "Top-ups", "Accounts", "€ total"],
+    query: `
+      SELECT coalesce(nullIf(t.plan,''), '(no plan recorded)') AS tier,
+             count() AS topups,
+             count(DISTINCT e.distinct_id) AS accounts,
+             concat('€', toString(round(sum(e.cents)/100))) AS eur
+      FROM (
+        SELECT distinct_id, toInt(properties.payment_amount_cents) AS cents
+        FROM events WHERE event='topup_purchased' AND ${WINDOW} AND ${IS_MCP_USER}
+      ) e
+      LEFT JOIN (${LATEST_PLAN_PER_USER}) t ON e.distinct_id = t.distinct_id
+      GROUP BY tier ORDER BY topups DESC`,
+  },
+  {
+    id: "paid-by-month",
+    title: "New paid subscriptions by month",
+    subtitle: "MCP users only · distinct accounts upgrading INTO each tier · per calendar month",
+    kind: "table",
+    columns: ["Month", "TIER1", "TIER2", "Total"],
+    query: `
+      SELECT formatDateTime(month, '%Y-%m') AS month,
+             countIf(tier='TIER1') AS tier1,
+             countIf(tier='TIER2') AS tier2,
+             count() AS total
+      FROM (
+        SELECT distinct_id,
+               properties.new_plan AS tier,
+               toStartOfMonth(min(timestamp)) AS month
+        FROM events
+        WHERE event='quota_plan_changed' AND properties.new_plan IN ('TIER1','TIER2')
+              AND (properties.old_plan IS NULL OR properties.old_plan NOT IN ('TIER1','TIER2'))
+              AND ${WINDOW} AND ${IS_MCP_USER}
+        GROUP BY distinct_id, tier
+      )
+      GROUP BY month ORDER BY month DESC`,
+  },
+  {
+    // The detail behind paid-by-month: WHO subscribed to WHICH tier, and the
+    // exact date. Deduped to the FIRST time each account reached each tier
+    // (the web app fires quota_plan_changed twice per upgrade ~1s apart, and
+    // some accounts toggle plans — min(timestamp) per (account,tier) collapses
+    // both). Newest first. Scoped to MCP users active in the range.
+    id: "subscription-dates",
+    title: "Subscription dates by tier",
+    subtitle: `MCP users active in range · first date each account reached a paid tier`,
+    kind: "table",
+    wide: true,
+    columns: ["Date", "Tier", "Account", "From"],
+    query: `
+      SELECT formatDateTime(first_reached, '%Y-%m-%d') AS date,
+             tier,
+             account,
+             coalesce(nullIf(from_plan, ''), '(new / none)') AS from_plan
+      FROM (
+        SELECT distinct_id AS account,
+               properties.new_plan AS tier,
+               min(timestamp) AS first_reached,
+               argMin(properties.old_plan, timestamp) AS from_plan
+        FROM events
+        WHERE event='quota_plan_changed' AND properties.new_plan IN ('TIER1','TIER2')
+              AND ${WINDOW} AND ${IS_MCP_USER}
+        GROUP BY distinct_id, tier
+      )
+      ORDER BY first_reached DESC LIMIT 100`,
+  },
+  {
+    // One feed answering "in this period: who bought what, and when" — both
+    // subscriptions (first-reach per tier, deduped) AND top-up purchases,
+    // merged and sorted by date. Top-ups can repeat (christophe topped up
+    // twice) so they are NOT deduped — each purchase is its own dated row.
+    // Driven entirely by the top date picker (WINDOW).
+    id: "purchases-in-period",
+    title: "Purchases in period — subscriptions & top-ups",
+    subtitle: `MCP users active in range · every dated purchase · ${RANGE_LABEL}`,
+    kind: "table",
+    wide: true,
+    columns: ["Date", "Type", "Account", "Detail"],
+    query: `
+      SELECT formatDateTime(ts, '%Y-%m-%d') AS date, kind, account, detail FROM (
+        SELECT min(timestamp) AS ts,
+               concat('Subscribe ', properties.new_plan) AS kind,
+               distinct_id AS account,
+               concat('from ', coalesce(nullIf(properties.old_plan, ''), 'new')) AS detail
+        FROM events
+        WHERE event='quota_plan_changed' AND properties.new_plan IN ('TIER1','TIER2')
+              AND ${WINDOW} AND ${IS_MCP_USER}
+        GROUP BY distinct_id, properties.new_plan, properties.old_plan
+        UNION ALL
+        SELECT timestamp AS ts,
+               'Top-up' AS kind,
+               distinct_id AS account,
+               concat('€', toString(round(toInt(properties.payment_amount_cents)/100))) AS detail
+        FROM events
+        WHERE event='topup_purchased' AND ${WINDOW} AND ${IS_MCP_USER}
+      ) ORDER BY ts DESC LIMIT 100`,
+  },
+  {
+    id: "upgrade-paths",
+    title: "Plan transitions into paid tiers",
+    subtitle: `MCP users active in range · from → to · ${RANGE_LABEL}`,
+    kind: "table",
+    columns: ["From", "To", "Transitions"],
+    query: `
+      SELECT coalesce(nullIf(properties.old_plan,''), '(new / none)') AS from_plan,
+             properties.new_plan AS to_plan,
+             count() AS n
+      FROM events
+      WHERE event='quota_plan_changed' AND properties.new_plan IN ('TIER1','TIER2')
+            AND ${WINDOW} AND ${IS_MCP_USER}
+      GROUP BY from_plan, to_plan ORDER BY n DESC LIMIT 30`,
+  },
+  {
+    id: "subscription-timeline",
+    title: "Subscription activity over time",
+    subtitle: "MCP users only · new accounts · new subscriptions · top-ups per day",
+    kind: "multiline",
+    columns: ["Day", "New accounts", "New subscriptions", "Top-ups"],
+    query: `
+      SELECT day,
+             sum(accounts) AS accounts,
+             sum(subs) AS subs,
+             sum(topups) AS topups
+      FROM (
+        SELECT toDate(timestamp) AS day,
+               countIf(event='wow user create account') AS accounts,
+               countIf(event='stripe_subscription_created') AS subs,
+               countIf(event='topup_purchased') AS topups
+        FROM events
+        WHERE event IN ('wow user create account','stripe_subscription_created','topup_purchased')
+              AND ${WINDOW} AND ${IS_MCP_USER}
+        GROUP BY day
+      )
+      GROUP BY day ORDER BY day ASC`,
+  },
   {
     id: "tool-volume",
     title: "Tool calls by tool — success vs failure",
-    subtitle: `Last ${DAYS} days · 'mcp tool called'`,
+    subtitle: `${RANGE_LABEL} · 'mcp tool called'`,
     kind: "stackedBar",
     query: `
       SELECT properties.tool AS tool,
@@ -109,7 +415,7 @@ const panels: Panel[] = [
   {
     id: "calls-per-tool",
     title: "Calls per tool",
-    subtitle: `Total volume · last ${DAYS} days`,
+    subtitle: `Total volume · ${RANGE_LABEL}`,
     kind: "hbar",
     query: `
       SELECT properties.tool AS tool, count() AS calls
@@ -254,19 +560,32 @@ const panels: Panel[] = [
   {
     id: "roster",
     title: "User roster",
-    subtitle: "region · platform · version · MCP events",
+    subtitle: "registered · region · platform · version · MCP events",
     kind: "table",
     wide: true,
-    columns: ["User", "Region", "Platform", "MCP version", "Events"],
+    columns: ["User", "Registered", "Region", "Platform", "MCP version", "Events"],
     query: `
-      SELECT distinct_id AS user,
-             any(properties.region) AS region,
-             any(properties.platform) AS platform,
-             any(properties.mcp_version) AS version,
-             count() AS events
-      FROM events
-      WHERE (${MCP_ONLY}) AND ${WINDOW}
-      GROUP BY user ORDER BY events DESC LIMIT 60`,
+      SELECT e.user AS user,
+             coalesce(substring(reg.created, 1, 10), '—') AS registered,
+             e.region AS region,
+             e.platform AS platform,
+             e.version AS version,
+             e.events AS events
+      FROM (
+        SELECT distinct_id AS user,
+               any(properties.region) AS region,
+               any(properties.platform) AS platform,
+               any(properties.mcp_version) AS version,
+               count() AS events
+        FROM events
+        WHERE (${MCP_ONLY}) AND ${WINDOW}
+        GROUP BY user
+      ) e
+      LEFT JOIN (
+        SELECT pdi.distinct_id AS did, toString(p.created_at) AS created
+        FROM person_distinct_ids pdi JOIN persons p ON pdi.person_id = p.id
+      ) reg ON e.user = reg.did
+      ORDER BY e.events DESC LIMIT 60`,
   },
   {
     id: "memory",
@@ -288,6 +607,7 @@ const panels: Panel[] = [
 interface UserDetail {
   user: string;
   summary: { calls: number; ok: number; failed: number; tools: number; firstSeen: string; lastSeen: string };
+  registeredAt: string;    // persons.created_at — true signup date (covers users predating the signup event)
   byTool: Row[]; // [tool, calls, ok, failed, avg_ms]
   errors: Row[]; // [tool, error_code, n]
   prompts: Row[]; // [ts, tool, ok, error_code, prompt]
@@ -335,7 +655,8 @@ async function fetchUserDetail(user: string): Promise<UserDetail> {
             p.properties.quota_exceeded_resets_at AS resets_at,
             (SELECT properties.new_plan FROM events
                WHERE event='quota_plan_changed' AND distinct_id='${u}'
-               ORDER BY timestamp DESC LIMIT 1) AS plan
+               ORDER BY timestamp DESC LIMIT 1) AS plan,
+            toString(p.created_at) AS registered_at
      FROM person_distinct_ids pdi JOIN persons p ON pdi.person_id = p.id
      WHERE pdi.distinct_id='${u}' LIMIT 1`
   ).catch(() => [] as Row[]);
@@ -363,6 +684,7 @@ async function fetchUserDetail(user: string): Promise<UserDetail> {
       calls: Number(s[0] ?? 0), ok: Number(s[1] ?? 0), failed: Number(s[2] ?? 0),
       tools: Number(s[3] ?? 0), firstSeen: String(s[4] ?? ""), lastSeen: String(s[5] ?? ""),
     },
+    registeredAt: String(b[4] ?? ""),
     byTool, errors, prompts,
     billing: {
       freemium: String(b[0] ?? ""), status: String(b[1] ?? ""),
@@ -373,32 +695,100 @@ async function fetchUserDetail(user: string): Promise<UserDetail> {
   };
 }
 
+// ── Headline subscription snapshot ────────────────────────────────────────────
+// Per tier: [newInWindow, activeAtEnd]. Plus the active-freemium count.
+// Two clean queries combined here (a single correlated SQL was rejected by
+// HogQL). Each row: [tier, newInWindow, activeAtEnd].
+async function buildSnapshot(): Promise<Row[]> {
+  // Active at end: latest plan as of END, MCP users active in window.
+  const activeRows = await hogql(`
+    SELECT plan, count() AS users FROM (${LATEST_PLAN_PER_USER})
+    WHERE plan IN ('FREEMIUM','TIER1','TIER2') GROUP BY plan`);
+  // New in window: first reached T1/T2 inside [START, END), MCP users active in window.
+  const newRows = await hogql(`
+    SELECT tier, count() AS users FROM (
+      SELECT distinct_id, properties.new_plan AS tier, min(timestamp) AS first_ts
+      FROM events
+      WHERE event='quota_plan_changed' AND properties.new_plan IN ('TIER1','TIER2') AND ${IS_MCP_USER}
+      GROUP BY distinct_id, tier
+    ) WHERE first_ts >= '${START}' AND first_ts < '${END}' GROUP BY tier`);
+  const active: Record<string, number> = {};
+  for (const r of activeRows) active[String((r as Row)[0])] = Number((r as Row)[1] ?? 0);
+  const fresh: Record<string, number> = {};
+  for (const r of newRows) fresh[String((r as Row)[0])] = Number((r as Row)[1] ?? 0);
+  // Row order: paid tiers first, then freemium. [tier, new_in_window, active_at_end].
+  return [
+    ["TIER1", fresh.TIER1 ?? 0, active.TIER1 ?? 0],
+    ["TIER2", fresh.TIER2 ?? 0, active.TIER2 ?? 0],
+    ["FREEMIUM", fresh.FREEMIUM ?? 0, active.FREEMIUM ?? 0],
+  ];
+}
+
+// A hard rate-limit (long 429) bubbles up as a THROTTLED error. Detect it so we
+// can abort the whole run fast instead of grinding every remaining query.
+const isThrottled = (err: unknown): boolean =>
+  err instanceof Error && err.message.startsWith("THROTTLED");
+// Exit code the server reads to mean "rate-limited, back off — keep old cache".
+const EXIT_THROTTLED = 75;
+
 // ── Run all queries ──────────────────────────────────────────────────────────
 async function main() {
-  console.log(`Querying PostHog project ${PROJECT_ID} @ ${HOST} (last ${DAYS}d)…`);
+  console.log(`Querying PostHog project ${PROJECT_ID} @ ${HOST} · range ${START} → ${END}…`);
   for (const p of panels) {
+    // The snapshot panel is assembled from multiple queries, not p.query.
+    if (p.kind === "snapshot") {
+      try {
+        p.data = await buildSnapshot();
+        console.log(`  ✓ ${p.id} (snapshot)`);
+      } catch (err) {
+        if (isThrottled(err)) {
+          console.error(`  ⏳ ${(err as Error).message} — aborting run`);
+          process.exit(EXIT_THROTTLED);
+        }
+        p.data = [];
+        console.error(`  ✗ ${p.id}: ${(err as Error).message}`);
+      }
+      continue;
+    }
     try {
       p.data = await hogql(p.query);
       console.log(`  ✓ ${p.id} (${p.data.length} rows)`);
     } catch (err) {
+      if (isThrottled(err)) {
+        console.error(`  ⏳ ${(err as Error).message} — aborting run`);
+        process.exit(EXIT_THROTTLED);
+      }
       p.data = [];
       console.error(`  ✗ ${p.id}: ${(err as Error).message}`);
     }
   }
 
-  // Per-user drill-down for every roster user (skip anonymous sentinels).
+  // Per-user drill-down (the roster modal). This is the biggest time sink —
+  // 6 sequential queries PER user — so it's CAPPED to the top N most-active
+  // users. The roster table still lists everyone; only the click-through detail
+  // is limited. Bounding it keeps generation fast and predictable regardless of
+  // how many users are active in the window (which is what made recent-window
+  // ranges hang before). Tune via DASHBOARD_DRILLDOWN_MAX.
+  const DRILLDOWN_MAX = parseInt(process.env.DASHBOARD_DRILLDOWN_MAX ?? "8", 10);
   const roster = panels.find((p) => p.id === "roster")?.data ?? [];
-  const users = roster.map((r) => String((r as unknown[])[0])).filter((u) => !u.startsWith("mcp:"));
-  // Sequential — PostHog caps concurrent queries at 3 per team.
+  const allUsers = roster.map((r) => String((r as unknown[])[0])).filter((u) => !u.startsWith("mcp:"));
+  const users = allUsers.slice(0, DRILLDOWN_MAX); // roster is already sorted by events desc
   const details: Record<string, UserDetail> = {};
   for (const u of users) {
     try {
       details[u] = await fetchUserDetail(u);
     } catch (err) {
+      // A throttle mid-drill-down: stop fetching more users, but keep what we
+      // have — the panels are already done, so the dashboard is still useful.
+      if (isThrottled(err)) {
+        console.error(`  ⏳ ${(err as Error).message} — stopping drill-down early`);
+        break;
+      }
       console.error(`  ✗ user-detail ${u}: ${(err as Error).message}`);
     }
   }
-  console.log(`  ✓ user-detail (${Object.keys(details).length}/${users.length} users)`);
+  const capped = allUsers.length > users.length ? ` (capped from ${allUsers.length})` : "";
+  console.log(`  ✓ user-detail (${Object.keys(details).length}/${users.length} users${capped})`);
 
   const generatedAt = new Date().toISOString();
   const html = renderHTML(panels, details, generatedAt);
@@ -417,12 +807,43 @@ async function main() {
 const esc = (s: unknown): string =>
   String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
+// Big stat-card grid for the headline snapshot. Each tier shows "new in window"
+// and "active at end"; freemium is highlighted as the active-freemium count.
+function renderSnapshot(p: Panel): string {
+  const rows = (p.data ?? []) as Row[];
+  const byTier: Record<string, [number, number]> = {};
+  for (const r of rows) byTier[String(r[0])] = [Number(r[1] ?? 0), Number(r[2] ?? 0)];
+  const card = (label: string, tier: string, accent: string): string => {
+    const [fresh, active] = byTier[tier] ?? [0, 0];
+    return `<div class="snap-card" style="border-top-color:${accent}">
+      <div class="snap-tier">${esc(label)}</div>
+      <div class="snap-big">${active}<span class="snap-unit">active at ${esc(END)}</span></div>
+      <div class="snap-new">+${fresh} new in this period</div>
+    </div>`;
+  };
+  return `<section class="panel full"><h2>${esc(p.title)}</h2>${
+    p.subtitle ? `<p class="sub">${esc(p.subtitle)}</p>` : ""
+  }<div class="snap-grid">
+    ${card("TIER 1", "TIER1", "#58a6ff")}
+    ${card("TIER 2", "TIER2", "#bc8cff")}
+    ${card("Freemium (active)", "FREEMIUM", "#3fb950")}
+  </div>
+  <p class="sub" style="margin-top:12px">“Active at ${esc(
+    END
+  )}” = MCP users active in this period whose plan is that tier as of the end date. “New in this period” = first upgraded into that tier between ${esc(
+    START
+  )} and ${esc(END)}.</p></section>`;
+}
+
 function renderPanel(p: Panel): string {
   const rows = p.data ?? [];
   const dataJson = JSON.stringify(rows);
   switch (p.kind) {
+    case "snapshot":
+      return renderSnapshot(p);
     case "stackedBar":
     case "line":
+    case "multiline":
     case "donut":
     case "funnel":
     case "hbar":
@@ -493,6 +914,23 @@ function renderHTML(
   .panel h2{margin:0 0 2px;font-size:15px}
   .panel .sub{margin:0 0 14px;color:#8b949e;font-size:12px}
   canvas{max-height:300px}
+  /* Date-range controls */
+  .ranger{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+  .ranger .presets{display:flex;gap:6px}
+  .ranger button.preset{background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:4px 11px;font-size:12px;cursor:pointer}
+  .ranger button.preset:hover{border-color:#58a6ff}
+  .ranger button.preset.active{background:#1f6feb;border-color:#1f6feb}
+  .ranger label{color:#8b949e;font-size:12px;display:flex;align-items:center;gap:4px}
+  .ranger input[type=date]{background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:3px 6px;font-size:12px;color-scheme:dark}
+  .ranger button.apply{background:#238636;border:1px solid #2ea043;color:#fff;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer}
+  .ranger button.apply:hover{background:#2ea043}
+  /* Snapshot stat cards */
+  .snap-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+  .snap-card{background:#11161d;border:1px solid #21262d;border-top:3px solid #6e7681;border-radius:10px;padding:16px 18px}
+  .snap-tier{font-size:12px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px}
+  .snap-big{font-size:34px;font-weight:700;line-height:1.1;margin:6px 0 2px}
+  .snap-big .snap-unit{display:block;font-size:11px;font-weight:400;color:#8b949e;letter-spacing:0;text-transform:none}
+  .snap-new{font-size:13px;color:#3fb950}
   .tablewrap{overflow-x:auto;max-height:520px;overflow-y:auto}
   table{width:100%;border-collapse:collapse;font-size:12.5px}
   th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #21262d;white-space:nowrap}
@@ -538,9 +976,23 @@ function renderHTML(
 </style></head>
 <body>
 <header><h1>MCP Telemetry Dashboard</h1>
-<div class="meta">PostHog project ${esc(PROJECT_ID)} · last ${DAYS} days · Last refreshed <span class="lastref" id="lastref" data-ts="${esc(
+<div class="meta">PostHog project ${esc(PROJECT_ID)} · range <strong>${esc(
+    START
+  )} → ${esc(END)}</strong> · Last refreshed <span class="lastref" id="lastref" data-ts="${esc(
     generatedAt
-  )}">just now</span> <button id="refreshbtn" title="Query PostHog now">↻ Refresh now</button></div></header>
+  )}">just now</span> <button id="refreshbtn" title="Query PostHog now">↻ Refresh now</button></div>
+<div class="ranger">
+  <div class="presets">
+    <button class="preset" data-days="7">7d</button>
+    <button class="preset" data-days="30">30d</button>
+    <button class="preset" data-days="90">90d</button>
+    <button class="preset" data-days="365">1y</button>
+    <button class="preset" data-days="3650">All</button>
+  </div>
+  <label>From <input type="date" id="r-start" value="${esc(START)}"></label>
+  <label>To <input type="date" id="r-end" value="${esc(END)}"></label>
+  <button class="apply" id="r-apply">Apply range</button>
+</div></header>
 <main>${body}</main>
 <div class="modal-bg" id="modal-bg"><div class="modal" id="modal"></div></div>
 <script>window.__USERS=${JSON.stringify(userDetails)};</script>
@@ -551,11 +1003,31 @@ const P=window.__PANELS||{};
 function mk(id){const c=document.getElementById('c-'+id);if(!c||!P[id])return;const {kind,rows}=P[id];
  if(kind==='stackedBar'){new Chart(c,{type:'bar',data:{labels:rows.map(r=>r[0]),datasets:[{label:'OK',data:rows.map(r=>r[1]),backgroundColor:C.ok},{label:'Failed',data:rows.map(r=>r[2]),backgroundColor:C.fail}]},options:{responsive:true,scales:{x:{stacked:true,ticks:{autoSkip:false,maxRotation:90,minRotation:45}},y:{stacked:true}},plugins:{legend:{position:'top'}}}});}
  else if(kind==='line'){new Chart(c,{type:'line',data:{labels:rows.map(r=>r[0]),datasets:[{label:'Calls',data:rows.map(r=>r[1]),borderColor:C.blue,backgroundColor:'transparent',tension:.3},{label:'Users',data:rows.map(r=>r[2]),borderColor:C.amber,backgroundColor:'transparent',tension:.3,yAxisID:'y1'}]},options:{responsive:true,scales:{y:{position:'left'},y1:{position:'right',grid:{drawOnChartArea:false}}}}});}
+ else if(kind==='multiline'){new Chart(c,{type:'line',data:{labels:rows.map(r=>r[0]),datasets:[{label:'New accounts',data:rows.map(r=>r[1]),borderColor:C.blue,backgroundColor:'transparent',tension:.3},{label:'New subscriptions',data:rows.map(r=>r[2]),borderColor:C.ok,backgroundColor:'transparent',tension:.3},{label:'Top-ups',data:rows.map(r=>r[3]),borderColor:C.amber,backgroundColor:'transparent',tension:.3}]},options:{responsive:true,plugins:{legend:{position:'top'}}}});}
  else if(kind==='donut'){new Chart(c,{type:'doughnut',data:{labels:rows.map(r=>r[0]||'(none)'),datasets:[{data:rows.map(r=>r[1]),backgroundColor:C.palette}]},options:{responsive:true,plugins:{legend:{position:'right'}}}});}
  else if(kind==='funnel'){const order=['mcp update check','mcp update prompted','mcp update install_clicked','mcp update dismissed','mcp version updated'];const m=Object.fromEntries(rows.map(r=>[r[0],r[1]]));new Chart(c,{type:'bar',data:{labels:order.map(o=>o.replace('mcp ','')),datasets:[{label:'count',data:order.map(o=>m[o]||0),backgroundColor:C.palette}]},options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false}}}});}
  else if(kind==='hbar'){new Chart(c,{type:'bar',data:{labels:rows.map(r=>r[0]),datasets:[{label:'calls',data:rows.map(r=>r[1]),backgroundColor:C.blue}]},options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false}}}});}
 }
 Object.keys(P).forEach(mk);
+
+// ── Date-range controls ──
+// Presets navigate to ?days=N; custom inputs navigate to ?start=&end=.
+// The server reads these, regenerates for that range, and serves it.
+(function(){
+ const qs=new URLSearchParams(location.search);
+ const curDays=qs.get('days');
+ document.querySelectorAll('button.preset').forEach(b=>{
+  if(curDays && b.dataset.days===curDays)b.classList.add('active');
+  b.addEventListener('click',()=>{location.search='?days='+b.dataset.days;});
+ });
+ const apply=document.getElementById('r-apply');
+ if(apply)apply.addEventListener('click',()=>{
+  const s=document.getElementById('r-start').value, e=document.getElementById('r-end').value;
+  if(!s||!e){alert('Pick both a From and a To date.');return;}
+  if(s>e){alert('From date must be on or before To date.');return;}
+  location.search='?start='+s+'&end='+e;
+ });
+})();
 
 // ── Live "last refreshed since X" ticker ──
 const lastref=document.getElementById('lastref');
@@ -572,14 +1044,17 @@ const refreshBtn=document.getElementById('refreshbtn');
 if(refreshBtn){refreshBtn.addEventListener('click',async()=>{
  refreshBtn.disabled=true;const orig=refreshBtn.textContent;refreshBtn.textContent='↻ Refreshing…';
  try{
-  const r=await fetch('/refresh',{method:'POST'});
+  // Preserve the current range (?days / ?start&end) on refresh + poll, else the
+  // server would regenerate/serve the DEFAULT range instead of what's shown.
+  const qs=location.search||'';
+  const r=await fetch('/refresh'+qs,{method:'POST'});
   if(r.status===409){refreshBtn.textContent='↻ Already refreshing…';}
   // Poll the live page for a newer data-ts, then reload (regen takes ~30-50s).
   const before=genTs;let waited=0;
   const poll=setInterval(async()=>{
    waited+=3;
    try{
-    const html=await (await fetch('/',{cache:'no-store'})).text();
+    const html=await (await fetch('/'+qs,{cache:'no-store'})).text();
     const m=html.match(/data-ts="([^"]+)"/);
     const newTs=m?new Date(m[1]).getTime():before;
     if(newTs>before){clearInterval(poll);location.reload();return;}
@@ -604,7 +1079,8 @@ function openUser(user){
  const stat=(n,l)=>'<div class="stat"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>';
  const succ=s.calls?Math.round(100*s.ok/s.calls):0;
  let html='<button class="close">&times;</button>';
- html+='<h2>'+esc(user)+'</h2><div class="muser">first seen '+esc(s.firstSeen)+' · last seen '+esc(s.lastSeen)+'</div>';
+ const regLine=d.registeredAt?'registered '+esc(d.registeredAt.slice(0,10))+' · ':'';
+ html+='<h2>'+esc(user)+'</h2><div class="muser">'+regLine+'first MCP use '+esc(s.firstSeen)+' · last seen '+esc(s.lastSeen)+'</div>';
  html+='<div class="stats">'+stat(s.calls,'tool calls')+stat(succ+'%','success')+stat(s.failed,'failed')+stat(s.tools,'distinct tools')+'</div>';
  // ── Plan & credits ──
  const bl=d.billing||{};

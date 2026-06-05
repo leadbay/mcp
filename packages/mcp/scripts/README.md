@@ -30,7 +30,15 @@ export POSTHOG_PERSONAL_API_KEY="$PERSONAL_API_KEY"   # .env.posthog names it PE
 | `DASHBOARD_USER` / `DASHBOARD_PASSWORD` | server only | — |
 | `DASHBOARD_DAYS` | no | `30` |
 | `DASHBOARD_REFRESH_MS` | no | `60000` |
+| `DASHBOARD_DRILLDOWN_MAX` | no | `8` |
 | `PORT` | no | `8080` |
+
+The dashboard supports a **date range** via the URL: `?days=N` or
+`?start=YYYY-MM-DD&end=YYYY-MM-DD`. The server generates + caches each range on
+demand (LRU, 12 ranges). `DASHBOARD_DRILLDOWN_MAX` caps how many top users get
+the per-user click-through detail (the heaviest part of generation) — the roster
+table still lists everyone. Lower it if you hit PostHog rate limits; raise it for
+deeper drill-down on small teams.
 
 ---
 

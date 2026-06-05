@@ -31,8 +31,13 @@ primary_region = 'cdg'
     path = '/healthz'
 
 [[vm]]
+  # 1GB (was 512MB): the 512MB machine OOM-rebooted while generating multiple
+  # ranges (each subprocess holds ~20 query results + builds 140KB+ HTML), which
+  # wiped the in-memory cache every few minutes and left the page stuck on
+  # "Generating…". HTML is now disk-backed too, but the headroom stops the
+  # reboot loop outright. Still the cheapest always-on tier with room to breathe.
   size = 'shared-cpu-1x'
-  memory = '512mb'
+  memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 512
+  memory_mb = 1024
