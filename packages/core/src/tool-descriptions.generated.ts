@@ -2545,7 +2545,7 @@ Trigger phrases: "remove this contact", "delete this contact", "take this person
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "add a contact to this company" → \`leadbay_import_and_qualify\`; "stop showing me this lead / not interested" → \`leadbay_dislike_lead\`.
+Do NOT use for: "add a contact to this company" → \`leadbay_add_contact\`; "stop showing me this lead / not interested" → \`leadbay_dislike_lead\`.
 
 Prefer when: user wants a specific PERSON gone from a company — pass that contact's own \`contact_id\` (from a contacts list), not the lead id
 
@@ -2566,7 +2566,7 @@ from the company. No table.
 
 ---
 
-Remove a single contact from a company by archiving it. This is the **undo** for the add-a-contact path (\`leadbay_import_and_qualify\` with \`CONTACT_*\` fields) — when a rep adds the wrong person, or finds a stale contact, this takes them off the company.
+Remove a single contact from a company by archiving it. This is the **undo** for the add-a-contact path (\`leadbay_add_contact\`) — when a rep adds the wrong person, or finds a stale contact, this takes them off the company.
 
 Pass the contact's **own** \`contact_id\` — the \`id\` field on a contact object returned by \`leadbay_research_lead_by_id\` or the contacts list. **Not** the parent lead id; the archive endpoint is keyed by the contact directly.
 

@@ -72,10 +72,24 @@ export const updateContact: Tool<UpdateContactParams, UpdateContactResult> = {
         description:
           "Contact last name — REQUIRED even on an edit. Pass the current value if you're not changing it.",
       },
-      job_title: { type: "string", description: "Contact job title." },
-      linkedin_page: { type: "string", description: "Contact LinkedIn URL." },
-      email: { type: "string", description: "Contact email." },
-      phone_number: { type: "string", description: "Contact phone (free-form)." },
+      // Nullable so the agent can CLEAR a field (pass null) as well as set a
+      // new value. execute forwards null verbatim; the backend accepts it.
+      job_title: {
+        type: ["string", "null"],
+        description: "Contact job title. Pass null to clear it.",
+      },
+      linkedin_page: {
+        type: ["string", "null"],
+        description: "Contact LinkedIn URL. Pass null to clear it.",
+      },
+      email: {
+        type: ["string", "null"],
+        description: "Contact email. Pass null to clear it.",
+      },
+      phone_number: {
+        type: ["string", "null"],
+        description: "Contact phone (free-form). Pass null to clear it.",
+      },
     },
     required: ["contact_id", "first_name", "last_name"],
     additionalProperties: false,
