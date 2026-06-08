@@ -12,6 +12,7 @@ import { leadbay_account_history as ACCOUNT_HISTORY_DESCRIPTION } from "../tool-
 export interface AccountHistoryParams {
   leadId: string;
   activityCount?: number;
+  lensId?: number;
 }
 
 // research_lead_by_id returns a rich structured object (firmographics,
@@ -38,6 +39,11 @@ export const accountHistory: Tool<AccountHistoryParams> = {
         description:
           "Number of activity-timeline entries to return, max 100 (default: 50).",
       },
+      lensId: {
+        type: "number",
+        description:
+          "Lens id the lead came from (escape hatch — normally omit; defaults to the active lens). Pass it when researching a lead from a lens other than the current default, so the underlying /lenses/{lensId}/leads/{leadId} fetch doesn't 404 after the active lens changed.",
+      },
     },
     required: ["leadId"],
     additionalProperties: false,
@@ -57,7 +63,11 @@ export const accountHistory: Tool<AccountHistoryParams> = {
     // agent has nothing to narrate). notes + activities degrade gracefully:
     // a missing history section must not sink the signals block.
     const [research, notes, activities] = await Promise.all([
-      researchLeadById.execute(client, { leadId, response_format: "json" }, ctx),
+      researchLeadById.execute(
+        client,
+        { leadId, lensId: params.lensId, response_format: "json" },
+        ctx
+      ),
       client
         .request<NotePayload[]>("GET", `/leads/${leadId}/notes`)
         .catch(() => [] as NotePayload[]),
@@ -101,7 +111,13 @@ export const accountHistory: Tool<AccountHistoryParams> = {
         activities: activityItems.map((a) => ({ type: a.type, date: a.date })),
         total: activities?.pagination?.total ?? 0,
       },
+      // Preserve research's pass-through metadata (agent_memory summary,
+      // lens_id, web_fetch_in_progress, has_reachable_contact, …) — the
+      // generated description advertises the memory protocol, so dropping
+      // _meta.agent_memory would make history narratives miss stored
+      // preferences. Spread research _meta first, then layer our counts.
       _meta: {
+        ...(r._meta ?? {}),
         region: client.region,
         notes_count: noteList.length,
         activities_returned: activityItems.length,
