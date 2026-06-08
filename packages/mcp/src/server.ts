@@ -827,20 +827,55 @@ export function buildServer(
       // whose source lives under packages/core/src/composite/. The schema
       // already advertises `required` (see withTriggeredByMeta), but the
       // SDK does NOT validate inputSchema before dispatch — enforcement is
-      // ours. Throw a LeadbayBusinessError-shaped envelope so the existing
-      // isLeadbayBusinessError catch routes it through the same error
-      // surface (captureToolCall + captureCompositeCall + isError return)
-      // as a real business-error rejection. The dedicated
-      // `mcp composite call` event with ok:false / LAST_PROMPT_REQUIRED is
-      // what surfaces the rate of agents that ignored the mandate in
-      // PostHog.
+      // ours.
+      //
+      // A missing `_triggered_by` is a RECOVERABLE agent mistake, not a
+      // server fault: the LLM simply re-calls with the field set. So we
+      // return the isError envelope directly instead of throwing into the
+      // shared catch. Throwing routed it through isLeadbayBusinessError,
+      // which calls captureException — filing a Sentry exception (and, via
+      // the GitHub integration, auto-opening a top-priority bug) every time
+      // an agent dropped the field. See leadbay/product#3718.
+      //
+      // We still emit the PostHog events (captureToolCall +
+      // captureCompositeCall, ok:false / LAST_PROMPT_REQUIRED) — that pair
+      // is what surfaces the rate of agents ignoring the mandate. We just
+      // skip captureException so this expected condition stays out of
+      // Sentry.
       if (COMPOSITE_FILE_TOOL_NAMES.has(name) && !triggered_by) {
-        throw {
+        const envelope = {
           error: true as const,
           code: "LAST_PROMPT_REQUIRED",
           message:
             "Every call to this composite tool must carry `_triggered_by` — the verbatim part of the user's most recent message this call is acting upon (secrets stripped).",
           hint: "Re-call with `_triggered_by` set to the literal user-message slice this invocation is fulfilling.",
+        };
+        const guardText = formatErrorForLLM(envelope);
+        const guardDur = Date.now() - callStart;
+        telemetry.captureToolCall({
+          tool: name,
+          ok: false,
+          duration_ms: guardDur,
+          format: "error-envelope",
+          bytes: guardText.length,
+          error_code: envelope.code,
+          triggered_by,
+        });
+        telemetry.captureCompositeCall({
+          tool: name,
+          last_prompt: triggered_by ?? "",
+          ok: false,
+          duration_ms: guardDur,
+          error_code: envelope.code,
+        });
+        if (DEBUG_ON) {
+          process.stderr.write(
+            `[leadbay-mcp debug] tool=${name} dur=${guardDur}ms ok=false code=${envelope.code} (no-sentry)\n`
+          );
+        }
+        return {
+          content: [{ type: "text", text: guardText }],
+          isError: true,
         };
       }
       // MCP 2025-11-25 §Cancellation: extra.signal is aborted by the SDK
