@@ -6,6 +6,7 @@ import type {
   WishlistResponse,
 } from "../types.js";
 
+import { readCreditsRemaining } from "./_credits-helpers.js";
 import { leadbay_enrich_titles as ENRICH_TITLES_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface EnrichTitlesParams {
   titles?: string[];
@@ -102,6 +103,11 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
       enrichable_contacts: {
         type: "number",
         description: "Count of enrichable contacts at preview time.",
+      },
+      credits_remaining: {
+        type: ["number", "null"],
+        description:
+          "AI-credit balance BEFORE launching (billing.ai_credits). Present in discover / preview_only / dry_run modes. Pair with enrichable_contacts to tell the user 'you have N credits, this will enrich M contacts' — do NOT estimate an exact cost (the per-contact rate is backend-only). Null = billing unavailable.",
       },
       selected_lead_count: {
         type: "number",
@@ -262,6 +268,10 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
             previously_enriched: previouslyEnriched,
             enrichable_contacts: enrichableContacts,
             selected_lead_count: leadIds.length,
+            // BEFORE: show balance + volume. We can't estimate exact cost
+            // (the per-contact rate is backend-only), so surface the balance
+            // and the count, not a fabricated "will cost N".
+            credits_remaining: await readCreditsRemaining(client),
             next_action:
               "Pick titles to enrich and call leadbay_enrich_titles again with titles=[...]",
           };
@@ -294,6 +304,7 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
             message:
               "No enrichable contacts for the chosen titles. Try other titles from available_titles or recommendations.",
             available_titles: availableTitles,
+            credits_remaining: await readCreditsRemaining(client),
           };
         }
 
@@ -303,6 +314,11 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
             preview,
             launched: false,
             would_launch: { titles: params.titles, email, phone },
+            // BEFORE confirmation gate: balance + how many contacts WOULD be
+            // enriched. enrichable_contacts is the volume; credits_remaining
+            // the balance. No estimated cost — that rate is backend-only.
+            enrichable_contacts: preview.enrichable_contacts,
+            credits_remaining: await readCreditsRemaining(client),
           };
         }
 

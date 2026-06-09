@@ -174,10 +174,13 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-Compact markdown: org name + admin badge on line 1; active lens on
-line 2; per-window quota usage as \`(used / cap)\` chips for
-llm_completion · ai_rescore · web_fetch. Surface regeneration flag
-prominently if mid-regen.
+If \`quota_error\` is set the call FAILED — quota unreadable; on 401/403 tell
+the user to reconnect. NEVER report zero usage or "no limits". Else render
+\`quota.org.resources\` (usage lives there, NOT at quota.resources) as a
+table, never prose: rows = resources (llm_completion · ai_rescore ·
+web_fetch + others), cols = Daily/Weekly/Monthly used \`count\` (= amount
+USED; no cap field, \`plan\` may be null — never invent a denominator).
+Empty = a 0 table, not "unlimited". Above: org + admin, lens.
 
 ---
 
@@ -391,6 +394,10 @@ export const leadbay_bulk_enrich_status: string = `Check status + per-lead conta
 WHEN TO USE: poll this after leadbay_enrich_titles returns a \`bulk_id\`. Default \`include_contacts=false\` for cheap status polls; set \`include_contacts=true\` once \`all_done\` flips for the final read.
 
 WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id — that already includes enriched contacts for a single lead.
+
+## CREDIT COST — show the balance, discreetly
+
+Once \`all_done\` is true the result carries \`credits_remaining\` (the post-spend AI-credit balance). Don't make a fuss — no sentence, no callout. Just append ONE small italic line in parentheses at the very END of your reply: \`_(N credits remaining)_\`. If \`credits_remaining\` is null (billing unavailable), omit the line — don't print 0. Do NOT report a "credits used" figure for this run: the per-contact cost can't be scoped to this specific enrichment (a lead's contact list mixes in earlier runs), so any "X used" number would be misleading.
 `;
 // endregion: leadbay_bulk_enrich_status
 
@@ -900,6 +907,10 @@ WHEN TO USE: when you have a specific \`contact_id\` (from leadbay_get_contacts)
 
 WHEN NOT TO USE: for bulk enrichment by job title across many leads — use leadbay_enrich_titles, which handles the selection lifecycle and returns a clean preview/launch flow.
 
+## CREDIT COST — discreet
+
+This is a paid call. The result returns \`credits_remaining\` (billing.ai_credits, read before the spend). Don't make a fuss about credits: only flag the balance if it's low (e.g. ≤ a few credits) so the user can decide. Otherwise append it quietly as a small italic parenthetical at the END of your reply — \`_(N credits remaining)_\`. Don't quote an exact per-contact cost (the rate is backend-only). The actual per-contact cost (enrichment.credits_used) appears on the contact via leadbay_get_contacts after enrichment. If \`credits_remaining\` is null, omit the line — don't assume zero.
+
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_enrich_contacts
@@ -910,6 +921,35 @@ export const leadbay_enrich_titles: string = `Order contact enrichments by job t
 WHEN TO USE: as the agent's go-to enrichment entry point, immediately before proposing outreach.
 
 WHEN NOT TO USE: to enrich a single contact — that's leadbay_enrich_contacts (granular). Speculatively, before the user has committed to outreaching — enrichment spends credits.
+
+## CREDIT COST — make spend visible
+
+Enrichment is the main PAID operation. Surface cost both before and after.
+
+**BEFORE (confirm before launching).** The discover / preview_only / dry_run modes return \`credits_remaining\` (the balance) and \`enrichable_contacts\` (the volume that would be enriched). Tell the user plainly: **"You have {credits_remaining} credits. This will enrich {enrichable_contacts} contacts."** then ask them to confirm before you launch the paid run. Route that confirmation through \`ask_user_input_v0\` ("Enrich {enrichable_contacts} contacts now?" → ["Yes, enrich", "No, cancel"]). Do NOT state an exact estimated cost — the per-contact credit rate lives backend-side and is not in the preview; show the balance and the count, never a fabricated "will cost N credits". If \`credits_remaining\` is null, billing is unavailable — say the balance is unknown, don't assume zero or unlimited.
+
+**AFTER (show the balance, discreetly).** Once the job finishes — poll \`leadbay_bulk_enrich_status\`, which returns \`credits_remaining\` (the post-spend balance). Don't make a fuss: append ONE small italic line in parentheses at the very END of your reply — \`_(N credits remaining)_\`. Omit it if \`credits_remaining\` is null. Do NOT report a "credits used" figure: per-run cost can't be scoped reliably (a lead's contacts mix earlier enrichments), so only the balance is shown.
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` (Claude) | Result has ≥2 leads with \`location.city\` set, and the user's intent is geographic / "in person" / travel | \`{name: lead.company_name, address: "<city>, <country>", place_id: lead.location.place_id ?? omit, notes: <one-sentence pitch>}\` per location |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude) | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | \`{questions: [{question: "What next?", type: "single_select", options: [<2-4 short button labels>]}]}\`; max 3 questions per call |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;

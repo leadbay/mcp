@@ -1,5 +1,10 @@
 # Changelog — @leadbay/mcp
 
+## 0.18.1 — 2026-06-09
+
+- **Quota rendering fix**: `leadbay_account_status` now renders the per-resource Daily / Weekly / Monthly **usage** table the API actually returns, instead of collapsing to "quota: null / no limits". Root cause: `quota_status` returns `count` (amount **used**) per resource per window with no cap field and a possibly-`null` `plan`; the old render hint tried to draw `used / cap` and gave up when there was no cap. The hint is now usage-only and explicitly warns that a missing cap / `null` plan is **not** "unlimited" or "no quota". `get-quota.ts` `outputSchema` corrected to the real `org` / `user.resources[]` shape (`{resource_type, count, window_type, resets_at}`, `count` = used), and a failed quota fetch is now distinguished from an empty quota.
+- **Enrichment credit spend**: `leadbay_enrich_titles` surfaces the credit balance before and the actual spend after a run, reported discreetly rather than as a callout. Dropped the per-run "credits used" figure that conflated prior enrichments.
+
 ## 0.18.0 — 2026-06-08
 
 Backend long-task notifications are now consumed by the MCP. When the user (or agent) initiates a bulk operation — contact enrichment, lead qualification, CSV / CRM import — the MCP listens to the backend WebSocket for the completion event and surfaces it on the agent's next tool call so prior outputs that depended on the now-finished data can be revised.

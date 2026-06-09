@@ -2,6 +2,7 @@ import type { LeadbayClient } from "../client.js";
 import type { Notification, Tool, ToolContext } from "../types.js";
 import { getContacts } from "../tools/get-contacts.js";
 import { isValidBulkId, type BulkRecord } from "../jobs/bulk-store.js";
+import { readCreditsRemaining } from "./_credits-helpers.js";
 
 // Read a single notification by id from the paginated list endpoint.
 // Backend exposes list + per-id mutations only; this short list pass is
@@ -116,6 +117,11 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
       all_done: {
         type: "boolean",
         description: "True when overall_progress.done === total AND no partial_failures.",
+      },
+      credits_remaining: {
+        type: ["number", "null"],
+        description:
+          "AI-credit balance re-read after the spend (force-refreshed /users/me → billing.ai_credits). Present only when all_done. Null = billing unavailable (don't read as zero). NOTE: a per-run 'credits used' figure is intentionally NOT returned — getContacts can't scope cost to this bulk, so any sum would conflate historical enrichments.",
       },
       partial_failures: {
         type: "array",
@@ -270,6 +276,14 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
         ctx?.logger?.info?.(
           `bulk.status_checked_via_notification bulk_id=${record.bulk_id} notification_id=${notifId} done=${bp.success_count}/${bp.total_count} in_progress=${inProgress} wall_ms=${Date.now() - startMs}`
         );
+        // Cost surfacing (AFTER), same contract as the legacy fan-out path:
+        // once terminal, re-read the post-spend AI-credit balance (force=true).
+        // We do NOT sum per-contact spend — getContacts can't scope cost to
+        // this bulk. Skipped while still running to avoid an extra /me call
+        // on every interim poll. Null when billing is unavailable.
+        const creditsRemaining: number | null = !inProgress
+          ? await readCreditsRemaining(client, true)
+          : null;
         return {
           bulk_id: record.bulk_id,
           notification_id: notifId,
@@ -293,6 +307,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
           bulk_progress: bp,
           in_progress: inProgress,
           all_done: !inProgress,
+          ...(!inProgress ? { credits_remaining: creditsRemaining } : {}),
           ...(bp.quota_hit_count > 0
             ? {
                 quota_hit_hint:
@@ -408,6 +423,20 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
       }`
     );
 
+    // Cost surfacing (AFTER). We deliberately do NOT sum enrichment.credits_used
+    // across the lead's contacts: getContacts returns ALL enriched contacts on
+    // a lead, not just those touched by THIS bulk, and there is no contact_id
+    // or per-run timestamp to scope the sum. Summing would report historical
+    // spend (e.g. a prior CFO enrichment) as this run's cost. Instead we
+    // surface only credits_remaining — the post-spend balance, re-read with
+    // force=true. Unambiguous and scope-free. Fetched once the job is done to
+    // avoid an extra /me call on every interim poll. Null when billing is
+    // unavailable.
+    let creditsRemaining: number | null = null;
+    if (allDone) {
+      creditsRemaining = await readCreditsRemaining(client, true);
+    }
+
     return {
       bulk_id: record.bulk_id,
       launched_at: record.launched_at,
@@ -420,6 +449,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
       leads,
       overall_progress: overallProgress,
       all_done: allDone,
+      ...(allDone ? { credits_remaining: creditsRemaining } : {}),
       ...(partialFailures.length > 0 ? { partial_failures: partialFailures } : {}),
     };
   },

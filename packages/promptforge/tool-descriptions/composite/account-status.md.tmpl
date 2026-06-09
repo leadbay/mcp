@@ -24,10 +24,13 @@ routing:
       - "Show me today's leads."
       - "What should I follow up on?"
 rendering_hint: |
-  Compact markdown: org name + admin badge on line 1; active lens on
-  line 2; per-window quota usage as `(used / cap)` chips for
-  llm_completion · ai_rescore · web_fetch. Surface regeneration flag
-  prominently if mid-regen.
+  If `quota_error` is set the call FAILED — quota unreadable; on 401/403 tell
+  the user to reconnect. NEVER report zero usage or "no limits". Else render
+  `quota.org.resources` (usage lives there, NOT at quota.resources) as a
+  table, never prose: rows = resources (llm_completion · ai_rescore ·
+  web_fetch + others), cols = Daily/Weekly/Monthly used `count` (= amount
+  USED; no cap field, `plan` may be null — never invent a denominator).
+  Empty = a 0 table, not "unlimited". Above: org + admin, lens.
 annotations:
   readOnlyHint: true
   destructiveHint: false
