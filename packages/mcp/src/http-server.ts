@@ -24,6 +24,7 @@ import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { buildServer } from "./server.js";
 import { resolveClientFromToken } from "./auth-http.js";
 import { parseWriteEnv } from "./env.js";
+import { parseTelemetryEnv } from "./telemetry.js";
 
 declare const __LEADBAY_MCP_VERSION__: string;
 const VERSION = typeof __LEADBAY_MCP_VERSION__ !== "undefined" ? __LEADBAY_MCP_VERSION__ : "0.0.0-dev";
@@ -82,6 +83,7 @@ async function buildServerForRequest(
     version: VERSION,
     includeWrite,
     includeAdvanced,
+    telemetryEnabled: parseTelemetryEnv(process.env.LEADBAY_TELEMETRY_ENABLED),
   });
 }
 

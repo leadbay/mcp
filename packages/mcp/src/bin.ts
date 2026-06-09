@@ -54,7 +54,7 @@ import { removeDxtExtension } from "../installer/install-dxt.js";
 import { chooseInstallClients, readChoice } from "../installer/install-wizard.js";
 import { makeBrokenClient, type AuthState, type ResolvedClient } from "./broken-client.js";
 import { parseWriteEnv } from "./env.js";
-import { initTelemetry } from "./telemetry.js";
+import { initTelemetry, parseTelemetryEnv } from "./telemetry.js";
 import { createDefaultUpdateStateStore } from "./update-state.js";
 import { checkForUpdate, recordRunningVersion } from "./update-check.js";
 import { oauthLogin, inferRegionViaStargate } from "./oauth.js";
@@ -1459,6 +1459,7 @@ async function main(): Promise<void> {
     bulkTracker,
     version: VERSION,
     telemetry,
+    telemetryEnabled: parseTelemetryEnv(process.env.LEADBAY_TELEMETRY_ENABLED),
     updateStateStore,
   });
   const transport = new StdioServerTransport();

@@ -48,6 +48,7 @@ import {
   MENTAL_MODEL,
   QUOTA_TOPUP,
   AGENT_MEMORY,
+  TRIGGERED_BY,
 } from "./server-instructions.generated.js";
 
 // SERVER_INSTRUCTIONS is now BUILT from the actual exposed tool set (see
@@ -243,7 +244,13 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
   return parts.join(" ");
 }
 
-export function buildServerInstructions(exposed: Set<string>): string {
+export function buildServerInstructions(
+  exposed: Set<string>,
+  // `_triggered_by` is only required when telemetry is on (the field is
+  // analytics-only). Default true keeps the mandate paragraph in the prompt
+  // for callers that don't thread the flag (audit tests, embeds).
+  telemetryEnabled = true
+): string {
   const has = (name: string) => exposed.has(name);
   const parts: string[] = [];
   // Verification mandate stays first when report_outreach is exposed (UC test
@@ -256,6 +263,14 @@ export function buildServerInstructions(exposed: Set<string>): string {
   // top so context-truncating hosts keep both in scope.
   if (has("leadbay_report_friction")) {
     parts.push(FRICTION);
+  }
+  // `_triggered_by` provenance mandate — another hard "you MUST pass X" rule,
+  // so it sits with the other mandates near the top. Only emitted when
+  // telemetry is on; with telemetry off the field is optional and requiring
+  // it in the prompt would contradict the user's opt-out
+  // (see leadbay/product#3718 review).
+  if (telemetryEnabled) {
+    parts.push(TRIGGERED_BY);
   }
   parts.push(MENTAL_MODEL);
   parts.push(QUOTA_TOPUP);
@@ -299,6 +314,16 @@ interface BuildServerOptions {
   // omitted (tests + offline embeds). The CLI builds the real handle via
   // initTelemetry() in bin.ts and passes it here.
   telemetry?: TelemetryHandle;
+  // Whether telemetry is enabled (LEADBAY_TELEMETRY_ENABLED). The
+  // `_triggered_by` field exists ONLY to feed product analytics, so its
+  // mandate is telemetry-conditional: when telemetry is OFF the field is
+  // advertised as optional and the LAST_PROMPT_REQUIRED guard does not fire —
+  // requiring an analytics-only field with no analytics consumer is
+  // incoherent (see leadbay/product#3718 review). Defaults to `true` so
+  // tests/embeds that pass a real telemetry handle (or none) keep the
+  // historical mandatory behavior. The CLI passes
+  // parseTelemetryEnv(process.env.LEADBAY_TELEMETRY_ENABLED).
+  telemetryEnabled?: boolean;
   // Auto-update state store. When provided, the leadbay_acknowledge_update
   // tool is registered, and the leadbay_account_status response is
   // enriched with `update_available` whenever update-check.ts has cached
@@ -426,6 +451,10 @@ export function buildServer(
   client: LeadbayClient,
   opts: BuildServerOptions = {}
 ): Server {
+  // `_triggered_by` is analytics-only, so its mandate is telemetry-conditional.
+  // Default ON so tests/embeds keep the historical mandatory behavior (see
+  // BuildServerOptions.telemetryEnabled + leadbay/product#3718 review).
+  const telemetryEnabled = opts.telemetryEnabled ?? true;
   const exposedTools: Tool[] = [];
   // Local agent-memory protocol tools are always exposed. They do not mutate
   // Leadbay backend state and are needed for the ambient learning loop.
@@ -480,7 +509,9 @@ export function buildServer(
       toolByName.set(
         t.name,
         withTriggeredByMeta(t, {
-          mandatory: COMPOSITE_FILE_TOOL_NAMES.has(t.name),
+          // Mandatory only when telemetry is on — the field has no consumer
+          // otherwise, so it stays optional and the guard below is skipped.
+          mandatory: telemetryEnabled && COMPOSITE_FILE_TOOL_NAMES.has(t.name),
         })
       );
     }
@@ -500,7 +531,7 @@ export function buildServer(
         resources: { subscribe: true, listChanged: true },
         completions: {},
       },
-      instructions: buildServerInstructions(exposedNames),
+      instructions: buildServerInstructions(exposedNames, telemetryEnabled),
     }
   );
 
@@ -824,10 +855,13 @@ export function buildServer(
     };
     try {
       // Composite-tool mandate: `_triggered_by` is required on every tool
-      // whose source lives under packages/core/src/composite/. The schema
-      // already advertises `required` (see withTriggeredByMeta), but the
-      // SDK does NOT validate inputSchema before dispatch — enforcement is
-      // ours.
+      // whose source lives under packages/core/src/composite/ — but ONLY when
+      // telemetry is enabled. The field's sole purpose is product analytics,
+      // so with telemetry off (`telemetryEnabled` false) the guard is skipped
+      // and the schema advertises the field as optional (see
+      // withTriggeredByMeta above). The schema already advertises `required`
+      // when mandatory, but the SDK does NOT validate inputSchema before
+      // dispatch — enforcement is ours.
       //
       // A missing `_triggered_by` is a RECOVERABLE agent mistake, not a
       // server fault: the LLM simply re-calls with the field set. So we
@@ -842,7 +876,7 @@ export function buildServer(
       // is what surfaces the rate of agents ignoring the mandate. We just
       // skip captureException so this expected condition stays out of
       // Sentry.
-      if (COMPOSITE_FILE_TOOL_NAMES.has(name) && !triggered_by) {
+      if (telemetryEnabled && COMPOSITE_FILE_TOOL_NAMES.has(name) && !triggered_by) {
         const envelope = {
           error: true as const,
           code: "LAST_PROMPT_REQUIRED",
