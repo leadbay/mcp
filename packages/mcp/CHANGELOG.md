@@ -1,5 +1,9 @@
 # Changelog — @leadbay/mcp
 
+## 0.18.2 — 2026-06-09
+
+- **Release-pipeline fix**: align `packages/mcp/server.json` with `package.json`. `server.json` had been stuck at `0.17.2` since the 0.17.2 release, so the MCP-Registry publish step (`Verify server.json version matches package.json`) failed on every release from 0.17.3 through 0.18.1 — npm and the GitHub `.mcpb` shipped, but the registry listing silently went stale. Both `server.json` version fields (top-level + `packages[0].version`) now track `package.json`, and a new audit test (`test/audit/server-json-version.test.ts`) fails the build on any future drift instead of letting it surface only at release time.
+
 ## 0.18.1 — 2026-06-09
 
 - **Quota rendering fix**: `leadbay_account_status` now renders the per-resource Daily / Weekly / Monthly **usage** table the API actually returns, instead of collapsing to "quota: null / no limits". Root cause: `quota_status` returns `count` (amount **used**) per resource per window with no cap field and a possibly-`null` `plan`; the old render hint tried to draw `used / cap` and gave up when there was no cap. The hint is now usage-only and explicitly warns that a missing cap / `null` plan is **not** "unlimited" or "no quota". `get-quota.ts` `outputSchema` corrected to the real `org` / `user.resources[]` shape (`{resource_type, count, window_type, resets_at}`, `count` = used), and a failed quota fetch is now distinguished from an empty quota.
