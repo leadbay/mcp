@@ -8,7 +8,7 @@ import {
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { addContact } from "../../../src/composite/add-contact.js";
+import { addContact } from "../../../src/tools/add-contact.js";
 
 const BASE = "https://api-us.leadbay.app";
 const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");

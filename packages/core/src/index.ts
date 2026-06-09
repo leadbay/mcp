@@ -72,6 +72,13 @@ import { launchBulkEnrichment } from "./tools/launch-bulk-enrichment.js";
 import { createCustomField } from "./tools/create-custom-field.js";
 import { likeLead } from "./tools/like-lead.js";
 import { dislikeLead } from "./tools/dislike-lead.js";
+// Contact management — single-call relay tools (granular-shaped); registered
+// in compositeWriteTools below so they stay on the default surface.
+import { addContact } from "./tools/add-contact.js";
+import { removeContact } from "./tools/remove-contact.js";
+import { pinContact } from "./tools/pin-contact.js";
+import { unpinContact } from "./tools/unpin-contact.js";
+import { updateContact } from "./tools/update-contact.js";
 
 // ─── Composite workflow tools — agent-facing surface ─────────────────────
 
@@ -98,11 +105,6 @@ import { bulkQualifyLeads } from "./composite/bulk-qualify-leads.js";
 import { resolveImportRows } from "./composite/resolve-import-rows.js";
 import { importLeads } from "./composite/import-leads.js";
 import { importAndQualify } from "./composite/import-and-qualify.js";
-import { addContact } from "./composite/add-contact.js";
-import { removeContact } from "./composite/remove-contact.js";
-import { pinContact } from "./composite/pin-contact.js";
-import { unpinContact } from "./composite/unpin-contact.js";
-import { updateContact } from "./composite/update-contact.js";
 import { importStatus } from "./composite/import-status.js";
 import { qualifyStatus } from "./composite/qualify-status.js";
 import { enrichTitles } from "./composite/enrich-titles.js";
@@ -315,19 +317,17 @@ export const compositeWriteTools: Tool[] = [
   reportOutreach,
   importLeads,
   importAndQualify,
-  // addContact / removeContact — add or remove a single person on a known
-  // company, in-conversation (product#3703). addContact wraps the direct
-  // POST /leads/{id}/contacts endpoint (same one the web UI uses — NOT the
-  // import pipeline, which 401s on some accounts). removeContact is the undo,
-  // archiving via POST /contacts/{id}/archive. Default write surface.
+  // Contact management (product#3703) — each is a single-call relay, so
+  // granular-shaped and living in tools/; registered HERE (not granular-gated)
+  // so reps can manage contacts in-conversation without LEADBAY_MCP_ADVANCED.
+  // Same pattern as likeLead/dislikeLead below. Endpoints (all direct, the
+  // ones the web UI uses — NOT the import pipeline, which 401s on some
+  // accounts): add → POST /leads/{id}/contacts; remove → archive;
+  // pin/unpin → /pin|/unpin; update → /update (snake_case, first/last required).
   addContact,
   removeContact,
-  // pin/unpin a contact — flag a person as the priority on a company.
-  // POST /contacts/{id}/pin | /unpin. Default write surface.
   pinContact,
   unpinContact,
-  // updateContact — edit an existing contact in place via
-  // POST /contacts/{id}/update (snake_case; first/last name required).
   updateContact,
   // createCustomField is granular-shaped but file-import prompts depend on it
   // to preserve source-system links without requiring advanced-tool exposure.

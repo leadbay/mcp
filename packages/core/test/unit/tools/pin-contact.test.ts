@@ -8,8 +8,8 @@ import {
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { pinContact } from "../../../src/composite/pin-contact.js";
-import { unpinContact } from "../../../src/composite/unpin-contact.js";
+import { pinContact } from "../../../src/tools/pin-contact.js";
+import { unpinContact } from "../../../src/tools/unpin-contact.js";
 
 const BASE = "https://api-us.leadbay.app";
 const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");

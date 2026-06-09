@@ -11,7 +11,6 @@
 export const COMPOSITE_FILE_TOOL_NAMES: ReadonlySet<string> = new Set([
   "leadbay_account_history",
   "leadbay_account_status",
-  "leadbay_add_contact",
   "leadbay_add_leads_to_campaign",
   "leadbay_adjust_audience",
   "leadbay_answer_clarification",
@@ -30,13 +29,11 @@ export const COMPOSITE_FILE_TOOL_NAMES: ReadonlySet<string> = new Set([
   "leadbay_my_lenses",
   "leadbay_new_lens",
   "leadbay_prepare_outreach",
-  "leadbay_pin_contact",
   "leadbay_pull_followups",
   "leadbay_pull_leads",
   "leadbay_qualify_status",
   "leadbay_recall_ordered_titles",
   "leadbay_refine_prompt",
-  "leadbay_remove_contact",
   "leadbay_remove_leads_from_campaign",
   "leadbay_report_friction",
   "leadbay_report_outreach",
@@ -45,6 +42,4 @@ export const COMPOSITE_FILE_TOOL_NAMES: ReadonlySet<string> = new Set([
   "leadbay_resolve_import_rows",
   "leadbay_seed_candidates",
   "leadbay_tour_plan",
-  "leadbay_unpin_contact",
-  "leadbay_update_contact",
 ]);
