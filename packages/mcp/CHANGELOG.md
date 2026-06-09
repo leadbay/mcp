@@ -1,5 +1,10 @@
 # Changelog — @leadbay/mcp
 
+## 0.18.3 — 2026-06-09
+
+- **New tool `leadbay_scan_portfolio_signals`**: read-only bulk scan of a Monitor portfolio (or an explicit lead-id list) for a web-research signal. Ask "which of my leads have an M&A / funding / hiring signal since 2025" and get the matched cohort back in one call — a `GET`-only fan-out over cached `web_fetch` signals (no per-lead research loop, no AI-qualification quota burn), with a case- and accent-folded query and optional `since` date. The matched cohort is campaign-ready (feeds straight into `leadbay_add_leads_to_campaign`).
+- **Signal-honesty guardrail**: the scan separates `not_researched[]` (no cached content) from "no match", so the agent can never claim coverage for leads it never read. Reinforced in `leadbay_pull_followups`, `leadbay_research_lead_by_id`, and the `followup_check_in` prompt: freshness fields (`stale_at`, `web_fetch_in_progress`, `fetch_at`) are not signal indicators, and portfolio-wide signal questions route to the bulk tool. Every error path stays honest — a 429 while paging the portfolio, a non-quota read failure, and a failed filter-store all surface partial coverage rather than reporting a confident empty result.
+
 ## 0.18.2 — 2026-06-09
 
 - **Release-pipeline fix**: align `packages/mcp/server.json` with `package.json`. `server.json` had been stuck at `0.17.2` since the 0.17.2 release, so the MCP-Registry publish step (`Verify server.json version matches package.json`) failed on every release from 0.17.3 through 0.18.1 — npm and the GitHub `.mcpb` shipped, but the registry listing silently went stale. Both `server.json` version fields (top-level + `packages[0].version`) now track `package.json`, and a new audit test (`test/audit/server-json-version.test.ts`) fails the build on any future drift instead of letting it surface only at release time.
