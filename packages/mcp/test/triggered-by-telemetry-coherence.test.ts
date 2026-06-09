@@ -1,19 +1,16 @@
 /**
- * Coherence between the `_triggered_by` mandate and the telemetry setting.
+ * `_triggered_by` is a PROTOCOL requirement, not a telemetry-conditional one.
  * Follow-up to leadbay/product#3718 (Milan's review on PR #92).
  *
- * `_triggered_by` exists ONLY to feed product analytics. So its mandate is
- * telemetry-conditional:
- *   - telemetry ON  → composite calls without it are rejected
- *                     (LAST_PROMPT_REQUIRED), the schema marks it required, and
- *                     the system prompt carries the mandate paragraph.
- *   - telemetry OFF → the field is optional, the guard does not fire, and the
- *                     mandate paragraph is omitted from the prompt — requiring
- *                     an analytics-only field with no analytics consumer would
- *                     contradict the user's opt-out.
+ * Resolution of the original "telemetry-off contradiction": the field stays
+ * MANDATORY + non-empty on every composite call regardless of the telemetry
+ * setting. It is an auditable intent trace; when telemetry is off the captured
+ * value simply never leaves the process (capture is a no-op via NOOP_TELEMETRY).
+ * So there is no contradiction — the requirement is not framed as analytics.
  *
- * Never, in either mode, does the missing field reach Sentry
- * (captureException) — that is the original #3718 fix.
+ * In every mode the missing field is reported to the agent (LAST_PROMPT_REQUIRED,
+ * isError) but NOT to Sentry (no captureException) — that is the original
+ * #3718 fix, still intact.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -43,15 +40,9 @@ function spyTelemetry(): TelemetryHandle & {
   } as any;
 }
 
-async function connect(opts: {
-  telemetry: TelemetryHandle;
-  telemetryEnabled?: boolean;
-}) {
+async function connect(telemetry: TelemetryHandle) {
   const lbClient = new LeadbayClient(BASE, "u.test-token");
-  const server = buildServer(lbClient, {
-    telemetry: opts.telemetry,
-    telemetryEnabled: opts.telemetryEnabled,
-  });
+  const server = buildServer(lbClient, { telemetry });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const mcpClient = new Client({ name: "test", version: "0.0.1" }, {});
   await Promise.all([
@@ -63,47 +54,11 @@ async function connect(opts: {
 
 beforeEach(() => resetHttpMock());
 
-describe("_triggered_by coherence with telemetry (leadbay/product#3718 review)", () => {
-  it("telemetry OFF → composite without _triggered_by is NOT guard-blocked (dispatch proceeds)", async () => {
-    // With telemetry OFF the LAST_PROMPT_REQUIRED guard must NOT short-circuit:
-    // dispatch proceeds to the real tool's execute. We don't declare HTTP (so
-    // execute then errors on a missing mock) — that's irrelevant here. The
-    // discriminator is that NO captureToolCall recorded the guard's
-    // error_code "LAST_PROMPT_REQUIRED" and the guard envelope text is absent.
-    const telemetry = spyTelemetry();
-    const { mcpClient } = await connect({ telemetry, telemetryEnabled: false });
-
-    const res: any = await mcpClient.callTool({
-      name: COMPOSITE_TOOL,
-      arguments: {}, // no _triggered_by
-    });
-
-    const text = res.content?.[0]?.text ?? "";
-    expect(text).not.toContain("Every call to this composite tool must carry");
-    expect(text).not.toContain("LAST_PROMPT_REQUIRED");
-    // Reached dispatch (guard skipped). When the guard fires it sets
-    // error_code:"LAST_PROMPT_REQUIRED"; here the dispatched call must carry a
-    // different (or no) guard code — assert no call recorded the guard code.
-    const guardCalls = telemetry.captureToolCall.mock.calls.filter(
-      (c) => c[0]?.error_code === "LAST_PROMPT_REQUIRED"
-    );
-    expect(guardCalls).toHaveLength(0);
-  });
-
-  it("telemetry OFF → composite schema does NOT mark _triggered_by required", async () => {
-    const telemetry = spyTelemetry();
-    const { mcpClient } = await connect({ telemetry, telemetryEnabled: false });
-
-    const listed = await mcpClient.listTools();
-    const tool = listed.tools.find((t) => t.name === COMPOSITE_TOOL)!;
-    const required = (tool.inputSchema as any)?.required ?? [];
-    expect(required).not.toContain("_triggered_by");
-  });
-
-  it("telemetry ON → composite without _triggered_by is rejected, NOT to Sentry", async () => {
+describe("_triggered_by is a protocol requirement (leadbay/product#3718 review)", () => {
+  it("composite without _triggered_by is rejected (LAST_PROMPT_REQUIRED), NOT to Sentry", async () => {
     mockHttp([]);
     const telemetry = spyTelemetry();
-    const { mcpClient } = await connect({ telemetry, telemetryEnabled: true });
+    const { mcpClient } = await connect(telemetry);
 
     const res: any = await mcpClient.callTool({
       name: COMPOSITE_TOOL,
@@ -112,6 +67,7 @@ describe("_triggered_by coherence with telemetry (leadbay/product#3718 review)",
 
     expect(res.isError).toBe(true);
     expect(res.content[0].text).toContain("_triggered_by");
+    // The #3718 fix: recoverable, never a Sentry exception.
     expect(telemetry.captureException).not.toHaveBeenCalled();
     expect(telemetry.captureToolCall.mock.calls[0][0]).toMatchObject({
       tool: COMPOSITE_TOOL,
@@ -120,9 +76,9 @@ describe("_triggered_by coherence with telemetry (leadbay/product#3718 review)",
     });
   });
 
-  it("telemetry ON → composite schema marks _triggered_by required", async () => {
+  it("composite schema marks _triggered_by required", async () => {
     const telemetry = spyTelemetry();
-    const { mcpClient } = await connect({ telemetry, telemetryEnabled: true });
+    const { mcpClient } = await connect(telemetry);
 
     const listed = await mcpClient.listTools();
     const tool = listed.tools.find((t) => t.name === COMPOSITE_TOOL)!;
@@ -130,12 +86,24 @@ describe("_triggered_by coherence with telemetry (leadbay/product#3718 review)",
     expect(required).toContain("_triggered_by");
   });
 
-  it("prompt carries the _triggered_by mandate only when telemetry is on", () => {
+  it("the schema description does NOT instruct a magic-string sentinel", async () => {
+    const telemetry = spyTelemetry();
+    const { mcpClient } = await connect(telemetry);
+
+    const listed = await mcpClient.listTools();
+    const tool = listed.tools.find((t) => t.name === COMPOSITE_TOOL)!;
+    const desc = (tool.inputSchema as any)?.properties?._triggered_by?.description ?? "";
+    // Milan: absent value should be a real trace, not the "<no user message>"
+    // antipattern.
+    expect(desc).not.toContain("<no user message>");
+    expect(desc).toContain("actual instruction you are acting on");
+  });
+
+  it("the server prompt always carries the _triggered_by mandate", () => {
     const exposed = new Set([COMPOSITE_TOOL, "leadbay_pull_leads"]);
-    const onPrompt = buildServerInstructions(exposed, true);
-    const offPrompt = buildServerInstructions(exposed, false);
-    expect(onPrompt).toContain("_triggered_by");
-    expect(onPrompt).toContain("Trigger provenance");
-    expect(offPrompt).not.toContain("Trigger provenance");
+    const prompt = buildServerInstructions(exposed);
+    expect(prompt).toContain("Trigger provenance");
+    expect(prompt).toContain("_triggered_by");
+    expect(prompt).not.toContain("<no user message>");
   });
 });
