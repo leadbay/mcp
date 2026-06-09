@@ -265,12 +265,17 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
       params.max_leads ?? DEFAULT_MAX_LEADS,
       HARD_MAX_LEADS
     );
-    const sinceMs = params.since ? Date.parse(params.since) : null;
-    const sinceValid = sinceMs != null && !Number.isNaN(sinceMs) ? sinceMs : null;
+    const sinceParsed = params.since ? Date.parse(params.since) : NaN;
+    const sinceValid = Number.isNaN(sinceParsed) ? null : sinceParsed;
 
     // ── 1. Resolve scope → ordered list of {id, name, location} ────────────
     let portfolio: Array<{ id: string; name: string | null; location: string | null }>;
     let truncatedAt: number | undefined;
+    // Set true by EITHER a 429 while paging /monitor (can't enumerate the
+    // portfolio) OR a 429 while reading a lead's web_fetch. Honest signal that
+    // coverage is partial because of a quota wall, never reported as "no
+    // matches" (issue #3704).
+    let quotaExceeded = false;
 
     if (params.leadIds && params.leadIds.length > 0) {
       const sliced = params.leadIds.slice(0, maxLeads);
@@ -306,12 +311,21 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
         }
       }
 
+      // Only request `filtered=true` if we actually stored the filter this
+      // call. If the POST fails, sending `filtered=true` would scan against
+      // whatever filter was previously persisted server-side — a stale,
+      // convincing-but-wrong cohort with no visible error. On failure we fall
+      // back to an UNfiltered scan (honest: wider, not silently-wrong) and
+      // surface a 429 via quota_exceeded.
+      let filterStored = false;
       if (effectiveSetFilter) {
         try {
           await client.requestVoid("POST", "/monitor/filter", effectiveSetFilter);
+          filterStored = true;
         } catch (err: any) {
+          if (err?.code === "QUOTA_EXCEEDED") quotaExceeded = true;
           ctx?.logger?.warn?.(
-            `scan_portfolio_signals: POST /monitor/filter failed: ${err?.message ?? err?.code ?? err}`
+            `scan_portfolio_signals: POST /monitor/filter failed (${err?.code ?? err?.message ?? err}); scanning UNfiltered to avoid trusting a stale server-side filter`
           );
         }
       }
@@ -322,7 +336,7 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
         const qs = new URLSearchParams({
           personal: "false",
           liked: "false",
-          filtered: String(Boolean(effectiveSetFilter) || Boolean(params.set_filter)),
+          filtered: String(filterStored),
           count: String(MONITOR_PAGE_SIZE),
           page: String(page),
         }).toString();
@@ -331,7 +345,10 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
           monitor = await client.request<MonitorResponse>("GET", `/monitor?${qs}`);
         } catch (err: any) {
           if (err?.code === "QUOTA_EXCEEDED") {
-            // Couldn't even page the portfolio — surface what we have.
+            // Couldn't finish paging the portfolio — surface what we have and
+            // flag the quota wall so the agent reports "scan incomplete", not
+            // "no matches".
+            quotaExceeded = true;
             break;
           }
           throw err;
@@ -364,32 +381,38 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
     }
 
     // ── 2. Read-only fan-out: GET /leads/{id}/web_fetch (NO POST) ──────────
-    // The client semaphore caps concurrency at 5; Promise.all is fine.
-    let quotaExceeded = false;
+    // The client semaphore caps concurrency at 5; Promise.all is fine. We
+    // catch per-lead (not Promise.allSettled-then-inspect) so a rejected read
+    // still carries its `lead` — a failed read must land in not_researched
+    // with the lead name intact, never silently vanish (issue #3704 honesty
+    // invariant: scanned_count = matched + non-matching + not_researched).
     const matched: MatchedLead[] = [];
     const notResearched: Array<{ lead_id: string; name: string | null }> = [];
 
-    const reads = await Promise.allSettled(
+    const reads = await Promise.all(
       portfolio.map(async (lead) => {
-        const wf = await client.request<LeadWebFetchPayload>(
-          "GET",
-          `/leads/${lead.id}/web_fetch`
-        );
-        return { lead, wf };
+        try {
+          const wf = await client.request<LeadWebFetchPayload>(
+            "GET",
+            `/leads/${lead.id}/web_fetch`
+          );
+          return { lead, wf, error: null as any };
+        } catch (error: any) {
+          // Any read failure (404, 429, network) → we couldn't read signals
+          // for this lead. Carry the lead through so it lands in
+          // not_researched: honest "no data read", never a silent "no match".
+          return { lead, wf: null, error };
+        }
       })
     );
 
     for (const r of reads) {
-      if (r.status === "rejected") {
-        const code = (r.reason as any)?.code;
-        if (code === "QUOTA_EXCEEDED") quotaExceeded = true;
-        // Any read failure (404, 429, network) → we couldn't read signals for
-        // this lead. Treat as not_researched: honest "no data read", never a
-        // silent "no match". We don't have the lead name on a rejected read
-        // when scoped by leadIds, so fall back to id-only.
+      const { lead, wf, error } = r;
+      if (error) {
+        if (error?.code === "QUOTA_EXCEEDED") quotaExceeded = true;
+        notResearched.push({ lead_id: lead.id, name: lead.name });
         continue;
       }
-      const { lead, wf } = r.value;
       const hasContent =
         wf && wf.content != null && wf.in_progress !== true && Object.keys(wf.content).length > 0;
       if (!hasContent) {

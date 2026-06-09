@@ -169,8 +169,39 @@ describe("leadbay_scan_portfolio_signals", () => {
 
     expect(out.quota_exceeded).toBe(true);
     expect(out.matched.map((m: any) => m.lead_id)).toEqual(["lead-1"]);
-    // lead-2 failed to read → neither matched nor falsely "no match".
     expect(out.matched_count).toBe(1);
+    // lead-2 failed to read → surfaced as not_researched, never silently
+    // dropped nor falsely "no match" (issue #3704 honesty invariant).
+    expect(out.not_researched.map((n: any) => n.lead_id)).toEqual(["lead-2"]);
+    // scanned_count = matched + non-matching + not_researched holds.
+    expect(out.scanned_count).toBe(2);
+  });
+
+  it("non-quota read failure (404) — lead surfaces as not_researched, not silently dropped", async () => {
+    mockHttp([
+      webFetch("lead-1", {
+        "📈 signals": [{ description: "acquired a startup", source: "s", date: "2025-03-01" }],
+      }),
+      {
+        method: "GET",
+        path: "/1.5/leads/lead-2/web_fetch",
+        status: 404,
+        body: { code: "NOT_FOUND" },
+      },
+    ]);
+
+    const out: any = await scanPortfolioSignals.execute(newClient(), {
+      query: "acquired",
+      leadIds: ["lead-1", "lead-2"],
+    });
+
+    // A 404 is not a quota wall — but the lead still couldn't be read, so it
+    // must land in not_researched (honest coverage), and scanned_count must
+    // still account for it.
+    expect(out.quota_exceeded).toBe(false);
+    expect(out.matched.map((m: any) => m.lead_id)).toEqual(["lead-1"]);
+    expect(out.not_researched.map((n: any) => n.lead_id)).toEqual(["lead-2"]);
+    expect(out.scanned_count).toBe(2);
   });
 
   it("max_leads cap — truncated_at is set when leadIds exceed the cap", async () => {
@@ -186,6 +217,149 @@ describe("leadbay_scan_portfolio_signals", () => {
 
     expect(out.truncated_at).toBe(1);
     expect(out.scanned_count).toBe(1);
+  });
+
+  it("Monitor scope (city) — resolves geo, filters, paginates /monitor, then bulk-reads web_fetch", async () => {
+    mockHttp([
+      // 1. geo resolve — exact-name match on "Lyon" short-circuits ambiguity.
+      {
+        method: "GET",
+        path: "/1.5/geo/search?q=Lyon",
+        status: 200,
+        body: { results: [{ id: "geo-lyon", name: "Lyon", country: "FR", level: 5 }] },
+      },
+      // 2. store the filter (location_ids merged from the resolved geo id).
+      { method: "POST", path: "/1.5/monitor/filter", status: 200, body: {} },
+      // 3. one short page of the portfolio — carries id/name/location.
+      {
+        method: "GET",
+        path: /^\/1\.5\/monitor\?/,
+        status: 200,
+        body: {
+          items: [
+            { id: "lead-1", name: "Acme SARL", location: { city: "Lyon", state: "ARA" } },
+            { id: "lead-2", name: "Beta SA", location: "Lyon, ARA" },
+          ],
+          pagination: { pages: 1 },
+        },
+      },
+      // 4. per-lead cached signal reads.
+      webFetch("lead-1", {
+        "📈 business signals": [
+          { description: "Acme racheté par un groupe US", source: "lesechos.fr", date: "2025-03-01", hot: true },
+        ],
+      }),
+      webFetch("lead-2", {
+        "📈 business signals": [{ description: "embauche 10 personnes", source: "x", date: "2025-02-01" }],
+      }),
+    ]);
+
+    const out: any = await scanPortfolioSignals.execute(newClient(), {
+      query: "racheté, acquisition",
+      city: "Lyon",
+    });
+
+    expect(out.matched.map((m: any) => m.lead_id)).toEqual(["lead-1"]);
+    // name + location carried through from the Monitor page.
+    expect(out.matched[0].name).toBe("Acme SARL");
+    expect(out.matched[0].location).toBe("Lyon, ARA");
+    expect(out.scanned_count).toBe(2);
+
+    const reqs = getHttpRequests();
+    // The filter was stored (POST) and /monitor was queried with filtered=true.
+    expect(reqs.some((r) => r.method === "POST" && r.path === "/1.5/monitor/filter")).toBe(true);
+    const monitorReq = reqs.find((r) => r.method === "GET" && r.path.startsWith("/1.5/monitor?"));
+    expect(monitorReq?.path).toContain("filtered=true");
+  });
+
+  it("429 while paging /monitor — sets quota_exceeded so the agent reports 'incomplete', not 'no matches'", async () => {
+    mockHttp([
+      {
+        method: "GET",
+        path: "/1.5/geo/search?q=Lyon",
+        status: 200,
+        body: { results: [{ id: "geo-lyon", name: "Lyon", country: "FR", level: 5 }] },
+      },
+      { method: "POST", path: "/1.5/monitor/filter", status: 200, body: {} },
+      // The portfolio enumeration itself hits the quota wall.
+      {
+        method: "GET",
+        path: /^\/1\.5\/monitor\?/,
+        status: 429,
+        body: { code: "QUOTA_EXCEEDED" },
+      },
+    ]);
+
+    const out: any = await scanPortfolioSignals.execute(newClient(), {
+      query: "acquired",
+      city: "Lyon",
+    });
+
+    // Could not enumerate the portfolio → honest partial coverage, NOT a
+    // confident empty result.
+    expect(out.quota_exceeded).toBe(true);
+    expect(out.matched).toHaveLength(0);
+    expect(out.scanned_count).toBe(0);
+  });
+
+  it("filter POST fails — falls back to an UNfiltered scan (filtered=false), never trusts a stale server-side filter", async () => {
+    mockHttp([
+      // Storing the filter fails (server error).
+      { method: "POST", path: "/1.5/monitor/filter", status: 500, body: { code: "SERVER_ERROR" } },
+      // The /monitor read must go out UNfiltered to avoid a stale cohort.
+      {
+        method: "GET",
+        path: /^\/1\.5\/monitor\?/,
+        status: 200,
+        body: { items: [{ id: "lead-1", name: "Acme", location: "Paris" }], pagination: { pages: 1 } },
+      },
+      webFetch("lead-1", {
+        "📈 signals": [{ description: "acquired a rival", source: "s", date: "2025-03-01" }],
+      }),
+    ]);
+
+    const out: any = await scanPortfolioSignals.execute(newClient(), {
+      query: "acquired",
+      set_filter: { criteria: [{ type: "sector_ids", is_excluded: false, sectors: ["x"] }] } as any,
+    });
+
+    expect(out.matched.map((m: any) => m.lead_id)).toEqual(["lead-1"]);
+    const monitorReq = getHttpRequests().find(
+      (r) => r.method === "GET" && r.path.startsWith("/1.5/monitor?")
+    );
+    // The store failed, so the read must NOT claim filtered=true.
+    expect(monitorReq?.path).toContain("filtered=false");
+  });
+
+  it("ambiguous city — returns status:'ambiguous_locations' and issues no /monitor or web_fetch calls", async () => {
+    mockHttp([
+      // Two close-scoring prefix matches, neither an exact-name win → ambiguous.
+      {
+        method: "GET",
+        path: "/1.5/geo/search?q=Springfield",
+        status: 200,
+        body: {
+          results: [
+            { id: "geo-il", name: "Springfield township", country: "US", level: 8 },
+            { id: "geo-mo", name: "Springfield village", country: "US", level: 8 },
+          ],
+        },
+      },
+    ]);
+
+    const out: any = await scanPortfolioSignals.execute(newClient(), {
+      query: "acquired",
+      city: "Springfield",
+    });
+
+    expect(out.status).toBe("ambiguous_locations");
+    expect(out.location_ambiguities.length).toBeGreaterThan(0);
+    expect(out.scanned_count).toBe(0);
+    expect(out.matched).toHaveLength(0);
+
+    const reqs = getHttpRequests();
+    expect(reqs.some((r) => r.path.includes("/monitor"))).toBe(false);
+    expect(reqs.some((r) => r.path.includes("/web_fetch"))).toBe(false);
   });
 
   it("empty/whitespace query — matches nothing (no false positives)", async () => {
