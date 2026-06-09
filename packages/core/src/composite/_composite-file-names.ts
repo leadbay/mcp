@@ -9,6 +9,7 @@
 // composite/<stem>.ts (or removing one) without updating this set fails
 // that audit.
 export const COMPOSITE_FILE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "leadbay_account_history",
   "leadbay_account_status",
   "leadbay_add_contact",
   "leadbay_add_leads_to_campaign",

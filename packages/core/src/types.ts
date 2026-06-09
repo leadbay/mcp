@@ -665,6 +665,102 @@ export interface PaginatedResponse<T> {
   pagination: PaginationPayload;
 }
 
+// ─── Notifications (backend ADR docs/adr/notifications.md) ─────────────────
+//
+// The `notifications` row is the canonical async-task ledger for the three
+// bulk flows: contact enrichment, lead qualification (web-fetch + AI rescore),
+// CSV / CRM import. Progress counters live on the row and update atomically;
+// the row is pushed over WS on every increment and on the terminal
+// `inProgress=false` transition. The MCP consumes this ledger to keep the
+// agent aware of background work that just completed.
+
+export interface BulkProgress {
+  total_count: number;
+  success_count: number;
+  failure_count: number;
+  quota_hit_count: number;
+}
+
+// Polymorphic link discriminated by `type`. The backend emits one variant per
+// notification row; new variants may appear over time (the backend serializer
+// drops `file_import` from links — it travels at the root as `file_import_id`
+// instead — but we keep it in the union for forward-compat).
+export type NotificationLink =
+  | { type: "bulk_enrichment"; id: string; parent?: NotificationLink | null }
+  | { type: "file_import"; id: string; parent?: NotificationLink | null }
+  | { type: "lead"; id: string; parent?: NotificationLink | null }
+  | { type: "lens"; id: number; parent?: NotificationLink | null }
+  | { type: "note"; id: string; parent?: NotificationLink | null }
+  | { type: "contact"; id: string; parent?: NotificationLink | null }
+  | { type: "lead_contact"; id: string; parent?: NotificationLink | null }
+  | { type: string; id: string | number; parent?: NotificationLink | null };
+
+export interface Notification {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  first_seen_at: string | null;
+  archived: boolean;
+  language: string;
+  title: string;
+  content: string | null;
+  in_progress: boolean;
+  links: NotificationLink[];
+  // Non-null iff this is a bulk-progress notification. Inferred kind:
+  //   links[].type == "bulk_enrichment" → contact enrichment
+  //   file_import_id non-null          → CSV / CRM import
+  //   neither, bulk_progress set       → lead qualification
+  bulk_progress: BulkProgress | null;
+  // Anchor for the CSV / CRM import flow. Carried at the root (rather than as
+  // a polymorphic links variant) for compat with older generated clients
+  // — see backend ADR §1 for the rationale.
+  file_import_id: string | null;
+}
+
+export interface PaginatedNotifications {
+  items: Notification[];
+  total_unseen: number;
+  pagination: PaginationPayload;
+}
+
+// Bulk-launch responses now carry the canonical notification handle so the
+// MCP (and the FE) can subscribe to the corresponding row without having to
+// invent client-side ids.
+export interface BulkLaunchResponse {
+  notification_id: string | null;
+}
+
+// Bulk web-fetch (lead qualification) launch carries the same handle along
+// with the queued / skipped lead counts.
+export interface BulkWebFetchResponse {
+  queued: number;
+  skipped: number;
+  queued_ids: string[];
+  skipped_ids: string[];
+  notification_id: string | null;
+}
+
+// WS auth ticket — REST endpoint mints a one-shot URL the client opens.
+export interface WsAuthResponse {
+  url: string;
+}
+
+// Inbox entry — the shape we surface to the agent via `_meta.notifications`
+// and `account_status.notifications`. Derived client-side from the wire
+// `Notification` payload via `notifications/revise-hint.ts`.
+export interface NotificationInboxEntry {
+  notification_id: string;
+  kind: "bulk_enrich" | "bulk_qualify" | "import" | "other";
+  anchor_id: string | null;
+  title: string;
+  bulk_progress: BulkProgress | null;
+  completed_at: string;
+  // Hint the agent reads to decide which prior outputs to revise. See the
+  // revise-hint module for the per-kind template.
+  revise_hint: string;
+}
+
+
 // ─── Protocol-agnostic Tool type ──────────────────────────────────────────────
 
 export interface ToolLogger {
@@ -679,6 +775,13 @@ export interface ToolContext {
   // while the Leadbay backend doesn't yet issue real job handles. Granular tools
   // don't need this. See packages/core/src/jobs/bulk-store.ts.
   bulkTracker?: import("./jobs/bulk-store.js").BulkTracker;
+  // Notifications inbox — populated by the MCP server's WS listener with
+  // terminal bulk-progress notifications. The account-status composite
+  // surfaces inbox entries on every check-in, and the MCP server decorates
+  // every tool response's _meta.notifications with the same list so the
+  // agent sees completions on the next turn regardless of which tool it
+  // called next. Undefined in OpenClaw / tests that don't wire it up.
+  notificationsInbox?: import("./notifications/inbox.js").NotificationsInbox;
   // Long-running composites (notably leadbay_import_leads) honor this for
   // mid-poll cancellation so the caller can recover via the returned
   // importIds without waiting for the budget to expire.

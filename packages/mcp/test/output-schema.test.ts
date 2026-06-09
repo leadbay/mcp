@@ -185,7 +185,24 @@ describe("outputSchema on top 5 composites (P2: structured output)", () => {
     mockHttp([
       {
         method: "POST",
-        path: "/1.5/leads/lead-1/web_fetch?force_fetch=false",
+        path: "/1.5/leads/selection/select?leadIds=lead-1",
+        status: 204,
+      },
+      {
+        method: "POST",
+        path: "/1.5/leads/selection/web_fetch?force_fetch=false",
+        status: 200,
+        body: {
+          queued: 1,
+          skipped: 0,
+          queued_ids: ["lead-1"],
+          skipped_ids: [],
+          notification_id: "abcdef01-2345-4678-89ab-cdef01234567",
+        },
+      },
+      {
+        method: "POST",
+        path: "/1.5/leads/selection/clear",
         status: 204,
       },
     ]);
@@ -206,5 +223,6 @@ describe("outputSchema on top 5 composites (P2: structured output)", () => {
     expect(structured.qualify_id).toBe(structured.handle_id);
     expect(structured.lead_ids).toEqual(["lead-1"]);
     expect(structured.launched_count).toBe(1);
+    expect(structured.notification_id).toBe("abcdef01-2345-4678-89ab-cdef01234567");
   });
 });

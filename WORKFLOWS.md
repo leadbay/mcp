@@ -31,6 +31,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 17 | **Pin a contact as priority** — "pin this contact", "mark this person as the main contact", "favourite this contact" | `leadbay_pin_contact` (by the contact's own `contact_id`) | "Pin Jane Doe as the main contact on this company" |
 | 18 | **Unpin a contact** — "unpin this contact", "remove the pin", "not the priority anymore" | `leadbay_unpin_contact` (by the contact's own `contact_id`) | "Unpin Jane Doe — she's not the priority anymore" |
 | 19 | **Update a contact's details** — "update this contact's title", "fix their email/LinkedIn", "edit this person" | `leadbay_update_contact` (by `contact_id`; first/last name required) | "Update Jane Doe's title to SVP Engineering" |
+| 20 | **Reprioritize a neglected account** — "what's the history on this account", "why did it resurface", "summarize everything we've done with Acme" — current AI signals + full notes + interaction timeline in one call | `leadbay_account_history` *(no dedicated prompt)* | "What's the full history on this account — is it worth another visit?" |
 
 ---
 

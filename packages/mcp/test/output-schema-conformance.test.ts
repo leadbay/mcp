@@ -427,35 +427,55 @@ const CASES: ConformanceCase[] = [
           status: 200,
           body: { id: 42, name: "L", filter_definition: {}, scoring_definition: {} },
         },
-        // POST /lenses/42/leads/qualify_for_review (the launcher)
+        // Bulk launch — selection-based web_fetch (backend ADR §4).
         {
           method: "POST",
-          path: /\/1\.5\/lenses\/42\/leads\/qualify_for_review$/,
-          status: 202,
-          body: { request_id: "req-1" },
+          path: /\/1\.5\/leads\/selection\/select\?leadIds=lead-1$/,
+          status: 204,
         },
-        // First poll — completes immediately.
         {
-          method: "GET",
-          path: /\/1\.5\/lenses\/42\/leads\/qualify_for_review\/req-1$/,
+          method: "POST",
+          path: "/1.5/leads/selection/web_fetch?force_fetch=false",
           status: 200,
           body: {
-            status: "completed",
-            results: [
-              {
-                lead_id: "lead-1",
-                ai_agent_lead_score: 78,
-                qualification: [],
-              },
-            ],
+            queued: 1,
+            skipped: 0,
+            queued_ids: ["lead-1"],
+            skipped_ids: [],
+            notification_id: "abcdef01-2345-4678-89ab-cdef01234567",
           },
         },
-        // Per-lead ai_agent_responses fetch (some implementations fan out).
+        {
+          method: "POST",
+          path: "/1.5/leads/selection/clear",
+          status: 204,
+        },
+        // Inline polling — both endpoints return terminal state immediately.
+        {
+          method: "GET",
+          path: "/1.5/leads/lead-1/web_fetch",
+          status: 200,
+          body: {
+            lead_id: "lead-1",
+            content: {},
+            fetch_at: "2026-05-26T00:00:00Z",
+            in_progress: false,
+          },
+        },
         {
           method: "GET",
           path: "/1.5/leads/lead-1/ai_agent_responses",
           status: 200,
-          body: [],
+          body: [
+            {
+              question: "Q?",
+              question_created_at: "2026-05-26T00:00:00Z",
+              lead_id: "lead-1",
+              score: 10,
+              response: "yes",
+              computed_at: "2026-05-26T00:00:00Z",
+            },
+          ],
         },
       ]);
     },
@@ -491,6 +511,21 @@ const CASES: ConformanceCase[] = [
     },
     setupMocks: () => {
       mockHttp([]);
+    },
+  },
+  {
+    toolName: "leadbay_acknowledge_notification",
+    arguments: {
+      notification_id: "abcdef01-2345-4678-89ab-cdef01234567",
+    },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "POST",
+          path: "/1.5/notifications/abcdef01-2345-4678-89ab-cdef01234567/seen",
+          status: 204,
+        },
+      ]);
     },
   },
   {

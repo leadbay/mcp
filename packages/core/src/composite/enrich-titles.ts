@@ -343,6 +343,7 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
               bulk_id: res.record.bulk_id,
               launched_at: res.record.launched_at,
               durability: res.record.durability,
+              notification_id: res.record.notification_id ?? null,
               seconds_since_original_launch: bulkSecondsSinceOriginal ?? 0,
               titles: params.titles,
               email,
@@ -363,8 +364,15 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
           total: 3,
           message: `Launching enrichment for ${params.titles.length} title${params.titles.length === 1 ? "" : "s"}…`,
         });
+        // Backend ADR docs/adr/notifications.md: launch now returns
+        // BulkLaunchResponse { notification_id }. Capture it so:
+        //   (a) bulk_enrich_status can read bulk_progress from a single
+        //       /notifications call instead of fanning out per-lead,
+        //   (b) the WS listener can correlate completion frames back to
+        //       the agent's prior outputs.
+        let launchResp: { notification_id: string | null } | null = null;
         try {
-          await client.requestVoid(
+          launchResp = await client.request<{ notification_id: string | null }>(
             "POST",
             "/leads/selection/enrichment/launch",
             { titles: params.titles, email, phone }
@@ -401,9 +409,10 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
           throw err;
         }
 
+        const notificationId = launchResp?.notification_id ?? null;
         if (bulkRecord && tracker) {
           try {
-            await tracker.markLaunched(bulkRecord.bulk_id);
+            await tracker.markLaunched(bulkRecord.bulk_id, notificationId);
           } catch (e: any) {
             // Launch already succeeded on the backend; flipping the tracker
             // status failed. Return BULK_PENDING signal in the payload so the
@@ -440,14 +449,21 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
           bulk_id: bulkRecord?.bulk_id,
           launched_at: bulkRecord?.launched_at,
           durability: bulkRecord?.durability,
-          message: bulkRecord
-            ? "Enrichment job launched. Backend has no server-side bulk_id yet; MCP minted a client-side bulk_id " +
-              "(persisted to disk by default) so you can poll via leadbay_bulk_enrich_status."
-            : "Enrichment job launched. No bulk_id tracker configured — poll leadbay_get_contacts per lead " +
-              "after ~60s; contact.enrichment.done flips to true.",
-          next_action: bulkRecord
-            ? "Call leadbay_bulk_enrich_status({bulk_id}) after ~60s; pass include_contacts=true for the final read."
-            : "Wait ~60s, then call leadbay_research_lead_by_id or leadbay_get_contacts on the leads you care about.",
+          notification_id: notificationId,
+          message: notificationId
+            ? "Enrichment job launched. The MCP is now listening for the backend notification — when " +
+              "enrichment finishes, a `_meta.notifications` entry will surface on your next tool response " +
+              "(also visible in `leadbay_account_status.notifications`)."
+            : bulkRecord
+              ? "Enrichment job launched. Backend did not return a notification id this time; poll via " +
+                "leadbay_bulk_enrich_status with the bulk_id."
+              : "Enrichment job launched. No bulk_id tracker configured — poll leadbay_get_contacts per lead " +
+                "after ~60s; contact.enrichment.done flips to true.",
+          next_action: notificationId
+            ? "Wait for the next `_meta.notifications` entry (typically <2 min for a small batch). If you want progress sooner, call leadbay_bulk_enrich_status({bulk_id})."
+            : bulkRecord
+              ? "Call leadbay_bulk_enrich_status({bulk_id}) after ~60s; pass include_contacts=true for the final read."
+              : "Wait ~60s, then call leadbay_research_lead_by_id or leadbay_get_contacts on the leads you care about.",
         };
       } finally {
         // Always clear, but never re-throw from finally (would mask the

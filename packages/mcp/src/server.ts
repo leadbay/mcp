@@ -30,10 +30,12 @@ import {
   COMPOSITE_FILE_TOOL_NAMES,
   type BulkTracker,
   type LeadbayClient,
+  type NotificationInboxEntry,
   type Tool,
   type ToolContext,
   type ToolLogger,
 } from "@leadbay/core";
+import { NotificationsInbox } from "@leadbay/core";
 import { NOOP_TELEMETRY, type TelemetryHandle } from "./telemetry.js";
 import type { UpdateStateStore } from "./update-state.js";
 import {
@@ -305,6 +307,13 @@ interface BuildServerOptions {
   // a newer release. Omitted in tests + embeds that don't want auto-update
   // surface area; the server stays functional either way.
   updateStateStore?: UpdateStateStore;
+  // Notifications inbox. The MCP server's CallTool handler passes this
+  // through ToolContext (so leadbay_account_status can list entries) AND
+  // decorates every tool response's `_meta.notifications` with the inbox
+  // contents so the agent sees terminal bulk-progress notifications on the
+  // next turn no matter which tool it called. Omitted in tests / embeds
+  // that don't want the WS listener.
+  notificationsInbox?: NotificationsInbox;
 }
 
 function formatErrorForLLM(err: any): string {
@@ -664,6 +673,50 @@ export function buildServer(
     }
   };
 
+  // Decorate every successful tool result with `_meta.notifications` when
+  // the inbox has any terminal bulk-progress entries. Implicit delivery —
+  // the agent's tool description for the gates/notifications-inbox snippet
+  // tells it to inspect this field on every response and revise prior
+  // outputs that the just-finished work might have made stale.
+  //
+  // Drain-without-ack: items stay in the inbox until the agent calls
+  // leadbay_acknowledge_notification(id), so a missed read on this turn
+  // resurfaces on the next call. Auto-expiry inside the inbox prevents
+  // unbounded growth if the agent never acks (unattended automation).
+  const maybeAttachNotifications = (result: unknown): void => {
+    const inbox = opts.notificationsInbox;
+    if (!inbox) return;
+    if (
+      result === null ||
+      typeof result !== "object" ||
+      Array.isArray(result)
+    ) {
+      return;
+    }
+    const entries: NotificationInboxEntry[] = inbox.list();
+    if (entries.length === 0) return;
+    // Markdown envelopes wrap the typed payload in `.structured`; clients
+    // that consume structuredContent expect _meta there, not on the
+    // envelope. Inject in the inner payload when present, else on the
+    // outer result (the JSON tool-result path).
+    const envelope = result as Record<string, unknown>;
+    const target =
+      envelope.__markdown_envelope === true &&
+      envelope.structured !== null &&
+      typeof envelope.structured === "object" &&
+      !Array.isArray(envelope.structured)
+        ? (envelope.structured as Record<string, unknown>)
+        : envelope;
+    const existingMeta =
+      target._meta && typeof target._meta === "object" && !Array.isArray(target._meta)
+        ? (target._meta as Record<string, unknown>)
+        : {};
+    target._meta = {
+      ...existingMeta,
+      notifications: entries,
+    };
+  };
+
   // A LeadbayError surfaced either via throw OR via the `{ error: true,
   // code, ... }` envelope shape (see formatErrorForLLM). Every non-2xx
   // outcome — business or unexpected — lands in Sentry with the full
@@ -851,6 +904,7 @@ export function buildServer(
       const result = await tool.execute(client, args, {
         logger: opts.logger,
         bulkTracker: opts.bulkTracker,
+        notificationsInbox: opts.notificationsInbox,
         signal: extra.signal,
         progress,
         elicit,
@@ -860,6 +914,10 @@ export function buildServer(
       // BEFORE the error/markdown/json branching so the field appears
       // in either the JSON serialization OR structuredContent.
       maybeAttachUpdate(name, result);
+      // Inject `_meta.notifications` into ANY tool result when the inbox
+      // is non-empty. Same timing as maybeAttachUpdate so the field rides
+      // along regardless of whether the response is markdown or JSON.
+      maybeAttachNotifications(result);
       // Leadbay tools may return error envelopes ({ error: true, code, ... })
       // rather than throwing. Surface those as MCP isError so the LLM doesn't
       // treat them as success.

@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type {
+  BulkWebFetchResponse,
   Tool,
   ToolContext,
   WishlistResponse,
@@ -46,7 +47,61 @@ interface BulkQualifyRunningResult {
   failed: Array<{ lead_id: string; error: string }>;
   quota_exceeded: boolean;
   lens_id: number;
+  notification_id: string | null;
   _meta: { region: "us" | "fr" | "custom" };
+}
+
+/**
+ * Launch lead qualification via the SELECTION-based bulk endpoint
+ * (`POST /leads/selection/web_fetch`) so the backend creates the
+ * progress notification (backend ADR §4). Returns the parsed response
+ * including `notification_id`; on 429 quota exhaustion, returns a
+ * synthesized response with `notification_id: null` and `quotaExceeded:
+ * true`. Selection-state is acquired + released around the call.
+ */
+async function launchBulkQualify(
+  client: LeadbayClient,
+  leadIds: string[],
+  ctx: ToolContext | undefined
+): Promise<{
+  resp: BulkWebFetchResponse | null;
+  quotaExceeded: boolean;
+}> {
+  await client.acquireSelectionLock();
+  try {
+    try {
+      const qs = leadIds
+        .map((id) => `leadIds=${encodeURIComponent(id)}`)
+        .join("&");
+      await client.requestVoid("POST", `/leads/selection/select?${qs}`);
+      try {
+        const resp = await client.request<BulkWebFetchResponse>(
+          "POST",
+          "/leads/selection/web_fetch?force_fetch=false",
+          {}
+        );
+        return { resp, quotaExceeded: false };
+      } catch (err: any) {
+        if (err?.code === "QUOTA_EXCEEDED") {
+          ctx?.logger?.warn?.(
+            "bulk_qualify_leads: 429 on bulk /leads/selection/web_fetch — no leads queued"
+          );
+          return { resp: null, quotaExceeded: true };
+        }
+        throw err;
+      }
+    } finally {
+      try {
+        await client.requestVoid("POST", "/leads/selection/clear");
+      } catch (e: any) {
+        ctx?.logger?.warn?.(
+          `bulk_qualify_leads: selection.clear failed: ${e?.message ?? e?.code}`
+        );
+      }
+    }
+  } finally {
+    client.releaseSelectionLock();
+  }
 }
 
 export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams, any> = {
@@ -242,79 +297,73 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams, any> = {
         per_lead_budget_ms: perLeadBudget,
         total_budget_ms: totalBudget,
       });
-      const launched: string[] = [];
-      const failed: Array<{ lead_id: string; error: string }> = [];
+      let launchedCount = 0;
+      let notificationId: string | null = null;
       let quotaExceeded = false;
+      let failed: Array<{ lead_id: string; error: string }> = [];
       if (!reservation.reused) {
-        for (const leadId of candidates) {
-          if (quotaExceeded) break;
-          try {
-            await client.requestVoid(
-              "POST",
-              `/leads/${leadId}/web_fetch?force_fetch=false`
-            );
-            launched.push(leadId);
-          } catch (err: any) {
-            if (err?.code === "QUOTA_EXCEEDED") {
-              quotaExceeded = true;
-            } else if (err?.code === "NOT_FOUND") {
-              failed.push({ lead_id: leadId, error: "lead not found" });
-            } else {
-              failed.push({
-                lead_id: leadId,
-                error: err?.message ?? err?.code ?? "unknown",
-              });
-            }
-          }
+        // Use the SELECTION-based bulk endpoint so the backend creates a
+        // progress notification (backend ADR §4). Per-lead error attribution
+        // is coarse-grained here — the eventual bulk_progress on the
+        // notification carries failure_count / quota_hit_count.
+        const launch = await launchBulkQualify(client, candidates, ctx);
+        quotaExceeded = launch.quotaExceeded;
+        notificationId = launch.resp?.notification_id ?? null;
+        const queuedIds = launch.resp?.queued_ids ?? [];
+        const skippedIds = launch.resp?.skipped_ids ?? [];
+        launchedCount = queuedIds.length;
+        // Best-signal NOT_FOUND surface: anything in candidates but absent
+        // from queuedIds ∪ skippedIds was rejected. Don't synthesise an
+        // error string per id since the backend doesn't tell us why; the
+        // qualify-status tool will surface concrete per-lead state later.
+        const seen = new Set<string>([...queuedIds, ...skippedIds]);
+        failed = candidates
+          .filter((id) => !seen.has(id))
+          .map((id) => ({ lead_id: id, error: "not_queued" }));
+        if (queuedIds.length > 0 || quotaExceeded || skippedIds.length > 0 || failed.length === candidates.length) {
+          await ctx.bulkTracker.markLaunched(
+            reservation.record.bulk_id,
+            notificationId
+          );
         }
-        if (failed.length === candidates.length || launched.length > 0 || quotaExceeded) {
-          await ctx.bulkTracker.markLaunched(reservation.record.bulk_id);
-        }
+      } else {
+        notificationId = reservation.record.notification_id ?? null;
+        launchedCount = reservation.record.lead_ids.length;
       }
       const out: BulkQualifyRunningResult = {
         status: "running",
         handle_id: reservation.record.bulk_id,
         qualify_id: reservation.record.bulk_id,
         lead_ids: candidates,
-        launched_count: reservation.reused ? reservation.record.lead_ids.length : launched.length,
+        launched_count: launchedCount,
         failed,
         quota_exceeded: quotaExceeded,
         lens_id: lensId,
+        notification_id: notificationId,
         _meta: { region: client.region },
       };
       return out;
     }
 
-    // Fan-out web_fetch triggers. On 429, stop launching further but let the
-    // already-launched ones complete. Concurrency capped by client semaphore.
-    const launched: string[] = [];
-    const failed: Array<{ lead_id: string; error: string }> = [];
-    let quotaExceeded = false;
-
-    for (const leadId of candidates) {
-      if (quotaExceeded) break;
-      try {
-        await client.requestVoid(
-          "POST",
-          `/leads/${leadId}/web_fetch?force_fetch=false`
-        );
-        launched.push(leadId);
-      } catch (err: any) {
-        if (err?.code === "QUOTA_EXCEEDED") {
-          quotaExceeded = true;
-          ctx?.logger?.warn?.(
-            `bulk_qualify_leads: 429 mid-fanout after launching ${launched.length}/${candidates.length} — stopping further launches but polling those already in flight`
-          );
-        } else if (err?.code === "NOT_FOUND") {
-          failed.push({ lead_id: leadId, error: "lead not found" });
-        } else {
-          failed.push({
-            lead_id: leadId,
-            error: err?.message ?? err?.code ?? "unknown",
-          });
-        }
-      }
+    // Bulk web_fetch via the selection endpoint — single backend call,
+    // single progress notification on completion (backend ADR §4). Per-lead
+    // error attribution is coarse: leads outside queuedIds + skippedIds are
+    // tagged "not_queued"; the inline polling below still pulls concrete
+    // per-lead final state for the agent.
+    const inlineLaunch = await launchBulkQualify(client, candidates, ctx);
+    const quotaExceeded = inlineLaunch.quotaExceeded;
+    const launched: string[] = inlineLaunch.resp?.queued_ids ?? [];
+    const inlineSkipped = inlineLaunch.resp?.skipped_ids ?? [];
+    const inlineNotificationId = inlineLaunch.resp?.notification_id ?? null;
+    if (inlineNotificationId) {
+      ctx?.logger?.info?.(
+        `bulk_qualify_leads: launched bulk progress_notification_id=${inlineNotificationId} queued=${launched.length} skipped=${inlineSkipped.length}`
+      );
     }
+    const inlineFailedSeen = new Set<string>([...launched, ...inlineSkipped]);
+    const failed: Array<{ lead_id: string; error: string }> = candidates
+      .filter((id) => !inlineFailedSeen.has(id))
+      .map((id) => ({ lead_id: id, error: "not_queued" }));
 
     // Per-lead progress counter for the spec notifications/progress stream.
     // Composite-level: doneCount increments on each lead transition; emit on

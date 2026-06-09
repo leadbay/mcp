@@ -1,5 +1,12 @@
 /**
  * Unit tests for leadbay_bulk_qualify_leads async handle mode.
+ *
+ * The launch path uses the SELECTION-based bulk endpoint
+ * (`POST /1.5/leads/selection/web_fetch`) so the backend creates one
+ * progress notification per call — see backend/docs/adr/notifications.md
+ * §4. We expect: select(leadIds) → bulk web_fetch → clear, with
+ * BulkWebFetchResponsePayload.notification_id captured on the tracker
+ * record.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -27,17 +34,30 @@ beforeEach(() => {
 });
 
 describe("leadbay_bulk_qualify_leads", () => {
-  it("wait_for_completion=false launches web_fetch and returns without polling", async () => {
+  it("wait_for_completion=false launches bulk web_fetch via selection and persists notification_id", async () => {
     const tracker = new InMemoryBulkStore();
+    const NOTIF_ID = "11111111-2222-4333-8444-555555555555";
     mockHttp([
       {
         method: "POST",
-        path: "/1.5/leads/lead-1/web_fetch?force_fetch=false",
+        path: "/1.5/leads/selection/select?leadIds=lead-1&leadIds=lead-2",
         status: 204,
       },
       {
         method: "POST",
-        path: "/1.5/leads/lead-2/web_fetch?force_fetch=false",
+        path: "/1.5/leads/selection/web_fetch?force_fetch=false",
+        status: 200,
+        body: {
+          queued: 2,
+          skipped: 0,
+          queued_ids: ["lead-1", "lead-2"],
+          skipped_ids: [],
+          notification_id: NOTIF_ID,
+        },
+      },
+      {
+        method: "POST",
+        path: "/1.5/leads/selection/clear",
         status: 204,
       },
     ]);
@@ -63,14 +83,17 @@ describe("leadbay_bulk_qualify_leads", () => {
       failed: [],
       quota_exceeded: false,
       lens_id: 21580,
+      notification_id: NOTIF_ID,
     });
     expect(getHttpRequests().map((r) => `${r.method} ${r.path}`)).toEqual([
-      "POST /1.5/leads/lead-1/web_fetch?force_fetch=false",
-      "POST /1.5/leads/lead-2/web_fetch?force_fetch=false",
+      "POST /1.5/leads/selection/select?leadIds=lead-1&leadIds=lead-2",
+      "POST /1.5/leads/selection/web_fetch?force_fetch=false",
+      "POST /1.5/leads/selection/clear",
     ]);
 
     const record = await tracker.getQualify(out.qualify_id);
     expect(record?.status).toBe("launched");
     expect(record?.lead_ids).toEqual(["lead-1", "lead-2"]);
+    expect(record?.notification_id).toBe(NOTIF_ID);
   });
 });

@@ -52,6 +52,12 @@ export const accountStatus: Tool<Record<string, never>> = {
         description:
           "Per-resource quota state (llm_completion, ai_rescore, web_fetch, LENS_EXTRA_REFILL) across daily/weekly/monthly windows. Null if /quota_status failed (logged in stderr). Pre-check the LENS_EXTRA_REFILL entry before calling leadbay_extend_lens.",
       },
+      notifications: {
+        type: "array",
+        description:
+          "Terminal bulk-progress notifications the MCP knows about (background work the user or agent started that has since completed). Each entry carries notification_id, kind (bulk_enrich | bulk_qualify | import | other), bulk_progress counters, and a revise_hint pointing at prior agent outputs the just-finished work might have made stale. After revising affected outputs, call leadbay_acknowledge_notification(notification_id) to clear the entry. Empty array when nothing has completed.",
+        items: { type: "object" },
+      },
       _meta: {
         type: "object",
         properties: {
@@ -118,6 +124,13 @@ export const accountStatus: Tool<Record<string, never>> = {
       // on /me are intentionally NOT surfaced — they're defunct (see
       // SHAPE-DRIFT.md probe round 4).
       quota,
+      // Inbox of terminal bulk-progress notifications. Same shape the MCP
+      // server attaches to `_meta.notifications` on every tool response —
+      // duplicated here as a top-level field so the agent's daily-rhythm
+      // check-in (this composite) sees them without having to read _meta.
+      // Empty array when the WS listener isn't wired (OpenClaw, tests) OR
+      // when nothing has completed since the last ack.
+      notifications: ctx?.notificationsInbox?.list() ?? [],
       _meta: {
         region: client.region,
       },

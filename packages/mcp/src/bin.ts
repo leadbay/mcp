@@ -6,6 +6,8 @@ import {
   createClient,
   createDefaultBulkStore,
   formatLoginError,
+  NotificationsInbox,
+  NotificationsWsClient,
   resolveRegion,
   type CreateClientConfig,
   LeadbayClient,
@@ -1452,18 +1454,45 @@ async function main(): Promise<void> {
     });
   }
 
+  // Notifications inbox + WS listener. The WS listener keeps a persistent
+  // connection to the backend so terminal bulk-progress notifications
+  // (enrichment / qualification / import done) surface to the agent on its
+  // next tool call without polling. REST catch-up at start covers anything
+  // that completed while MCP was down. Disabled when auth is broken — no
+  // bearer means no ticket means no WS. Opt-out: LEADBAY_NOTIFICATIONS_WS_DISABLED=1.
+  const notificationsInbox = new NotificationsInbox();
+  let notificationsWs: NotificationsWsClient | null = null;
+  const WS_DISABLED =
+    process.env.LEADBAY_NOTIFICATIONS_WS_DISABLED === "1" ||
+    authState !== "ok";
+  if (!WS_DISABLED) {
+    notificationsWs = new NotificationsWsClient({
+      client,
+      inbox: notificationsInbox,
+      logger,
+    });
+    // Fire-and-forget — first REST catch-up runs inside start() and
+    // logs failures to stderr. Never blocks server boot.
+    void notificationsWs.start().catch((err: any) => {
+      logger.warn?.(
+        `notifications.ws start_failed: ${err?.message ?? err}`
+      );
+    });
+  }
+
   const server = buildServer(client, {
     includeAdvanced,
     includeWrite,
     logger,
     bulkTracker,
+    notificationsInbox,
     version: VERSION,
     telemetry,
     updateStateStore,
   });
   const transport = new StdioServerTransport();
   logger.info?.(
-    `Starting MCP server v${VERSION} (advanced=${includeAdvanced}, write=${includeWrite}, baseUrl=${client.baseUrl}, bulk_store=${bulkTracker.durability}, auth_state=${authState})`
+    `Starting MCP server v${VERSION} (advanced=${includeAdvanced}, write=${includeWrite}, baseUrl=${client.baseUrl}, bulk_store=${bulkTracker.durability}, notifications_ws=${WS_DISABLED ? "disabled" : "enabled"}, auth_state=${authState})`
   );
   await server.connect(transport);
 
@@ -1471,6 +1500,11 @@ async function main(): Promise<void> {
   // hang can't block process exit. stdio-end fires when the MCP client
   // (Claude Desktop, Cursor) disconnects — same effect as SIGTERM.
   const shutdown = async (code: number) => {
+    try {
+      notificationsWs?.stop();
+    } catch {
+      // ignore — best-effort
+    }
     try {
       await telemetry.shutdown();
     } finally {

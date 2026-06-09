@@ -11,6 +11,7 @@ export type { CreateClientConfig, TasteProfileResult } from "./client.js";
 export * from "./types.js";
 export * from "./agent-memory/index.js";
 export { COMPOSITE_FILE_TOOL_NAMES } from "./composite/_composite-file-names.js";
+export * from "./notifications/index.js";
 
 // ─── Granular tools — 1:1 with Leadbay API endpoints ─────────────────────
 
@@ -46,6 +47,7 @@ import { openBillingPortal } from "./tools/open-billing-portal.js";
 import { agentMemoryRecall } from "./tools/agent-memory-recall.js";
 import { agentMemoryCapture } from "./tools/agent-memory-capture.js";
 import { agentMemoryReview } from "./tools/agent-memory-review.js";
+import { acknowledgeNotification } from "./tools/acknowledge-notification.js";
 
 // New write tools (autoplan §E5) — gated behind LEADBAY_MCP_WRITE=1 in MCP
 import { selectLeads } from "./tools/select-leads.js";
@@ -89,6 +91,7 @@ import { campaignProgression } from "./composite/campaign-progression.js";
 import { campaignCallSheet } from "./composite/campaign-call-sheet.js";
 import { researchLeadById } from "./composite/research-lead-by-id.js";
 import { researchLeadByNameFuzzy } from "./composite/research-lead-by-name-fuzzy.js";
+import { accountHistory } from "./composite/account-history.js";
 import { recallOrderedTitles } from "./composite/recall-ordered-titles.js";
 import { accountStatus } from "./composite/account-status.js";
 import { bulkQualifyLeads } from "./composite/bulk-qualify-leads.js";
@@ -144,6 +147,7 @@ export {
   listMappableFields,
   createTopupLink, openBillingPortal,
   agentMemoryRecall, agentMemoryCapture, agentMemoryReview,
+  acknowledgeNotification,
   // new granular writes
   selectLeads, deselectLeads, clearSelection, setActiveLens, createLens,
   updateLens, updateLensFilter, createLensDraft, promoteLens, setUserPrompt,
@@ -156,6 +160,7 @@ export {
   // new composite reads
   pullLeads, pullFollowups, followupsMap, tourPlan, listCampaigns,
   campaignProgression, campaignCallSheet, researchLeadById, researchLeadByNameFuzzy,
+  accountHistory,
   recallOrderedTitles, accountStatus,
   bulkEnrichStatus, qualifyStatus, importStatus, resolveImportRows,
   // new composite writes
@@ -251,6 +256,13 @@ export const compositeReadTools: Tool[] = [
   campaignCallSheet,
   researchLeadById,
   researchLeadByNameFuzzy,
+  // accountHistory layers FULL notes + activity timeline on top of research
+  // so the agent can write the US4 "why has this dormant account resurfaced"
+  // narrative in ONE call. ALWAYS exposed (compositeReadTools) — the underlying
+  // get_lead_notes / get_lead_activities are ADVANCED-gated, but the
+  // reprioritize-a-neglected-account workflow (#3630 GAP C) must work in a
+  // default deployment without LEADBAY_MCP_ADVANCED=1.
+  accountHistory,
   recallOrderedTitles,
   accountStatus,
   bulkEnrichStatus,
@@ -284,6 +296,12 @@ export const compositeReadTools: Tool[] = [
   // event only. Companion to leadbay_report_outreach (which DOES write
   // to the backend and stays gated behind LEADBAY_MCP_WRITE).
   reportFriction,
+  // Notification ack — ALWAYS exposed even though it POSTs to /seen.
+  // _meta.notifications surfaces terminal bulk-progress notifications on
+  // every tool response regardless of write gating; without ack the agent
+  // sees the same entries on every call forever. Pairing the surfacing
+  // channel with the clearing tool is non-optional.
+  acknowledgeNotification,
 ];
 
 // Composite write tools — always-exposed in OpenClaw, gated in MCP behind

@@ -9,6 +9,8 @@ import type {
   PurchaseIntentTagPayload,
   AiAgentQuestionPayload,
   RequestMeta,
+  PaginatedNotifications,
+  WsAuthResponse,
 } from "./types.js";
 
 const LENS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -819,6 +821,41 @@ export class LeadbayClient {
   async prefetchOrgData(): Promise<void> {
     await this.resolveOrgId();
     await this.resolveTasteProfile();
+  }
+
+  // ─── Notifications helpers ────────────────────────────────────────────
+  // Backend exposes `GET /notifications`, `POST /notifications/{id}/seen`,
+  // `POST /notifications/{id}/archive`, plus `GET /ws/ticket?v=1.0` to mint
+  // a one-shot WS URL. See backend/docs/adr/notifications.md for shape.
+
+  async listNotifications(args: {
+    archived?: boolean;
+    page?: number;
+    count?: number;
+  } = {}): Promise<PaginatedNotifications> {
+    const params = new URLSearchParams();
+    params.set("archived", String(args.archived ?? false));
+    params.set("page", String(args.page ?? 0));
+    params.set("count", String(args.count ?? 50));
+    return this.request<PaginatedNotifications>(
+      "GET",
+      `/notifications?${params.toString()}`
+    );
+  }
+
+  async acknowledgeNotification(
+    notificationId: string,
+    action: "seen" | "archive" = "seen"
+  ): Promise<void> {
+    await this.requestVoid(
+      "POST",
+      `/notifications/${notificationId}/${action}`
+    );
+  }
+
+  async getWsTicket(): Promise<WsAuthResponse> {
+    // Mounted under /1.5/auth/ws (see backend/AuthRoutes.kt::authRoutes).
+    return this.request<WsAuthResponse>("GET", "/auth/ws?v=1.0");
   }
 
   makeError(

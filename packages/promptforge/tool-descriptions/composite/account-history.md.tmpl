@@ -1,0 +1,91 @@
+---
+name: leadbay_account_history
+kind: tool-description
+short_description: |
+  Give me ONE account's full back-story in a single call — current AI signals
+  PLUS the historical notes logged on the record PLUS the full interaction
+  timeline. Use when the user wants to know why a dormant or half-forgotten
+  account is worth revisiting. Don't use it for the live-signals-only deep dive
+  (that's leadbay_research_lead_by_id) or for a list of accounts to follow up
+  (that's leadbay_pull_followups).
+routing:
+  triggers:
+    - "what's the history on this account"
+    - "why should I revisit this account"
+    - "summarize everything we've done with <Company>"
+    - "has this account gone cold"
+    - "give me the back-story on lead <UUID>"
+  anti_triggers:
+    - phrase: "live signals only, no history"
+      route_to: leadbay_research_lead_by_id
+    - phrase: "which accounts should I follow up with"
+      route_to: leadbay_pull_followups
+  prefer_when: "user wants ONE account's full back-story — notes + past activity + current signals together; pass `leadId`"
+  examples:
+    positive:
+      - "What's the full history on this account — why did it resurface?"
+      - "Summarize everything we've logged on that lead and whether it's worth another visit."
+    negative:
+      - "Tell me the current AI take on this lead."
+      - "Which accounts should I follow up with this week?"
+rendering_hint: |
+  Single resurfaced-account card. Lead the card with the current signal/trigger
+  line (from `signals`), then a "History" section: notes digest
+  (chronological) + the activity timeline. Close with a one-line "why revisit
+  now" synthesis and a suggested outreach angle tied to the freshest signal.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Give me one account's full back-story in a single call. This is the tool for
+the **reprioritize-a-neglected-account** workflow: the user has an account
+that was contacted or quoted long ago and wants to know, in one shot, whether
+a fresh signal makes it worth another visit.
+
+It bundles three reads on one `leadId`:
+
+1. **Current state** — passed through verbatim from `leadbay_research_lead_by_id`:
+   `signals` (web-research signals with hot flags + sources), `firmographics`,
+   `qualification` answers, `contacts`, and `engagement` counts. This is the
+   "why is this account hot NOW" layer.
+2. **`notes`** — the FULL list of notes logged on the record (note body +
+   `created_at`), chronological. `leadbay_research_lead_by_id` only returns a
+   `notes_count`; this tool returns the bodies so you can summarize the
+   historical context.
+3. **`activities`** — the interaction timeline (`{type, date}` entries, newest
+   first) plus the total count. Drives the "no contact in N months" judgement.
+
+`notes` and `activities` **degrade gracefully**: if either read fails the card
+still returns with that section empty (`notes: []` /
+`activities.total: 0`). The current-state block is load-bearing — if research
+itself errors the whole call fails, because there is nothing to narrate.
+
+Params: `leadId` (required UUID) and `activityCount` (optional, default 50,
+max 100).
+
+Companion tools: **leadbay_research_lead_by_id** when the user only wants the
+live AI take with no history; **leadbay_pull_followups** when the user wants a
+LIST of accounts to act on rather than one account's deep history.
+
+{{include:rendering/research-company-card}}
+
+### RENDERING — the history layer (on top of the card above)
+
+After the research card, add a **History** section so the user sees why this
+account resurfaced:
+
+- **##### 🗒 Notes** — render `notes` chronologically (oldest → newest). Each
+  as a bullet: `**<relative date from created_at>** — <note body>`. Cap at 8;
+  if `_meta.notes_count > shown`, end with `"+N more notes"`. Omit the section
+  entirely when `notes` is empty.
+- **##### 🕓 Timeline** — render `activities.activities` newest-first as a
+  compact bullet list: `<relative date> · <type>`. Cap at 10; if
+  `activities.total > shown`, end with `"+N earlier"`. Omit when empty.
+- **##### ↻ Why revisit now** — one or two sentences synthesizing the freshest
+  HOT signal from `signals` against the gap in `activities` (e.g. "Won a public
+  tender last month; no logged contact since the 2024 quote — strong re-open
+  angle"). Then one suggested outreach angle tied to that signal. This
+  synthesis is the payload of the whole tool — always include it when there is
+  at least one hot signal.
