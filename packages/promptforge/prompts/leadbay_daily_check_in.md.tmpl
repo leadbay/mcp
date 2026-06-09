@@ -2,18 +2,16 @@
 name: leadbay_daily_check_in
 kind: prompt
 short_description: |
-  Run the canonical daily check-in: account state, fresh batch, triage
-  top 10, deep-dive every promising one, offer contact enrichment. The
-  morning DISCOVERY workflow (new leads from the lens wishlist). Trigger
-  on "leadbay leads", "best NEW leads", "what's new today", "show me the
-  day's batch", "let's prospect". Do NOT trigger on follow-up phrasings
-  ("what should I follow up on", "before my trip") — those go to
-  `leadbay_followup_check_in`.
+  Morning DISCOVERY workflow — new leads from the lens wishlist. Trigger
+  on "show me leads", "what's new today", "let's prospect", "run my check-in",
+  "my morning check-in", "I do this every day", "every morning". Recurrence
+  language always means this prompt. Do NOT trigger on follow-up phrasings
+  ("follow up", "before my trip") — those go to `leadbay_followup_check_in`.
 arguments: []
 expected_calls:
   - leadbay_account_status
   - leadbay_pull_leads
-  - leadbay_research_lead_by_id
+  - leadbay_research_lead_by_id  # Phase-4-gated: only called when user explicitly requests research (not for batch-view requests)
   - leadbay_bulk_qualify_leads
   - leadbay_enrich_contacts
 failure_modes:
@@ -21,7 +19,7 @@ failure_modes:
   - Surfaces fewer than 10 leads when more are available, or fails to top up via leadbay_qualify_top_n when the batch is short
   - Replaces the canonical pull_leads table layout with prose per row (the per-tool RENDERING block is the structural contract; "Today's nudges" goes above it, not in place of it)
   - Skips the nudge paragraph entirely — the table alone is fine but adding the nudge is the value-add
-  - Skips deep research on promising leads (Phase 4) — the agent must call leadbay_research_lead_by_id on each, not just one
+  - Skips deep research on promising leads (Phase 4) — the agent must call leadbay_research_lead_by_id on each when the user's intent is to research specific leads; Phase 4 is intentionally skipped for batch-view requests ("show me today's leads", "run my morning check-in") per the Phase 4 skip gate
   - Triggers contact enrichment without asking the user first (it consumes quota)
   - Skips the STOP byproduct and proposes next actions on its own
   - Fires 10 parallel leadbay_research_lead_by_id calls and treats "stream closed" errors as terminal — must serialize and retry singletons
@@ -32,7 +30,7 @@ failure_modes:
 
 {{include:headers/agent-memory-preamble}}
 
-Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask focused on NEW leads from the Discover wishlist: "get me leadbay leads", "best NEW leads to prospect today", "what's new today", "show me my batch", "let's prospect". For follow-up phrasings ("what should I follow up on", "leads I've already worked", "before my trip"), this is the wrong prompt — route to `leadbay_followup_check_in` instead. If the user's intent is ambiguous ("what should I work on?"), ASK once before picking an entry point.
+Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask focused on NEW leads from the Discover wishlist: "get me leadbay leads", "best NEW leads to prospect today", "what's new today", "show me my batch", "let's prospect", "run my morning check-in", "my daily routine", "I do this every day", "every morning". For follow-up phrasings ("what should I follow up on", "leads I've already worked", "before my trip"), this is the wrong prompt — route to `leadbay_followup_check_in` instead. **Recurrence language ("I do this every day", "every morning", "my routine") always means this prompt — it is a daily batch check-in, not a follow-up.** If the user's intent is ambiguous ("what should I work on?"), ASK once before picking an entry point.
 
 {{include:heuristics/long-running-tools}}
 
@@ -60,13 +58,29 @@ If the batch returns fewer than 10 qualified leads, top it up: call `leadbay_bul
 
 # PHASE 4 — DEEP DIVE (every promising lead)
 
+**Skip Phase 4 if the user's request is primarily to view the batch** (e.g., "show me today's leads", "run my morning check-in", "what's in my inbox") — proceed directly to NEXT STEPS. Run Phase 4 when the user explicitly asks to research leads, names a specific company, or says "and then research" / "deep dive" / "tell me more about".
+
 Call `leadbay_research_lead_by_id` on **every** lead from your top 10 that the user might realistically prospect today (filter out clearly weak fits if any). Don't pick just one. **Call it sequentially** — one at a time, or batches of at most 3 in parallel. Do not fire 10 in parallel — it triggers transport backpressure that surfaces as `"Tool permission stream closed"` errors (see Rule 3 above). If a call fails, retry that single lead once; if the retry also fails, note the lead id and continue. Report Phase 4 results even if 1–2 leads were unresearchable.
 
 For each researched lead surface:
 - what makes it promising (1–2 sentences citing signals from the research)
 - the **recommended contacts** the research returns — name, title, why they're the right starting point
 
-Then ASK the user (don't auto-run): "Want me to enrich the contacts on these leads to acquire their emails / phone numbers?" If the user says yes, call `leadbay_enrich_contacts` for the relevant lead IDs (this consumes enrichment quota — that's why we ask first).
+Contact enrichment is offered in the NEXT STEPS widget below — do NOT emit a separate prose question here. The widget handles the enrichment offer as one of the selectable options. If the user selects enrichment, call `leadbay_enrich_contacts({leadId, contactId})` ONCE PER CONTACT — the tool takes a single leadId + contactId, never a list. (For bulk title/seniority enrichment across many leads at once, use `leadbay_enrich_titles({leadIds: [...]})` instead.) This consumes enrichment quota.
+
+# NEXT STEPS
+
+**Sequential request gate:** If the user's original message contained the literal phrase "and then" (e.g., "show me X and then do Y"), and all stated actions have been completed this turn, skip the NEXT STEPS widget entirely and emit STOP directly. The user stated their full plan; they do not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, go directly to STOP without any widget.
+- Do NOT skip for: plain single-action requests ("show me today's leads"), recurring requests ("I do this every day"), or multi-step workflows the user didn't pre-specify.
+
+**REQUIRED OPTIONS — triggers and position rules:**
+- **Recurring language** ("every day", "every morning", "I do this every", "remind me", "automate this", "recurring"): add "Schedule 'Daily prospecting check-in' as a recurring task" and place it **first**.
+- **≥5 leads returned**: add "Build an interactive lead triage board for this batch" and place it **first** (or second if the scheduling offer above also applies).
+
+{{include:next-steps/pull-leads}}
+
+**Final ordering check (do this before rendering):** Recurring offer → option 1; triage board → option 1 (or 2 if scheduling is also required). Swap if needed.
 
 # GATE — STOP
 

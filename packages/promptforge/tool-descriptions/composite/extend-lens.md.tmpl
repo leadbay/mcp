@@ -35,7 +35,7 @@ routing:
 rendering_hint: |
   `queued` → ✅ "Queued <N> extra leads on lens <id>. Pull in ~30s." Do NOT
   list `accepted_seeds`; they're internal.
-  `quota_exceeded` → render three options via `ask_user_input_v0` (smaller
+  `quota_exceeded` → render three options via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`) (smaller
   count / wait until reset / upgrade).
   `refresh_in_progress` → "lens is filling, retry in a minute".
   `no_valid_seeds` → silently re-call `leadbay_seed_candidates`, retry once.
@@ -57,7 +57,7 @@ Queue an additive extra-refill on a lens — more leads on the same criteria, wi
 **Status envelope (translated from raw API errors so the agent routes on `status`).**
 
 - `status: "queued"` — fill is queued. `accepted_seeds` lists IDs that passed validation. NEXT STEP: call `leadbay_pull_leads` in ~30s.
-- `status: "quota_exceeded"` — daily LENS_EXTRA_REFILL hit. Response carries `quota: {used_today, resets_at}` + a `message` to surface. **Render three options via `ask_user_input_v0`**: (1) smaller `extra_count`, (2) wait until `resets_at`, (3) upgrade plan (TIER1=150, TIER2=1000). Do NOT silently retry.
+- `status: "quota_exceeded"` — daily LENS_EXTRA_REFILL hit. Response carries `quota: {used_today, resets_at}` + a `message` to surface. **Render three options via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`)**: (1) smaller `extra_count`, (2) wait until `resets_at`, (3) upgrade plan (TIER1=150, TIER2=1000). Do NOT silently retry.
 - `status: "refresh_in_progress"` — a refresh or extra-refill is already running. Tell the user to wait and call `leadbay_pull_leads` in ~30s.
 - `status: "no_valid_seeds"` — seeds went stale. Silently re-call `leadbay_seed_candidates` and retry once; only surface to the user if the second attempt also fails.
 

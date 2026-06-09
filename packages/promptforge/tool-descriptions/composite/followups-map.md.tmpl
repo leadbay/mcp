@@ -125,7 +125,7 @@ Keep it short — 1 lead per ~3 lines, top 3–5 most relevant. The LinkedIn-lin
 
 Open with **one short intro sentence** in chat ("Five lead visits across NYC for your trip next week — three in Midtown, plus Long Island and one in NJ.") and then invoke the widget, then the chat-side list above. **No markdown table.**
 
-**After the widget renders, end the turn with the NEXT STEPS surface** — not with a prose question. See "GATE — PREFER BUILT-IN HOST WIDGETS" below: surface 2–4 mutually-exclusive moves via `ask_user_input_v0` if the host exposes it, else as a short bulleted list. "Want me to plot these on a map or jump to outreach for Atlas?" is exactly the prose pattern to AVOID — it's a `single_select` with two options.
+**After the widget renders, end the turn with the NEXT STEPS surface** — not with a prose question. See "GATE — PREFER BUILT-IN HOST WIDGETS" below: surface 2–4 mutually-exclusive moves via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`) if the host exposes it, else as a short bulleted list. "Want me to plot these on a map or jump to outreach for Atlas?" is exactly the prose pattern to AVOID — it's a `single_select` with two options.
 
 ## RENDER — fallback for hosts without `places_map_display_v0`
 

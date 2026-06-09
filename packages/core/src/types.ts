@@ -456,6 +456,8 @@ export interface QuotaSpend {
 
 export interface QuotaResourceUsage {
   resource_type: QuotaResource;
+  // Amount USED in this window — not remaining, not a cap. The API returns no
+  // cap field; never infer "unlimited / no quota" from its absence.
   count: number;
   window_type: QuotaWindow;
   resets_at: string;

@@ -53,3 +53,5 @@ List the caller's campaigns with roll-up stats. Wraps `GET /campaigns` (with `?a
 {{include:headers/tool-when-not-to-use}} for per-lead progression inside ONE campaign (use `leadbay_campaign_progression`); to create a campaign (`leadbay_create_campaign`); to add leads to one (`leadbay_add_leads_to_campaign`).
 
 **Response**: `{campaigns: CampaignWithStats[], _meta}`. Sort by `updated_at desc` when rendering — recency is the manager's natural lens.
+
+---

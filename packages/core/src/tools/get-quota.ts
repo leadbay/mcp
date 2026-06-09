@@ -16,11 +16,37 @@ export const getQuota: Tool<Record<string, never>> = {
   outputSchema: {
     type: "object",
     properties: {
-      plan: { type: ["string", "null"], description: "Org plan tier (e.g., FREE, PRO)." },
+      plan: {
+        type: ["string", "null"],
+        description: "Org plan tier (e.g., FREE, TIER1, TIER2). May be null.",
+      },
+      org: {
+        type: "object",
+        description: "Org-level quota state.",
+        properties: {
+          spend: { type: "array", description: "Reserved; empty in practice.", items: { type: "object" } },
+          resources: {
+            type: "array",
+            description:
+              "Per-resource per-window USAGE. Each: {resource_type, count, window_type, resets_at}. `count` is the amount USED in that window (not remaining, not a cap). No cap field is returned by the API.",
+            items: { type: "object" },
+          },
+        },
+      },
+      user: {
+        type: "object",
+        description: "User-level quota state, same shape as `org`. May be absent.",
+        properties: {
+          spend: { type: "array", items: { type: "object" } },
+          resources: { type: "array", items: { type: "object" } },
+        },
+      },
+      // Legacy/compat: the live API does NOT return a top-level `windows`
+      // array — usage lives in org/user.resources[]. Declared only so older
+      // recorded fixtures still conform; do not rely on it.
       windows: {
         type: "array",
-        description:
-          "Per-resource per-window limits. Each: {resource, window, current_units, max_units, resets_at}.",
+        description: "Deprecated — not returned by the live API. Use org/user.resources[].",
         items: { type: "object" },
       },
     },

@@ -1,5 +1,22 @@
 # Changelog — @leadbay/mcp
 
+## 0.19.0 — 2026-06-09
+
+NEXT STEPS, artifact, and scheduled-task offers now fire reliably as host widgets across Claude chat, Claude cowork/Desktop, and ChatGPT.
+
+- **Deterministic `next_steps` on `leadbay_pull_leads`** — the server now returns a ready-made `{question, options[]}` object with the "Build an interactive lead triage board" artifact offer pinned at `options[0]` whenever the batch is non-empty (`null` when empty). The model renders it verbatim into the host widget instead of re-deriving options from prose, which is where the artifact offer kept getting dropped.
+- **Dual host-widget schema documented** — the next-step / choice widget differs by host: `ask_user_input_v0` (Claude chat / ChatGPT) takes plain-string options with `type:"single_select"`; `AskUserQuestion` (Claude cowork / Claude Code) takes `{label, description}` objects with a required short `header` and `multiSelect`, no `type`. Both are now documented (full forms in `host-widgets.ts`, compact form in the shared next-steps snippet) and made widget-mandatory-when-available.
+- **WORKFLOWS.md** — added WF#16 (artifact proposal gate), WF#17 (recurrence routing gate — recurrence language runs the daily discovery check-in, not follow-ups), WF#18 (widget overdelivery guard).
+
+## 0.18.2 — 2026-06-09
+
+- **Release-pipeline fix**: align `packages/mcp/server.json` with `package.json`. `server.json` had been stuck at `0.17.2` since the 0.17.2 release, so the MCP-Registry publish step (`Verify server.json version matches package.json`) failed on every release from 0.17.3 through 0.18.1 — npm and the GitHub `.mcpb` shipped, but the registry listing silently went stale. Both `server.json` version fields (top-level + `packages[0].version`) now track `package.json`, and a new audit test (`test/audit/server-json-version.test.ts`) fails the build on any future drift instead of letting it surface only at release time.
+
+## 0.18.1 — 2026-06-09
+
+- **Quota rendering fix**: `leadbay_account_status` now renders the per-resource Daily / Weekly / Monthly **usage** table the API actually returns, instead of collapsing to "quota: null / no limits". Root cause: `quota_status` returns `count` (amount **used**) per resource per window with no cap field and a possibly-`null` `plan`; the old render hint tried to draw `used / cap` and gave up when there was no cap. The hint is now usage-only and explicitly warns that a missing cap / `null` plan is **not** "unlimited" or "no quota". `get-quota.ts` `outputSchema` corrected to the real `org` / `user.resources[]` shape (`{resource_type, count, window_type, resets_at}`, `count` = used), and a failed quota fetch is now distinguished from an empty quota.
+- **Enrichment credit spend**: `leadbay_enrich_titles` surfaces the credit balance before and the actual spend after a run, reported discreetly rather than as a callout. Dropped the per-run "credits used" figure that conflated prior enrichments.
+
 ## 0.18.0 — 2026-06-08
 
 Backend long-task notifications are now consumed by the MCP. When the user (or agent) initiates a bulk operation — contact enrichment, lead qualification, CSV / CRM import — the MCP listens to the backend WebSocket for the completion event and surfaces it on the agent's next tool call so prior outputs that depended on the now-finished data can be revised.

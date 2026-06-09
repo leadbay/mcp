@@ -64,6 +64,88 @@ function summarise(responses: AiAgentResponse[]): QualificationSummary {
   return { answered, total, avg_qualification_boost: avg, best_response_excerpt: excerpt };
 }
 
+/**
+ * A single ready-to-render next-step option for the host's choice widget.
+ * `label` is the SHORT button text (1–5 words) — AskUserQuestion (Claude
+ * cowork / Claude Code) caps labels at that length; the longer `description`
+ * carries the full sentence (used as the AskUserQuestion option description,
+ * or appended to the ask_user_input_v0 string label on hosts without a
+ * separate description field). `kind` lets the model map the choice back to an
+ * action without re-parsing the label.
+ */
+export interface NextStepOption {
+  label: string;
+  description: string;
+  kind:
+    | "build_artifact"
+    | "pull_next_page"
+    | "qualify_deeper"
+    | "refine_audience";
+}
+
+export interface NextSteps {
+  /** Pass these straight into ask_user_input_v0 as the single_select options, verbatim. */
+  question: string;
+  options: NextStepOption[];
+}
+
+/**
+ * Deterministically build the NEXT STEPS the model should surface via
+ * ask_user_input_v0 after a pull_leads. Returns null when there's nothing to
+ * act on (empty batch) so the model doesn't fire an empty widget.
+ *
+ * The artifact offer ("Build an interactive lead triage board") is ALWAYS the
+ * first option whenever the batch is non-empty — this is the gate that kept
+ * getting dropped when the model assembled options from prose. By shipping it
+ * pre-built in the tool result, the model only has to render, not derive.
+ */
+export function buildPullLeadsNextSteps(args: {
+  leadCount: number;
+  hasMore: boolean;
+  nextPage: number | null;
+}): NextSteps | null {
+  const { leadCount, hasMore, nextPage } = args;
+  if (leadCount <= 0) return null;
+
+  const options: NextStepOption[] = [];
+
+  // Artifact offer first — a multi-item batch is the canonical "scan / sort /
+  // return-to" result the artifact gate targets. Always included when there
+  // are leads to put on the board. Labels stay ≤5 words for AskUserQuestion;
+  // the full sentence lives in `description`.
+  options.push({
+    label: "Triage board",
+    description: "Build an interactive lead triage board to sort and filter this batch.",
+    kind: "build_artifact",
+  });
+
+  // Deepen qualification is a natural second move on a fresh batch.
+  options.push({
+    label: "Deepen qualification",
+    description: "Run deeper AI qualification on these leads.",
+    kind: "qualify_deeper",
+  });
+
+  // Pager only when another page actually exists.
+  if (hasMore && nextPage != null) {
+    options.push({
+      label: "Next page",
+      description: `Pull page ${nextPage + 1} of this lens.`,
+      kind: "pull_next_page",
+    });
+  }
+
+  // Audience refinement rounds it out (and is the right move on an off-ICP batch).
+  options.push({
+    label: "Refine audience",
+    description: "Adjust the lens audience / filters (sector, size, prompt).",
+    kind: "refine_audience",
+  });
+
+  // ask_user_input_v0 caps at 2–4 options; keep the first four.
+  return { question: "What do you want to do next?", options: options.slice(0, 4) };
+}
+
 export const pullLeads: Tool<PullLeadsParams> = {
   name: "leadbay_pull_leads",
   annotations: {
@@ -130,6 +212,25 @@ export const pullLeads: Tool<PullLeadsParams> = {
       computing_scores: {
         type: "boolean",
         description: "True if scoring is still running.",
+      },
+      next_steps: {
+        type: ["object", "null"],
+        description:
+          "Ready-made NEXT STEPS for the host's choice widget. Each option has a SHORT `label` (≤5 words, fits AskUserQuestion's label cap on Claude cowork/Claude Code) and a full `description`. For AskUserQuestion (cowork/Claude Code) pass each option as {label, description}. For ask_user_input_v0 (Claude chat/ChatGPT, string-only options) use the `description` as the option string. Use these VERBATIM, in order — do NOT re-derive, reword, or render as prose when a widget tool exists. options[0] is the artifact offer (build the lead triage board) whenever the batch is non-empty. null only when the batch is empty.",
+        properties: {
+          question: { type: "string" },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: { type: "string" },
+                description: { type: "string" },
+                kind: { type: "string" },
+              },
+            },
+          },
+        },
       },
       _meta: {
         type: "object",
@@ -244,6 +345,15 @@ export const pullLeads: Tool<PullLeadsParams> = {
     const hasMore = currentPage < totalPages - 1;
     const nextPage = hasMore ? currentPage + 1 : null;
 
+    // Deterministic NEXT STEPS. The host's ask_user_input_v0 widget is the
+    // model's tool to call, not ours — the server cannot emit it. But we CAN
+    // hand the model a ready-made options array so it renders the widget
+    // instead of re-deriving options from prose (where it drifts to prose or
+    // drops the artifact offer). The model is instructed to pass
+    // `next_steps.options` straight into ask_user_input_v0 verbatim.
+    const leadCount = res.items.length;
+    const nextSteps = buildPullLeadsNextSteps({ leadCount, hasMore, nextPage });
+
     return withAgentMemoryMeta(client, {
       lens: { id: lensId },
       leads: res.items.map((lead) => ({
@@ -255,6 +365,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
       next_page: nextPage,
       computing_wishlist: res.computing_wishlist,
       computing_scores: res.computing_scores,
+      next_steps: nextSteps,
       _meta: {
         region: client.region,
         latency_ms: client.lastMeta?.latency_ms ?? null,

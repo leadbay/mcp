@@ -37,7 +37,7 @@ Work my **{{arg:campaign_or_default}}** campaign as an outreach session{{arg:mod
 
 # PHASE 0 — PICK THE CAMPAIGN
 
-If I gave you a name or id, resolve it. Otherwise call `leadbay_list_campaigns()` and surface the active campaigns as a `single_select` via `ask_user_input_v0` (cap at 4 — sort by `updated_at` desc, archived hidden):
+If I gave you a name or id, resolve it. Otherwise call `leadbay_list_campaigns()` and surface the active campaigns as a `single_select` via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`) (cap at 4 — sort by `updated_at` desc, archived hidden):
 
 > Which campaign do you want to work?
 > - <Name 1> · <N leads> · last touched <date>
@@ -70,7 +70,7 @@ Call `leadbay_campaign_call_sheet({campaign_id})`. The response carries `summary
 📋 <total_leads> leads · 📞 <leads_with_phone> with a phone · ✉ <leads_with_email> with an email · 🗺 <leads_with_coords> with coords · 🔴 <leads_without_contacts> need enrichment · ✅ <leads_already_contacted> already touched
 ```
 
-**Then PROPOSE the right modes via `ask_user_input_v0`** (2-4 options, sorted by what makes the most sense for THIS campaign's data):
+**Then PROPOSE the right modes via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`)** (2-4 options, sorted by what makes the most sense for THIS campaign's data):
 
 - "📞 Start calling now" — IF `ready_for_calling`. Top option when phones are there.
 - "✉ Email session instead" — IF `ready_for_emailing` AND `email_ratio > phone_ratio`. Don't surface this when calling is more obvious.

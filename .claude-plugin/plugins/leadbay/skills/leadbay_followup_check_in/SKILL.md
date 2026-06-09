@@ -1,12 +1,12 @@
 ---
 name: leadbay_followup_check_in
-description: "Run the canonical follow-up check-in: surface KNOWN leads from the Monitor view that need re-engagement today, ranked by AI urgency, with the canonical pull_followups table layout. Trigger when the user asks \"follow up\", \"already known leads\", \"leads I haven't contacted\", \"leads in [city]\", \"before my trip\", \"this week\", \"this month\", \"what's overdue\", \"who should I re-engage\", or anything that implies pre-existing pipeline context."
+description: "Follow-up check-in: surface KNOWN leads from the Monitor view needing re-engagement. Trigger on \"follow up\", \"already known leads\", \"what's overdue\", \"before my trip\", \"who should I re-engage\". Do NOT trigger on \"show me today's leads\", \"my morning check-in\", \"run my check-in\", \"I do this every day\", \"every morning\" — those go to `leadbay_daily_check_in`."
 ---
 
 
 ## MEMORY
 
-Before responding, glance at any `_meta.agent_memory.summary` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new taste signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction), call `leadbay_agent_memory_capture` to persist it: `source:"user_stated"` if literal, `source:"inferred"` with confidence <=6 if inferred.
+Before responding, glance at any `_meta.agent_memory.summary` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call `leadbay_agent_memory_capture` to persist it: `source:"user_stated"` if literal, `source:"inferred"` with confidence <=6 if inferred.
 
 
 Run the Leadbay follow-up check-in for me. Treat this prompt the same way for any equivalent ask: "leads I should follow up with", "already known leads", "what's overdue", "before my trip to [city]", "leads I haven't contacted", "who should I re-engage today".

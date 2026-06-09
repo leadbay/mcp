@@ -13,7 +13,7 @@ If the prompt's body and the tool's RENDERING appear to conflict, the tool's REN
 
 # PHASE 1 — PRE-CHECK QUOTA
 
-Call `leadbay_account_status` and read `quota.org.resources[]` for the `LENS_EXTRA_REFILL` entry. If `count` is at/over the daily cap and `extra_count` (when provided) wouldn't fit, **skip PHASE 2 and surface the three options via `ask_user_input_v0` now**: smaller count / wait until `resets_at` / upgrade plan. Don't waste a write call you already know will 429.
+Call `leadbay_account_status` and read `quota.org.resources[]` for the `LENS_EXTRA_REFILL` entry. If `count` is at/over the daily cap and `extra_count` (when provided) wouldn't fit, **skip PHASE 2 and surface the three options via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`) now**: smaller count / wait until `resets_at` / upgrade plan. Don't waste a write call you already know will 429.
 
 # PHASE 2 — PICK SEEDS SILENTLY
 
@@ -41,7 +41,7 @@ Call `leadbay_extend_lens` with:
 | `status`                | What to do                                                                                                              |
 |-------------------------|-------------------------------------------------------------------------------------------------------------------------|
 | `queued`                | ✅ One-line confirmation: "Queued <N> extra leads on lens <id>. Pull in ~30s." Offer `leadbay_pull_leads` as next step. |
-| `quota_exceeded`        | Surface the three options via `ask_user_input_v0`: smaller `extra_count` / wait until `resets_at` / upgrade plan (TIER1=150, TIER2=1000). Do NOT silently retry. |
+| `quota_exceeded`        | Surface the three options via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`): smaller `extra_count` / wait until `resets_at` / upgrade plan (TIER1=150, TIER2=1000). Do NOT silently retry. |
 | `refresh_in_progress`   | "Lens is already filling — pull leads in a minute." Offer `leadbay_pull_leads` after a short wait.                      |
 | `no_valid_seeds`        | Silently re-call `leadbay_seed_candidates` and retry `leadbay_extend_lens` once. Only surface to the user if the second attempt also fails. |
 

@@ -39,7 +39,7 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Prepare a single-lead outreach brief: the full `lead` block (score, `split_ai_summary`, `location`, `size`, `phone_numbers`, `website`, `description`, `social_urls`, `social_presence`), the `recommended_contact` (always in the post-enrichment shape — `contact_id`, `first_name`, `last_name`, `job_title`, `email`, `phone_number`, `linkedin_page`, `is_org_contact` — with nulls where data isn't yet enriched), `additional_contacts_count` (other contacts at this company), and an `enrichment` block describing async state.
+Prepare a single-lead outreach brief: the full `lead` block (score, `split_ai_summary`, `location`, `size`, `phone_numbers`, `website`, `description`, `social_urls`, `social_presence`), the `recommended_contact` (always in the post-enrichment shape — `contact_id`, `first_name`, `last_name`, `job_title`, `email`, `phone_number`, `linkedin_page`, `is_org_contact` — with nulls where data isn't yet enriched), `additional_contacts_count`, and an `enrichment` block describing async state.
 
 Optionally trigger contact enrichment in-flight with `enrich:true`. Enrichment is async (~60s). **Self-polling pattern (no separate tool needed):** re-call `leadbay_prepare_outreach(leadId)` without `enrich`; check `enrichment.complete`. When `complete: true`, the recommended contact now carries `email` and/or `phone_number`.
 
@@ -55,46 +55,9 @@ The first call to this tool on a lead records a `LEAD_VIEWED`-style prospecting 
 
 ## RENDER — host-native message composer is the PRIMARY surface
 
-`message_compose_v1` is the canonical surface for outreach drafts on this tool. The composer gives the user inline edit + send affordances and beats any prose code-fenced draft. **If the host exposes `message_compose_v1`, route every draft through it.** Don't paste email body or call-opener body into chat prose alongside — the composer IS the visual.
+Route every draft through `message_compose_v1` (Claude's email composer). Above it, emit ONE short markdown context paragraph: score callout + sector fit + linked contact name + bare phone/email pills. Do NOT paste the email body into chat prose alongside — the composer IS the visual.
 
-Above the composer, emit ONE short markdown context paragraph: the lead's score callout + sector fit + recommended-contact name (LinkedIn-markdown-linked) + bare phone/email pills. That gives the user the "why this lead" context. The composer below carries the actionable draft.
-
-**Single draft:**
-
-```
-message_compose_v1({
-  kind: "email",
-  summary_title: "Outreach to <Contact Name> at <Company>",
-  variants: [{
-    label: "Lead with the M&A signal",
-    subject: "<one-line subject — references the angle>",
-    body: "<5-8 sentence email; salesperson voice; references signal + a clear next step>"
-  }]
-})
-```
-
-**Strategic options (preferred when split_ai_summary surfaces multiple angles):**
-
-```
-message_compose_v1({
-  kind: "email",
-  summary_title: "Three angles for <Company> outreach",
-  variants: [
-    { label: "Push for alignment",  subject: "...", body: "..." },
-    { label: "Reference the M&A signal", subject: "...", body: "..." },
-    { label: "Soft intro — peer reference", subject: "...", body: "..." }
-  ]
-})
-```
-
-Constraints:
-- **Labels describe STRATEGY, not tone.** "Push for alignment", "Reference M&A signal", "Lead with peer reference" — not "Friendly" / "Formal" / "Aggressive".
-- **2–3 variants when strategic options are clearly distinct.** One variant when you have a single best-angle draft.
-- Subject required for `kind: "email"`. Phone/call openers use `kind: "other"` with the opener in `body`.
-
-The composer becomes the single visual. **Don't also paste the email body into chat prose** — that's just noise next to the composer.
-
-For phone-only contacts (no email enriched), use `kind: "other"` with a 60-second call opener.
+Variant shape: 1–3 entries. Labels describe **strategy** ("Push for alignment", "Reference the M&A signal", "Soft intro — peer reference"), not tone. `kind: "email"` requires `subject`; phone/call openers use `kind: "other"` with the opener in `body`.
 
 {{include:gates/builtin-widgets}}
 

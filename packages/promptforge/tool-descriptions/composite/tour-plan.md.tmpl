@@ -92,3 +92,5 @@ Emit per-lead markdown blocks grouped by mode, in the standard place-card-friend
 {{include:headers/tool-when-not-to-use}} if the user only wants follow-ups (use `leadbay_followups_map`), only wants new leads (use `leadbay_pull_leads`), wants research on one specific account (`leadbay_research_lead_by_id`), or wants to persist the tour as a campaign artifact (chain into `leadbay_create_campaign` after this).
 
 **Response envelope**: `{city, city_id, monitor_leads, discover_leads, discover_filter_note, _meta}` on happy path; `{status: "ambiguous_locations", location_ambiguities, ...}` when the passed `city` matched multiple admin areas.
+
+---

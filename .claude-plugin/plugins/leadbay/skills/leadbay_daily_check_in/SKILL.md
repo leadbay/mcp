@@ -1,15 +1,15 @@
 ---
 name: leadbay_daily_check_in
-description: "Run the canonical daily check-in: account state, fresh batch, triage top 10, deep-dive every promising one, offer contact enrichment. The morning DISCOVERY workflow (new leads from the lens wishlist). Trigger on \"leadbay leads\", \"best NEW leads\", \"what's new today\", \"show me the day's batch\", \"let's prospect\". Do NOT trigger on follow-up phrasings (\"what should I follow up on\", \"before my trip\") — those go to `leadbay_followup_check_in`."
+description: "Morning DISCOVERY workflow — new leads from the lens wishlist. Trigger on \"show me leads\", \"what's new today\", \"let's prospect\", \"run my check-in\", \"my morning check-in\", \"I do this every day\", \"every morning\". Recurrence language always means this prompt. Do NOT trigger on follow-up phrasings (\"follow up\", \"before my trip\") — those go to `leadbay_followup_check_in`."
 ---
 
 
 ## MEMORY
 
-Before responding, glance at any `_meta.agent_memory.summary` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new taste signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction), call `leadbay_agent_memory_capture` to persist it: `source:"user_stated"` if literal, `source:"inferred"` with confidence <=6 if inferred.
+Before responding, glance at any `_meta.agent_memory.summary` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call `leadbay_agent_memory_capture` to persist it: `source:"user_stated"` if literal, `source:"inferred"` with confidence <=6 if inferred.
 
 
-Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask focused on NEW leads from the Discover wishlist: "get me leadbay leads", "best NEW leads to prospect today", "what's new today", "show me my batch", "let's prospect". For follow-up phrasings ("what should I follow up on", "leads I've already worked", "before my trip"), this is the wrong prompt — route to `leadbay_followup_check_in` instead. If the user's intent is ambiguous ("what should I work on?"), ASK once before picking an entry point.
+Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask focused on NEW leads from the Discover wishlist: "get me leadbay leads", "best NEW leads to prospect today", "what's new today", "show me my batch", "let's prospect", "run my morning check-in", "my daily routine", "I do this every day", "every morning". For follow-up phrasings ("what should I follow up on", "leads I've already worked", "before my trip"), this is the wrong prompt — route to `leadbay_followup_check_in` instead. **Recurrence language ("I do this every day", "every morning", "my routine") always means this prompt — it is a daily batch check-in, not a follow-up.** If the user's intent is ambiguous ("what should I work on?"), ASK once before picking an entry point.
 
 # Resilience rules for Leadbay long-running tools
 
@@ -135,13 +135,66 @@ If the batch returns fewer than 10 qualified leads, top it up: call `leadbay_bul
 
 # PHASE 4 — DEEP DIVE (every promising lead)
 
+**Skip Phase 4 if the user's request is primarily to view the batch** (e.g., "show me today's leads", "run my morning check-in", "what's in my inbox") — proceed directly to NEXT STEPS. Run Phase 4 when the user explicitly asks to research leads, names a specific company, or says "and then research" / "deep dive" / "tell me more about".
+
 Call `leadbay_research_lead_by_id` on **every** lead from your top 10 that the user might realistically prospect today (filter out clearly weak fits if any). Don't pick just one. **Call it sequentially** — one at a time, or batches of at most 3 in parallel. Do not fire 10 in parallel — it triggers transport backpressure that surfaces as `"Tool permission stream closed"` errors (see Rule 3 above). If a call fails, retry that single lead once; if the retry also fails, note the lead id and continue. Report Phase 4 results even if 1–2 leads were unresearchable.
 
 For each researched lead surface:
 - what makes it promising (1–2 sentences citing signals from the research)
 - the **recommended contacts** the research returns — name, title, why they're the right starting point
 
-Then ASK the user (don't auto-run): "Want me to enrich the contacts on these leads to acquire their emails / phone numbers?" If the user says yes, call `leadbay_enrich_contacts` for the relevant lead IDs (this consumes enrichment quota — that's why we ask first).
+Contact enrichment is offered in the NEXT STEPS widget below — do NOT emit a separate prose question here. The widget handles the enrichment offer as one of the selectable options. If the user selects enrichment, call `leadbay_enrich_contacts({leadId, contactId})` ONCE PER CONTACT — the tool takes a single leadId + contactId, never a list. (For bulk title/seniority enrichment across many leads at once, use `leadbay_enrich_titles({leadIds: [...]})` instead.) This consumes enrichment quota.
+
+# NEXT STEPS
+
+**Sequential request gate:** If the user's original message contained the literal phrase "and then" (e.g., "show me X and then do Y"), and all stated actions have been completed this turn, skip the NEXT STEPS widget entirely and emit STOP directly. The user stated their full plan; they do not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, go directly to STOP without any widget.
+- Do NOT skip for: plain single-action requests ("show me today's leads"), recurring requests ("I do this every day"), or multi-step workflows the user didn't pre-specify.
+
+**REQUIRED OPTIONS — triggers and position rules:**
+- **Recurring language** ("every day", "every morning", "I do this every", "remind me", "automate this", "recurring"): add "Schedule 'Daily prospecting check-in' as a recurring task" and place it **first**.
+- **≥5 leads returned**: add "Build an interactive lead triage board for this batch" and place it **first** (or second if the scheduling offer above also applies).
+
+## NEXT STEPS — after rendering the pull_leads table
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **`ask_user_input_v0`** (Claude chat / ChatGPT) takes plain-string options with `type:"single_select"`; **`AskUserQuestion`** (Claude cowork / Claude Code) takes object options `{label, description}` plus a required short `header` (≤12 chars) and `multiSelect`, NO `type` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a `next_steps` object, that is the source of truth — use it directly.** Each option has a short `.label` (≤5 words) and a full `.description`. Map `next_steps.options[]` into your host widget VERBATIM and in order: for `AskUserQuestion` (cowork / Claude Code) pass each as `{label, description}`; for `ask_user_input_v0` (Claude chat / ChatGPT, string options only) pass each option's `.description` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO `next_steps` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- `ask_user_input_v0`: `{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}`
+- `AskUserQuestion`: `{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}`
+
+User picks → call the matching `Calls` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in `description`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Pick 2–3 items below based on what was actually observed in the response. The table is the source of truth for which moves are valid.
+
+| Observation                                                | Suggest                                                      | Calls                                                  |
+|------------------------------------------------------------|--------------------------------------------------------------|--------------------------------------------------------|
+| ≥ 5 leads returned (any batch)                             | "Build an interactive lead triage board for this batch"      | emit antArtifact from data in hand (do NOT re-call leadbay_pull_leads) |
+| `has_more == true`                                         | "Pull the next page (page N+1 of M)"                         | leadbay_pull_leads(page = current + 1, lensId = pinned)|
+| ≥ 3 rows have `qualification_summary.answered == 0`        | "Deepen AI qualification on the rows without ❖ caps"         | leadbay_bulk_qualify_leads(leadIds=[…])                |
+| User points at a single row                                | "Research [Company] in depth"                                | leadbay_research_lead_by_id(leadId)                    |
+| User only has a name (no leadId in context)                | "Look up [Company] by name"                                  | leadbay_research_lead_by_name_fuzzy(companyName)       |
+| Top row has phone AND email                                | "Prepare an outreach for [Contact] — call + email"           | leadbay_prepare_outreach(leadId)                       |
+| Top row has email but no phone                             | "Draft an outreach email for [Contact]"                      | leadbay_prepare_outreach(leadId)                       |
+| Top row has phone but no email                             | "Show [Contact]'s call details + a 60-second opener"         | leadbay_prepare_outreach(leadId)                       |
+| Top row has contacts but no phone/email                    | "Order contact enrichment to surface email/phone first"      | leadbay_enrich_titles(...) or leadbay_prepare_outreach(leadId, enrich:true) |
+| `computing_scores == true` or `computing_wishlist == true` | "Scores are still being computed — re-pull in ~30s"          | leadbay_pull_leads (retry with same lensId)            |
+| User wants a narrower / wider audience                     | "Adjust the lens filters (sector / size)"                    | leadbay_adjust_audience(...)                           |
+| Phase 4 research was run (`research_lead_by_id` called) AND top contacts lack direct email/phone | "Enrich contacts on [Lead1], [Lead2] to get direct emails and phone numbers" | leadbay_enrich_contacts(leadId, contactId) — ONE call per contact (the tool takes a single leadId + contactId, never a list) |
+If nothing in the menu applies cleanly, suggest only "pull next page" and "research a specific lead in depth" — never invent a tool that doesn't exist.
+
+
+**Final ordering check (do this before rendering):** Recurring offer → option 1; triage board → option 1 (or 2 if scheduling is also required). Swap if needed.
 
 # GATE — STOP
 

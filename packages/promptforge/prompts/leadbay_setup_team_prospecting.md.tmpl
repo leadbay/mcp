@@ -52,7 +52,7 @@ Then ask me ONCE: "Which of these should we drop?" If I name leads to drop, excl
 
 # PHASE 3 — DECIDE THE CAMPAIGN SHAPE
 
-If I provided a `rep_split` ("one campaign per rep: John gets Tulsa, Sarah gets OKC"), partition the validated leads accordingly. If I didn't, ask ONCE: "Create one campaign for the whole batch, or split per rep / region / sector?" — surface 2-4 options via `ask_user_input_v0` when available, else as a bulleted list.
+If I provided a `rep_split` ("one campaign per rep: John gets Tulsa, Sarah gets OKC"), partition the validated leads accordingly. If I didn't, ask ONCE: "Create one campaign for the whole batch, or split per rep / region / sector?" — surface 2-4 options via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`) when available, else as a bulleted list.
 
 For each campaign-shape decision, derive a name. Templates:
 - Whole batch: `"<lens-name> – <YYYY-MM-DD>"`
@@ -69,7 +69,7 @@ Once the campaigns are created, surface this caveat in plain prose:
 
 > Campaign visibility is currently scoped to the user who CREATED the campaign — the reps won't see these in their own MCP `leadbay_list_campaigns` calls. They CAN see them in the web UI at app.leadbay.ai → Campaigns. Cross-user MCP visibility would need backend work; flag this as a #3630 US3 product gap if your reps work primarily through MCP.
 
-End with a NEXT STEPS chip via `ask_user_input_v0`: "View progression on one of these now?" → routes to `leadbay_campaign_progression`.
+End with a NEXT STEPS chip via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`): "View progression on one of these now?" → routes to `leadbay_campaign_progression`.
 
 # PHASE 6 — STOP
 

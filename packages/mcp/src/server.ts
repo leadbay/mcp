@@ -66,6 +66,74 @@ import {
 // start-here, rhythm, etc.) remain inline below because they conditionally
 // reference tool names based on the exposed set.
 
+const ARTIFACT_PROPOSAL_PARAGRAPH =
+  "Artifact proposals: after any result the user would scan, compare, plan against, or return to — " +
+  "or any multi-item result — DEFAULT TO offering an artifact. Treat the offer as expected, not optional: " +
+  "a multi-item lead batch, a side-by-side comparison, or a research record the user will revisit each " +
+  "SHOULD get an artifact offer unless it clearly falls in the Skip list below. When in doubt, offer. " +
+  "WIDGET IS MANDATORY WHEN AVAILABLE: if your host's choice widget is in your tool set — " +
+  "`ask_user_input_v0` (Claude chat / ChatGPT) OR `AskUserQuestion` (Claude cowork / Claude Code) — " +
+  "you MUST make the offer by CALLING that widget tool — never as a prose line (\"Want me to build an " +
+  "interactive lead triage board?\"). Prose is the fallback ONLY for hosts that expose neither widget. " +
+  "Presenting the offer as prose when a widget exists is a defect — the user loses the click-to-select surface.\n\n" +
+  "Two tracks:\n" +
+  "1. A NEXT STEPS menu is already firing (the choice widget with 2–4 options): include the artifact " +
+  "offer as one of the slots. It counts toward the 2–4 budget — replace the lowest-priority option " +
+  "when already at 4.\n" +
+  "2. No NEXT STEPS menu is firing: fire a standalone yes/no question by CALLING your host's choice " +
+  "widget with ITS schema (see the host-widget section: `ask_user_input_v0` takes string options; " +
+  "`AskUserQuestion` takes {label, description} objects with a `header` and `multiSelect`). The question " +
+  "is \"Want me to build a [concrete artifact name] for this?\" with yes/no options. Use the schema that " +
+  "matches the widget tool you actually have.\n\n" +
+  "Name the artifact concretely from the result you just returned: " +
+  "\"Build an interactive lead triage board\", \"Build a research one-pager for Acme Corp\", " +
+  "\"Build a side-by-side outreach variant comparison\". Never use generic labels.\n\n" +
+  "On selection of yes/build: build the artifact from data already in hand — do NOT re-call the tool. " +
+  "Emit with the antArtifact tag: type=\"text/html\" for interactive boards/tables, " +
+  "type=\"application/vnd.ant.react\" for React components, type=\"text/markdown\" for one-pagers.\n\n" +
+  "Skip for: single-action confirmations (like/dislike, report_outreach), mid-flow steps, " +
+  "results a host widget already covers (places_map_display_v0, message_compose_v1).";
+
+const SCHEDULED_TASK_PARAGRAPH =
+  "Scheduled task proposals: check the user's LITERAL words. " +
+  "NEVER fire based on the workflow or prompt type — only on what the user ACTUALLY TYPED.\n\n" +
+  "NEVER fire for these examples (no recurring language in user message):\n" +
+  "  - 'Show me today\\'s leads.' → NO\n" +
+  "  - 'What are my leads today?' → NO\n" +
+  "  - 'Pull my best new prospects.' → NO\n" +
+  "  - 'Show me my batch.' → NO\n" +
+  "  - 'Run my morning check-in.' (no recurring qualifier) → NO\n\n" +
+  "ONLY fire when the user's message contains explicit recurring language:\n" +
+  "  - 'I do this every day' → YES\n" +
+  "  - 'every morning' → YES\n" +
+  "  - 'remind me every week' → YES\n" +
+  "  - 'automate this' → YES\n" +
+  "  - 'set this up as recurring' → YES\n\n" +
+  "WIDGET IS MANDATORY WHEN AVAILABLE: if your host's choice widget is in your tool set — " +
+  "`ask_user_input_v0` (Claude chat / ChatGPT) OR `AskUserQuestion` (Claude cowork / Claude Code) — " +
+  "you MUST make the scheduling offer by CALLING that widget tool — never as a prose line " +
+  "(\"Want me to run this every morning?\"). Prose is the fallback ONLY for hosts that expose neither " +
+  "widget; presenting the offer as prose when a widget exists is a defect.\n\n" +
+  "Render EVERY question below by CALLING your host's choice widget with ITS schema (see the host-widget " +
+  "section: `ask_user_input_v0` takes string options; `AskUserQuestion` takes {label, description} objects " +
+  "with a `header` and `multiSelect`). Use the schema that matches the widget tool you actually have — never " +
+  "the other one.\n\n" +
+  "Two tracks — same as artifact proposals:\n" +
+  "1. A NEXT STEPS menu is already firing: add \"Schedule [Task Name] as a recurring task\" as one slot " +
+  "(counts toward the 2–4 budget — replace the lowest-priority option when already at 4).\n" +
+  "2. No NEXT STEPS menu is firing: fire a standalone yes/no question \"Want me to schedule this as a " +
+  "recurring task?\" (options: yes / no thanks).\n\n" +
+  "If the user selects yes, continue with a multi-step flow, one widget call per step:\n" +
+  "Step 1 — frequency: \"How often?\" → Every day / Every weekday / Weekly / Custom.\n" +
+  "Step 2a — if \"Every day\" or \"Every weekday\": \"What time?\" → Morning (8am) / Midday (12pm) / Afternoon (5pm) / Custom.\n" +
+  "Step 2b — if \"Weekly\": \"Which day?\" → Monday / Wednesday / Friday / Custom.\n" +
+  "Step 2c — if \"Custom\" at any step: ask for a free-text description and interpret it to determine the schedule.\n" +
+  "After the schedule is confirmed: judge whether the scheduled run should also produce an artifact. If yes, " +
+  "offer \"Should each run also build an artifact (e.g. a fresh lead board)?\" → yes / no.\n\n" +
+  "Name the task concretely from context: \"Daily prospecting check-in\", \"Weekly follow-up sweep\", " +
+  "\"Monday morning lead review\". Never use generic labels.\n\n" +
+  "Skip for: single-action confirmations, mid-flow steps, one-off lookups with no recurrence signal.";
+
 function buildScoringParagraph(has: (name: string) => boolean): string {
   const base =
     "Two scoring layers: every lead has a basic `score` (firmographic — already decent, usually correlates " +
@@ -273,6 +341,8 @@ export function buildServerInstructions(exposed: Set<string>): string {
   if (has("leadbay_agent_memory_capture")) {
     parts.push(AGENT_MEMORY);
   }
+  parts.push(ARTIFACT_PROPOSAL_PARAGRAPH);
+  parts.push(SCHEDULED_TASK_PARAGRAPH);
   // Host-native widget routing — Claude's places_map_display_v0 /
   // message_compose_v1 / ask_user_input_v0, ChatGPT's parallels. The
   // paragraph self-conditions on host capability; agent falls back to
