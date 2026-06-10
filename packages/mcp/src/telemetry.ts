@@ -74,6 +74,12 @@ export interface TelemetryHandle {
   captureAgentMemoryPruned(props: AgentMemoryPrunedProps): void;
   captureFrictionReported(props: FrictionReportedProps): void;
   captureException(err: unknown, ctx: ExceptionCtx): void;
+  // User-authored feedback → Sentry's feedback inbox, the SAME place the
+  // web app's feedback form lands (Sentry.captureFeedback). name/email are
+  // filled from the identified `/users/me` when available, mirroring the web
+  // form. Returns true if it was actually sent to Sentry, false otherwise
+  // (telemetry disabled / Sentry not ready) so the tool can report honestly.
+  captureFeedback(message: string, opts?: { associatedEventId?: string }): boolean;
   // Auto-update lifecycle. Optional on the interface so out-of-tree
   // TelemetryHandle implementations don't have to implement them; the
   // update-check site null-checks before calling. NOOP_TELEMETRY +
@@ -98,6 +104,7 @@ export const NOOP_TELEMETRY: TelemetryHandle = {
   captureAgentMemoryPruned: () => {},
   captureFrictionReported: () => {},
   captureException: () => {},
+  captureFeedback: () => false,
   captureUpdateCheck: () => {},
   captureUpdatePrompted: () => {},
   captureUpdateInstallClicked: () => {},
@@ -403,6 +410,28 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
         });
       } catch (e: any) {
         logger?.warn?.(`sentry captureException failed: ${e?.message ?? e}`);
+      }
+    },
+    captureFeedback(message, opts) {
+      // Mirrors the web app's feedback form (Sentry.captureFeedback with
+      // name/email/message) so MCP feedback lands in the SAME Sentry inbox.
+      // name/email come from the identified /users/me when available.
+      if (!sentryReady) return false;
+      const trimmed = (message ?? "").trim();
+      if (!trimmed) return false;
+      try {
+        Sentry.captureFeedback({
+          message: trimmed,
+          ...(me?.name ? { name: me.name } : {}),
+          ...(me?.email ? { email: me.email } : {}),
+          ...(opts?.associatedEventId
+            ? { associatedEventId: opts.associatedEventId }
+            : {}),
+        });
+        return true;
+      } catch (e: any) {
+        logger?.warn?.(`sentry captureFeedback failed: ${e?.message ?? e}`);
+        return false;
       }
     },
     async shutdown() {

@@ -36,6 +36,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 22 | **Recurrence routing gate** — recurrence language ("I do this every day") must run the daily DISCOVERY check-in, not misroute to follow-ups | `leadbay_daily_check_in` | "Run my morning check-in — I do this every day." |
 | 23 | **Widget overdelivery guard** — when user pre-states full action chain, no "what next?" widget | `leadbay_daily_check_in` | "Show me today's leads and then research the top one for me." |
 | 24 | **Bulk portfolio signal scan** — "which of my leads acquired a company since 2025", "scan my portfolio for funding signals", "find everyone who changed CEO" — filters a known portfolio by a web-research signal in ONE call instead of looping `leadbay_research_lead_by_id` per lead | `leadbay_scan_portfolio_signals` | "Which of my leads acquired a company since 2025?" |
+| 25 | **Send feedback to the team** — "send feedback", "report a bug", "tell Leadbay…", or accepting an offer to report an error — delivers a user-authored message to the Leadbay team's Sentry feedback inbox (same destination as the web app's feedback form) | `leadbay_send_feedback` | "Send feedback to the team: lead scores feel off this week" |
 
 ---
 

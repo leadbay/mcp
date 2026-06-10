@@ -119,6 +119,7 @@ import { newLens } from "./composite/new-lens.js";
 import { answerClarification } from "./composite/answer-clarification.js";
 import { reportOutreach } from "./composite/report-outreach.js";
 import { reportFriction } from "./composite/report-friction.js";
+import { sendFeedback } from "./composite/send-feedback.js";
 
 import type { Tool } from "./types.js";
 
@@ -168,7 +169,7 @@ export {
   bulkEnrichStatus, qualifyStatus, importStatus, resolveImportRows,
   // new composite writes
   bulkQualifyLeads, enrichTitles, adjustAudience, refinePrompt,
-  answerClarification, reportOutreach, reportFriction, importLeads, importAndQualify,
+  answerClarification, reportOutreach, reportFriction, sendFeedback, importLeads, importAndQualify,
   createCampaign, addLeadsToCampaign, removeLeadsFromCampaign,
   seedCandidates, extendLens,
 };
@@ -320,6 +321,9 @@ export const compositeWriteTools: Tool[] = [
   refinePrompt,
   answerClarification,
   reportOutreach,
+  // User-authored feedback → the Leadbay team's Sentry inbox (same place the
+  // web app's feedback form lands). Write-gated since it sends data outward.
+  sendFeedback,
   importLeads,
   importAndQualify,
   // Contact management (product#3703) — each is a single-call relay, so
