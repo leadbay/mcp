@@ -244,8 +244,11 @@ describe("tools/call — error envelopes", () => {
     });
     expect(result.isError).toBe(true);
     const content = result.content as any[];
-    expect(content[0].text).toMatch(/authentication token expired/i);
-    expect(content[0].text).toMatch(/Regenerate/);
+    // A 401 no longer claims the token expired (tokens don't time out); it
+    // surfaces as a transient rejection with a retry-first instruction.
+    expect(content[0].text).toMatch(/rejected with 401/i);
+    expect(content[0].text).toMatch(/retry/i);
+    expect(content[0].text).not.toMatch(/token expired/i);
   });
 
   it("tool returning {error: true} envelope becomes isError:true", async () => {
@@ -518,7 +521,7 @@ describe("resolveClientFromEnv — region auto-probe", () => {
       });
       expect(
         stderrSpy.mock.calls.some(([m]) =>
-          /authentication token expired/i.test(String(m))
+          /rejected with 401/i.test(String(m))
         )
       ).toBe(true);
     } finally {
