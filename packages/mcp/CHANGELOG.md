@@ -1,5 +1,10 @@
 # Changelog — @leadbay/mcp
 
+## 0.19.2 — 2026-06-10
+
+- **Stop paging Sentry on a missing `_triggered_by`**: a composite tool called without `_triggered_by` is a recoverable agent mistake — the host just re-calls with the field set. The guard used to `throw` an `{error:true, code:"LAST_PROMPT_REQUIRED"}` envelope into the shared catch, where `isLeadbayBusinessError` matched it and fired `captureException`, auto-opening a top-priority Sentry/GitHub bug (product#3718) on every dropped field. The guard now returns the `isError` envelope directly. Behavior toward the LLM is unchanged (same text, same `isError`, same recovery hint), and PostHog visibility is preserved (`captureToolCall` + `captureCompositeCall` still fire `ok:false` / `LAST_PROMPT_REQUIRED`, so the mandate-ignore rate stays observable); only `captureException` is dropped.
+- **`_triggered_by` is now an always-mandatory, auditable protocol field**: reframed from analytics-only to a required intent trace, collected on every composite call regardless of the telemetry setting (when telemetry is off the value is captured locally but never transmitted, so the opt-out is still honored). A new server-instruction mandate paragraph reinforces the JSON-schema field description that agents kept ignoring. The `<no user message>` magic-string sentinel is gone — agent-initiated calls (memory recall, scheduled run, retry) now pass the actual instruction being acted on, so the field is genuinely non-empty in every case.
+
 ## 0.19.1 — 2026-06-09
 
 - **New tool `leadbay_scan_portfolio_signals`**: read-only bulk scan of a Monitor portfolio (or an explicit lead-id list) for a web-research signal. Ask "which of my leads have an M&A / funding / hiring signal since 2025" and get the matched cohort back in one call — a `GET`-only fan-out over cached `web_fetch` signals (no per-lead research loop, no AI-qualification quota burn), with a case- and accent-folded query and optional `since` date. The matched cohort is campaign-ready (feeds straight into `leadbay_add_leads_to_campaign`).
