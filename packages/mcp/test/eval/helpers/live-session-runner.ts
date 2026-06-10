@@ -55,6 +55,14 @@ export interface LiveSessionOpts {
   prompt: { name: string; body: string; args: Record<string, string | undefined> };
   /** Optional system prompt injected via --system. Used to pass the MCP prompt body. */
   systemPrompt?: string;
+  /**
+   * Ordered user messages for a multi-turn scenario. When set (length ≥ 1) the
+   * runner drives one `claude -p` invocation per message, sharing a single
+   * session id across turns (`--session-id` on turn 1, `--resume` after) so the
+   * agent carries prior context forward. When unset, `prompt.body` is the single
+   * turn. Tool calls are tagged with the 1-based user-turn index.
+   */
+  turns?: string[];
   max_turns?: number;
   fixture_id?: string;
   transcript_dir: string;
@@ -404,7 +412,15 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
 
     const modelFlag = opts.model ?? process.env.EVAL_MODEL;
 
-    const args = [
+    // Multi-turn driving: `claude -p` exits after each result, so a multi-turn
+    // conversation is N sequential invocations sharing one session id — turn 1
+    // sets `--session-id`, later turns `--resume` it (context carries forward).
+    // A single-turn scenario is just the one-element case. opts.turns, when set,
+    // is the ordered list of user messages; otherwise fall back to opts.prompt.body.
+    const userMessages =
+      opts.turns && opts.turns.length > 0 ? opts.turns : [opts.prompt.body];
+
+    const baseArgs = [
       "-p",
       "--input-format", "stream-json",
       "--output-format", "stream-json",
@@ -419,38 +435,55 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
       // Explicitly block built-in Claude Code tools that leak through.
       "--disallowedTools", "ToolSearch,WebFetch,WebSearch,Bash,Read,Edit,Write,Glob,Grep,LS,Skill,LSP,Agent",
     ];
-    if (opts.systemPrompt) args.push("--system-prompt", opts.systemPrompt);
-    if (modelFlag) args.push("--model", modelFlag);
-
-    const proc = spawn("claude", args, {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    // Feed the initial user message.
-    const userMsg = JSON.stringify({
-      type: "user",
-      message: { role: "user", content: opts.prompt.body },
-    });
-    proc.stdin.write(userMsg + "\n");
-
-    // Also write the initial user message to the raw log for full context.
-    appendRaw(JSON.stringify({ ts: new Date().toISOString(), kind: "session-init", prompt_name: opts.prompt.name, user_message: opts.prompt.body, system_prompt: opts.systemPrompt ?? null }));
+    if (opts.systemPrompt) baseArgs.push("--system-prompt", opts.systemPrompt);
+    if (modelFlag) baseArgs.push("--model", modelFlag);
 
     let turn = 0;
     let lastFinishTs = startedAt;
     let finalText = "";
     let lastAssistantText = "";
-    let done = false;
 
-    // Stream stderr directly to file so we capture MCP server startup logs,
-    // tool result payloads, and any claude internal debug output.
-    const stderrChunks: Buffer[] = [];
-    proc.stderr.on("data", (chunk: Buffer) => {
-      stderrChunks.push(chunk);
-      writeSync(stderrFd, chunk);
-    });
+    // userTurn is the 1-based index of the user message currently being
+    // processed. Tool calls and prose are tagged with it so per-turn invariants
+    // (expect_calls/forbid_calls) and carry-over judging can attribute evidence
+    // to the right turn — independent of how many assistant messages a turn took.
+    for (let userTurnIdx = 0; userTurnIdx < userMessages.length; userTurnIdx++) {
+      const userTurn = userTurnIdx + 1;
+      const userMessage = userMessages[userTurnIdx];
 
-    await new Promise<void>((resolveP, rejectP) => {
+      // First turn establishes the session id; subsequent turns resume it.
+      const args = [...baseArgs];
+      if (userTurnIdx === 0) args.push("--session-id", session_id);
+      else args.push("--resume", session_id);
+
+      const proc = spawn("claude", args, {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      // Feed this turn's user message.
+      const userMsg = JSON.stringify({
+        type: "user",
+        message: { role: "user", content: userMessage },
+      });
+      proc.stdin.write(userMsg + "\n");
+
+      appendRaw(JSON.stringify({ ts: new Date().toISOString(), kind: "session-init", user_turn: userTurn, prompt_name: opts.prompt.name, user_message: userMessage, system_prompt: opts.systemPrompt ?? null }));
+
+      if (verbose && userMessages.length > 1) {
+        process.stderr.write(`\n${bold(`▶ TURN ${userTurn}/${userMessages.length}`)} ${cyan(userMessage)}\n`);
+      }
+
+      let done = false;
+
+      // Stream stderr directly to file so we capture MCP server startup logs,
+      // tool result payloads, and any claude internal debug output.
+      const stderrChunks: Buffer[] = [];
+      proc.stderr.on("data", (chunk: Buffer) => {
+        stderrChunks.push(chunk);
+        writeSync(stderrFd, chunk);
+      });
+
+      await new Promise<void>((resolveP, rejectP) => {
       let lineBuffer = "";
 
       proc.stdout.on("data", (chunk: Buffer) => {
@@ -536,10 +569,12 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
 
             // Record tool calls. Strip the MCP server prefix (mcp__<server-name>__)
             // so tool names match the bare names used by invariants.
+            // `turn` is tagged with the USER-turn index (not the assistant-message
+            // counter) so per-turn invariants attribute calls to the right turn.
             for (const block of toolUseBlocks) {
               const bareName = block.name.replace(/^mcp__[^_]+__/, "");
               const rec: ToolCallRecord = {
-                turn,
+                turn: userTurn,
                 name: bareName,
                 input: block.input,
                 output_summary: { ok: true, output_len: 0 },
@@ -548,7 +583,7 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
               evidence.tool_calls.push(rec);
               appendTranscript({
                 kind: "tool-call",
-                turn,
+                turn: userTurn,
                 name: bareName,
                 input_hash: hashForId(JSON.stringify(block.input ?? {})),
               });
@@ -583,10 +618,12 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
             } else {
               terminal_reason = "agent_stopped";
               finalText = (ev.result && ev.result.length > 0) ? ev.result : lastAssistantText;
+              // Accumulate across turns — each turn is a separate process that
+              // reports its own result usage.
               if (ev.usage) {
-                totalTokensIn = ev.usage.input_tokens;
-                totalTokensOut = ev.usage.output_tokens;
-                totalTokensCacheRead = (ev.usage as { cache_read_input_tokens?: number }).cache_read_input_tokens ?? 0;
+                totalTokensIn += ev.usage.input_tokens;
+                totalTokensOut += ev.usage.output_tokens;
+                totalTokensCacheRead += (ev.usage as { cache_read_input_tokens?: number }).cache_read_input_tokens ?? 0;
               }
             }
             done = true;
@@ -610,11 +647,12 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
           resolveP();
         }
       });
-    });
+      });
+    } // end per-turn loop
 
     if (verbose) {
       const dur = ((Date.now() - startedAt) / 1000).toFixed(1);
-      process.stderr.write(`\n${green("✓ done")} — ${turn} turns, ${dur}s\n\n`);
+      process.stderr.write(`\n${green("✓ done")} — ${turn} assistant turns, ${userMessages.length} user turn(s), ${dur}s\n\n`);
     }
 
     evidence.final_agent_message = finalText;
