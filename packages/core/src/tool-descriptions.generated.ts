@@ -3080,8 +3080,9 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 ---
 
 Thin wrapper around **leadbay_research_lead_by_id**. Accepts a \`companyName\`,
-fuzzy-matches it against the top 50 of the active (or supplied) lens's
-wishlist, picks the highest-scoring substring hit, and delegates the actual
+fuzzy-matches it against the full wishlist of the active (or supplied) lens
+(every page, not just the top 50), picks the highest-scoring substring hit,
+and delegates the actual
 research to \`leadbay_research_lead_by_id\`. Returns the **same payload shape**
 as \`_by_id\`, with two additions on \`_meta\`:
 

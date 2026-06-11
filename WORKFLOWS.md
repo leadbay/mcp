@@ -36,6 +36,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 22 | **Recurrence routing gate** — recurrence language ("I do this every day") must run the daily DISCOVERY check-in, not misroute to follow-ups | `leadbay_daily_check_in` | "Run my morning check-in — I do this every day." |
 | 23 | **Widget overdelivery guard** — when user pre-states full action chain, no "what next?" widget | `leadbay_daily_check_in` | "Show me today's leads and then research the top one for me." |
 | 24 | **Bulk portfolio signal scan** — "which of my leads acquired a company since 2025", "scan my portfolio for funding signals", "find everyone who changed CEO" — filters a known portfolio by a web-research signal in ONE call instead of looping `leadbay_research_lead_by_id` per lead | `leadbay_scan_portfolio_signals` | "Which of my leads acquired a company since 2025?" |
+| 25 | **Fuzzy lead lookup beyond the top page** — "research the company <name>" where the company is in the active lens but sits below the top-50 wishlist window (the wishlist is not strictly score-ordered, so even a high-score lead can land on page 1). `leadbay_research_lead_by_name_fuzzy` must walk the FULL wishlist (all pages), not just page 0, or it returns a spurious LEAD_NOT_FOUND (the 17/17-failure regression, telemetry 2026-06-11) | *(no dedicated prompt — routing)* | "Research the company YOUR CAR TODAY LLC for me." |
 
 ---
 
@@ -384,6 +385,24 @@ success_criteria:
 
 ```yaml scenario
 prompt: "Show me today's leads and then research the top one for me."
+```
+
+```yaml expected
+workflow_name: Fuzzy lead lookup beyond the top page
+prompt_name: ~
+routing_mode: true
+required_calls:
+  - leadbay_research_lead_by_name_fuzzy
+forbidden_calls:
+  - leadbay_report_outreach
+success_criteria:
+  - "called leadbay_research_lead_by_name_fuzzy with the company name the user gave"
+  - "resolved the lead and rendered its research card (company name, score, and at least one detail) — did NOT return LEAD_NOT_FOUND for a company that exists in the lens below the top-50 wishlist window"
+  - "did NOT call leadbay_report_outreach"
+```
+
+```yaml scenario
+prompt: "Research the company YOUR CAR TODAY LLC for me."
 ```
 
 ---

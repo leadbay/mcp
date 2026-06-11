@@ -52,7 +52,7 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
       companyName: {
         type: "string",
         description:
-          "Company name to look up. Substring fuzzy-match against the top 50 of the active lens's wishlist; ties broken by descending lead score.",
+          "Company name to look up. Substring fuzzy-match against the full wishlist of the active lens (all pages); ties broken by descending lead score.",
       },
       lensId: {
         type: "number",
@@ -98,17 +98,30 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
     }
 
     const lensId = params.lensId ?? (await client.resolveDefaultLens());
-    const results = await discoverLeads.execute(
-      client,
-      { lensId, count: 50, page: 0 },
-      ctx
-    );
 
-    const allLeads = (results.leads as Array<{
-      id: string;
-      name: string;
-      score: number | null;
-    }>);
+    // Walk the FULL wishlist, not just page 0. The previous implementation
+    // only fetched the top 50, so any lead beyond the first page was
+    // invisible to the matcher and every such lookup returned
+    // LEAD_NOT_FOUND. Page through until has_more is false (capped so a
+    // pathological corpus can't run away).
+    const allLeads: Array<{ id: string; name: string; score: number | null }> =
+      [];
+    const MAX_PAGES = 40; // 40 * 50 = 2000 leads, far above any real lens
+    let page = 0;
+    for (; page < MAX_PAGES; page++) {
+      const results = await discoverLeads.execute(
+        client,
+        { lensId, count: 50, page },
+        ctx
+      );
+      const batch = results.leads as Array<{
+        id: string;
+        name: string;
+        score: number | null;
+      }>;
+      allLeads.push(...batch);
+      if (!results.has_more || batch.length === 0) break;
+    }
 
     const ranked = rankSubstringMatches(params.companyName, allLeads);
 
@@ -119,7 +132,7 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
         .map((l) => ({ leadId: l.id, name: l.name, score: l.score }));
       throw client.makeError(
         "LEAD_NOT_FOUND",
-        `No lead matching "${params.companyName}" in the current lens (top-50 wishlist)`,
+        `No lead matching "${params.companyName}" in the current lens (searched the full wishlist)`,
         `Call leadbay_pull_leads to see what's available. Top-scoring leads currently in this lens: ${nearestNames
           .map((n) => n.name)
           .join(", ")}.`
