@@ -817,7 +817,7 @@ export interface ToolContext {
   sendFeedback?: (
     message: string,
     opts?: { associatedEventId?: string }
-  ) => boolean;
+  ) => Promise<boolean>;
 }
 
 export type JSONSchema = Record<string, unknown>;

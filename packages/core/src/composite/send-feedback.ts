@@ -89,7 +89,7 @@ export const sendFeedback: Tool<SendFeedbackParams> = {
       };
     }
 
-    const sent = ctx.sendFeedback(message, {
+    const sent = await ctx.sendFeedback(message, {
       ...(params.associated_error_id
         ? { associatedEventId: params.associated_error_id }
         : {}),

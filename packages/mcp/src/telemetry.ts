@@ -79,7 +79,7 @@ export interface TelemetryHandle {
   // filled from the identified `/users/me` when available, mirroring the web
   // form. Returns true if it was actually sent to Sentry, false otherwise
   // (telemetry disabled / Sentry not ready) so the tool can report honestly.
-  captureFeedback(message: string, opts?: { associatedEventId?: string }): boolean;
+  captureFeedback(message: string, opts?: { associatedEventId?: string }): Promise<boolean>;
   // Auto-update lifecycle. Optional on the interface so out-of-tree
   // TelemetryHandle implementations don't have to implement them; the
   // update-check site null-checks before calling. NOOP_TELEMETRY +
@@ -104,7 +104,7 @@ export const NOOP_TELEMETRY: TelemetryHandle = {
   captureAgentMemoryPruned: () => {},
   captureFrictionReported: () => {},
   captureException: () => {},
-  captureFeedback: () => false,
+  captureFeedback: async () => false,
   captureUpdateCheck: () => {},
   captureUpdatePrompted: () => {},
   captureUpdateInstallClicked: () => {},
@@ -412,7 +412,7 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
         logger?.warn?.(`sentry captureException failed: ${e?.message ?? e}`);
       }
     },
-    captureFeedback(message, opts) {
+    async captureFeedback(message, opts) {
       // Mirrors the web app's feedback form (Sentry.captureFeedback with
       // name/email/message) so MCP feedback lands in the SAME Sentry inbox.
       // name/email come from the identified /users/me when available.
@@ -428,7 +428,16 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
             ? { associatedEventId: opts.associatedEventId }
             : {}),
         });
-        return true;
+        // Flush before returning. Feedback is queued (SDK flushInterval 10s),
+        // and the MCP server is often short-lived (one-shot CLI, or a host that
+        // disconnects right after the call) — the shutdown Sentry.close(2000)
+        // races the buffered envelope and drops it. Awaiting a bounded flush
+        // here makes `sent:true` actually mean "delivered to Sentry".
+        const flushed = await Sentry.flush(4000);
+        if (!flushed) {
+          logger?.warn?.("sentry feedback flush timed out (event may be buffered)");
+        }
+        return flushed;
       } catch (e: any) {
         logger?.warn?.(`sentry captureFeedback failed: ${e?.message ?? e}`);
         return false;
