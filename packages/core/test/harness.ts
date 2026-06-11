@@ -37,7 +37,7 @@ export interface CapturedRequest {
 
 // Hoisted so vi.mock's factory can see it.
 const mockHttpState = vi.hoisted(() => ({
-  scripts: [] as Array<{ script: any; consumed: boolean }>,
+  scripts: [] as Array<{ script: any; consumed: boolean; replayed?: boolean }>,
   requests: [] as any[],
 }));
 
@@ -87,18 +87,27 @@ function fakeHttpsRequest(options: any, callback?: (res: any) => void): any {
       (s) => !s.consumed && s.script.method === method && pathMatches(s.script.path, path)
     );
 
-    // Retry tolerance: the client now auto-retries a 401 once, so the same
-    // (method, path) can be requested twice while only one script was declared.
-    // If no UNCONSUMED script matches, replay the most recent CONSUMED script
-    // for the same (method, path) rather than erroring. A request with no
-    // matching script at all still errors (catches genuinely missing mocks).
+    // Retry tolerance: the client auto-retries a 401 once (GET only). To model
+    // exactly that — and nothing looser — replay the most recent CONSUMED script
+    // for the same (method, path) AT MOST ONCE, and only when that script was a
+    // 401 (the sole status the client retries). Bounding it this way keeps test
+    // isolation: a code path that over-calls a route more than the single
+    // sanctioned retry still falls through to the "no script matched" error.
     if (!entry) {
       const replay = [...mockHttpState.scripts]
         .reverse()
         .find(
-          (s) => s.consumed && s.script.method === method && pathMatches(s.script.path, path)
+          (s) =>
+            s.consumed &&
+            s.script.status === 401 &&
+            !s.replayed &&
+            s.script.method === method &&
+            pathMatches(s.script.path, path)
         );
-      if (replay) entry = replay;
+      if (replay) {
+        replay.replayed = true;
+        entry = replay;
+      }
     }
 
     if (!entry) {

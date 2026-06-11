@@ -379,19 +379,32 @@ export class LeadbayClient {
   // retry clears the vast majority of these without the agent ever seeing an
   // error. If the retry also 401s, it's a real Leadbay-side problem and the
   // error envelope says so.
-  private async httpsRequestWithRetry(
+  //
+  // Arrow-function field so `this` stays bound even when the method is passed
+  // as a bare reference (see request()'s ternary). Retries are GET-ONLY: a 401
+  // on a write (POST/PUT/DELETE) may arrive AFTER the mutation already committed
+  // server-side, so blindly re-sending it would double-execute the write. Reads
+  // are idempotent, so retrying them is safe. The 250ms backoff releases the
+  // concurrency slot first (release → sleep → re-acquire) so a wave of 401s
+  // doesn't pin all MAX_CONCURRENT slots in setTimeout and stall the queue.
+  private httpsRequestWithRetry = async (
     method: string,
     url: string,
     headers: Record<string, string>,
     body?: string | Buffer
-  ): Promise<HttpResult> {
+  ): Promise<HttpResult> => {
     const res = await httpsRequest(method, url, headers, body);
-    if (res.status === 401) {
-      await new Promise((r) => setTimeout(r, 250));
+    if (res.status === 401 && method.toUpperCase() === "GET") {
+      this.releaseSemaphore();
+      try {
+        await new Promise((r) => setTimeout(r, 250));
+      } finally {
+        await this.acquireSemaphore();
+      }
       return httpsRequest(method, url, headers, body);
     }
     return res;
-  }
+  };
 
   async request<T>(
     method: string,
