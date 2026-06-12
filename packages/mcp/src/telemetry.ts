@@ -426,13 +426,21 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
       // promise here doesn't re-trigger it. Cap at 2s so a hung /users/me can't
       // block the feedback — better an anonymous report than a dropped one.
       if (identityPromise) {
+        let waitTimer: ReturnType<typeof setTimeout> | undefined;
         try {
           await Promise.race([
             identityPromise,
-            new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+            new Promise<void>((resolve) => {
+              waitTimer = setTimeout(resolve, 2000);
+            }),
           ]);
         } catch {
           // identify() already swallows its own errors; ignore and proceed.
+        } finally {
+          // Clear the bounded-wait timer on the fast path (identity won the
+          // race) so a dangling 2s timer can't keep a one-shot CLI alive past
+          // exit or race the shutdown Sentry.close().
+          if (waitTimer) clearTimeout(waitTimer);
         }
       }
       try {
