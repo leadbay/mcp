@@ -10,11 +10,14 @@ const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
 
 beforeEach(() => resetHttpMock());
 
-// When a 401 survives the automatic retry, it is a Leadbay-side problem (tokens
-// don't time out). The surfaced message must blame Leadbay's side and tell the
-// user to try again later — short, and never "re-login".
-describe("LeadbayClient — persistent 401 blames Leadbay-side, stays short", () => {
-  it("message attributes the failure to Leadbay's side, not the user's login", async () => {
+// When a 401 survives the automatic retry, the ONLY thing we know for certain is
+// that the token didn't time out (Leadbay tokens don't expire on a timer). A
+// persistent 401 is either a Leadbay-side hiccup OR a genuine logout/revocation
+// (per Milan's review on PR #96), so the copy must name both causes and assert
+// neither — it must NOT over-claim that the login is fine, and must NOT push
+// re-login as the default. Stays short; offers to report it to the team.
+describe("LeadbayClient — persistent 401 names both causes, over-claims neither", () => {
+  it("acknowledges the logout possibility without claiming the login is fine", async () => {
     mockHttp([
       { method: "GET", path: "/1.5/lenses", status: 401, body: {} },
       { method: "GET", path: "/1.5/lenses", status: 401, body: {} },
@@ -24,13 +27,16 @@ describe("LeadbayClient — persistent 401 blames Leadbay-side, stays short", ()
       expect.fail("should have thrown");
     } catch (err: any) {
       const hint = err.hint.toLowerCase();
-      expect(hint).toContain("leadbay's side");
+      expect(hint).toContain("leadbay-side");
       expect(hint).toContain("try again");
+      // Names the logout cause too — pins Milan's correction so it can't regress.
+      expect(hint).toContain("logged out");
       // Offers to report the persistent failure to the team (handoff to feedback).
       expect(hint).toContain("report it");
       // Stays concise (no multi-paragraph lecture, no login instructions).
       expect(err.hint.length).toBeLessThan(220);
-      // No re-login instruction (mentioning "your login is fine" is allowed).
+      // Does NOT over-claim the login is fine, and does NOT push re-login.
+      expect(hint).not.toContain("your token is fine");
       expect(hint).not.toContain("mcp login");
       expect(hint).not.toContain("re-authenticate");
     }

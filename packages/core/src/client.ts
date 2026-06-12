@@ -654,14 +654,17 @@ export class LeadbayClient {
 
     if (status === 401) {
       // Leadbay tokens don't expire on a timer, and request() already retried
-      // this call once on the first 401. Reaching here means the retry ALSO
-      // 401'd — so it is a Leadbay-side problem, not the user's login. Keep the
-      // message short and blame the right thing; never tell the user to re-auth.
+      // this call once on the first 401. The one thing we can state for certain
+      // is that the token did NOT time out. A persistent 401 is EITHER a
+      // Leadbay-side hiccup OR a genuine logout/revocation (per Milan, a 401 can
+      // mean the user is logged out) — we can't tell which from here, so name
+      // both causes and assert neither. Don't claim the login is fine, and don't
+      // push re-login as the default fix either.
       // (Code stays AUTH_EXPIRED for backward compat with the MCP auth handlers.)
       return this.makeError(
         "AUTH_EXPIRED",
         "Leadbay rejected this request (401)",
-        "This is a problem on Leadbay's side, not your login — your token is fine. Tell the user something went wrong on Leadbay's end, to try again in a bit, and offer to report it to the Leadbay team for them.",
+        "Leadbay tokens don't expire on a timer, so this isn't a stale token. A 401 here is usually a Leadbay-side hiccup, but can also mean the user logged out. Try again shortly; if it persists, offer to report it to the team.",
         endpoint,
         null,
         status
