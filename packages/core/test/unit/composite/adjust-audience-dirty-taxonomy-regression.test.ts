@@ -90,6 +90,13 @@ describe("leadbay_adjust_audience — dirty-taxonomy no-crash regression (sector
     expect(Array.isArray(result.sector_ambiguities)).toBe(true);
     expect(result.sector_ambiguities.length).toBeGreaterThan(0);
     expect(typeof result.message).toBe("string");
+    // The message must NAME the unresolved sector text (the WORKFLOWS /
+    // scenario contract), not return a generic/empty ambiguity object.
+    const entry = result.sector_ambiguities.find(
+      (a: any) => a.sector_text === "Pergola"
+    );
+    expect(entry).toBeDefined();
+    expect(entry.matches.length).toBeGreaterThanOrEqual(2);
 
     // No mutation happened — no POST went out at all.
     expect(getHttpRequests().some((r) => r.method === "POST")).toBe(false);

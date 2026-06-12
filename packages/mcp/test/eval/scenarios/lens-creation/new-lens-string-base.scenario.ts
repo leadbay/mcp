@@ -51,24 +51,24 @@ export const SCENARIO = {
       status: 200,
       body: SECTORS,
     },
-    // create — assert the request body `base` is a STRING (e.g. "39107"),
-    // never a number. A numeric base is the 400-deserialization bug.
+    // create — the request body `base` must be a STRING (e.g. "39107"),
+    // never a number; a numeric base is the 400-deserialization bug. The
+    // body-shape assertion itself lives in the unit mirror
+    // (new-lens-string-base-regression.test.ts) — the scenario fixture shape
+    // is {method,path,status,body} only, so it cannot assert request bodies.
     {
       method: "POST",
       path: P("/lenses"),
       status: 200,
       body: { id: 555, name: "Joinery", user_id: "u-1" },
-      assertBody: (body: any) => typeof body.base === "string",
     },
-    // apply filter — assert the body is the UNWRAPPED {items:[...]} shape,
-    // not the {lens_filter, locations} envelope.
+    // apply filter — the body must be the UNWRAPPED {items:[...]} shape, not
+    // the {lens_filter, locations} envelope (asserted in the unit mirror).
     {
       method: "POST",
       path: P("/lenses/555/filter"),
       status: 200,
       body: {},
-      assertBody: (body: any) =>
-        Array.isArray(body.items) && body.lens_filter === undefined,
     },
   ],
   mission: {
