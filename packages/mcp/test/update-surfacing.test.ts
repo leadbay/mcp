@@ -405,4 +405,32 @@ describe("proactive update surfacing — first-call race (product#3742 review)",
     expect((result.structuredContent as any)._meta?.update_available).toBeUndefined();
     expect(elapsed).toBeLessThan(3000);
   });
+
+  it("does NOT fail the tool call when the in-flight update check REJECTS (P2 regression)", async () => {
+    // The update-state file becomes unreadable after startup: stateStore.read()
+    // rejects OUTSIDE doCheck's fetch try/catch, so the shared in-flight promise
+    // rejects. Update checks are best-effort — the response path must catch this
+    // and return the tool result normally, never surface it as an MCP error.
+    class RejectingReadStore extends UpdateStateStore {
+      constructor() {
+        super({ backend: "memory" });
+      }
+      async read(): Promise<any> {
+        // Reject while the check is in flight (after a beat so it's genuinely
+        // pending when maybeAttachUpdate awaits it).
+        await new Promise((r) => setTimeout(r, 10));
+        throw new Error("update-state.json unreadable (EACCES)");
+      }
+    }
+    const store = new RejectingReadStore();
+
+    const { mcpClient } = await connectWithUpdates(store);
+
+    const result = await mcpClient.callTool({ name: "leadbay_ping_test", arguments: {} });
+
+    // Tool call succeeded despite the rejected check; no proposal attached.
+    expect(result.isError).toBeFalsy();
+    expect((result.structuredContent as any).pong).toBe(true);
+    expect((result.structuredContent as any)._meta?.update_available).toBeUndefined();
+  });
 });

@@ -802,8 +802,21 @@ export function buildServer(
     if (!info) {
       const inflight = getInFlightCheck();
       if (inflight) {
+        // The in-flight check can REJECT (e.g. the update-state file became
+        // unreadable/unwritable after startup, so stateStore.read()/update()
+        // rejects outside doCheck's fetch try/catch). Update checks are
+        // best-effort — maybeRefreshUpdate() swallows the same failure — so we
+        // catch here too and continue with no update_available rather than
+        // turning an unrelated, otherwise-successful tool call into an MCP
+        // error.
+        const settled = inflight.catch((err: any) => {
+          opts.logger?.warn?.(
+            `update_check.surface_await_failed ${err?.message ?? err}`
+          );
+          return null;
+        });
         info = await Promise.race([
-          inflight,
+          settled,
           new Promise<null>((resolve) =>
             setTimeout(() => resolve(null), UPDATE_SURFACE_WAIT_MS)
           ),
