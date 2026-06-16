@@ -26,11 +26,10 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/promptforge/package.json packages/promptforge/
 COPY packages/mcp/package.json packages/mcp/
-COPY packages/leadclaw/package.json packages/leadclaw/
 COPY packages/dxt/package.json packages/dxt/
 
-# Install everything needed to build the mcp package. Skip leadclaw + dxt —
-# they're not on the runtime path for the HTTP server.
+# Install everything needed to build the mcp package. Skip dxt —
+# it's not on the runtime path for the HTTP server.
 RUN pnpm install --frozen-lockfile \
   --filter @leadbay/core... \
   --filter @leadbay/promptforge... \
