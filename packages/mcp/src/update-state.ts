@@ -1,7 +1,7 @@
 // Local persistence for the auto-update flow.
 //
 // Stores: last GitHub check time + the latest known release metadata
-// (version, .mcpb asset URL, release page URL, ETag), the list of
+// (version, installer asset URL, release page URL, ETag), the list of
 // versions the user explicitly skipped, an optional "remind me
 // tomorrow" timestamp, and the last version we observed running on
 // this host (so we can fire a `mcp_version_updated` event when the
@@ -31,8 +31,8 @@ export interface UpdateState {
   last_check_time: number;
   /** semver string, no leading `v`, e.g. "0.10.2". Absent before first successful check. */
   latest_known_version?: string;
-  /** Direct download URL for the `.mcpb` asset on the latest release. */
-  latest_known_mcpb_url?: string;
+  /** Direct download URL for the installer asset (`.dxt`, falling back to `.mcpb`) on the latest release. */
+  latest_known_install_url?: string;
   /** HTML release page URL (used as the changelog link in the prompt). */
   latest_known_release_url?: string;
   /** GitHub ETag from the last successful GET. Sent as If-None-Match next time. */
@@ -187,8 +187,12 @@ export class UpdateStateStore {
     if (typeof r.latest_known_version === "string") {
       out.latest_known_version = r.latest_known_version;
     }
-    if (typeof r.latest_known_mcpb_url === "string") {
-      out.latest_known_mcpb_url = r.latest_known_mcpb_url;
+    // Forward-migrate the legacy `latest_known_mcpb_url` key written by
+    // pre-rename versions — the new key wins when both are present.
+    if (typeof r.latest_known_install_url === "string") {
+      out.latest_known_install_url = r.latest_known_install_url;
+    } else if (typeof r.latest_known_mcpb_url === "string") {
+      out.latest_known_install_url = r.latest_known_mcpb_url;
     }
     if (typeof r.latest_known_release_url === "string") {
       out.latest_known_release_url = r.latest_known_release_url;
