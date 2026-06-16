@@ -1,5 +1,9 @@
 # Changelog — @leadbay/mcp
 
+## 0.20.1 — 2026-06-15
+
+- **Triage board stays the first next-step option on a poor-fit batch** (`leadbay_daily_check_in`): when today's batch is an ICP mismatch (every lead AI-scored off-profile), the agent was demoting the interactive triage board below "refine audience" in the NEXT STEPS widget — the plain ordering rule kept losing to the agent's own leverage judgment ("the whole batch is junk, so lead with fixing the lens"). The workflow contract requires the named artifact to be the FIRST option. The ordering rule now holds the triage board at position 1 even on a mismatched batch; the mismatch is surfaced in the prose nudge and offered as a *later* "refine the lens" option, never by displacing the artifact. Verified 5/5/5/5 across 3 consecutive eval runs on an all-off-ICP batch (the exact case that defeated the weaker rule).
+
 ## 0.20.0 — 2026-06-15
 
 - **Proactive update proposal on a fresh session** (product#3742): the auto-update check already ran at boot, but the resulting proposal only reached the user if the agent happened to call `leadbay_account_status` — which a fresh session rarely does, so the "newer version available" prompt was effectively invisible. The cached `update_available` block now also rides along on `_meta.update_available` of the **first ordinary tool result** of a session while an upgrade is pending, gated once-per-version so it surfaces exactly once. `leadbay_account_status` keeps carrying it as a top-level field. The server-instruction paragraph now tells the agent to surface the `ask_user_input_v0` prompt whenever it sees the field on *any* response.
