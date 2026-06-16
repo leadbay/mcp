@@ -1,0 +1,75 @@
+---
+name: leadbay_send_feedback
+kind: tool-description
+short_description: |
+  Send the user's feedback to the Leadbay team's inbox — the SAME place
+  the Leadbay web app's "Send feedback" form delivers to. Use when the
+  user wants to tell the team something (a bug, a request, praise, "let
+  Leadbay know…"), OR when a tool errored and the user accepts your offer
+  to report it. The user writes the message; you confirm the wording,
+  then send. Distinct from leadbay_report_friction (which is silent
+  telemetry you fire yourself — this one is explicit and user-authored).
+annotations:
+  title: Send feedback to the Leadbay team
+  readOnlyHint: false
+  openWorldHint: true
+routing:
+  triggers:
+    - "send feedback"
+    - "I want to report a bug"
+    - "tell the Leadbay team"
+    - "let Leadbay know"
+    - "give feedback"
+    - "report this to support"
+    - "I have a feature request"
+  anti_triggers:
+    - phrase: "no, I meant / still nothing / ugh"
+      route_to: leadbay_report_friction
+    - phrase: "log the email I sent"
+      route_to: leadbay_report_outreach
+  prefer_when: "the user explicitly wants the Leadbay TEAM to receive a message they authored — or accepts your offer to report an error. For silent, agent-detected friction signals use leadbay_report_friction instead."
+  examples:
+    positive:
+      - "Send feedback to the team: the lead scores feel off this week."
+      - "Can you report a bug? Pulling leads in Lyon returns nothing."
+      - "Tell Leadbay I'd love a way to schedule my morning check-in."
+    negative:
+      - "No, I meant Wisconsin not Wyoming."
+      - "I emailed Acme — log that outreach."
+      - "Thumbs down on this lead."
+rendering_hint: |
+  Confirm the exact wording with the user BEFORE calling (this is sent to
+  the team). After sending, show a one-line confirmation from the result's
+  `message` (e.g. "✓ Sent to the Leadbay team"). If `sent` is false, tell
+  the user it could NOT be delivered — never imply it was sent.
+next_steps: send-feedback
+---
+
+Deliver a user-authored message to the Leadbay team's feedback inbox — the same
+destination as the web app's feedback form. **You do not write the feedback;
+the user does.** Capture their words, confirm the phrasing, then send.
+
+## Parameters
+- `message` (required) — the user's feedback, in their own words. Confirm it
+  with the user before sending. Cap 4000 chars.
+- `associated_error_id` (optional) — a Sentry event id to attach the feedback
+  to (e.g. the id surfaced by an error the user just hit), so the team sees the
+  feedback on that exact issue.
+
+## When a tool errors — OFFER, don't auto-send
+When a Leadbay tool returns an error and the user might want the team to know,
+you may OFFER: *"Want me to send feedback about this to the Leadbay team?"*
+- Send ONLY if the user says yes AND gives (or approves) a message.
+- Never send feedback the user didn't author or approve.
+- If an error event id is available, pass it as `associated_error_id`.
+
+## Result
+- `sent: true` → it reached the team. Show the confirmation from `message`.
+- `sent: false` → delivery wasn't possible (feedback not available on this
+  client). Tell the user it was NOT sent. Do not claim success.
+
+This is the only "talk to the Leadbay team" tool. It does not mutate any
+Leadbay data. For silent friction signals you detect yourself, use
+`leadbay_report_friction` instead.
+
+{{include:next-steps/send-feedback}}

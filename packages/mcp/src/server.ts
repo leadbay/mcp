@@ -1024,6 +1024,11 @@ export function buildServer(
         signal: extra.signal,
         progress,
         elicit,
+        // Route leadbay_send_feedback to Sentry's feedback inbox (same place
+        // the web app's form lands). NOOP_TELEMETRY returns false, so the
+        // tool reports honestly when telemetry is off.
+        sendFeedback: (message, fbOpts) =>
+          telemetry.captureFeedback(message, fbOpts),
       });
       // Inject `update_available` into account_status returns when an
       // upgrade is cached. Other tools pass through untouched. Done
