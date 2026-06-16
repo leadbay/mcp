@@ -1,6 +1,6 @@
 {
   "name": "@leadbay/mcp",
-  "version": "0.19.2",
+  "version": "0.20.0",
   "mcpName": "io.github.leadbay/leadbay-mcp",
   "description": "Model Context Protocol (MCP) server for Leadbay — AI lead discovery, qualification, and enrichment for Claude Desktop, Cursor, and Claude Code.",
   "type": "module",

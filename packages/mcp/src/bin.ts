@@ -416,7 +416,8 @@ export async function resolveClientFromEnv(logger: ToolLogger): Promise<Resolved
   logger.info?.("Auto-detecting region via /users/me on us and fr...");
   const probe = async (region: "us" | "fr"): Promise<LeadbayClient> => {
     const c = createClient({ token, region });
-    await c.request("GET", "/users/me");
+    // Startup probe: don't auto-retry a 401 — a bad token should fail fast.
+    await c.request("GET", "/users/me", undefined, { retryOn401: false });
     return c;
   };
 

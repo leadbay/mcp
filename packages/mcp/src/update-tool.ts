@@ -4,8 +4,8 @@
 // The agent calls this with the action the user picked via the
 // ask_user_input_v0 widget. The server:
 //   * "install"        → emits mcp_update_install_clicked, returns the
-//                        .mcpb URL + release URL so the agent can render
-//                        a clickable link. Does NOT touch state — the
+//                        installer (.dxt) URL + release URL so the agent can
+//                        render a clickable link. Does NOT touch state — the
 //                        next process boot under the new VERSION will
 //                        fire mcp_version_updated on its own.
 //   * "remind_tomorrow"→ writes remind_until = now + 24h, emits
@@ -14,7 +14,7 @@
 //                        mcp_update_dismissed{action:"skip"}.
 //
 // The tool lives in @leadbay/mcp (not @leadbay/core) because every
-// dependency it touches — UpdateStateStore, TelemetryHandle, the .mcpb
+// dependency it touches — UpdateStateStore, TelemetryHandle, the installer
 // asset URL — is MCP-server-shaped. Built inside buildServer() with
 // closures capturing the dependencies.
 
@@ -41,8 +41,8 @@ const DESCRIPTION =
   "Record the user's choice on an update prompt surfaced via `update_available` " +
   "on leadbay_account_status. Pass `action: 'install' | 'remind_tomorrow' | 'skip'` " +
   "and `version` (the `latest_version` from the prompt). On 'install', the server " +
-  "returns `{ mcpb_url, release_url }` — show the user a clickable link to mcpb_url " +
-  "so Claude Desktop's native installer opens it. On 'remind_tomorrow' the server " +
+  "returns `{ install_url, release_url }` — show the user a clickable link to install_url " +
+  "(a `.dxt` bundle) so Claude Desktop's native installer opens it. On 'remind_tomorrow' the server " +
   "suppresses the prompt for 24 hours. On 'skip' the version is suppressed permanently. " +
   "Call this tool EXACTLY ONCE per prompt — do not loop, and do not call it " +
   "speculatively when no update_available block is present.";
@@ -88,7 +88,7 @@ export function buildAcknowledgeUpdateTool(
         action: { type: "string" },
         version: { type: "string" },
         message: { type: "string" },
-        mcpb_url: { type: ["string", "null"] },
+        install_url: { type: ["string", "null"] },
         release_url: { type: ["string", "null"] },
       },
       required: ["ok", "action", "version", "message"],
@@ -123,12 +123,12 @@ export function buildAcknowledgeUpdateTool(
           ok: true,
           action,
           version,
-          mcpb_url: state.latest_known_mcpb_url ?? null,
+          install_url: state.latest_known_install_url ?? null,
           release_url: state.latest_known_release_url ?? null,
           message:
-            state.latest_known_mcpb_url
-              ? "Show the user the mcpb_url as a clickable link — opening it in Claude Desktop runs the native installer."
-              : "No .mcpb URL is cached. Direct the user to the release_url to download manually.",
+            state.latest_known_install_url
+              ? "Show the user the install_url (a .dxt bundle) as a clickable link — opening it in Claude Desktop runs the native installer."
+              : "No installer URL is cached. Direct the user to the release_url to download manually.",
         };
       }
 

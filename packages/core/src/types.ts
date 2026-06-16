@@ -808,6 +808,16 @@ export interface ToolContext {
     action: "accept" | "decline" | "cancel";
     content?: Record<string, unknown>;
   }>;
+  // Send user-authored feedback to the Leadbay team's Sentry feedback inbox —
+  // the SAME destination as the web app's feedback form. Wired by the MCP
+  // server to the telemetry handle's captureFeedback (which fills name/email
+  // from /users/me). Returns true if actually sent. Undefined in deployments
+  // without telemetry (OpenClaw / tests) — the tool must null-check and report
+  // that feedback couldn't be sent rather than claiming success.
+  sendFeedback?: (
+    message: string,
+    opts?: { associatedEventId?: string }
+  ) => Promise<boolean>;
 }
 
 export type JSONSchema = Record<string, unknown>;
