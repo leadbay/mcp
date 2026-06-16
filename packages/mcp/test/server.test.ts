@@ -244,8 +244,14 @@ describe("tools/call — error envelopes", () => {
     });
     expect(result.isError).toBe(true);
     const content = result.content as any[];
-    expect(content[0].text).toMatch(/authentication token expired/i);
-    expect(content[0].text).toMatch(/Regenerate/);
+    // A 401 (after the client's auto-retry) no longer claims the token expired.
+    // It names both possible causes — a Leadbay-side hiccup or a logout — and
+    // over-claims neither (per Milan's review on PR #96).
+    expect(content[0].text).toMatch(/rejected.*401|401/i);
+    expect(content[0].text).toMatch(/leadbay-side/i);
+    expect(content[0].text).toMatch(/logged out/i);
+    expect(content[0].text).not.toMatch(/token expired/i);
+    expect(content[0].text).not.toMatch(/your token is fine/i);
   });
 
   it("tool returning {error: true} envelope becomes isError:true", async () => {
@@ -518,7 +524,7 @@ describe("resolveClientFromEnv — region auto-probe", () => {
       });
       expect(
         stderrSpy.mock.calls.some(([m]) =>
-          /authentication token expired/i.test(String(m))
+          /rejected this request \(401\)/i.test(String(m))
         )
       ).toBe(true);
     } finally {

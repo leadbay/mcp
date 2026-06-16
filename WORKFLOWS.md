@@ -36,7 +36,10 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 22 | **Recurrence routing gate** — recurrence language ("I do this every day") must run the daily DISCOVERY check-in, not misroute to follow-ups | `leadbay_daily_check_in` | "Run my morning check-in — I do this every day." |
 | 23 | **Widget overdelivery guard** — when user pre-states full action chain, no "what next?" widget | `leadbay_daily_check_in` | "Show me today's leads and then research the top one for me." |
 | 24 | **Bulk portfolio signal scan** — "which of my leads acquired a company since 2025", "scan my portfolio for funding signals", "find everyone who changed CEO" — filters a known portfolio by a web-research signal in ONE call instead of looping `leadbay_research_lead_by_id` per lead | `leadbay_scan_portfolio_signals` | "Which of my leads acquired a company since 2025?" |
-| 25 | **Send feedback to the team** — "send feedback", "report a bug", "tell Leadbay…", or accepting an offer to report an error — delivers a user-authored message to the Leadbay team's Sentry feedback inbox (same destination as the web app's feedback form) | `leadbay_send_feedback` | "Send feedback to the team: lead scores feel off this week" |
+| 25 | **Output-formatting contract** — the daily discovery table must render as the canonical layout (markdown table, score-bar glyphs, linked contacts), not a prose list or raw numbers | `leadbay_daily_check_in` | "Show me today's leads." |
+| 26 | **Follow-up sequence** — multi-turn: discover → research the top lead → draft outreach to it, each turn building on the last | `leadbay_daily_check_in` | *(multi-turn — see `turns:` contract)* |
+| 27 | **Prior-context carry-over** — across turns the agent must reuse the lead_id it surfaced earlier rather than re-running discovery | `leadbay_daily_check_in` | *(multi-turn — see `turns:` contract)* |
+| 28 | **Send feedback to the team** — "send feedback", "report a bug", "tell Leadbay…", or accepting an offer to report an error — delivers a user-authored message to the Leadbay team's Sentry feedback inbox (same destination as the web app's feedback form) | `leadbay_send_feedback` | "Send feedback to the team: lead scores feel off this week" |
 
 ---
 
@@ -387,6 +390,80 @@ success_criteria:
 prompt: "Show me today's leads and then research the top one for me."
 ```
 
+```yaml expected
+workflow_name: Output-formatting contract
+prompt_name: leadbay_daily_check_in
+required_calls:
+  - leadbay_account_status
+  - leadbay_pull_leads
+forbidden_calls:
+  - leadbay_report_outreach
+render_checks:
+  - "rendered the leads as a markdown table (header row with | column separators), not a prose list or bullet list"
+  - "the score column uses the 10-segment bar glyphs (▰ ❖ ▱) in inline code, not a bare numeric score"
+  - "each contact is a markdown link [Name](url), never plain text"
+  - must_match: "▰|❖|▱"
+  - must_not_match: "\\n\\s*[Ss]core:\\s*\\d"
+success_criteria:
+  - "called leadbay_account_status and leadbay_pull_leads"
+  - "did NOT call leadbay_report_outreach"
+```
+
+```yaml scenario
+prompt: "Show me today's leads."
+```
+
+```yaml expected
+workflow_name: Follow-up sequence
+prompt_name: leadbay_daily_check_in
+required_calls:
+  - leadbay_pull_leads
+  - leadbay_research_lead_by_id
+forbidden_calls:
+  - leadbay_report_outreach
+turns:
+  - prompt: "Show me today's leads."
+    expect_calls:
+      - leadbay_account_status
+      - leadbay_pull_leads
+  - prompt: "Research the top one for me."
+    expect_calls:
+      - leadbay_research_lead_by_id
+  - prompt: "Draft an outreach email to them."
+    expect_calls:
+      - leadbay_prepare_outreach
+    forbid_calls:
+      - leadbay_pull_leads
+success_criteria:
+  - "ran discovery on turn 1, research on turn 2, and an outreach draft on turn 3"
+  - "did NOT call leadbay_report_outreach (drafting is not logging)"
+```
+
+```yaml expected
+workflow_name: Prior-context carry-over
+prompt_name: leadbay_daily_check_in
+required_calls:
+  - leadbay_pull_leads
+  - leadbay_research_lead_by_id
+forbidden_calls:
+  - leadbay_report_outreach
+turns:
+  - prompt: "Show me today's leads."
+    expect_calls:
+      - leadbay_account_status
+      - leadbay_pull_leads
+  - prompt: "Research the top one for me."
+    expect_calls:
+      - leadbay_research_lead_by_id
+    forbid_calls:
+      - leadbay_pull_leads
+    carry_over:
+      - "passed the SAME lead_id surfaced as the top lead in turn 1 (did not re-run leadbay_pull_leads to rediscover it)"
+success_criteria:
+  - "reused the top lead from turn 1 in the turn-2 research call without re-running discovery"
+  - "did NOT call leadbay_report_outreach"
+```
+
 ---
 
 ## Needs backend
@@ -468,6 +545,74 @@ success_criteria:
 prompt: "Do the thing"
 ```
 ````
+
+**Numbering.** New workflows take the next integer (25, 26, …). Do **not**
+create subnumbers (no `2a` / `2b`) — a distinct user story is a new top-level
+row, even when it shares a prompt with an existing one.
+
+### Optional contract fields
+
+All four of these are optional. A contract that omits them behaves exactly as
+before (single-turn, no render check) — they are backward compatible.
+
+**`render_checks:` — assert the agent rendered the canonical layout.** Use when
+the workflow's value is in *how* the output is shaped (table vs prose, score
+bars, linked contacts), not just which tools fired. Two entry kinds, freely
+mixed in one list:
+
+- **plain strings** → appended to `success_criteria` for the judge to score.
+- **`must_match:` / `must_not_match:`** → a regex run mechanically over the
+  final agent message (a cheap pre-check, same gate as `required_byproducts`).
+  `must_match` fails the run if the pattern is absent; `must_not_match` fails it
+  if the pattern is present. The pattern is compiled with JavaScript `RegExp`
+  (no flags) — use JS-compatible syntax, **not** inline PCRE flags like
+  `(?i)` / `(?m)`. For case-insensitivity use a character class (`[Ss]core`);
+  anchor to line starts with `\n` rather than `^`.
+
+```yaml
+render_checks:
+  - "rendered a markdown table (header row with | separators), not a prose list"
+  - "score column uses the 10-segment bar glyphs ▰ ❖ ▱, not a raw number"
+  - must_match: "▰|❖|▱"
+  - must_not_match: "\\n\\s*[Ss]core:\\s*\\d"
+```
+
+**`turns:` — drive a multi-turn conversation** (follow-up sequencing +
+prior-context carry-over). When present, `turns:` **replaces** the single
+`yaml scenario` block — the two are mutually exclusive. Each turn is one user
+message fed in order on the same resumed session, so the agent carries prior
+context forward. Per-turn fields:
+
+- `prompt:` (required) — the user message for that turn.
+- `expect_calls:` — tools that MUST fire **during that turn**.
+- `forbid_calls:` — tools that must NOT fire during that turn.
+- `carry_over:` — prose criteria the judge scores with the full multi-turn
+  transcript in view. This is how you assert prior-context carry-over (e.g.
+  "reused the same lead_id from turn 1 without re-running discovery").
+
+Top-level `required_calls` / `forbidden_calls` remain **session-wide** (the
+union across all turns); per-turn `expect_calls` / `forbid_calls` scope to a
+single turn.
+
+```yaml expected
+workflow_name: My multi-turn workflow
+prompt_name: leadbay_my_prompt
+required_calls:
+  - leadbay_pull_leads
+  - leadbay_research_lead_by_id
+turns:
+  - prompt: "Show me today's leads."
+    expect_calls: [leadbay_account_status, leadbay_pull_leads]
+  - prompt: "Research the top one for me."
+    expect_calls: [leadbay_research_lead_by_id]
+    forbid_calls: [leadbay_pull_leads]
+    carry_over:
+      - "passed the SAME lead_id surfaced in turn 1 (did not re-run discovery)"
+success_criteria:
+  - "ran discovery on turn 1 and research on turn 2"
+```
+
+A `turns:` contract has no separate `yaml scenario` block.
 
 ## How this stays normative
 
