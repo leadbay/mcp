@@ -374,7 +374,44 @@ export class LeadbayClient {
     if (next) next();
   }
 
-  async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // Leadbay tokens don't expire, so a 401 is almost always a transient
+  // server-side blip. Retry the request ONCE before surfacing it — a single
+  // retry clears the vast majority of these without the agent ever seeing an
+  // error. If the retry also 401s, it's a real Leadbay-side problem and the
+  // error envelope says so.
+  //
+  // Arrow-function field so `this` stays bound even when the method is passed
+  // as a bare reference (see request()'s ternary). Retries are GET-ONLY: a 401
+  // on a write (POST/PUT/DELETE) may arrive AFTER the mutation already committed
+  // server-side, so blindly re-sending it would double-execute the write. Reads
+  // are idempotent, so retrying them is safe. The 250ms backoff releases the
+  // concurrency slot first (release → sleep → re-acquire) so a wave of 401s
+  // doesn't pin all MAX_CONCURRENT slots in setTimeout and stall the queue.
+  private httpsRequestWithRetry = async (
+    method: string,
+    url: string,
+    headers: Record<string, string>,
+    body?: string | Buffer
+  ): Promise<HttpResult> => {
+    const res = await httpsRequest(method, url, headers, body);
+    if (res.status === 401 && method.toUpperCase() === "GET") {
+      this.releaseSemaphore();
+      try {
+        await new Promise((r) => setTimeout(r, 250));
+      } finally {
+        await this.acquireSemaphore();
+      }
+      return httpsRequest(method, url, headers, body);
+    }
+    return res;
+  };
+
+  async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    opts?: { retryOn401?: boolean }
+  ): Promise<T> {
     // Mock mode short-circuit (no auth required).
     if (process.env.LEADBAY_MOCK === "1") {
       return this.mockRequest<T>(method, path, body);
@@ -387,6 +424,9 @@ export class LeadbayClient {
         path
       );
     }
+    // Auto-retry a transient 401 on normal calls; the startup auth-probe opts
+    // out (retryOn401:false) so a bad token fails fast instead of double-probing.
+    const retryOn401 = opts?.retryOn401 !== false;
     await this.acquireSemaphore();
     try {
       const url = `${this._baseUrl}/1.5${path}`;
@@ -397,7 +437,7 @@ export class LeadbayClient {
         headers["Content-Type"] = "application/json";
       }
 
-      const res = await httpsRequest(
+      const res = await (retryOn401 ? this.httpsRequestWithRetry : httpsRequest)(
         method,
         url,
         headers,
@@ -448,7 +488,7 @@ export class LeadbayClient {
         headers["Content-Type"] = "application/json";
       }
 
-      const res = await httpsRequest(
+      const res = await this.httpsRequestWithRetry(
         method,
         url,
         headers,
@@ -500,7 +540,7 @@ export class LeadbayClient {
         "Content-Type": contentType,
       };
 
-      const res = await httpsRequest(method, url, headers, body);
+      const res = await this.httpsRequestWithRetry(method, url, headers, body);
 
       this._lastMeta = {
         region: this._region,
@@ -613,10 +653,18 @@ export class LeadbayClient {
     const retryAfter = parseRetryAfter(headers["retry-after"]);
 
     if (status === 401) {
+      // Leadbay tokens don't expire on a timer, and request() already retried
+      // this call once on the first 401. The one thing we can state for certain
+      // is that the token did NOT time out. A persistent 401 is EITHER a
+      // Leadbay-side hiccup OR a genuine logout/revocation (per Milan, a 401 can
+      // mean the user is logged out) — we can't tell which from here, so name
+      // both causes and assert neither. Don't claim the login is fine, and don't
+      // push re-login as the default fix either.
+      // (Code stays AUTH_EXPIRED for backward compat with the MCP auth handlers.)
       return this.makeError(
         "AUTH_EXPIRED",
-        "Authentication token expired or invalid",
-        "Your LEADBAY_TOKEN is no longer valid. Regenerate it: npx -y @leadbay/mcp login --email <you> --region <us|fr>, then restart your MCP client.",
+        "Leadbay rejected this request (401)",
+        "Leadbay tokens don't expire on a timer, so this isn't a stale token. A 401 here is usually a Leadbay-side hiccup, but can also mean the user logged out. Try again shortly; if it persists, offer to report it to the team.",
         endpoint,
         null,
         status
