@@ -3529,6 +3529,91 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 `;
 // endregion: leadbay_select_leads
 
+// region: leadbay_send_feedback
+export const leadbay_send_feedback: string = `## WHEN TO USE
+
+Trigger phrases: "send feedback", "I want to report a bug", "tell the Leadbay team", "let Leadbay know", "give feedback", "report this to support", "I have a feature request".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "no, I meant / still nothing / ugh" → \`leadbay_report_friction\`; "log the email I sent" → \`leadbay_report_outreach\`.
+
+Prefer when: the user explicitly wants the Leadbay TEAM to receive a message they authored — or accepts your offer to report an error. For silent, agent-detected friction signals use leadbay_report_friction instead.
+
+Examples that SHOULD invoke this tool:
+- "Send feedback to the team: the lead scores feel off this week."
+- "Can you report a bug? Pulling leads in Lyon returns nothing."
+- "Tell Leadbay I'd love a way to schedule my morning check-in."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "No, I meant Wisconsin not Wyoming."
+- "I emailed Acme — log that outreach."
+- "Thumbs down on this lead."
+
+## RENDER (quick)
+
+Confirm the exact wording with the user BEFORE calling (this is sent to
+the team). After sending, show a one-line confirmation from the result's
+\`message\` (e.g. "✓ Sent to the Leadbay team"). If \`sent\` is false, tell
+the user it could NOT be delivered — never imply it was sent.
+
+---
+
+Deliver a user-authored message to the Leadbay team's feedback inbox — the same
+destination as the web app's feedback form. **You do not write the feedback;
+the user does.** Capture their words, confirm the phrasing, then send.
+
+## Parameters
+- \`message\` (required) — the user's feedback, in their own words. Confirm it
+  with the user before sending. Cap 4000 chars.
+- \`associated_error_id\` (optional) — a Sentry event id to attach the feedback
+  to (e.g. the id surfaced by an error the user just hit), so the team sees the
+  feedback on that exact issue.
+
+## When a tool errors — OFFER, don't auto-send
+When a Leadbay tool returns an error and the user might want the team to know,
+you may OFFER: *"Want me to send feedback about this to the Leadbay team?"*
+- Send ONLY if the user says yes AND gives (or approves) a message.
+- Never send feedback the user didn't author or approve.
+- If an error event id is available, pass it as \`associated_error_id\`.
+
+## Result
+- \`sent: true\` → it reached the team. Show the confirmation from \`message\`.
+- \`sent: false\` → delivery wasn't possible (feedback not available on this
+  client). Tell the user it was NOT sent. Do not claim success.
+
+This is the only "talk to the Leadbay team" tool. It does not mutate any
+Leadbay data. For silent friction signals you detect yourself, use
+\`leadbay_report_friction\` instead.
+
+## NEXT STEPS — after sending feedback
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+| Observation                                  | Suggest                                              | Calls                                   |
+|----------------------------------------------|------------------------------------------------------|-----------------------------------------|
+| \`sent == true\`                               | "Anything else you'd like to flag to the team?"      | leadbay_send_feedback(message)          |
+| \`sent == false\`                              | "It didn't go through — want to try sending again?"  | leadbay_send_feedback(message)          |
+| Feedback was about an error the user hit      | "Want me to retry the action that failed?"           | (re-call the tool that errored)         |
+`;
+// endregion: leadbay_send_feedback
+
 // region: leadbay_set_active_lens
 export const leadbay_set_active_lens: string = `Mark a lens as last-used. Subsequent \`/me\` reads return it as \`last_requested_lens\`, so all composite tools default to it.
 
@@ -3866,6 +3951,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_scan_portfolio_signals,
   leadbay_seed_candidates,
   leadbay_select_leads,
+  leadbay_send_feedback,
   leadbay_set_active_lens,
   leadbay_set_epilogue_status,
   leadbay_set_pushback,

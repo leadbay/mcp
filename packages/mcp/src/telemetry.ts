@@ -74,6 +74,12 @@ export interface TelemetryHandle {
   captureAgentMemoryPruned(props: AgentMemoryPrunedProps): void;
   captureFrictionReported(props: FrictionReportedProps): void;
   captureException(err: unknown, ctx: ExceptionCtx): void;
+  // User-authored feedback → Sentry's feedback inbox, the SAME place the
+  // web app's feedback form lands (Sentry.captureFeedback). name/email are
+  // filled from the identified `/users/me` when available, mirroring the web
+  // form. Returns true if it was actually sent to Sentry, false otherwise
+  // (telemetry disabled / Sentry not ready) so the tool can report honestly.
+  captureFeedback(message: string, opts?: { associatedEventId?: string }): Promise<boolean>;
   // Auto-update lifecycle. Optional on the interface so out-of-tree
   // TelemetryHandle implementations don't have to implement them; the
   // update-check site null-checks before calling. NOOP_TELEMETRY +
@@ -98,6 +104,7 @@ export const NOOP_TELEMETRY: TelemetryHandle = {
   captureAgentMemoryPruned: () => {},
   captureFrictionReported: () => {},
   captureException: () => {},
+  captureFeedback: async () => false,
   captureUpdateCheck: () => {},
   captureUpdatePrompted: () => {},
   captureUpdateInstallClicked: () => {},
@@ -403,6 +410,61 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
         });
       } catch (e: any) {
         logger?.warn?.(`sentry captureException failed: ${e?.message ?? e}`);
+      }
+    },
+    async captureFeedback(message, opts) {
+      // Mirrors the web app's feedback form (Sentry.captureFeedback with
+      // name/email/message) so MCP feedback lands in the SAME Sentry inbox.
+      // name/email come from the identified /users/me when available.
+      if (!sentryReady) return false;
+      const trimmed = (message ?? "").trim();
+      if (!trimmed) return false;
+      // Wait (bounded) for /users/me so name/email attach — otherwise feedback
+      // sent in the first second of a session (e.g. "report a bug" as the very
+      // first message) lands ANONYMOUS and the team can't attribute or reply.
+      // identify() is idempotent and fire-and-forget elsewhere; awaiting its
+      // promise here doesn't re-trigger it. Cap at 2s so a hung /users/me can't
+      // block the feedback — better an anonymous report than a dropped one.
+      if (identityPromise) {
+        let waitTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            identityPromise,
+            new Promise<void>((resolve) => {
+              waitTimer = setTimeout(resolve, 2000);
+            }),
+          ]);
+        } catch {
+          // identify() already swallows its own errors; ignore and proceed.
+        } finally {
+          // Clear the bounded-wait timer on the fast path (identity won the
+          // race) so a dangling 2s timer can't keep a one-shot CLI alive past
+          // exit or race the shutdown Sentry.close().
+          if (waitTimer) clearTimeout(waitTimer);
+        }
+      }
+      try {
+        Sentry.captureFeedback({
+          message: trimmed,
+          ...(me?.name ? { name: me.name } : {}),
+          ...(me?.email ? { email: me.email } : {}),
+          ...(opts?.associatedEventId
+            ? { associatedEventId: opts.associatedEventId }
+            : {}),
+        });
+        // Flush before returning. Feedback is queued (SDK flushInterval 10s),
+        // and the MCP server is often short-lived (one-shot CLI, or a host that
+        // disconnects right after the call) — the shutdown Sentry.close(2000)
+        // races the buffered envelope and drops it. Awaiting a bounded flush
+        // here makes `sent:true` actually mean "delivered to Sentry".
+        const flushed = await Sentry.flush(4000);
+        if (!flushed) {
+          logger?.warn?.("sentry feedback flush timed out (event may be buffered)");
+        }
+        return flushed;
+      } catch (e: any) {
+        logger?.warn?.(`sentry captureFeedback failed: ${e?.message ?? e}`);
+        return false;
       }
     },
     async shutdown() {

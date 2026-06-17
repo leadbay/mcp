@@ -543,6 +543,19 @@ const CASES: ConformanceCase[] = [
     },
   },
   {
+    // Feedback delivery is local — no backend HTTP. The composite returns
+    // `{ sent, message, _meta }`; the actual Sentry capture is wired by the
+    // server (ToolContext.sendFeedback). Under NODE_ENV=test telemetry is
+    // NOOP, so sent:false here — still conforms to the output schema.
+    toolName: "leadbay_send_feedback",
+    arguments: {
+      message: "the lead scores feel off this week",
+    },
+    setupMocks: () => {
+      mockHttp([]);
+    },
+  },
+  {
     toolName: "leadbay_acknowledge_notification",
     arguments: {
       notification_id: "abcdef01-2345-4678-89ab-cdef01234567",

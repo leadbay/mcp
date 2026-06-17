@@ -27,6 +27,12 @@ export interface ToolCallProps {
   format: ToolCallFormat;
   bytes: number;
   error_code?: string;
+  // Upstream HTTP status of the failing call, lifted from the error
+  // envelope's `_meta.http_status` (set by client.ts mapErrorResponse).
+  // Disambiguates catch-all codes like API_ERROR on the dashboard — e.g.
+  // is the enrich_titles API_ERROR floor 503s, 500s, or a 4xx edge?
+  // Absent on success and on errors that never hit the HTTP layer.
+  http_status?: number;
   // Verbatim user utterance (capped at 500 chars) that the agent reports as
   // the trigger for this call, via the `_triggered_by` meta-param injected
   // into every tool's input schema. Optional because legacy agents and
@@ -59,6 +65,12 @@ export interface CompositeCallProps {
   ok: boolean;
   duration_ms: number;
   error_code?: string;
+  // Upstream HTTP status from the error envelope's `_meta.http_status`
+  // (set by client.ts mapErrorResponse). Same purpose as on ToolCallProps:
+  // disambiguates catch-all codes like API_ERROR. Composites are where the
+  // enrich_titles floor lives, so the join surface needs it too. Absent on
+  // success and on errors that never hit the HTTP layer.
+  http_status?: number;
 }
 
 export type FrictionCategory =

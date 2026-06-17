@@ -30,13 +30,13 @@ beforeEach(() => {
 });
 
 describe("leadbay_acknowledge_update — install", () => {
-  it("emits install_clicked + returns the cached mcpb_url and release_url", async () => {
+  it("emits install_clicked + returns the cached install_url and release_url", async () => {
     const store = new UpdateStateStore({ backend: "memory" });
     await store.write({
       last_check_time: 1,
       suppressed_versions: [],
       latest_known_version: "0.10.2",
-      latest_known_mcpb_url: "https://example.com/leadbay-0.10.2.mcpb",
+      latest_known_install_url: "https://example.com/leadbay-0.10.2.dxt",
       latest_known_release_url: "https://example.com/releases/0.10.2",
     });
     const tel = makeTel();
@@ -47,7 +47,7 @@ describe("leadbay_acknowledge_update — install", () => {
     });
     const out: any = await tool.execute(FAKE_CLIENT, { action: "install", version: "0.10.2" });
     expect(out.ok).toBe(true);
-    expect(out.mcpb_url).toBe("https://example.com/leadbay-0.10.2.mcpb");
+    expect(out.install_url).toBe("https://example.com/leadbay-0.10.2.dxt");
     expect(out.release_url).toBe("https://example.com/releases/0.10.2");
     expect(tel.installed).toEqual([
       { current_version: "0.10.1", latest_version: "0.10.2" },
@@ -58,7 +58,7 @@ describe("leadbay_acknowledge_update — install", () => {
     expect(s.suppressed_versions).toEqual([]);
   });
 
-  it("returns null mcpb_url when state has no cached asset", async () => {
+  it("returns null install_url when state has no cached asset", async () => {
     const store = new UpdateStateStore({ backend: "memory" });
     const tool = buildAcknowledgeUpdateTool({
       stateStore: store,
@@ -67,7 +67,7 @@ describe("leadbay_acknowledge_update — install", () => {
     });
     const out: any = await tool.execute(FAKE_CLIENT, { action: "install", version: "0.10.2" });
     expect(out.ok).toBe(true);
-    expect(out.mcpb_url).toBeNull();
+    expect(out.install_url).toBeNull();
   });
 });
 

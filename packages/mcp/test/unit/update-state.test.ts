@@ -37,7 +37,7 @@ describe("UpdateStateStore — file backend", () => {
     await store.write({
       last_check_time: 1_700_000_000_000,
       latest_known_version: "0.10.2",
-      latest_known_mcpb_url: "https://example.com/leadbay-0.10.2.mcpb",
+      latest_known_install_url: "https://example.com/leadbay-0.10.2.dxt",
       latest_known_release_url: "https://example.com/releases/mcp-v0.10.2",
       etag: 'W/"abc"',
       suppressed_versions: ["0.10.1"],
@@ -46,7 +46,7 @@ describe("UpdateStateStore — file backend", () => {
     });
     const s = await store.read();
     expect(s.latest_known_version).toBe("0.10.2");
-    expect(s.latest_known_mcpb_url).toBe("https://example.com/leadbay-0.10.2.mcpb");
+    expect(s.latest_known_install_url).toBe("https://example.com/leadbay-0.10.2.dxt");
     expect(s.etag).toBe('W/"abc"');
     expect(s.suppressed_versions).toEqual(["0.10.1"]);
     expect(s.remind_until).toBe(1_700_000_999_000);

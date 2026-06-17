@@ -42,6 +42,7 @@ const TOOLS_WITH_ROUTING = new Set([
   "leadbay_pull_followups",
   "leadbay_pull_leads",
   "leadbay_report_friction",
+  "leadbay_send_feedback",
   "leadbay_research_lead_by_id",
   "leadbay_research_lead_by_name_fuzzy",
   "leadbay_scan_portfolio_signals",

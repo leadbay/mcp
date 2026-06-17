@@ -25,6 +25,23 @@ import type { MCPEvidence, JudgeScores, CriterionVerdict } from "./evidence.js";
 
 const JUDGE_MODEL_DEFAULT = "claude-sonnet-4-6";
 
+/** A mechanical regex assertion over the final agent message. */
+export interface RenderRegexCheck {
+  must_match?: string;
+  must_not_match?: string;
+}
+
+/** One user message in a multi-turn scenario, with optional per-turn invariants. */
+export interface ScenarioTurn {
+  prompt: string;
+  /** Tools that MUST fire during this turn. */
+  expect_calls?: string[];
+  /** Tools that must NOT fire during this turn. */
+  forbid_calls?: string[];
+  /** Prose criteria the judge scores with the full transcript in view. */
+  carry_over?: string[];
+}
+
 export interface MissionMatchScenario {
   prompt_name: string;
   scenario_name: string;
@@ -33,6 +50,32 @@ export interface MissionMatchScenario {
   required_calls: string[];
   required_byproducts: string[];
   forbidden_calls?: string[];
+  /**
+   * Output-formatting assertions. Plain strings are folded into the judged
+   * criteria; {must_match}/{must_not_match} entries are mechanical pre-checks
+   * over the final agent message. Optional — absent means no render check.
+   */
+  render_checks?: Array<string | RenderRegexCheck>;
+  /**
+   * Multi-turn conversation. When set, the runner feeds each prompt in order
+   * on a resumed session. Per-turn expect/forbid calls and carry_over criteria
+   * are checked against turn-tagged evidence. Optional — absent means
+   * single-turn.
+   */
+  turns?: ScenarioTurn[];
+}
+
+/** Split render_checks into judged prose criteria and mechanical regex checks. */
+export function partitionRenderChecks(
+  render_checks: Array<string | RenderRegexCheck> = [],
+): { criteria: string[]; regexChecks: RenderRegexCheck[] } {
+  const criteria: string[] = [];
+  const regexChecks: RenderRegexCheck[] = [];
+  for (const entry of render_checks) {
+    if (typeof entry === "string") criteria.push(entry);
+    else if (entry && (entry.must_match || entry.must_not_match)) regexChecks.push(entry);
+  }
+  return { criteria, regexChecks };
 }
 
 export interface MissionMatchInput {
@@ -77,6 +120,67 @@ function preCheckForbiddenCalls(
   const fired = new Set(evidence.tool_calls.map((c) => c.name));
   const violations = forbidden_calls.filter((c) => fired.has(c));
   return violations.length > 0 ? `forbidden_calls fired: ${violations.join(", ")}` : null;
+}
+
+/** Mechanical render checks: must_match must be present, must_not_match absent. */
+function preCheckRenderRegexes(
+  evidence: MCPEvidence,
+  regexChecks: RenderRegexCheck[] = [],
+): string | null {
+  const text = evidence.final_agent_message;
+  const failures: string[] = [];
+  for (const check of regexChecks) {
+    if (check.must_match) {
+      try {
+        if (!new RegExp(check.must_match).test(text)) {
+          failures.push(`render must_match absent: /${check.must_match}/`);
+        }
+      } catch {
+        failures.push(`render must_match is not a valid regex: /${check.must_match}/`);
+      }
+    }
+    if (check.must_not_match) {
+      try {
+        if (new RegExp(check.must_not_match).test(text)) {
+          failures.push(`render must_not_match present: /${check.must_not_match}/`);
+        }
+      } catch {
+        failures.push(`render must_not_match is not a valid regex: /${check.must_not_match}/`);
+      }
+    }
+  }
+  return failures.length > 0 ? failures.join("; ") : null;
+}
+
+/**
+ * Per-turn call invariants. The runner tags each tool call with its turn
+ * index (1-based, matching the order the turns are fed). For each turn,
+ * verify expect_calls fired and forbid_calls did not, scoped to that turn.
+ */
+function preCheckTurnCalls(
+  evidence: MCPEvidence,
+  turns: ScenarioTurn[] = [],
+): string | null {
+  if (turns.length === 0) return null;
+  const callsByTurn = new Map<number, Set<string>>();
+  for (const c of evidence.tool_calls) {
+    if (!callsByTurn.has(c.turn)) callsByTurn.set(c.turn, new Set());
+    callsByTurn.get(c.turn)!.add(c.name);
+  }
+  const failures: string[] = [];
+  turns.forEach((turn, idx) => {
+    const turnNo = idx + 1;
+    const fired = callsByTurn.get(turnNo) ?? new Set<string>();
+    const missing = (turn.expect_calls ?? []).filter((c) => !fired.has(c));
+    if (missing.length > 0) {
+      failures.push(`turn ${turnNo} expect_calls not fired: ${missing.join(", ")}`);
+    }
+    const violations = (turn.forbid_calls ?? []).filter((c) => fired.has(c));
+    if (violations.length > 0) {
+      failures.push(`turn ${turnNo} forbid_calls fired: ${violations.join(", ")}`);
+    }
+  });
+  return failures.length > 0 ? failures.join("; ") : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -259,14 +363,33 @@ function parseJudgeResponse(
 export async function runMissionMatchJudge(
   input: MissionMatchInput,
 ): Promise<JudgeOutcome<MissionMatchOutput>> {
+  // Fold render_checks (plain strings) and per-turn carry_over criteria into
+  // the criteria the judge scores. The mechanical regex render checks become
+  // pre-checks below; the judge never sees them.
+  const { criteria: renderCriteria, regexChecks } = partitionRenderChecks(
+    input.scenario.render_checks,
+  );
+  const carryOverCriteria = (input.scenario.turns ?? []).flatMap((t) => t.carry_over ?? []);
+  const effectiveCriteria = [
+    ...input.scenario.success_criteria,
+    ...renderCriteria,
+    ...carryOverCriteria,
+  ];
+  const judgedScenario: MissionMatchScenario = {
+    ...input.scenario,
+    success_criteria: effectiveCriteria,
+  };
+
   // Pre-checks: cheap deterministic gates that short-circuit the LLM call.
   const preCheckFailure =
     preCheckExpectedCalls(input.evidence, input.scenario.required_calls) ||
     preCheckByproducts(input.evidence, input.scenario.required_byproducts) ||
-    preCheckForbiddenCalls(input.evidence, input.scenario.forbidden_calls);
+    preCheckForbiddenCalls(input.evidence, input.scenario.forbidden_calls) ||
+    preCheckRenderRegexes(input.evidence, regexChecks) ||
+    preCheckTurnCalls(input.evidence, input.scenario.turns);
 
   if (preCheckFailure) {
-    const verdicts: CriterionVerdict[] = input.scenario.success_criteria.map((c) => ({
+    const verdicts: CriterionVerdict[] = effectiveCriteria.map((c) => ({
       criterion: c,
       pass: false,
       reasoning: `Pre-check failed: ${preCheckFailure}`,
@@ -290,12 +413,12 @@ export async function runMissionMatchJudge(
 
   const { rubric, failure_modes } = readRubric(input.promptforgeRoot, input.scenario.prompt_name);
   const model = input.model ?? JUDGE_MODEL_DEFAULT;
-  const prompt = buildJudgePrompt(input.scenario, rubric, failure_modes, input.evidence);
+  const prompt = buildJudgePrompt(judgedScenario, rubric, failure_modes, input.evidence);
 
   const outcome = await callJudge({
     prompt,
     model,
-    parser: (raw) => parseJudgeResponse(raw, input.scenario.success_criteria, failure_modes),
+    parser: (raw) => parseJudgeResponse(raw, effectiveCriteria, failure_modes),
   });
 
   if (!outcome.ok) return outcome;

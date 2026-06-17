@@ -415,6 +415,37 @@ function coerceCell(client: LeadbayClient, v: unknown, path: string): string {
   );
 }
 
+// The backend LeadStatus enum (models/leads/LeadStatus.kt) is uppercase and
+// decoded strictly — /imports/{id}/update_mappings rejects any other value with
+// an opaque "JSON deserialization error" 400 before the handler runs. The MCP
+// owns this set and only ever sends a value the backend can decode. Keep in
+// sync with the backend enum.
+export const LEAD_STATUSES = [
+  "DEFAULT",
+  "INBOUND",
+  "UNWANTED",
+  "WANTED",
+  "LOST",
+  "WON",
+] as const;
+const LEAD_STATUS_SET = new Set<string>(LEAD_STATUSES);
+
+// Coerce a caller-supplied status to its canonical backend enum member.
+// Case-insensitive ("Won"/"won" → "WON"); no synonym or locale guessing — an
+// unrecognized status fails loudly here instead of as a backend 400.
+function enforceLeadStatus(client: LeadbayClient, raw: unknown, path: string): string {
+  const canonical = String(raw).trim().toUpperCase();
+  if (!LEAD_STATUS_SET.has(canonical)) {
+    throw client.makeError(
+      "IMPORT_INVALID_STATUS",
+      `${path} ${JSON.stringify(raw)} is not a valid lead status`,
+      `Use one of ${LEAD_STATUSES.join(", ")} (case-insensitive), or omit it.`,
+      "POST /imports"
+    );
+  }
+  return canonical;
+}
+
 // Domains-mode prep: each domain becomes a {LEAD_NAME, LEAD_WEBSITE} row.
 // Mappings are the legacy hardcoded pair. Output stays domain-shaped.
 function prepareDomainsMode(client: LeadbayClient, inputs: DomainInput[]): PreparedImport {
@@ -623,6 +654,23 @@ function prepareRecordsMode(
     if (normDomain && !byDomain.has(normDomain)) byDomain.set(normDomain, idx);
   });
 
+  // Enforce the backend LeadStatus enum on status values before the payload
+  // reaches /imports/{id}/update_mappings. Map keys are raw CSV cell text and
+  // are never normalized; an empty/whitespace default means "no default".
+  const statuses: Record<string, string> = {};
+  for (const [cell, status] of Object.entries(mappings.statuses ?? {})) {
+    statuses[cell] = enforceLeadStatus(
+      client,
+      status,
+      `mappings.statuses[${JSON.stringify(cell)}]`
+    );
+  }
+  const rawDefault = mappings.default_status;
+  const default_status =
+    rawDefault == null || String(rawDefault).trim() === ""
+      ? null
+      : enforceLeadStatus(client, rawDefault, "mappings.default_status");
+
   return {
     mode: "records",
     validInputs,
@@ -632,8 +680,8 @@ function prepareRecordsMode(
     header,
     mappings: {
       fields: { ...normalizedFields },
-      statuses: mappings.statuses ?? {},
-      default_status: mappings.default_status ?? null,
+      statuses,
+      default_status,
     },
   };
 }
@@ -1383,11 +1431,17 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
           },
           statuses: {
             type: "object",
-            description: "Optional status string mapping (rarely needed). Defaults to {}.",
+            description:
+              "Optional map of raw CSV status-cell text → lead status (rarely needed). " +
+              `Keys are the verbatim cell strings; values must be one of ${LEAD_STATUSES.join(", ")} ` +
+              "(case-insensitive). Defaults to {}.",
           },
           default_status: {
             type: ["string", "null"],
-            description: "Optional default status. Defaults to null.",
+            enum: [...LEAD_STATUSES, null],
+            description:
+              "Optional default lead status applied to rows without an explicit status. " +
+              `One of ${LEAD_STATUSES.join(", ")} (case-insensitive). Defaults to null.`,
           },
         },
         required: ["fields"],

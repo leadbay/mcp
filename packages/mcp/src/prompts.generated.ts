@@ -155,7 +155,7 @@ Contact enrichment is offered in the NEXT STEPS widget below — do NOT emit a s
 
 **REQUIRED OPTIONS — triggers and position rules:**
 - **Recurring language** ("every day", "every morning", "I do this every", "remind me", "automate this", "recurring"): add "Schedule 'Daily prospecting check-in' as a recurring task" and place it **first**.
-- **≥5 leads returned**: add "Build an interactive lead triage board for this batch" and place it **first** (or second if the scheduling offer above also applies).
+- **≥5 leads returned**: add "Build an interactive lead triage board for this batch" and place it **first** (or second if the scheduling offer above also applies). This holds **even when the batch is a poor fit** (e.g. every lead AI-scored as off-ICP / a vertical mismatch): the triage board is still the first artifact option because the user asked to see and act on *this batch*. When the batch is a mismatch, ALSO offer "Refine the audience / lens so future batches fit better" — but as a *later* option, never displacing the triage board from first. Leading with audience-refinement instead of the artifact is a contract violation: surface the mismatch in your prose nudge, not by demoting the triage board.
 
 ## NEXT STEPS — after rendering the pull_leads table
 
@@ -196,7 +196,7 @@ Pick 2–3 items below based on what was actually observed in the response. The 
 If nothing in the menu applies cleanly, suggest only "pull next page" and "research a specific lead in depth" — never invent a tool that doesn't exist.
 
 
-**Final ordering check (do this before rendering):** Recurring offer → option 1; triage board → option 1 (or 2 if scheduling is also required). Swap if needed.
+**Final ordering check (do this before rendering):** Recurring offer → option 1; triage board → option 1 (or 2 if scheduling is also required). A poor-fit / mismatched batch does NOT change this — triage board stays first, refine-audience goes later in the list. Swap if needed.
 
 # GATE — STOP
 

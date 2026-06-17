@@ -14,15 +14,23 @@
 // Run: `node dist/http-server.js` (PORT defaults to 8080).
 
 import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { Hono } from "hono";
+import { basename } from "node:path";
+import { fileURLToPath } from "node:url";
+import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { serve } from "@hono/node-server";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import type { LeadbayClient } from "@leadbay/core";
 import { buildServer } from "./server.js";
-import { resolveClientFromToken } from "./auth-http.js";
+import {
+  resolveClientFromToken,
+  protectedResourceMetadata,
+  buildWwwAuthenticate,
+} from "./auth-http.js";
 import { parseWriteEnv } from "./env.js";
 
 declare const __LEADBAY_MCP_VERSION__: string;
@@ -63,46 +71,130 @@ function extractBearer(authHeader: string | undefined): string | undefined {
   return m ? m[1].trim() : undefined;
 }
 
-function extractRegion(headerValue: string | undefined): "us" | "fr" | undefined {
-  if (headerValue === "us" || headerValue === "fr") return headerValue;
-  return undefined;
-}
-
-// Build a fresh MCP server bound to the caller's bearer token. One server per
-// session — keeps tenant isolation explicit and avoids any cross-request
-// state leaking through the LeadbayClient.
-async function buildServerForRequest(
-  token: string | undefined,
-  region: "us" | "fr" | undefined
-): Promise<Server> {
-  const resolved = await resolveClientFromToken(token, { region });
+// Build a fresh MCP server bound to the caller's resolved client. One server per
+// session — keeps tenant isolation explicit and avoids any cross-request state
+// leaking through the LeadbayClient.
+function buildServerFromClient(client: LeadbayClient): Server {
   const includeWrite = parseWriteEnv();
   const includeAdvanced = process.env.LEADBAY_MCP_ADVANCED === "1";
-  return buildServer(resolved.client, {
-    version: VERSION,
-    includeWrite,
-    includeAdvanced,
-  });
+  return buildServer(client, { version: VERSION, includeWrite, includeAdvanced });
+}
+
+// ── OAuth resource-server discovery (MCP authorization spec / RFC 9728) ──────
+//
+// OAuth discovery runs before we know who the user is, and Leadbay OAuth is
+// single-region (a token is issued by, and valid for, one regional backend).
+// So the region is encoded in the connector URL the user pastes: a US user adds
+// /mcp, a FR user adds /fr/mcp. The path only selects which authorization server
+// the sign-in prompt points at; tool requests auto-probe both regions, so a
+// valid token routes correctly regardless.
+
+const PRM_PREFIX = "/.well-known/oauth-protected-resource";
+const RESOURCE_PATHS = ["/mcp", "/fr/mcp", "/sse", "/fr/sse"] as const;
+
+function regionForResourcePath(resourcePath: string): "us" | "fr" {
+  return /^\/fr(\/|$)/.test(resourcePath) ? "fr" : "us";
+}
+
+// Public origin of this request. Fly terminates TLS and forwards over http, so
+// trust x-forwarded-proto; fall back to the request URL (host + scheme).
+function requestOrigin(c: Context): string {
+  const url = new URL(c.req.url);
+  const proto = c.req.header("x-forwarded-proto") ?? url.protocol.replace(/:$/, "");
+  const host = c.req.header("host") ?? url.host;
+  return `${proto}://${host}`;
+}
+
+function applyCors(c: Context): void {
+  c.header("Access-Control-Allow-Origin", "*");
+  c.header("Access-Control-Expose-Headers", "WWW-Authenticate");
+}
+
+// RFC 9728 Protected Resource Metadata. Served unauthenticated with permissive
+// CORS so the desktop client can fetch it during discovery.
+function servePrm(c: Context, resourcePath: string): Response {
+  applyCors(c);
+  c.header("Cache-Control", "public, max-age=3600");
+  return c.json(
+    protectedResourceMetadata({
+      resourceUrl: `${requestOrigin(c)}${resourcePath}`,
+      region: regionForResourcePath(resourcePath),
+    })
+  );
+}
+
+// 401 challenge carrying WWW-Authenticate → triggers the client's OAuth sign-in
+// flow (MCP auth spec). Without this the client never prompts (the reported bug).
+function sendChallenge(
+  c: Context,
+  resourcePath: string,
+  authState: "missing" | "expired"
+): Response {
+  const resourceMetadataUrl = `${requestOrigin(c)}${PRM_PREFIX}${resourcePath}`;
+  applyCors(c);
+  c.header("WWW-Authenticate", buildWwwAuthenticate({ resourceMetadataUrl, authState }));
+  return c.json(
+    {
+      error: authState === "expired" ? "invalid_token" : "unauthorized",
+      error_description:
+        authState === "expired"
+          ? "Access token is invalid or expired. Sign in with Leadbay again."
+          : "Authentication required. Sign in with Leadbay.",
+    },
+    401
+  );
 }
 
 const app = new Hono();
 
 app.get("/healthz", (c) => c.json({ ok: true, version: VERSION }));
 
+// Protected resource metadata: bare path serves the primary /mcp resource; the
+// RFC 9728 path-suffix form (…/oauth-protected-resource/mcp, /fr/mcp, /sse, …)
+// lets each connector URL advertise its own region's authorization server.
+app.get(PRM_PREFIX, (c) => servePrm(c, "/mcp"));
+app.get(`${PRM_PREFIX}/*`, (c) => {
+  const suffix = c.req.path.slice(PRM_PREFIX.length);
+  const resourcePath = (RESOURCE_PATHS as readonly string[]).includes(suffix) ? suffix : "/mcp";
+  return servePrm(c, resourcePath);
+});
+
+// CORS preflight for discovery + MCP endpoints (browser-based remote clients).
+// Registered before the route handlers so OPTIONS never falls into an auth gate.
+app.options("*", (c) => {
+  applyCors(c);
+  c.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  c.header(
+    "Access-Control-Allow-Headers",
+    "Authorization, Content-Type, Mcp-Protocol-Version, Mcp-Session-Id"
+  );
+  return c.body(null, 204);
+});
+
 // Cap request bodies at 1 MB to prevent OOM on the 256 MB Fly VM.
 const MCP_BODY_LIMIT = bodyLimit({ maxSize: 1 * 1024 * 1024 });
 app.use("/mcp", MCP_BODY_LIMIT);
+app.use("/fr/mcp", MCP_BODY_LIMIT);
 app.use("/messages", MCP_BODY_LIMIT);
 
 // Streamable HTTP transport. Stateless mode (no sessionIdGenerator) is the
 // simplest fit for ChatGPT custom connectors today — each request is its own
 // MCP session. If we need long-lived state we can flip to stateful later by
 // passing `sessionIdGenerator: randomUUID`.
-app.all("/mcp", async (c) => {
+async function handleStreamable(
+  c: Context,
+  resourcePath: "/mcp" | "/fr/mcp"
+): Promise<Response> {
   const token = extractBearer(c.req.header("authorization"));
-  const region = extractRegion(c.req.header("x-leadbay-region"));
 
-  const server = await buildServerForRequest(token, region);
+  // Auto-probe (no region pin) so a missing OR invalid/expired token both yield
+  // a 401 challenge, and a valid token routes to whichever region owns it.
+  const resolved = await resolveClientFromToken(token);
+  if (resolved.authState === "missing" || resolved.authState === "expired") {
+    return sendChallenge(c, resourcePath, resolved.authState);
+  }
+
+  const server = buildServerFromClient(resolved.client);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     // Return JSON responses instead of SSE so non-SSE clients (e.g. Codex) work.
@@ -152,17 +244,24 @@ app.all("/mcp", async (c) => {
     transport.close().catch(() => {});
     server.close().catch(() => {});
   }
-});
+}
+
+app.all("/mcp", (c) => handleStreamable(c, "/mcp"));
+app.all("/fr/mcp", (c) => handleStreamable(c, "/fr/mcp"));
 
 // Legacy SSE transport. Two endpoints: GET /sse opens the stream, POST
 // /messages?sessionId=... feeds JSON-RPC messages in.
-app.get("/sse", async (c) => {
+async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<Response> {
   const token = extractBearer(c.req.header("authorization"));
-  const region = extractRegion(c.req.header("x-leadbay-region"));
+
+  const resolved = await resolveClientFromToken(token);
+  if (resolved.authState === "missing" || resolved.authState === "expired") {
+    return sendChallenge(c, resourcePath, resolved.authState);
+  }
 
   const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
   const transport = new SSEServerTransport("/messages", env.outgoing);
-  const server = await buildServerForRequest(token, region);
+  const server = buildServerFromClient(resolved.client);
   await server.connect(transport);
 
   const sessionId = transport.sessionId;
@@ -176,7 +275,10 @@ app.get("/sse", async (c) => {
   // the stream until the client disconnects. Use the same sentinel as /mcp so
   // Hono's Node adapter does not attempt a second header write.
   return new Response(null, { headers: { "x-hono-already-sent": "1" } });
-});
+}
+
+app.get("/sse", (c) => handleSse(c, "/sse"));
+app.get("/fr/sse", (c) => handleSse(c, "/fr/sse"));
 
 app.post("/messages", async (c) => {
   const sessionId = c.req.query("sessionId");
@@ -194,10 +296,30 @@ app.post("/messages", async (c) => {
   return new Response(null, { headers: { "x-hono-already-sent": "1" } });
 });
 
-// Stable boot log for Fly to surface in the dashboard.
-const _boot = randomUUID();
-serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) => {
-  process.stderr.write(
-    `leadbay-mcp-http ${VERSION} listening on http://${info.address}:${info.port} (boot=${_boot})\n`
-  );
-});
+// Exported so tests can drive routes via `app.fetch(new Request(...))` without
+// binding a port. The listener below only starts when run as the entrypoint.
+export { app };
+
+// Run the HTTP listener only when invoked directly (node dist/http-server.js),
+// not when imported by tests. Mirrors the entrypoint guard in bin.ts.
+const isEntrypoint = (() => {
+  try {
+    const entry = process.argv[1];
+    if (!entry) return false;
+    const entryName = basename(entry).toLowerCase();
+    if (entryName !== "http-server.js" && entryName !== "leadbay-mcp-http") return false;
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(entry);
+  } catch {
+    return false;
+  }
+})();
+
+if (isEntrypoint) {
+  // Stable boot log for Fly to surface in the dashboard.
+  const _boot = randomUUID();
+  serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) => {
+    process.stderr.write(
+      `leadbay-mcp-http ${VERSION} listening on http://${info.address}:${info.port} (boot=${_boot})\n`
+    );
+  });
+}

@@ -41,6 +41,7 @@ import type { UpdateStateStore } from "./update-state.js";
 import {
   checkForUpdate,
   getCachedUpdateInfo,
+  getInFlightCheck,
   type UpdateInfo,
 } from "./update-check.js";
 import { buildAcknowledgeUpdateTool } from "./update-tool.js";
@@ -178,13 +179,15 @@ function buildUpdateAvailableParagraph(has: (name: string) => boolean): string |
   // omits updateStateStore (offline embeds, tests).
   if (!has("leadbay_acknowledge_update")) return null;
   return (
-    "MCP auto-update: when `leadbay_account_status` returns an `update_available` field " +
-    "(`{ current_version, latest_version, mcpb_url, release_url }`), a newer MCP server release " +
-    "is published and the user has NOT suppressed it. Surface a prompt via `ask_user_input_v0` " +
+    "MCP auto-update: an `update_available` field (`{ current_version, latest_version, install_url, release_url }`) " +
+    "means a newer MCP server release is published and the user has NOT suppressed it. It appears in TWO places: " +
+    "as a top-level field on `leadbay_account_status`, AND on `_meta.update_available` of the FIRST other tool " +
+    "result in a session while an update is pending (so a fresh session surfaces the proposal even without an " +
+    "account_status call). Whenever you see it on ANY response, surface a prompt via `ask_user_input_v0` " +
     "with EXACTLY these three options: \"Install now\", \"Remind me tomorrow\", \"Skip this version\". " +
     "Map the user's choice to `leadbay_acknowledge_update({ action: 'install' | 'remind_tomorrow' | 'skip', version: latest_version })`. " +
-    "On 'install', the tool returns `mcpb_url` — render it as a clickable markdown link the user " +
-    "can open in Claude Desktop (the .mcpb extension triggers the native installer). The user does " +
+    "On 'install', the tool returns `install_url` — render it as a clickable markdown link the user " +
+    "can open in Claude Desktop (the .dxt extension triggers the native installer). The user does " +
     "NOT need to restart anything before clicking — the new server takes effect on the next MCP " +
     "session. Prompt the user ONCE per session per version — don't re-prompt within the same chat " +
     "after they've acknowledged."
@@ -707,13 +710,13 @@ export function buildServer(
   const promptedVersionsThisSession = new Set<string>();
   const serverVersion = opts.version ?? "0.0.0-dev";
 
-  // Fire-and-forget background re-check on every tool call. The
-  // checkForUpdate() itself throttles to 24h via state.last_check_time,
-  // so the cost when state is fresh is one disk read; when stale, one
-  // GitHub roundtrip. The in-flight guard inside update-check.ts
-  // prevents concurrent tool calls from racing. Never blocks the
-  // current call: the freshest result is what the NEXT account_status
-  // call sees, not this one. Opt-out: LEADBAY_UPDATE_CHECK_DISABLED=1.
+  // Fire-and-forget background re-check on every tool call. checkForUpdate
+  // throttles to 24h via state.last_check_time (steady-state cost = one disk
+  // read; stale = one GitHub roundtrip) and de-dupes concurrent callers onto a
+  // single shared in-flight promise. NEVER awaited here — it must not block the
+  // tool. The surfacing path (maybeAttachUpdate) separately, and with a tight
+  // timeout, peeks at any already-running check via getInFlightCheck().
+  // Opt-out: LEADBAY_UPDATE_CHECK_DISABLED=1.
   const UPDATE_CHECK_DISABLED = process.env.LEADBAY_UPDATE_CHECK_DISABLED === "1";
   const maybeRefreshUpdate = (): void => {
     if (UPDATE_CHECK_DISABLED) return;
@@ -730,8 +733,32 @@ export function buildServer(
     });
   };
 
-  const maybeAttachUpdate = (toolName: string, result: unknown): void => {
-    if (toolName !== "leadbay_account_status") return;
+  // Max time the response path will wait on an ALREADY-RUNNING update check
+  // before giving up and attaching nothing this call (the next call carries it
+  // once the cache is warm). Bounds the worst case so a slow/blocked GitHub
+  // never holds a tool response near checkForUpdate's full 5s fetch timeout.
+  const UPDATE_SURFACE_WAIT_MS = 1500;
+
+  // Surface a pending update on tool results so the user actually sees the
+  // proposal on a fresh session (product#3742). Two delivery channels:
+  //
+  //   * leadbay_account_status — ALWAYS carries `update_available` when a
+  //     newer release is cached (the tool documents the field in its
+  //     outputSchema, so a top-level write is the contract there).
+  //   * ANY other tool — carries `update_available` on `_meta` for the FIRST
+  //     response of the session that lands while an upgrade is cached, gated
+  //     by promptedVersionsThisSession so it surfaces ONCE per version. This
+  //     is what closes the issue's gap: the boot-time check populates the
+  //     cache, but a fresh session rarely calls account_status, so without
+  //     this the proposal never reached the user.
+  //
+  // The once-per-version gate is shared across both channels: account_status
+  // sets it too, so an early account_status call won't double-prompt via the
+  // next ordinary tool call, and vice-versa.
+  const maybeAttachUpdate = async (
+    toolName: string,
+    result: unknown
+  ): Promise<void> => {
     if (!opts.updateStateStore) return; // gate symmetric with tool registration
     if (
       result === null ||
@@ -740,10 +767,99 @@ export function buildServer(
     ) {
       return;
     }
-    const info: UpdateInfo | null = getCachedUpdateInfo();
+    // Error envelopes ({ error: true, ... }) are serialized by the CallTool
+    // handler as a bare { content, isError } — they carry NO _meta or
+    // structuredContent through to the client. Attaching here would write the
+    // field onto an object that's about to be dropped AND burn the
+    // once-per-version gate, making the proposal invisible for the rest of the
+    // session if the first ordinary tool call happens to error (a quota hit, a
+    // missing _triggered_by, any 4xx). Skip those entirely — the next
+    // non-error tool result carries the proposal instead. (account_status
+    // never returns this envelope shape in practice, but the guard is general.)
+    // Checked BEFORE awaiting the check so an erroring call neither blocks nor
+    // burns the gate.
+    if (
+      (result as Record<string, unknown>).error === true
+    ) {
+      return;
+    }
+
+    // First-call race (product#3742 review): the boot-time check is
+    // fire-and-forget, so a fast first tool call can reach here before the
+    // cache is populated — and if that's the only call of the session, the
+    // proposal never surfaces. When the cache is cold, wait for an
+    // ALREADY-RUNNING check (the boot fetch or this call's own refresh) to
+    // settle — but only that, never a fresh fetch, and only up to
+    // UPDATE_SURFACE_WAIT_MS. This means:
+    //   * warm cache (steady state) → no wait at all;
+    //   * cold cache + check in flight → wait briefly for the real result,
+    //     overlapping the tool's own I/O that already elapsed;
+    //   * cold cache + offline/blocked GitHub → the bounded wait expires (or
+    //     no check is in flight at all) and we attach nothing, so an offline
+    //     user's UNRELATED tool calls never hang on a doomed fetch. The next
+    //     call carries the proposal once the cache warms.
+    let info: UpdateInfo | null = getCachedUpdateInfo();
+    if (!info) {
+      const inflight = getInFlightCheck();
+      if (inflight) {
+        // The in-flight check can REJECT (e.g. the update-state file became
+        // unreadable/unwritable after startup, so stateStore.read()/update()
+        // rejects outside doCheck's fetch try/catch). Update checks are
+        // best-effort — maybeRefreshUpdate() swallows the same failure — so we
+        // catch here too and continue with no update_available rather than
+        // turning an unrelated, otherwise-successful tool call into an MCP
+        // error.
+        const settled = inflight.catch((err: any) => {
+          opts.logger?.warn?.(
+            `update_check.surface_await_failed ${err?.message ?? err}`
+          );
+          return null;
+        });
+        info = await Promise.race([
+          settled,
+          new Promise<null>((resolve) =>
+            setTimeout(() => resolve(null), UPDATE_SURFACE_WAIT_MS)
+          ),
+        ]);
+        // The race may have resolved via timeout while the check populated the
+        // cache a beat later, or the shared promise resolved to the info
+        // directly — prefer the freshest cache read.
+        info = getCachedUpdateInfo() ?? info;
+      }
+    }
     if (!info) return;
-    (result as Record<string, unknown>).update_available = info;
-    if (!promptedVersionsThisSession.has(info.latest_version)) {
+
+    const isAccountStatus = toolName === "leadbay_account_status";
+    const alreadyPrompted = promptedVersionsThisSession.has(info.latest_version);
+    // account_status always reflects the cache (its schema promises the
+    // field); other tools only piggy-back the first time per version so we
+    // don't decorate every single response for the rest of the session.
+    if (!isAccountStatus && alreadyPrompted) return;
+
+    if (isAccountStatus) {
+      (result as Record<string, unknown>).update_available = info;
+    } else {
+      // Mirror maybeAttachNotifications: write to the inner structured payload
+      // when the result is a markdown envelope, else the outer object — so the
+      // field rides along whether the client reads structuredContent or JSON.
+      const envelope = result as Record<string, unknown>;
+      const target =
+        envelope.__markdown_envelope === true &&
+        envelope.structured !== null &&
+        typeof envelope.structured === "object" &&
+        !Array.isArray(envelope.structured)
+          ? (envelope.structured as Record<string, unknown>)
+          : envelope;
+      const existingMeta =
+        target._meta &&
+        typeof target._meta === "object" &&
+        !Array.isArray(target._meta)
+          ? (target._meta as Record<string, unknown>)
+          : {};
+      target._meta = { ...existingMeta, update_available: info };
+    }
+
+    if (!alreadyPrompted) {
       promptedVersionsThisSession.add(info.latest_version);
       telemetry.captureUpdatePrompted?.({
         current_version: serverVersion,
@@ -886,10 +1002,12 @@ export function buildServer(
     // gating moves to the stderr-write step.
     const callStart = Date.now();
     const name = req.params.name;
-    // Fire-and-forget update re-check on every tool call. checkForUpdate
-    // itself returns immediately if last_check_time is within 24h, so
-    // the steady-state cost is one disk read. When stale, one GitHub
-    // roundtrip — never awaited, never blocks the tool.
+    // Kick off the update re-check at the TOP of the handler so it runs
+    // concurrently with tool.execute() below. Fire-and-forget — it never blocks
+    // the tool. checkForUpdate de-dupes onto a single shared in-flight promise,
+    // so this and the boot-time force-check converge; maybeAttachUpdate peeks at
+    // that shared promise (bounded) to close the fresh-session race without
+    // stalling offline callers (product#3742 review).
     maybeRefreshUpdate();
     const tool = toolByName.get(name);
     if (!tool) {
@@ -1024,12 +1142,19 @@ export function buildServer(
         signal: extra.signal,
         progress,
         elicit,
+        // Route leadbay_send_feedback to Sentry's feedback inbox (same place
+        // the web app's form lands). NOOP_TELEMETRY returns false, so the
+        // tool reports honestly when telemetry is off.
+        sendFeedback: (message, fbOpts) =>
+          telemetry.captureFeedback(message, fbOpts),
       });
       // Inject `update_available` into account_status returns when an
       // upgrade is cached. Other tools pass through untouched. Done
       // BEFORE the error/markdown/json branching so the field appears
-      // in either the JSON serialization OR structuredContent.
-      maybeAttachUpdate(name, result);
+      // in either the JSON serialization OR structuredContent. Awaited so a
+      // cold cache on the first call can settle the in-flight check before we
+      // conclude there's no update to show (no-op once the cache is warm).
+      await maybeAttachUpdate(name, result);
       // Inject `_meta.notifications` into ANY tool result when the inbox
       // is non-empty. Same timing as maybeAttachUpdate so the field rides
       // along regardless of whether the response is markdown or JSON.
@@ -1209,6 +1334,11 @@ export function buildServer(
             endpoint: err._meta?.endpoint,
           });
         }
+        // Upstream HTTP status (set by client.ts mapErrorResponse at
+        // _meta.http_status). Forward it onto the product-analytics events
+        // so catch-all codes like API_ERROR can be disambiguated by status
+        // on the dashboard. Absent for codes that never hit the HTTP layer.
+        const httpStatus: number | undefined = err._meta?.http_status;
         telemetry.captureToolCall({
           tool: name,
           ok: false,
@@ -1216,6 +1346,7 @@ export function buildServer(
           format: "error-envelope",
           bytes: errText.length,
           error_code: code,
+          ...(typeof httpStatus === "number" ? { http_status: httpStatus } : {}),
           triggered_by,
         });
         if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
@@ -1225,6 +1356,7 @@ export function buildServer(
             ok: false,
             duration_ms: errDur,
             error_code: code,
+            ...(typeof httpStatus === "number" ? { http_status: httpStatus } : {}),
           });
         }
         telemetry.captureException(err, buildBusinessCtx(name, err, triggered_by));

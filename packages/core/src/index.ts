@@ -119,6 +119,7 @@ import { newLens } from "./composite/new-lens.js";
 import { answerClarification } from "./composite/answer-clarification.js";
 import { reportOutreach } from "./composite/report-outreach.js";
 import { reportFriction } from "./composite/report-friction.js";
+import { sendFeedback } from "./tools/send-feedback.js";
 
 import type { Tool } from "./types.js";
 
@@ -168,7 +169,7 @@ export {
   bulkEnrichStatus, qualifyStatus, importStatus, resolveImportRows,
   // new composite writes
   bulkQualifyLeads, enrichTitles, adjustAudience, refinePrompt,
-  answerClarification, reportOutreach, reportFriction, importLeads, importAndQualify,
+  answerClarification, reportOutreach, reportFriction, sendFeedback, importLeads, importAndQualify,
   createCampaign, addLeadsToCampaign, removeLeadsFromCampaign,
   seedCandidates, extendLens,
 };
@@ -320,6 +321,13 @@ export const compositeWriteTools: Tool[] = [
   refinePrompt,
   answerClarification,
   reportOutreach,
+  // sendFeedback is granular-shaped (a single call to the telemetry seam →
+  // Sentry.captureFeedback, same inbox as the web app's feedback form), so it
+  // lives in tools/, NOT composite/. Registered here (not advanced-gated) so
+  // users can send feedback in-conversation without LEADBAY_MCP_ADVANCED.
+  // Write-gated since it sends data outward. Not in COMPOSITE_FILE_TOOL_NAMES,
+  // so _triggered_by is optional (no orchestration / mandatory-intent-trace).
+  sendFeedback,
   importLeads,
   importAndQualify,
   // Contact management (product#3703) — each is a single-call relay, so

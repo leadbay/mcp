@@ -6,7 +6,7 @@
 // this file never imports the CLI entrypoint.
 
 
-import { createClient, type LeadbayClient, type LeadbayError, type ToolLogger } from "@leadbay/core";
+import { createClient, REGIONS, type LeadbayClient, type LeadbayError, type ToolLogger } from "@leadbay/core";
 import { makeBrokenClient, type ResolvedClient } from "./broken-client.js";
 
 export interface ResolveTokenOptions {
@@ -93,4 +93,59 @@ export async function resolveClientFromToken(
       authState: "probe_failed",
     };
   }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// OAuth resource-server discovery (MCP authorization spec / RFC 9728)
+//
+// The hosted MCP endpoint is an OAuth 2.0 *protected resource*. A spec-compliant
+// remote client (Claude Desktop, ChatGPT) only runs its sign-in flow when the
+// server (a) returns 401 + a `WWW-Authenticate` header pointing at protected
+// resource metadata and (b) serves that metadata advertising the authorization
+// server. Without it the client never prompts — the reported bug. The Leadbay
+// regional backends already act as the OAuth authorization server (they serve
+// /.well-known/oauth-authorization-server + register/authorize/token); we just
+// point the client at the right one.
+
+/** Region → OAuth authorization server (the regional backend that serves the
+ *  authorization-server metadata, registration, and token endpoints). */
+export function regionAuthServer(region: "us" | "fr"): string {
+  return region === "fr" ? REGIONS.fr : REGIONS.us;
+}
+
+export interface ProtectedResourceMetadata {
+  resource: string;
+  authorization_servers: string[];
+  bearer_methods_supported: string[];
+}
+
+/** RFC 9728 Protected Resource Metadata for a hosted MCP endpoint. `resourceUrl`
+ *  is the canonical endpoint the client connected to (e.g.
+ *  https://leadbay-mcp-prod.fly.dev/mcp). */
+export function protectedResourceMetadata(opts: {
+  resourceUrl: string;
+  region: "us" | "fr";
+}): ProtectedResourceMetadata {
+  return {
+    resource: opts.resourceUrl,
+    authorization_servers: [regionAuthServer(opts.region)],
+    bearer_methods_supported: ["header"],
+  };
+}
+
+/** RFC 6750 §3 `WWW-Authenticate` value that points the client at our protected
+ *  resource metadata so it can discover the Leadbay OAuth server and sign in.
+ *  Per §3.1 we omit the error code when no credentials were sent (`missing`) and
+ *  include `invalid_token` when a token was sent but rejected (`expired`). */
+export function buildWwwAuthenticate(opts: {
+  resourceMetadataUrl: string;
+  authState: "missing" | "expired";
+}): string {
+  const parts = ['Bearer realm="mcp"'];
+  if (opts.authState === "expired") {
+    parts.push('error="invalid_token"');
+    parts.push('error_description="The access token is invalid or has expired"');
+  }
+  parts.push(`resource_metadata="${opts.resourceMetadataUrl}"`);
+  return parts.join(", ");
 }

@@ -85,16 +85,16 @@ export const accountStatus: Tool<Record<string, never>> = {
         properties: {
           current_version: { type: "string" },
           latest_version: { type: "string" },
-          mcpb_url: {
+          install_url: {
             type: "string",
-            description: "Direct download URL for the .mcpb installer asset.",
+            description: "Direct download URL for the installer asset (.dxt, falling back to .mcpb).",
           },
           release_url: {
             type: "string",
             description: "GitHub release page (changelog).",
           },
         },
-        required: ["current_version", "latest_version", "mcpb_url", "release_url"],
+        required: ["current_version", "latest_version", "install_url", "release_url"],
       },
     },
     required: ["user", "organization"],
