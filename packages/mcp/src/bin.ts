@@ -59,7 +59,7 @@ import { parseWriteEnv } from "./env.js";
 import { initTelemetry } from "./telemetry.js";
 import { createDefaultUpdateStateStore } from "./update-state.js";
 import { checkForUpdate, recordRunningVersion } from "./update-check.js";
-import { oauthLogin, inferRegionViaStargate } from "./oauth.js";
+import { oauthLogin, inferRegionViaStargate, BrowserOpenFailedError } from "./oauth.js";
 
 // Regional OAuth base URLs. Production is the default path; staging remains
 // available for `login --oauth --staging` and staging MCPB validation.
@@ -236,6 +236,14 @@ function resolveOAuthBootstrapCredentialsPath(): { path: string; legacy: boolean
   };
 }
 
+// Set when OAuth bootstrap aborted because it couldn't open a browser (Claude
+// Desktop spawns the .dxt stdio server with a sanitized PATH, so the OS
+// launcher can be unreachable). The AUTH_MISSING envelope reads this to give
+// the user an open-failure-specific message instead of the generic one —
+// bootstrap's stderr is invisible inside Claude Desktop, so the tool envelope
+// is the only channel they see.
+let browserOpenFailedAtBootstrap = false;
+
 // OAuth bootstrap: when an MCPB opts in with LEADBAY_OAUTH_BOOTSTRAP=1 and no
 // token is available from env or disk, run the browser-loopback OAuth flow
 // inline so the server can come up authenticated. This is what makes the .mcpb
@@ -283,6 +291,10 @@ async function bootstrapOAuthIfMissing(logger: ToolLogger): Promise<boolean> {
       authServerBaseUrl,
       clientName: `Leadbay MCP @ ${hostname()}`,
       log: (m) => process.stderr.write(m),
+      // In Claude Desktop's sanitized launch, a failed browser-open would
+      // otherwise dangle for the full 5-min callback timeout with nothing
+      // visible to the user. Fail fast and surface the URL via the envelope.
+      failFastOnOpenError: true,
     });
 
     // Persist to ~/.config/leadbay/credentials.json so future launches are silent.
@@ -321,6 +333,17 @@ async function bootstrapOAuthIfMissing(logger: ToolLogger): Promise<boolean> {
     logger.info?.(`OAuth bootstrap complete — region=${region}`);
     return true;
   } catch (err: any) {
+    if (err instanceof BrowserOpenFailedError) {
+      // Couldn't auto-open the browser (sanitized PATH). Flag it so the
+      // AUTH_MISSING envelope explains the open failure, and let the server
+      // come up immediately rather than dangling on the callback wait.
+      browserOpenFailedAtBootstrap = true;
+      process.stderr.write(
+        `[leadbay-mcp] Could not open a browser automatically: ${err.message}\n` +
+          `  Tools will return an AUTH_MISSING envelope asking the user to restart the extension.\n`
+      );
+      return false;
+    }
     process.stderr.write(
       `[leadbay-mcp] OAuth bootstrap failed: ${err?.message ?? err}\n` +
         `  The server will start but tools will return AUTH_MISSING until you authorize.\n`
@@ -348,16 +371,32 @@ export async function resolveClientFromEnv(logger: ToolLogger): Promise<Resolved
       );
       const regionEnv = process.env.LEADBAY_REGION;
       const region: "us" | "fr" = regionEnv === "fr" ? "fr" : "us";
-      return {
-        client: makeBrokenClient(
-          {
+      // If the browser couldn't be opened automatically, tell the user plainly
+      // and point them at restarting the extension — which reruns the flow.
+      // NOTE: we deliberately do NOT hand over the previous authorize URL: the
+      // loopback listener that minted it was torn down when bootstrap aborted,
+      // so its redirect_uri port is dead and clicking it would 404 on callback.
+      // A fresh run mints a fresh listener + URL. (A future change could keep
+      // the listener alive and surface a live link — that's the non-blocking
+      // bootstrap path, intentionally out of scope here.)
+      const envelope: LeadbayError = browserOpenFailedAtBootstrap
+        ? {
+            error: true,
+            code: "AUTH_MISSING",
+            message: "Couldn't open your browser to sign in to Leadbay.",
+            hint:
+              "The extension couldn't launch a browser automatically. " +
+              "Restart the Leadbay extension in Claude Desktop to retry the " +
+              "sign-in — it will open your browser to authorize.",
+          }
+        : {
             error: true,
             code: "AUTH_MISSING",
             message: "Leadbay OAuth authorization has not completed.",
             hint: "Restart the Claude Desktop extension and complete the Leadbay OAuth browser authorization.",
-          },
-          region
-        ),
+          };
+      return {
+        client: makeBrokenClient(envelope, region),
         authState: "missing",
       };
     }

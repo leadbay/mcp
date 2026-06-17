@@ -61,6 +61,33 @@ export interface OAuthLoginOptions {
   openBrowser?: (url: string) => Promise<void>;
   /** How long to wait for the user to finish the browser flow. Default: 5 min. */
   timeoutMs?: number;
+  /**
+   * When the browser can't be opened automatically (e.g. Claude Desktop's
+   * sanitized spawn environment), don't block for the full callback timeout —
+   * throw {@link BrowserOpenFailedError} carrying the authorize URL so the
+   * caller can surface a clickable sign-in link immediately instead of after a
+   * 5-minute hang. Default: false (legacy behaviour — keep waiting, the user
+   * may open the logged URL by hand, as the CLI `login` flow expects).
+   */
+  failFastOnOpenError?: boolean;
+}
+
+/**
+ * Thrown by {@link oauthLogin} when `failFastOnOpenError` is set and the
+ * browser could not be launched. Carries the authorize URL so the caller can
+ * present a manual sign-in link to the user.
+ */
+export class BrowserOpenFailedError extends Error {
+  readonly authorizeUrl: string;
+  constructor(authorizeUrl: string, cause: unknown) {
+    super(
+      `Could not open a browser automatically: ${
+        (cause as any)?.message ?? cause
+      }`
+    );
+    this.name = "BrowserOpenFailedError";
+    this.authorizeUrl = authorizeUrl;
+  }
 }
 
 export interface OAuthLoginResult {
@@ -424,32 +451,72 @@ export async function exchangeCodeForToken(opts: {
 // ────────────────────────────────────────────────────────────────────────────
 // Browser launch
 
+/**
+ * Ordered list of (command, args) candidates to try for a given platform.
+ *
+ * Each platform leads with the OS launcher's ABSOLUTE path, then falls back to
+ * the bare command name (resolved via PATH). The absolute path matters because
+ * Claude Desktop spawns .dxt/.mcpb stdio servers with a sanitized environment
+ * whose PATH does NOT contain `open` / `xdg-open` / `cmd` — so `spawn("open")`
+ * fails with ENOENT and the browser never opens (the exact OAuth-on-install
+ * failure mode). Per the MCP spec, stdio servers can't assume the host shell's
+ * PATH, so we resolve the launcher ourselves and only use PATH as a fallback
+ * for unusual layouts (e.g. a custom Linux distro without /usr/bin/xdg-open).
+ */
+export function browserOpenCandidates(url: string): Array<{ cmd: string; args: string[] }> {
+  const platform = process.platform;
+  if (platform === "darwin") {
+    // `open` lives at a fixed location on every macOS install.
+    return [
+      { cmd: "/usr/bin/open", args: [url] },
+      { cmd: "open", args: [url] },
+    ];
+  }
+  if (platform === "win32") {
+    // `start` is a cmd builtin; double-quotes around an empty title prevent
+    // start from treating the URL as the window title. %SystemRoot% points at
+    // the Windows dir; fall back to the literal default + bare `cmd`.
+    const sysRoot = process.env.SystemRoot || process.env.windir || "C:\\Windows";
+    const cmdExe = `${sysRoot}\\System32\\cmd.exe`;
+    return [
+      { cmd: cmdExe, args: ["/c", "start", '""', url] },
+      { cmd: "cmd", args: ["/c", "start", '""', url] },
+    ];
+  }
+  // Linux / other: xdg-open is conventionally in /usr/bin (sometimes /usr/local/bin).
+  return [
+    { cmd: "/usr/bin/xdg-open", args: [url] },
+    { cmd: "/usr/local/bin/xdg-open", args: [url] },
+    { cmd: "xdg-open", args: [url] },
+  ];
+}
+
 export async function openInBrowser(url: string): Promise<void> {
   // Cross-platform without a runtime dep. Detach the child so we don't keep it
   // tied to our process; on macOS `open` returns immediately anyway.
-  const platform = process.platform;
-  let cmd: string;
-  let args: string[];
-  if (platform === "darwin") {
-    cmd = "open";
-    args = [url];
-  } else if (platform === "win32") {
-    // `start` is a cmd builtin; double-quotes around an empty title prevent
-    // start from treating the URL as the window title.
-    cmd = "cmd";
-    args = ["/c", "start", '""', url];
-  } else {
-    cmd = "xdg-open";
-    args = [url];
+  //
+  // Try each candidate in order; only the LAST ENOENT propagates. This makes
+  // the launch independent of the inherited PATH (see browserOpenCandidates).
+  const candidates = browserOpenCandidates(url);
+  let lastErr: unknown;
+  for (const { cmd, args } of candidates) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(cmd, args, { stdio: "ignore", detached: true });
+        child.on("error", reject);
+        child.on("spawn", () => {
+          child.unref();
+          resolve();
+        });
+      });
+      return; // launched successfully
+    } catch (err) {
+      lastErr = err;
+      // ENOENT → this launcher path doesn't exist here; try the next candidate.
+      // Any other error also falls through to the next candidate.
+    }
   }
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: "ignore", detached: true });
-    child.on("error", reject);
-    child.on("spawn", () => {
-      child.unref();
-      resolve();
-    });
-  });
+  throw lastErr ?? new Error("no browser launcher available");
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -492,6 +559,13 @@ export async function oauthLogin(opts: OAuthLoginOptions): Promise<OAuthLoginRes
         `Could not open browser automatically (${err?.message ?? err}). ` +
           `Open this URL manually:\n  ${authorizeUrl.toString()}\n`
       );
+      // In a headless / sanitized launch (Claude Desktop .dxt), no human will
+      // ever see that stderr line. Rather than dangle for the full 5-minute
+      // callback timeout, bail now so the caller can surface a clickable
+      // sign-in URL through a channel the user actually sees.
+      if (opts.failFastOnOpenError) {
+        throw new BrowserOpenFailedError(authorizeUrl.toString(), err);
+      }
     }
 
     log("Waiting for authorization (5 min timeout)…\n");
