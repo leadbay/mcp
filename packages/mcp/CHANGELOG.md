@@ -1,5 +1,9 @@
 # Changelog — @leadbay/mcp
 
+## 0.21.1 — 2026-06-16
+
+- **CSV import no longer 400s on a lead status the agent didn't uppercase** (product#3745): `leadbay_import_leads` / `leadbay_import_and_qualify` forwarded `default_status` / `statuses` values verbatim to `POST /imports/{id}/update_mappings`, whose backend `MappingsPayload` decodes them as the strict, case-sensitive `LeadStatus` enum (`DEFAULT, INBOUND, UNWANTED, WANTED, LOST, WON`). A value like "Won" failed deserialization and the whole call 400'd with an opaque "JSON deserialization error" before any record committed — JM hit this trying to tag 179 companies as Won. The MCP now owns the canonical set and enforces it before sending: status values are matched case-insensitively to their enum member ("Won" → "WON"), an empty default means no default, and a genuinely unknown status returns a clear `IMPORT_INVALID_STATUS` error naming the valid values instead of an opaque backend 400. The two tools' input schemas now declare the enum.
+
 ## 0.21.0 — 2026-06-16
 
 - **Hosted MCP now triggers OAuth sign-in in Claude Desktop / ChatGPT** (remote custom connectors): the Fly endpoint was not an OAuth-compliant resource server, so a remote client had nothing to discover, never prompted the user to sign in, and then surfaced a host-side "needs auth / token expired" state even though the user never had a token. The server now implements the MCP authorization spec (RFC 9728): it serves OAuth 2.0 Protected Resource Metadata at `/.well-known/oauth-protected-resource[/<resource>]` and answers an unauthenticated (or invalid/expired) `POST /mcp` with `401` + `WWW-Authenticate: Bearer ... resource_metadata="…"`. The client discovers the Leadbay authorization server (the existing regional backend used by `login --oauth`) and runs the browser sign-in. Tool requests auto-probe both regions, so a valid token routes correctly and a stale one re-prompts instead of erroring.

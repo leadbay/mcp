@@ -13,6 +13,7 @@ import {
   importLeads,
   escapeCsvCell,
   isImportLeadsRunningResult,
+  LEAD_STATUSES,
 } from "./import-leads.js";
 import {
   fanOutWebFetchAndPoll,
@@ -379,8 +380,18 @@ export const importAndQualify: Tool<
               "Ergonomic shorthand: `{CsvColumn: <number-id>}` or `{CsvColumn: '<field-name>'}` for " +
               "custom-field mappings. Resolved against /crm/custom_fields catalog.",
           },
-          statuses: { type: "object", description: "Optional status string mapping." },
-          default_status: { type: ["string", "null"], description: "Optional default status." },
+          statuses: {
+            type: "object",
+            description:
+              "Optional map of raw CSV status-cell text → lead status. Values must be one of " +
+              `${LEAD_STATUSES.join(", ")} (case-insensitive); keys are the verbatim cell strings.`,
+          },
+          default_status: {
+            type: ["string", "null"],
+            enum: [...LEAD_STATUSES, null],
+            description:
+              `Optional default lead status. One of ${LEAD_STATUSES.join(", ")} (case-insensitive).`,
+          },
         },
         // mappings has a closed shape (fields/custom_fields/statuses/default_status).
         // Inner objects (fields, custom_fields, statuses) keep open shapes
