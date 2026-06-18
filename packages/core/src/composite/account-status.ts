@@ -1,5 +1,5 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool, ToolContext, QuotaStatusPayload } from "../types.js";
+import type { Tool, ToolContext, QuotaStatusPayload, LensPayload } from "../types.js";
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
 
 import { leadbay_account_status as ACCOUNT_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -45,7 +45,13 @@ export const accountStatus: Tool<Record<string, never>> = {
       },
       last_requested_lens: {
         type: ["number", "null"],
-        description: "Most recent lens id the user pulled leads from.",
+        description:
+          "INTERNAL — the most recent lens id the user pulled leads from. Do NOT volunteer the lens in an account-status answer; the user did not ask about it. This raw NUMBER is for internal routing only — NEVER show it to the user. If the user explicitly asks which lens is active, answer with `last_requested_lens_name`, never this id.",
+      },
+      last_requested_lens_name: {
+        type: ["string", "null"],
+        description:
+          "Human-readable name of last_requested_lens (resolved from /lenses). Use THIS — never the numeric id — on the rare occasion the user explicitly asks which lens is active. Null if the name couldn't be resolved.",
       },
       quota: {
         type: ["object", "null"],
@@ -127,6 +133,22 @@ export const accountStatus: Tool<Record<string, never>> = {
       );
     }
 
+    // Resolve the lens id → human name so the agent can answer with the NAME
+    // (never the raw number) if the user explicitly asks which lens is active.
+    // Best-effort: never block account_status on it — null name on any failure.
+    let last_requested_lens_name: string | null = null;
+    const lensId = me.last_requested_lens ?? null;
+    if (lensId != null) {
+      try {
+        const lenses = await client.request<LensPayload[]>("GET", "/lenses");
+        last_requested_lens_name = lenses.find((l) => l.id === lensId)?.name ?? null;
+      } catch (err: any) {
+        ctx?.logger?.warn?.(
+          `account_status: lens-name resolve failed: ${err?.message ?? err?.code ?? err}`
+        );
+      }
+    }
+
     return withAgentMemoryMeta(client, {
       user: {
         email: me.email ?? null,
@@ -143,6 +165,7 @@ export const accountStatus: Tool<Record<string, never>> = {
         plan: quota?.plan ?? me.organization.quota_plan ?? null,
       },
       last_requested_lens: me.last_requested_lens ?? null,
+      last_requested_lens_name,
       // Quota goes here verbatim from /quota_status. Legacy freemium.* fields
       // on /me are intentionally NOT surfaced — they're defunct (see
       // SHAPE-DRIFT.md probe round 4).

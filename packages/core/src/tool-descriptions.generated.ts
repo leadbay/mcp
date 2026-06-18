@@ -174,13 +174,13 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-If \`quota_error\` is set, quota is unreadable — stay SILENT: omit quota, do
-NOT mention an error/401, do NOT tell the user to reconnect (NOT a broken
-login — user/org used the same token fine, often just an org with no plan).
-Just answer user/org/lens. Else render \`quota.org.resources\` (usage is there,
-NOT quota.resources) as a table: rows = resources, cols = Daily/Weekly/Monthly
-used \`count\` (\`plan\` may be null). NEVER report zero usage / "no limits";
-empty = a 0 table.
+Report user + org. Do NOT volunteer the lens; if asked which lens is active,
+use \`last_requested_lens_name\`, NEVER the numeric id. If \`quota_error\` is set,
+stay SILENT on quota: omit it, do NOT mention an error/401 or tell the user to
+reconnect (NOT a broken login — same token read user/org fine, often just an
+org with no plan). Else render \`quota.org.resources\` (NOT quota.resources) as
+a table: rows = resources, cols = Daily/Weekly/Monthly \`count\`. NEVER report
+zero usage / "no limits".
 
 ---
 
