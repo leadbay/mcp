@@ -258,6 +258,37 @@ describe("oauthLogin — failFastOnOpenError", () => {
     expect(persisted).toBe("99"); // the registration response's client_id
   });
 
+  it("registers with a PORT-LESS loopback redirect, but authorizes with the real port", async () => {
+    // Regression: registering with the listener's concrete ephemeral port makes
+    // a cached client_id fail on the next launch ("redirect URL not authorized")
+    // because the backend pins the registered redirect_uri and the port changes
+    // each launch. We must register port-less (http://127.0.0.1/callback) so the
+    // backend's RFC 8252 loopback matching accepts any per-launch port.
+    const captured = discoveryAndRegister();
+    let authUrl: string | undefined;
+    await oauthLogin({
+      authServerBaseUrl: "https://api-us.leadbay.app",
+      clientName: "Leadbay MCP @ test",
+      openBrowser: async () => {},
+      getCachedClientId: () => undefined,
+      onAuthorizeUrl: (u) => {
+        authUrl = u;
+      },
+      timeoutMs: 120,
+    }).catch(() => {});
+
+    // The REGISTRATION body must carry the port-less redirect.
+    const regReq = captured.requests.find((r) => r.path.includes("/oauth/register"));
+    expect(regReq).toBeDefined();
+    expect(regReq!.body).toContain("http://127.0.0.1/callback");
+    expect(regReq!.body).not.toMatch(/127\.0\.0\.1%3A\d+/); // no port in registration
+    expect(regReq!.body).not.toMatch(/127\.0\.0\.1:\d+/);
+
+    // The AUTHORIZE url must carry the real ephemeral loopback PORT (what the
+    // listener bound), not the port-less form.
+    expect(authUrl).toMatch(/redirect_uri=http%3A%2F%2F127\.0\.0\.1%3A\d+%2Fcallback/);
+  });
+
   it("fires onAuthorizeUrl with the live URL before blocking on the callback", async () => {
     discoveryAndRegister();
     let surfaced: string | undefined;
