@@ -174,13 +174,13 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-Report user + org. Do NOT volunteer the lens; if asked which lens is active,
-use \`last_requested_lens_name\`, NEVER the numeric id. If \`quota_error\` is set,
-stay SILENT on quota: omit it, do NOT mention an error/401 or tell the user to
-reconnect (NOT a broken login — same token read user/org fine, often just an
-org with no plan). Else render \`quota.org.resources\` (NOT quota.resources) as
-a table: rows = resources, cols = Daily/Weekly/Monthly \`count\`. NEVER report
-zero usage / "no limits".
+Report ONLY user + org by default. NEVER mention the lens unless the user
+explicitly asks ("which lens?"); a plain "what account" ask is NOT a lens
+question — omit the lens. When asked, use \`last_requested_lens_name\`, NEVER
+the numeric id. If \`quota_error\` is set, stay SILENT on quota: omit it, do NOT
+mention an error/401 or tell the user to reconnect (NOT a broken login — same
+token read user/org fine). Else render \`quota.org.resources\` (NOT
+quota.resources) as a table.
 
 ---
 

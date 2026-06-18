@@ -51,7 +51,7 @@ export const accountStatus: Tool<Record<string, never>> = {
       last_requested_lens_name: {
         type: ["string", "null"],
         description:
-          "Human-readable name of last_requested_lens (resolved from /lenses). Use THIS — never the numeric id — on the rare occasion the user explicitly asks which lens is active. Null if the name couldn't be resolved.",
+          "Human-readable name of last_requested_lens (resolved from /lenses). DEFAULT BEHAVIOR: do NOT include the lens in your account-status answer at all — a plain 'what account am I connected to' question is about the user + org, NOT the lens. ONLY surface this when the user's message EXPLICITLY asks about the lens/audience (e.g. 'which lens is active?'). When you do, use THIS name — never the numeric id. Null if unresolved.",
       },
       quota: {
         type: ["object", "null"],
@@ -123,14 +123,29 @@ export const accountStatus: Tool<Record<string, never>> = {
         `/organizations/${me.organization.id}/quota_status`
       );
     } catch (err: any) {
-      quota_error = {
-        code: err?.code ?? "QUOTA_STATUS_FAILED",
-        http_status: err?._meta?.http_status ?? null,
-        message: err?.message ?? "quota_status request failed",
-      };
-      ctx?.logger?.warn?.(
-        `account_status: quota_status failed: ${err?.message ?? err?.code ?? err}`
-      );
+      const status: number | null = err?._meta?.http_status ?? null;
+      // A 401/403 on quota_status is NOT an auth failure — /users/me above used
+      // the same token and succeeded. It's a backend quirk for plan-less orgs
+      // (plan: null) and is irrelevant to the user (product#3761). Do NOT put it
+      // in the payload at all: prompt guidance alone was leaky — the agent still
+      // hedged with "quota had a brief hiccup". Withholding it from the response
+      // is the only way the agent literally cannot surface it. We still log it.
+      // Non-auth failures (500, network) DO surface as quota_error so the agent
+      // can legitimately say quota is unreadable for a real reason.
+      if (status === 401 || status === 403) {
+        ctx?.logger?.warn?.(
+          `account_status: quota_status ${status} (plan-less org / backend quirk) — withheld from payload`
+        );
+      } else {
+        quota_error = {
+          code: err?.code ?? "QUOTA_STATUS_FAILED",
+          http_status: status,
+          message: err?.message ?? "quota_status request failed",
+        };
+        ctx?.logger?.warn?.(
+          `account_status: quota_status failed: ${err?.message ?? err?.code ?? err}`
+        );
+      }
     }
 
     // Resolve the lens id → human name so the agent can answer with the NAME
