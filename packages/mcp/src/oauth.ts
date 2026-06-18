@@ -120,6 +120,45 @@ export async function inferRegionViaStargate(opts: {
   );
 }
 
+const REGION_BASE_URLS: Record<"us" | "fr", string> = {
+  us: "https://api-us.leadbay.app",
+  fr: "https://api-fr.leadbay.app",
+};
+
+/**
+ * Resolve the region a token ACTUALLY belongs to by probing `/users/me`.
+ *
+ * Region detection via stargate is GeoIP-based — it guesses from the user's IP,
+ * not from which backend owns their account. A wrong guess (travel, VPN, a FR
+ * account holder sitting in the US) pins the wrong LEADBAY_REGION, and then
+ * every request 401s against the wrong backend on every startup — the "401 for
+ * nothing" users report (product#3761). So after sign-in we VERIFY: probe the
+ * preferred (GeoIP-detected) region first, and if its `/users/me` doesn't
+ * authenticate, fall back to the other region. We pin whichever the token
+ * actually works against — never just the IP guess.
+ *
+ * Returns the confirmed region, or null if the token authenticated against
+ * NEITHER backend (a genuinely bad/revoked token — let the caller surface that).
+ */
+export async function verifyTokenRegion(
+  token: string,
+  preferred: "us" | "fr"
+): Promise<"us" | "fr" | null> {
+  const order: ("us" | "fr")[] = preferred === "fr" ? ["fr", "us"] : ["us", "fr"];
+  for (const region of order) {
+    try {
+      const res = await httpsCall("GET", `${REGION_BASE_URLS[region]}/1.5/users/me`, {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      });
+      if (res.status >= 200 && res.status < 300) return region;
+    } catch {
+      // Network error on this region — try the other before giving up.
+    }
+  }
+  return null;
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // PKCE
 

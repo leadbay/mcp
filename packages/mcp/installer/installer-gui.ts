@@ -14,7 +14,7 @@ import {
   HOSTED_MCP_URL,
   type DetectedClient,
 } from "./install-shared.js";
-import { inferRegionViaStargate, oauthLogin } from "../src/oauth.js";
+import { inferRegionViaStargate, oauthLogin, verifyTokenRegion } from "../src/oauth.js";
 
 declare const __LEADBAY_MCP_VERSION__: string;
 
@@ -107,15 +107,26 @@ async function loginWithOAuth(): Promise<{ ok: boolean; sessionId?: string; regi
   cleanupSessions();
 
   try {
-    const region = await inferRegionViaStargate({ staging: false });
+    const detectedRegion = await inferRegionViaStargate({ staging: false });
     const { hostname } = await import("node:os");
     const { accessToken } = await oauthLogin({
-      authServerBaseUrl: OAUTH_BASE_URLS.prod[region],
+      authServerBaseUrl: OAUTH_BASE_URLS.prod[detectedRegion],
       clientName: `Leadbay MCP installer @ ${hostname()}`,
       log: () => undefined,
     });
+    // GeoIP only GUESSES the region from the user's IP. Verify the token against
+    // the actual backends and pin whichever one owns the account — otherwise a
+    // wrong guess writes a wrong LEADBAY_REGION and the MCP 401s every startup
+    // (product#3761). Fall back to the detected region only if neither probe
+    // authenticated (e.g. a transient backend blip) — better to proceed than to
+    // block sign-in; the MCP's own startup auto-probe is the final safety net.
+    const verified = await verifyTokenRegion(accessToken, detectedRegion);
+    const region = verified ?? detectedRegion;
     const sessionId = randomUUID();
-    const accountLabel = `Leadbay OAuth (${region.toUpperCase()})`;
+    const accountLabel =
+      verified && verified !== detectedRegion
+        ? `Leadbay OAuth (${region.toUpperCase()} — corrected from ${detectedRegion.toUpperCase()})`
+        : `Leadbay OAuth (${region.toUpperCase()})`;
     sessions.set(sessionId, { token: accessToken, region, accountLabel, createdAt: Date.now() });
     return { ok: true, sessionId, region, accountLabel };
   } catch (err: any) {
