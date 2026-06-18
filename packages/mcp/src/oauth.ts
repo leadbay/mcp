@@ -24,6 +24,14 @@ import { spawn } from "node:child_process";
 import { AddressInfo } from "node:net";
 import { readdirSync } from "node:fs";
 
+// Port-less loopback redirect used for Dynamic Client Registration. Registering
+// with this (instead of the listener's concrete ephemeral port) lets one cached
+// client_id be reused across launches: the backend pins the registered
+// redirect_uri but, per RFC 8252 §7.3, accepts any 127.0.0.1 *port* at /authorize
+// when the registered URI is itself port-less. (Verified against the Leadbay
+// backend: a specific port authorizes fine against a port-less registration.)
+const LOOPBACK_REDIRECT_BASE = "http://127.0.0.1/callback";
+
 // ────────────────────────────────────────────────────────────────────────────
 // Types
 
@@ -626,8 +634,18 @@ export async function oauthLogin(opts: OAuthLoginOptions): Promise<OAuthLoginRes
     // a once-and-reuse operation; re-registering every launch is what exhausts
     // the backend's ~10-registrations/IP/hour limit (Claude Desktop fires
     // several launches per install via its probe-restarts). Only register when
-    // there's no cached id. Loopback clients accept any 127.0.0.1 port per
-    // RFC 8252 §7.3, so a fresh ephemeral port works against a cached id.
+    // there's no cached id.
+    //
+    // CRITICAL: register with the PORT-LESS loopback redirect (http://127.0.0.1/callback)
+    // — NOT the listener's concrete ephemeral port. The Leadbay backend pins the
+    // registered redirect_uri and validates it at /authorize. Our loopback port
+    // is random each launch, so a client registered with one port is rejected on
+    // the next launch ("This app's redirect URL is not authorized"). RFC 8252
+    // §7.3 says the AS MUST allow any port for a loopback redirect; the backend
+    // honors this ONLY when the registered URI is itself port-less. So we
+    // register port-less once, then send the real per-launch port at /authorize —
+    // which the backend accepts (verified). This is what makes the cached id
+    // reusable across launches.
     let clientId = opts.getCachedClientId?.();
     if (clientId) {
       log(`Reusing cached OAuth client_id (${clientId}) — skipping registration.\n`);
@@ -635,7 +653,7 @@ export async function oauthLogin(opts: OAuthLoginOptions): Promise<OAuthLoginRes
       log(`Registering client at ${doc.registration_endpoint}…\n`);
       const registered = await registerClient(doc.registration_endpoint, {
         clientName: opts.clientName,
-        redirectUri: listener.redirectUri,
+        redirectUri: LOOPBACK_REDIRECT_BASE,
         logoUri: opts.logoUri,
       });
       clientId = registered.client_id;
