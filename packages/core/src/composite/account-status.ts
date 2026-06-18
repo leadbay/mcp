@@ -141,7 +141,13 @@ export const accountStatus: Tool<Record<string, never>> = {
     if (lensId != null) {
       try {
         const lenses = await client.request<LensPayload[]>("GET", "/lenses");
-        last_requested_lens_name = lenses.find((l) => l.id === lensId)?.name ?? null;
+        // Lens ids are STRINGS server-side (e.g. "40005") — see my-lenses.ts.
+        // `me.last_requested_lens` may be a number, so a strict `===` silently
+        // misses ("40005" === 40005 is false), leaving the name null. Normalize
+        // both sides to string before matching, as my-lenses.ts does.
+        const wantId = String(lensId);
+        last_requested_lens_name =
+          lenses.find((l) => String(l.id) === wantId)?.name ?? null;
       } catch (err: any) {
         ctx?.logger?.warn?.(
           `account_status: lens-name resolve failed: ${err?.message ?? err?.code ?? err}`
