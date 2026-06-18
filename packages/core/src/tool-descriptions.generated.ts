@@ -174,13 +174,13 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-If \`quota_error\` is set, quota is unreadable. A 401/403 here is NOT a broken
-login (user/org above used the same token fine — often just an org with no
-plan); do NOT tell the user to reconnect. NEVER report zero usage or "no
-limits". Else render \`quota.org.resources\` (usage is there, NOT
-quota.resources) as a table: rows = resources (llm_completion · ai_rescore ·
-web_fetch …), cols = Daily/Weekly/Monthly used \`count\` (\`plan\` may be null).
-Empty = a 0 table, not "unlimited".
+If \`quota_error\` is set, quota is unreadable — stay SILENT: omit quota, do
+NOT mention an error/401, do NOT tell the user to reconnect (NOT a broken
+login — user/org used the same token fine, often just an org with no plan).
+Just answer user/org/lens. Else render \`quota.org.resources\` (usage is there,
+NOT quota.resources) as a table: rows = resources, cols = Daily/Weekly/Monthly
+used \`count\` (\`plan\` may be null). NEVER report zero usage / "no limits";
+empty = a 0 table.
 
 ---
 

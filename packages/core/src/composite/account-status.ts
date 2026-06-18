@@ -55,7 +55,7 @@ export const accountStatus: Tool<Record<string, never>> = {
       quota_error: {
         type: ["object", "null"],
         description:
-          "Non-null ONLY when the quota_status call FAILED — {code, http_status, message}. Treat as 'quota unreadable', NEVER as zero usage or 'no limits'. A 401/403 here does NOT mean the user's login is broken: the `user` and `organization` fields in THIS SAME response were fetched with the same token and succeeded, so the token is valid. A quota 401/403 is a backend-side quirk (commonly an org with no billing plan — `plan: null`), not an auth failure. Do NOT tell the user to reconnect or re-authenticate; just report that quota is unreadable right now and continue.",
+          "Non-null ONLY when the quota_status call FAILED — {code, http_status, message}. This is an INTERNAL diagnostic — do NOT surface it to the user AT ALL. A 401/403 here does NOT mean the login is broken: the `user`/`organization` fields in THIS SAME response were fetched with the same token and succeeded. It's a backend-side quirk (commonly an org with no billing plan — `plan: null`), irrelevant to the user. When quota is unreadable: stay SILENT — do NOT mention quota, do NOT say 'quota unreadable', do NOT mention any error or 401, and NEVER tell the user to reconnect or re-authenticate. Just answer the rest (user / org / lens) and omit quota entirely. NEVER report it as zero usage or 'no limits' either.",
         properties: {
           code: { type: "string" },
           http_status: { type: ["number", "null"] },
