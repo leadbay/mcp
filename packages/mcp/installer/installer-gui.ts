@@ -24,6 +24,14 @@ type InstallResult = { id: string; label: string; ok: boolean; message: string }
 type LogLevel = "info" | "active" | "success" | "error" | "done";
 
 const VERSION = __LEADBAY_MCP_VERSION__;
+
+// Leadbay wordmark icon — the stacked-pages mark, inline so the installer
+// has zero external asset dependencies (CSP-safe, no network fetch).
+const LEADBAY_LOGO_SVG =
+  '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+  '<path d="M12 5.2C9.7 3.9 6.8 3.6 4 4.4v13.2c2.8-.8 5.7-.5 8 .8 2.3-1.3 5.2-1.6 8-.8V4.4c-2.8-.8-5.7-.5-8 .8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' +
+  '<path d="M12 5.2V18.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' +
+  '</svg>';
 const PORT = Number(process.env.LEADBAY_INSTALLER_PORT ?? 0);
 const sessions = new Map<string, LoginSession>();
 const OAUTH_BASE_URLS = {
@@ -320,62 +328,72 @@ function pageUninstallHtml(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Leadbay MCP uninstaller</title>
   <style>
-    :root { color-scheme: light dark; --bg:#f6f7f4; --panel:#fff; --text:#1d241f; --muted:#65706a; --line:#dbe2dc; --accent:#008f7a; --accent2:#06705f; --danger:#b42318; --shadow:0 18px 45px rgba(32,45,38,.12); }
-    @media (prefers-color-scheme: dark) { :root { --bg:#121612; --panel:#1b211c; --text:#eef4ed; --muted:#a4afa7; --line:#303930; --shadow:0 18px 45px rgba(0,0,0,.28); } }
+    :root { color-scheme: light dark; --bg:#fff; --panel:#fff; --ink:#0d0f0e; --text:#0d0f0e; --muted:#7b837e; --line:#e7eae8; --soft:#f6f7f5; --danger:#b42318; --ok:#0e9f6e; --warn:#b06a00; --shadow:0 24px 60px rgba(13,15,14,.10); }
+    @media (prefers-color-scheme: dark) { :root { --bg:#0c0e0d; --panel:#141716; --ink:#fff; --text:#f2f5f3; --muted:#9aa39d; --line:#262b28; --soft:#1a1e1c; --shadow:0 24px 60px rgba(0,0,0,.4); } }
     * { box-sizing:border-box; }
-    body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; display:grid; place-items:center; padding:28px; }
-    main { width:min(880px,100%); background:var(--panel); border:1px solid var(--line); border-radius:8px; box-shadow:var(--shadow); overflow:hidden; }
-    header { padding:22px 24px 16px; border-bottom:1px solid var(--line); display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
-    h1 { font-size:22px; line-height:1.15; margin:0 0 6px; letter-spacing:0; }
-    .meta { color:var(--muted); }
-    .badge { border:1px solid var(--line); border-radius:999px; padding:5px 10px; color:var(--muted); white-space:nowrap; }
-    .steps { display:grid; grid-template-columns:repeat(2,1fr); border-bottom:1px solid var(--line); }
-    .step-pill { padding:12px 24px; border-right:1px solid var(--line); color:var(--muted); font-weight:700; }
-    .step-pill:last-child { border-right:0; }
-    .step-pill.active { color:var(--text); background:color-mix(in srgb,var(--danger),transparent 88%); }
-    section { padding:22px 24px; }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font:15px/1.5 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; display:grid; place-items:center; padding:32px; -webkit-font-smoothing:antialiased; }
+    main { width:min(640px,100%); position:relative; background:var(--panel); border:1px solid var(--line); border-radius:22px; box-shadow:var(--shadow); overflow:hidden; }
+    header { padding:26px 30px 0; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:18px; letter-spacing:-.01em; color:var(--ink); }
+    .brand svg { display:block; }
+    .badge { font-size:12px; font-weight:700; color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:4px 11px; white-space:nowrap; }
+    .head { padding:22px 30px 4px; }
+    h1 { font-size:27px; line-height:1.1; margin:0 0 6px; letter-spacing:-.02em; font-weight:800; color:var(--ink); }
+    .meta,.hint,.detail { color:var(--muted); }
+    .meta { font-size:13px; }
+    .steps { display:flex; gap:8px; padding:14px 30px 0; }
+    .dot { flex:1; height:4px; border-radius:999px; background:var(--line); }
+    .dot.active,.dot.done { background:var(--danger); }
+    section { padding:18px 30px 6px; }
     .hidden { display:none; }
-    .hint,.detail { color:var(--muted); }
-    .agents { display:grid; gap:8px; margin-top:12px; }
-    .agent { display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:center; padding:12px; border:1px solid var(--line); border-radius:6px; }
-    .agent strong { display:block; }
-    .agent input { width:18px; min-height:18px; }
-    .actions { display:flex; justify-content:space-between; gap:10px; border-top:1px solid var(--line); padding:16px 24px 20px; }
+    .lead { font-size:16px; font-weight:650; color:var(--ink); margin:0 0 2px; }
+    .agents { display:grid; gap:10px; margin-top:14px; }
+    .agent { display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:center; padding:14px 16px; border:1px solid var(--line); border-radius:14px; cursor:pointer; }
+    .agent strong { display:block; font-weight:700; color:var(--ink); }
+    .agent .detail { font-size:12.5px; word-break:break-all; }
+    .agent input { width:18px; height:18px; accent-color:var(--danger); }
+    .actions { display:flex; justify-content:space-between; gap:10px; padding:16px 30px 22px; }
     .right-actions { display:flex; gap:10px; }
-    button { min-height:40px; border-radius:6px; border:1px solid var(--line); background:transparent; color:var(--text); padding:8px 14px; font:inherit; font-weight:700; cursor:pointer; }
-    button.danger { background:var(--danger); border-color:var(--danger); color:#fff; }
-    button:disabled { opacity:.6; cursor:wait; }
-    .log-panel { margin:0; background:color-mix(in srgb,var(--panel),#000 7%); border-top:1px solid var(--line); padding:16px 24px; min-height:76px; max-height:280px; overflow:auto; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px; }
+    button { min-height:44px; border-radius:999px; border:1px solid var(--line); background:transparent; color:var(--text); padding:10px 20px; font:inherit; font-weight:700; cursor:pointer; transition:opacity .15s,transform .05s; }
+    button:active { transform:translateY(1px); }
+    button.danger { background:var(--danger); border-color:var(--danger); color:#fff; padding:10px 26px; }
+    button.danger:hover { opacity:.88; }
+    button.ghost { border-color:transparent; color:var(--muted); }
+    button:disabled { opacity:.45; cursor:default; }
+    .log-panel { margin:0; background:var(--soft); border-top:1px solid var(--line); padding:14px 30px; min-height:64px; max-height:240px; overflow:auto; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; }
     .log-row { display:flex; gap:10px; align-items:flex-start; padding:3px 0; white-space:pre-wrap; word-break:break-word; }
-    .log-row::before { width:56px; flex:0 0 56px; font-weight:800; text-transform:uppercase; font-size:11px; letter-spacing:.02em; }
+    .log-row::before { width:48px; flex:0 0 48px; font-weight:800; text-transform:uppercase; font-size:10px; letter-spacing:.04em; opacity:.8; }
     .log-info { color:var(--muted); } .log-info::before { content:"info"; }
-    .log-active { color:#c99700; } .log-active::before { content:"run"; }
-    .log-success { color:#19a974; } .log-success::before { content:"ok"; }
+    .log-active { color:var(--warn); } .log-active::before { content:"run"; }
+    .log-success { color:var(--ok); } .log-success::before { content:"ok"; }
     .log-error { color:var(--danger); } .log-error::before { content:"error"; }
-    .badge-configured { font-size:10px; font-weight:800; padding:2px 6px; border-radius:999px; vertical-align:middle; background:color-mix(in srgb,var(--danger),transparent 80%); color:var(--danger); }
-    .badge-absent { font-size:10px; font-weight:800; padding:2px 6px; border-radius:999px; vertical-align:middle; background:color-mix(in srgb,var(--muted),transparent 80%); color:var(--muted); }
-    @media (max-width:680px) { body{padding:12px;place-items:start center;} header{display:block;} .badge{display:inline-block;margin-top:12px;} .steps{grid-template-columns:1fr;} .step-pill{border-right:0;border-bottom:1px solid var(--line);} .actions{display:grid;} .right-actions{display:grid;} }
+    @media (max-width:640px) { body{padding:14px;place-items:start center;} header,.head,section,.actions,.log-panel{padding-left:20px;padding-right:20px;} .actions{flex-direction:column;} .right-actions{flex-direction:column-reverse;} button{width:100%;} }
   </style>
 </head>
 <body>
   <main>
-    <header><div><h1>Leadbay MCP uninstaller</h1><div class="meta" id="meta">${formatInstallOsLabel()}</div></div><div class="badge">v${VERSION}</div></header>
-    <div class="steps"><div class="step-pill active" id="pill-1">1. Select agents</div><div class="step-pill" id="pill-2">2. Remove</div></div>
+    <header>
+      <div class="brand">${LEADBAY_LOGO_SVG}<span>Leadbay</span></div>
+      <span class="badge">MCP · v${VERSION}</span>
+    </header>
+    <div class="steps"><div class="dot active" id="dot-1"></div><div class="dot" id="dot-2"></div></div>
+    <div class="head"><h1 id="title">Remove Leadbay MCP</h1><div class="meta" id="meta">${formatInstallOsLabel()}</div></div>
 
-    <section id="step-1"><strong>Detected agents</strong><div class="hint">Select which agents to remove Leadbay MCP from.</div><div class="agents" id="agents"></div></section>
-    <section id="step-2" class="hidden"><strong>Removing</strong><div class="hint">Keep this window open until the final message appears.</div></section>
+    <section id="step-1"><p class="lead">Select the agents to remove Leadbay MCP from.</p><div class="agents" id="agents"></div></section>
+    <section id="step-2" class="hidden"><p class="lead">Removing…</p><div class="hint">Keep this window open until it's done.</div></section>
 
-    <div class="actions"><button id="back" disabled>Back</button><div class="right-actions"><button id="refresh">Refresh</button><button class="danger" id="next">Remove selected</button></div></div>
+    <div class="actions"><button id="back" class="ghost hidden">Back</button><div class="right-actions"><button id="refresh">Refresh</button><button class="danger" id="next">Remove selected</button></div></div>
     <div id="log" class="log-panel"><div class="log-row log-info">Ready.</div></div>
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
+    const TITLES = { 1: "Remove Leadbay MCP", 2: "Removing" };
     let step = 1;
     let clients = [];
     function clearLog() { $("log").innerHTML = ""; }
     function appendLog(level, text) { const row = document.createElement("div"); row.className = "log-row log-" + level; row.textContent = text; $("log").appendChild(row); $("log").scrollTop = $("log").scrollHeight; }
     function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
-    function setStep(n) { step = n; [1,2].forEach((i) => { $("step-" + i).classList.toggle("hidden", i !== step); $("pill-" + i).classList.toggle("active", i === step); }); $("back").disabled = step === 1 || step === 2; $("next").classList.toggle("hidden", step === 2); $("refresh").classList.toggle("hidden", step === 2); }
+    function setStep(n) { step = n; [1,2].forEach((i) => { $("step-" + i).classList.toggle("hidden", i !== step); const dot = $("dot-" + i); dot.classList.toggle("active", i === step); dot.classList.toggle("done", i < step); }); $("title").textContent = TITLES[step]; $("next").classList.toggle("hidden", step === 2); $("refresh").classList.toggle("hidden", step === 2); }
     function renderAgents() { const root = $("agents"); if (!clients.length) { root.innerHTML = '<div class="hint">No Leadbay MCP installation detected on this machine.</div>'; return; } root.innerHTML = clients.map((c) => '<label class="agent"><input type="checkbox" data-client="' + esc(c.id) + '" checked /><span><strong>' + esc(c.label) + '</strong><span class="detail">' + esc(c.detail) + '</span></span></label>').join(""); }
     async function refresh() { clearLog(); appendLog("info", "Detecting agents..."); const res = await fetch("/api/status"); const data = await res.json(); clients = (data.clients || []).filter((c) => c.configured); renderAgents(); appendLog("info", clients.length ? "Agents detected." : "No Leadbay MCP installation detected on this machine."); }
     async function doUninstall() { const selected = [...document.querySelectorAll("[data-client]:checked")].map((el) => el.dataset.client); if (!selected.length) { clearLog(); appendLog("error", "Select at least one agent."); return; } setStep(2); clearLog(); appendLog("info", "Starting removal..."); const params = new URLSearchParams({ clients: selected.join(",") }); const events = new EventSource("/api/uninstall-stream?" + params.toString()); events.onmessage = (event) => { const data = JSON.parse(event.data); appendLog(data.level === "done" ? "success" : data.level, data.message); if (data.level === "done") events.close(); }; events.onerror = () => { appendLog("error", "Uninstall stream disconnected."); events.close(); }; }
@@ -396,72 +414,86 @@ function pageHtml(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Leadbay MCP installer</title>
   <style>
-    :root { color-scheme: light dark; --bg:#f6f7f4; --panel:#fff; --text:#1d241f; --muted:#65706a; --line:#dbe2dc; --accent:#008f7a; --accent2:#06705f; --danger:#b42318; --shadow:0 18px 45px rgba(32,45,38,.12); }
-    @media (prefers-color-scheme: dark) { :root { --bg:#121612; --panel:#1b211c; --text:#eef4ed; --muted:#a4afa7; --line:#303930; --shadow:0 18px 45px rgba(0,0,0,.28); } }
+    :root { color-scheme: light dark; --bg:#fff; --panel:#fff; --ink:#0d0f0e; --text:#0d0f0e; --muted:#7b837e; --line:#e7eae8; --soft:#f6f7f5; --danger:#b42318; --ok:#0e9f6e; --warn:#b06a00; --shadow:0 24px 60px rgba(13,15,14,.10); }
+    @media (prefers-color-scheme: dark) { :root { --bg:#0c0e0d; --panel:#141716; --ink:#fff; --text:#f2f5f3; --muted:#9aa39d; --line:#262b28; --soft:#1a1e1c; --shadow:0 24px 60px rgba(0,0,0,.4); } }
     * { box-sizing:border-box; }
-    body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; display:grid; place-items:center; padding:28px; }
-    main { width:min(880px,100%); background:var(--panel); border:1px solid var(--line); border-radius:8px; box-shadow:var(--shadow); overflow:hidden; }
-    header { padding:22px 24px 16px; border-bottom:1px solid var(--line); display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
-    h1 { font-size:22px; line-height:1.15; margin:0 0 6px; letter-spacing:0; }
-    .meta,.hint,.detail,label span { color:var(--muted); }
-    .badge { border:1px solid var(--line); border-radius:999px; padding:5px 10px; color:var(--muted); white-space:nowrap; }
-    .steps { display:grid; grid-template-columns:repeat(4,1fr); border-bottom:1px solid var(--line); }
-    .step-pill { padding:12px 24px; border-right:1px solid var(--line); color:var(--muted); font-weight:700; }
-    .step-pill:last-child { border-right:0; }
-    .step-pill.active { color:var(--text); background:color-mix(in srgb,var(--accent),transparent 88%); }
-    section { padding:22px 24px; }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font:15px/1.5 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; display:grid; place-items:center; padding:32px; -webkit-font-smoothing:antialiased; }
+    /* signature Leadbay gradient-glow wrapper */
+    .glow { position:relative; width:min(720px,100%); border-radius:22px; }
+    .glow::before { content:""; position:absolute; inset:-2px; border-radius:24px; padding:2px; background:linear-gradient(120deg,#8ab4ff,#7be0c3,#ffc2e0,#cdb4ff); -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; opacity:.9; }
+    .glow::after { content:""; position:absolute; inset:-14px; border-radius:30px; background:linear-gradient(120deg,#8ab4ff,#7be0c3,#ffc2e0,#cdb4ff); filter:blur(28px); opacity:.28; z-index:-1; }
+    main { position:relative; background:var(--panel); border-radius:22px; box-shadow:var(--shadow); overflow:hidden; }
+    header { padding:26px 30px 0; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:18px; letter-spacing:-.01em; color:var(--ink); }
+    .brand svg { display:block; }
+    .badge { font-size:12px; font-weight:700; color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:4px 11px; white-space:nowrap; }
+    .head { padding:22px 30px 4px; }
+    h1 { font-size:27px; line-height:1.1; margin:0 0 6px; letter-spacing:-.02em; font-weight:800; color:var(--ink); }
+    .meta,.hint,.detail { color:var(--muted); }
+    .meta { font-size:13px; }
+    /* slim step dots */
+    .steps { display:flex; gap:8px; padding:14px 30px 0; }
+    .dot { flex:1; height:4px; border-radius:999px; background:var(--line); transition:background .2s; }
+    .dot.active,.dot.done { background:var(--ink); }
+    section { padding:18px 30px 6px; }
     .hidden { display:none; }
-    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
-    label { display:grid; gap:6px; font-weight:650; }
-    input,select { width:100%; min-height:40px; border:1px solid var(--line); border-radius:6px; background:transparent; color:var(--text); padding:8px 10px; font:inherit; }
-    .options { display:flex; gap:14px; flex-wrap:wrap; margin-top:14px; }
-    .toggle { display:inline-flex; align-items:center; gap:8px; font-weight:600; }
-    .toggle input { width:16px; min-height:16px; }
-    .setting-card { display:grid; gap:4px; max-width:360px; }
-    .setting-card .hint { padding-left:24px; }
-    .agents { display:grid; gap:8px; margin-top:12px; }
-    .agent { display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:center; padding:12px; border:1px solid var(--line); border-radius:6px; }
-    .agent strong { display:block; }
-    .agent input { width:18px; min-height:18px; }
-    .actions { display:flex; justify-content:space-between; gap:10px; border-top:1px solid var(--line); padding:16px 24px 20px; }
+    .lead { font-size:16px; font-weight:650; color:var(--ink); margin:0 0 2px; }
+    .agents { display:grid; gap:10px; margin-top:14px; }
+    .agent { display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:center; padding:14px 16px; border:1px solid var(--line); border-radius:14px; cursor:pointer; transition:border-color .15s,background .15s; }
+    .agent:hover { border-color:var(--ink); }
+    .agent strong { display:block; font-weight:700; color:var(--ink); }
+    .agent .detail { font-size:12.5px; word-break:break-all; }
+    .agent input { width:18px; height:18px; accent-color:var(--ink); }
+    .opts { display:flex; gap:20px; flex-wrap:wrap; margin-top:16px; }
+    .toggle { display:inline-flex; align-items:center; gap:8px; font-weight:600; color:var(--text); cursor:pointer; }
+    .toggle input { width:16px; height:16px; accent-color:var(--ink); }
+    .badge-pill { font-size:10px; font-weight:800; padding:2px 7px; border-radius:999px; vertical-align:middle; text-transform:uppercase; letter-spacing:.03em; }
+    .badge-install { background:color-mix(in srgb,var(--ok),transparent 86%); color:var(--ok); }
+    .badge-update { background:color-mix(in srgb,var(--warn),transparent 84%); color:var(--warn); }
+    .actions { display:flex; justify-content:space-between; gap:10px; padding:16px 30px 22px; }
     .right-actions { display:flex; gap:10px; }
-    button { min-height:40px; border-radius:6px; border:1px solid var(--line); background:transparent; color:var(--text); padding:8px 14px; font:inherit; font-weight:700; cursor:pointer; }
-    button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
-    button.primary:hover { background:var(--accent2); }
-    button:disabled { opacity:.6; cursor:wait; }
-    .log-panel { margin:0; background:color-mix(in srgb,var(--panel),#000 7%); border-top:1px solid var(--line); padding:16px 24px; min-height:76px; max-height:280px; overflow:auto; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px; }
+    button { min-height:44px; border-radius:999px; border:1px solid var(--line); background:transparent; color:var(--text); padding:10px 20px; font:inherit; font-weight:700; cursor:pointer; transition:opacity .15s,transform .05s; }
+    button:active { transform:translateY(1px); }
+    button.primary { background:var(--ink); border-color:var(--ink); color:var(--bg); padding:10px 26px; }
+    button.primary:hover { opacity:.88; }
+    button.ghost { border-color:transparent; color:var(--muted); }
+    button:disabled { opacity:.45; cursor:default; }
+    .log-panel { margin:0; background:var(--soft); border-top:1px solid var(--line); padding:14px 30px; min-height:64px; max-height:240px; overflow:auto; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; }
     .log-row { display:flex; gap:10px; align-items:flex-start; padding:3px 0; white-space:pre-wrap; word-break:break-word; }
-    .log-row::before { width:56px; flex:0 0 56px; font-weight:800; text-transform:uppercase; font-size:11px; letter-spacing:.02em; }
-    .log-info { color:var(--muted); }
-    .log-info::before { content:"info"; }
-    .log-active { color:#c99700; }
-    .log-active::before { content:"run"; }
-    .log-success { color:#19a974; }
-    .log-success::before { content:"ok"; }
-    .log-error { color:var(--danger); }
-    .log-error::before { content:"error"; }
-    .error { color:var(--danger); }
-    .badge-install,.badge-update { font-size:10px; font-weight:800; padding:2px 6px; border-radius:999px; vertical-align:middle; }
-    .badge-install { background:color-mix(in srgb,var(--accent),transparent 80%); color:var(--accent2); }
-    .badge-update { background:color-mix(in srgb,#c99700,transparent 80%); color:#a07800; }
-    @media (prefers-color-scheme: dark) { .badge-update { color:#f0c040; } .badge-install { color:#00c9a0; } }
-    @media (max-width:680px) { body{padding:12px;place-items:start center;} header{display:block;} .badge{display:inline-block;margin-top:12px;} .grid,.steps{grid-template-columns:1fr;} .step-pill{border-right:0;border-bottom:1px solid var(--line);} .actions{display:grid;} .right-actions{display:grid;} }
+    .log-row::before { width:48px; flex:0 0 48px; font-weight:800; text-transform:uppercase; font-size:10px; letter-spacing:.04em; opacity:.8; }
+    .log-info { color:var(--muted); } .log-info::before { content:"info"; }
+    .log-active { color:var(--warn); } .log-active::before { content:"run"; }
+    .log-success { color:var(--ok); } .log-success::before { content:"ok"; }
+    .log-error { color:var(--danger); } .log-error::before { content:"error"; }
+    @media (max-width:640px) { body{padding:14px;place-items:start center;} header,.head,section,.actions,.log-panel{padding-left:20px;padding-right:20px;} .actions{flex-direction:column;} .right-actions{flex-direction:column-reverse;} button{width:100%;} }
   </style>
 </head>
 <body>
-  <main>
-    <header><div><h1>Leadbay MCP installer</h1><div class="meta" id="meta">${formatInstallOsLabel()}</div></div><div class="badge">v${VERSION}</div></header>
-    <div class="steps"><div class="step-pill active" id="pill-1">1. Sign in</div><div class="step-pill" id="pill-2">2. Agents</div><div class="step-pill" id="pill-3">3. Install</div></div>
+  <div class="glow"><main>
+    <header>
+      <div class="brand">${LEADBAY_LOGO_SVG}<span>Leadbay</span></div>
+      <span class="badge">MCP · v${VERSION}</span>
+    </header>
+    <div class="steps"><div class="dot active" id="dot-1"></div><div class="dot" id="dot-2"></div><div class="dot" id="dot-3"></div></div>
+    <div class="head"><h1 id="title">Connect Leadbay</h1><div class="meta" id="meta">${formatInstallOsLabel()}</div></div>
 
-    <section id="step-1"><strong>Connect your Leadbay account</strong><div class="hint">This opens Leadbay in your browser. After approval, come back here to choose where to install the MCP.</div></section>
-    <section id="step-2" class="hidden"><strong>Detected agents</strong><div class="hint">Local agents are installed automatically when supported. ChatGPT Desktop requires manual setup with the hosted MCP URL.</div><div class="agents" id="agents"></div><div class="options"><div class="setting-card"><label class="toggle"><input id="write" type="checkbox" checked /> Write tools</label><div class="hint">Allows Leadbay actions that change data or spend credits, like import, enrich, qualify, refine audience, and log outreach.</div></div><div class="setting-card"><label class="toggle"><input id="telemetry" type="checkbox" checked /> Telemetry</label><div class="hint">Sends product usage and crash events so we can debug installs. It does not send tool arguments, lead data, or the token.</div></div></div></section>
-    <section id="step-3" class="hidden"><strong>Installing</strong><div class="hint">Keep this window open until the final message appears. ChatGPT Desktop setup is manual in ChatGPT Settings > Apps.</div></section>
+    <section id="step-1"><p class="lead">Sign in to install Leadbay across your AI agents.</p></section>
+    <section id="step-2" class="hidden">
+      <p class="lead">Choose where to install</p>
+      <div class="agents" id="agents"></div>
+      <div class="opts">
+        <label class="toggle"><input id="write" type="checkbox" checked /> Write tools</label>
+        <label class="toggle"><input id="telemetry" type="checkbox" checked /> Telemetry</label>
+      </div>
+    </section>
+    <section id="step-3" class="hidden"><p class="lead">Installing…</p><div class="hint">Keep this window open until it's done.</div></section>
 
-    <div class="actions"><button id="back" disabled>Back</button><div class="right-actions"><button id="refresh" class="hidden">Refresh</button><button class="primary" id="next">Sign in with Leadbay</button></div></div>
+    <div class="actions"><button id="back" class="ghost hidden">Back</button><div class="right-actions"><button id="refresh" class="hidden">Refresh</button><button class="primary" id="next">Sign in with Leadbay</button></div></div>
     <div id="log" class="log-panel"><div class="log-row log-info">Ready.</div></div>
-  </main>
+  </main></div>
   <script>
     const $ = (id) => document.getElementById(id);
+    const TITLES = { 1: "Connect Leadbay", 2: "Choose your agents", 3: "Installing" };
     let step = 1;
     let sessionId = null;
     let clients = [];
@@ -469,12 +501,23 @@ function pageHtml(): string {
     function appendLog(level, text) { const row = document.createElement("div"); row.className = "log-row log-" + level; row.textContent = text; $("log").appendChild(row); $("log").scrollTop = $("log").scrollHeight; }
     function line(text, error = false) { clearLog(); appendLog(error ? "error" : "info", text); }
     function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
-    function setStep(next) { step = next; [1,2,3].forEach((n) => { $("step-" + n).classList.toggle("hidden", n !== step); $("pill-" + n).classList.toggle("active", n === step); }); $("back").disabled = step === 1 || step === 3; $("refresh").classList.toggle("hidden", step !== 2); $("next").classList.toggle("hidden", step === 3); $("next").textContent = step === 2 ? "Continue" : "Sign in with Leadbay"; }
-    function renderAgents() { const root = $("agents"); if (!clients.length) { root.innerHTML = '<div class="hint">No supported MCP client detected on this machine.</div>'; return; } root.innerHTML = clients.map((client) => { const manual = client.id === "chatgpt-desktop"; const badgeText = manual ? "manual setup" : client.configured ? "update" : "install"; const badgeClass = manual ? "badge-update" : client.configured ? "badge-update" : "badge-install"; return '<label class="agent"><input type="checkbox" data-client="' + esc(client.id) + '" checked /><span><strong>' + esc(client.label) + ' <span class="' + badgeClass + '">' + badgeText + '</span></strong><span class="detail">' + esc(client.detail) + '</span></span></label>'; }).join(""); }
+    function setStep(next) {
+      step = next;
+      [1,2,3].forEach((n) => {
+        $("step-" + n).classList.toggle("hidden", n !== step);
+        const dot = $("dot-" + n); dot.classList.toggle("active", n === step); dot.classList.toggle("done", n < step);
+      });
+      $("title").textContent = TITLES[step];
+      $("back").classList.toggle("hidden", step !== 2);
+      $("refresh").classList.toggle("hidden", step !== 2);
+      $("next").classList.toggle("hidden", step === 3);
+      $("next").textContent = step === 2 ? "Install" : "Sign in with Leadbay";
+    }
+    function renderAgents() { const root = $("agents"); if (!clients.length) { root.innerHTML = '<div class="hint">No supported MCP client detected on this machine.</div>'; return; } root.innerHTML = clients.map((client) => { const manual = client.id === "chatgpt-desktop"; const badgeText = manual ? "manual" : client.configured ? "update" : "install"; const badgeClass = manual ? "badge-update" : client.configured ? "badge-update" : "badge-install"; return '<label class="agent"><input type="checkbox" data-client="' + esc(client.id) + '" checked /><span><strong>' + esc(client.label) + ' <span class="badge-pill ' + badgeClass + '">' + badgeText + '</span></strong><span class="detail">' + esc(client.detail) + '</span></span></label>'; }).join(""); }
     async function refresh() { line("Detecting agents..."); const res = await fetch("/api/status"); const data = await res.json(); clients = data.clients || []; renderAgents(); line(clients.length ? "Agents detected." : "No supported agents detected."); }
     async function doLogin() { $("next").disabled = true; line("Opening Leadbay sign-in in your browser..."); try { const res = await fetch("/api/oauth-login", { method:"POST" }); const data = await res.json(); if (!data.ok) return line(data.error || "OAuth login failed.", true); sessionId = data.sessionId; line("Signed in. Detecting installed agents..."); setStep(2); await refresh(); } finally { $("next").disabled = false; } }
     async function install() { const selected = [...document.querySelectorAll("[data-client]:checked")].map((el) => el.dataset.client); if (!selected.length) return line("Select at least one agent.", true); setStep(3); clearLog(); appendLog("info", "Starting install..."); const params = new URLSearchParams({ sessionId, clients: selected.join(","), write: $("write").checked ? "1" : "0", telemetry: $("telemetry").checked ? "1" : "0" }); const events = new EventSource("/api/install-stream?" + params.toString()); events.onmessage = (event) => { const data = JSON.parse(event.data); appendLog(data.level === "done" ? "success" : data.level, data.message); if (data.level === "done") events.close(); }; events.onerror = () => { appendLog("error", "Install log stream disconnected."); events.close(); }; }
-    $("back").addEventListener("click", () => setStep(Math.max(1, step - 1)));
+    $("back").addEventListener("click", () => setStep(1));
     $("refresh").addEventListener("click", refresh);
     $("next").addEventListener("click", async () => { if (step === 1) await doLogin(); else await install(); });
   </script>
