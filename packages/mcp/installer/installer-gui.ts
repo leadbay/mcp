@@ -318,21 +318,20 @@ function pageUninstallHtml(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Leadbay MCP uninstaller</title>
   <style>
-    :root { color-scheme: light dark; --bg:#fff; --panel:#f6f7f9; --card:#fff; --ink:#3f4654; --strong:#2b313c; --muted:#9aa0ab; --line:#e7e9ee; --cardline:#eef0f4; --accent:#0d0f0e; --danger:#b42318; --ok:#0e9f6e; --warn:#b06a00; }
-    @media (prefers-color-scheme: dark) { :root { --bg:#0c0e0d; --panel:#141716; --card:#1a1e1c; --ink:#cdd4cf; --strong:#f2f5f3; --muted:#828a84; --line:#262b28; --cardline:#262b28; --accent:#f2f5f3; } }
+    :root { color-scheme: light; --bg:#fff; --card:#fff; --strong:#1d2228; --muted:#9aa0ab; --line:#e7e9ee; --accent:#0d0f0e; --danger:#d14343; --ok:#16a34a; --warn:#b06a00; }
     * { box-sizing:border-box; }
-    body { margin:0; min-height:100vh; background:var(--bg); color:var(--ink); font:14px/1.55 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; display:flex; align-items:center; justify-content:center; padding:32px 24px; -webkit-font-smoothing:antialiased; }
-    main { width:min(440px,100%); }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--strong); font:14px/1.55 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; display:flex; align-items:center; justify-content:center; padding:32px 24px; -webkit-font-smoothing:antialiased; }
+    main { width:min(420px,100%); }
     .steps { display:flex; gap:6px; justify-content:center; margin-bottom:18px; }
     .dot { width:24px; height:3px; border-radius:999px; background:var(--line); }
     .dot.active,.dot.done { background:var(--danger); }
-    .card { background:var(--card); border:1px solid var(--cardline); border-radius:14px; padding:28px 26px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:30px 26px; }
     h1 { font-size:18px; line-height:1.3; margin:0 0 6px; font-weight:700; color:var(--strong); text-align:center; }
     .sub { color:var(--muted); text-align:center; margin:0; min-height:1.55em; }
     .sub.err { color:var(--danger); }
     .hidden { display:none; }
     .agents { display:grid; gap:8px; margin-top:18px; }
-    .agent { display:grid; grid-template-columns:auto 1fr; gap:11px; align-items:center; padding:11px 13px; border:1px solid var(--cardline); border-radius:10px; cursor:pointer; }
+    .agent { display:grid; grid-template-columns:auto 1fr; gap:11px; align-items:center; padding:11px 13px; border:1px solid var(--line); border-radius:10px; cursor:pointer; }
     .agent strong { display:block; font-weight:650; color:var(--strong); }
     .agent .detail { color:var(--muted); font-size:12px; word-break:break-all; }
     .agent input { width:16px; height:16px; accent-color:var(--danger); }
@@ -391,21 +390,20 @@ function pageHtml(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Leadbay MCP installer</title>
   <style>
-    :root { color-scheme: light dark; --bg:#fff; --panel:#f6f7f9; --card:#fff; --ink:#3f4654; --strong:#2b313c; --muted:#9aa0ab; --line:#e7e9ee; --cardline:#eef0f4; --accent:#0d0f0e; --cancel-line:#f0c8b8; --danger:#b42318; --ok:#0e9f6e; --warn:#b06a00; }
-    @media (prefers-color-scheme: dark) { :root { --bg:#0c0e0d; --panel:#141716; --card:#1a1e1c; --ink:#cdd4cf; --strong:#f2f5f3; --muted:#828a84; --line:#262b28; --cardline:#262b28; --accent:#f2f5f3; --cancel-line:#5a4a42; } }
+    :root { color-scheme: light; --bg:#fff; --card:#fff; --strong:#1d2228; --muted:#9aa0ab; --line:#e7e9ee; --accent:#0d0f0e; --cancel-line:#f0c8b8; --danger:#d14343; --ok:#16a34a; --warn:#b06a00; }
     * { box-sizing:border-box; }
-    body { margin:0; min-height:100vh; background:var(--bg); color:var(--ink); font:14px/1.55 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; display:flex; align-items:center; justify-content:center; padding:32px 24px; -webkit-font-smoothing:antialiased; }
-    main { width:min(440px,100%); }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--strong); font:14px/1.55 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; display:flex; align-items:center; justify-content:center; padding:32px 24px; -webkit-font-smoothing:antialiased; }
+    main { width:min(420px,100%); }
     .steps { display:flex; gap:6px; justify-content:center; margin-bottom:18px; }
     .dot { width:24px; height:3px; border-radius:999px; background:var(--line); transition:background .2s; }
     .dot.active,.dot.done { background:var(--accent); }
-    .card { background:var(--card); border:1px solid var(--cardline); border-radius:14px; padding:28px 26px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:30px 26px; }
     h1 { font-size:18px; line-height:1.3; margin:0 0 6px; font-weight:700; color:var(--strong); text-align:center; }
     .sub { color:var(--muted); text-align:center; margin:0; min-height:1.55em; }
     .sub.err { color:var(--danger); }
     .hidden { display:none; }
     .agents { display:grid; gap:8px; margin-top:18px; }
-    .agent { display:grid; grid-template-columns:auto 1fr; gap:11px; align-items:center; padding:11px 13px; border:1px solid var(--cardline); border-radius:10px; cursor:pointer; transition:border-color .15s; }
+    .agent { display:grid; grid-template-columns:auto 1fr; gap:11px; align-items:center; padding:11px 13px; border:1px solid var(--line); border-radius:10px; cursor:pointer; transition:border-color .15s; }
     .agent:hover { border-color:var(--muted); }
     .agent strong { display:block; font-weight:650; color:var(--strong); }
     .agent .detail { color:var(--muted); font-size:12px; word-break:break-all; }
@@ -416,11 +414,25 @@ function pageHtml(): string {
     .actions { display:flex; gap:12px; justify-content:center; margin-top:22px; }
     button { min-height:42px; border-radius:9px; border:1px solid var(--line); background:var(--card); color:var(--strong); padding:9px 26px; font:inherit; font-weight:650; cursor:pointer; transition:opacity .15s,transform .05s; }
     button:active { transform:translateY(1px); }
-    button.primary { background:var(--accent); border-color:var(--accent); color:var(--bg); }
+    button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
     button.primary:hover { opacity:.88; }
     button.cancel { border-color:var(--cancel-line); }
     button.ghost { border:0; background:transparent; color:var(--muted); padding:9px 14px; }
     button:disabled { opacity:.45; cursor:default; }
+    /* result state — animated check / cross */
+    .result { display:flex; flex-direction:column; align-items:center; gap:14px; padding:8px 0 4px; }
+    .ring { width:64px; height:64px; }
+    .ring circle { fill:none; stroke-width:3; stroke-linecap:round; stroke-dasharray:170; stroke-dashoffset:170; animation:draw .5s ease-out forwards; }
+    .ring path { fill:none; stroke:#fff; stroke-width:3.5; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:48; stroke-dashoffset:48; animation:draw .35s .45s ease-out forwards; }
+    .ring .disc { stroke:none; }
+    .ring.ok circle:not(.disc) { stroke:var(--ok); }
+    .ring.err circle:not(.disc) { stroke:var(--danger); }
+    .ring.ok .disc { fill:var(--ok); animation:pop .4s ease-out; }
+    .ring.err .disc { fill:var(--danger); animation:pop .4s ease-out; }
+    .result-msg { font-size:15px; font-weight:700; color:var(--strong); text-align:center; }
+    .result.err .result-msg { color:var(--danger); }
+    @keyframes draw { to { stroke-dashoffset:0; } }
+    @keyframes pop { 0%{transform:scale(.5);opacity:0;} 60%{transform:scale(1.06);} 100%{transform:scale(1);opacity:1;} }
     @media (max-width:520px) { .actions{flex-direction:column;} button{width:100%;} }
   </style>
 </head>
@@ -433,6 +445,15 @@ function pageHtml(): string {
 
       <section id="step-2" class="hidden">
         <div class="agents" id="agents"></div>
+      </section>
+
+      <section id="result" class="result hidden">
+        <svg class="ring" id="ring" viewBox="0 0 64 64" aria-hidden="true">
+          <circle class="disc" cx="32" cy="32" r="28"></circle>
+          <circle cx="32" cy="32" r="28"></circle>
+          <path id="ring-mark" d="M20 33 l8 8 l16 -18"></path>
+        </svg>
+        <div class="result-msg" id="result-msg"></div>
       </section>
 
       <div class="actions">
@@ -449,6 +470,8 @@ function pageHtml(): string {
       2: { title: "Choose your agents", sub: "Pick where to install Leadbay." },
       3: { title: "Installing", sub: "Keep this window open until it's done." },
     };
+    const CHECK = "M20 33 l8 8 l16 -18";
+    const CROSS = "M22 22 l20 20 M42 22 l-20 20";
     let step = 1;
     let sessionId = null;
     let clients = [];
@@ -458,6 +481,7 @@ function pageHtml(): string {
       step = next;
       [1,2,3].forEach((n) => { const dot = $("dot-" + n); dot.classList.toggle("active", n === step); dot.classList.toggle("done", n < step); });
       $("step-2").classList.toggle("hidden", step !== 2);
+      $("result").classList.add("hidden");
       $("title").textContent = STEPS[step].title;
       say(STEPS[step].sub);
       $("back").classList.toggle("hidden", step !== 2);
@@ -465,10 +489,41 @@ function pageHtml(): string {
       $("next").classList.toggle("hidden", step === 3);
       $("next").textContent = step === 2 ? "Install" : "Sign in with Leadbay";
     }
+    // Final completion state: animated green check / red cross + message.
+    function showResult(ok, msg) {
+      $("sub").classList.add("hidden");
+      $("result-msg").textContent = msg;
+      $("ring-mark").setAttribute("d", ok ? CHECK : CROSS);
+      const ring = $("ring"); ring.classList.remove("ok", "err"); void ring.getBoundingClientRect();
+      ring.classList.add(ok ? "ok" : "err");
+      $("result").classList.toggle("err", !ok);
+      $("result").classList.remove("hidden");
+      $("title").textContent = ok ? "All set" : "Something went wrong";
+    }
     function renderAgents() { const root = $("agents"); if (!clients.length) { root.innerHTML = '<div class="sub">No supported MCP client detected on this machine.</div>'; return; } root.innerHTML = clients.map((client) => { const manual = client.id === "chatgpt-desktop"; const badgeText = manual ? "manual" : client.configured ? "update" : "install"; const badgeClass = manual ? "badge-update" : client.configured ? "badge-update" : "badge-install"; return '<label class="agent"><input type="checkbox" data-client="' + esc(client.id) + '" checked /><span><strong>' + esc(client.label) + ' <span class="badge-pill ' + badgeClass + '">' + badgeText + '</span></strong><span class="detail">' + esc(client.detail) + '</span></span></label>'; }).join(""); }
     async function refresh() { const res = await fetch("/api/status"); const data = await res.json(); clients = data.clients || []; renderAgents(); if (!clients.length) say("No supported agents detected."); }
     async function doLogin() { $("next").disabled = true; say("Opening Leadbay sign-in in your browser..."); try { const res = await fetch("/api/oauth-login", { method:"POST" }); const data = await res.json(); if (!data.ok) return say(data.error || "OAuth login failed.", true); sessionId = data.sessionId; setStep(2); await refresh(); } finally { $("next").disabled = false; } }
-    async function install() { const selected = [...document.querySelectorAll("[data-client]:checked")].map((el) => el.dataset.client); if (!selected.length) return say("Select at least one agent.", true); setStep(3); const params = new URLSearchParams({ sessionId, clients: selected.join(","), write: "1", telemetry: "1" }); const events = new EventSource("/api/install-stream?" + params.toString()); events.onmessage = (event) => { const data = JSON.parse(event.data); say(data.message, data.level === "error"); if (data.level === "done") events.close(); }; events.onerror = () => { say("Install stream disconnected.", true); events.close(); }; }
+    async function install() {
+      const selected = [...document.querySelectorAll("[data-client]:checked")].map((el) => el.dataset.client);
+      if (!selected.length) return say("Select at least one agent.", true);
+      setStep(3);
+      let okCount = 0, lastError = "";
+      const params = new URLSearchParams({ sessionId, clients: selected.join(","), write: "1", telemetry: "1" });
+      const events = new EventSource("/api/install-stream?" + params.toString());
+      events.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.level === "error") lastError = data.message;
+        if (data.level === "success") okCount += 1;
+        if (data.level === "done") {
+          events.close();
+          const ok = okCount > 0 && !lastError;
+          showResult(ok, ok ? "MCP successfully installed" : (lastError || "No agents were installed."));
+        } else {
+          say(data.message, data.level === "error");
+        }
+      };
+      events.onerror = () => { events.close(); showResult(false, "Install stream disconnected."); };
+    }
     $("back").addEventListener("click", () => setStep(1));
     $("refresh").addEventListener("click", refresh);
     $("next").addEventListener("click", async () => { if (step === 1) await doLogin(); else await install(); });
