@@ -24,13 +24,13 @@ import { spawn } from "node:child_process";
 import { AddressInfo } from "node:net";
 import { readdirSync } from "node:fs";
 
-// Port-less loopback redirect used for Dynamic Client Registration. Registering
-// with this (instead of the listener's concrete ephemeral port) lets one cached
-// client_id be reused across launches: the backend pins the registered
-// redirect_uri but, per RFC 8252 §7.3, accepts any 127.0.0.1 *port* at /authorize
-// when the registered URI is itself port-less. (Verified against the Leadbay
-// backend: a specific port authorizes fine against a port-less registration.)
-const LOOPBACK_REDIRECT_BASE = "http://127.0.0.1/callback";
+// Stable loopback port for the OAuth callback. The Leadbay backend requires the
+// authorize redirect_uri to EXACTLY match the registered one (no RFC 8252
+// loopback-port matching), so for a cached client_id to keep working we must
+// also reuse the same port every launch — and register that exact port. Picked
+// from the IANA dynamic/private range, high enough to rarely collide; if it's
+// busy we fall back to an ephemeral port + a fresh registration for that port.
+const LEADBAY_LOOPBACK_PORT = 51789;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -90,18 +90,18 @@ export interface OAuthLoginOptions {
    */
   onAuthorizeUrl?: (url: string) => void;
   /**
-   * Return a previously-registered `client_id` for this auth server to REUSE
-   * instead of registering a fresh one. Dynamic Client Registration is meant to
-   * be done once and reused; re-registering on every launch is what exhausts
-   * the backend's ~10-registrations/IP/hour limit (Claude Desktop probe-restarts
-   * multiply each install into several launches). When this returns a value,
-   * `oauthLogin` skips registration entirely. If the cached id later proves
-   * invalid (the token exchange rejects it), the flow re-registers once and
-   * retries — so caching is a safe optimization, never a hard dependency.
+   * Return a previously-registered `client_id` to REUSE (keyed by the loopback
+   * `port` it was registered for) instead of registering fresh. DCR is a
+   * once-and-reuse operation; re-registering every launch is what exhausts the
+   * backend's ~10-registrations/IP/hour limit (Claude Desktop probe-restarts
+   * multiply each install into several launches). The port is part of the key
+   * because the backend pins the exact redirect_uri (port included), so a
+   * client_id is only reusable when the listener bound the same port it was
+   * registered for. Return undefined to force a fresh registration.
    */
-  getCachedClientId?: () => string | undefined;
-  /** Persist a freshly-registered `client_id` so future launches reuse it. */
-  onClientRegistered?: (clientId: string) => void;
+  getCachedClientId?: (port: number) => string | undefined;
+  /** Persist a freshly-registered `client_id` for `port` so future launches reuse it. */
+  onClientRegistered?: (clientId: string, port: number) => void;
 }
 
 /**
@@ -321,6 +321,8 @@ export async function registerClient(
 
 export interface LoopbackListener {
   redirectUri: string;
+  /** The 127.0.0.1 port actually bound (may differ from preferredPort on fallback). */
+  port: number;
   /** Resolves once the user hits the callback URL with a valid `state`. */
   waitForCallback: () => Promise<{ code: string; state: string }>;
   /** Always call this in a finally{} — frees the port. */
@@ -330,6 +332,14 @@ export interface LoopbackListener {
 export async function startLoopbackListener(opts: {
   expectedState: string;
   timeoutMs: number;
+  /**
+   * Try to bind this exact 127.0.0.1 port first; fall back to an ephemeral port
+   * if it's already in use. The Leadbay backend requires the authorize
+   * redirect_uri to EXACTLY match a registered one (it does NOT do RFC 8252
+   * loopback-port matching), so reusing a cached client_id only works if the
+   * port is stable too. Defaults to ephemeral when unset.
+   */
+  preferredPort?: number;
 }): Promise<LoopbackListener> {
   // Resolved exactly once by the first matching /callback hit, or by timeout.
   let resolveCallback: (v: { code: string; state: string }) => void;
@@ -381,14 +391,28 @@ export async function startLoopbackListener(opts: {
     resolveCallback({ code, state });
   });
 
-  // 127.0.0.1 (not "localhost" — dual-stack IPv6 surprises) + ephemeral port.
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      server.off("error", reject);
-      resolve();
+  // 127.0.0.1 (not "localhost" — dual-stack IPv6 surprises). Prefer the stable
+  // port so a cached client_id keeps matching; fall back to ephemeral (0) if
+  // it's taken.
+  const bindPort = async (port: number) =>
+    new Promise<void>((resolve, reject) => {
+      const onErr = (e: Error) => reject(e);
+      server.once("error", onErr);
+      server.listen(port, "127.0.0.1", () => {
+        server.off("error", onErr);
+        resolve();
+      });
     });
-  });
+  if (opts.preferredPort) {
+    try {
+      await bindPort(opts.preferredPort);
+    } catch {
+      // Port busy (or otherwise unbindable) — fall back to an ephemeral port.
+      await bindPort(0);
+    }
+  } else {
+    await bindPort(0);
+  }
 
   const addr = server.address() as AddressInfo;
   const redirectUri = `http://127.0.0.1:${addr.port}/callback`;
@@ -400,6 +424,7 @@ export async function startLoopbackListener(opts: {
 
   return {
     redirectUri,
+    port: addr.port,
     waitForCallback: () =>
       callbackPromise.finally(() => {
         clearTimeout(timer);
@@ -628,37 +653,40 @@ export async function oauthLogin(opts: OAuthLoginOptions): Promise<OAuthLoginRes
   const pkce = generatePkce();
 
   log("Starting loopback listener on 127.0.0.1…\n");
-  const listener = await startLoopbackListener({ expectedState: state, timeoutMs });
+  const listener = await startLoopbackListener({
+    expectedState: state,
+    timeoutMs,
+    preferredPort: LEADBAY_LOOPBACK_PORT,
+  });
   try {
-    // Reuse a cached client_id when we have one — Dynamic Client Registration is
-    // a once-and-reuse operation; re-registering every launch is what exhausts
+    // Reuse a cached client_id (keyed by the bound loopback port) — DCR is a
+    // once-and-reuse operation; re-registering every launch is what exhausts
     // the backend's ~10-registrations/IP/hour limit (Claude Desktop fires
-    // several launches per install via its probe-restarts). Only register when
-    // there's no cached id.
+    // several launches per install via its probe-restarts).
     //
-    // CRITICAL: register with the PORT-LESS loopback redirect (http://127.0.0.1/callback)
-    // — NOT the listener's concrete ephemeral port. The Leadbay backend pins the
-    // registered redirect_uri and validates it at /authorize. Our loopback port
-    // is random each launch, so a client registered with one port is rejected on
-    // the next launch ("This app's redirect URL is not authorized"). RFC 8252
-    // §7.3 says the AS MUST allow any port for a loopback redirect; the backend
-    // honors this ONLY when the registered URI is itself port-less. So we
-    // register port-less once, then send the real per-launch port at /authorize —
-    // which the backend accepts (verified). This is what makes the cached id
-    // reusable across launches.
-    let clientId = opts.getCachedClientId?.();
+    // CRITICAL: the Leadbay backend pins the EXACT registered redirect_uri
+    // (port included) and rejects any mismatch at /authorize ("This app's
+    // redirect URL is not authorized") — it does NOT do RFC 8252 loopback-port
+    // matching. So the redirect_uri we register MUST equal the one we send at
+    // /authorize, and a cached client_id is only valid when the listener bound
+    // the SAME port it was registered for. We bind a stable port
+    // (LEADBAY_LOOPBACK_PORT) so this normally holds; the cache key includes the
+    // port so a fallback to an ephemeral port forces a fresh registration for
+    // that port instead of reusing a mismatched id.
+    const boundPort = listener.port;
+    let clientId = opts.getCachedClientId?.(boundPort);
     if (clientId) {
-      log(`Reusing cached OAuth client_id (${clientId}) — skipping registration.\n`);
+      log(`Reusing cached OAuth client_id (${clientId}) for port ${boundPort} — skipping registration.\n`);
     } else {
-      log(`Registering client at ${doc.registration_endpoint}…\n`);
+      log(`Registering client at ${doc.registration_endpoint} (redirect ${listener.redirectUri})…\n`);
       const registered = await registerClient(doc.registration_endpoint, {
         clientName: opts.clientName,
-        redirectUri: LOOPBACK_REDIRECT_BASE,
+        redirectUri: listener.redirectUri, // exact bound-port redirect
         logoUri: opts.logoUri,
       });
       clientId = registered.client_id;
       try {
-        opts.onClientRegistered?.(clientId);
+        opts.onClientRegistered?.(clientId, boundPort);
       } catch {
         /* persistence is best-effort — a write failure just means we re-register next time */
       }

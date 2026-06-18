@@ -280,17 +280,22 @@ function oauthClientCachePath(): string {
   const { homedir } = require_("node:os") as typeof import("node:os");
   return join(homedir(), ".leadbay", "oauth-client.json");
 }
-function getCachedOAuthClientId(authServerBaseUrl: string): string | undefined {
+// Cache key includes the loopback PORT: the backend pins the exact registered
+// redirect_uri (port included), so a cached client_id is only reusable when the
+// listener binds the same port it was registered for.
+function getCachedOAuthClientId(authServerBaseUrl: string, port: number): string | undefined {
   try {
     const { readFileSync } = require_("node:fs") as typeof import("node:fs");
     const parsed = JSON.parse(readFileSync(oauthClientCachePath(), "utf8"));
-    const id = parsed?.clients?.[authServerBaseUrl]?.client_id;
+    const entry = parsed?.clients?.[authServerBaseUrl];
+    if (!entry || entry.port !== port) return undefined; // port must match
+    const id = entry.client_id;
     return typeof id === "string" && id.length > 0 ? id : undefined;
   } catch {
     return undefined;
   }
 }
-function cacheOAuthClientId(authServerBaseUrl: string, clientId: string): void {
+function cacheOAuthClientId(authServerBaseUrl: string, clientId: string, port: number): void {
   try {
     const { readFileSync, writeFileSync, mkdirSync } = require_("node:fs") as typeof import("node:fs");
     const { dirname } = require_("node:path") as typeof import("node:path");
@@ -300,7 +305,7 @@ function cacheOAuthClientId(authServerBaseUrl: string, clientId: string): void {
       data = JSON.parse(readFileSync(path, "utf8"));
       if (!data || typeof data !== "object" || typeof data.clients !== "object") data = { clients: {} };
     } catch { /* fresh file */ }
-    data.clients[authServerBaseUrl] = { client_id: clientId };
+    data.clients[authServerBaseUrl] = { client_id: clientId, port };
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, JSON.stringify(data, null, 2) + "\n", { mode: 0o600 });
   } catch {
@@ -398,16 +403,18 @@ async function bootstrapOAuthIfMissing(logger: ToolLogger): Promise<boolean> {
       // shutdown race can be handled. Returning resolved means oauthLogin won't
       // try its own open or hit the fail-fast path.
       openBrowser: async () => {},
-      // Reuse a cached client_id (keyed by auth server) so we register at most
-      // once — avoids the 429 from re-registering on every probe-restart.
-      getCachedClientId: () => {
-        const id = getCachedOAuthClientId(authServerBaseUrl);
-        if (id) bootstrapDebug(`reusing cached client_id=${id} for ${authServerBaseUrl}`);
+      // Reuse a cached client_id (keyed by auth server + loopback port) so we
+      // register at most once — avoids the 429 from re-registering on every
+      // probe-restart. Port is part of the key because the backend pins the
+      // exact redirect_uri (port included).
+      getCachedClientId: (port) => {
+        const id = getCachedOAuthClientId(authServerBaseUrl, port);
+        if (id) bootstrapDebug(`reusing cached client_id=${id} (port ${port}) for ${authServerBaseUrl}`);
         return id;
       },
-      onClientRegistered: (id) => {
-        bootstrapDebug(`registered new client_id=${id} — caching for ${authServerBaseUrl}`);
-        cacheOAuthClientId(authServerBaseUrl, id);
+      onClientRegistered: (id, port) => {
+        bootstrapDebug(`registered new client_id=${id} (port ${port}) — caching for ${authServerBaseUrl}`);
+        cacheOAuthClientId(authServerBaseUrl, id, port);
       },
     });
 

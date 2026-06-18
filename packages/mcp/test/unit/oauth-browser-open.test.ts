@@ -219,11 +219,16 @@ describe("oauthLogin — failFastOnOpenError", () => {
     ]);
     let surfaced: string | undefined;
     let registeredCalled = false;
+    let askedPort: number | undefined;
     await oauthLogin({
       authServerBaseUrl: "https://api-us.leadbay.app",
       clientName: "Leadbay MCP @ test",
       openBrowser: async () => {},
-      getCachedClientId: () => "cached-123",
+      // Cache hit for whatever port the listener bound (port-keyed lookup).
+      getCachedClientId: (port) => {
+        askedPort = port;
+        return "cached-123";
+      },
       onClientRegistered: () => {
         registeredCalled = true;
       },
@@ -236,6 +241,8 @@ describe("oauthLogin — failFastOnOpenError", () => {
     });
     expect(registeredCalled).toBe(false);
     expect(captured.requests.some((r) => r.path.includes("/oauth/register"))).toBe(false);
+    // The cache was consulted with the bound loopback port (port-keyed reuse).
+    expect(typeof askedPort).toBe("number");
     // The cached id is what ends up in the authorize URL.
     expect(surfaced).toContain("client_id=cached-123");
   });
@@ -258,35 +265,43 @@ describe("oauthLogin — failFastOnOpenError", () => {
     expect(persisted).toBe("99"); // the registration response's client_id
   });
 
-  it("registers with a PORT-LESS loopback redirect, but authorizes with the real port", async () => {
-    // Regression: registering with the listener's concrete ephemeral port makes
-    // a cached client_id fail on the next launch ("redirect URL not authorized")
-    // because the backend pins the registered redirect_uri and the port changes
-    // each launch. We must register port-less (http://127.0.0.1/callback) so the
-    // backend's RFC 8252 loopback matching accepts any per-launch port.
+  it("registers and authorizes with the SAME concrete loopback port (exact-match)", async () => {
+    // Regression: the Leadbay backend pins the EXACT registered redirect_uri
+    // (port included) and rejects any mismatch at /authorize ("redirect URL not
+    // authorized") — it does NOT do RFC 8252 loopback-port matching. So the port
+    // in the registration body MUST equal the port in the authorize URL. We bind
+    // a stable port so a cached client_id keeps matching across launches.
     const captured = discoveryAndRegister();
     let authUrl: string | undefined;
+    let registeredPort: number | undefined;
     await oauthLogin({
       authServerBaseUrl: "https://api-us.leadbay.app",
       clientName: "Leadbay MCP @ test",
       openBrowser: async () => {},
       getCachedClientId: () => undefined,
+      onClientRegistered: (_id, port) => {
+        registeredPort = port;
+      },
       onAuthorizeUrl: (u) => {
         authUrl = u;
       },
       timeoutMs: 120,
     }).catch(() => {});
 
-    // The REGISTRATION body must carry the port-less redirect.
+    // The registration body carries a CONCRETE 127.0.0.1:<port>/callback.
     const regReq = captured.requests.find((r) => r.path.includes("/oauth/register"));
     expect(regReq).toBeDefined();
-    expect(regReq!.body).toContain("http://127.0.0.1/callback");
-    expect(regReq!.body).not.toMatch(/127\.0\.0\.1%3A\d+/); // no port in registration
-    expect(regReq!.body).not.toMatch(/127\.0\.0\.1:\d+/);
+    const regPortMatch = regReq!.body.match(/127\.0\.0\.1:(\d+)\\?\/callback/);
+    expect(regPortMatch).not.toBeNull();
+    const regPort = Number(regPortMatch![1]);
 
-    // The AUTHORIZE url must carry the real ephemeral loopback PORT (what the
-    // listener bound), not the port-less form.
-    expect(authUrl).toMatch(/redirect_uri=http%3A%2F%2F127\.0\.0\.1%3A\d+%2Fcallback/);
+    // The authorize URL carries the SAME port (exact match — the whole point).
+    const authPortMatch = authUrl?.match(/127\.0\.0\.1%3A(\d+)%2Fcallback/);
+    expect(authPortMatch).not.toBeNull();
+    expect(Number(authPortMatch![1])).toBe(regPort);
+
+    // And that's the port reported to the cache, so reuse is keyed correctly.
+    expect(registeredPort).toBe(regPort);
   });
 
   it("fires onAuthorizeUrl with the live URL before blocking on the callback", async () => {
