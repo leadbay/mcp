@@ -162,6 +162,46 @@ interface ConformanceCase {
 
 const CASES: ConformanceCase[] = [
   {
+    toolName: "leadbay_update_custom_field",
+    arguments: { id: "12", name: "Account Tier" },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/crm/custom_fields",
+          status: 200,
+          body: [{ id: "12", name: "Tier", type: "TEXT" }],
+        },
+        {
+          method: "POST",
+          path: /\/1\.5\/crm\/custom_fields\/12$/,
+          status: 204,
+          body: null,
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_delete_custom_field",
+    arguments: { id: "12", confirm: true },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/crm/custom_fields",
+          status: 200,
+          body: [{ id: "12", name: "Legacy Source", type: "TEXT" }],
+        },
+        {
+          method: "DELETE",
+          path: /\/1\.5\/crm\/custom_fields\/12$/,
+          status: 204,
+          body: null,
+        },
+      ]);
+    },
+  },
+  {
     toolName: "leadbay_get_qualification_methods",
     arguments: {},
     setupMocks: () => {

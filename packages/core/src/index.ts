@@ -70,6 +70,8 @@ import { removePushback } from "./tools/remove-pushback.js";
 import { previewBulkEnrichment } from "./tools/preview-bulk-enrichment.js";
 import { launchBulkEnrichment } from "./tools/launch-bulk-enrichment.js";
 import { createCustomField } from "./tools/create-custom-field.js";
+import { updateCustomField } from "./tools/update-custom-field.js";
+import { deleteCustomField } from "./tools/delete-custom-field.js";
 import { likeLead } from "./tools/like-lead.js";
 import { dislikeLead } from "./tools/dislike-lead.js";
 // Contact management — single-call relay tools (granular-shaped); registered
@@ -160,7 +162,7 @@ export {
   clearUserPrompt, pickClarification, dismissClarification, setEpilogueStatus,
   removeEpilogue, setPushback, removePushback, previewBulkEnrichment,
   launchBulkEnrichment, likeLead, dislikeLead,
-  createCustomField,
+  createCustomField, updateCustomField, deleteCustomField,
   // existing composite
   prepareOutreach,
   // new composite reads
@@ -357,6 +359,12 @@ export const compositeWriteTools: Tool[] = [
   // createCustomField is granular-shaped but file-import prompts depend on it
   // to preserve source-system links without requiring advanced-tool exposure.
   createCustomField,
+  // update/delete custom field — same default-surface rationale as create.
+  // delete is destructive (requires confirm:true). Both gated behind
+  // LEADBAY_MCP_WRITE=1 in MCP. The qualification-questions counterpart has no
+  // API write endpoint, so there is intentionally no modify tool for those.
+  updateCustomField,
+  deleteCustomField,
   // addNote is granular-shaped but file-import prompts depend on it to preserve
   // meaningful source-file notes after imports return lead ids.
   addNote,

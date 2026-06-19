@@ -864,6 +864,26 @@ WHEN NOT TO USE: pre-flight (the agent is not paying — the user is); for subsc
 `;
 // endregion: leadbay_create_topup_link
 
+// region: leadbay_delete_custom_field
+export const leadbay_delete_custom_field: string = `Delete an org-level CRM custom field. Use when the user explicitly wants to remove a custom field from their account — e.g. "delete the old 'Legacy Source' field".
+
+**This is destructive.** Removing the field drops its stored values from every lead and breaks any import mapping that targets \`CUSTOM.<id>\`. For that reason the tool has a safety gate:
+
+- Call with \`id\` only → the tool returns the field that WOULD be deleted (\`{id, name, type, deleted:false, hint}\`) and changes nothing. Surface the hint to the user and ask them to confirm.
+- Call with \`id\` + \`confirm:true\` → the field is deleted (\`{id, name, type, deleted:true}\`).
+
+\`id\` is the numeric custom-field id from \`leadbay_list_mappable_fields\` — NOT the \`CUSTOM.<id>\` mapping value.
+
+WHEN TO USE: the user explicitly asks to delete/remove a custom field — and only fire with confirm:true after they confirm.
+
+WHEN NOT TO USE: to rename or retype a field (use leadbay_update_custom_field) or to create one (use leadbay_create_custom_field).
+
+### RENDERING
+
+Before deleting (no confirm), render the \`hint\` and ask the user to confirm — do NOT auto-confirm on the user's behalf. After a confirmed delete, acknowledge in one line: **"Deleted custom field #12 'Legacy Source'."**
+`;
+// endregion: leadbay_delete_custom_field
+
 // region: leadbay_deselect_leads
 export const leadbay_deselect_leads: string = `Remove leads from the user's transient selection.
 
@@ -3973,6 +3993,23 @@ Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw).
 `;
 // endregion: leadbay_update_contact
 
+// region: leadbay_update_custom_field
+export const leadbay_update_custom_field: string = `Update an org-level CRM custom field in place. Use when the user wants to rename a custom field or change its type/config — e.g. "rename the 'Tier' field to 'Account Tier'" or "make the ARR field a PRICE in USD".
+
+Pass \`id\` (the numeric custom-field id from \`leadbay_list_mappable_fields\` — NOT the \`CUSTOM.<id>\` mapping value) plus any of \`name\`, \`type\`, \`config\`. The update is a partial merge over the current definition: a rename-only call keeps the existing type; a retype-only call keeps the name. At least one of \`name\` / \`type\` / \`config\` is required.
+
+Type + config rules mirror creation: \`EXTERNAL_ID\` requires \`config.url_template\` containing \`{value}\`; \`PRICE\` requires \`config.currency\`; \`DATE\`/\`DATETIME\` may set \`config.format\`. Returns the updated \`{id, name, type, config, mapping_value}\`.
+
+WHEN TO USE: the user wants to change an existing custom field's name or type.
+
+WHEN NOT TO USE: to CREATE a new field (use leadbay_create_custom_field) or to DELETE one (use leadbay_delete_custom_field). To read a lead's custom-field values use leadbay_get_lead_custom_fields; to list the catalog use leadbay_list_mappable_fields.
+
+### RENDERING
+
+Confirm the change in one line naming the field and what changed, e.g. **"Renamed custom field #12 → 'Account Tier' (TEXT)."** or **"Updated #13 'ARR' → PRICE (USD)."** Don't dump the raw payload.
+`;
+// endregion: leadbay_update_custom_field
+
 // region: leadbay_update_lens
 export const leadbay_update_lens: string = `Update lens metadata (name, description, mode flags). Does NOT change the audience filter — use leadbay_update_lens_filter for that.
 
@@ -4019,6 +4056,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_create_lens,
   leadbay_create_lens_draft,
   leadbay_create_topup_link,
+  leadbay_delete_custom_field,
   leadbay_deselect_leads,
   leadbay_discover_leads,
   leadbay_dislike_lead,
@@ -4089,6 +4127,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_tour_plan,
   leadbay_unpin_contact,
   leadbay_update_contact,
+  leadbay_update_custom_field,
   leadbay_update_lens,
   leadbay_update_lens_filter,
 } as const;

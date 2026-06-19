@@ -1,0 +1,25 @@
+---
+name: leadbay_update_custom_field
+kind: tool-description
+short_description: |
+  Update an existing org CRM custom field — rename it and/or change its type +
+  config. Pass the field id from leadbay_list_mappable_fields.
+annotations:
+  readOnlyHint: false
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Update an org-level CRM custom field in place. Use when the user wants to rename a custom field or change its type/config — e.g. "rename the 'Tier' field to 'Account Tier'" or "make the ARR field a PRICE in USD".
+
+Pass `id` (the numeric custom-field id from `leadbay_list_mappable_fields` — NOT the `CUSTOM.<id>` mapping value) plus any of `name`, `type`, `config`. The update is a partial merge over the current definition: a rename-only call keeps the existing type; a retype-only call keeps the name. At least one of `name` / `type` / `config` is required.
+
+Type + config rules mirror creation: `EXTERNAL_ID` requires `config.url_template` containing `{value}`; `PRICE` requires `config.currency`; `DATE`/`DATETIME` may set `config.format`. Returns the updated `{id, name, type, config, mapping_value}`.
+
+{{include:headers/tool-when-to-use}} the user wants to change an existing custom field's name or type.
+
+{{include:headers/tool-when-not-to-use}} to CREATE a new field (use leadbay_create_custom_field) or to DELETE one (use leadbay_delete_custom_field). To read a lead's custom-field values use leadbay_get_lead_custom_fields; to list the catalog use leadbay_list_mappable_fields.
+
+### RENDERING
+
+Confirm the change in one line naming the field and what changed, e.g. **"Renamed custom field #12 → 'Account Tier' (TEXT)."** or **"Updated #13 'ARR' → PRICE (USD)."** Don't dump the raw payload.
