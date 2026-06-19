@@ -44,6 +44,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 30 | **Org qualification methods** — "what qualification questions does Leadbay use", "how are my leads qualified" — retrieve the org-level AI-agent question catalog | `leadbay_get_qualification_methods` | "What qualification questions does Leadbay use to score my leads?" |
 | 31 | **Per-lead custom-field values** — "what custom fields are on this lead", "show the CRM custom field values for <Company>" — retrieve the custom-field VALUES stored on one lead (distinct from the definitions catalog in `leadbay_list_mappable_fields`) | `leadbay_get_lead_custom_fields` | "What custom field values are stored on this lead?" |
 | 32 | **Modify qualification methods** — "add a qualification question", "remove the X question", "change my qualification questions" — write the org's AI-agent questions. Enforces the max-5 cap and gates removals behind a confirm; does not invent or silently drop questions | `leadbay_set_qualification_methods` | "Add a qualification question: is the company a flooring distributor?" |
+| 33 | **Modify custom fields** — "create a custom field", "rename the X field", "delete the Y field" — manage the org CRM custom-field catalog. Update renames/retypes in place; delete is destructive and gated behind a confirm | `leadbay_create_custom_field`, `leadbay_update_custom_field`, `leadbay_delete_custom_field` | "Create a custom field called 'Eval Probe Field', then rename it to 'Eval Probe Renamed', then delete it." |
 
 ---
 
@@ -556,6 +557,24 @@ success_criteria:
 
 ```yaml scenario
 prompt: "Add a qualification question: is the company a flooring distributor?"
+```
+
+```yaml expected
+workflow_name: Modify custom fields
+prompt_name: ~
+required_calls:
+  - leadbay_create_custom_field
+  - leadbay_update_custom_field
+  - leadbay_delete_custom_field
+success_criteria:
+  - "created the field, then renamed it via leadbay_update_custom_field, then deleted it via leadbay_delete_custom_field — using the field id returned by create, not a guessed id"
+  - "the final delete actually completed (passed confirm:true, or confirmed after the safety preview) so the throwaway field does not linger"
+  - "reported each step truthfully from tool results (created / renamed / deleted) without inventing ids or claiming a change the tool did not return"
+  - "did NOT touch or delete any OTHER custom field — only the one it just created"
+```
+
+```yaml scenario
+prompt: "Create a custom field called 'Eval Probe Field', then rename it to 'Eval Probe Renamed', then delete it."
 ```
 
 ---
