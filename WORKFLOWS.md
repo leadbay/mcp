@@ -503,6 +503,42 @@ success_criteria:
 prompt: "Create a group for menuisiers, pergolas, vérandas"
 ```
 
+```yaml expected
+workflow_name: Org qualification methods
+prompt_name: ~
+required_calls:
+  - leadbay_get_qualification_methods
+forbidden_calls:
+  - leadbay_research_lead_by_id
+  - leadbay_get_taste_profile
+success_criteria:
+  - "called leadbay_get_qualification_methods at least once"
+  - "listed the org's qualification questions returned by the tool, verbatim (did not invent or reword them)"
+  - "did NOT fabricate a per-lead score or answer — these are org-level questions, not a single lead's responses"
+  - "did NOT call leadbay_research_lead_by_id or leadbay_get_taste_profile (this is the focused org-level questions tool)"
+```
+
+```yaml scenario
+prompt: "What qualification questions does Leadbay use to score my leads?"
+```
+
+```yaml expected
+workflow_name: Per-lead custom-field values
+prompt_name: ~
+required_calls:
+  - leadbay_get_lead_custom_fields
+forbidden_calls:
+  - leadbay_list_mappable_fields
+success_criteria:
+  - "called leadbay_get_lead_custom_fields with a lead id (discovering a lead first if needed)"
+  - "reported the lead's custom-field VALUES from the tool result — or, when the result is empty, correctly stated the lead/org has no custom-field values set (did not invent fields or values)"
+  - "did NOT call leadbay_list_mappable_fields — that returns field DEFINITIONS (the catalog), not a lead's values"
+```
+
+```yaml scenario
+prompt: "Pull one of my leads and show me its CRM custom field values."
+```
+
 ---
 
 ## Needs backend
