@@ -784,7 +784,9 @@ export class LeadbayClient {
     try {
       const me = await this.resolveMe();
       if (me.last_requested_lens != null) {
-        this.defaultLensId = me.last_requested_lens;
+        // last_requested_lens may arrive as a string ("40005") or number;
+        // defaultLensId is the numeric internal id, so coerce.
+        this.defaultLensId = Number(me.last_requested_lens);
         this.defaultLensCachedAt = now;
         return this.defaultLensId;
       }

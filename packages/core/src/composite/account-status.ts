@@ -1,5 +1,5 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool, ToolContext, QuotaStatusPayload } from "../types.js";
+import type { Tool, ToolContext, QuotaStatusPayload, LensPayload } from "../types.js";
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
 
 import { leadbay_account_status as ACCOUNT_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -44,8 +44,14 @@ export const accountStatus: Tool<Record<string, never>> = {
         },
       },
       last_requested_lens: {
-        type: ["number", "null"],
-        description: "Most recent lens id the user pulled leads from.",
+        type: ["string", "null"],
+        description:
+          "The most recent lens id (a STRING, e.g. \"40005\"). WITHHELD (null) unless the user's message asked about the lens/audience — the composite only populates it when asked, so a plain 'what account?' answer has no lens to show. Even when present, this raw id is internal routing only — NEVER show the number to the user; use `last_requested_lens_name`.",
+      },
+      last_requested_lens_name: {
+        type: ["string", "null"],
+        description:
+          "Human-readable name of the active lens (resolved from /lenses). WITHHELD (null) unless the user explicitly asked about the lens/audience — the composite only resolves it when asked, so on a plain account question there is nothing here to mention. When present (the user asked), answer with THIS name, never the numeric id.",
       },
       quota: {
         type: ["object", "null"],
@@ -55,7 +61,7 @@ export const accountStatus: Tool<Record<string, never>> = {
       quota_error: {
         type: ["object", "null"],
         description:
-          "Non-null ONLY when the quota_status call FAILED — {code, http_status, message}. A 401/403 means the token lacks quota scope: tell the user to reconnect / re-run OAuth. Treat as 'quota unreadable', NEVER as zero usage or 'no limits'.",
+          "Non-null ONLY when the quota_status call FAILED — {code, http_status, message}. This is an INTERNAL diagnostic — do NOT surface it to the user AT ALL. A 401/403 here does NOT mean the login is broken: the `user`/`organization` fields in THIS SAME response were fetched with the same token and succeeded. It's a backend-side quirk (commonly an org with no billing plan — `plan: null`), irrelevant to the user. When quota is unreadable: stay SILENT — do NOT mention quota, do NOT say 'quota unreadable', do NOT mention any error or 401, and NEVER tell the user to reconnect or re-authenticate. Just answer the rest (user / org / lens) and omit quota entirely. NEVER report it as zero usage or 'no limits' either.",
         properties: {
           code: { type: "string" },
           http_status: { type: ["number", "null"] },
@@ -103,11 +109,13 @@ export const accountStatus: Tool<Record<string, never>> = {
     const me = await client.resolveMe();
 
     let quota: QuotaStatusPayload | null = null;
-    // Distinct from `quota: null`: when the call FAILS (e.g. 401/403 from a
-    // token without quota scope) we surface the error so the agent can say
-    // "quota access denied — reauth" instead of misreading silence as
+    // Distinct from `quota: null`: when the call FAILS we surface the error so
+    // the agent says "quota unreadable" instead of misreading silence as
     // "no usage / unlimited". A null quota with no error means the call
-    // genuinely returned nothing.
+    // genuinely returned nothing. NOTE: a 401/403 here is NOT an auth failure —
+    // /users/me above used the same token and succeeded. The quota endpoint
+    // 401s for orgs with no billing plan (plan: null); see quota_error's
+    // description for the agent-facing framing (product#3761).
     let quota_error: { code: string; http_status: number | null; message: string } | null = null;
     try {
       quota = await client.request<QuotaStatusPayload>(
@@ -115,14 +123,61 @@ export const accountStatus: Tool<Record<string, never>> = {
         `/organizations/${me.organization.id}/quota_status`
       );
     } catch (err: any) {
-      quota_error = {
-        code: err?.code ?? "QUOTA_STATUS_FAILED",
-        http_status: err?._meta?.http_status ?? null,
-        message: err?.message ?? "quota_status request failed",
-      };
-      ctx?.logger?.warn?.(
-        `account_status: quota_status failed: ${err?.message ?? err?.code ?? err}`
-      );
+      const status: number | null = err?._meta?.http_status ?? null;
+      // A 401/403 on quota_status is NOT an auth failure — /users/me above used
+      // the same token and succeeded. It's a backend quirk for plan-less orgs
+      // (plan: null) and is irrelevant to the user (product#3761). Do NOT put it
+      // in the payload at all: prompt guidance alone was leaky — the agent still
+      // hedged with "quota had a brief hiccup". Withholding it from the response
+      // is the only way the agent literally cannot surface it. We still log it.
+      // Non-auth failures (500, network) DO surface as quota_error so the agent
+      // can legitimately say quota is unreadable for a real reason.
+      if (status === 401 || status === 403) {
+        ctx?.logger?.warn?.(
+          `account_status: quota_status ${status} (plan-less org / backend quirk) — withheld from payload`
+        );
+      } else {
+        quota_error = {
+          code: err?.code ?? "QUOTA_STATUS_FAILED",
+          http_status: status,
+          message: err?.message ?? "quota_status request failed",
+        };
+        ctx?.logger?.warn?.(
+          `account_status: quota_status failed: ${err?.message ?? err?.code ?? err}`
+        );
+      }
+    }
+
+    // The lens is gated on what the user ACTUALLY asked (product#3761). A plain
+    // "what account am I connected to?" is NOT a lens question, and prompt
+    // guidance alone leaked the lens unprompted in ~1/3 of live runs. So we only
+    // surface ANYTHING lens-related when the trigger text mentions the lens /
+    // audience. When not asked, both the id and the resolved name are withheld
+    // from the payload entirely — the agent literally cannot volunteer what it
+    // can't see. Safe failure: an unusual phrasing that misses the keywords just
+    // omits the lens (never leaks it). When asked, we resolve the human NAME so
+    // the agent answers with it, never the raw numeric id.
+    const lensId = me.last_requested_lens ?? null;
+    const lensAsked =
+      typeof ctx?.triggered_by === "string" &&
+      /\b(lens|lenses|audience|targeting|segment|filter)\b/i.test(ctx.triggered_by);
+
+    let last_requested_lens_name: string | null = null;
+    if (lensAsked && lensId != null) {
+      try {
+        const lenses = await client.request<LensPayload[]>("GET", "/lenses");
+        // Lens ids are STRINGS server-side (e.g. "40005") — see my-lenses.ts.
+        // `me.last_requested_lens` may be a number, so a strict `===` silently
+        // misses ("40005" === 40005 is false), leaving the name null. Normalize
+        // both sides to string before matching, as my-lenses.ts does.
+        const wantId = String(lensId);
+        last_requested_lens_name =
+          lenses.find((l) => String(l.id) === wantId)?.name ?? null;
+      } catch (err: any) {
+        ctx?.logger?.warn?.(
+          `account_status: lens-name resolve failed: ${err?.message ?? err?.code ?? err}`
+        );
+      }
     }
 
     return withAgentMemoryMeta(client, {
@@ -140,7 +195,11 @@ export const accountStatus: Tool<Record<string, never>> = {
         computing_intelligence: me.organization.computing_intelligence ?? false,
         plan: quota?.plan ?? me.organization.quota_plan ?? null,
       },
-      last_requested_lens: me.last_requested_lens ?? null,
+      // Lens is withheld unless the user asked (lensAsked, above). When present,
+      // the id is normalized to the STRING form (my-lenses.ts) so it matches the
+      // schema and never drifts string-vs-number across accounts.
+      last_requested_lens: lensAsked && lensId != null ? String(lensId) : null,
+      last_requested_lens_name,
       // Quota goes here verbatim from /quota_status. Legacy freemium.* fields
       // on /me are intentionally NOT surfaced — they're defunct (see
       // SHAPE-DRIFT.md probe round 4).
@@ -153,7 +212,8 @@ export const accountStatus: Tool<Record<string, never>> = {
       // when nothing has completed since the last ack.
       notifications: ctx?.notificationsInbox?.list() ?? [],
       // Non-null ONLY when the quota_status call failed. The agent must treat
-      // this as "could not read quota" (reauth on 401/403) — NOT as zero usage.
+      // this as "could not read quota" — NOT as zero usage, and NOT as a broken
+      // login (the token just authenticated /users/me above). product#3761.
       quota_error,
       _meta: {
         region: client.region,

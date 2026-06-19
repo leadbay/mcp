@@ -277,7 +277,9 @@ export interface UserMePayload {
   admin?: boolean;
   manager?: boolean;
   organization: OrgPayload;
-  last_requested_lens?: number | null;
+  // Backend sends lens ids as STRINGS (e.g. "40005"); older callers treated
+  // this as a number, so accept both and normalize at the use site.
+  last_requested_lens?: string | number | null;
   language?: string;
   free_ai_credits?: number;
 }
@@ -818,6 +820,13 @@ export interface ToolContext {
     message: string,
     opts?: { associatedEventId?: string }
   ) => Promise<boolean>;
+  // The verbatim user-message slice this call is acting upon (the value the
+  // agent passed as `_triggered_by`, stripped out at the server layer). Lets a
+  // composite gate optional output on what the user actually asked — e.g.
+  // account_status only surfaces the active lens when the trigger mentions the
+  // lens/audience, so it never volunteers it unprompted (product#3761).
+  // Undefined when no trigger was captured (granular tools, tests).
+  triggered_by?: string;
 }
 
 export type JSONSchema = Record<string, unknown>;
