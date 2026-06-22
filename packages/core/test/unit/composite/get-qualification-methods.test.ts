@@ -56,12 +56,12 @@ describe("leadbay_get_qualification_methods", () => {
     expect(res.hint).toBeUndefined();
   });
 
-  it("admin user — surfaces is_admin + the web-app edit hint", async () => {
+  it("admin user — surfaces is_admin + points at the modify tool", async () => {
     mockHttp([mockMe(true), ...mockTaste(QUESTIONS)]);
     const res: any = await getQualificationMethods.execute(newClient(), {});
 
     expect(res.is_admin).toBe(true);
-    expect(res.hint).toMatch(/web app/i);
+    expect(res.hint).toMatch(/leadbay_set_qualification_methods/);
   });
 
   it("empty catalog — empty array + empty-state hint", async () => {

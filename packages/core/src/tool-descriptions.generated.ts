@@ -1458,8 +1458,9 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 ## RENDER (quick)
 
 Numbered list of the questions (chat-native markdown), each one line. When
-\`is_admin\` is true, append the \`hint\` as a footnote pointing at the web app
-for editing. When the list is empty, render the \`hint\` instead.
+\`is_admin\` is true, append the \`hint\` as a footnote (points at
+leadbay_set_qualification_methods for editing). When the list is empty,
+render the \`hint\` instead.
 
 ---
 
@@ -1473,20 +1474,22 @@ Returns:
 - **\`qualification_questions\`** — the catalog. Each: \`{question, created_at,
   lang}\`. Ordered as the backend returns them.
 - **\`count\`** — number of configured questions.
-- **\`is_admin\`** — whether the current user is an org admin. Editing the
-  questions is currently done in the Leadbay web app (there is no MCP edit
-  endpoint yet); for admins a \`hint\` points this out.
-- **\`hint\`** — operator note: the admin edit pointer, or an empty-state message
+- **\`is_admin\`** — whether the current user is an org admin. Modifying the
+  questions (\`leadbay_set_qualification_methods\`) is an org-admin action; for
+  admins a \`hint\` points there.
+- **\`hint\`** — operator note: the modify pointer, or an empty-state message
   when no questions are configured.
 
-The questions are read-only here regardless of role. The result is cached on
-the client (it reuses the same taste-profile fetch as
+This tool only READS. To change the questions, use
+**leadbay_set_qualification_methods** (add / remove / replace). The result is
+cached on the client (it reuses the same taste-profile fetch as
 \`leadbay_get_taste_profile\`), so repeated calls in a session are cheap.
 
-Companion tools: **leadbay_get_taste_profile** when the user also wants the
-Ideal Buyer Profile + purchase-intent tags; **leadbay_research_lead_by_id** for
-how a SPECIFIC lead answered these questions; **leadbay_refine_prompt** to shape
-the AI agent's behaviour.
+Companion tools: **leadbay_set_qualification_methods** to modify the questions;
+**leadbay_get_taste_profile** when the user also wants the Ideal Buyer Profile +
+purchase-intent tags; **leadbay_research_lead_by_id** for how a SPECIFIC lead
+answered these questions; **leadbay_refine_prompt** to shape the AI agent's
+behaviour.
 
 ### RENDERING
 
@@ -1494,8 +1497,9 @@ Render \`qualification_questions\` as a numbered list — one question per line,
 the order returned. Lead with a short heading like **"Qualification methods
 (N)"**. When \`qualification_questions\` is empty, render the \`hint\` sentence
 instead of an empty list. When \`is_admin\` is true and there are questions,
-append the \`hint\` as a one-line footnote (editing happens in the web app). Do
-not invent questions or reword them — render verbatim.
+append the \`hint\` as a one-line footnote (points at
+leadbay_set_qualification_methods). Do not invent questions or reword them —
+render verbatim.
 `;
 // endregion: leadbay_get_qualification_methods
 

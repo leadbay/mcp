@@ -6,9 +6,9 @@ import { leadbay_get_qualification_methods as GET_QUALIFICATION_METHODS_DESCRIPT
 
 // Org-level "qualification methods" = the AI-agent questions Leadbay scores
 // every lead against. Focused read tool: returns ONLY the question catalog
-// (not the broader taste profile). Read-only for everyone; editing the
-// questions has no MCP write endpoint today (done in the Leadbay web app),
-// so for admins we surface a hint instead of a (non-existent) mutate path.
+// (not the broader taste profile). Read-only itself; to MODIFY the questions
+// use leadbay_set_qualification_methods (org-admin only, which every user is
+// for their own org). For admins we surface that pointer in the hint.
 export const getQualificationMethods: Tool<Record<string, never>> = {
   name: "leadbay_get_qualification_methods",
   annotations: {
@@ -40,7 +40,7 @@ export const getQualificationMethods: Tool<Record<string, never>> = {
       is_admin: {
         type: "boolean",
         description:
-          "Whether the current bearer-token holder is an org admin. Admins edit qualification questions in the Leadbay web app (no MCP write endpoint yet).",
+          "Whether the current bearer-token holder is an org admin. Admins can modify the questions via leadbay_set_qualification_methods.",
       },
       region: { type: "string" },
       hint: {
@@ -70,10 +70,10 @@ export const getQualificationMethods: Tool<Record<string, never>> = {
     let hint: string | undefined;
     if (questions.length === 0) {
       hint =
-        "No qualification questions configured yet. Use leadbay_refine_prompt to shape the AI agent, or set them up in the Leadbay web app for better lead scoring.";
+        "No qualification questions configured yet. Use leadbay_set_qualification_methods to add some, or leadbay_refine_prompt to shape the AI agent.";
     } else if (isAdmin) {
       hint =
-        "You're an org admin — qualification questions are currently editable in the Leadbay web app (no MCP edit tool yet).";
+        "You're an org admin — use leadbay_set_qualification_methods to add, remove, or replace these questions.";
     }
 
     return withAgentMemoryMeta(
