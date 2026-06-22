@@ -46,6 +46,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 32 | **Build an interactive artifact** — "build me a call sheet / interactive lead board with a campaign dropdown, notes, statuses, likes per lead" — the agent fetches headless view-models + usage guide via `leadbay_artifact_kit`, then assembles a single-file HTML artifact whose `lb.field`/`lb.action` view-models POPULATE a dropdown from `leadbay_list_campaigns` and submit `leadbay_report_outreach` / `leadbay_add_leads_to_campaign` / `leadbay_like_lead` (carrying `verification` + `_triggered_by` where required); the artifact owns all rendering | `leadbay_artifact_kit` *(no dedicated prompt)* | "Build me an interactive call sheet for these leads." |
 | 33 | **Manager team-activity view** — "how is my team doing", "top performers this month", "activity by rep" — `leadbay_team_activity` returns a per-rep leaderboard (`reps`, sorted by `total_activities`) + an activity time-series (`trend`) for a look-back window, the data behind the web Dashboard-Manager screen. Feeds a manager artifact (`lb.teamActivity` → table + Chart.js); quota/remaining stays on `leadbay_account_status` | `leadbay_team_activity` *(no dedicated prompt)* | "How is my team doing this month?" |
 | 34 | **Campaign builder from scratch (solo)** — "build me a campaign from scratch" — one guided flow: discover on the active lens → qualify/pick a cohort → enrich the BUYER PERSONA of the user's product (revenue org, not seniority) with a coverage guarantee → persist via `leadbay_create_campaign` → render the ready-to-work `leadbay_campaign_call_sheet` view, then hand off to `leadbay_work_campaign`. Distinct from the team flow (`leadbay_setup_team_prospecting`) and the work-an-existing-one flow (`leadbay_work_campaign`). | `leadbay_build_campaign` | *(multi-turn — see `turns:` contract)* |
+| 35 | **Territory scoping — net-new accounts in a region** — "create a lens for net-new accounts in <département/région/state>", "scope discovery to <territory>", "restrict my rep's lens to <place>" — geography is set on the DISCOVER lens (not just Monitor): `leadbay_new_lens` / `leadbay_adjust_audience` accept `locations` (free text auto-resolved via /geo/search, or admin-area ids), writing a `location_ids` lens-filter criterion. Place names go to `locations`, never `sectors`/`refine_prompt`. Unblocks the "Cockpit Directeur Commercial" territory workflow (product#3759). | `leadbay_new_lens`, `leadbay_adjust_audience` | "Create a lens for net-new accounts in Indre-et-Loire" |
 
 ---
 
@@ -504,6 +505,24 @@ success_criteria:
 
 ```yaml scenario
 prompt: "Create a group for menuisiers, pergolas, vérandas"
+```
+
+```yaml expected
+workflow_name: Territory scoping — net-new accounts in a region
+prompt_name: ~
+required_calls:
+  - leadbay_new_lens
+forbidden_calls:
+  - leadbay_report_outreach
+success_criteria:
+  - "set geography on the DISCOVER lens — called leadbay_new_lens (or leadbay_adjust_audience) with a `locations` argument carrying the named territory, NOT just a Monitor/pull_followups location filter"
+  - "passed the place name (e.g. 'Indre-et-Loire') as a location, never as a sector or a refine_prompt instruction"
+  - "on a confident geo match the lens filter carried a location_ids criterion; on an ambiguous match returned the ambiguous-locations candidates and re-called with the id rather than guessing"
+  - "did NOT call leadbay_report_outreach"
+```
+
+```yaml scenario
+prompt: "Create a lens for net-new accounts in Indre-et-Loire"
 ```
 
 #### Workflow 30 — Account status: silent on unreadable quota

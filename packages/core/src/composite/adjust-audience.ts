@@ -8,13 +8,16 @@ import type {
   FilterCriterion,
 } from "../types.js";
 
+import { resolveLocations } from "./_geo-helpers.js";
 import { leadbay_adjust_audience as ADJUST_AUDIENCE_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface AdjustAudienceParams {
   sectors?: string[];           // free text or sector ids
   sector_ids?: string[];        // explicit ids if known
   exclude_sectors?: string[];   // free text or ids
   sizes?: Array<{ min?: number; max?: number }>;
-  // (Locations resolution is a separate beast; not modelled here yet.)
+  locations?: string[];         // free text (auto-resolved via /geo/search) or admin-area ids
+  location_ids?: string[];      // explicit admin-area ids if known (skips resolution)
+  exclude_locations?: string[]; // free text or ids to exclude
   lensId?: number;
   lensName?: string;             // target a lens by name (resolved → id); edit-only, does NOT switch active lens
   save_for_org?: boolean;        // admin only — propagate to org-level lens
@@ -140,7 +143,9 @@ export function mergeFilter(
   current: FilterPayload,
   toAddSectors: string[],
   toExcludeSectors: string[],
-  sizes: Array<{ min?: number; max?: number }> | undefined
+  sizes: Array<{ min?: number; max?: number }> | undefined,
+  toAddLocations: string[] = [],
+  toExcludeLocations: string[] = []
 ): FilterPayload {
   const items = current?.lens_filter?.items ?? [];
   const item = items[0] ?? { criteria: [] };
@@ -178,6 +183,44 @@ export function mergeFilter(
         type: "sector_ids",
         is_excluded: true,
         sectors: toExcludeSectors,
+      });
+    }
+  }
+
+  // location_ids (include) — merge into existing or add. Mirrors sector_ids:
+  // the backend echoes the resolved areas back in the FilterPayload.locations
+  // block on read, but accepts only the id list on write.
+  if (toAddLocations.length > 0) {
+    const idx = criteria.findIndex(
+      (c) => c.type === "location_ids" && !c.is_excluded
+    );
+    if (idx >= 0) {
+      const cur = criteria[idx] as Extract<FilterCriterion, { type: "location_ids" }>;
+      const merged = Array.from(new Set([...(cur.locations ?? []), ...toAddLocations]));
+      criteria[idx] = { ...cur, locations: merged };
+    } else {
+      criteria.push({
+        type: "location_ids",
+        is_excluded: false,
+        locations: toAddLocations,
+      });
+    }
+  }
+
+  // location_ids (exclude)
+  if (toExcludeLocations.length > 0) {
+    const idx = criteria.findIndex(
+      (c) => c.type === "location_ids" && c.is_excluded
+    );
+    if (idx >= 0) {
+      const cur = criteria[idx] as Extract<FilterCriterion, { type: "location_ids" }>;
+      const merged = Array.from(new Set([...(cur.locations ?? []), ...toExcludeLocations]));
+      criteria[idx] = { ...cur, locations: merged };
+    } else {
+      criteria.push({
+        type: "location_ids",
+        is_excluded: true,
+        locations: toExcludeLocations,
       });
     }
   }
@@ -259,6 +302,22 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
         },
         description: "Company size buckets, e.g. [{min:30,max:300}]",
       },
+      locations: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Geographic scope — free text (e.g. ['Indre-et-Loire', 'Bavaria', 'Austin']) or admin-area ids. Auto-resolved via /geo/search across all admin levels (city / county / département / région / state / country). Place names go HERE, never in sectors/keywords.",
+      },
+      location_ids: {
+        type: "array",
+        items: { type: "string" },
+        description: "Explicit admin-area ids (skips /geo/search resolution)",
+      },
+      exclude_locations: {
+        type: "array",
+        items: { type: "string" },
+        description: "Locations to exclude (free text or ids)",
+      },
       lensId: { type: "number", description: "Lens id (escape hatch)" },
       lensName: {
         type: "string",
@@ -281,17 +340,23 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
   outputSchema: {
     type: "object",
     description:
-      "Return shapes: 'applied' on success; 'ambiguous_sectors' when free-text sectors matched multiple candidates (re-call with sector_ids); 'lens_not_found' / 'ambiguous_lens' when a lensName didn't resolve to exactly one lens (re-call with lensId or an exact lensName).",
+      "Return shapes: 'applied' on success; 'ambiguous_sectors' when free-text sectors matched multiple candidates (re-call with sector_ids); 'ambiguous_locations' when free-text locations didn't resolve to one area (re-call with location_ids); 'lens_not_found' / 'ambiguous_lens' when a lensName didn't resolve to exactly one lens (re-call with lensId or an exact lensName).",
     properties: {
       status: {
         type: "string",
         description:
-          "'applied', 'ambiguous_sectors', 'lens_not_found', or 'ambiguous_lens'.",
+          "'applied', 'ambiguous_sectors', 'ambiguous_locations', 'lens_not_found', or 'ambiguous_lens'.",
       },
       sector_ambiguities: {
         type: "array",
         description:
           "Per ambiguous text: {sector_text, matches:[{id, name, score}]}. Agent picks an id and re-calls.",
+        items: { type: "object" },
+      },
+      location_ambiguities: {
+        type: "array",
+        description:
+          "On 'ambiguous_locations': per text {location_text, matches:[{id, name, country, level, score}]}. Agent picks an id and re-calls with location_ids.",
         items: { type: "object" },
       },
       lenses: {
@@ -411,6 +476,44 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
       };
     }
 
+    // Resolve free-text locations (admin-area lookup via /geo/search). An id
+    // passed in is forwarded as-is, so `location_ids` folds into the include set.
+    const includeLocTexts = [
+      ...(params.locations ?? []),
+      ...(params.location_ids ?? []),
+    ];
+    const excludeLocTexts = params.exclude_locations ?? [];
+
+    const includeLocRes = await resolveLocations(client, includeLocTexts);
+    const excludeLocRes = await resolveLocations(client, excludeLocTexts);
+    const locAmbiguities = [
+      ...includeLocRes.ambiguities,
+      ...excludeLocRes.ambiguities,
+    ];
+
+    if (locAmbiguities.length > 0) {
+      const noMatch = locAmbiguities.filter((a) => a.matches.length === 0);
+      const multi = locAmbiguities.filter((a) => a.matches.length > 0);
+      const parts: string[] = [];
+      if (noMatch.length > 0) {
+        const names = noMatch.map((a) => `"${a.location_text}"`).join(", ");
+        parts.push(
+          `Couldn't find a location matching ${names}. Ask the user to rephrase, then re-call with location_ids=...`
+        );
+      }
+      if (multi.length > 0) {
+        const names = multi.map((a) => `"${a.location_text}"`).join(", ");
+        parts.push(
+          `${names} matched multiple areas. Pick from the matches and re-call with location_ids=...`
+        );
+      }
+      return {
+        status: "ambiguous_locations",
+        location_ambiguities: locAmbiguities,
+        message: parts.join(" "),
+      };
+    }
+
     // Read the current lens (kind detection) + current filter.
     const lens = await client.request<LensPayload>(
       "GET",
@@ -424,7 +527,9 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
       currentFilter,
       includeRes.resolved,
       excludeRes.resolved,
-      params.sizes
+      params.sizes,
+      includeLocRes.resolved,
+      excludeLocRes.resolved
     );
     // The write endpoint wants the unwrapped {items:[...]} body, not the
     // {lens_filter, locations} envelope. `merged` stays the envelope for the

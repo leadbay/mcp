@@ -2,8 +2,8 @@
 name: leadbay_adjust_audience
 kind: tool-description
 short_description: |
-  Edit an EXISTING lens's audience by sector / size. Free-text sectors
-  auto-resolve against the taxonomy; ambiguous matches are surfaced rather
+  Edit an EXISTING lens's audience by sector / size / geography. Free-text
+  sectors and locations auto-resolve; ambiguous matches are surfaced rather
   than guessed. Filter MERGES with existing criteria. Pass `lensName` to edit
   a lens by name; otherwise edits the active lens.
 annotations:
@@ -19,6 +19,9 @@ routing:
     - "only show me companies of <size>"
     - "stop including <sector>"
     - "broaden this lens to also include <sector>"
+    - "restrict this lens to <city/département/région/state>"
+    - "only companies in <place>"
+    - "exclude <region> from this lens"
   anti_triggers:
     - phrase: "create a new lens called X"
       route_to: leadbay_new_lens
@@ -33,21 +36,24 @@ routing:
     positive:
       - "Add fintech to my Joinery lens."
       - "Narrow my audience to manufacturing companies, 50–500 people."
-      - "Stop including retail in this lens."
+      - "Restrict my rep's lens to Indre-et-Loire."
     negative:
       - "Create a lens called Joinery for fintech."
       - "Show me my lenses."
       - "Focus on hospitals that run their own IT."
 rendering_hint: |
-  On `applied`: confirm the lens edited (name) + the sectors/sizes added as
-  chips. On `ambiguous_sectors` / `ambiguous_lens` / `lens_not_found`: surface
-  the candidates and ask the user to pick, then re-call with the id/exact name.
+  On `applied`: confirm the lens edited (name) + the sectors/sizes/locations
+  added as chips. On `ambiguous_sectors` / `ambiguous_locations` /
+  `ambiguous_lens` / `lens_not_found`: surface the candidates and ask the user
+  to pick, then re-call with the id/exact name.
 ---
 Restrict (or expand) the lens audience by sector / size. Free-text sectors are auto-resolved against the sector taxonomy; ambiguous matches are surfaced to the agent rather than guessed silently. Permission routing is hidden: the default lens auto-clones to a new user lens; an org-level lens defaults to a per-user draft (admins can override with `save_for_org:true`). Filter MERGES with existing criteria (unrelated criteria are not dropped).
 
 **Targeting a lens — READ THIS.** By default this edits the user's ACTIVE lens. **If the user names a lens** ("add fintech to my **Joinery** lens", "in my Nordics lens, exclude retail"), you MUST pass `lensName` with that name (`lensName:"Joinery"`). Do NOT silently edit the active lens when a different one was named — that corrupts the wrong audience and is a top friction source. The name resolves against the user's lenses (case-insensitive, exact then unique-substring); it is edit-only and does NOT change which lens is active. An unmatched name returns `status:"lens_not_found"` with the lens list, and a name matching several returns `status:"ambiguous_lens"` with the candidates — surface them and re-call with the exact `lensName` or a `lensId`. Use `leadbay_my_lenses` if the user first wants to SEE or SWITCH lenses. To CREATE a brand-new lens, use `leadbay_new_lens` — not this tool.
 
-{{include:headers/tool-when-to-use}} when the user wants to see different kinds of leads (sector / size / etc.).
+**Geography — scope a sales territory.** Pass `locations` (free text like `["Indre-et-Loire"]`, `["Bavaria"]`, `["Austin"]`, or admin-area ids) to restrict the lens to a region, and `exclude_locations` to carve one out. Free text auto-resolves via `/geo/search` across every admin level — city, county, *département*, *région*, state, country. Place names go in `locations`, **never** in `sectors` or `refine_prompt`. Unresolved/ambiguous text returns `status:"ambiguous_locations"` with candidates — surface them and re-call with `location_ids`. This is how a director scopes a rep's territory and then asks for net-new accounts there.
+
+{{include:headers/tool-when-to-use}} when the user wants to see different kinds of leads (sector / size / geography / etc.).
 
 {{include:headers/tool-when-not-to-use}} to refine BEYOND firmographics — that's leadbay_refine_prompt.
 
