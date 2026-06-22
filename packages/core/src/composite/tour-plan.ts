@@ -69,8 +69,15 @@ function toMapLocation(lead: any, mode: TourMode): MapLocation | null {
 
   const loc = lead.location;
   const c = lead.recommended_contact;
-  const fullName = c ? [c.first_name, c.last_name].filter(Boolean).join(" ") : "";
-  const role = c?.job_title ? `, ${c.job_title}` : "";
+  // The contacts API sometimes sends the literal string "null" for an empty
+  // name part (the same coercion bug pull-leads guards against). Drop those,
+  // plus real nullish/blank values, so notes never read "Reach null null".
+  const cleanName = (v: unknown): string =>
+    typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null"
+      ? v.trim()
+      : "";
+  const fullName = c ? [cleanName(c.first_name), cleanName(c.last_name)].filter(Boolean).join(" ") : "";
+  const role = cleanName(c?.job_title) ? `, ${cleanName(c?.job_title)}` : "";
   const angle =
     lead.split_ai_summary?.next_step ??
     lead.split_ai_summary?.approach_angle ??
