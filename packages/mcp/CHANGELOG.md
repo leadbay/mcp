@@ -1,5 +1,15 @@
 # Changelog — @leadbay/mcp
 
+## 0.22.0 — 2026-06-20
+
+Headless artifact SDK + two always-on read tools, so the user's Claude (cowork) can build interactive HTML artifacts that call Leadbay.
+
+- **New package `@leadbay/components`** — vanilla view-models (`lb.field` / `action` / `resource` / `list`, plus domain helpers `outreach`, `note`, `like`/`dislike`, `leadHistory`, `leadProfile`, `callList`, `enrichment`, `teamActivity`) that own a control's data lifecycle: populate-from-API, value/loading/error, validation, polling, request sequencing, a 30s call timeout, and the `report_outreach` verification + `_triggered_by` footguns. The agent owns 100% of markup; the library renders nothing. The build emits a minified runtime into core; a `components:check` drift guard fails CI if the committed runtime goes stale.
+- **`leadbay_artifact_kit`** (always-on read) — returns the runtime string + a usage guide the agent reads to assemble an artifact. Lives in `tools/` (granular-shaped) so a kit fetch carries no `_triggered_by` mandate.
+- **`leadbay_team_activity`** (always-on read) — per-rep activity leaderboard + activity trend for a look-back window, wrapping `/kpi/users` + `/kpi/trends` (the web Dashboard-Manager data). Admins get the whole org; non-admins are scoped to themselves by the backend.
+
+Validated by agent-dogfood tests: an independent agent builds a working cold-call sheet + a manager dashboard from the usage guide alone, and jsdom asserts the real tool calls fire with the right args. (Core 0.8.4, components 0.3.1.)
+
 ## 0.21.3 — 2026-06-19
 
 Kills the 401 startup "reconnect Leadbay" hallucination — the assistant told users to re-authenticate on a connection that actually worked (product#3761). Fixed at every layer that produced or surfaced the spurious 401:

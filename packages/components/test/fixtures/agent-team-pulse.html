@@ -1,0 +1,502 @@
+<!--
+  AGENT-GENERATED — weekly team pulse for a sales manager.
+  Request: "who's active, who's actually moving deals, who might be slipping —
+  so I know who to coach."
+  Built on lb.teamActivity (leadbay_team_activity). The dashboard splits the
+  manager's three questions into three explicit lenses computed ONLY from the
+  fields the tool actually returns (activity counts + 4 derived call-disposition
+  counts: meetings_or_interest, could_not_reach, lost, still_chasing).
+  The runtime <script> is injected at the RUNTIME marker comment below.
+  mcp_tools: ["leadbay_team_activity"]
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Weekly Team Pulse</title>
+<style>
+  :root {
+    --bg:#0e1320; --panel:#151b2b; --panel-2:#1b2336; --border:#28324c;
+    --ink:#e8edf7; --dim:#9aa6bf; --faint:#6b7894;
+    --accent:#5b8cff; --accent-soft:#1d2b50;
+    --good:#43c478; --good-bg:#11271c; --good-bd:#1f4d36;
+    --bad:#ff6b6b;  --bad-bg:#271315;  --bad-bd:#4d2222;
+    --warn:#f0b429; --warn-bg:#2a2410; --warn-bd:#5a4a16;
+    --hover:#1f2942; --shadow:0 6px 24px rgba(0,0,0,.35); --r:14px;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; }
+  body {
+    background:radial-gradient(1200px 600px at 80% -10%, #18233e 0%, var(--bg) 55%) fixed;
+    color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; padding:26px 20px 48px;
+  }
+  .wrap { max-width:1120px; margin:0 auto; }
+  header.top { display:flex; align-items:flex-end; justify-content:space-between; gap:18px; flex-wrap:wrap; margin-bottom:20px; }
+  .title h1 { margin:0; font-size:25px; letter-spacing:-.02em; font-weight:750; }
+  .title p { margin:5px 0 0; color:var(--dim); font-size:13.5px; max-width:560px; }
+  .range-tag { display:inline-flex; align-items:center; gap:6px; margin-top:9px; padding:3px 10px;
+    border-radius:999px; background:var(--accent-soft); color:#b9ccff; font-size:12px; font-weight:600; border:1px solid #2c3e6e; }
+  .controls { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .seg { display:inline-flex; background:var(--panel); border:1px solid var(--border); border-radius:11px; padding:4px; gap:3px; }
+  .seg .lbl { align-self:center; padding:0 8px 0 6px; color:var(--faint); font-size:11px; text-transform:uppercase; letter-spacing:.08em; font-weight:700; }
+  .seg button { appearance:none; border:0; cursor:pointer; font:inherit; font-weight:600; color:var(--dim); background:transparent; padding:7px 13px; border-radius:8px; transition:.15s; }
+  .seg button:hover { color:var(--ink); background:var(--panel-2); }
+  .seg button[aria-pressed="true"] { background:var(--accent); color:#fff; box-shadow:0 2px 8px rgba(91,140,255,.4); }
+  .seg button:disabled { opacity:.5; cursor:progress; }
+  button#refresh { appearance:none; cursor:pointer; font:inherit; font-weight:600; color:var(--ink); background:var(--panel);
+    border:1px solid var(--border); padding:8px 15px; border-radius:11px; display:inline-flex; align-items:center; gap:8px; transition:.15s; }
+  button#refresh:hover { border-color:var(--accent); background:var(--panel-2); }
+  button#refresh:disabled { opacity:.6; cursor:progress; }
+  .spin { width:13px; height:13px; border-radius:50%; border:2px solid var(--faint); border-top-color:var(--accent); display:none; }
+  button#refresh[data-lb-state="loading"] .spin, button#refresh.is-busy .spin { display:inline-block; animation:spin .7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* honest-data banner */
+  .caveat { display:flex; gap:10px; align-items:flex-start; background:var(--warn-bg); border:1px solid var(--warn-bd);
+    color:#f4d488; border-radius:12px; padding:11px 14px; font-size:12.5px; line-height:1.45; margin-bottom:18px; }
+  .caveat b { color:#ffe4a0; }
+  .caveat .x { font-size:14px; line-height:1; }
+
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow); overflow:hidden; }
+  .panel + .panel { margin-top:18px; }
+  .panel-head { display:flex; align-items:center; justify-content:space-between; padding:13px 18px; border-bottom:1px solid var(--border); }
+  .panel-head h2 { margin:0; font-size:14px; font-weight:700; }
+  .panel-head .hint { color:var(--faint); font-size:12px; }
+
+  /* coaching lanes */
+  .lanes { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px; }
+  @media (max-width:820px) { .lanes { grid-template-columns:1fr; } }
+  .lane { background:var(--panel); border:1px solid var(--border); border-radius:var(--r); padding:14px 15px; box-shadow:var(--shadow); }
+  .lane h3 { margin:0 0 2px; font-size:13px; font-weight:750; display:flex; align-items:center; gap:7px; }
+  .lane .sub { color:var(--faint); font-size:11.5px; margin:0 0 11px; min-height:30px; }
+  .lane.moving h3 { color:var(--good); }
+  .lane.slipping h3 { color:var(--bad); }
+  .lane.quiet h3 { color:var(--warn); }
+  .lane .dot { width:8px; height:8px; border-radius:50%; }
+  .lane.moving .dot { background:var(--good); }
+  .lane.slipping .dot { background:var(--bad); }
+  .lane.quiet .dot { background:var(--warn); }
+  .lane ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+  .lane li { display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:8px 11px; }
+  .lane li .nm { font-weight:650; font-size:13.5px; }
+  .lane li .why { color:var(--dim); font-size:11.5px; margin-top:1px; }
+  .lane li .metric { font-variant-numeric:tabular-nums; font-weight:750; font-size:15px; white-space:nowrap; }
+  .lane.moving li .metric { color:var(--good); }
+  .lane.slipping li .metric { color:var(--bad); }
+  .lane.quiet li .metric { color:var(--warn); }
+  .lane .empty { color:var(--faint); font-size:12.5px; padding:6px 2px; }
+
+  .chart-box { padding:16px 18px 6px; }
+  #trendChart { width:100%; height:140px; }
+
+  .table-scroll { overflow-x:auto; }
+  table.board { width:100%; border-collapse:collapse; font-size:13.5px; }
+  table.board thead th { text-align:right; padding:10px 13px; color:var(--faint); font-size:10.5px;
+    text-transform:uppercase; letter-spacing:.06em; font-weight:700; border-bottom:1px solid var(--border);
+    white-space:nowrap; position:sticky; top:0; background:var(--panel); cursor:pointer; user-select:none; }
+  table.board thead th.l { text-align:left; }
+  table.board thead th[aria-sort="descending"]::after { content:" ▾"; color:var(--accent); }
+  table.board thead th[aria-sort="ascending"]::after { content:" ▴"; color:var(--accent); }
+  table.board thead th .help { color:var(--faint); font-weight:600; cursor:help; border-bottom:1px dotted var(--faint); }
+  table.board tbody td { padding:11px 13px; border-bottom:1px solid #212b42; text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  table.board tbody tr:last-child td { border-bottom:0; }
+  table.board tbody tr.rep-row:hover { background:var(--hover); }
+  td.rep-name { text-align:left; }
+  .rep-name .nm { font-weight:650; }
+  .rep-name .em { display:block; color:var(--faint); font-size:11.5px; margin-top:1px; }
+  td.tot .av { font-weight:700; }
+  .bar { margin-top:5px; height:5px; border-radius:3px; background:#222c44; overflow:hidden; min-width:64px; }
+  .bar > i { display:block; height:100%; background:linear-gradient(90deg,#4f7fff,#7aa2ff); }
+  .pill { display:inline-block; min-width:26px; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:650;
+    background:var(--panel-2); border:1px solid var(--border); }
+  .pill.good { color:var(--good); border-color:var(--good-bd); background:var(--good-bg); }
+  .pill.bad  { color:var(--bad);  border-color:var(--bad-bd);  background:var(--bad-bg); }
+  .pill.warn { color:var(--warn); border-color:var(--warn-bd); background:var(--warn-bg); }
+  .pill.zero { color:var(--faint); }
+  /* engagement-quality micro-bar: stacked meetings / chasing / no-reach / lost */
+  .mix { display:flex; height:7px; border-radius:4px; overflow:hidden; min-width:90px; background:#222c44; margin-top:5px; }
+  .mix > span { display:block; height:100%; }
+  .mix .m { background:var(--good); } .mix .c { background:var(--accent); }
+  .mix .n { background:var(--warn); } .mix .l { background:var(--bad); }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; padding:10px 18px 14px; color:var(--dim); font-size:11.5px; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .legend i { width:10px; height:10px; border-radius:3px; display:inline-block; }
+
+  #status { padding:0; }
+  .state-msg { padding:40px 18px; text-align:center; color:var(--dim); font-size:14px; }
+  .state-msg .big { font-size:15px; color:var(--ink); font-weight:600; margin-bottom:4px; }
+  .skel { display:grid; gap:10px; padding:18px; }
+  .skel .row { height:42px; border-radius:9px;
+    background:linear-gradient(90deg,#1a2236 25%,#232d46 37%,#1a2236 63%); background-size:400% 100%; animation:shimmer 1.4s ease infinite; }
+  @keyframes shimmer { 0% { background-position:100% 0; } 100% { background-position:-100% 0; } }
+  .hidden { display:none !important; }
+  [data-lb-state="error"] { border-color:var(--bad) !important; }
+  [data-lb-state="unavailable"] { opacity:.55; pointer-events:none; }
+  footer.foot { margin-top:18px; color:var(--faint); font-size:12px; text-align:center; line-height:1.6; }
+  footer.foot code { color:var(--dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="title">
+      <h1>Weekly Team Pulse</h1>
+      <p>Who's active, who's moving conversations, and who might be slipping — built from logged activity and call dispositions.</p>
+      <span class="range-tag" id="rangeTag">Loading window…</span>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Look-back window">
+        <span class="lbl">Window</span>
+        <button type="button" data-weeks="1"  aria-pressed="false">1 wk</button>
+        <button type="button" data-weeks="2"  aria-pressed="false">2 wk</button>
+        <button type="button" data-weeks="4"  aria-pressed="true">4 wk</button>
+      </div>
+      <button id="refresh" type="button" title="Reload current window">
+        <span class="spin" aria-hidden="true"></span><span>Refresh</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="caveat" id="caveat">
+    <span class="x">⚠︎</span>
+    <span><b>What this is, honestly:</b> these are logged <b>activity counts and call dispositions</b> over the window — a proxy
+      for effort and conversation outcomes, <b>not</b> pipeline value, conversion rate, or revenue. "Moving deals" here means
+      <b>logged meetings/interest</b>; "slipping" is inferred from a high <b>not-interested/lost</b> or <b>can't-reach</b> share, or
+      a rep who's gone quiet. Treat it as a list of <b>who to talk to</b>, not a scorecard. The tool can't tell you which rep touched which lead.</span>
+  </div>
+
+  <!-- THE THREE LENSES the manager asked for -->
+  <div class="lanes" id="lanes">
+    <div class="lane moving">
+      <h3><span class="dot"></span>Moving conversations</h3>
+      <p class="sub">Most logged meetings / validated interest this window.</p>
+      <ul id="laneMoving"></ul>
+    </div>
+    <div class="lane slipping">
+      <h3><span class="dot"></span>Might be slipping — coach</h3>
+      <p class="sub">Active, but a high share of outcomes are lost / can't-reach. Effort without traction.</p>
+      <ul id="laneSlipping"></ul>
+    </div>
+    <div class="lane quiet">
+      <h3><span class="dot"></span>Gone quiet</h3>
+      <p class="sub">Little or no logged activity in the window. Check in.</p>
+      <ul id="laneQuiet"></ul>
+    </div>
+  </div>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Team activity trend</h2><span class="hint" id="trendHint">—</span></div>
+    <div class="chart-box"><canvas id="trendChart"></canvas></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Per-rep detail</h2>
+      <span class="hint" id="boardHint">Click a column to sort</span>
+    </div>
+    <div id="status"></div>
+    <div class="table-scroll" id="boardWrap">
+      <table class="board">
+        <thead>
+          <tr>
+            <th class="l" data-sort="name">Rep</th>
+            <th data-sort="total_activities">Activity</th>
+            <th data-sort="meetings_or_interest" title="Logged meetings or validated interest">Meet/Int</th>
+            <th data-sort="still_chasing" title="Still chasing — open, multi-touch">Chasing</th>
+            <th data-sort="could_not_reach" title="Logged could-not-reach / still trying">No-reach</th>
+            <th data-sort="lost" title="Logged not-interested / lost">Lost</th>
+            <th data-sort="winShare"><span class="help" title="Of dispositions logged (meet+chasing+no-reach+lost), the % that are meetings/interest. Needs ≥4 dispositions to show.">Win-share</span></th>
+            <th class="l">Outcome mix</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboard"></tbody>
+      </table>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--good)"></i>Meetings / interest</span>
+      <span><i style="background:var(--accent)"></i>Still chasing</span>
+      <span><i style="background:var(--warn)"></i>Couldn't reach</span>
+      <span><i style="background:var(--bad)"></i>Lost</span>
+    </div>
+  </section>
+
+  <footer class="foot">
+    Data via <code>leadbay_team_activity</code> · activity + call-disposition counts only.<br />
+    No conversion rate, deal value, time-in-stage, or per-lead rep attribution is available from this tool.
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<!-- RUNTIME -->
+<script>
+(function () {
+  "use strict";
+  var lb = window.LeadbayArtifacts;
+  var ASK = "Build me a weekly team pulse — who's active, who's actually moving deals, and who might be slipping, so I know who to coach.";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var $board = $("leaderboard"), $boardWrap = $("boardWrap"), $status = $("status");
+  var $refresh = $("refresh"), $rangeTag = $("rangeTag"), $trendHint = $("trendHint");
+  var $boardHint = $("boardHint"), $lanes = $("lanes");
+  var $moving = $("laneMoving"), $slipping = $("laneSlipping"), $quiet = $("laneQuiet");
+  var winButtons = Array.prototype.slice.call(document.querySelectorAll(".seg button"));
+
+  var DEFAULT_WEEKS = 4;
+  var currentWeeks = DEFAULT_WEEKS;
+  var team = null, unsub = null, chart = null;
+  var lastReps = [];
+  var sortKey = "total_activities", sortDir = "desc";
+  var MIN_DISPO = 4; // win-share is noise below this many logged dispositions
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c];
+    });
+  }
+  function num(n) { return typeof n === "number" && isFinite(n) ? n : 0; }
+  function setStatus(h) { $status.innerHTML = h || ""; }
+  function showBoard(s) { $boardWrap.classList.toggle("hidden", !s); }
+  function repName(r, i) { return r.name || r.email || ("Rep " + (r.user_id != null ? r.user_id : i + 1)); }
+
+  // ── Derived per-rep signals (everything computable from the real shape) ──
+  function enrich(reps) {
+    return (Array.isArray(reps) ? reps : []).map(function (r) {
+      var meet = num(r.meetings_or_interest), chase = num(r.still_chasing),
+          nore = num(r.could_not_reach), lost = num(r.lost);
+      var dispo = meet + chase + nore + lost;        // total outcome-bearing calls
+      var stalled = nore + lost;                     // no-forward-motion outcomes
+      return Object.assign({}, r, {
+        _meet: meet, _chase: chase, _nore: nore, _lost: lost,
+        _dispo: dispo,
+        // Win-share: of logged dispositions, the fraction that are meetings/interest.
+        // null when too few dispositions to be meaningful (honest about noise).
+        _winShare: dispo >= MIN_DISPO ? meet / dispo : null,
+        // Stall-share: fraction of dispositions that went lost / no-reach.
+        _stallShare: dispo >= MIN_DISPO ? stalled / dispo : null,
+        _total: num(r.total_activities)
+      });
+    });
+  }
+
+  function pct(x) { return Math.round(x * 100); }
+
+  // ── The three coaching lanes ──
+  function renderLanes(reps) {
+    var maxAct = reps.reduce(function (m, r) { return Math.max(m, r._total); }, 0);
+
+    // Moving: most logged meetings/interest (>0). Sorted desc.
+    var moving = reps.filter(function (r) { return r._meet > 0; })
+                     .sort(function (a, b) { return b._meet - a._meet; }).slice(0, 5);
+    // Slipping: did real work (dispo >= MIN) but stall-share is high (>=50%).
+    var slipping = reps.filter(function (r) { return r._stallShare != null && r._stallShare >= 0.5; })
+                       .sort(function (a, b) { return b._stallShare - a._stallShare; }).slice(0, 5);
+    // Quiet: bottom of activity — little/no logged work. Relative to the busiest rep.
+    var quietThreshold = Math.max(3, Math.round(maxAct * 0.15));
+    var quiet = reps.filter(function (r) { return r._total < quietThreshold; })
+                    .sort(function (a, b) { return a._total - b._total; }).slice(0, 5);
+
+    function laneRows(arr, kind) {
+      if (!arr.length) return '<li class="empty">' + esc(emptyMsg(kind)) + "</li>";
+      return arr.map(function (r, i) {
+        var name = repName(r, i), metric, why;
+        if (kind === "moving") {
+          metric = r._meet + (r._meet === 1 ? " mtg" : " mtgs");
+          why = r._winShare != null ? pct(r._winShare) + "% of outcomes are wins" : "from " + r._total + " activities";
+        } else if (kind === "slipping") {
+          metric = pct(r._stallShare) + "%";
+          why = (r._lost + r._nore) + " lost/no-reach of " + r._dispo + " calls · coach the pitch or the targeting";
+        } else {
+          metric = r._total + " act";
+          why = r._total === 0 ? "no logged activity this window" : "well below team pace";
+        }
+        return '<li><div><div class="nm">' + esc(name) + '</div><div class="why">' + esc(why) + '</div></div>' +
+               '<div class="metric">' + esc(metric) + "</div></li>";
+      }).join("");
+    }
+    function emptyMsg(kind) {
+      if (kind === "moving") return "No logged meetings or validated interest in this window.";
+      if (kind === "slipping") return "No rep has enough logged outcomes to flag (needs ≥" + MIN_DISPO + " calls).";
+      return "Everyone's active — no one's gone quiet.";
+    }
+    $moving.innerHTML = laneRows(moving, "moving");
+    $slipping.innerHTML = laneRows(slipping, "slipping");
+    $quiet.innerHTML = laneRows(quiet, "quiet");
+  }
+
+  // ── Per-rep table (sortable) ──
+  function sortReps(reps) {
+    var k = sortKey, dir = sortDir === "asc" ? 1 : -1;
+    return reps.slice().sort(function (a, b) {
+      var av, bv;
+      if (k === "name") { av = repName(a, 0).toLowerCase(); bv = repName(b, 0).toLowerCase(); return av < bv ? -1 * dir : av > bv ? 1 * dir : 0; }
+      if (k === "winShare") { av = a._winShare == null ? -1 : a._winShare; bv = b._winShare == null ? -1 : b._winShare; }
+      else { av = num(a[k]); bv = num(b[k]); }
+      return (av - bv) * dir;
+    });
+  }
+
+  function renderBoard(reps) {
+    if (!reps.length) {
+      showBoard(false);
+      setStatus('<div class="state-msg"><div class="big">No activity in this window</div>No reps recorded any logged activity in the last ' + currentWeeks + ' week(s).</div>');
+      return;
+    }
+    var maxAct = reps.reduce(function (m, r) { return Math.max(m, r._total); }, 0) || 1;
+    var sorted = sortReps(reps);
+
+    $board.innerHTML = sorted.map(function (r, i) {
+      var name = repName(r, i);
+      var barPct = Math.max(2, Math.round((r._total / maxAct) * 100));
+      function pill(v, kind) {
+        var cls = "pill" + (v === 0 ? " zero" : kind ? " " + kind : "");
+        return '<span class="' + cls + '">' + v + "</span>";
+      }
+      // win-share cell — honest "—" when below the noise floor
+      var ws = r._winShare == null
+        ? '<span class="pill zero" title="Only ' + r._dispo + ' logged outcomes — too few to score">—</span>'
+        : '<span class="pill ' + (r._winShare >= 0.34 ? "good" : r._winShare <= 0.12 ? "bad" : "") + '">' + pct(r._winShare) + "%</span>";
+      // stacked outcome-mix bar
+      var d = r._dispo || 1;
+      var mix = r._dispo === 0
+        ? '<span class="why" style="color:var(--faint);font-size:11px">no logged outcomes</span>'
+        : '<span class="mix" title="meet ' + r._meet + ' · chasing ' + r._chase + ' · no-reach ' + r._nore + ' · lost ' + r._lost + '">' +
+            '<span class="m" style="width:' + (r._meet / d * 100) + '%"></span>' +
+            '<span class="c" style="width:' + (r._chase / d * 100) + '%"></span>' +
+            '<span class="n" style="width:' + (r._nore / d * 100) + '%"></span>' +
+            '<span class="l" style="width:' + (r._lost / d * 100) + '%"></span>' +
+          "</span>";
+      return (
+        '<tr class="rep-row" data-user-id="' + esc(r.user_id) + '">' +
+          '<td class="rep-name"><span class="nm">' + esc(name) + "</span>" +
+            (r.email ? '<span class="em">' + esc(r.email) + "</span>" : "") + "</td>" +
+          '<td class="tot"><span class="av">' + r._total + "</span>" +
+            '<span class="bar"><i style="width:' + barPct + '%"></i></span></td>' +
+          "<td>" + pill(r._meet, r._meet > 0 ? "good" : "") + "</td>" +
+          "<td>" + pill(r._chase, r._chase > 0 ? "warn" : "") + "</td>" +
+          "<td>" + pill(r._nore, r._nore > 0 ? "warn" : "") + "</td>" +
+          "<td>" + pill(r._lost, r._lost > 0 ? "bad" : "") + "</td>" +
+          "<td>" + ws + "</td>" +
+          '<td class="l">' + mix + "</td>" +
+        "</tr>"
+      );
+    }).join("");
+
+    setStatus("");
+    showBoard(true);
+    $boardHint.textContent = reps.length + " rep" + (reps.length === 1 ? "" : "s") + " · sorted by " + sortKey;
+    // reflect aria-sort on headers
+    Array.prototype.forEach.call(document.querySelectorAll("th[data-sort]"), function (th) {
+      var on = th.getAttribute("data-sort") === sortKey;
+      th.setAttribute("aria-sort", on ? (sortDir === "asc" ? "ascending" : "descending") : "none");
+    });
+  }
+
+  function renderAll(reps) {
+    lastReps = enrich(reps);
+    renderLanes(lastReps);
+    renderBoard(lastReps);
+  }
+
+  function renderTrend(trend) {
+    trend = Array.isArray(trend) ? trend : [];
+    var canvas = $("trendChart");
+    if (!trend.length) { $trendHint.textContent = "no data"; if (chart) { chart.destroy(); chart = null; } return; }
+    $trendHint.textContent = trend.length + " points";
+    if (typeof window.Chart !== "function" || !canvas) return;
+    var labels = trend.map(function (p) { return p.date; });
+    var data = trend.map(function (p) { return num(p.count); });
+    if (chart) { chart.data.labels = labels; chart.data.datasets[0].data = data; chart.update(); return; }
+    var ctx = canvas.getContext("2d");
+    var grad = ctx.createLinearGradient(0, 0, 0, 140);
+    grad.addColorStop(0, "rgba(91,140,255,.35)"); grad.addColorStop(1, "rgba(91,140,255,0)");
+    chart = new window.Chart(ctx, {
+      type: "line",
+      data: { labels: labels, datasets: [{ label: "Activities", data: data, borderColor: "#5b8cff",
+        backgroundColor: grad, borderWidth: 2, fill: true, tension: .32, pointRadius: 0, pointHoverRadius: 4 }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { intersect: false, mode: "index" } },
+        scales: { x: { grid: { display: false }, ticks: { color: "#6b7894", maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+                  y: { beginAtZero: true, grid: { color: "#222c44" }, ticks: { color: "#6b7894", precision: 0 } } } }
+    });
+  }
+
+  function renderError(err) {
+    showBoard(false); $lanes.classList.add("hidden");
+    var un = err && err.unavailable;
+    setStatus('<div class="state-msg" data-lb-state="error"><div class="big">' +
+      (un ? "Team data isn't available here" : "Couldn't load team activity") + "</div>" +
+      esc(err && err.message ? err.message : (un ? "The host bridge is unavailable in this surface." : "Please try refreshing.")) + "</div>");
+  }
+  function renderLoading() {
+    showBoard(false);
+    setStatus('<div class="skel"><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div></div>');
+  }
+
+  function setBusy(b) {
+    $refresh.disabled = b; $refresh.classList.toggle("is-busy", b);
+    $refresh.setAttribute("data-lb-state", b ? "loading" : "ready");
+    winButtons.forEach(function (x) { x.disabled = b; });
+  }
+  function markWindow(w) {
+    winButtons.forEach(function (x) { x.setAttribute("aria-pressed", Number(x.getAttribute("data-weeks")) === Number(w) ? "true" : "false"); });
+  }
+  function rangeLabel(range, w) {
+    if (range && range.from && range.to) return esc(range.from) + " → " + esc(range.to);
+    return "Last " + w + " week(s)";
+  }
+
+  function loadWindow(weeks) {
+    currentWeeks = Number(weeks) || DEFAULT_WEEKS;
+    markWindow(currentWeeks);
+    $lanes.classList.remove("hidden");
+    if (unsub) { unsub(); unsub = null; }
+    team = lb.teamActivity({ weeks: currentWeeks, ask: ASK });
+    unsub = team.subscribe(function (t) {
+      setBusy(t.loading || t.refreshing);
+      if (t.error) { renderError(t.error); $rangeTag.textContent = "Last " + currentWeeks + " week(s)"; return; }
+      if (t.loading && !t.data) { renderLoading(); $rangeTag.textContent = "Loading…"; return; }
+      if (t.data) {
+        $rangeTag.textContent = rangeLabel(t.data.range, currentWeeks);
+        renderAll(t.data.reps);
+        renderTrend(t.data.trend);
+      }
+    });
+    if (typeof team.load === "function" && !team.data && !team.loading) team.load();
+  }
+
+  // sortable headers
+  Array.prototype.forEach.call(document.querySelectorAll("th[data-sort]"), function (th) {
+    th.addEventListener("click", function () {
+      var k = th.getAttribute("data-sort");
+      if (k === sortKey) sortDir = sortDir === "asc" ? "desc" : "asc";
+      else { sortKey = k; sortDir = (k === "name") ? "asc" : "desc"; }
+      if (lastReps.length) renderBoard(lastReps);
+    });
+  });
+
+  $refresh.addEventListener("click", function () { if (team && team.refresh) team.refresh(); });
+  winButtons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var w = Number(btn.getAttribute("data-weeks"));
+      if (w === currentWeeks && team && team.data) { team.refresh(); return; }
+      loadWindow(w);
+    });
+  });
+
+  if (lb && lb.configure) lb.configure();
+  if (!lb || typeof lb.teamActivity !== "function") {
+    renderError({ message: "Leadbay artifact runtime not loaded.", unavailable: true });
+    setBusy(false);
+  } else {
+    loadWindow(DEFAULT_WEEKS);
+  }
+})();
+</script>
+</body>
+</html>

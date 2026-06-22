@@ -1,13 +1,13 @@
 {
   "name": "@leadbay/core",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "private": true,
   "description": "Leadbay shared core: HTTP client and protocol-agnostic tool definitions. Consumed by @leadbay/mcp.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "prebuild": "pnpm --filter @leadbay/promptforge build",
+    "prebuild": "pnpm --filter @leadbay/components build && pnpm --filter @leadbay/promptforge build",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

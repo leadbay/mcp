@@ -1,0 +1,464 @@
+<!--
+  AGENT-GENERATED FIXTURE — do not hand-edit.
+  Produced by an independent Claude subagent given ONLY the leadbay_artifact_kit
+  usage guide (view-model API, manager section) + "build me a team dashboard".
+  Evidence that an agent can build a manager dashboard on lb.teamActivity (which
+  wraps the new leadbay_team_activity tool). agent-dogfood-manager.test.ts injects
+  the real runtime at the runtime-marker comment, stubs the bridge, and asserts
+  the leaderboard populates from leadbay_team_activity + the window switcher and
+  refresh re-read. Chart.js (CDN) is skipped under jsdom; the table still renders.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Team Activity — Rep Leaderboard</title>
+<style>
+  :root {
+    --bg: #0f1420;
+    --panel: #161d2e;
+    --panel-2: #1c2438;
+    --border: #2a3450;
+    --ink: #e7ecf5;
+    --ink-dim: #9aa6bf;
+    --ink-faint: #6b7894;
+    --accent: #5b8cff;
+    --accent-soft: #1e2c52;
+    --good: #43c478;
+    --bad: #ff6b6b;
+    --warn: #f0b429;
+    --row-hover: #1f2942;
+    --shadow: 0 6px 24px rgba(0,0,0,.35);
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 80% -10%, #1a2540 0%, var(--bg) 55%) fixed;
+    color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 28px 22px 48px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header.top {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 18px; flex-wrap: wrap; margin-bottom: 22px;
+  }
+  .title h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; font-weight: 700; }
+  .title p { margin: 4px 0 0; color: var(--ink-dim); font-size: 13.5px; }
+  .range-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 8px; padding: 3px 10px; border-radius: 999px;
+    background: var(--accent-soft); color: #b9ccff; font-size: 12px; font-weight: 600;
+    border: 1px solid #2c3e6e;
+  }
+  .controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .seg {
+    display: inline-flex; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 11px; padding: 4px; gap: 3px;
+  }
+  .seg .lbl {
+    align-self: center; padding: 0 8px 0 6px; color: var(--ink-faint);
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700;
+  }
+  .window-btn {
+    appearance: none; border: 0; cursor: pointer; font: inherit; font-weight: 600;
+    color: var(--ink-dim); background: transparent; padding: 7px 14px; border-radius: 8px;
+    transition: background .15s, color .15s;
+  }
+  .window-btn:hover { color: var(--ink); background: var(--panel-2); }
+  .window-btn[aria-pressed="true"] {
+    background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(91,140,255,.4);
+  }
+  .window-btn:disabled { opacity: .5; cursor: progress; }
+  button#refresh {
+    appearance: none; cursor: pointer; font: inherit; font-weight: 600;
+    color: var(--ink); background: var(--panel); border: 1px solid var(--border);
+    padding: 8px 16px; border-radius: 11px; display: inline-flex; align-items: center; gap: 8px;
+    transition: border-color .15s, background .15s;
+  }
+  button#refresh:hover { border-color: var(--accent); background: var(--panel-2); }
+  button#refresh:disabled { opacity: .6; cursor: progress; }
+  button#refresh .spin {
+    width: 13px; height: 13px; border-radius: 50%;
+    border: 2px solid var(--ink-faint); border-top-color: var(--accent);
+    display: none;
+  }
+  button#refresh[data-lb-state="loading"] .spin,
+  button#refresh.is-busy .spin { display: inline-block; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+  }
+  .panel + .panel { margin-top: 20px; }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+  }
+  .panel-head h2 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: .01em; }
+  .panel-head .hint { color: var(--ink-faint); font-size: 12px; }
+  .chart-box { padding: 16px 18px 6px; }
+  #trendChart { width: 100%; height: 150px; }
+  .table-scroll { overflow-x: auto; }
+  table.board { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.board thead th {
+    text-align: right; padding: 11px 14px; color: var(--ink-faint);
+    font-size: 11px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700;
+    border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0;
+    background: var(--panel);
+  }
+  table.board thead th.l { text-align: left; }
+  table.board tbody td {
+    padding: 12px 14px; border-bottom: 1px solid #222c44; text-align: right;
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  table.board tbody tr:last-child td { border-bottom: 0; }
+  table.board tbody tr.rep-row:hover { background: var(--row-hover); }
+  td.rank { width: 46px; text-align: center; }
+  .rank .medal {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%; font-size: 12px; font-weight: 700;
+    background: var(--panel-2); color: var(--ink-dim); border: 1px solid var(--border);
+  }
+  tr.rep-row:nth-child(1) .medal { background: #4a3c10; color: #ffd866; border-color: #6b5512; }
+  tr.rep-row:nth-child(2) .medal { background: #33384a; color: #d6def0; border-color: #495068; }
+  tr.rep-row:nth-child(3) .medal { background: #432f1d; color: #f0a868; border-color: #6b4628; }
+  td.rep-name { text-align: left; }
+  .rep-name .nm { font-weight: 650; color: var(--ink); }
+  .rep-name .em { display: block; color: var(--ink-faint); font-size: 12px; margin-top: 1px; }
+  td.rep-activities .av { font-weight: 700; font-size: 15px; }
+  .bar {
+    margin-top: 5px; height: 5px; border-radius: 3px; background: #232d46; overflow: hidden;
+    min-width: 70px;
+  }
+  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, #4f7fff, #7aa2ff); }
+  .pill {
+    display: inline-block; min-width: 30px; padding: 2px 9px; border-radius: 999px;
+    font-size: 12.5px; font-weight: 650; background: var(--panel-2); border: 1px solid var(--border);
+  }
+  .pill.good { color: var(--good); border-color: #1f4d36; background: #12281d; }
+  .pill.bad  { color: var(--bad);  border-color: #4d2222; background: #281414; }
+  .pill.zero { color: var(--ink-faint); }
+  #status { padding: 0; }
+  .state-msg {
+    padding: 40px 18px; text-align: center; color: var(--ink-dim); font-size: 14px;
+  }
+  .state-msg .big { font-size: 15px; color: var(--ink); font-weight: 600; margin-bottom: 4px; }
+  .skel { display: grid; gap: 10px; padding: 18px; }
+  .skel .row {
+    height: 44px; border-radius: 9px;
+    background: linear-gradient(90deg, #1a2236 25%, #232d46 37%, #1a2236 63%);
+    background-size: 400% 100%; animation: shimmer 1.4s ease infinite;
+  }
+  @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+  .hidden { display: none !important; }
+  [data-lb-state="error"] { border-color: var(--bad) !important; }
+  [data-lb-state="unavailable"] { opacity: .55; pointer-events: none; }
+  [data-lb-state="loading"] { pointer-events: none; }
+  footer.foot { margin-top: 18px; color: var(--ink-faint); font-size: 12px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="title">
+      <h1>Team Activity</h1>
+      <p>Rep leaderboard by total activity, ranked.</p>
+      <span class="range-tag" id="rangeTag">Loading window…</span>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Look-back window">
+        <span class="lbl">Window</span>
+        <button class="window-btn" type="button" data-weeks="2"  aria-pressed="false">2 wk</button>
+        <button class="window-btn" type="button" data-weeks="4"  aria-pressed="true">4 wk</button>
+        <button class="window-btn" type="button" data-weeks="12" aria-pressed="false">12 wk</button>
+      </div>
+      <button id="refresh" type="button" title="Reload current window">
+        <span class="spin" aria-hidden="true"></span><span>Refresh</span>
+      </button>
+    </div>
+  </header>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Activity trend</h2>
+      <span class="hint" id="trendHint">—</span>
+    </div>
+    <div class="chart-box">
+      <canvas id="trendChart"></canvas>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Leaderboard</h2>
+      <span class="hint" id="boardHint">Sorted by total activity</span>
+    </div>
+
+    <div id="status"></div>
+
+    <div class="table-scroll" id="boardWrap">
+      <table class="board">
+        <thead>
+          <tr>
+            <th class="r">#</th>
+            <th class="l">Rep</th>
+            <th>Total activity</th>
+            <th>Notes</th>
+            <th>Meetings/Interest</th>
+            <th>Lost</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboard"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="foot">
+    Data via <code>leadbay_team_activity</code> · Leadbay artifact runtime.
+  </footer>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<!-- RUNTIME_HERE -->
+<script>
+(function () {
+  "use strict";
+
+  var lb = window.LeadbayArtifacts;
+  var ASK = "Build a team dashboard — a leaderboard of my reps by activity for the last few weeks, with a refresh button and a way to switch the look-back window.";
+
+  var $board    = document.getElementById("leaderboard");
+  var $boardWrap= document.getElementById("boardWrap");
+  var $status   = document.getElementById("status");
+  var $refresh  = document.getElementById("refresh");
+  var $rangeTag = document.getElementById("rangeTag");
+  var $trendHint= document.getElementById("trendHint");
+  var $boardHint= document.getElementById("boardHint");
+  var winButtons= Array.prototype.slice.call(document.querySelectorAll(".window-btn"));
+
+  var DEFAULT_WEEKS = 4;
+  var currentWeeks = DEFAULT_WEEKS;
+  var team = null;
+  var unsub = null;
+  var chart = null;
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function num(n) { return typeof n === "number" && isFinite(n) ? n : 0; }
+  function setStatus(html) { $status.innerHTML = html || ""; }
+  function showBoard(show) { $boardWrap.classList.toggle("hidden", !show); }
+
+  function setBusy(busy) {
+    $refresh.disabled = busy;
+    $refresh.classList.toggle("is-busy", busy);
+    $refresh.setAttribute("data-lb-state", busy ? "loading" : "ready");
+    winButtons.forEach(function (b) { b.disabled = busy; });
+  }
+
+  function markActiveWindow(weeks) {
+    winButtons.forEach(function (b) {
+      var on = Number(b.getAttribute("data-weeks")) === Number(weeks);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
+
+  function rangeLabel(range, weeks) {
+    if (range && range.from && range.to) {
+      return esc(range.from) + " → " + esc(range.to) +
+             (range.periodicity ? " · " + esc(range.periodicity) : "");
+    }
+    return "Last " + weeks + " weeks";
+  }
+
+  function renderLeaderboard(reps) {
+    reps = Array.isArray(reps) ? reps : [];
+    if (!reps.length) {
+      showBoard(false);
+      setStatus(
+        '<div class="state-msg"><div class="big">No activity in this window</div>' +
+        'No reps recorded any activity in the last ' + currentWeeks + ' weeks.</div>'
+      );
+      return;
+    }
+
+    var max = reps.reduce(function (m, r) { return Math.max(m, num(r.total_activities)); }, 0) || 1;
+
+    var rows = reps.map(function (r, i) {
+      var total   = num(r.total_activities);
+      var notes   = num(r.notes);
+      var meet    = num(r.meetings_or_interest);
+      var lost    = num(r.lost);
+      var pct     = Math.max(2, Math.round((total / max) * 100));
+      var name    = r.name || r.email || ("Rep " + (r.user_id != null ? r.user_id : i + 1));
+
+      function pill(v, kind) {
+        var cls = "pill" + (v === 0 ? " zero" : kind ? " " + kind : "");
+        return '<span class="' + cls + '">' + v + "</span>";
+      }
+
+      return (
+        '<tr class="rep-row" data-user-id="' + esc(r.user_id) + '">' +
+          '<td class="rank"><span class="medal">' + (i + 1) + "</span></td>" +
+          '<td class="rep-name">' +
+            '<span class="nm">' + esc(name) + "</span>" +
+            (r.email ? '<span class="em">' + esc(r.email) + "</span>" : "") +
+          "</td>" +
+          '<td class="rep-activities">' +
+            '<span class="av">' + total + "</span>" +
+            '<span class="bar"><i style="width:' + pct + '%"></i></span>' +
+          "</td>" +
+          "<td>" + pill(notes) + "</td>" +
+          "<td>" + pill(meet, meet > 0 ? "good" : "") + "</td>" +
+          "<td>" + pill(lost, lost > 0 ? "bad" : "") + "</td>" +
+        "</tr>"
+      );
+    }).join("");
+
+    $board.innerHTML = rows;
+    setStatus("");
+    showBoard(true);
+    $boardHint.textContent = reps.length + " rep" + (reps.length === 1 ? "" : "s") + " · sorted by total activity";
+  }
+
+  function renderTrend(trend) {
+    trend = Array.isArray(trend) ? trend : [];
+    var hasChartLib = typeof window.Chart === "function";
+    var canvas = document.getElementById("trendChart");
+
+    if (!trend.length) {
+      $trendHint.textContent = "no data";
+      if (chart) { chart.destroy(); chart = null; }
+      return;
+    }
+    $trendHint.textContent = trend.length + " points";
+
+    if (!hasChartLib || !canvas) return;
+
+    var labels = trend.map(function (p) { return p.date; });
+    var data   = trend.map(function (p) { return num(p.count); });
+
+    if (chart) {
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = data;
+      chart.update();
+      return;
+    }
+
+    var ctx = canvas.getContext("2d");
+    var grad = ctx.createLinearGradient(0, 0, 0, 150);
+    grad.addColorStop(0, "rgba(91,140,255,.35)");
+    grad.addColorStop(1, "rgba(91,140,255,0)");
+
+    chart = new window.Chart(ctx, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [{
+          label: "Activities",
+          data: data,
+          borderColor: "#5b8cff",
+          backgroundColor: grad,
+          borderWidth: 2,
+          fill: true,
+          tension: 0.32,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointHoverBackgroundColor: "#5b8cff"
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { intersect: false, mode: "index" } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: "#6b7894", maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+          y: { beginAtZero: true, grid: { color: "#222c44" }, ticks: { color: "#6b7894", precision: 0 } }
+        }
+      }
+    });
+  }
+
+  function renderError(err) {
+    showBoard(false);
+    var unavailable = err && err.unavailable;
+    setStatus(
+      '<div class="state-msg" data-lb-state="error">' +
+        '<div class="big">' + (unavailable
+          ? "Team data isn’t available here"
+          : "Couldn’t load team activity") + "</div>" +
+        esc(err && err.message ? err.message :
+          (unavailable ? "The host bridge is unavailable in this surface." : "Please try refreshing.")) +
+      "</div>"
+    );
+  }
+
+  function renderLoading() {
+    showBoard(false);
+    setStatus(
+      '<div class="skel">' +
+        '<div class="row"></div><div class="row"></div><div class="row"></div>' +
+        '<div class="row"></div><div class="row"></div>' +
+      "</div>"
+    );
+  }
+
+  function loadWindow(weeks) {
+    currentWeeks = Number(weeks) || DEFAULT_WEEKS;
+    markActiveWindow(currentWeeks);
+
+    if (unsub) { unsub(); unsub = null; }
+
+    team = lb.teamActivity({ weeks: currentWeeks, ask: ASK });
+
+    unsub = team.subscribe(function (t) {
+      var inFlight = t.loading || t.refreshing;
+      setBusy(inFlight);
+
+      if (t.error) { renderError(t.error); $rangeTag.textContent = "Last " + currentWeeks + " weeks"; return; }
+
+      if (t.loading && !t.data) { renderLoading(); $rangeTag.textContent = "Loading…"; return; }
+
+      if (t.data) {
+        $rangeTag.textContent = rangeLabel(t.data.range, currentWeeks);
+        renderLeaderboard(t.data.reps);
+        renderTrend(t.data.trend);
+      }
+    });
+
+    if (typeof team.load === "function" && !team.data && !team.loading) team.load();
+  }
+
+  $refresh.addEventListener("click", function () {
+    if (team && typeof team.refresh === "function") team.refresh();
+  });
+
+  winButtons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var w = Number(btn.getAttribute("data-weeks"));
+      if (w === currentWeeks && team && team.data) { team.refresh(); return; }
+      loadWindow(w);
+    });
+  });
+
+  if (lb && typeof lb.configure === "function") lb.configure();
+
+  if (!lb || typeof lb.teamActivity !== "function") {
+    renderError({ message: "Leadbay artifact runtime not loaded.", unavailable: true });
+    setBusy(false);
+  } else {
+    loadWindow(DEFAULT_WEEKS);
+  }
+})();
+</script>
+</body>
+</html>

@@ -119,7 +119,9 @@ import { newLens } from "./composite/new-lens.js";
 import { answerClarification } from "./composite/answer-clarification.js";
 import { reportOutreach } from "./composite/report-outreach.js";
 import { reportFriction } from "./composite/report-friction.js";
+import { teamActivity } from "./composite/team-activity.js";
 import { sendFeedback } from "./tools/send-feedback.js";
+import { artifactKit } from "./tools/artifact-kit.js";
 
 import type { Tool } from "./types.js";
 
@@ -165,13 +167,14 @@ export {
   pullLeads, pullFollowups, followupsMap, tourPlan, listCampaigns,
   campaignProgression, campaignCallSheet, researchLeadById, researchLeadByNameFuzzy,
   accountHistory,
-  recallOrderedTitles, accountStatus, scanPortfolioSignals,
+  recallOrderedTitles, accountStatus, scanPortfolioSignals, teamActivity,
   bulkEnrichStatus, qualifyStatus, importStatus, resolveImportRows,
   // new composite writes
   bulkQualifyLeads, enrichTitles, adjustAudience, refinePrompt,
   answerClarification, reportOutreach, reportFriction, sendFeedback, importLeads, importAndQualify,
   createCampaign, addLeadsToCampaign, removeLeadsFromCampaign,
   seedCandidates, extendLens,
+  artifactKit,
 };
 
 // ─── Tool catalogues ─────────────────────────────────────────────────────
@@ -271,6 +274,11 @@ export const compositeReadTools: Tool[] = [
   // answer to "which of my leads have signal X" that previously forced a
   // per-lead research_lead_by_id loop (issue #3704).
   scanPortfolioSignals,
+  // Team activity — manager-facing per-rep leaderboard + activity trend (wraps
+  // /kpi/users + /kpi/trends, the web Dashboard-Manager surface). Read-only;
+  // always exposed so a manager artifact can render team KPIs. Non-admins are
+  // scoped to themselves by the backend.
+  teamActivity,
   recallOrderedTitles,
   accountStatus,
   bulkEnrichStatus,
@@ -310,6 +318,12 @@ export const compositeReadTools: Tool[] = [
   // sees the same entries on every call forever. Pairing the surfacing
   // channel with the clearing tool is non-optional.
   acknowledgeNotification,
+  // Artifact kit — ALWAYS exposed, read-only. Returns the headless
+  // @leadbay/components runtime + usage guide the agent uses to BUILD an
+  // interactive HTML artifact (cold-call sheet, lead-triage board) whose
+  // buttons call Leadbay writes. No backend call; granular-shaped (lives in
+  // tools/) so it carries no _triggered_by mandate for a kit fetch.
+  artifactKit,
 ];
 
 // Composite write tools — always-exposed in OpenClaw, gated in MCP behind

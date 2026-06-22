@@ -62,6 +62,8 @@ const TOOLS_WITH_ROUTING = new Set([
   "leadbay_unpin_contact",
   "leadbay_update_contact",
   "leadbay_account_history",
+  "leadbay_artifact_kit",
+  "leadbay_team_activity",
 ]);
 
 const ALL_TOOLS: Tool[] = [
