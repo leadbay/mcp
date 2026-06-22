@@ -86,10 +86,14 @@ export const createCustomField: Tool<CreateCustomFieldParams> = {
     }
 
     const type = params.type ?? "TEXT";
-    const rawConfig = params.config ?? null;
+    // Narrow config to exactly the key(s) the type accepts (also parses a
+    // stringified config — LLMs often pass nested JSON as a string). The
+    // backend deserializer rejects extra keys with a 500 and drops the
+    // required key when config arrives as an unparsed string.
+    const config = sanitizeConfigForType(type, params.config ?? null);
 
     if (type === "EXTERNAL_ID") {
-      const urlTemplate = rawConfig?.url_template ?? rawConfig?.urlTemplate;
+      const urlTemplate = config?.url_template;
       if (!urlTemplate || !urlTemplate.includes("{value}")) {
         throw client.makeError(
           "CUSTOM_FIELD_EXTERNAL_ID_TEMPLATE_REQUIRED",
@@ -114,11 +118,6 @@ export const createCustomField: Tool<CreateCustomFieldParams> = {
         };
       }
     }
-
-    // Narrow config to exactly the key(s) the type accepts — the backend
-    // deserializer rejects extra keys (e.g. urlTemplate camelCase, or a
-    // currency on a non-PRICE field) with a 500.
-    const config = sanitizeConfigForType(type, rawConfig);
 
     const body = {
       name,

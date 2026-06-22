@@ -13,9 +13,25 @@ import type { CustomCrmFieldConfig, CustomCrmFieldKind } from "../types.js";
 // or unknown), which the caller omits from the request body.
 export function sanitizeConfigForType(
   type: CustomCrmFieldKind,
-  config: CustomCrmFieldConfig | null | undefined
+  rawConfig: CustomCrmFieldConfig | string | null | undefined
 ): CustomCrmFieldConfig | null {
-  if (!config) return null;
+  if (!rawConfig) return null;
+  // LLMs frequently pass nested JSON as a STRING (e.g. config:'{"currency":"EUR"}')
+  // rather than an object. Parse it so the per-type narrowing below still works —
+  // otherwise PRICE/EXTERNAL_ID lose their required key and the backend 400s with
+  // "PRICE requires a currency config". Observed live.
+  let config: CustomCrmFieldConfig;
+  if (typeof rawConfig === "string") {
+    try {
+      const parsed = JSON.parse(rawConfig);
+      if (!parsed || typeof parsed !== "object") return null;
+      config = parsed as CustomCrmFieldConfig;
+    } catch {
+      return null; // unparseable string — no usable config
+    }
+  } else {
+    config = rawConfig;
+  }
   switch (type) {
     case "PRICE":
       // PriceFieldConfig(val currency: String) — currency only.

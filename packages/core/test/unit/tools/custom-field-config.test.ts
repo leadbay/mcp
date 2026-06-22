@@ -45,4 +45,19 @@ describe("sanitizeConfigForType", () => {
   it("unknown type → null (no config forwarded)", () => {
     expect(sanitizeConfigForType("WEIRD" as any, { currency: "EUR" })).toBeNull();
   });
+
+  it("STRINGIFIED config — parses it (LLMs pass nested JSON as a string)", () => {
+    // The exact shape observed live: agent sent config as a JSON string with
+    // an extra `code` key. Must parse + narrow to {currency}.
+    expect(
+      sanitizeConfigForType("PRICE", '{"currency":"EUR","code":"EUR"}' as any)
+    ).toEqual({ currency: "EUR" });
+    expect(
+      sanitizeConfigForType("EXTERNAL_ID", '{"url_template":"https://x/{value}"}' as any)
+    ).toEqual({ url_template: "https://x/{value}" });
+  });
+
+  it("unparseable string → null", () => {
+    expect(sanitizeConfigForType("PRICE", "not json" as any)).toBeNull();
+  });
 });

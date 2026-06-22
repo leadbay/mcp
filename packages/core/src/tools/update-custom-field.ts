@@ -121,8 +121,16 @@ export const updateCustomField: Tool<UpdateCustomFieldParams> = {
     const rawConfig =
       params.config !== undefined ? params.config : (current.config ?? null);
 
+    // Narrow config to exactly the key(s) the target type accepts (also parses
+    // a stringified config — LLMs often pass nested JSON as a string). The
+    // backend deserializer is strict: extra keys (e.g. a stale `format` left
+    // from the previous type) cause a 500, and a string config drops the
+    // required key. Critical on a type CHANGE, where current.config may carry
+    // keys the new type rejects.
+    const config = sanitizeConfigForType(type, rawConfig);
+
     if (type === "EXTERNAL_ID") {
-      const urlTemplate = rawConfig?.url_template ?? rawConfig?.urlTemplate;
+      const urlTemplate = config?.url_template;
       if (!urlTemplate || !urlTemplate.includes("{value}")) {
         throw client.makeError(
           "CUSTOM_FIELD_EXTERNAL_ID_TEMPLATE_REQUIRED",
@@ -132,13 +140,6 @@ export const updateCustomField: Tool<UpdateCustomFieldParams> = {
         );
       }
     }
-
-    // Narrow config to exactly the key(s) the target type accepts. The backend
-    // deserializer is strict — extra keys (e.g. a stale `format` left from the
-    // previous type, or both url_template + urlTemplate) cause a 500. This is
-    // critical on a type CHANGE, where `current.config` may carry keys the new
-    // type rejects.
-    const config = sanitizeConfigForType(type, rawConfig);
 
     const body = {
       name,
