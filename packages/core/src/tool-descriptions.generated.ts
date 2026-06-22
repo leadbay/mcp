@@ -2507,7 +2507,7 @@ Trigger phrases: "show me leads", "show me new leads", "show me today's leads", 
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "leads I should follow up with" → \`leadbay_pull_followups\`; "I'm going to <city>" → \`leadbay_followups_map\`; "leads I should reach out to" → \`leadbay_pull_followups\`; "leads to get back to" → \`leadbay_pull_followups\`; "leads to contact today" → \`leadbay_pull_followups\`; "should I contact" → \`leadbay_pull_followups\`; "reconnect with" → \`leadbay_pull_followups\`; "re-engage" → \`leadbay_pull_followups\`.
+Do NOT use for: "leads I should follow up with" → \`leadbay_pull_followups\`; "I'm going to <city>" → \`leadbay_tour_plan\`; "I'm in <city> next week — who's worth meeting" → \`leadbay_tour_plan\`; "who should I meet in <city>" → \`leadbay_tour_plan\`; "visiting <city> — who's worth meeting / seeing" → \`leadbay_tour_plan\`; "leads I should reach out to" → \`leadbay_pull_followups\`; "leads to get back to" → \`leadbay_pull_followups\`; "leads to contact today" → \`leadbay_pull_followups\`; "should I contact" → \`leadbay_pull_followups\`; "reconnect with" → \`leadbay_pull_followups\`; "re-engage" → \`leadbay_pull_followups\`.
 
 Prefer when: fresh Discover leads; if a lens is named, pass \`lensId\` and pin it
 
@@ -2518,6 +2518,7 @@ Examples that SHOULD invoke this tool:
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Which leads should I follow up with this week?"
 - "I'm flying to Berlin Thursday — who should I meet?"
+- "I'm in San Francisco next Tuesday — who's worth meeting?"
 - "Show me leads I should reach out to today."
 - "Who should I get back to today?"
 - "Leads I should contact today."
@@ -3762,7 +3763,7 @@ WHEN NOT TO USE: the user wants a lead list (leadbay_pull_leads / leadbay_pull_f
 // region: leadbay_tour_plan
 export const leadbay_tour_plan: string = `## WHEN TO USE
 
-Trigger phrases: "visiting <city> in <N> days", "field tour in <city>", "plan a tour in <city>", "who should I meet in <city>", "customers plus prospects in <city>", "tour itinerary".
+Trigger phrases: "visiting <city> in <N> days", "I'm in <city> next week / Tuesday — who's worth meeting", "I'm going to <city> — who should I see", "who's worth meeting in <city>", "field tour in <city>", "plan a tour in <city>", "who should I meet in <city>", "customers plus prospects in <city>", "tour itinerary".
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
@@ -3772,6 +3773,7 @@ Prefer when: user wants known accounts plus new discoveries in one geographic it
 
 Examples that SHOULD invoke this tool:
 - "I'm flying to Limoges in 4 days — give me 3 customers, 3 qualified prospects, and 3 new high-potential."
+- "I'm in San Francisco next Tuesday. Who's worth meeting?"
 - "Plan my tour next Tuesday in Lyon: known accounts plus discoveries."
 - "Build a mixed itinerary for Berlin — I want both follow-ups and fresh leads."
 

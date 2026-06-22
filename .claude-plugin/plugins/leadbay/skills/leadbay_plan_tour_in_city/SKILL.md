@@ -1,6 +1,6 @@
 ---
 name: leadbay_plan_tour_in_city
-description: "Plan a field sales tour: in one flow, surface follow-ups + fresh Discover leads in the target city via `leadbay_tour_plan`, render to a map, draft in-area outreach via `leadbay_prepare_outreach`, and optionally persist the selected accounts as a named campaign via `leadbay_create_campaign`. Closes #3630 US1 end-to-end."
+description: "Use whenever the user names a city they'll be in and asks who to see — \"I'm in SF next Tuesday, who's worth meeting?\", \"I'm going to Berlin — who should I visit?\", \"plan my <city> tour\". Any in-person/visit intent tied to a place routes here, NOT to `leadbay_pull_leads`. It surfaces follow-ups + fresh Discover leads in the city via `leadbay_tour_plan` and ALWAYS renders them on a map (the user need not ask), then offers outreach drafts + campaign persistence."
 ---
 
 
