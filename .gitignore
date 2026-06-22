@@ -21,3 +21,4 @@ docs/superpowers/
 
 # Python bytecode cache for helper scripts.
 __pycache__/
+.gstack/

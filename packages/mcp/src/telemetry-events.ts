@@ -144,7 +144,7 @@ export interface ExceptionCtx {
 // auth_state buckets startups by whether resolveClientFromEnv produced a
 // real client ("ok") or a broken stub. Lets us bucket "Server
 // disconnected" reports without reading individual users' logs.
-export type StartupAuthState = "ok" | "missing" | "expired" | "probe_failed";
+export type StartupAuthState = "ok" | "missing" | "expired" | "probe_failed" | "pending";
 
 export interface StartupProps {
   auth_state: StartupAuthState;

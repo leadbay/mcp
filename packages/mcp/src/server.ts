@@ -52,6 +52,7 @@ import {
   QUOTA_TOPUP,
   AGENT_MEMORY,
   TRIGGERED_BY,
+  TRANSIENT_401,
 } from "./server-instructions.generated.js";
 
 // SERVER_INSTRUCTIONS is now BUILT from the actual exposed tool set (see
@@ -62,7 +63,7 @@ import {
 // underlying tool is exposed.
 //
 // The static paragraphs (VERIFICATION, FRICTION, MENTAL_MODEL, QUOTA_TOPUP,
-// AGENT_MEMORY) are sourced from packages/promptforge/snippets/server-instructions/*.md
+// AGENT_MEMORY, TRIGGERED_BY, TRANSIENT_401) are sourced from packages/promptforge/snippets/server-instructions/*.md
 // and emitted into ./server-instructions.generated.ts by promptforge build.
 // Edit the snippet files, not this one. The dynamic builders (scoring,
 // start-here, rhythm, etc.) remain inline below because they conditionally
@@ -338,6 +339,9 @@ export function buildServerInstructions(exposed: Set<string>): string {
   parts.push(TRIGGERED_BY);
   parts.push(MENTAL_MODEL);
   parts.push(QUOTA_TOPUP);
+  // Always emitted: a one-off 401 must not become a "reconnect Leadbay" message
+  // to the user (product#3761). The error is transient and already auto-retried.
+  parts.push(TRANSIENT_401);
   parts.push(buildScoringParagraph(has));
   parts.push(buildStartHereParagraph(has));
   parts.push(buildRhythmParagraph(has));
@@ -393,6 +397,24 @@ interface BuildServerOptions {
   // next turn no matter which tool it called. Omitted in tests / embeds
   // that don't want the WS listener.
   notificationsInbox?: NotificationsInbox;
+  // OAuth-bootstrap status getter (Claude Desktop .dxt non-blocking install).
+  // When provided, the CallTool handler consults it BEFORE executing a tool and
+  // returns an AUTH_PENDING envelope (with a clickable sign-in link when known)
+  // until the background OAuth lands a token. It's a getter, not a snapshot,
+  // because the token + URL land AFTER buildServer() captured its args —
+  // reading per-call observes the flip. Returns:
+  //   { done: true }                          → execute the tool normally
+  //   { done: false, signInUrl?, openFailed } → gate; surface the link/copy
+  // Omitted everywhere except bin.ts's bootstrap path.
+  bootstrapStatus?: () => {
+    done: boolean;
+    signInUrl?: string;
+    openFailed?: boolean;
+    /** Set when bootstrap hit a terminal non-browser failure (probe/discovery/
+     *  registration/token-exchange). The gate surfaces AUTH_FAILED with this
+     *  message instead of a forever-"pending" envelope. */
+    failureMessage?: string;
+  };
 }
 
 function formatErrorForLLM(err: any): string {
@@ -1094,6 +1116,72 @@ export function buildServer(
       // is what surfaces the rate of agents ignoring the mandate. We just
       // skip captureException so this expected condition stays out of
       // Sentry.
+      // OAuth-bootstrap gate (Claude Desktop .dxt non-blocking install): while
+      // the background browser sign-in hasn't produced a token yet, every tool
+      // returns a transient AUTH_PENDING (or, if the browser couldn't be
+      // opened, an AUTH_MISSING with restart guidance) instead of executing
+      // against a tokenless client and 401ing. Checked per-call so it stops
+      // gating the instant client.setToken lands. Not a Sentry-worthy fault —
+      // return directly, mirroring the LAST_PROMPT_REQUIRED guard below.
+      const bootstrapState = opts.bootstrapStatus?.() ?? { done: true };
+      if (!bootstrapState.done) {
+        const url = bootstrapState.signInUrl;
+        // Priority: a terminal failure (no token possible this session) > a live
+        // sign-in link > generic pending. The failure case must win so the user
+        // sees the real error + restart guidance instead of a forever-"pending"
+        // "a browser should have opened" message.
+        const envelope = bootstrapState.failureMessage
+          ? {
+              error: true as const,
+              code: "AUTH_FAILED",
+              message: "Couldn't sign you in to Leadbay.",
+              hint:
+                `Sign-in failed: ${bootstrapState.failureMessage}\n\n` +
+                "Restart the Leadbay extension in Claude Desktop to retry. " +
+                "If it keeps failing, check your network/region and that Leadbay is reachable.",
+            }
+          : url
+            ? {
+                // Prefer surfacing the live sign-in URL — the spawned MCP process
+                // often can't open a GUI browser itself (no DISPLAY / sanitized
+                // env), so a clickable link the agent renders is the reliable path.
+                error: true as const,
+                code: "AUTH_REQUIRED",
+                message: "Sign in to Leadbay to finish connecting.",
+                hint:
+                  `Open this link to authorize Leadbay, then re-run this tool:\n\n${url}\n\n` +
+                  (bootstrapState.openFailed
+                    ? "(The extension couldn't open your browser automatically.)"
+                    : "(A browser may have opened automatically — if not, use the link above.)"),
+              }
+            : {
+                error: true as const,
+                code: "AUTH_PENDING",
+                message:
+                  "Signing you in to Leadbay — a browser window should have opened. Authorize there, then try again.",
+                hint: "Complete the Leadbay sign-in in your browser, then re-run this tool.",
+              };
+        const pendingText = formatErrorForLLM(envelope);
+        const pendingDur = Date.now() - callStart;
+        telemetry.captureToolCall({
+          tool: name,
+          ok: false,
+          duration_ms: pendingDur,
+          format: "error-envelope",
+          bytes: pendingText.length,
+          error_code: envelope.code,
+          triggered_by,
+        });
+        if (DEBUG_ON) {
+          process.stderr.write(
+            `[leadbay-mcp debug] tool=${name} dur=${pendingDur}ms ok=false code=${envelope.code} (auth-bootstrap, no-sentry)\n`
+          );
+        }
+        return {
+          content: [{ type: "text", text: pendingText }],
+          isError: true,
+        };
+      }
       if (COMPOSITE_FILE_TOOL_NAMES.has(name) && !triggered_by) {
         const envelope = {
           error: true as const,
@@ -1142,6 +1230,10 @@ export function buildServer(
         signal: extra.signal,
         progress,
         elicit,
+        // Verbatim user-message slice (stripped from args above). Lets a
+        // composite gate optional output on what the user asked — account_status
+        // uses it to surface the lens only when asked (product#3761).
+        triggered_by,
         // Route leadbay_send_feedback to Sentry's feedback inbox (same place
         // the web app's form lands). NOOP_TELEMETRY returns false, so the
         // tool reports honestly when telemetry is off.

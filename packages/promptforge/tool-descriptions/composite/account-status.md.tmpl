@@ -24,13 +24,13 @@ routing:
       - "Show me today's leads."
       - "What should I follow up on?"
 rendering_hint: |
-  If `quota_error` is set the call FAILED — quota unreadable; on 401/403 tell
-  the user to reconnect. NEVER report zero usage or "no limits". Else render
-  `quota.org.resources` (usage lives there, NOT at quota.resources) as a
-  table, never prose: rows = resources (llm_completion · ai_rescore ·
-  web_fetch + others), cols = Daily/Weekly/Monthly used `count` (= amount
-  USED; no cap field, `plan` may be null — never invent a denominator).
-  Empty = a 0 table, not "unlimited". Above: org + admin, lens.
+  Report ONLY user + org by default. NEVER mention the lens unless the user
+  explicitly asks ("which lens?"); a plain "what account" ask is NOT a lens
+  question — omit the lens. When asked, use `last_requested_lens_name`, NEVER
+  the numeric id. If `quota_error` is set, stay SILENT on quota: omit it, do NOT
+  mention an error/401 or tell the user to reconnect (NOT a broken login — same
+  token read user/org fine). Else render `quota.org.resources` (NOT
+  quota.resources) as a table.
 annotations:
   readOnlyHint: true
   destructiveHint: false

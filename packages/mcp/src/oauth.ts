@@ -22,6 +22,15 @@ import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { request as httpsRequestRaw } from "node:https";
 import { spawn } from "node:child_process";
 import { AddressInfo } from "node:net";
+import { readdirSync } from "node:fs";
+
+// Stable loopback port for the OAuth callback. The Leadbay backend requires the
+// authorize redirect_uri to EXACTLY match the registered one (no RFC 8252
+// loopback-port matching), so for a cached client_id to keep working we must
+// also reuse the same port every launch — and register that exact port. Picked
+// from the IANA dynamic/private range, high enough to rarely collide; if it's
+// busy we fall back to an ephemeral port + a fresh registration for that port.
+const LEADBAY_LOOPBACK_PORTS = [51789, 51790, 51791, 51792];
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -61,6 +70,56 @@ export interface OAuthLoginOptions {
   openBrowser?: (url: string) => Promise<void>;
   /** How long to wait for the user to finish the browser flow. Default: 5 min. */
   timeoutMs?: number;
+  /**
+   * When the browser can't be opened automatically (e.g. Claude Desktop's
+   * sanitized spawn environment), don't block for the full callback timeout —
+   * throw {@link BrowserOpenFailedError} carrying the authorize URL so the
+   * caller can surface a clickable sign-in link immediately instead of after a
+   * 5-minute hang. Default: false (legacy behaviour — keep waiting, the user
+   * may open the logged URL by hand, as the CLI `login` flow expects).
+   */
+  failFastOnOpenError?: boolean;
+  /**
+   * Fires with the fully-built authorize URL the moment it's known — BEFORE
+   * the (best-effort) browser open and BEFORE blocking on the callback. The
+   * loopback listener is already live when this fires, so the URL is
+   * immediately clickable. Used by the non-blocking .dxt bootstrap to surface
+   * a live sign-in link to the user (the spawned MCP process often can't open
+   * a GUI browser itself — no DISPLAY / sanitized env — so `openBrowser` can
+   * silently no-op). Errors in the callback are swallowed.
+   */
+  onAuthorizeUrl?: (url: string) => void;
+  /**
+   * Return a previously-registered `client_id` to REUSE (keyed by the loopback
+   * `port` it was registered for) instead of registering fresh. DCR is a
+   * once-and-reuse operation; re-registering every launch is what exhausts the
+   * backend's ~10-registrations/IP/hour limit (Claude Desktop probe-restarts
+   * multiply each install into several launches). The port is part of the key
+   * because the backend pins the exact redirect_uri (port included), so a
+   * client_id is only reusable when the listener bound the same port it was
+   * registered for. Return undefined to force a fresh registration.
+   */
+  getCachedClientId?: (port: number) => string | undefined;
+  /** Persist a freshly-registered `client_id` for `port` so future launches reuse it. */
+  onClientRegistered?: (clientId: string, port: number) => void;
+}
+
+/**
+ * Thrown by {@link oauthLogin} when `failFastOnOpenError` is set and the
+ * browser could not be launched. Carries the authorize URL so the caller can
+ * present a manual sign-in link to the user.
+ */
+export class BrowserOpenFailedError extends Error {
+  readonly authorizeUrl: string;
+  constructor(authorizeUrl: string, cause: unknown) {
+    super(
+      `Could not open a browser automatically: ${
+        (cause as any)?.message ?? cause
+      }`
+    );
+    this.name = "BrowserOpenFailedError";
+    this.authorizeUrl = authorizeUrl;
+  }
 }
 
 export interface OAuthLoginResult {
@@ -262,6 +321,8 @@ export async function registerClient(
 
 export interface LoopbackListener {
   redirectUri: string;
+  /** The 127.0.0.1 port actually bound (may differ from preferredPort on fallback). */
+  port: number;
   /** Resolves once the user hits the callback URL with a valid `state`. */
   waitForCallback: () => Promise<{ code: string; state: string }>;
   /** Always call this in a finally{} — frees the port. */
@@ -271,6 +332,17 @@ export interface LoopbackListener {
 export async function startLoopbackListener(opts: {
   expectedState: string;
   timeoutMs: number;
+  /**
+   * Try to bind these exact 127.0.0.1 ports in order; fall back to an ephemeral
+   * port only if ALL are in use. The Leadbay backend requires the authorize
+   * redirect_uri to EXACTLY match a registered one (it does NOT do RFC 8252
+   * loopback-port matching), so reusing a cached client_id only works if the
+   * port is stable. A short list (not a single port) means a transient
+   * collision still lands on a STABLE, cacheable port — preserving the
+   * register-once benefit instead of churning fresh registrations. Defaults to
+   * ephemeral when unset/empty.
+   */
+  preferredPorts?: number[];
 }): Promise<LoopbackListener> {
   // Resolved exactly once by the first matching /callback hit, or by timeout.
   let resolveCallback: (v: { code: string; state: string }) => void;
@@ -322,14 +394,29 @@ export async function startLoopbackListener(opts: {
     resolveCallback({ code, state });
   });
 
-  // 127.0.0.1 (not "localhost" — dual-stack IPv6 surprises) + ephemeral port.
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      server.off("error", reject);
-      resolve();
+  // 127.0.0.1 (not "localhost" — dual-stack IPv6 surprises). Prefer a stable
+  // port so a cached client_id keeps matching; try each in order, then fall
+  // back to an ephemeral port (0) only if every preferred port is taken.
+  const bindPort = async (port: number) =>
+    new Promise<void>((resolve, reject) => {
+      const onErr = (e: Error) => reject(e);
+      server.once("error", onErr);
+      server.listen(port, "127.0.0.1", () => {
+        server.off("error", onErr);
+        resolve();
+      });
     });
-  });
+  let bound = false;
+  for (const port of opts.preferredPorts ?? []) {
+    try {
+      await bindPort(port);
+      bound = true;
+      break;
+    } catch {
+      // Busy/unbindable — try the next stable port.
+    }
+  }
+  if (!bound) await bindPort(0); // all preferred taken → ephemeral (works, but re-registers)
 
   const addr = server.address() as AddressInfo;
   const redirectUri = `http://127.0.0.1:${addr.port}/callback`;
@@ -341,6 +428,7 @@ export async function startLoopbackListener(opts: {
 
   return {
     redirectUri,
+    port: addr.port,
     waitForCallback: () =>
       callbackPromise.finally(() => {
         clearTimeout(timer);
@@ -424,32 +512,134 @@ export async function exchangeCodeForToken(opts: {
 // ────────────────────────────────────────────────────────────────────────────
 // Browser launch
 
-export async function openInBrowser(url: string): Promise<void> {
+/**
+ * Ordered list of (command, args) candidates to try for a given platform.
+ *
+ * Each platform leads with the OS launcher's ABSOLUTE path, then falls back to
+ * the bare command name (resolved via PATH). The absolute path matters because
+ * Claude Desktop spawns .dxt/.mcpb stdio servers with a sanitized environment
+ * whose PATH does NOT contain `open` / `xdg-open` / `cmd` — so `spawn("open")`
+ * fails with ENOENT and the browser never opens (the exact OAuth-on-install
+ * failure mode). Per the MCP spec, stdio servers can't assume the host shell's
+ * PATH, so we resolve the launcher ourselves and only use PATH as a fallback
+ * for unusual layouts (e.g. a custom Linux distro without /usr/bin/xdg-open).
+ */
+export function browserOpenCandidates(url: string): Array<{ cmd: string; args: string[] }> {
+  const platform = process.platform;
+  if (platform === "darwin") {
+    // `open` lives at a fixed location on every macOS install.
+    return [
+      { cmd: "/usr/bin/open", args: [url] },
+      { cmd: "open", args: [url] },
+    ];
+  }
+  if (platform === "win32") {
+    // `start` is a cmd builtin; double-quotes around an empty title prevent
+    // start from treating the URL as the window title. %SystemRoot% points at
+    // the Windows dir; fall back to the literal default + bare `cmd`.
+    const sysRoot = process.env.SystemRoot || process.env.windir || "C:\\Windows";
+    const cmdExe = `${sysRoot}\\System32\\cmd.exe`;
+    return [
+      { cmd: cmdExe, args: ["/c", "start", '""', url] },
+      { cmd: "cmd", args: ["/c", "start", '""', url] },
+    ];
+  }
+  // Linux / other: xdg-open is conventionally in /usr/bin (sometimes /usr/local/bin).
+  return [
+    { cmd: "/usr/bin/xdg-open", args: [url] },
+    { cmd: "/usr/local/bin/xdg-open", args: [url] },
+    { cmd: "xdg-open", args: [url] },
+  ];
+}
+
+/**
+ * Build the env to spawn the browser launcher with. On Linux, Claude Desktop
+ * spawns the .dxt server with an INCONSISTENT environment — DISPLAY and
+ * WAYLAND_DISPLAY are sometimes stripped (confirmed from a real install: a
+ * launch logged `DISPLAY=<unset> WAYLAND=<unset>`). Without them, `xdg-open`
+ * spawns "successfully" but can't reach the display server, so no tab opens —
+ * the silent install-time failure. We can't change what the host passes, so we
+ * reconstruct the missing vars from XDG_RUNTIME_DIR (the wayland-N socket
+ * lives there) and the X11 socket dir, defaulting to the standard session
+ * values. Harmless when they're already set (we don't overwrite).
+ */
+export function browserLaunchEnv(debug?: (msg: string) => void): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  if (process.platform !== "linux") return env;
+
+  const runtimeDir = env.XDG_RUNTIME_DIR;
+
+  if (!env.WAYLAND_DISPLAY && runtimeDir) {
+    // Find a wayland-N socket in the runtime dir (wayland-0 is the default).
+    try {
+      const sock = readdirSync(runtimeDir).find((f) => /^wayland-\d+$/.test(f));
+      if (sock) {
+        env.WAYLAND_DISPLAY = sock;
+        debug?.(`browserLaunchEnv: injected WAYLAND_DISPLAY=${sock}`);
+      }
+    } catch {
+      /* runtime dir unreadable — fall through to X11 */
+    }
+  }
+
+  if (!env.DISPLAY) {
+    // X11 sockets live at /tmp/.X11-unix/X<N>; ":0" is the near-universal
+    // default and works under XWayland too. Prefer the lowest-numbered.
+    try {
+      const x = readdirSync("/tmp/.X11-unix")
+        .map((f) => f.match(/^X(\d+)$/)?.[1])
+        .filter((n): n is string => !!n)
+        .sort((a, b) => Number(a) - Number(b))[0];
+      env.DISPLAY = x !== undefined ? `:${x}` : ":0";
+    } catch {
+      env.DISPLAY = ":0";
+    }
+    debug?.(`browserLaunchEnv: injected DISPLAY=${env.DISPLAY}`);
+  }
+
+  return env;
+}
+
+export async function openInBrowser(
+  url: string,
+  debug?: (msg: string) => void
+): Promise<void> {
   // Cross-platform without a runtime dep. Detach the child so we don't keep it
   // tied to our process; on macOS `open` returns immediately anyway.
-  const platform = process.platform;
-  let cmd: string;
-  let args: string[];
-  if (platform === "darwin") {
-    cmd = "open";
-    args = [url];
-  } else if (platform === "win32") {
-    // `start` is a cmd builtin; double-quotes around an empty title prevent
-    // start from treating the URL as the window title.
-    cmd = "cmd";
-    args = ["/c", "start", '""', url];
-  } else {
-    cmd = "xdg-open";
-    args = [url];
+  //
+  // Try each candidate in order; only the LAST ENOENT propagates. This makes
+  // the launch independent of the inherited PATH (see browserOpenCandidates).
+  const candidates = browserOpenCandidates(url);
+  const launchEnv = browserLaunchEnv(debug);
+  debug?.(
+    `openInBrowser: platform=${process.platform} ` +
+      `DISPLAY=${launchEnv.DISPLAY ?? "<unset>"} ` +
+      `WAYLAND=${launchEnv.WAYLAND_DISPLAY ?? "<unset>"} ` +
+      `DBUS=${launchEnv.DBUS_SESSION_BUS_ADDRESS ? "set" : "<unset>"} ` +
+      `candidates=[${candidates.map((c) => c.cmd).join(", ")}]`
+  );
+  let lastErr: unknown;
+  for (const { cmd, args } of candidates) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(cmd, args, { stdio: "ignore", detached: true, env: launchEnv });
+        child.on("error", reject);
+        child.on("spawn", () => {
+          debug?.(`spawn OK: ${cmd} (pid=${child.pid})`);
+          child.unref();
+          resolve();
+        });
+      });
+      return; // launched successfully
+    } catch (err: any) {
+      lastErr = err;
+      debug?.(`spawn FAILED: ${cmd} → ${err?.code ?? err?.message ?? err}`);
+      // ENOENT → this launcher path doesn't exist here; try the next candidate.
+      // Any other error also falls through to the next candidate.
+    }
   }
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: "ignore", detached: true });
-    child.on("error", reject);
-    child.on("spawn", () => {
-      child.unref();
-      resolve();
-    });
-  });
+  debug?.(`openInBrowser: ALL candidates failed (lastErr=${(lastErr as any)?.message ?? lastErr})`);
+  throw lastErr ?? new Error("no browser launcher available");
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -467,22 +657,64 @@ export async function oauthLogin(opts: OAuthLoginOptions): Promise<OAuthLoginRes
   const pkce = generatePkce();
 
   log("Starting loopback listener on 127.0.0.1…\n");
-  const listener = await startLoopbackListener({ expectedState: state, timeoutMs });
+  const listener = await startLoopbackListener({
+    expectedState: state,
+    timeoutMs,
+    preferredPorts: LEADBAY_LOOPBACK_PORTS,
+  });
   try {
-    log(`Registering client at ${doc.registration_endpoint}…\n`);
-    const client = await registerClient(doc.registration_endpoint, {
-      clientName: opts.clientName,
-      redirectUri: listener.redirectUri,
-      logoUri: opts.logoUri,
-    });
+    // Reuse a cached client_id (keyed by the bound loopback port) — DCR is a
+    // once-and-reuse operation; re-registering every launch is what exhausts
+    // the backend's ~10-registrations/IP/hour limit (Claude Desktop fires
+    // several launches per install via its probe-restarts).
+    //
+    // CRITICAL: the Leadbay backend pins the EXACT registered redirect_uri
+    // (port included) and rejects any mismatch at /authorize ("This app's
+    // redirect URL is not authorized") — it does NOT do RFC 8252 loopback-port
+    // matching. So the redirect_uri we register MUST equal the one we send at
+    // /authorize, and a cached client_id is only valid when the listener bound
+    // the SAME port it was registered for. We bind a stable port
+    // (LEADBAY_LOOPBACK_PORT) so this normally holds; the cache key includes the
+    // port so a fallback to an ephemeral port forces a fresh registration for
+    // that port instead of reusing a mismatched id.
+    const boundPort = listener.port;
+    let clientId = opts.getCachedClientId?.(boundPort);
+    if (clientId) {
+      log(`Reusing cached OAuth client_id (${clientId}) for port ${boundPort} — skipping registration.\n`);
+    } else {
+      log(`Registering client at ${doc.registration_endpoint} (redirect ${listener.redirectUri})…\n`);
+      const registered = await registerClient(doc.registration_endpoint, {
+        clientName: opts.clientName,
+        redirectUri: listener.redirectUri, // exact bound-port redirect
+        logoUri: opts.logoUri,
+      });
+      clientId = registered.client_id;
+      try {
+        opts.onClientRegistered?.(clientId, boundPort);
+      } catch {
+        /* persistence is best-effort — a write failure just means we re-register next time */
+      }
+    }
 
     const authorizeUrl = new URL(doc.authorization_endpoint);
     authorizeUrl.searchParams.set("response_type", "code");
-    authorizeUrl.searchParams.set("client_id", client.client_id);
+    authorizeUrl.searchParams.set("client_id", clientId);
     authorizeUrl.searchParams.set("redirect_uri", listener.redirectUri);
     authorizeUrl.searchParams.set("state", state);
     authorizeUrl.searchParams.set("code_challenge", pkce.challenge);
     authorizeUrl.searchParams.set("code_challenge_method", pkce.method);
+
+    // Surface the live URL the moment it's known — the listener is already up,
+    // so it's clickable now. The caller (non-blocking bootstrap) shows it to
+    // the user, which is the reliable path when the spawned process can't open
+    // a browser itself.
+    if (opts.onAuthorizeUrl) {
+      try {
+        opts.onAuthorizeUrl(authorizeUrl.toString());
+      } catch {
+        /* never let a callback error abort the flow */
+      }
+    }
 
     log(`Opening browser to authorize…\n  ${authorizeUrl.toString()}\n`);
     try {
@@ -492,6 +724,13 @@ export async function oauthLogin(opts: OAuthLoginOptions): Promise<OAuthLoginRes
         `Could not open browser automatically (${err?.message ?? err}). ` +
           `Open this URL manually:\n  ${authorizeUrl.toString()}\n`
       );
+      // In a headless / sanitized launch (Claude Desktop .dxt), no human will
+      // ever see that stderr line. Rather than dangle for the full 5-minute
+      // callback timeout, bail now so the caller can surface a clickable
+      // sign-in URL through a channel the user actually sees.
+      if (opts.failFastOnOpenError) {
+        throw new BrowserOpenFailedError(authorizeUrl.toString(), err);
+      }
     }
 
     log("Waiting for authorization (5 min timeout)…\n");
@@ -502,7 +741,7 @@ export async function oauthLogin(opts: OAuthLoginOptions): Promise<OAuthLoginRes
       tokenEndpoint: doc.token_endpoint,
       code,
       codeVerifier: pkce.verifier,
-      clientId: client.client_id,
+      clientId,
       redirectUri: listener.redirectUri,
     });
     return { accessToken };

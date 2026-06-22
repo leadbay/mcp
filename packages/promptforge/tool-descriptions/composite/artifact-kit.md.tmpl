@@ -1,0 +1,62 @@
+---
+name: leadbay_artifact_kit
+kind: tool-description
+short_description: |
+  Get the headless runtime + usage guide to BUILD an interactive HTML
+  artifact whose buttons/dropdowns call Leadbay tools (e.g. a cold-call
+  sheet that logs notes, statuses, likes per lead). Use when the user
+  wants a clickable artifact. Don't use it to answer a data question.
+routing:
+  triggers:
+    - "build me a dashboard"
+    - "build a call sheet"
+    - "interactive artifact"
+    - "make a page with buttons"
+    - "build an artifact to work my leads"
+    - "interactive lead triage board"
+    - "a page with buttons that log my calls"
+  anti_triggers:
+    - phrase: "show me today's leads"
+      route_to: leadbay_pull_leads
+    - phrase: "leads I should follow up with"
+      route_to: leadbay_pull_followups
+    - phrase: "log that I emailed"
+      route_to: leadbay_report_outreach
+  prefer_when: "the user wants a clickable/interactive HTML artifact whose controls call Leadbay tools — not a one-off data answer"
+  examples:
+    positive:
+      - "Build me an interactive call sheet for these leads."
+      - "Make an artifact with buttons to log call outcomes per lead."
+      - "I want a clickable lead-triage board I can work down."
+    negative:
+      - "Show me today's leads."
+      - "Which leads should I follow up with this week?"
+      - "Log that I emailed Acme's CTO."
+rendering_hint: |
+  Do NOT render this tool's result as prose or a table. It returns
+  `runtime` (a JS string) + `usage_guide` (the recipe) + `version`. Inline
+  `runtime` as ONE `<script>` (it self-attaches `window.LeadbayArtifacts`),
+  build view-models with `lb.field/action/resource/list` + the domain helpers,
+  bind them to your own HTML, and pass the tools you call as the artifact's
+  `mcp_tools`. READ `usage_guide` first. The artifact is the answer.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: false
+---
+Hands you everything to build an interactive HTML **artifact** the user runs inside their own Claude (cowork): headless **domain view-models** + a markdown usage guide. A view-model owns a control's whole data lifecycle — populate a dropdown's options from a Leadbay call, hold the value, expose loading/error, validate, encapsulate the API call + business rules. You own 100% of the markup, layout, and style. The library renders nothing.
+
+Returns `{ runtime, usage_guide, version }`:
+- `runtime` — a minified, zero-dependency vanilla IIFE that self-attaches `window.LeadbayArtifacts` (call it `lb`). Inline once as `<script>`.
+- `usage_guide` — the full recipe: `lb.field` / `lb.action` / the `lb.bind*` sugar, a copy-paste cold-call call sheet, and the write-call rules. READ IT before building.
+
+The model — two layers. Primitives: `lb.field` (value + API-populated options), `lb.action` (write/submit), `lb.resource` (load-on-click / poll-until-done / `.refresh()`), `lb.list` (paginated rows); each exposes `.loading/.error/.subscribe`, and you bind them to YOUR native elements with `lb.bindSelect/bindValue/bindAction` (no style imposed). Domain components (pre-wired, footguns baked in): `lb.campaigns`, `lb.outreach`, `lb.note`, `lb.like/dislike`, `lb.leadHistory`, `lb.leadProfile`, `lb.callList`, `lb.enrichment` (launch + poll), `lb.teamActivity` (manager leaderboard + trend). TanStack-Query's headless-view-model separation, vanilla (cowork is inline-only — no React).
+
+Canonical uses: a cold-call sheet (`lb.callList` + per-row `lb.outreach`/`lb.leadHistory`); a manager dashboard (`lb.teamActivity` → leaderboard table + Chart.js trend); a live enrichment view (`lb.enrichment` → progress + refresh). Live auto-poll is host-dependent — always wire a Refresh.
+
+Write-call footguns (in the guide, repeated because they bite): for `leadbay_report_outreach` (status/disposition) the `args` MUST include `verification:{source:"user_confirmed",ref:"…"}` AND `_triggered_by:"<the user's request>"`, or the call is rejected. `leadbay_add_leads_to_campaign` needs `_triggered_by` too. `leadbay_add_note`/`leadbay_like_lead`/`leadbay_dislike_lead` need only their own args. Snoozing (pushback) and standalone status are advanced-gated — not callable from a default artifact; use `report_outreach`'s `epilogue_status` for outcomes.
+
+{{include:headers/tool-when-to-use}} the user asks for a clickable / interactive artifact, dashboard, or call sheet that DOES things (not just displays data).
+
+{{include:headers/tool-when-not-to-use}} the user wants a plain data answer (route to leadbay_pull_leads / leadbay_pull_followups) or to log a single real outreach you just did (leadbay_report_outreach).

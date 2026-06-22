@@ -411,7 +411,13 @@ export const researchLeadById: Tool<ResearchLeadByIdParams> = {
           },
           agent_memory: { type: "object" },
         },
-        additionalProperties: false,
+        // _meta is an open envelope: the MCP server layer injects
+        // additional keys (latency_ms, notifications, update_available)
+        // after the composite returns. Mirror the sibling tools
+        // (leadbay_pull_leads et al.) and leave _meta open so those
+        // server-side additions don't fail outputSchema validation
+        // with -32602 (data/_meta must NOT have additional properties).
+        additionalProperties: true,
       },
     },
     required: [

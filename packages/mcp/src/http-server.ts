@@ -133,16 +133,16 @@ function sendChallenge(
   const resourceMetadataUrl = `${requestOrigin(c)}${PRM_PREFIX}${resourcePath}`;
   applyCors(c);
   c.header("WWW-Authenticate", buildWwwAuthenticate({ resourceMetadataUrl, authState }));
-  return c.json(
-    {
-      error: authState === "expired" ? "invalid_token" : "unauthorized",
-      error_description:
-        authState === "expired"
-          ? "Access token is invalid or expired. Sign in with Leadbay again."
-          : "Authentication required. Sign in with Leadbay.",
-    },
-    401
-  );
+  // Empty body on purpose (product#3761). The OAuth challenge contract is the
+  // 401 status + the WWW-Authenticate header (RFC 6750 §3 / RFC 9728) — a
+  // spec-compliant client drives sign-in/refresh entirely from those and never
+  // reads the body. The expired-vs-missing signal already rides in the header
+  // (error="invalid_token" for expired). But Claude's host surfaces any 401
+  // body prose to the LLM, which then parrots a spurious "sign in with Leadbay
+  // again" to the user even though the host silently refreshes the token and
+  // the immediate retry succeeds. No body → nothing for the agent to
+  // hallucinate as a re-auth instruction.
+  return c.body(null, 401);
 }
 
 const app = new Hono();

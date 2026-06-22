@@ -1,0 +1,58 @@
+---
+name: leadbay_team_activity
+kind: tool-description
+short_description: |
+  Manager view: per-rep activity leaderboard + team activity-over-time, for a
+  look-back window. Use when a manager asks how the team is doing / who's most
+  active / top performers. Don't use it to list leads or one rep's pipeline.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+routing:
+  triggers:
+    - "how is my team doing"
+    - "team activity"
+    - "top performers"
+    - "rep leaderboard"
+    - "manager dashboard"
+    - "who's most active this week"
+    - "activity by rep"
+  anti_triggers:
+    - phrase: "show me leads"
+      route_to: leadbay_pull_leads
+    - phrase: "leads I should follow up with"
+      route_to: leadbay_pull_followups
+    - phrase: "how is this campaign progressing"
+      route_to: leadbay_campaign_progression
+  prefer_when: "a manager wants team-wide / per-rep activity aggregates, not a lead list"
+  examples:
+    positive:
+      - "How is my team doing this month?"
+      - "Who are my top performers in the last two weeks?"
+      - "Show me activity by rep."
+    negative:
+      - "Show me today's leads."
+      - "How is the Q3 Outbound campaign progressing?"
+      - "Which leads should I follow up with?"
+rendering_hint: |
+  Per-rep leaderboard table (sort by total_activities desc) + an activity
+  time-series. Columns worth showing: name, total_activities, notes,
+  contacts_added, meetings_or_interest, lost. Feeds a manager dashboard
+  artifact (table + Chart.js line of `trend`).
+---
+Manager / team KPIs — the data behind the web app's Dashboard-Manager screen, exposed so an agent (or an artifact) can render a team dashboard.
+
+Returns `{ range, reps, trend }`:
+- `range` — `{ from, to, periodicity }` (the resolved look-back window).
+- `reps` — per-rep activity, sorted by `total_activities` desc (the leaderboard). Each: `{ user_id, name, email, total_activities, likes, saves, website_clicks, exported, profile_views, contacts_added, contacts_purchased, notes, meetings_or_interest, could_not_reach, lost, still_chasing }`. The `epilogue_*`-derived fields (`meetings_or_interest`, `lost`, …) are the outcome signal.
+- `trend` — `[{ date, count }]` activity over time for the window (feed a chart).
+
+Params: `weeks` (default 4) OR explicit `from`/`to` (YYYY-MM-DD); `periodicity` (DAILY|WEEKLY, default WEEKLY); `user_ids` (omit for the whole team). Admins get the whole org; non-admins are scoped to themselves by the backend.
+
+Wraps `GET /kpi/users` + `GET /kpi/trends`. Quota / remaining capacity for the org lives on leadbay_account_status (don't duplicate it here).
+
+{{include:headers/tool-when-to-use}} a manager wants to see team-wide or per-rep activity (leaderboard, who's active, activity trend).
+
+{{include:headers/tool-when-not-to-use}} the user wants a lead list (leadbay_pull_leads / leadbay_pull_followups) or one campaign's funnel (leadbay_campaign_progression).

@@ -174,13 +174,13 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-If \`quota_error\` is set the call FAILED — quota unreadable; on 401/403 tell
-the user to reconnect. NEVER report zero usage or "no limits". Else render
-\`quota.org.resources\` (usage lives there, NOT at quota.resources) as a
-table, never prose: rows = resources (llm_completion · ai_rescore ·
-web_fetch + others), cols = Daily/Weekly/Monthly used \`count\` (= amount
-USED; no cap field, \`plan\` may be null — never invent a denominator).
-Empty = a 0 table, not "unlimited". Above: org + admin, lens.
+Report ONLY user + org by default. NEVER mention the lens unless the user
+explicitly asks ("which lens?"); a plain "what account" ask is NOT a lens
+question — omit the lens. When asked, use \`last_requested_lens_name\`, NEVER
+the numeric id. If \`quota_error\` is set, stay SILENT on quota: omit it, do NOT
+mention an error/401 or tell the user to reconnect (NOT a broken login — same
+token read user/org fine). Else render \`quota.org.resources\` (NOT
+quota.resources) as a table.
 
 ---
 
@@ -429,6 +429,56 @@ WHEN NOT TO USE: to set a brand-new prompt — use leadbay_refine_prompt.
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_answer_clarification
+
+// region: leadbay_artifact_kit
+export const leadbay_artifact_kit: string = `## WHEN TO USE
+
+Trigger phrases: "build me a dashboard", "build a call sheet", "interactive artifact", "make a page with buttons", "build an artifact to work my leads", "interactive lead triage board", "a page with buttons that log my calls".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "log that I emailed" → \`leadbay_report_outreach\`.
+
+Prefer when: the user wants a clickable/interactive HTML artifact whose controls call Leadbay tools — not a one-off data answer
+
+Examples that SHOULD invoke this tool:
+- "Build me an interactive call sheet for these leads."
+- "Make an artifact with buttons to log call outcomes per lead."
+- "I want a clickable lead-triage board I can work down."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Show me today's leads."
+- "Which leads should I follow up with this week?"
+- "Log that I emailed Acme's CTO."
+
+## RENDER (quick)
+
+Do NOT render this tool's result as prose or a table. It returns
+\`runtime\` (a JS string) + \`usage_guide\` (the recipe) + \`version\`. Inline
+\`runtime\` as ONE \`<script>\` (it self-attaches \`window.LeadbayArtifacts\`),
+build view-models with \`lb.field/action/resource/list\` + the domain helpers,
+bind them to your own HTML, and pass the tools you call as the artifact's
+\`mcp_tools\`. READ \`usage_guide\` first. The artifact is the answer.
+
+---
+
+Hands you everything to build an interactive HTML **artifact** the user runs inside their own Claude (cowork): headless **domain view-models** + a markdown usage guide. A view-model owns a control's whole data lifecycle — populate a dropdown's options from a Leadbay call, hold the value, expose loading/error, validate, encapsulate the API call + business rules. You own 100% of the markup, layout, and style. The library renders nothing.
+
+Returns \`{ runtime, usage_guide, version }\`:
+- \`runtime\` — a minified, zero-dependency vanilla IIFE that self-attaches \`window.LeadbayArtifacts\` (call it \`lb\`). Inline once as \`<script>\`.
+- \`usage_guide\` — the full recipe: \`lb.field\` / \`lb.action\` / the \`lb.bind*\` sugar, a copy-paste cold-call call sheet, and the write-call rules. READ IT before building.
+
+The model — two layers. Primitives: \`lb.field\` (value + API-populated options), \`lb.action\` (write/submit), \`lb.resource\` (load-on-click / poll-until-done / \`.refresh()\`), \`lb.list\` (paginated rows); each exposes \`.loading/.error/.subscribe\`, and you bind them to YOUR native elements with \`lb.bindSelect/bindValue/bindAction\` (no style imposed). Domain components (pre-wired, footguns baked in): \`lb.campaigns\`, \`lb.outreach\`, \`lb.note\`, \`lb.like/dislike\`, \`lb.leadHistory\`, \`lb.leadProfile\`, \`lb.callList\`, \`lb.enrichment\` (launch + poll), \`lb.teamActivity\` (manager leaderboard + trend). TanStack-Query's headless-view-model separation, vanilla (cowork is inline-only — no React).
+
+Canonical uses: a cold-call sheet (\`lb.callList\` + per-row \`lb.outreach\`/\`lb.leadHistory\`); a manager dashboard (\`lb.teamActivity\` → leaderboard table + Chart.js trend); a live enrichment view (\`lb.enrichment\` → progress + refresh). Live auto-poll is host-dependent — always wire a Refresh.
+
+Write-call footguns (in the guide, repeated because they bite): for \`leadbay_report_outreach\` (status/disposition) the \`args\` MUST include \`verification:{source:"user_confirmed",ref:"…"}\` AND \`_triggered_by:"<the user's request>"\`, or the call is rejected. \`leadbay_add_leads_to_campaign\` needs \`_triggered_by\` too. \`leadbay_add_note\`/\`leadbay_like_lead\`/\`leadbay_dislike_lead\` need only their own args. Snoozing (pushback) and standalone status are advanced-gated — not callable from a default artifact; use \`report_outreach\`'s \`epilogue_status\` for outcomes.
+
+WHEN TO USE: the user asks for a clickable / interactive artifact, dashboard, or call sheet that DOES things (not just displays data).
+
+WHEN NOT TO USE: the user wants a plain data answer (route to leadbay_pull_leads / leadbay_pull_followups) or to log a single real outreach you just did (leadbay_report_outreach).
+`;
+// endregion: leadbay_artifact_kit
 
 // region: leadbay_bulk_enrich_status
 export const leadbay_bulk_enrich_status: string = `Check status + per-lead contacts for a bulk enrichment you previously launched via leadbay_enrich_titles. Returns the \`bulk_id\`, progress per lead (done/total enrichable contacts), and overall progress. When \`include_contacts=true\` (opt-in), includes each contact's email/phone/job_title/enrichment.done.
@@ -3839,6 +3889,53 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 `;
 // endregion: leadbay_set_user_prompt
 
+// region: leadbay_team_activity
+export const leadbay_team_activity: string = `## WHEN TO USE
+
+Trigger phrases: "how is my team doing", "team activity", "top performers", "rep leaderboard", "manager dashboard", "who's most active this week", "activity by rep".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "show me leads" → \`leadbay_pull_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "how is this campaign progressing" → \`leadbay_campaign_progression\`.
+
+Prefer when: a manager wants team-wide / per-rep activity aggregates, not a lead list
+
+Examples that SHOULD invoke this tool:
+- "How is my team doing this month?"
+- "Who are my top performers in the last two weeks?"
+- "Show me activity by rep."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Show me today's leads."
+- "How is the Q3 Outbound campaign progressing?"
+- "Which leads should I follow up with?"
+
+## RENDER (quick)
+
+Per-rep leaderboard table (sort by total_activities desc) + an activity
+time-series. Columns worth showing: name, total_activities, notes,
+contacts_added, meetings_or_interest, lost. Feeds a manager dashboard
+artifact (table + Chart.js line of \`trend\`).
+
+---
+
+Manager / team KPIs — the data behind the web app's Dashboard-Manager screen, exposed so an agent (or an artifact) can render a team dashboard.
+
+Returns \`{ range, reps, trend }\`:
+- \`range\` — \`{ from, to, periodicity }\` (the resolved look-back window).
+- \`reps\` — per-rep activity, sorted by \`total_activities\` desc (the leaderboard). Each: \`{ user_id, name, email, total_activities, likes, saves, website_clicks, exported, profile_views, contacts_added, contacts_purchased, notes, meetings_or_interest, could_not_reach, lost, still_chasing }\`. The \`epilogue_*\`-derived fields (\`meetings_or_interest\`, \`lost\`, …) are the outcome signal.
+- \`trend\` — \`[{ date, count }]\` activity over time for the window (feed a chart).
+
+Params: \`weeks\` (default 4) OR explicit \`from\`/\`to\` (YYYY-MM-DD); \`periodicity\` (DAILY|WEEKLY, default WEEKLY); \`user_ids\` (omit for the whole team). Admins get the whole org; non-admins are scoped to themselves by the backend.
+
+Wraps \`GET /kpi/users\` + \`GET /kpi/trends\`. Quota / remaining capacity for the org lives on leadbay_account_status (don't duplicate it here).
+
+WHEN TO USE: a manager wants to see team-wide or per-rep activity (leaderboard, who's active, activity trend).
+
+WHEN NOT TO USE: the user wants a lead list (leadbay_pull_leads / leadbay_pull_followups) or one campaign's funnel (leadbay_campaign_progression).
+`;
+// endregion: leadbay_team_activity
+
 // region: leadbay_tour_plan
 export const leadbay_tour_plan: string = `## WHEN TO USE
 
@@ -4074,6 +4171,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_agent_memory_recall,
   leadbay_agent_memory_review,
   leadbay_answer_clarification,
+  leadbay_artifact_kit,
   leadbay_bulk_enrich_status,
   leadbay_bulk_qualify_leads,
   leadbay_campaign_call_sheet,
@@ -4154,6 +4252,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_set_pushback,
   leadbay_set_qualification_methods,
   leadbay_set_user_prompt,
+  leadbay_team_activity,
   leadbay_tour_plan,
   leadbay_unpin_contact,
   leadbay_update_contact,

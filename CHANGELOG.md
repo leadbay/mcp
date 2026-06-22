@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.23.0 — 2026-06-21 — Build-a-campaign guided flow
+
+- Added the `leadbay_build_campaign` prompt (and auto-generated Claude skill):
+  one guided on-ramp that takes a solo user from intent to a ready-to-work
+  campaign — discover on the active lens → qualify → pick an ICP candidate pool
+  → enrich the people who would actually BUY the user's product → persist via
+  `leadbay_create_campaign` → render the `leadbay_campaign_call_sheet` view,
+  then hand off to `leadbay_work_campaign`.
+- Enrichment is **buyer-persona-driven, not seniority-driven**: Phase 3 derives
+  who buys the user's product from their ICP (a sales tool → the revenue org),
+  filters `recall_ordered_titles` / discovery suggestions to that persona, and
+  refuses ops/finance/IT-by-seniority. Confirms persona + spend before launching.
+- **Coverage guarantee**: drops/swaps any lead with no enrichable buyer-persona
+  contact for the highest-score in-ICP lead that has one — never trading ICP fit
+  for coverage. Final cohort is all buyer-ready.
+- **Suspect-contact flag**: marks ⚠ any enriched email whose domain ≠ the
+  company, or any contact appearing on >1 lead, so the rep doesn't email a
+  mis-attributed address. Polls enrichment to completion before rendering.
+- Pure orchestration of existing composites — no new tool or endpoint.
+- Added eval workflow #34 (multi-turn) in `WORKFLOWS.md`. Tuned over 4 live
+  eval cycles against the test account (campaign quality 3/7 → 11/11 leads with
+  a real revenue buyer reachable).
+
 ## 0.13.0 — 2026-05-21 — Agent memory v1
 
 - Added local-file agent memory for Leadbay MCP: append-only JSONL entries

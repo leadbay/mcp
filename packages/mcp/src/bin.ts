@@ -9,6 +9,7 @@ import {
   NotificationsInbox,
   NotificationsWsClient,
   resolveRegion,
+  REGIONS,
   type CreateClientConfig,
   LeadbayClient,
   type LeadbayError,
@@ -59,7 +60,7 @@ import { parseWriteEnv } from "./env.js";
 import { initTelemetry } from "./telemetry.js";
 import { createDefaultUpdateStateStore } from "./update-state.js";
 import { checkForUpdate, recordRunningVersion } from "./update-check.js";
-import { oauthLogin, inferRegionViaStargate } from "./oauth.js";
+import { oauthLogin, inferRegionViaStargate, BrowserOpenFailedError, openInBrowser } from "./oauth.js";
 
 // Regional OAuth base URLs. Production is the default path; staging remains
 // available for `login --oauth --staging` and staging MCPB validation.
@@ -236,6 +237,115 @@ function resolveOAuthBootstrapCredentialsPath(): { path: string; legacy: boolean
   };
 }
 
+// The live OAuth authorize URL captured during background bootstrap. A spawned
+// .dxt stdio server frequently CAN'T open a GUI browser itself — Claude Desktop
+// strips DISPLAY/WAYLAND (and PATH) from the child env, so xdg-open/open can
+// silently no-op even when the spawn "succeeds". So we don't rely on the
+// auto-open: we surface this URL as a clickable sign-in link in the AUTH_PENDING
+// envelope (the only channel the user sees — bootstrap stderr is invisible in
+// Claude Desktop). The loopback listener stays alive in the background, so
+// clicking it completes the flow. Set when the URL is known; cleared when the
+// token lands.
+let pendingSignInUrl: string | undefined;
+// Set when the browser launcher errored outright (ENOENT). Distinct from the
+// silent-no-op case — here we still have a live URL to show, but we also note
+// the auto-open failed so the copy can say "open this yourself".
+let browserOpenFailedAtBootstrap = false;
+// Set when the background bootstrap fails for a reason that produced NO sign-in
+// URL (region probe / discovery / registration / token exchange). Without this,
+// the gate would keep reporting AUTH_PENDING ("a browser window should have
+// opened…") forever even though OAuth can never complete this session — the
+// user must see the real error + restart guidance. Holds the failure message.
+let bootstrapFailureMessage: string | undefined;
+// Diagnostic trace for the .dxt OAuth bootstrap. Claude Desktop doesn't surface
+// the spawned server's stderr anywhere the user can see, so we append a
+// timestamped line to ~/.leadbay/oauth-bootstrap-debug.log. Best-effort; never
+// throws. Lets us see, post-install, exactly when bootstrap ran, what env it
+// got, which launcher it spawned, and the result.
+function bootstrapDebug(msg: string): void {
+  try {
+    const { appendFileSync, mkdirSync } = require_("node:fs") as typeof import("node:fs");
+    const { join } = require_("node:path") as typeof import("node:path");
+    const { homedir } = require_("node:os") as typeof import("node:os");
+    const dir = join(homedir(), ".leadbay");
+    mkdirSync(dir, { recursive: true });
+    const ts = new Date().toISOString();
+    appendFileSync(join(dir, "oauth-bootstrap-debug.log"), `${ts} [pid ${process.pid}] ${msg}\n`);
+  } catch {
+    /* best-effort diagnostic — never block */
+  }
+}
+
+// Persisted Dynamic-Client-Registration cache. DCR is a once-and-reuse
+// operation: registering a fresh client on every launch is what exhausts the
+// backend's ~10-registrations/IP/hour limit (Claude Desktop fires several
+// launches per install via its probe-restarts). We cache the registered
+// client_id per auth-server URL in ~/.leadbay/oauth-client.json and reuse it.
+function oauthClientCachePath(): string {
+  const { join } = require_("node:path") as typeof import("node:path");
+  const { homedir } = require_("node:os") as typeof import("node:os");
+  return join(homedir(), ".leadbay", "oauth-client.json");
+}
+// Cache key includes the loopback PORT: the backend pins the exact registered
+// redirect_uri (port included), so a cached client_id is only reusable when the
+// listener binds the same port it was registered for.
+// On-disk shape (per auth server): { byPort: { "<port>": "<client_id>" } }.
+// We retain a client_id for EVERY port we've registered on — not a single
+// overwriting entry — because the bound stable port can alternate across
+// launches (51789 busy → 51790, then 51789 free again). A single entry would
+// drop the other port's id and force a re-registration on each alternation,
+// recreating the ~10/hr 429 risk this cache exists to prevent.
+export function getCachedOAuthClientId(authServerBaseUrl: string, port: number): string | undefined {
+  try {
+    const { readFileSync } = require_("node:fs") as typeof import("node:fs");
+    const parsed = JSON.parse(readFileSync(oauthClientCachePath(), "utf8"));
+    const byPort = parsed?.clients?.[authServerBaseUrl]?.byPort;
+    const id = byPort?.[String(port)];
+    return typeof id === "string" && id.length > 0 ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+export function cacheOAuthClientId(authServerBaseUrl: string, clientId: string, port: number): void {
+  try {
+    const { readFileSync, writeFileSync, mkdirSync } = require_("node:fs") as typeof import("node:fs");
+    const { dirname } = require_("node:path") as typeof import("node:path");
+    const path = oauthClientCachePath();
+    let data: any = { clients: {} };
+    try {
+      data = JSON.parse(readFileSync(path, "utf8"));
+      if (!data || typeof data !== "object" || typeof data.clients !== "object") data = { clients: {} };
+    } catch { /* fresh file */ }
+    const server = data.clients[authServerBaseUrl];
+    const byPort =
+      server && typeof server === "object" && server.byPort && typeof server.byPort === "object"
+        ? server.byPort
+        : {};
+    byPort[String(port)] = clientId; // merge — keep ids for other ports
+    data.clients[authServerBaseUrl] = { byPort };
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(data, null, 2) + "\n", { mode: 0o600 });
+  } catch {
+    /* best-effort — a write failure just means we re-register next launch */
+  }
+}
+
+// Tracks an in-flight browser-open spawn so shutdown can wait for it to be
+// DISPATCHED before exiting. Claude Desktop probes a freshly-installed
+// extension with rapid connect→shutdown cycles (the first process can live
+// <100ms); without this, SIGTERM/stdin-end kills the process before the
+// detached `xdg-open`/`open` child is even spawned, so the browser never
+// opens on install. Once the child is spawned (detached + unref'd) it
+// survives our exit on its own — we only need to guarantee it gets spawned.
+let browserOpenInFlight: Promise<void> | null = null;
+// The whole background bootstrap task (region probe → discovery → registration
+// → authorize-URL mint → browser-open dispatch). shutdown() waits on THIS
+// (bounded), not just browserOpenInFlight: Claude Desktop can fire its
+// probe→teardown while bootstrap is still in discovery/registration — BEFORE
+// any browser-open promise exists — and without waiting on the task itself the
+// process would die mid-registration and never produce a URL or open a browser.
+let bootstrapInFlight: Promise<void> | null = null;
+
 // OAuth bootstrap: when an MCPB opts in with LEADBAY_OAUTH_BOOTSTRAP=1 and no
 // token is available from env or disk, run the browser-loopback OAuth flow
 // inline so the server can come up authenticated. This is what makes the .mcpb
@@ -248,6 +358,10 @@ function resolveOAuthBootstrapCredentialsPath(): { path: string; legacy: boolean
 //   3. stargate /user_info -> GeoIP-detect, map to prod or staging regional URL
 async function bootstrapOAuthIfMissing(logger: ToolLogger): Promise<boolean> {
   if (process.env.LEADBAY_TOKEN) return false;
+  bootstrapDebug(
+    `bootstrap START — clientName=Leadbay MCP, REGION=${process.env.LEADBAY_REGION ?? "<unset>"} ` +
+      `BASE_URL=${process.env.LEADBAY_BASE_URL ?? "<unset>"}`
+  );
 
   const { hostname } = await import("node:os");
   process.stderr.write(
@@ -283,6 +397,49 @@ async function bootstrapOAuthIfMissing(logger: ToolLogger): Promise<boolean> {
       authServerBaseUrl,
       clientName: `Leadbay MCP @ ${hostname()}`,
       log: (m) => process.stderr.write(m),
+      // The moment the URL is known: (1) stash it so the AUTH_PENDING envelope
+      // surfaces a clickable link (reliable fallback), and (2) fire the browser
+      // auto-open OURSELVES, tracked in browserOpenInFlight so shutdown waits
+      // for the spawn to dispatch. This wins the install-time race: Claude
+      // Desktop probes a fresh extension with <100ms connect→shutdown cycles,
+      // and tracking the open lets us finish dispatching the detached child
+      // even if SIGTERM/stdin-end arrives first. We pass our own opener as
+      // `openBrowser` so oauthLogin doesn't ALSO open (no double tab).
+      onAuthorizeUrl: (url) => {
+        pendingSignInUrl = url;
+        bootstrapDebug(`authorize URL ready — spawning browser open`);
+        browserOpenInFlight = openInBrowser(url, bootstrapDebug)
+          .then(() => {
+            bootstrapDebug(`auto-open dispatched OK`);
+          })
+          .catch((err: any) => {
+            browserOpenFailedAtBootstrap = true;
+            bootstrapDebug(`auto-open FAILED: ${err?.message ?? err}`);
+            process.stderr.write(
+              `[leadbay-mcp] auto-open browser failed (${err?.message ?? err}); user has the sign-in link.\n`
+            );
+          })
+          .finally(() => {
+            browserOpenInFlight = null;
+          });
+      },
+      // No-op: we drive the open from onAuthorizeUrl (tracked) instead, so the
+      // shutdown race can be handled. Returning resolved means oauthLogin won't
+      // try its own open or hit the fail-fast path.
+      openBrowser: async () => {},
+      // Reuse a cached client_id (keyed by auth server + loopback port) so we
+      // register at most once — avoids the 429 from re-registering on every
+      // probe-restart. Port is part of the key because the backend pins the
+      // exact redirect_uri (port included).
+      getCachedClientId: (port) => {
+        const id = getCachedOAuthClientId(authServerBaseUrl, port);
+        if (id) bootstrapDebug(`reusing cached client_id=${id} (port ${port}) for ${authServerBaseUrl}`);
+        return id;
+      },
+      onClientRegistered: (id, port) => {
+        bootstrapDebug(`registered new client_id=${id} (port ${port}) — caching for ${authServerBaseUrl}`);
+        cacheOAuthClientId(authServerBaseUrl, id, port);
+      },
     });
 
     // Persist to ~/.config/leadbay/credentials.json so future launches are silent.
@@ -318,12 +475,34 @@ async function bootstrapOAuthIfMissing(logger: ToolLogger): Promise<boolean> {
     process.env.LEADBAY_TOKEN = accessToken;
     process.env.LEADBAY_REGION = region;
     if (isStaging || envBaseUrl) process.env.LEADBAY_BASE_URL = authServerBaseUrl;
+    pendingSignInUrl = undefined; // token landed — drop the sign-in link
+    bootstrapDebug(`bootstrap COMPLETE — token acquired, region=${region}`);
     logger.info?.(`OAuth bootstrap complete — region=${region}`);
     return true;
   } catch (err: any) {
+    if (err instanceof BrowserOpenFailedError) {
+      // Launcher errored outright (ENOENT). We still surfaced the live URL via
+      // onAuthorizeUrl, so the gate keeps showing a clickable link — just note
+      // the auto-open failed so the copy can say "open it yourself".
+      browserOpenFailedAtBootstrap = true;
+      process.stderr.write(
+        `[leadbay-mcp] Could not open a browser automatically: ${err.message}\n` +
+          `  The sign-in link is surfaced to the user via the AUTH_PENDING envelope.\n`
+      );
+      return false;
+    }
+    // Non-browser failure (region probe / discovery / registration / token
+    // exchange). OAuth can't complete this session, so record the reason — the
+    // gate surfaces it as AUTH_FAILED with restart guidance instead of leaving
+    // the user on a forever-"pending" message. Clear any stale sign-in URL: if
+    // we got far enough to mint one, its code/listener is no longer usable.
+    const message = err?.message ?? String(err);
+    bootstrapFailureMessage = message;
+    pendingSignInUrl = undefined;
+    bootstrapDebug(`bootstrap FAILED (non-open): ${message}`);
     process.stderr.write(
-      `[leadbay-mcp] OAuth bootstrap failed: ${err?.message ?? err}\n` +
-        `  The server will start but tools will return AUTH_MISSING until you authorize.\n`
+      `[leadbay-mcp] OAuth bootstrap failed: ${message}\n` +
+        `  Tools will return AUTH_FAILED until you restart the extension to retry.\n`
     );
     return false;
   }
@@ -333,34 +512,30 @@ export async function resolveClientFromEnv(logger: ToolLogger): Promise<Resolved
   if (process.env.LEADBAY_OAUTH_BOOTSTRAP === "1") {
     hydrateEnvFromCredentialsFile();
     if (!process.env.LEADBAY_TOKEN) {
-      await bootstrapOAuthIfMissing(logger);
+      // Non-blocking: return a real tokenless client NOW with authState
+      // "pending" and let OAuth run in the background (kicked off by main()
+      // after the transport connects). Blocking here on the up-to-5-minute
+      // interactive browser flow is what made Claude Desktop time out the
+      // `initialize` handshake and show "Unable to connect to extension
+      // server" — the host gives the server only a few seconds to answer.
+      // The background flow calls client.setBaseUrl + setToken on THIS
+      // instance when it completes; the CallTool auth gate returns
+      // AUTH_PENDING until then. See main() + buildServer bootstrapStatus.
+      const regionEnv = process.env.LEADBAY_REGION;
+      const region: "us" | "fr" = regionEnv === "fr" ? "fr" : "us";
+      const config: CreateClientConfig = { region };
+      if (process.env.LEADBAY_BASE_URL) config.baseUrl = process.env.LEADBAY_BASE_URL;
+      logger.info?.("OAuth bootstrap pending — server will come up unauthenticated, OAuth runs in background");
+      return { client: createClient(config), authState: "pending" };
     }
   }
 
   const token = process.env.LEADBAY_TOKEN;
   if (!token) {
-    if (process.env.LEADBAY_OAUTH_BOOTSTRAP === "1") {
-      process.stderr.write(
-        "leadbay-mcp: OAuth authorization is required but no token is available.\n" +
-          "  Restart the Claude Desktop extension to authorize Leadbay in your browser.\n" +
-          "\n" +
-          "Run `leadbay-mcp --help` for the full config template.\n"
-      );
-      const regionEnv = process.env.LEADBAY_REGION;
-      const region: "us" | "fr" = regionEnv === "fr" ? "fr" : "us";
-      return {
-        client: makeBrokenClient(
-          {
-            error: true,
-            code: "AUTH_MISSING",
-            message: "Leadbay OAuth authorization has not completed.",
-            hint: "Restart the Claude Desktop extension and complete the Leadbay OAuth browser authorization.",
-          },
-          region
-        ),
-        authState: "missing",
-      };
-    }
+    // NB: the LEADBAY_OAUTH_BOOTSTRAP-with-no-token case returned a "pending"
+    // client above (background OAuth), so it never reaches here. This branch
+    // is the non-bootstrap "no token configured" path (e.g. a manual stdio
+    // config that forgot LEADBAY_TOKEN).
     // Don't process.exit — Claude Desktop / Cursor would surface this as
     // "Server disconnected" with no actionable info. Return a broken
     // client so the server still answers `initialize` + `tools/list`,
@@ -1406,12 +1581,22 @@ async function main(): Promise<void> {
   // LEADBAY_TELEMETRY_DISABLED=1. See packages/mcp/src/telemetry.ts.
   const telemetry = initTelemetry({ version: VERSION, logger });
   const { client, authState } = await resolveClientFromEnv(logger);
+  // True when OAuth bootstrap is running in the background and the client is
+  // still tokenless. The CallTool handler gates tools on this (see the
+  // bootstrapStatus getter passed to buildServer below), and the background
+  // flow is kicked off after the transport connects.
+  const bootstrapPending = authState === "pending";
   // Non-blocking identify — kicks off /users/me (cached if region
   // auto-probe already paid for it). Events captured before identity
   // resolves are buffered and flushed once me.email lands. With a broken
   // client (authState != "ok"), resolveMe rejects but telemetry.identify
   // has its own catch and flushes events anonymously.
-  telemetry.identify(client);
+  //
+  // Skip it while bootstrap is pending: identifying a tokenless client would
+  // 401, flush anonymously, AND latch telemetry's identityPromise so the
+  // post-auth identify() short-circuits and never re-identifies the real
+  // user. We call identify() in the background-success callback instead.
+  if (!bootstrapPending) telemetry.identify(client);
   // Bucket disconnects by auth-state in PostHog so a regression in the
   // startup-auth path is visible without reading the user's logs.
   telemetry.captureStartup({
@@ -1490,6 +1675,23 @@ async function main(): Promise<void> {
     version: VERSION,
     telemetry,
     updateStateStore,
+    // Non-blocking OAuth bootstrap gate. Read per tool call: once the
+    // background flow lands the token (client.isAuthenticated → true) this
+    // reports done and tools execute. While waiting it surfaces the live
+    // sign-in URL (captured via onAuthorizeUrl) so the agent can render a
+    // clickable link — the reliable path when the spawned process can't open
+    // a browser itself.
+    bootstrapStatus: bootstrapPending
+      ? () =>
+          client.isAuthenticated
+            ? { done: true }
+            : {
+                done: false,
+                signInUrl: pendingSignInUrl,
+                openFailed: browserOpenFailedAtBootstrap,
+                failureMessage: bootstrapFailureMessage,
+              }
+      : undefined,
   });
   const transport = new StdioServerTransport();
   logger.info?.(
@@ -1497,10 +1699,81 @@ async function main(): Promise<void> {
   );
   await server.connect(transport);
 
+  // Non-blocking OAuth bootstrap: now that `initialize` is answered, run the
+  // interactive browser flow in the background. On success, mutate the LIVE
+  // client the handler holds (setBaseUrl + setToken) so the next tool call is
+  // authenticated with no server rebuild; start the notifications WS (it needs
+  // a bearer); and identify the now-known user to telemetry. On failure the
+  // client stays tokenless and the bootstrapStatus gate keeps returning
+  // AUTH_PENDING / AUTH_MISSING.
+  if (bootstrapPending) {
+    bootstrapDebug(`server connected; launching background OAuth bootstrap`);
+    bootstrapInFlight = (async () => {
+      const ok = await bootstrapOAuthIfMissing(logger);
+      if (!ok) return; // gate already surfaces pending / open-failed / failed
+      const region: "us" | "fr" = process.env.LEADBAY_REGION === "fr" ? "fr" : "us";
+      // API base URL: a pinned LEADBAY_BASE_URL (staging/custom) wins; otherwise
+      // the regional API host — mirroring createClient({ region }).
+      const apiBaseUrl = process.env.LEADBAY_BASE_URL ?? REGIONS[region];
+      // setBaseUrl BEFORE setToken so a request can never fire with the new
+      // token against a stale baseUrl (isAuthenticated flips on setToken).
+      client.setBaseUrl(apiBaseUrl, region);
+      client.setToken(process.env.LEADBAY_TOKEN!);
+      logger.info?.(`OAuth bootstrap landed — client authenticated (region=${region})`);
+      // Identify the real user now (skipped at boot to avoid latching an
+      // anonymous identity — see the bootstrapPending guard above).
+      telemetry.identify(client);
+      // Start the notifications WS now that we have a bearer (it was disabled
+      // at boot because authState !== "ok").
+      if (process.env.LEADBAY_NOTIFICATIONS_WS_DISABLED !== "1" && !notificationsWs) {
+        notificationsWs = new NotificationsWsClient({
+          client,
+          inbox: notificationsInbox,
+          logger,
+        });
+        void notificationsWs.start().catch((err: any) => {
+          logger.warn?.(`notifications.ws start_failed (post-oauth): ${err?.message ?? err}`);
+        });
+      }
+    })().catch((err: any) => {
+      logger.warn?.(`oauth.bootstrap_bg_failed ${err?.message ?? err}`);
+    });
+  }
+
   // Shutdown hooks: flush PostHog + Sentry bounded at 2s each so a network
   // hang can't block process exit. stdio-end fires when the MCP client
   // (Claude Desktop, Cursor) disconnects — same effect as SIGTERM.
   const shutdown = async (code: number) => {
+    // Claude Desktop's rapid probe→teardown on a fresh install fires within
+    // ~100ms — often while the background OAuth is still in region-probe /
+    // discovery / registration, BEFORE a browser-open promise exists. Wait
+    // (bounded) on the whole bootstrap task so the flow can reach the
+    // authorize-URL mint + open dispatch; then, if the open is still in flight,
+    // wait a little more for that spawn to land. Once the detached launcher is
+    // spawned it survives our exit; and a minted sign-in URL persists in the
+    // gate as the fallback. The bound keeps a hung network from blocking exit.
+    if (bootstrapInFlight && !client.isAuthenticated) {
+      bootstrapDebug(`shutdown(code=${code}) while bootstrap in flight — waiting up to 4s for URL/open`);
+      try {
+        await Promise.race([
+          bootstrapInFlight,
+          new Promise((r) => setTimeout(r, 4000)),
+        ]);
+      } catch {
+        // ignore — best-effort
+      }
+    }
+    if (browserOpenInFlight) {
+      bootstrapDebug(`shutdown(code=${code}) browser-open still in flight — waiting up to 1.5s`);
+      try {
+        await Promise.race([
+          browserOpenInFlight,
+          new Promise((r) => setTimeout(r, 1500)),
+        ]);
+      } catch {
+        // ignore — best-effort; the surfaced sign-in link is the fallback
+      }
+    }
     try {
       notificationsWs?.stop();
     } catch {

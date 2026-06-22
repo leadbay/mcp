@@ -141,6 +141,49 @@ After your first `leadbay_pull_leads` call, capture `response.lens.id` (the resp
 
 You don't need to memorize every tool here — each tool's own description carries a RENDERING block (how to present the response) and a NEXT STEPS block (observation → suggestion table). Read the relevant tool's description in full when the user picks an entry point. This overview just gets you to the right starting tool.
 
+## Proposing a next step — only when it genuinely helps
+
+After reporting account state, you MAY propose a concrete next step — but only when one is genuinely useful, not by reflex. A reflexive "want me to also…?" on every turn is noise; the user notices and it erodes trust.
+
+**Propose a next step when** the overview surfaced an obvious unfinished thread or a blocker the user would want resolved — a fresh discovery batch waiting, follow-ups due today, or a quota/auth blocker with a specific unblock action. In those cases the next move is real and worth offering.
+
+**Skip it when** there's no clear unfinished thread, the user only wanted the status (a bare "where do I stand?"), or the work they asked for is plainly done. A status read that ends cleanly is a complete answer — don't manufacture a next step just to have one.
+
+**Lean on memory.** Check the `_meta.agent_memory.summary` for prior signal on how this user reacts to next-step offers. If the memory shows they routinely dismiss them, default to NOT proposing (let them ask). If they routinely act on them, lean toward proposing. When the user dismisses or accepts a proposal this turn, that's a material signal — call `leadbay_agent_memory_capture` (`source:"inferred"`, low confidence) so the preference compounds across sessions.
+
+**When you do propose, the proposal IS a native choice dialog — never a prose "let me know if…".** Route 2–4 mutually-exclusive next moves into your host's next-step widget (`ask_user_input_v0` on Claude chat / ChatGPT, `AskUserQuestion` on Claude cowork / Claude Code). The widget is the question; do not also list the same options as prose.
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **`ask_user_input_v0`** (Claude chat / ChatGPT) takes plain-string options with `type:"single_select"`; **`AskUserQuestion`** (Claude cowork / Claude Code) takes object options `{label, description}` plus a required short `header` (≤12 chars) and `multiSelect`, NO `type` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a `next_steps` object, that is the source of truth — use it directly.** Each option has a short `.label` (≤5 words) and a full `.description`. Map `next_steps.options[]` into your host widget VERBATIM and in order: for `AskUserQuestion` (cowork / Claude Code) pass each as `{label, description}`; for `ask_user_input_v0` (Claude chat / ChatGPT, string options only) pass each option's `.description` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO `next_steps` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- `ask_user_input_v0`: `{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}`
+- `AskUserQuestion`: `{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}`
+
+User picks → call the matching `Calls` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in `description`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+The overview itself returns no `next_steps` object, so when you DO propose, build the options from this table — pick the 2–4 rows that match what the account state actually showed. If none apply cleanly, propose none (the status read was complete) rather than inventing an option.
+
+All `Calls` below are agent-callable `leadbay_*` tools (never an MCP prompt name like `leadbay_daily_check_in` — the agent cannot invoke a prompt from a turn; route to the underlying tool instead).
+
+| Observation                                                         | Suggest                                                | Calls                                                        |
+|---------------------------------------------------------------------|--------------------------------------------------------|--------------------------------------------------------------|
+| Fresh discovery batch waiting / user wants new leads                | "See today's best new leads"                           | leadbay_pull_leads(lensId = pinned)                          |
+| Follow-ups due / known leads to re-engage                           | "Show follow-ups due now"                              | leadbay_pull_followups                                       |
+| Quota/credit read shows low or exhausted balance                    | "Review what's eating your quota"                      | leadbay_account_status (deeper read)                         |
+| Auth/connection blocker (e.g. 401 / AUTH_EXPIRED on a read)         | "Reconnect Leadbay to unblock actions"                 | (guide the user to re-authenticate — no tool call)           |
+| Lens audience looks mismatched (batch is off-ICP)                   | "Adjust the lens audience to match your ICP"           | ASK first — collect the target sectors / sizes / exclusions, THEN leadbay_adjust_audience(...) with those params. NEVER call it with no args (an empty call writes the current filter / may clone the default lens — a no-op or unwanted change). |
+| Status is healthy and nothing is pending                            | propose nothing — the overview is a complete answer    | —                                                            |
+
 GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
 
 If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.

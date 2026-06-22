@@ -1,0 +1,20 @@
+{
+  "name": "@leadbay/components",
+  "version": "0.3.1",
+  "private": true,
+  "description": "Headless artifact SDK: vanilla view-models (field/action/resource/list + domain helpers) over window.cowork.callMcpTool. The agent owns 100% of markup, layout, and look.",
+  "type": "module",
+  "main": "src/runtime.ts",
+  "scripts": {
+    "build": "tsx src/build.ts",
+    "check": "tsx src/build.ts --check",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "jsdom": "^25.0.1",
+    "tsx": "^4.19.2"
+  },
+  "license": "MIT"
+}

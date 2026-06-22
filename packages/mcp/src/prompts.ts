@@ -19,6 +19,7 @@ import type {
   PromptMessage,
 } from "@modelcontextprotocol/sdk/types.js";
 import {
+  leadbay_build_campaign,
   leadbay_daily_check_in,
   leadbay_import_file,
   leadbay_log_outreach,
@@ -192,6 +193,36 @@ const CATALOG: CatalogEntry[] = [
           city: args.city ?? "<missing>",
           date_paren: args.date ? ` on ${args.date}` : "",
           date_dash: args.date ? ` – ${args.date}` : "",
+        }),
+      ),
+    ],
+  },
+  {
+    name: "leadbay_build_campaign",
+    description: PROMPT_META.leadbay_build_campaign.short_description,
+    arguments: [
+      {
+        name: "audience",
+        description:
+          "Optional: a fresh audience to target (e.g. 'dental clinics in Texas'). Omit to build from your ACTIVE lens — the default.",
+        required: false,
+      },
+      {
+        name: "campaign_name",
+        description:
+          "Optional: a name for the campaign. Omit and one is derived from the lens/audience + date (or the backend AI-names it).",
+        required: false,
+      },
+    ],
+    render: (args) => [
+      userMessage(
+        substitutePlaceholders(leadbay_build_campaign, {
+          audience_block: args.audience
+            ? `Target audience: **${args.audience}** — if my active lens doesn't already cover it, set it up first (confirm before switching lenses).`
+            : "Use my active Leadbay lens as the audience.",
+          campaign_name_paren: args.campaign_name
+            ? ` named **${args.campaign_name}**`
+            : "",
         }),
       ),
     ],

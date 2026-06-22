@@ -143,4 +143,31 @@ After your first `leadbay_pull_leads` call, capture `response.lens.id` (the resp
 
 You don't need to memorize every tool here — each tool's own description carries a RENDERING block (how to present the response) and a NEXT STEPS block (observation → suggestion table). Read the relevant tool's description in full when the user picks an entry point. This overview just gets you to the right starting tool.
 
+## Proposing a next step — only when it genuinely helps
+
+After reporting account state, you MAY propose a concrete next step — but only when one is genuinely useful, not by reflex. A reflexive "want me to also…?" on every turn is noise; the user notices and it erodes trust.
+
+**Propose a next step when** the overview surfaced an obvious unfinished thread or a blocker the user would want resolved — a fresh discovery batch waiting, follow-ups due today, or a quota/auth blocker with a specific unblock action. In those cases the next move is real and worth offering.
+
+**Skip it when** there's no clear unfinished thread, the user only wanted the status (a bare "where do I stand?"), or the work they asked for is plainly done. A status read that ends cleanly is a complete answer — don't manufacture a next step just to have one.
+
+**Lean on memory.** Check the `_meta.agent_memory.summary` for prior signal on how this user reacts to next-step offers. If the memory shows they routinely dismiss them, default to NOT proposing (let them ask). If they routinely act on them, lean toward proposing. When the user dismisses or accepts a proposal this turn, that's a material signal — call `leadbay_agent_memory_capture` (`source:"inferred"`, low confidence) so the preference compounds across sessions.
+
+**When you do propose, the proposal IS a native choice dialog — never a prose "let me know if…".** Route 2–4 mutually-exclusive next moves into your host's next-step widget (`ask_user_input_v0` on Claude chat / ChatGPT, `AskUserQuestion` on Claude cowork / Claude Code). The widget is the question; do not also list the same options as prose.
+
+{{include:next-steps/ask-user-input-routing}}
+
+The overview itself returns no `next_steps` object, so when you DO propose, build the options from this table — pick the 2–4 rows that match what the account state actually showed. If none apply cleanly, propose none (the status read was complete) rather than inventing an option.
+
+All `Calls` below are agent-callable `leadbay_*` tools (never an MCP prompt name like `leadbay_daily_check_in` — the agent cannot invoke a prompt from a turn; route to the underlying tool instead).
+
+| Observation                                                         | Suggest                                                | Calls                                                        |
+|---------------------------------------------------------------------|--------------------------------------------------------|--------------------------------------------------------------|
+| Fresh discovery batch waiting / user wants new leads                | "See today's best new leads"                           | leadbay_pull_leads(lensId = pinned)                          |
+| Follow-ups due / known leads to re-engage                           | "Show follow-ups due now"                              | leadbay_pull_followups                                       |
+| Quota/credit read shows low or exhausted balance                    | "Review what's eating your quota"                      | leadbay_account_status (deeper read)                         |
+| Auth/connection blocker (e.g. 401 / AUTH_EXPIRED on a read)         | "Reconnect Leadbay to unblock actions"                 | (guide the user to re-authenticate — no tool call)           |
+| Lens audience looks mismatched (batch is off-ICP)                   | "Adjust the lens audience to match your ICP"           | ASK first — collect the target sectors / sizes / exclusions, THEN leadbay_adjust_audience(...) with those params. NEVER call it with no args (an empty call writes the current filter / may clone the default lens — a no-op or unwanted change). |
+| Status is healthy and nothing is pending                            | propose nothing — the overview is a complete answer    | —                                                            |
+
 {{include:gates/defer-to-tool-rendering}}

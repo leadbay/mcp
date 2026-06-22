@@ -1,6 +1,6 @@
 import { LeadbayClient, type LeadbayError } from "@leadbay/core";
 
-export type AuthState = "ok" | "missing" | "expired" | "probe_failed";
+export type AuthState = "ok" | "missing" | "expired" | "probe_failed" | "pending";
 
 export interface ResolvedClient {
   client: LeadbayClient;
