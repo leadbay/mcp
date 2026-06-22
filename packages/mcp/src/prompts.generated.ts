@@ -878,11 +878,21 @@ Aim for a 3+3+3 split if possible. If the customers bucket has fewer than 3, fil
 
 The map is the default surface for a tour — render it **automatically**. The user does not need to ask for a map, and you must NOT ask whether they want one ("would you like to see this on a map?" is wrong): a field-sales tour is inherently geographic, so the map is the answer, not an option.
 
-**ALWAYS** render the map. Pass the \`map_locations\` array from the \`leadbay_tour_plan\` response **directly** into \`places_map_display_v0\` (when the host exposes it) — each entry is already \`{name, address, latitude, longitude, notes}\`, server-shaped, with the mode badge (★ Customer / ★ Qualified / ✦ New) already baked into \`notes\`. Do NOT rebuild from \`location.pos\` or re-derive the notes. On a host without the widget, render the per-lead place-card blocks (which the chat host auto-detects into a map carousel) — still automatic, never a flat prose list.
+**ALWAYS** render the map. You have TWO ways to do this and you MUST do one of them — never a flat prose list.
 
-Coordinate-less leads are already omitted from \`map_locations\`. Use \`map_summary.leads_without_coords\` to footnote "+ N leads without coordinates" below the widget.
+**Path A — \`places_map_display_v0\` is in your tool set.** Pass the \`map_locations\` array from the \`leadbay_tour_plan\` response **directly** into it — each entry is already \`{name, address, latitude, longitude, notes}\`, server-shaped, with the mode badge (★ Customer / ★ Qualified / ✦ New) baked into \`notes\`. Do NOT rebuild from \`location.pos\` or re-derive the notes.
 
-Below the widget, emit a chat-prose summary grouped by mode (Customers / Qualified / New), with LinkedIn-linked contact name + bare phone/email pills per lead. Use the canonical \`linking/contact-linkedin\` rules. **Carry the mode badge (★ Customer / ★ Qualified / ✦ New) onto every lead in this prose too** — a leading \`### ✦ New\` group header or a \`★\`/\`✦\` prefix per lead. The badge must reach the user in the chat text, not only inside the widget notes: on a host that can't render \`places_map_display_v0\`, the prose is the only place the badge survives, so a flat narrative that drops the badges is wrong even when the map call was made.
+**Path B — the widget is NOT in your tool set (e.g. Claude Desktop).** You MUST emit one **place-card block per lead** in EXACTLY this shape so the chat host auto-detects the address and renders its own Google-Place-card map carousel. This is not optional and it is not a "flat list" — the \`### Company · City, State\` heading + address on its own is what triggers the carousel:
+
+\`\`\`
+### <Company Name> · <City>, <State>
+
+<★ Customer | ★ Qualified | ✦ New> — <one-sentence why-it-fits>. Reach **[<Contact name>](<LinkedIn URL>)**, <role>. ☎ <bare phone>.
+\`\`\`
+
+One block per lead in \`map_locations\`, grouped by mode (Customers, then Qualified, then New). Pull the company, city/state, badge, and contact straight from the tool response. A heading-per-lead with the city in it is what makes the map appear — a paragraph like "Brooklyn Brewery — Broadway, 10018 (Midtown). Best contact: …" does NOT auto-detect and is WRONG.
+
+Coordinate-less leads are already omitted from \`map_locations\`; footnote them with \`map_summary.leads_without_coords\` ("+ N leads without coordinates").
 
 # PHASE 3 — DRAFT IN-AREA OUTREACH (optional, ask first)
 

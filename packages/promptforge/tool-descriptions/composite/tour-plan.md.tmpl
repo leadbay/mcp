@@ -85,9 +85,17 @@ Group the leads into THREE sections (Customers / Qualified Prospects / New Disco
 
 If the user said something like "3+3+3", honor that split. If `followups_count` returned fewer Customers than asked, fill from Qualified.
 
-## RENDER — fallback for hosts without `places_map_display_v0`
+## RENDER — fallback for hosts without `places_map_display_v0` (still a map, never a prose list)
 
-Emit per-lead markdown blocks grouped by mode, in the standard place-card-friendly format (`### **Company** · City, State`, mode badge + score, contact line, channel lines). Hosts that auto-detect addresses (Claude.ai web, cowork) build their own carousel from these blocks.
+When the widget isn't in your tool set (e.g. Claude Desktop), you MUST still produce a map by emitting one place-card block per `map_locations` entry in EXACTLY this shape — the `### Company · City, State` heading with the address is what makes the host auto-detect it and render its own Google-Place-card carousel:
+
+```
+### <Company Name> · <City>, <State>
+
+<★ Customer | ★ Qualified | ✦ New> — <one-sentence fit>. Reach **[<Contact>](<LinkedIn URL>)**, <role>. ☎ <bare phone>.
+```
+
+Group the blocks by mode (Customers → Qualified → New). A flat narrative paragraph ("Brooklyn Brewery — Broadway, 10018 (Midtown). Contact: …") does NOT auto-detect into cards and is WRONG — the per-lead heading with the city is mandatory.
 
 {{include:gates/builtin-widgets}}
 
