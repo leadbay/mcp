@@ -11,7 +11,8 @@ import { sanitizeConfigForType } from "./_custom-field-config.js";
 interface CreateCustomFieldParams {
   name: string;
   type?: CustomCrmFieldKind;
-  config?: CustomCrmFieldConfig | null;
+  // Object preferred; a JSON string is also accepted (parsed by sanitize).
+  config?: CustomCrmFieldConfig | string | null;
   if_not_exists?: boolean;
 }
 
@@ -40,9 +41,9 @@ export const createCustomField: Tool<CreateCustomFieldParams> = {
           "Custom field type: TEXT, NUMBER, PRICE, DATE, DATETIME, or EXTERNAL_ID. Defaults to TEXT.",
       },
       config: {
-        type: ["object", "null"],
+        type: ["object", "string", "null"],
         description:
-          "Type-specific config. EXTERNAL_ID requires {url_template:'https://.../{value}'}; PRICE requires {currency:'USD'}; DATE/DATETIME may set {format}.",
+          "Type-specific config, as an object (preferred) or a JSON string. EXTERNAL_ID requires {url_template:'https://.../{value}'}; PRICE requires {currency:'USD'}; DATE/DATETIME may set {format}.",
       },
       if_not_exists: {
         type: "boolean",

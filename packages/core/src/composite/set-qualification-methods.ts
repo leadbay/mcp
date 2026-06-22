@@ -184,9 +184,13 @@ export const setQualificationMethods: Tool<SetQualificationMethodsParams> = {
       );
     }
 
-    // Shrinking the list is destructive — require confirm.
-    if (next.length < previousCount && params.confirm !== true) {
-      const removed = currentQs.filter((q) => !next.some((n) => norm(n) === norm(q)));
+    // Dropping ANY existing question is destructive — require confirm. Gate on
+    // the actual removed set, not on count: a remove+add (or a `set`) that swaps
+    // one question for another keeps the count the same but still deletes a
+    // scoring question, so a count-only check (next.length < previousCount)
+    // would wrongly let it through without confirm.
+    const removed = currentQs.filter((q) => !next.some((n) => norm(n) === norm(q)));
+    if (removed.length > 0 && params.confirm !== true) {
       return withAgentMemoryMeta(
         client,
         {
@@ -195,7 +199,7 @@ export const setQualificationMethods: Tool<SetQualificationMethodsParams> = {
           previous_count: previousCount,
           changed: false,
           region: client.region,
-          hint: `Re-call with confirm:true to apply. This would remove ${previousCount - next.length} question(s): ${removed
+          hint: `Re-call with confirm:true to apply. This would remove ${removed.length} question(s): ${removed
             .map((q) => `"${q}"`)
             .join(", ")}. Removing a question changes how every lead is scored.`,
         },

@@ -1,5 +1,5 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool, ToolContext } from "../types.js";
+import type { Tool, ToolContext, AiAgentQuestionPayload } from "../types.js";
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
 
 import { leadbay_get_qualification_methods as GET_QUALIFICATION_METHODS_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -57,15 +57,21 @@ export const getQualificationMethods: Tool<Record<string, never>> = {
     _params: Record<string, never>,
     ctx?: ToolContext
   ) => {
-    // resolveMe FIRST so its /users/me result is cached before
-    // resolveTasteProfile (which resolves the org id from the same /me) and
-    // before withAgentMemoryMeta reuse it — avoids a concurrent double-fetch.
-    // Both are best-effort for the role flag.
+    // resolveMe FIRST so its /users/me result is cached + gives us the org id.
+    // The role flag is best-effort (null on failure → not admin).
     const me = await client.resolveMe().catch(() => null);
-    const profile = await client.resolveTasteProfile();
-
-    const questions = profile.qualificationQuestions ?? [];
     const isAdmin = me?.admin ?? false;
+    const orgId = me?.organization?.id ?? (await client.resolveOrgId());
+
+    // Fetch the questions endpoint DIRECTLY (not via resolveTasteProfile, which
+    // uses Promise.allSettled and substitutes [] for a rejected fetch). A
+    // transient backend/auth failure must surface as an ERROR here — never as a
+    // false "no questions configured", which could lead a caller to overwrite
+    // an org's real questions.
+    const questions = await client.request<AiAgentQuestionPayload[]>(
+      "GET",
+      `/organizations/${orgId}/ai_agent_questions`
+    ) ?? [];
 
     let hint: string | undefined;
     if (questions.length === 0) {

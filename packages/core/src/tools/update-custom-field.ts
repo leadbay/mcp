@@ -13,7 +13,9 @@ interface UpdateCustomFieldParams {
   id: string;
   name?: string;
   type?: CustomCrmFieldKind;
-  config?: CustomCrmFieldConfig | null;
+  // Object preferred; a JSON string is also accepted (some clients/models pass
+  // nested config stringified) — sanitizeConfigForType parses it.
+  config?: CustomCrmFieldConfig | string | null;
 }
 
 // Update an existing org CRM custom field — rename it and/or change its type +
@@ -51,9 +53,9 @@ export const updateCustomField: Tool<UpdateCustomFieldParams> = {
           "New type: TEXT, NUMBER, PRICE, DATE, DATETIME, or EXTERNAL_ID. Omit to keep the current type.",
       },
       config: {
-        type: ["object", "null"],
+        type: ["object", "string", "null"],
         description:
-          "New type-specific config. EXTERNAL_ID requires {url_template:'https://.../{value}'}; PRICE requires {currency:'USD'}; DATE/DATETIME may set {format}. Omit to keep current config.",
+          "New type-specific config, as an object (preferred) or a JSON string. EXTERNAL_ID requires {url_template:'https://.../{value}'}; PRICE requires {currency:'USD'}; DATE/DATETIME may set {format}. Omit to keep current config.",
       },
     },
     required: ["id"],
