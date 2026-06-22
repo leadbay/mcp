@@ -22,7 +22,7 @@ import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { request as httpsRequestRaw } from "node:https";
 import { spawn } from "node:child_process";
 import { AddressInfo } from "node:net";
-import { readdirSync } from "node:fs";
+import { readdirSync, existsSync } from "node:fs";
 
 // Stable loopback port for the OAuth callback. The Leadbay backend requires the
 // authorize redirect_uri to EXACTLY match the registered one (no RFC 8252
@@ -567,7 +567,24 @@ export function browserLaunchEnv(debug?: (msg: string) => void): NodeJS.ProcessE
   const env = { ...process.env };
   if (process.platform !== "linux") return env;
 
-  const runtimeDir = env.XDG_RUNTIME_DIR;
+  // Claude Desktop spawns the .dxt server with a sanitized env that often
+  // strips XDG_RUNTIME_DIR too — which breaks the WAYLAND_DISPLAY/DBUS
+  // reconstruction below (both live under that dir). Rebuild it from the uid:
+  // /run/user/<uid> is the systemd-standard runtime dir on every modern Linux.
+  let runtimeDir = env.XDG_RUNTIME_DIR;
+  if (!runtimeDir || !existsSync(runtimeDir)) {
+    try {
+      const uid = process.getuid?.();
+      const candidate = uid !== undefined ? `/run/user/${uid}` : undefined;
+      if (candidate && existsSync(candidate)) {
+        runtimeDir = candidate;
+        env.XDG_RUNTIME_DIR = candidate;
+        debug?.(`browserLaunchEnv: injected XDG_RUNTIME_DIR=${candidate}`);
+      }
+    } catch {
+      /* getuid unavailable — fall through */
+    }
+  }
 
   if (!env.WAYLAND_DISPLAY && runtimeDir) {
     // Find a wayland-N socket in the runtime dir (wayland-0 is the default).
@@ -579,6 +596,18 @@ export function browserLaunchEnv(debug?: (msg: string) => void): NodeJS.ProcessE
       }
     } catch {
       /* runtime dir unreadable — fall through to X11 */
+    }
+  }
+
+  // Snap/Flatpak browsers (the common default on Ubuntu — firefox is a Snap)
+  // need the session bus to hand the URL to a running instance. Claude Desktop
+  // strips DBUS_SESSION_BUS_ADDRESS; reconstruct it from the standard socket
+  // at <runtimeDir>/bus so `xdg-open` doesn't silently no-op.
+  if (!env.DBUS_SESSION_BUS_ADDRESS && runtimeDir) {
+    const busPath = `${runtimeDir}/bus`;
+    if (existsSync(busPath)) {
+      env.DBUS_SESSION_BUS_ADDRESS = `unix:path=${busPath}`;
+      debug?.(`browserLaunchEnv: injected DBUS_SESSION_BUS_ADDRESS=unix:path=${busPath}`);
     }
   }
 
