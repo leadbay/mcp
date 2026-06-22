@@ -46,7 +46,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 32 | **Build an interactive artifact** — "build me a call sheet / interactive lead board with a campaign dropdown, notes, statuses, likes per lead" — the agent fetches headless view-models + usage guide via `leadbay_artifact_kit`, then assembles a single-file HTML artifact whose `lb.field`/`lb.action` view-models POPULATE a dropdown from `leadbay_list_campaigns` and submit `leadbay_report_outreach` / `leadbay_add_leads_to_campaign` / `leadbay_like_lead` (carrying `verification` + `_triggered_by` where required); the artifact owns all rendering | `leadbay_artifact_kit` *(no dedicated prompt)* | "Build me an interactive call sheet for these leads." |
 | 33 | **Manager team-activity view** — "how is my team doing", "top performers this month", "activity by rep" — `leadbay_team_activity` returns a per-rep leaderboard (`reps`, sorted by `total_activities`) + an activity time-series (`trend`) for a look-back window, the data behind the web Dashboard-Manager screen. Feeds a manager artifact (`lb.teamActivity` → table + Chart.js); quota/remaining stays on `leadbay_account_status` | `leadbay_team_activity` *(no dedicated prompt)* | "How is my team doing this month?" |
 | 34 | **Campaign builder from scratch (solo)** — "build me a campaign from scratch" — one guided flow: discover on the active lens → qualify/pick a cohort → enrich the BUYER PERSONA of the user's product (revenue org, not seniority) with a coverage guarantee → persist via `leadbay_create_campaign` → render the ready-to-work `leadbay_campaign_call_sheet` view, then hand off to `leadbay_work_campaign`. Distinct from the team flow (`leadbay_setup_team_prospecting`) and the work-an-existing-one flow (`leadbay_work_campaign`). | `leadbay_build_campaign` | *(multi-turn — see `turns:` contract)* |
-| 35 | **Tour map renders automatically (the user never asks for a map)** — the core of product#3779: a plain-language tour intent ("I'm visiting Jacksonville in 3 days — who should I go see?") must make the agent infer a geographic view and render the map ON ITS OWN, deterministically — not dump a prose list, not ask "want a map?". `leadbay_tour_plan` pre-shapes `map_locations[]` server-side; the agent renders the map (or, on a host without the widget, the per-lead place-card blocks the carousel auto-detects) with mode badges (★ Customer / ★ Qualified / ✦ New). | `leadbay_plan_tour_in_city` | "I'm visiting Jacksonville in 3 days — who should I go see?" |
+| 35 | **Tour always offers the map (proposes it, renders on yes)** — the core of product#3779: a plain-language tour intent ("I'm visiting Jacksonville in 3 days — who should I go see?") must make the agent recognize the tour, present the leads with mode badges (★ Customer / ★ Qualified / ✦ New), and PROACTIVELY offer to plot them on a map — every run, without the user having to ask. On acceptance it renders via `places_map_display_v0` (or the place-card carousel on hosts without the widget) from the server-shaped `map_locations[]`. | `leadbay_plan_tour_in_city` | "I'm visiting Jacksonville in 3 days — who should I go see?" |
 | 36 | **Tour map no-fabrication (overdeliver guard)** — when auto-rendering the tour the agent must pass the server's `map_locations` through verbatim: never invent coordinates / pins for leads that lack them, never fabricate addresses, and never re-emit a competing raw lat/lng table alongside the place cards. Companion to #35. | `leadbay_plan_tour_in_city` | "I'm visiting Jacksonville in 3 days — show me everyone I should meet" |
 
 ---
@@ -603,34 +603,32 @@ success_criteria:
   - "did NOT call leadbay_report_outreach (building a campaign is not outreaching)"
 ```
 
-#### Workflow 35 — Tour map renders automatically (the user never asks for a map)
+#### Workflow 35 — Tour always OFFERS the map (proposes it, renders on yes)
 
-The point of #3779: the user states a tour intent in plain language and NEVER
-says "map". The agent must infer that a city tour wants a geographic view and
-render the map on its own — deterministically, every run — rather than dump a
-prose list or ask "would you like to see this on a map?". The scenario prompt is
-deliberately map-free; a run that only renders a map because the user asked is
-not testing this.
+The point of #3779: when the user states a tour intent in plain language and
+NEVER says "map", the agent must still recognize the tour, present the leads,
+and PROACTIVELY OFFER to plot them on a map — every run — rather than dump a
+prose list and move on. The map is proposed automatically (the user shouldn't
+have to think to ask), then rendered when they accept. This scenario checks the
+single-turn shape: tour recognized → leads presented → map explicitly offered.
 
 ```yaml expected
-workflow_name: Tour map renders automatically
+workflow_name: Tour offers the map
 prompt_name: leadbay_plan_tour_in_city
 required_calls:
   - leadbay_tour_plan
 forbidden_calls:
   - leadbay_report_outreach
 render_checks:
-  - "rendered the itinerary geographically ON ITS OWN — either the places map widget OR per-lead place-card blocks (a heading per company with its city/area), NOT a single flat prose paragraph that drops the locations"
-  - "each rendered lead carries its tour mode badge (★ Customer, ★ Qualified, or ✦ New) so the rep can tell known accounts from fresh discoveries"
-  - "did NOT ask the user whether they want a map / geographic view before rendering it — the map is automatic for a tour, not opt-in"
+  - "presented the planned tour as a per-lead list (not an empty stub), each lead carrying its mode badge (★ Customer, ★ Qualified, or ✦ New)"
+  - "PROACTIVELY OFFERED to put the stops on a map — a clear yes/no proposal the user did not have to ask for (e.g. 'Want me to put these on a map?')"
   - must_match: "★|✦"
-  - must_not_match: "([Ww]ould you like|[Ww]ant me to|[Ss]hall I|[Dd]o you want)[^.?!\\n]{0,40}\\bmap\\b"
+  - must_match: "[Mm]ap"
 success_criteria:
   - "recognized a field-sales tour intent from plain language ('I'm visiting Jacksonville in 3 days') even though the user never said 'map' or 'on a map'"
   - "called leadbay_tour_plan with Jacksonville (not raw leadbay_pull_followups + leadbay_pull_leads)"
-  - "rendered the geographic view AUTOMATICALLY: surfaced the map_locations the tool returned (as a map and/or per-lead place-card blocks) without the user asking for it and without asking the user first"
-  - "labeled each lead with its mode badge (★ Customer / ★ Qualified / ✦ New) carried from the tool's map_locations notes"
-  - "for any leads the tool reported without coordinates, noted them honestly (e.g. a '+ N leads without coordinates' line) rather than omitting them silently or inventing a location"
+  - "presented the leads grouped/labeled by mode (★ Customer / ★ Qualified / ✦ New) carried from the tool's map_locations notes"
+  - "PROACTIVELY offered the map as a next step (a yes/no proposal to plot the stops), without the user having to ask — the offer is the deterministic behavior the tour must always produce"
   - "did NOT call leadbay_report_outreach"
 ```
 

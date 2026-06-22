@@ -38,13 +38,13 @@ routing:
       - "What's new in today's batch?"
       - "Tell me about Acme Corp."
 rendering_hint: |
-  ALWAYS render the map first: pass the response's `map_locations`
-  array verbatim into `places_map_display_v0` — it's already shaped
-  ({name, address, latitude, longitude, notes}) with the mode badge
-  (★ Customer / ★ Qualified / ✦ New) baked into each `notes`. Do NOT
-  reshape or re-derive from `location.pos`. Below the widget: one
-  intro sentence + per-group chat-prose list with LinkedIn-linked
-  contact names.
+  Present the leads grouped by mode (★ Customer / ★ Qualified / ✦ New),
+  then ALWAYS offer to plot them on a map ("Want me to put these on a
+  map?"). On yes (or if the user asked for a map up front), render it:
+  pass `map_locations` verbatim into `places_map_display_v0`, or on a
+  host without the widget emit one `### Company · City, State` place-card
+  block per lead so the host's address carousel renders. Never a flat
+  prose paragraph. Full recipe below.
 annotations:
   readOnlyHint: true
   destructiveHint: false
@@ -61,9 +61,11 @@ Build a single-call mixed-mode itinerary for a field sales tour. Combines `leadb
 
 ---
 
-## RENDER — host-native map widget (ALWAYS render first)
+## RENDER — present the leads, then OFFER the map (render on yes)
 
-**ALWAYS** render the map first. Pass the response's **`map_locations`** array **directly** into `places_map_display_v0` — each entry is already `{name, address, latitude, longitude, notes}`, server-shaped, with the mode badge already in `notes`. **Do NOT** reshape, **do NOT** re-derive from `location.pos`, **do NOT** rebuild the notes string. The server has done all of that deterministically.
+First present the leads grouped by mode as a tight per-lead list (badge + company + city + best contact). Then **ALWAYS offer the map** as the next step — "Want me to put these on a map?" — and render it only when the user accepts (or asked for a map in their original message). The map is mandatory to *offer* on every tour; it is *rendered* on acceptance.
+
+When rendering: pass the response's **`map_locations`** array **directly** into `places_map_display_v0` — each entry is already `{name, address, latitude, longitude, notes}`, server-shaped, with the mode badge already in `notes`. **Do NOT** reshape, **do NOT** re-derive from `location.pos`, **do NOT** rebuild the notes string. The server has done all of that deterministically.
 
 For reference, the badge the server already applied to each `notes`:
 
