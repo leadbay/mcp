@@ -9,7 +9,7 @@ import {
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { createCustomField } from "../../../src/tools/create-custom-field.js";
+import { createCustomField } from "../../../src/composite/create-custom-field.js";
 
 const BASE = "https://api-us.leadbay.app";
 

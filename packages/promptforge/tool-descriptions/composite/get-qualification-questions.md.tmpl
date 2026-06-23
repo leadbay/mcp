@@ -1,15 +1,15 @@
 ---
-name: leadbay_get_qualification_methods
+name: leadbay_get_qualification_questions
 kind: tool-description
 short_description: |
-  Retrieve the org's qualification methods — the AI-agent questions Leadbay
+  Retrieve the org's qualification questions — the AI-agent questions Leadbay
   scores every lead against. Use when the user wants to know HOW their leads
   are being qualified at the org level. Don't use it for one lead's
   qualification ANSWERS (that's leadbay_research_lead_by_id) or for the broader
   buyer profile + intent tags (that's leadbay_get_taste_profile).
 routing:
   triggers:
-    - "what are my qualification methods"
+    - "what are my qualification questions"
     - "what questions does Leadbay ask about each lead"
     - "show me the org qualification questions"
     - "how are my leads being qualified"
@@ -23,14 +23,14 @@ routing:
   examples:
     positive:
       - "What qualification questions does Leadbay use to score my leads?"
-      - "Show me my org's qualification methods."
+      - "Show me my org's qualification questions."
     negative:
       - "How did Acme Corp answer the qualification questions?"
       - "What's my ideal buyer profile?"
 rendering_hint: |
   Numbered list of the questions (chat-native markdown), each one line. When
   `is_admin` is true, append the `hint` as a footnote (points at
-  leadbay_set_qualification_methods for editing). When the list is empty,
+  leadbay_set_qualification_questions for editing). When the list is empty,
   render the `hint` instead.
 annotations:
   readOnlyHint: true
@@ -38,7 +38,7 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Retrieve the organization's **qualification methods** — the AI-agent questions
+Retrieve the organization's **qualification questions** — the AI-agent questions
 Leadbay scores every lead against. These are the org-level questions that drive
 each lead's qualification boost; the per-lead ANSWERS to them surface inside
 `leadbay_research_lead_by_id`.
@@ -49,17 +49,17 @@ Returns:
   lang}`. Ordered as the backend returns them.
 - **`count`** — number of configured questions.
 - **`is_admin`** — whether the current user is an org admin. Modifying the
-  questions (`leadbay_set_qualification_methods`) is an org-admin action; for
+  questions (`leadbay_set_qualification_questions`) is an org-admin action; for
   admins a `hint` points there.
 - **`hint`** — operator note: the modify pointer, or an empty-state message
   when no questions are configured.
 
 This tool only READS. To change the questions, use
-**leadbay_set_qualification_methods** (add / remove / replace). The result is
+**leadbay_set_qualification_questions** (add / remove / replace). The result is
 cached on the client (it reuses the same taste-profile fetch as
 `leadbay_get_taste_profile`), so repeated calls in a session are cheap.
 
-Companion tools: **leadbay_set_qualification_methods** to modify the questions;
+Companion tools: **leadbay_set_qualification_questions** to modify the questions;
 **leadbay_get_taste_profile** when the user also wants the Ideal Buyer Profile +
 purchase-intent tags; **leadbay_research_lead_by_id** for how a SPECIFIC lead
 answered these questions; **leadbay_refine_prompt** to shape the AI agent's
@@ -68,9 +68,9 @@ behaviour.
 ### RENDERING
 
 Render `qualification_questions` as a numbered list — one question per line, in
-the order returned. Lead with a short heading like **"Qualification methods
+the order returned. Lead with a short heading like **"Qualification questions
 (N)"**. When `qualification_questions` is empty, render the `hint` sentence
 instead of an empty list. When `is_admin` is true and there are questions,
 append the `hint` as a one-line footnote (points at
-leadbay_set_qualification_methods). Do not invent questions or reword them —
+leadbay_set_qualification_questions). Do not invent questions or reword them —
 render verbatim.

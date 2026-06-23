@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeConfigForType } from "../../../src/tools/_custom-field-config.js";
+import { sanitizeConfigForType } from "../../../src/composite/_custom-field-config.js";
 
 // Guards the fix for the live "JSON deserialization error" (500) on custom-field
 // create/update: the backend's per-type config models are strict, so any extra

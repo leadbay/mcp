@@ -2,9 +2,9 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, AiAgentQuestionPayload } from "../types.js";
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
 
-import { leadbay_set_qualification_methods as SET_QUALIFICATION_METHODS_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { leadbay_set_qualification_questions as SET_QUALIFICATION_QUESTIONS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
-interface SetQualificationMethodsParams {
+interface SetQualificationQuestionsParams {
   // Full replacement list. Mutually exclusive with add/remove.
   questions?: string[];
   // Append these (deduped against current). Mutually exclusive with `questions`.
@@ -16,23 +16,23 @@ interface SetQualificationMethodsParams {
   confirm?: boolean;
 }
 
-// Modify the org's qualification methods (the AI-agent questions every lead is
+// Modify the org's qualification questions (the AI-agent questions every lead is
 // scored against). Wire: POST /organizations/{orgId} with
 // {ai_agent_lead_questions: [string, ...]} → 204. The endpoint is a FULL
 // REPLACE, so this tool reads the current list, applies the requested change
 // (set / add / remove), and posts the whole resulting array. Shrinking the
 // list requires confirm:true (removing a question changes how every lead is
 // scored).
-export const setQualificationMethods: Tool<SetQualificationMethodsParams> = {
-  name: "leadbay_set_qualification_methods",
+export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = {
+  name: "leadbay_set_qualification_questions",
   annotations: {
-    title: "Modify the org's qualification methods",
+    title: "Modify the org's qualification questions",
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: false,
     openWorldHint: true,
   },
-  description: SET_QUALIFICATION_METHODS_DESCRIPTION,
+  description: SET_QUALIFICATION_QUESTIONS_DESCRIPTION,
   write: true,
   inputSchema: {
     type: "object",
@@ -88,7 +88,7 @@ export const setQualificationMethods: Tool<SetQualificationMethodsParams> = {
   },
   execute: async (
     client: LeadbayClient,
-    params: SetQualificationMethodsParams,
+    params: SetQualificationQuestionsParams,
     ctx?: ToolContext
   ) => {
     const hasSet = Array.isArray(params.questions);
@@ -97,7 +97,7 @@ export const setQualificationMethods: Tool<SetQualificationMethodsParams> = {
 
     if (hasSet && (hasAdd || hasRemove)) {
       throw client.makeError(
-        "QUALIFICATION_METHODS_BAD_ARGS",
+        "QUALIFICATION_QUESTIONS_BAD_ARGS",
         "`questions` (full replace) is mutually exclusive with add/remove",
         "Pass EITHER `questions` (the full new list) OR `add`/`remove`, not both.",
         "POST /organizations/{orgId}"
@@ -105,7 +105,7 @@ export const setQualificationMethods: Tool<SetQualificationMethodsParams> = {
     }
     if (!hasSet && !hasAdd && !hasRemove) {
       throw client.makeError(
-        "QUALIFICATION_METHODS_NO_CHANGE",
+        "QUALIFICATION_QUESTIONS_NO_CHANGE",
         "nothing to change — pass `questions`, `add`, or `remove`",
         "Provide a full `questions` list, or `add`/`remove` entries.",
         "POST /organizations/{orgId}"
@@ -157,7 +157,7 @@ export const setQualificationMethods: Tool<SetQualificationMethodsParams> = {
     const MAX_QUESTIONS = 5;
     if (next.length > MAX_QUESTIONS) {
       throw client.makeError(
-        "QUALIFICATION_METHODS_LIMIT",
+        "QUALIFICATION_QUESTIONS_LIMIT",
         `too many questions: ${next.length} (max ${MAX_QUESTIONS})`,
         `Leadbay allows at most ${MAX_QUESTIONS} qualification questions. Remove some first (pass fewer in \`questions\`, or use \`remove\`), then add.`,
         "POST /organizations/{orgId}"
@@ -178,7 +178,7 @@ export const setQualificationMethods: Tool<SetQualificationMethodsParams> = {
           previous_count: previousCount,
           changed: false,
           region: client.region,
-          hint: "No change — the resulting list is identical to the current one. Pass different `add`/`remove` entries, or call leadbay_get_qualification_methods to review the current questions.",
+          hint: "No change — the resulting list is identical to the current one. Pass different `add`/`remove` entries, or call leadbay_get_qualification_questions to review the current questions.",
         },
         ctx
       );

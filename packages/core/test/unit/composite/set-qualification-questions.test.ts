@@ -3,7 +3,7 @@ import { mockHttp, resetHttpMock, getHttpRequests, httpsMockFactory } from "../.
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { setQualificationMethods } from "../../../src/composite/set-qualification-methods.js";
+import { setQualificationQuestions } from "../../../src/composite/set-qualification-questions.js";
 
 const BASE = "https://api-us.leadbay.app";
 const ORG = "org-1";
@@ -40,11 +40,11 @@ const postBody = () => {
   return p ? JSON.parse(p.body ?? "{}") : null;
 };
 
-describe("leadbay_set_qualification_methods", () => {
+describe("leadbay_set_qualification_questions", () => {
   it("add — appends and posts the full ai_agent_lead_questions array", async () => {
     mockHttp([me(), currentQuestions([Q1]), postOrg()]);
 
-    const res: any = await setQualificationMethods.execute(newClient(), { add: [Q2] });
+    const res: any = await setQualificationQuestions.execute(newClient(), { add: [Q2] });
 
     expect(res.changed).toBe(true);
     expect(res.count).toBe(2);
@@ -57,7 +57,7 @@ describe("leadbay_set_qualification_methods", () => {
   it("add duplicate — no-op, does not POST", async () => {
     mockHttp([me(), currentQuestions([Q1])]);
 
-    const res: any = await setQualificationMethods.execute(newClient(), { add: [Q1] });
+    const res: any = await setQualificationQuestions.execute(newClient(), { add: [Q1] });
 
     expect(res.changed).toBe(false);
     expect(res.hint).toMatch(/No change/i);
@@ -67,7 +67,7 @@ describe("leadbay_set_qualification_methods", () => {
   it("remove without confirm — previews, does NOT post", async () => {
     mockHttp([me(), currentQuestions([Q1, Q2])]);
 
-    const res: any = await setQualificationMethods.execute(newClient(), { remove: [Q2] });
+    const res: any = await setQualificationQuestions.execute(newClient(), { remove: [Q2] });
 
     expect(res.changed).toBe(false);
     expect(res.hint).toMatch(/confirm:true/);
@@ -78,7 +78,7 @@ describe("leadbay_set_qualification_methods", () => {
   it("remove with confirm — posts the shrunk list", async () => {
     mockHttp([me(), currentQuestions([Q1, Q2]), postOrg()]);
 
-    const res: any = await setQualificationMethods.execute(newClient(), { remove: [Q2], confirm: true });
+    const res: any = await setQualificationQuestions.execute(newClient(), { remove: [Q2], confirm: true });
 
     expect(res.changed).toBe(true);
     expect(res.count).toBe(1);
@@ -88,7 +88,7 @@ describe("leadbay_set_qualification_methods", () => {
   it("full replace (set) with MORE questions needs no confirm", async () => {
     mockHttp([me(), currentQuestions([Q1]), postOrg()]);
 
-    const res: any = await setQualificationMethods.execute(newClient(), { questions: [Q1, Q2] });
+    const res: any = await setQualificationQuestions.execute(newClient(), { questions: [Q1, Q2] });
 
     expect(res.changed).toBe(true);
     expect(res.count).toBe(2);
@@ -98,21 +98,21 @@ describe("leadbay_set_qualification_methods", () => {
   it("questions + add together — rejected (mutually exclusive)", async () => {
     mockHttp([]);
     await expect(
-      setQualificationMethods.execute(newClient(), { questions: [Q1], add: [Q2] })
+      setQualificationQuestions.execute(newClient(), { questions: [Q1], add: [Q2] })
     ).rejects.toThrow();
     expect(getHttpRequests()).toHaveLength(0);
   });
 
   it("no args — rejected", async () => {
     mockHttp([]);
-    await expect(setQualificationMethods.execute(newClient(), {})).rejects.toThrow();
+    await expect(setQualificationQuestions.execute(newClient(), {})).rejects.toThrow();
     expect(getHttpRequests()).toHaveLength(0);
   });
 
   it("exceeding the 5-question cap — rejects with limit hint, no POST", async () => {
     mockHttp([me(), currentQuestions([Q1, Q2, "q3", "q4", "q5"])]);
     await expect(
-      setQualificationMethods.execute(newClient(), { add: ["q6"] })
+      setQualificationQuestions.execute(newClient(), { add: ["q6"] })
     ).rejects.toThrow(/max 5/i);
     expect(getHttpRequests().some((r) => r.method === "POST")).toBe(false);
   });

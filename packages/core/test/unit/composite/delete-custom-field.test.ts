@@ -3,7 +3,7 @@ import { mockHttp, resetHttpMock, getHttpRequests, httpsMockFactory } from "../.
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { deleteCustomField } from "../../../src/tools/delete-custom-field.js";
+import { deleteCustomField } from "../../../src/composite/delete-custom-field.js";
 
 const BASE = "https://api-us.leadbay.app";
 const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");

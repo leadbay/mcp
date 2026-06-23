@@ -3,7 +3,7 @@ import { mockHttp, resetHttpMock, httpsMockFactory } from "../../harness.js";
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { getQualificationMethods } from "../../../src/composite/get-qualification-methods.js";
+import { getQualificationQuestions } from "../../../src/composite/get-qualification-questions.js";
 
 const BASE = "https://api-us.leadbay.app";
 const ORG = "org-1";
@@ -23,13 +23,13 @@ const me = () => ({
 // caller to overwrite an org's real questions). The tool fetches the endpoint
 // directly rather than via resolveTasteProfile's Promise.allSettled (which
 // substitutes [] on rejection).
-describe("leadbay_get_qualification_methods — fetch failure surfaces", () => {
+describe("leadbay_get_qualification_questions — fetch failure surfaces", () => {
   it("ai_agent_questions 500 → throws, does NOT return empty", async () => {
     mockHttp([
       me(),
       { method: "GET", path: new RegExp(`/1\\.5/organizations/${ORG}/ai_agent_questions`), status: 500, body: { error: "boom" } },
     ]);
-    await expect(getQualificationMethods.execute(newClient(), {})).rejects.toThrow();
+    await expect(getQualificationQuestions.execute(newClient(), {})).rejects.toThrow();
   });
 
   it("ai_agent_questions 401 → throws (auth failure not shown as empty)", async () => {
@@ -37,7 +37,7 @@ describe("leadbay_get_qualification_methods — fetch failure surfaces", () => {
       me(),
       { method: "GET", path: new RegExp(`/1\\.5/organizations/${ORG}/ai_agent_questions`), status: 401, body: {} },
     ]);
-    await expect(getQualificationMethods.execute(newClient(), {})).rejects.toThrow();
+    await expect(getQualificationQuestions.execute(newClient(), {})).rejects.toThrow();
   });
 
   it("genuine empty (200 + []) → returns empty with the no-questions hint", async () => {
@@ -45,7 +45,7 @@ describe("leadbay_get_qualification_methods — fetch failure surfaces", () => {
       me(),
       { method: "GET", path: new RegExp(`/1\\.5/organizations/${ORG}/ai_agent_questions`), status: 200, body: [] },
     ]);
-    const res: any = await getQualificationMethods.execute(newClient(), {});
+    const res: any = await getQualificationQuestions.execute(newClient(), {});
     expect(res.count).toBe(0);
     expect(res.hint).toMatch(/No qualification questions/i);
   });

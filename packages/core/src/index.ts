@@ -69,9 +69,9 @@ import { setPushback } from "./tools/set-pushback.js";
 import { removePushback } from "./tools/remove-pushback.js";
 import { previewBulkEnrichment } from "./tools/preview-bulk-enrichment.js";
 import { launchBulkEnrichment } from "./tools/launch-bulk-enrichment.js";
-import { createCustomField } from "./tools/create-custom-field.js";
-import { updateCustomField } from "./tools/update-custom-field.js";
-import { deleteCustomField } from "./tools/delete-custom-field.js";
+import { createCustomField } from "./composite/create-custom-field.js";
+import { updateCustomField } from "./composite/update-custom-field.js";
+import { deleteCustomField } from "./composite/delete-custom-field.js";
 import { likeLead } from "./tools/like-lead.js";
 import { dislikeLead } from "./tools/dislike-lead.js";
 // Contact management — single-call relay tools (granular-shaped); registered
@@ -100,8 +100,8 @@ import { campaignProgression } from "./composite/campaign-progression.js";
 import { campaignCallSheet } from "./composite/campaign-call-sheet.js";
 import { researchLeadById } from "./composite/research-lead-by-id.js";
 import { researchLeadByNameFuzzy } from "./composite/research-lead-by-name-fuzzy.js";
-import { getQualificationMethods } from "./composite/get-qualification-methods.js";
-import { setQualificationMethods } from "./composite/set-qualification-methods.js";
+import { getQualificationQuestions } from "./composite/get-qualification-questions.js";
+import { setQualificationQuestions } from "./composite/set-qualification-questions.js";
 import { getLeadCustomFields } from "./composite/get-lead-custom-fields.js";
 import { accountHistory } from "./composite/account-history.js";
 import { scanPortfolioSignals } from "./composite/scan-portfolio-signals.js";
@@ -171,8 +171,8 @@ export {
   // new composite reads
   pullLeads, pullFollowups, followupsMap, tourPlan, listCampaigns,
   campaignProgression, campaignCallSheet, researchLeadById, researchLeadByNameFuzzy,
-  getQualificationMethods, getLeadCustomFields,
-  setQualificationMethods,
+  getQualificationQuestions, getLeadCustomFields,
+  setQualificationQuestions,
   accountHistory,
   recallOrderedTitles, accountStatus, scanPortfolioSignals, teamActivity,
   bulkEnrichStatus, qualifyStatus, importStatus, resolveImportRows,
@@ -270,11 +270,11 @@ export const compositeReadTools: Tool[] = [
   campaignCallSheet,
   researchLeadById,
   researchLeadByNameFuzzy,
-  // Org qualification methods — the AI-agent questions every lead is scored
+  // Org qualification questions — the AI-agent questions every lead is scored
   // against. ALWAYS exposed (default surface): "how are my leads qualified"
   // is a first-session question, and the underlying get_taste_profile is
   // ADVANCED-gated. Read-only; no MCP edit endpoint exists (issue #3768).
-  getQualificationMethods,
+  getQualificationQuestions,
   // Per-lead custom-field VALUES. ALWAYS exposed: complements the always-on
   // list_mappable_fields (which returns DEFINITIONS only). The lead payload
   // embeds each field's definition, so no catalog join is needed (issue #3768).
@@ -380,10 +380,10 @@ export const compositeWriteTools: Tool[] = [
   // LEADBAY_MCP_WRITE=1 in MCP.
   updateCustomField,
   deleteCustomField,
-  // Modify the org's qualification methods (AI-agent questions). Full-replace
+  // Modify the org's qualification questions (AI-agent questions). Full-replace
   // endpoint (POST /organizations/{orgId} {ai_agent_lead_questions:[...]}); the
   // tool reads current + applies add/remove/set. Shrinking requires confirm.
-  setQualificationMethods,
+  setQualificationQuestions,
   // addNote is granular-shaped but file-import prompts depend on it to preserve
   // meaningful source-file notes after imports return lead ids.
   addNote,

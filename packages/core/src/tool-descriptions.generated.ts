@@ -1486,10 +1486,10 @@ WHEN NOT TO USE: when the lead summary's \`prospecting_actions_count\` is 0.
 `;
 // endregion: leadbay_get_prospecting_actions
 
-// region: leadbay_get_qualification_methods
-export const leadbay_get_qualification_methods: string = `## WHEN TO USE
+// region: leadbay_get_qualification_questions
+export const leadbay_get_qualification_questions: string = `## WHEN TO USE
 
-Trigger phrases: "what are my qualification methods", "what questions does Leadbay ask about each lead", "show me the org qualification questions", "how are my leads being qualified", "what's the qualification criteria".
+Trigger phrases: "what are my qualification questions", "what questions does Leadbay ask about each lead", "show me the org qualification questions", "how are my leads being qualified", "what's the qualification criteria".
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
@@ -1499,7 +1499,7 @@ Prefer when: user wants the ORG-level qualification questions catalog, no lead a
 
 Examples that SHOULD invoke this tool:
 - "What qualification questions does Leadbay use to score my leads?"
-- "Show me my org's qualification methods."
+- "Show me my org's qualification questions."
 
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "How did Acme Corp answer the qualification questions?"
@@ -1509,12 +1509,12 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 Numbered list of the questions (chat-native markdown), each one line. When
 \`is_admin\` is true, append the \`hint\` as a footnote (points at
-leadbay_set_qualification_methods for editing). When the list is empty,
+leadbay_set_qualification_questions for editing). When the list is empty,
 render the \`hint\` instead.
 
 ---
 
-Retrieve the organization's **qualification methods** — the AI-agent questions
+Retrieve the organization's **qualification questions** — the AI-agent questions
 Leadbay scores every lead against. These are the org-level questions that drive
 each lead's qualification boost; the per-lead ANSWERS to them surface inside
 \`leadbay_research_lead_by_id\`.
@@ -1525,17 +1525,17 @@ Returns:
   lang}\`. Ordered as the backend returns them.
 - **\`count\`** — number of configured questions.
 - **\`is_admin\`** — whether the current user is an org admin. Modifying the
-  questions (\`leadbay_set_qualification_methods\`) is an org-admin action; for
+  questions (\`leadbay_set_qualification_questions\`) is an org-admin action; for
   admins a \`hint\` points there.
 - **\`hint\`** — operator note: the modify pointer, or an empty-state message
   when no questions are configured.
 
 This tool only READS. To change the questions, use
-**leadbay_set_qualification_methods** (add / remove / replace). The result is
+**leadbay_set_qualification_questions** (add / remove / replace). The result is
 cached on the client (it reuses the same taste-profile fetch as
 \`leadbay_get_taste_profile\`), so repeated calls in a session are cheap.
 
-Companion tools: **leadbay_set_qualification_methods** to modify the questions;
+Companion tools: **leadbay_set_qualification_questions** to modify the questions;
 **leadbay_get_taste_profile** when the user also wants the Ideal Buyer Profile +
 purchase-intent tags; **leadbay_research_lead_by_id** for how a SPECIFIC lead
 answered these questions; **leadbay_refine_prompt** to shape the AI agent's
@@ -1544,14 +1544,14 @@ behaviour.
 ### RENDERING
 
 Render \`qualification_questions\` as a numbered list — one question per line, in
-the order returned. Lead with a short heading like **"Qualification methods
+the order returned. Lead with a short heading like **"Qualification questions
 (N)"**. When \`qualification_questions\` is empty, render the \`hint\` sentence
 instead of an empty list. When \`is_admin\` is true and there are questions,
 append the \`hint\` as a one-line footnote (points at
-leadbay_set_qualification_methods). Do not invent questions or reword them —
+leadbay_set_qualification_questions). Do not invent questions or reword them —
 render verbatim.
 `;
-// endregion: leadbay_get_qualification_methods
+// endregion: leadbay_get_qualification_questions
 
 // region: leadbay_get_quota
 export const leadbay_get_quota: string = `Read remaining quota / spend across daily, weekly, and monthly windows for the org's resources (\`llm_completion\`, \`ai_rescore\`, \`web_fetch\`). Each entry shows \`current_units\` vs \`max_units\` and \`resets_at\`.
@@ -3853,8 +3853,8 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 `;
 // endregion: leadbay_set_pushback
 
-// region: leadbay_set_qualification_methods
-export const leadbay_set_qualification_methods: string = `Modify the organization's **qualification methods** — the AI-agent questions Leadbay scores every lead against. Use when the user wants to add, remove, or rewrite their qualification questions — e.g. "add a question about whether they run install crews", "remove the flooring question", "replace my questions with these three".
+// region: leadbay_set_qualification_questions
+export const leadbay_set_qualification_questions: string = `Modify the organization's **qualification questions** — the AI-agent questions Leadbay scores every lead against. Use when the user wants to add, remove, or rewrite their qualification questions — e.g. "add a question about whether they run install crews", "remove the flooring question", "replace my questions with these three".
 
 The backend stores the list as a whole, so this tool reads the current questions and applies your change:
 
@@ -3870,13 +3870,13 @@ Returns the resulting \`{qualification_questions, count, previous_count, changed
 
 WHEN TO USE: the user wants to change the org's qualification questions.
 
-WHEN NOT TO USE: to READ the questions (use leadbay_get_qualification_methods) or to change a single lead's data. This is org-level — it affects scoring for ALL leads.
+WHEN NOT TO USE: to READ the questions (use leadbay_get_qualification_questions) or to change a single lead's data. This is org-level — it affects scoring for ALL leads.
 
 ### RENDERING
 
 After a change, confirm in one line — e.g. **"Added 1 question — you now score leads against 4 questions."** or **"Removed 'the flooring question' — 3 questions remain."** Then list the resulting questions as a numbered list. On an unconfirmed shrink, surface the \`hint\` (what would be removed) and ask the user to confirm — do NOT auto-confirm.
 `;
-// endregion: leadbay_set_qualification_methods
+// endregion: leadbay_set_qualification_questions
 
 // region: leadbay_set_user_prompt
 export const leadbay_set_user_prompt: string = `Set the org's intelligence-refinement prompt — free-text instruction that steers Leadbay's lead recommendations beyond firmographics. Admin-only. Setting this clears any pending clarification and triggers a full intelligence regeneration (web search + high-reasoning). \`dry_run:true\` returns the call shape without contacting the backend.
@@ -4203,7 +4203,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_get_lens_filter,
   leadbay_get_lens_scoring,
   leadbay_get_prospecting_actions,
-  leadbay_get_qualification_methods,
+  leadbay_get_qualification_questions,
   leadbay_get_quota,
   leadbay_get_selection_ids,
   leadbay_get_taste_profile,
@@ -4250,7 +4250,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_set_active_lens,
   leadbay_set_epilogue_status,
   leadbay_set_pushback,
-  leadbay_set_qualification_methods,
+  leadbay_set_qualification_questions,
   leadbay_set_user_prompt,
   leadbay_team_activity,
   leadbay_tour_plan,

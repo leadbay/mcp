@@ -162,7 +162,7 @@ interface ConformanceCase {
 
 const CASES: ConformanceCase[] = [
   {
-    toolName: "leadbay_set_qualification_methods",
+    toolName: "leadbay_set_qualification_questions",
     arguments: { add: ["Is the company hiring installers?"] },
     setupMocks: () => {
       mockHttp([
@@ -228,7 +228,7 @@ const CASES: ConformanceCase[] = [
     },
   },
   {
-    toolName: "leadbay_get_qualification_methods",
+    toolName: "leadbay_get_qualification_questions",
     arguments: {},
     setupMocks: () => {
       mockHttp([

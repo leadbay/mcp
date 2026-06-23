@@ -3,7 +3,7 @@ import { mockHttp, resetHttpMock, getHttpRequests, httpsMockFactory } from "../.
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { setQualificationMethods } from "../../../src/composite/set-qualification-methods.js";
+import { setQualificationQuestions } from "../../../src/composite/set-qualification-questions.js";
 
 const BASE = "https://api-us.leadbay.app";
 const ORG = "org-1";
@@ -32,10 +32,10 @@ const didPost = () => getHttpRequests().some((r) => r.method === "POST" && new R
 // Regression: a remove+add (or `set`) that keeps the COUNT the same still drops
 // a scoring question — must require confirm. The old guard only checked
 // next.length < previousCount, so a same-count swap bypassed it.
-describe("leadbay_set_qualification_methods — same-count swap needs confirm", () => {
+describe("leadbay_set_qualification_questions — same-count swap needs confirm", () => {
   it("remove Q1 + add Q3 (2→2, but Q1 dropped) without confirm — previews, does NOT post", async () => {
     mockHttp([me(), current([Q1, Q2])]);
-    const res: any = await setQualificationMethods.execute(newClient(), { remove: [Q1], add: [Q3] });
+    const res: any = await setQualificationQuestions.execute(newClient(), { remove: [Q1], add: [Q3] });
     expect(res.changed).toBe(false);
     expect(res.hint).toMatch(/confirm:true/);
     expect(res.hint).toContain(Q1);
@@ -44,7 +44,7 @@ describe("leadbay_set_qualification_methods — same-count swap needs confirm", 
 
   it("same swap WITH confirm — posts the new list", async () => {
     mockHttp([me(), current([Q1, Q2]), postOrg()]);
-    const res: any = await setQualificationMethods.execute(newClient(), { remove: [Q1], add: [Q3], confirm: true });
+    const res: any = await setQualificationQuestions.execute(newClient(), { remove: [Q1], add: [Q3], confirm: true });
     expect(res.changed).toBe(true);
     expect(res.qualification_questions.map((q: any) => q.question)).toEqual([Q2, Q3]);
     expect(didPost()).toBe(true);
@@ -52,7 +52,7 @@ describe("leadbay_set_qualification_methods — same-count swap needs confirm", 
 
   it("set replacing one question (same count, one dropped) without confirm — previews only", async () => {
     mockHttp([me(), current([Q1, Q2])]);
-    const res: any = await setQualificationMethods.execute(newClient(), { questions: [Q1, Q3] });
+    const res: any = await setQualificationQuestions.execute(newClient(), { questions: [Q1, Q3] });
     expect(res.changed).toBe(false);
     expect(res.hint).toContain(Q2); // Q2 is the dropped one
     expect(didPost()).toBe(false);
@@ -60,7 +60,7 @@ describe("leadbay_set_qualification_methods — same-count swap needs confirm", 
 
   it("pure add (no removal) still needs NO confirm", async () => {
     mockHttp([me(), current([Q1]), postOrg()]);
-    const res: any = await setQualificationMethods.execute(newClient(), { add: [Q2] });
+    const res: any = await setQualificationQuestions.execute(newClient(), { add: [Q2] });
     expect(res.changed).toBe(true);
     expect(didPost()).toBe(true);
   });

@@ -1,17 +1,17 @@
 ---
-name: leadbay_set_qualification_methods
+name: leadbay_set_qualification_questions
 kind: tool-description
 short_description: |
-  Modify the org's qualification methods — the AI-agent questions every lead is
+  Modify the org's qualification questions — the AI-agent questions every lead is
   scored against. Add, remove, or replace questions. Removing requires
-  confirm:true. Read them first with leadbay_get_qualification_methods.
+  confirm:true. Read them first with leadbay_get_qualification_questions.
 annotations:
   readOnlyHint: false
   destructiveHint: true
   idempotentHint: false
   openWorldHint: true
 ---
-Modify the organization's **qualification methods** — the AI-agent questions Leadbay scores every lead against. Use when the user wants to add, remove, or rewrite their qualification questions — e.g. "add a question about whether they run install crews", "remove the flooring question", "replace my questions with these three".
+Modify the organization's **qualification questions** — the AI-agent questions Leadbay scores every lead against. Use when the user wants to add, remove, or rewrite their qualification questions — e.g. "add a question about whether they run install crews", "remove the flooring question", "replace my questions with these three".
 
 The backend stores the list as a whole, so this tool reads the current questions and applies your change:
 
@@ -27,7 +27,7 @@ Returns the resulting `{qualification_questions, count, previous_count, changed}
 
 {{include:headers/tool-when-to-use}} the user wants to change the org's qualification questions.
 
-{{include:headers/tool-when-not-to-use}} to READ the questions (use leadbay_get_qualification_methods) or to change a single lead's data. This is org-level — it affects scoring for ALL leads.
+{{include:headers/tool-when-not-to-use}} to READ the questions (use leadbay_get_qualification_questions) or to change a single lead's data. This is org-level — it affects scoring for ALL leads.
 
 ### RENDERING
 

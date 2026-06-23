@@ -3,7 +3,7 @@ import { mockHttp, resetHttpMock, getHttpRequests, httpsMockFactory } from "../.
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { getQualificationMethods } from "../../../src/composite/get-qualification-methods.js";
+import { getQualificationQuestions } from "../../../src/composite/get-qualification-questions.js";
 
 const BASE = "https://api-us.leadbay.app";
 const ORG = "org-1";
@@ -36,10 +36,10 @@ function mockTaste(questions: unknown[]) {
   ];
 }
 
-describe("leadbay_get_qualification_methods", () => {
+describe("leadbay_get_qualification_questions", () => {
   it("happy path — returns only the questions with created_at + lang, no IBP/tags leak", async () => {
     mockHttp([mockMe(false), ...mockTaste(QUESTIONS)]);
-    const res: any = await getQualificationMethods.execute(newClient(), {});
+    const res: any = await getQualificationQuestions.execute(newClient(), {});
 
     expect(res.qualification_questions).toHaveLength(2);
     expect(res.qualification_questions[0]).toEqual({
@@ -58,15 +58,15 @@ describe("leadbay_get_qualification_methods", () => {
 
   it("admin user — surfaces is_admin + points at the modify tool", async () => {
     mockHttp([mockMe(true), ...mockTaste(QUESTIONS)]);
-    const res: any = await getQualificationMethods.execute(newClient(), {});
+    const res: any = await getQualificationQuestions.execute(newClient(), {});
 
     expect(res.is_admin).toBe(true);
-    expect(res.hint).toMatch(/leadbay_set_qualification_methods/);
+    expect(res.hint).toMatch(/leadbay_set_qualification_questions/);
   });
 
   it("empty catalog — empty array + empty-state hint", async () => {
     mockHttp([mockMe(false), ...mockTaste([])]);
-    const res: any = await getQualificationMethods.execute(newClient(), {});
+    const res: any = await getQualificationQuestions.execute(newClient(), {});
 
     expect(res.qualification_questions).toEqual([]);
     expect(res.count).toBe(0);
@@ -75,7 +75,7 @@ describe("leadbay_get_qualification_methods", () => {
 
   it("does not POST anything (pure read)", async () => {
     mockHttp([mockMe(false), ...mockTaste(QUESTIONS)]);
-    await getQualificationMethods.execute(newClient(), {});
+    await getQualificationQuestions.execute(newClient(), {});
     const writes = getHttpRequests().filter((r) => r.method !== "GET");
     expect(writes).toHaveLength(0);
   });

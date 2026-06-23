@@ -2,10 +2,10 @@
 
 ## 0.23.1 — 2026-06-22
 
-Retrieve + modify qualification methods and CRM custom fields over MCP (product#3768).
+Retrieve + modify qualification questions and CRM custom fields over MCP (product#3768).
 
-- **`leadbay_get_qualification_methods`** (new, always-on read) — the org's AI-agent qualification questions (the criteria every lead is scored against), with the caller's `is_admin` flag. Fetches the questions endpoint directly, so a transient backend/auth failure surfaces as an error rather than a false "none configured".
-- **`leadbay_set_qualification_methods`** (new write) — add / remove / replace the org's questions. Reads the current list and posts the full result; enforces the backend's 5-question cap; **any change that drops an existing question requires `confirm:true`** (gated on the actual removed set, so a same-count swap still confirms).
+- **`leadbay_get_qualification_questions`** (new, always-on read) — the org's AI-agent qualification questions (the criteria every lead is scored against), with the caller's `is_admin` flag. Fetches the questions endpoint directly, so a transient backend/auth failure surfaces as an error rather than a false "none configured".
+- **`leadbay_set_qualification_questions`** (new write) — add / remove / replace the org's questions. Reads the current list and posts the full result; enforces the backend's 5-question cap; **any change that drops an existing question requires `confirm:true`** (gated on the actual removed set, so a same-count swap still confirms).
 - **`leadbay_get_lead_custom_fields`** (new, always-on read) — the CRM custom-field VALUES stored on one lead (`{id, name, type, value}`), distinct from the definitions catalog in `leadbay_list_mappable_fields`. Fires `LEAD_SEEN`.
 - **`leadbay_update_custom_field` / `leadbay_delete_custom_field`** (new writes) — rename/retype a field in place, or delete it (delete requires `confirm:true`). Config is sanitized per type (and a stringified config is parsed) so the backend's strict deserializer never rejects it; the input schema advertises `object | string | null`.
 - Modify tools are admin-scoped server-side (every user is admin of their own org). Requires backend leadbay/backend#1906 so OAuth tokens are accepted on the org + custom-field routes.
