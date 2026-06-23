@@ -3794,6 +3794,8 @@ prose paragraph. Full recipe below.
 
 ---
 
+**BEFORE YOU CALL — clarify scope with a tap-to-answer question.** A field tour is high-intent, so unless the user already said it, ASK first (via \`ask_user_input_v0\` / \`AskUserQuestion\` — whichever is in your tool set) and wait for the answer before calling this tool: (1) **Who to include?** — "Mix — known accounts + fresh prospects" (default) / "Only my known accounts" / "Only fresh new prospects"; (2) **Enrich contacts with no phone/email?** — "Yes, enrich the top stops" / "No, just plan". Map answers to args: only-known → \`discover_count: 0\`; only-new → \`followups_count: 0\`; mix → defaults; enrich=yes → after planning, run \`leadbay_enrich_titles\` / \`leadbay_prepare_outreach(enrich:true)\` on top stops missing a channel. Skip the question only if the request already states scope ("plan a tour of just my new leads" → only-new, don't ask). Do NOT skip straight to building + mapping without this.
+
 Build a single-call mixed-mode itinerary for a field sales tour. Combines \`leadbay_pull_followups\` (Monitor leads in the city — known accounts) with \`leadbay_pull_leads\` (Discover wishlist — new prospects, then client-side filtered by city) so the agent can answer the canonical #3630 US1 ask: *"I'm visiting Limoges in 4 days — propose 3 customers + 3 qualified prospects + 3 new high-potential discoveries."*
 
 **Geo resolution** is identical to \`leadbay_followups_map\`: pass \`city\` (any admin level — city, state, country, region — the \`/geo/search\` resolver picks the best match), or a pre-resolved \`city_id\`. Ambiguous matches surface as \`status: "ambiguous_locations"\` + \`location_ambiguities[]\`; pick an id and re-call with \`city_id\`.
