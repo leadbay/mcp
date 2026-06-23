@@ -6,7 +6,7 @@ Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can rou
 
 | Host widget | Use when | Field map (from Leadbay payload) |
 |---|---|---|
-| `places_map_display_v0` (Claude) | Result has ≥2 leads with `location.city` set, and the user's intent is geographic / "in person" / travel | `{name: lead.company_name, address: "<city>, <country>", place_id: lead.location.place_id ?? omit, notes: <one-sentence pitch>}` per location |
+| `places_map_display_v0` (Claude) | ≥2 leads with coords / `location.city`, geographic / "in person" / travel intent | `{name, address, latitude, longitude, notes}` per location — pass real `latitude`/`longitude` + full street `address` when present (city-only + no coords degrades to a scatter, not a street map). |
 | `message_compose_v1` (Claude) | You're about to draft outreach (email / message / call opener) | `{kind: "email", summary_title, variants: [{label, body, subject}]}` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
 | `ask_user_input_v0` (Claude chat / ChatGPT) **or** `AskUserQuestion` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
 

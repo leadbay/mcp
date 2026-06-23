@@ -57,7 +57,7 @@ The first call to this tool on a lead records a `LEAD_VIEWED`-style prospecting 
 
 Route every draft through `message_compose_v1` (Claude's email composer). Above it, emit ONE short markdown context paragraph: score callout + sector fit + linked contact name + bare phone/email pills. Do NOT paste the email body into chat prose alongside — the composer IS the visual.
 
-Variant shape: 1–3 entries. Labels describe **strategy** ("Push for alignment", "Reference the M&A signal", "Soft intro — peer reference"), not tone. `kind: "email"` requires `subject`; phone/call openers use `kind: "other"` with the opener in `body`.
+Variant shape: 1–3 entries. Labels describe **strategy** ("Push for alignment", "Reference the M&A signal"), not tone. `kind: "email"` requires `subject`; phone/call openers use `kind: "other"` with the opener in `body`.
 
 {{include:gates/builtin-widgets}}
 

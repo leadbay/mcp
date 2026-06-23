@@ -65,7 +65,7 @@ Build a single-call mixed-mode itinerary for a field sales tour. Combines `leadb
 
 First present the leads grouped by mode as a tight per-lead list (badge + company + city + best contact). Then **ALWAYS offer the map** as the next step — "Want me to put these on a map?" — and render it only when the user accepts (or asked for a map in their original message). The map is mandatory to *offer* on every tour; it is *rendered* on acceptance.
 
-When rendering: pass the response's **`map_locations`** array **directly** into `places_map_display_v0` — each entry is already `{name, address, latitude, longitude, notes}`, server-shaped, with the mode badge already in `notes`. **Do NOT** reshape, **do NOT** re-derive from `location.pos`, **do NOT** rebuild the notes string. The server has done all of that deterministically.
+When rendering: pass the response's **`map_locations`** array **directly** into `places_map_display_v0` — each entry is already `{name, address, latitude, longitude, notes}`, server-shaped, with the mode badge already in `notes`. **Do NOT** reshape, **do NOT** re-derive from `location.pos`, **do NOT** rebuild the notes string, and **do NOT drop the `latitude`/`longitude` or shorten `address` to just the city** — the real per-lead coordinates + full street address are what make the host draw an actual street map with placed pins. Strip them and it degrades to a schematic relative scatter (dots by neighborhood, no streets). The server has shaped all of this deterministically; pass it through intact.
 
 For reference, the badge the server already applied to each `notes`:
 

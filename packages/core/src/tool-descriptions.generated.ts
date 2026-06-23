@@ -683,7 +683,7 @@ Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can rou
 
 | Host widget | Use when | Field map (from Leadbay payload) |
 |---|---|---|
-| \`places_map_display_v0\` (Claude) | Result has ≥2 leads with \`location.city\` set, and the user's intent is geographic / "in person" / travel | \`{name: lead.company_name, address: "<city>, <country>", place_id: lead.location.place_id ?? omit, notes: <one-sentence pitch>}\` per location |
+| \`places_map_display_v0\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | \`{name, address, latitude, longitude, notes}\` per location — pass real \`latitude\`/\`longitude\` + full street \`address\` when present (city-only + no coords degrades to a scatter, not a street map). |
 | \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
 | \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
 
@@ -1026,7 +1026,7 @@ Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can rou
 
 | Host widget | Use when | Field map (from Leadbay payload) |
 |---|---|---|
-| \`places_map_display_v0\` (Claude) | Result has ≥2 leads with \`location.city\` set, and the user's intent is geographic / "in person" / travel | \`{name: lead.company_name, address: "<city>, <country>", place_id: lead.location.place_id ?? omit, notes: <one-sentence pitch>}\` per location |
+| \`places_map_display_v0\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | \`{name, address, latitude, longitude, notes}\` per location — pass real \`latitude\`/\`longitude\` + full street \`address\` when present (city-only + no coords degrades to a scatter, not a street map). |
 | \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
 | \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
 
@@ -1288,7 +1288,7 @@ Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can rou
 
 | Host widget | Use when | Field map (from Leadbay payload) |
 |---|---|---|
-| \`places_map_display_v0\` (Claude) | Result has ≥2 leads with \`location.city\` set, and the user's intent is geographic / "in person" / travel | \`{name: lead.company_name, address: "<city>, <country>", place_id: lead.location.place_id ?? omit, notes: <one-sentence pitch>}\` per location |
+| \`places_map_display_v0\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | \`{name, address, latitude, longitude, notes}\` per location — pass real \`latitude\`/\`longitude\` + full street \`address\` when present (city-only + no coords degrades to a scatter, not a street map). |
 | \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
 | \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
 
@@ -1859,7 +1859,7 @@ Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can rou
 
 | Host widget | Use when | Field map (from Leadbay payload) |
 |---|---|---|
-| \`places_map_display_v0\` (Claude) | Result has ≥2 leads with \`location.city\` set, and the user's intent is geographic / "in person" / travel | \`{name: lead.company_name, address: "<city>, <country>", place_id: lead.location.place_id ?? omit, notes: <one-sentence pitch>}\` per location |
+| \`places_map_display_v0\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | \`{name, address, latitude, longitude, notes}\` per location — pass real \`latitude\`/\`longitude\` + full street \`address\` when present (city-only + no coords degrades to a scatter, not a street map). |
 | \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
 | \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
 
@@ -1991,7 +1991,7 @@ Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can rou
 
 | Host widget | Use when | Field map (from Leadbay payload) |
 |---|---|---|
-| \`places_map_display_v0\` (Claude) | Result has ≥2 leads with \`location.city\` set, and the user's intent is geographic / "in person" / travel | \`{name: lead.company_name, address: "<city>, <country>", place_id: lead.location.place_id ?? omit, notes: <one-sentence pitch>}\` per location |
+| \`places_map_display_v0\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | \`{name, address, latitude, longitude, notes}\` per location — pass real \`latitude\`/\`longitude\` + full street \`address\` when present (city-only + no coords degrades to a scatter, not a street map). |
 | \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
 | \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
 
@@ -2156,7 +2156,7 @@ WHEN NOT TO USE: across many leads — use leadbay_enrich_titles for bulk; for g
 
 Route every draft through \`message_compose_v1\` (Claude's email composer). Above it, emit ONE short markdown context paragraph: score callout + sector fit + linked contact name + bare phone/email pills. Do NOT paste the email body into chat prose alongside — the composer IS the visual.
 
-Variant shape: 1–3 entries. Labels describe **strategy** ("Push for alignment", "Reference the M&A signal", "Soft intro — peer reference"), not tone. \`kind: "email"\` requires \`subject\`; phone/call openers use \`kind: "other"\` with the opener in \`body\`.
+Variant shape: 1–3 entries. Labels describe **strategy** ("Push for alignment", "Reference the M&A signal"), not tone. \`kind: "email"\` requires \`subject\`; phone/call openers use \`kind: "other"\` with the opener in \`body\`.
 
 ## GATE — PREFER BUILT-IN HOST WIDGETS
 
@@ -2166,7 +2166,7 @@ Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can rou
 
 | Host widget | Use when | Field map (from Leadbay payload) |
 |---|---|---|
-| \`places_map_display_v0\` (Claude) | Result has ≥2 leads with \`location.city\` set, and the user's intent is geographic / "in person" / travel | \`{name: lead.company_name, address: "<city>, <country>", place_id: lead.location.place_id ?? omit, notes: <one-sentence pitch>}\` per location |
+| \`places_map_display_v0\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | \`{name, address, latitude, longitude, notes}\` per location — pass real \`latitude\`/\`longitude\` + full street \`address\` when present (city-only + no coords degrades to a scatter, not a street map). |
 | \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
 | \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
 
@@ -3808,7 +3808,7 @@ Build a single-call mixed-mode itinerary for a field sales tour. Combines \`lead
 
 First present the leads grouped by mode as a tight per-lead list (badge + company + city + best contact). Then **ALWAYS offer the map** as the next step — "Want me to put these on a map?" — and render it only when the user accepts (or asked for a map in their original message). The map is mandatory to *offer* on every tour; it is *rendered* on acceptance.
 
-When rendering: pass the response's **\`map_locations\`** array **directly** into \`places_map_display_v0\` — each entry is already \`{name, address, latitude, longitude, notes}\`, server-shaped, with the mode badge already in \`notes\`. **Do NOT** reshape, **do NOT** re-derive from \`location.pos\`, **do NOT** rebuild the notes string. The server has done all of that deterministically.
+When rendering: pass the response's **\`map_locations\`** array **directly** into \`places_map_display_v0\` — each entry is already \`{name, address, latitude, longitude, notes}\`, server-shaped, with the mode badge already in \`notes\`. **Do NOT** reshape, **do NOT** re-derive from \`location.pos\`, **do NOT** rebuild the notes string, and **do NOT drop the \`latitude\`/\`longitude\` or shorten \`address\` to just the city** — the real per-lead coordinates + full street address are what make the host draw an actual street map with placed pins. Strip them and it degrades to a schematic relative scatter (dots by neighborhood, no streets). The server has shaped all of this deterministically; pass it through intact.
 
 For reference, the badge the server already applied to each \`notes\`:
 
@@ -3850,7 +3850,7 @@ Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can rou
 
 | Host widget | Use when | Field map (from Leadbay payload) |
 |---|---|---|
-| \`places_map_display_v0\` (Claude) | Result has ≥2 leads with \`location.city\` set, and the user's intent is geographic / "in person" / travel | \`{name: lead.company_name, address: "<city>, <country>", place_id: lead.location.place_id ?? omit, notes: <one-sentence pitch>}\` per location |
+| \`places_map_display_v0\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | \`{name, address, latitude, longitude, notes}\` per location — pass real \`latitude\`/\`longitude\` + full street \`address\` when present (city-only + no coords degrades to a scatter, not a street map). |
 | \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
 | \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
 
