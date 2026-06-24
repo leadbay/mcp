@@ -1,5 +1,9 @@
 # Changelog — @leadbay/mcp
 
+## 0.23.3 — 2026-06-24
+
+- **Release plumbing only** — no functional change. First release on the updated CI that also publishes fixed-name `leadbay-latest.dxt` / `.mcpb` assets, so the docs can link a stable `…/releases/latest/download/leadbay-latest.dxt` that always resolves to the current version.
+
 ## 0.23.2 — 2026-06-24
 
 - **Installer GUI shows the version** (product#3799) — the installer and uninstaller GUI cards now display the MCP version (e.g. `v0.23.2`) as a small muted-grey footer. Sourced from the build-time `__LEADBAY_MCP_VERSION__` define, so it tracks `package.json` with no manual upkeep.
