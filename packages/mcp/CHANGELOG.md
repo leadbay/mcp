@@ -1,5 +1,12 @@
 # Changelog — @leadbay/mcp
 
+## 0.23.7 — 2026-06-25
+
+Field-sales tour always renders the map (product#3779).
+
+- **`leadbay_plan_tour_in_city` / `leadbay_tour_plan`** — a plain-language tour intent ("I'm visiting Jacksonville in 3 days — who should I go see?") now deterministically routes to the tour tool (no longer leaks to `leadbay_pull_leads`), builds the mixed tour (known accounts + fresh prospects), and **proactively offers to plot it on a map** — every run, without the user asking. On acceptance it renders via `places_map_display_v0` (or the place-card carousel on hosts without the widget).
+- **Server-shaped `map_locations[]`** — leads are pre-shaped server-side (`{name, address, latitude, longitude, notes}`, badge in `notes`) plus a `map_summary`, so the agent never hand-builds the widget payload and passes coordinates through verbatim (no fabricated pins/addresses). Each stop is badged ★ Customer / ★ Qualified / ✦ New from real history fields (`epilogue_status` / `last_prospecting_action_at` / `last_monitor_action_at`). Guards against a `"null"`-string contact name.
+
 ## 0.23.6 — 2026-06-25
 
 Geographic filter on Discover lenses (product#3759).
