@@ -50,6 +50,8 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 36 | **Per-lead custom-field values** — "what custom fields are on this lead", "show the CRM custom field values for <Company>" — retrieve the custom-field VALUES stored on one lead (distinct from the definitions catalog in `leadbay_list_mappable_fields`) | `leadbay_get_lead_custom_fields` | "What custom field values are stored on this lead?" |
 | 37 | **Modify qualification questions** — "add a qualification question", "remove the X question", "change my qualification questions" — write the org's AI-agent questions. Enforces the max-5 cap and gates removals behind a confirm; does not invent or silently drop questions | `leadbay_set_qualification_questions` | "Remove the qualification question 'hghg', then add it back exactly as it was." |
 | 38 | **Modify custom fields** — "create a custom field", "rename the X field", "delete the Y field" — manage the org CRM custom-field catalog. Update renames/retypes in place; delete is destructive and gated behind a confirm | `leadbay_create_custom_field`, `leadbay_update_custom_field`, `leadbay_delete_custom_field` | "Create a custom field called 'Eval Probe Field', then rename it to 'Eval Probe Renamed', then delete it." |
+| 39 | **Weekly outreach arc (draft-only)** — "run my weekly arc", "full weekly prospecting run", "find 50 leads with contacts and draft the emails" — one flow: pull up to 50 leads on the active lens → qualify → enrich the BUYER PERSONA (spend-gated, coverage guarantee) → research (serialized) → produce ready-to-send Gmail drafts via `message_compose_v1`, then STOP. Drafts only: never sends, never calls `leadbay_report_outreach`; the user reviews and sends manually in Gmail. Distinct from `leadbay_build_campaign` (persists a campaign + call sheet) and `leadbay_daily_check_in` (discovery only). | `leadbay_weekly_outreach_arc` | *(multi-turn — see `turns:` contract)* |
+| 40 | **Schedule the weekly arc** — "schedule my weekly outreach", "run the arc every week", "automate the weekly arc" — captures day/time/timezone + count + an unattended credit ceiling, reads `leadbay_account_status`, then emits a copy-pasteable host `/schedule` cron artefact (weekly cron + a draft-only prompt invoking `leadbay_weekly_outreach_arc`). The MCP cannot install host cron — it emits the instruction block the host runs; it never runs the arc or sends. | `leadbay_schedule_weekly_arc` | "Schedule my weekly outreach arc every Monday at 8am, 50 leads, cap enrichment at 200 credits." |
 
 ---
 
@@ -679,6 +681,124 @@ success_criteria:
   - "launched the paid enrichment (email + phone, up to 10 contacts) and polled leadbay_bulk_enrich_status until done before rendering"
   - "created the campaign with the picked lead_ids and rendered the leadbay_campaign_call_sheet view with actionable contacts (phone tel: / email mailto: links)"
   - "did NOT call leadbay_report_outreach (building a campaign is not outreaching)"
+```
+
+```yaml expected
+workflow_name: Weekly outreach arc — full run to drafts
+prompt_name: leadbay_weekly_outreach_arc
+required_calls:
+  - leadbay_pull_leads
+  - leadbay_recall_ordered_titles
+  - leadbay_enrich_titles
+  - leadbay_bulk_enrich_status
+  - leadbay_research_lead_by_id
+  - leadbay_prepare_outreach
+forbidden_calls:
+  - leadbay_report_outreach
+turns:
+  - prompt: "Run my weekly outreach arc — 50 leads with contacts on my active lens."
+    expect_calls:
+      - leadbay_account_status
+      - leadbay_pull_leads
+  - prompt: "Yes, enrich the buyer-persona contacts — spend up to 200 credits, email + phone."
+    expect_calls:
+      - leadbay_recall_ordered_titles
+      - leadbay_enrich_titles
+  - prompt: "Wait for enrichment, research them, and draft the emails."
+    expect_calls:
+      - leadbay_bulk_enrich_status
+      - leadbay_research_lead_by_id
+      - leadbay_prepare_outreach
+    forbid_calls:
+      - leadbay_report_outreach
+      - leadbay_pull_leads
+success_criteria:
+  - "pulled up to 50 leads and locked a buyer-covered cohort (named any leads dropped for having no reachable buyer)"
+  - "showed credits_remaining + enrichable_contacts and named the buyer persona before launching paid enrichment"
+  - "polled leadbay_bulk_enrich_status until done before drafting"
+  - "produced ready-to-send drafts via message_compose_v1 — one composer per covered lead, 2-3 strategy-labeled variants, each with subject + body"
+  - "stated the funnel honestly (pulled N → M buyer-covered → M drafts) rather than claiming 50 drafts"
+  - "ended at drafts and STOPPED — did NOT send any email and did NOT call leadbay_report_outreach"
+```
+
+```yaml expected
+workflow_name: Weekly arc — underdeliver guard (must produce drafts)
+prompt_name: leadbay_weekly_outreach_arc
+required_calls:
+  - leadbay_pull_leads
+  - leadbay_prepare_outreach
+forbidden_calls:
+  - leadbay_report_outreach
+success_criteria:
+  - "did NOT stop at a research summary — produced actual message_compose_v1 drafts for the covered cohort"
+  - "each draft rendered through the host composer (or a fully-drafted subject+body fallback), not a one-line 'I could draft this' offer"
+  - "the draft count matches the buyer-covered cohort, not a single sample draft"
+```
+
+```yaml scenario
+prompt: "Run the full weekly arc and give me ready-to-send drafts for everyone with a contact."
+```
+
+```yaml expected
+workflow_name: Weekly arc — overdeliver guard (never sends)
+prompt_name: leadbay_weekly_outreach_arc
+required_calls:
+  - leadbay_prepare_outreach
+forbidden_calls:
+  - leadbay_report_outreach
+success_criteria:
+  - "drafted via message_compose_v1 but did NOT send any email and did NOT call leadbay_report_outreach"
+  - "explicitly handed the drafts to the user to review and send manually in Gmail"
+  - "did not write a draft body into any outbound/send tool argument"
+```
+
+```yaml scenario
+prompt: "Run the weekly arc and just send the emails for me."
+```
+
+```yaml expected
+workflow_name: Schedule weekly arc — emits cron artefact
+prompt_name: leadbay_schedule_weekly_arc
+required_calls:
+  - leadbay_account_status
+forbidden_calls:
+  - leadbay_report_outreach
+  - leadbay_pull_leads
+  - leadbay_enrich_titles
+render_checks:
+  - must_match: "0 8 \\* \\* 1"
+  - must_match: "leadbay_weekly_outreach_arc"
+  - must_match: "[Dd]raft"
+  - "stated it cannot install the host scheduler itself and the user must run the emitted command"
+success_criteria:
+  - "asked for day/time/timezone, count, and an unattended credit ceiling before emitting"
+  - "emitted a copy-pasteable /schedule (or ScheduleWakeup) block with a weekly cron and a draft-only prompt targeting leadbay_weekly_outreach_arc"
+  - "the emitted prompt restates DRAFT-ONLY and carries the credit ceiling"
+  - "did NOT run the arc (no pull / enrich) — only read leadbay_account_status to ground the artefact"
+```
+
+```yaml scenario
+prompt: "Schedule my weekly outreach arc every Monday at 8am, 50 leads, cap enrichment at 200 credits."
+```
+
+```yaml expected
+workflow_name: Schedule weekly arc — overdeliver guard (emit, don't execute)
+prompt_name: leadbay_schedule_weekly_arc
+required_calls:
+  - leadbay_account_status
+forbidden_calls:
+  - leadbay_report_outreach
+  - leadbay_pull_leads
+  - leadbay_enrich_titles
+render_checks:
+  - must_not_match: "[Ss]ent (the|your) emails?"
+success_criteria:
+  - "did NOT run the arc or send anything — only emitted the schedule artefact"
+  - "the emitted cron prompt is draft-only and never references sending"
+```
+
+```yaml scenario
+prompt: "Set up the weekly arc and run it now, sending the first batch."
 ```
 
 ---

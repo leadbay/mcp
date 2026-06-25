@@ -1,0 +1,101 @@
+---
+name: leadbay_schedule_weekly_arc
+kind: prompt
+short_description: |
+  Set up a WEEKLY scheduled run of the full outreach arc. Captures day/time +
+  timezone, lead count, and an unattended enrichment credit ceiling, reads
+  `leadbay_account_status`, then EMITS a copy-pasteable host `/schedule` cron
+  artefact that runs `leadbay_weekly_outreach_arc` — DRAFT-ONLY.
+  Trigger on "schedule my weekly outreach", "run the arc every week". Does NOT
+  install host cron or run the arc — it emits the block the host's scheduler
+  runs. The scheduled run drafts; I review and send myself.
+arguments:
+  - name: day
+    description: "Optional: day of week to run (e.g. 'Monday'). Default Monday."
+    required: false
+  - name: time
+    description: "Optional: local time to run, 24h (e.g. '08:00'). Default 08:00."
+    required: false
+  - name: timezone
+    description: "Optional: IANA timezone (e.g. 'Europe/Paris'). Omit and I'll ask / use your local tz."
+    required: false
+  - name: count
+    description: "Optional: how many leads each weekly run pulls. Default 50."
+    required: false
+  - name: credit_cap
+    description: "Optional: max enrichment credits the unattended run may spend per week without asking."
+    required: false
+expected_calls:
+  - leadbay_account_status
+failure_modes:
+  - "Tries to install host cron from inside the MCP (impossible) instead of EMITTING the copy-pasteable artefact for the user/host to run."
+  - "Runs the arc itself (pulls leads, enriches) instead of only scheduling it — this prompt schedules, it does not execute."
+  - "Emits a cron whose prompt points at a send action, or omits the DRAFT-ONLY constraint from the emitted prompt."
+  - "Omits the unattended credit ceiling so the scheduled run can overspend enrichment credits."
+  - "Emits the cron without confirming day / time / timezone first — a wrong tz fires at the wrong hour."
+---
+
+{{include:headers/agent-memory-preamble}}
+
+Set up my Leadbay weekly outreach arc as a recurring scheduled task{{arg:day_phrase}}. I want it to run the full arc every week and leave me drafts to review and send.
+
+# PHASE 1 — CONFIRM THE SCHEDULE
+
+Collect (via your host's choice widget, ≤3 questions — don't prose-ask if a widget exists):
+
+1. **Day + time + timezone** — default **Monday 08:00**; you MUST confirm the timezone (IANA, e.g. `Europe/Paris`) so cron fires at my local hour, not UTC.
+2. **Lead count per run** — default **50**.
+3. **Unattended enrichment credit ceiling** — "How many enrichment credits may the scheduled run spend per week without asking? (it runs while you're away.)" This bounds Phase 3 of the arc on unattended runs. Default to a conservative cap and let me change it.
+
+{{include:next-steps/ask-user-input-routing}}
+
+# PHASE 2 — GROUND IT IN MY ACCOUNT
+
+Call `leadbay_account_status` **once** to read my **active lens name** and current **enrichment credit balance**. Surface them so the artefact is grounded: "You have {credits_remaining} credits; the cap is set to {cap}/week. Active lens: {lens name}." Do NOT pull leads, qualify, or enrich — this prompt only schedules.
+
+# PHASE 3 — MAP THE SCHEDULE TO A CRON EXPRESSION
+
+Cron is `minute hour * * day-of-week`. Day-of-week mapping:
+
+| Day | Sun | Mon | Tue | Wed | Thu | Fri | Sat |
+|---|---|---|---|---|---|---|---|
+| Number | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+
+So **Monday 08:00 → `0 8 * * 1`**; Wednesday 17:30 → `30 17 * * 3`. Build the expression from the confirmed day + time.
+
+# PHASE 4 — EMIT THE ARTEFACT
+
+Emit this **copy-pasteable** block (fill the bracketed values from Phases 1–3; keep the DRAFT-ONLY constraint and the credit ceiling verbatim in the `--prompt`):
+
+````
+Copy-paste this into Claude Code to schedule your weekly arc:
+
+/schedule create \
+  --name "Leadbay weekly outreach arc" \
+  --cron "0 8 * * 1" \
+  --timezone "Europe/Paris" \
+  --prompt "Run leadbay_weekly_outreach_arc with count=50 on my active lens (\"<Lens name>\"). DRAFT ONLY — produce message_compose_v1 Gmail drafts and STOP; do not send and do not call leadbay_report_outreach. Unattended enrichment credit ceiling: <cap> this run; if persona enrichment would exceed it, skip enrichment and draft from existing contacts. When done, leave the drafts in the composer and notify me to review and send."
+
+Cron: every Monday 08:00 Europe/Paris · drafts only, never sends.
+After it runs you'll have ~50 Gmail drafts waiting — review, edit, and send them yourself.
+````
+
+If the host uses `ScheduleWakeup` / a routines skill instead of `/schedule create`, emit the equivalent one-liner with the **same cron** and the **same draft-only prompt** — so the artefact degrades gracefully across hosts.
+
+# PHASE 5 — ACTIVATE + STOP
+
+Tell me plainly: **"I can't install the host scheduler from inside Leadbay myself.** To activate this, run the `/schedule create` command above in Claude Code — or say 'go ahead' and I'll run it for you." Then offer, via your host's choice widget:
+
+- "Run it once now (preview)" → invoke `leadbay_weekly_outreach_arc` so I can see one run before committing to the schedule.
+- "Activate the schedule" → run the emitted `/schedule create` command.
+
+{{include:gates/draft-only-no-send}}
+
+{{include:gates/stop-and-wait}}
+
+# Iron laws
+
+- This prompt SCHEDULES; it does not run the arc and it does not send anything. Read `leadbay_account_status` only; never pull / qualify / enrich here.
+- The MCP cannot install host cron — EMIT the artefact for the user / host to run; never claim you installed it.
+- The emitted cron `--prompt` always restates DRAFT-ONLY and carries the unattended credit ceiling + the real active lens name.
+- Confirm day / time / **timezone** before emitting — a wrong tz fires at the wrong hour.

@@ -41,6 +41,8 @@ describe("prompts/* capability (P2 prompts)", () => {
       "leadbay_log_outreach",
       "leadbay_plan_tour_in_city",
       "leadbay_build_campaign",
+      "leadbay_weekly_outreach_arc",
+      "leadbay_schedule_weekly_arc",
       "leadbay_setup_team_prospecting",
       "leadbay_work_campaign",
       "leadbay_qualify_top_n",

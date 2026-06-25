@@ -1350,6 +1350,115 @@ The card itself handles the signal callouts (\`📈 business signals\`, \`💡 p
 `;
 // endregion: leadbay_research_a_domain
 
+// region: leadbay_schedule_weekly_arc
+export const leadbay_schedule_weekly_arc: string = `
+## MEMORY
+
+Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+
+
+Set up my Leadbay weekly outreach arc as a recurring scheduled task{{arg:day_phrase}}. I want it to run the full arc every week and leave me drafts to review and send.
+
+# PHASE 1 — CONFIRM THE SCHEDULE
+
+Collect (via your host's choice widget, ≤3 questions — don't prose-ask if a widget exists):
+
+1. **Day + time + timezone** — default **Monday 08:00**; you MUST confirm the timezone (IANA, e.g. \`Europe/Paris\`) so cron fires at my local hour, not UTC.
+2. **Lead count per run** — default **50**.
+3. **Unattended enrichment credit ceiling** — "How many enrichment credits may the scheduled run spend per week without asking? (it runs while you're away.)" This bounds Phase 3 of the arc on unattended runs. Default to a conservative cap and let me change it.
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+# PHASE 2 — GROUND IT IN MY ACCOUNT
+
+Call \`leadbay_account_status\` **once** to read my **active lens name** and current **enrichment credit balance**. Surface them so the artefact is grounded: "You have {credits_remaining} credits; the cap is set to {cap}/week. Active lens: {lens name}." Do NOT pull leads, qualify, or enrich — this prompt only schedules.
+
+# PHASE 3 — MAP THE SCHEDULE TO A CRON EXPRESSION
+
+Cron is \`minute hour * * day-of-week\`. Day-of-week mapping:
+
+| Day | Sun | Mon | Tue | Wed | Thu | Fri | Sat |
+|---|---|---|---|---|---|---|---|
+| Number | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+
+So **Monday 08:00 → \`0 8 * * 1\`**; Wednesday 17:30 → \`30 17 * * 3\`. Build the expression from the confirmed day + time.
+
+# PHASE 4 — EMIT THE ARTEFACT
+
+Emit this **copy-pasteable** block (fill the bracketed values from Phases 1–3; keep the DRAFT-ONLY constraint and the credit ceiling verbatim in the \`--prompt\`):
+
+\`\`\`\`
+Copy-paste this into Claude Code to schedule your weekly arc:
+
+/schedule create \\
+  --name "Leadbay weekly outreach arc" \\
+  --cron "0 8 * * 1" \\
+  --timezone "Europe/Paris" \\
+  --prompt "Run leadbay_weekly_outreach_arc with count=50 on my active lens (\\"<Lens name>\\"). DRAFT ONLY — produce message_compose_v1 Gmail drafts and STOP; do not send and do not call leadbay_report_outreach. Unattended enrichment credit ceiling: <cap> this run; if persona enrichment would exceed it, skip enrichment and draft from existing contacts. When done, leave the drafts in the composer and notify me to review and send."
+
+Cron: every Monday 08:00 Europe/Paris · drafts only, never sends.
+After it runs you'll have ~50 Gmail drafts waiting — review, edit, and send them yourself.
+\`\`\`\`
+
+If the host uses \`ScheduleWakeup\` / a routines skill instead of \`/schedule create\`, emit the equivalent one-liner with the **same cron** and the **same draft-only prompt** — so the artefact degrades gracefully across hosts.
+
+# PHASE 5 — ACTIVATE + STOP
+
+Tell me plainly: **"I can't install the host scheduler from inside Leadbay myself.** To activate this, run the \`/schedule create\` command above in Claude Code — or say 'go ahead' and I'll run it for you." Then offer, via your host's choice widget:
+
+- "Run it once now (preview)" → invoke \`leadbay_weekly_outreach_arc\` so I can see one run before committing to the schedule.
+- "Activate the schedule" → run the emitted \`/schedule create\` command.
+
+# IRON LAW — DRAFT, DO NOT SEND
+
+This flow deliberately **drafts** outreach — that is its job. It **stops at
+drafts.** Composing into the host's \`message_compose_v1\` composer is *allowed*
+and expected; **sending is not.**
+
+- Do NOT send any email. Do NOT call \`leadbay_report_outreach\`. Do NOT write a
+  draft body into any outbound / "send" tool argument.
+- The drafts are left in the host composer for the user to **review, edit, and
+  send manually** via their own Claude-connected Gmail (or other connector).
+- Logging an outreach is a *separate, later* step that happens only AFTER the
+  user actually sends — via \`leadbay_log_outreach\`, never here.
+
+Sending is the user's call. Hand the drafts back and stop.
+
+
+Render this acknowledgment VERBATIM as the last line of your message:
+
+\`\`\`
+STOP — awaiting user decision. I will not take any further action until you tell me what to do next.
+\`\`\`
+
+Do not propose a next action. Do not call any more tools. Hand control back to the user.
+
+
+# Iron laws
+
+- This prompt SCHEDULES; it does not run the arc and it does not send anything. Read \`leadbay_account_status\` only; never pull / qualify / enrich here.
+- The MCP cannot install host cron — EMIT the artefact for the user / host to run; never claim you installed it.
+- The emitted cron \`--prompt\` always restates DRAFT-ONLY and carries the unattended credit ceiling + the real active lens name.
+- Confirm day / time / **timezone** before emitting — a wrong tz fires at the wrong hour.
+`;
+// endregion: leadbay_schedule_weekly_arc
+
 // region: leadbay_setup_team_prospecting
 export const leadbay_setup_team_prospecting: string = `
 Set up manager-led prospecting for me: turn the audience into a lens, validate candidates, then persist as named campaigns.
@@ -1402,6 +1511,322 @@ End with a NEXT STEPS chip via your host's choice widget (\`ask_user_input_v0\` 
 Done. The lens is live, the validated cohort is persisted as named campaigns, and the manager knows where the cross-user-visibility gap is.
 `;
 // endregion: leadbay_setup_team_prospecting
+
+// region: leadbay_weekly_outreach_arc
+export const leadbay_weekly_outreach_arc: string = `
+## MEMORY
+
+Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+
+
+Run my full weekly Leadbay outreach arc{{arg:count_phrase}}. {{arg:audience_block}} Take it all the way to **ready-to-send Gmail drafts**, then stop so I can review and send them myself.
+
+GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
+
+If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
+
+
+# Resilience rules for Leadbay long-running tools
+
+These four rules apply to every Leadbay workflow that calls \`leadbay_pull_leads\`, \`leadbay_bulk_qualify_leads\`, \`leadbay_research_lead_by_id\`, \`leadbay_import_and_qualify\`, or \`leadbay_enrich_titles\`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
+
+## Rule 1 — Pin the lens
+
+After your first \`leadbay_pull_leads\` call, capture \`response.lens.id\` into your working memory and **pass it explicitly as the \`lensId\` argument to every subsequent call** in this session — including any re-pulls, bulk qualifies, or research calls that accept it. (Field-name caveat: the response nests it as \`lens.id\`; the parameter on subsequent calls is \`lensId\`.) The active lens can shift between calls (5-minute client cache + backend \`last_requested_lens\` can change if the user touches the web UI). A lens shift mid-workflow throws away your top-10 work.
+
+## Rule 2 — Prefer async for bulk operations
+
+\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\`, which returns \`{status:'running', qualify_id}\` immediately. Then poll \`leadbay_qualify_status\` (or \`leadbay_import_status\`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
+
+## Rule 3 — Serialize \`leadbay_research_lead_by_id\` fan-out
+
+\`leadbay_research_lead_by_id\` is composite and reads many sub-resources. Calling it on 10 leads in parallel can saturate the transport and produce \`"Tool permission stream closed"\` errors that look like permission failures but are really backpressure. **Call it sequentially**, or at most 3 in parallel. If one call fails with a stream/timeout error, retry that one call once before moving on; on a second failure, note the lead and continue — do not abandon the remaining leads.
+
+## Rule 4 — Retry, don't replan
+
+If a Leadbay tool returns \`"Request timed out"\`, \`"stream closed"\`, or any other transport-level error (distinct from a Leadbay-issued error payload), the work may still be running server-side. Do this in order:
+
+1. For bulk tools — retry with \`wait_for_completion:false\` and poll the status tool with the returned id. Don't re-pull leads; that can shift the lens.
+2. For single-lead tools — retry the same call once. If it still fails, record the lead id and continue with the rest of the workflow.
+3. **Do not** switch strategies (e.g. "the endpoint is broken, let me re-pull from scratch"). The earlier work is still valid; the timeout was the wire.
+
+If \`pull_leads\` itself fails and you have no prior batch, then yes — retry it, explicitly pass the lensId you captured (if any), and continue.
+
+
+# PHASE 0 — RESUME CHECK
+
+If you're resuming an interrupted run (you see an earlier phase already completed in your task list, or the user / scheduler says "continue"), do NOT restart from Phase 1. Re-read the active \`lensId\` and your last completed phase from prior context, then resume from the next phase. If you genuinely have no state, start at Phase 1. (A scheduled weekly run can be interrupted mid-arc — resuming, not restarting, is what keeps the cohort intact.)
+
+# PHASE 1 — STATE + AUDIENCE
+
+Call \`leadbay_account_status\` to see my remaining quota, my **enrichment credits**, and my **active lens**. Note \`web_fetch_remaining\` (qualification budget) and the enrichment credit balance — Phase 3 spends credits.
+
+Resolve the audience:
+
+- **Default — use my active lens.** If I didn't name a fresh audience, the active lens IS the audience. Do NOT create a new lens.
+- **Fresh-audience fork.** Only if I described a NEW audience the active lens doesn't already cover, confirm once before switching, then continue on that lens. Do NOT silently overwrite my existing lens.
+
+# PHASE 2 — DISCOVER (up to 50)
+
+Call \`leadbay_pull_leads({count:<requested, default 50, capped at 50>, lensId:<if known>})\`. **Capture \`response.lens.id\` and pass it as an explicit \`lensId\` on every later call this session** — a mid-session lens shift would discard the cohort. Render the batch with the canonical layout:
+
+## RENDERING — markdown table, three columns, score-bar driven
+
+Present the response as a markdown table sorted by \`score\` descending, with exactly three columns. Do not summarize in prose. Do not show the numeric score anywhere.
+
+## Score-bar (10-segment, inline-code wrapped)
+
+Wrap a 10-glyph bar in a SINGLE inline-code span (backticks). The inline-code styling is what gives the bar contrast in most chat renderers — HTML \`<span>\` is stripped inside table cells.
+
+Glyphs (use these exact characters; do not substitute):
+
+- \`▰\` — firmographic-only fill
+- \`❖\` — AI-booster cap (placed at the RIGHT END of the filled run, never the front)
+- \`▱\` — empty
+
+Computation:
+
+\`\`\`
+total_filled  = round(score / 10), clamped to 0..10
+ai_segments   = round(qualification_summary.avg_qualification_boost / 3.3),
+                clamped to [0, total_filled]
+normal_filled = total_filled − ai_segments
+bar = "▰" × normal_filled
+    + "❖" × ai_segments
+    + "▱" × (10 − total_filled)
+\`\`\`
+
+If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is null, set \`ai_segments = 0\` (no ❖). Always wrap the bar in backticks. Print the legend \`\` \`▰\` firmographic · \`❖\` AI booster cap · \`▱\` unfilled \`\` once below the table.
+
+
+**Column 1 — Company**
+
+- Line 1: the 10-segment score bar in inline-code backticks (see the score-bar snippet above for the algorithm).
+- Insert \`<br>\` between lines.
+- Line 2: linked company name + \` · \` + short location + \` · \` + compact size.
+  - Link target: \`website\` (prefix \`https://\` if it's a bare hostname). Don't synthesize an app deep-link.
+  - Location: shorten "City of New York" → "NYC"; otherwise "City ST"; state alone only when city missing.
+  - Size: \`"Xk+"\` when \`size.min >= 1000\`, \`"min–max"\` otherwise.
+
+**Column 2 — Why it fits**
+
+- One sentence, ≤ 20 words.
+- Synthesize from (in priority order, whichever is present) the lead's \`short_description\`, top 2 \`tags[].display_name\`, and the gist of \`qualification_summary.best_response_excerpt\`. The trim payload does NOT carry the longer \`description\` field — for that, agent must call \`leadbay_research_lead_by_id\` or \`leadbay_research_lead_by_name_fuzzy\`.
+- Do NOT append \`(boost N)\` — the ❖ cap in column 1 already carries that signal.
+- No bullet lists, no line breaks inside the cell.
+
+**Column 3 — Contact**
+
+\`[Contact name](LINK) · short job title\`. The \`[Contact name](LINK)\` markdown link wrapping is mandatory — never render the name as plain text. See linking/contact-linkedin for the URL priority (real profile → constructed people-search) and the °-flag fallback.
+
+**Hide from the user (never include in any cell):** \`id\`, \`location.pos\`, \`location.country\` (unless city/state both missing), \`sector_id\`, \`is_hq\`, \`web_fetch_in_progress\`, \`enrichment_in_progress\`, \`highlighted_fields\`, \`custom_fields\`, \`contacts_count\` when 0, \`notes_count\` / \`epilogue_actions_count\` / \`prospecting_actions_count\` when 0, \`stale_at\`, \`deal_insights\`, \`social_presence\` booleans (except as the °-flag signal), \`need_attention\` flags, any field whose value is the string \`"null"\`.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
+
+When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
+
+\`social_presence\` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+
+
+If the batch is thin (fewer workable leads than requested), top it up: call \`leadbay_bulk_qualify_leads({lensId:<captured>, count:<deficit, max 25>, wait_for_completion:false})\`, capture \`qualify_id\`, poll \`leadbay_qualify_status\` every ~10s until \`status:'done'\`, then re-pull with the same \`lensId\`. Never re-pull without \`lensId\`.
+
+Note the funnel out loud: the \`count\` is the **discovery target**, not a guaranteed draft count. The leads that actually get drafts are the buyer-covered subset locked in Phase 3 — be honest about the shrinkage ("pulled 50 → 38 have a reachable buyer → 38 drafts").
+
+# PHASE 3 — ENRICH THE BUYER-PERSONA CONTACTS (load-bearing, paid gate)
+
+This is the phase that earns the "50 leads WITH contacts" promise. Contacts aren't attached by default and enrichment is paid — so spend it ONLY on the people who would actually **buy what I sell**, not on whoever is most senior.
+
+**Step A — work out MY buyer persona (before touching titles).** Infer my product / value-prop from my context — my org/account (\`leadbay_account_status\`) and especially my lens's \`qualification_summary\` (it tells you *why* these companies are good targets, which implies what I'm selling them). Map value-prop → the **buying department/persona, NOT seniority** (a sales/GTM tool → the revenue org: VP/Head/Director of Sales, BD, growth, marketing, RevOps; an ops tool → operations; a dev tool → engineering; Founder/CEO is a real buyer only at small companies ≤~50). State the persona in one line.
+
+**ANTI-PATTERN — do NOT** pick the most senior or "decision-maker-sounding" title regardless of department. Seniority is not the same as being my buyer.
+
+**Step B — find the persona-matching, enrichable contacts.** Call \`leadbay_recall_ordered_titles({leadIds, lensId})\` and \`leadbay_enrich_titles({leadIds, lensId})\` in **discovery mode** (no \`titles\`). These return \`title_suggestions\`, \`auto_included_titles\`, \`available_in_selection\`, \`enrichable_contacts\`, and \`credits_remaining\`. Treat them as a **menu to filter against my persona — not the answer.** If past-enriched titles or suggestions are off-persona, do NOT repeat them.
+
+**Step B.5 — coverage guarantee.** For each lead, determine whether it has an **enrichable buyer-persona contact** (use the discovery data; where ambiguous, a quick \`leadbay_research_lead_by_id\` to see that lead's contact titles). KEEP leads with ≥1 enrichable buyer contact — that is the "WITH contacts" promise. Drop leads whose only contacts are off-persona or who have no enrichable contact. If the lens genuinely can't supply enough buyer-ready leads, say so honestly rather than padding. State the funnel ("dropped 12 — no reachable buyer; 38 remain").
+
+**Step C — SPEND GATE (mandatory).** State the persona, the chosen titles, and "You have {credits_remaining} credits; this enriches {enrichable_contacts} <persona> contacts across {n} leads." Confirm via your host's choice widget — "Enrich these {enrichable_contacts} <persona> contacts now?" → ["Yes, enrich", "No — draft from existing contacts only", "Change the persona/titles"]. **Never launch a paid run without this.**
+
+> **Unattended (scheduled) runs:** when there is no interactive user to answer the gate — a scheduled weekly run — do NOT block forever and do NOT spend freely. Enrich only **within the pre-approved credit ceiling** carried in the run's instruction (the cap set at schedule time via \`leadbay_schedule_weekly_arc\`). If the persona enrichment would exceed that ceiling, SKIP enrichment and draft from already-available contacts. Never exceed the ceiling unattended.
+
+**Step D — launch + poll.** On yes (or within the unattended ceiling): \`leadbay_enrich_titles({leadIds, lensId, titles:[...chosen], email:true, phone:true})\` to launch, then poll \`leadbay_bulk_enrich_status\` until done (can take several minutes — keep polling; do not draft empty). Append \`_(N credits remaining)_\` at the very end of your reply.
+
+If enrichment is skipped, continue — draft from whatever contacts already exist.
+
+# PHASE 4 — RESEARCH (serialized)
+
+Call \`leadbay_research_lead_by_id\` on each buyer-covered lead. **Serialize — one at a time, or at most 3 in parallel.** Do not fire the whole cohort in parallel; it triggers transport backpressure (\`"stream closed"\`). If a call fails, retry that single lead once; if it fails again, note the lead id and continue. For each researched lead surface what makes it promising (cite a signal) and the **recommended contact** (name, title, why they're the right entry point).
+
+# PHASE 5 — DRAFT (the deliverable)
+
+For each buyer-covered lead, call \`leadbay_prepare_outreach({leadId, lensId})\` to get the brief + \`recommended_contact\` (post-enrichment, with email/phone), then render the draft.
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` (Claude) | Result has ≥2 leads with \`location.city\` set, and the user's intent is geographic / "in person" / travel | \`{name: lead.company_name, address: "<city>, <country>", place_id: lead.location.place_id ?? omit, notes: <one-sentence pitch>}\` per location |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+
+
+**Route each draft through \`message_compose_v1\`** (one composer per covered lead):
+
+- \`{kind: "email", summary_title: "<Company> — <Contact> (<persona title>)", variants: [{label, subject, body}]}\` — **2–3 variants per lead**, where the \`label\` describes the **STRATEGY** ("Reference the funding signal", "Peer-intro angle", "Lead with the pain"), never the tone ("Friendly", "Formal").
+- ABOVE each composer, ONE short markdown context line: score callout + sector fit + the LinkedIn-linked contact name + bare phone/email (those auto-linkify). Do NOT also paste the body into prose — the composer IS the draft.
+- **Flag ⚠ suspect contacts**: any enriched contact whose email domain doesn't match the company website, or who appears on more than one lead in this batch. Keep the phone but tell me the email looks off.
+
+## RENDERING — outreach brief (single-record card)
+
+Present as the richest single-record card the MCP emits. The user is seconds-to-minutes away from contacting someone — every section earns its place by either (a) telling them HOW to outreach, (b) showing what they've done before, or (c) surfacing what's missing and how to get it.
+
+**Async enrichment.** When \`enrichment.triggered && !enrichment.complete\`, do NOT block the user. Render the brief with \`⏳\` on un-enriched channels and IMMEDIATELY draft a first version of the outreach using whatever data IS available (\`split_ai_summary.approach_angle\`, company-line phone, LinkedIn-search fallback). Tell the user: *"I'll refresh once enriched data lands."* On their next message (or after a clear pause), re-call \`leadbay_prepare_outreach(leadId)\` without \`enrich\`; if \`enrichment.complete: true\`, surface the now-resolved channels and offer to revise the draft.
+
+### Structure
+
+**Header** (H5): \`📞 Outreach prep — [Contact name](LinkedIn) · [Company](website)\`
+
+- Sub-line: job title · \`+N more contacts\` when \`additional_contacts_count > 0\`.
+- Prefix \`https://\` to \`website\` if it's a bare hostname.
+
+**Score line** (when \`lead.score\` is present): the 10-segment bar inline, no \`<br>\`. Same algorithm as \`pull_leads\`.
+
+**Channel readiness** — a single line of pill chips, \` · \`-separated:
+
+- \`🔗 LinkedIn\` — \`profile\` (linked to real URL) if \`linkedin_page\` present; \`search\` (linked to people-search fallback) otherwise. \`⏳\` during enrichment.
+- \`📧 Email\` — show address if present; \`⏳ enriching\` when \`enrichment.triggered && !complete\`; \`⚪ not enriched\` otherwise.
+- \`📞 Phone\` — contact-specific number if present; fall back to \`lead.phone_numbers[0]\` with \`(company line)\` annotation; \`⏳\` / \`⚪\` otherwise.
+
+**H5: 🎯 Angles & approach**
+
+- Render \`lead.split_ai_summary.approach_angle\` as the lead-in.
+- 3–4 bullets distilling \`split_ai_summary.next_step\` and any signals from a prior \`research_lead_by_id\` call into salesperson-voice talking points. Cite \`[source](url)\` inline when known.
+- Final line: \`Recommended channel: <X> — <rationale>\`. Compute the recommendation from what data is available (email present → email; phone present → call; LinkedIn only → DM).
+
+**H5: 📜 History with [Contact name]**
+
+When prior contact-level actions / notes are surfaced (or when \`prospecting_actions_count > 0\`), render a reverse-chronological timeline: \`<date> · <action_type> · <one-line summary>\`. Quote-block recent notes below. If empty: \`*No prior touchpoints with this contact.*\`
+
+**H5: 🏢 History with [Company name]**
+
+Same shape as the contact history, but only include items NOT duplicated from the contact section. If both empty: \`*No company-level history recorded.*\`
+
+**H5: 👥 Other contacts** (only if \`additional_contacts_count > 0\`)
+
+One line: \`+N more contacts at this company — [see them all](leadbay_research_lead_by_id)\`.
+
+**Closing line** (when enrichment is in progress): \`*Enrichment running — I'll refresh once email/phone lands.*\`
+
+**Hide:** \`id\`, \`lead.id\`, raw \`enrichment.hint\` when redundant with channel pills, history items without descriptions, any field whose value is the string \`"null"\`, deprecated \`other_contacts_count\` (use \`additional_contacts_count\`).
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
+
+When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
+
+\`social_presence\` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+
+
+When the host doesn't expose \`message_compose_v1\`, fall back to the single-record brief card above — but the email subject + body must still be fully drafted and ready to copy.
+
+# PHASE 6 — HANDOFF + STOP
+
+# IRON LAW — DRAFT, DO NOT SEND
+
+This flow deliberately **drafts** outreach — that is its job. It **stops at
+drafts.** Composing into the host's \`message_compose_v1\` composer is *allowed*
+and expected; **sending is not.**
+
+- Do NOT send any email. Do NOT call \`leadbay_report_outreach\`. Do NOT write a
+  draft body into any outbound / "send" tool argument.
+- The drafts are left in the host composer for the user to **review, edit, and
+  send manually** via their own Claude-connected Gmail (or other connector).
+- Logging an outreach is a *separate, later* step that happens only AFTER the
+  user actually sends — via \`leadbay_log_outreach\`, never here.
+
+Sending is the user's call. Hand the drafts back and stop.
+
+
+State the honest funnel one last time ("pulled 50 → 38 buyer-covered → 38 drafts ready") and \`_(N credits remaining)_\` if you enriched. Then offer, via your host's choice widget:
+
+- "Review & send these in Gmail" — *you* do this manually; I won't send.
+- "Refine a specific draft" — name the lead and I'll revise that composer.
+- "Schedule this arc to run weekly" → routes to \`leadbay_schedule_weekly_arc\`.
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Render this acknowledgment VERBATIM as the last line of your message:
+
+\`\`\`
+STOP — awaiting user decision. I will not take any further action until you tell me what to do next.
+\`\`\`
+
+Do not propose a next action. Do not call any more tools. Hand control back to the user.
+
+
+# Iron laws
+
+- DRAFT, never SEND. Compose into \`message_compose_v1\`; do not send and do not call \`leadbay_report_outreach\`. Sending is the user's manual step in Gmail.
+- Enrichment targets MY buyer persona (who buys what I sell), NEVER generic seniority.
+- NEVER launch paid enrichment without showing \`credits_remaining\` + \`enrichable_contacts\` and getting a yes — and on unattended runs, never exceed the pre-approved credit ceiling.
+- Carry the captured \`lensId\` on every call. Serialize research at ≤3 parallel.
+- The deliverable is ready-to-send drafts for the buyer-covered cohort — not a research summary, not one sample draft. State the funnel honestly.
+`;
+// endregion: leadbay_weekly_outreach_arc
 
 // region: leadbay_work_campaign
 export const leadbay_work_campaign: string = `
@@ -1523,7 +1948,9 @@ export const PROMPT_META = {
   leadbay_qualify_top_n: {"name":"leadbay_qualify_top_n","short_description":"Bulk-qualify the top N un-qualified leads in the active lens. Uses\nleadbay_bulk_qualify_leads with a sensible default budget.\n","arguments":[{"name":"count","description":"How many leads to qualify (default 10, max 25). Higher counts may take 5+ minutes.","required":false}],"expected_calls":["leadbay_bulk_qualify_leads","leadbay_qualify_status","leadbay_pull_leads","leadbay_research_lead_by_id"],"failure_modes":["Picks a count larger than the user asked for (or larger than the max 25)","Glosses over still-running leads in the summary instead of naming them","Recommends a lead from the existing qualified pool instead of one from this batch's actual results","Replaces the canonical pull_leads table with prose when rendering the newly-qualified batch (the per-tool RENDERING block is the structural contract; \"standouts\" commentary sits above it)","Expands the qualify-status sentence into a card or table instead of the one-line status-inline render"]},
   leadbay_refine_audience: {"name":"leadbay_refine_audience","short_description":"Refine the kind of leads Leadbay surfaces beyond firmographics, with a\nfree-text instruction. Handles the clarification round-trip if the new\nprompt is ambiguous.\n","arguments":[{"name":"instruction","description":"The refinement (e.g. 'focus on hospitals running their own IT'). Set to plain English.","required":true}],"expected_calls":["leadbay_refine_prompt","leadbay_account_status"],"failure_modes":["Calls leadbay_answer_clarification on the user's behalf instead of surfacing the clarification verbatim","Glosses over the clarification options instead of presenting them as offered","Promises immediate effect when status='applied' actually triggers an async intelligence recompute"]},
   leadbay_research_a_domain: {"name":"leadbay_research_a_domain","short_description":"Import a company by domain and run deep qualification + research in one\npass. Use when a colleague mentions a name and you want everything Leadbay\nknows about it.\n","arguments":[{"name":"domain","description":"The company's primary domain (e.g. 'acme.com'). Protocol/path are stripped.","required":true}],"expected_calls":["leadbay_import_and_qualify","leadbay_research_lead_by_id"],"failure_modes":["Fabricates qualification answers not present in any tool response","Reports certainty about fit when qualification didn't actually run (e.g. quota_blocked)","Skips the research step after import completes","Renders the research_lead_by_id result as a freeform narrative instead of the canonical research-company-card layout (the card with header score bar, pill row, signal sections, contacts table is the structural contract; commentary belongs ABOVE or BELOW it)","Enumerates every imported lead in prose instead of the terse single-record summary from the import-result rendering snippet"]},
+  leadbay_schedule_weekly_arc: {"name":"leadbay_schedule_weekly_arc","short_description":"Set up a WEEKLY scheduled run of the full outreach arc. Captures day/time +\ntimezone, lead count, and an unattended enrichment credit ceiling, reads\n`leadbay_account_status`, then EMITS a copy-pasteable host `/schedule` cron\nartefact that runs `leadbay_weekly_outreach_arc` — DRAFT-ONLY.\nTrigger on \"schedule my weekly outreach\", \"run the arc every week\". Does NOT\ninstall host cron or run the arc — it emits the block the host's scheduler\nruns. The scheduled run drafts; I review and send myself.\n","arguments":[{"name":"day","description":"Optional: day of week to run (e.g. 'Monday'). Default Monday.","required":false},{"name":"time","description":"Optional: local time to run, 24h (e.g. '08:00'). Default 08:00.","required":false},{"name":"timezone","description":"Optional: IANA timezone (e.g. 'Europe/Paris'). Omit and I'll ask / use your local tz.","required":false},{"name":"count","description":"Optional: how many leads each weekly run pulls. Default 50.","required":false},{"name":"credit_cap","description":"Optional: max enrichment credits the unattended run may spend per week without asking.","required":false}],"expected_calls":["leadbay_account_status"],"failure_modes":["Tries to install host cron from inside the MCP (impossible) instead of EMITTING the copy-pasteable artefact for the user/host to run.","Runs the arc itself (pulls leads, enriches) instead of only scheduling it — this prompt schedules, it does not execute.","Emits a cron whose prompt points at a send action, or omits the DRAFT-ONLY constraint from the emitted prompt.","Omits the unattended credit ceiling so the scheduled run can overspend enrichment credits.","Emits the cron without confirming day / time / timezone first — a wrong tz fires at the wrong hour."]},
   leadbay_setup_team_prospecting: {"name":"leadbay_setup_team_prospecting","short_description":"Manager-led prospecting setup: conversationally turn a natural-language\naudience ask into a Leadbay lens, validate the candidate leads, and\npersist them as one or more named campaigns the rep(s) can work\nthrough. Closes #3630 US3 end-to-end (within the current\ncreator-scoped campaign visibility model).\n","arguments":[{"name":"audience","description":"Natural-language audience description (e.g. 'plumbing companies with 10-50 employees in Seine-Maritime'). The lens-creation step (`leadbay_refine_prompt` → `leadbay_create_lens`) interprets it.","required":true},{"name":"rep_split","description":"Optional: how to split the validated leads into per-rep campaigns. Free text — e.g. 'split by city' or 'one campaign per rep: John gets Tulsa, Sarah gets OKC'.","required":false}],"expected_calls":["leadbay_refine_prompt","leadbay_create_lens","leadbay_promote_lens","leadbay_pull_leads","leadbay_research_lead_by_id","leadbay_create_campaign","leadbay_add_leads_to_campaign"],"failure_modes":["Skips the validation step — creates a campaign of unvetted leads from a freshly-created lens without giving the manager a chance to drop weak fits","Creates ONE campaign for all reps without asking about the split — the user explicitly mentioned per-rep distribution and the prompt should honor it","Pretends the backend supports cross-user assignment — campaigns are owned by the caller (creator-scoped). Surface this honestly instead of fabricating an assignment model","Asks ALL clarifying questions inline before tool calls — instead, run the lens refinement loop with `leadbay_refine_prompt` which handles the clarification protocol natively"]},
+  leadbay_weekly_outreach_arc: {"name":"leadbay_weekly_outreach_arc","short_description":"Run the full weekly outreach arc in one flow: pull up to 50 leads WITH\ncontacts on the active lens, qualify, enrich the BUYER-PERSONA contacts\n(spend-gated), research, and produce ready-to-send Gmail drafts via\n`message_compose_v1` — then STOP for me to review and send. Trigger on \"run my\nweekly arc\", \"weekly outreach run\", \"find 50 leads and draft the emails\".\nDRAFT-ONLY: never sends, never calls `leadbay_report_outreach`. Schedule it\nweekly with `leadbay_schedule_weekly_arc`.\n","arguments":[{"name":"count","description":"Optional: how many leads to run the arc on. Default 50, capped at 50.","required":false},{"name":"audience","description":"Optional: a fresh audience to target (e.g. 'dental clinics in Texas'). Omit to run on my ACTIVE lens — the default.","required":false}],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_bulk_qualify_leads","leadbay_qualify_status","leadbay_recall_ordered_titles","leadbay_enrich_titles","leadbay_bulk_enrich_status","leadbay_research_lead_by_id","leadbay_prepare_outreach"],"failure_modes":["Sends an email, calls leadbay_report_outreach, or writes a draft body into an outbound/send tool argument — the arc DRAFTS but STOPS before send; sending is the user's manual action in Gmail.","Stops at a research summary and never produces drafts — the deliverable is ready-to-send message_compose_v1 drafts, not a research recap.","Dumps email bodies as chat prose instead of routing each draft through message_compose_v1 (the composer IS the draft surface).","Fans out leadbay_research_lead_by_id 50-wide in parallel (transport backpressure → 'stream closed') instead of serializing at most 3 at a time.","Launches paid leadbay_enrich_titles without first showing credits_remaining + enrichable_contacts, naming the persona, and getting a yes — the spend gate is mandatory.","Enriches by seniority instead of by buyer persona — picks COO / Director of Operations / CFO because they sound senior, when the user's buyer is a different department.","Re-pulls leadbay_pull_leads without the captured lensId — a mid-session lens shift discards the cohort.","Treats an async timeout from bulk_qualify / enrich as terminal instead of polling leadbay_qualify_status / leadbay_bulk_enrich_status to done.","Claims '50 drafts' when fewer leads have a reachable buyer — funnel must be stated honestly (pulled 50 → N have a buyer → N drafts)."]},
   leadbay_work_campaign: {"name":"leadbay_work_campaign","short_description":"Work a campaign as a real outreach session: pick the campaign,\nassess what the user has (phones / emails / coords), then PROPOSE\nthe right session mode (call sheet, email sheet, enrich titles\nfirst, map). After they pick, render — and as they dictate\noutcomes per lead, record both note + epilogue via\n`leadbay_report_outreach` in one round trip.\n","arguments":[{"name":"campaign","description":"Campaign name (fuzzy match against your own campaigns) or campaign UUID. Omit to list and pick interactively.","required":false},{"name":"mode","description":"Optional: skip the readiness-assessment proposal and jump directly into 'call_sheet' / 'email_sheet' / 'map' / 'enrich_first'. Omit (recommended) and let the prompt propose based on the data.","required":false}],"expected_calls":["leadbay_list_campaigns","leadbay_campaign_call_sheet","leadbay_enrich_titles","leadbay_report_outreach"],"failure_modes":["Renders the call sheet immediately without proposing the right mode — if 60% of leads have no contacts, calling is futile; enrich first. Always assess `readiness` first.","Auto-renders the map widget without asking — maps are intrusive when the user just wants to scroll a list. Map mode is a proposed option, not a default.","Proposes map mode after the user has previously said they don't like maps — check conversation memory before adding 'View on a map' to the options list.","Calls `leadbay_campaign_progression` instead of `leadbay_campaign_call_sheet` — progression has counts but no phones / LinkedIn / call-ready data; the user can't actually dial from progression rows.","Renders contacts WITHOUT making the phone number a `[bare](tel:URL)` link — on mobile that breaks one-tap calling, which is the whole point of the cheat sheet.","Records outreach WITHOUT epilogue_status — leaves the lead's pipeline state unchanged; the rep then sees the same lead surfaced again next session.","Records outreach WITHOUT verification — verification.source/ref is REQUIRED. For calls, pass `{source: 'user_confirmed', ref: <user's exact words>}`.","Loops through ALL leads in a 50-lead campaign before recording any outreach — the call-then-record loop must be per-lead, not batched."]},
 } as const;
 
@@ -1544,7 +1971,9 @@ export const PROMPT_CATALOG_BULLETS = {
   leadbay_qualify_top_n: `- \`leadbay_qualify_top_n\` (optional args: count): Bulk-qualify the top N un-qualified leads in the active lens. Uses leadbay_bulk_qualify_leads with a sensible default budget.`,
   leadbay_refine_audience: `- \`leadbay_refine_audience\` (required args: instruction): Refine the kind of leads Leadbay surfaces beyond firmographics, with a free-text instruction. Handles the clarification round-trip if the new prompt is ambiguous.`,
   leadbay_research_a_domain: `- \`leadbay_research_a_domain\` (required args: domain): Import a company by domain and run deep qualification + research in one pass. Use when a colleague mentions a name and you want everything Leadbay knows about it.`,
+  leadbay_schedule_weekly_arc: `- \`leadbay_schedule_weekly_arc\` (optional args: day, time, timezone, count, credit_cap): Set up a WEEKLY scheduled run of the full outreach arc. Captures day/time + timezone, lead count, and an unattended enrichment credit ceiling, reads \`leadbay_account_status\`, then EMITS a copy-pasteable host \`/schedule\` cron artefact that runs \`leadbay_weekly_outreach_arc\` — DRAFT-ONLY. Trigger on "schedule my weekly outreach", "run the arc every week". Does NOT install host cron or run the arc — it emits the block the host's scheduler runs. The scheduled run drafts; I review and send myself.`,
   leadbay_setup_team_prospecting: `- \`leadbay_setup_team_prospecting\` (required args: audience; optional args: rep_split): Manager-led prospecting setup: conversationally turn a natural-language audience ask into a Leadbay lens, validate the candidate leads, and persist them as one or more named campaigns the rep(s) can work through. Closes #3630 US3 end-to-end (within the current creator-scoped campaign visibility model).`,
+  leadbay_weekly_outreach_arc: `- \`leadbay_weekly_outreach_arc\` (optional args: count, audience): Run the full weekly outreach arc in one flow: pull up to 50 leads WITH contacts on the active lens, qualify, enrich the BUYER-PERSONA contacts (spend-gated), research, and produce ready-to-send Gmail drafts via \`message_compose_v1\` — then STOP for me to review and send. Trigger on "run my weekly arc", "weekly outreach run", "find 50 leads and draft the emails". DRAFT-ONLY: never sends, never calls \`leadbay_report_outreach\`. Schedule it weekly with \`leadbay_schedule_weekly_arc\`.`,
   leadbay_work_campaign: `- \`leadbay_work_campaign\` (optional args: campaign, mode): Work a campaign as a real outreach session: pick the campaign, assess what the user has (phones / emails / coords), then PROPOSE the right session mode (call sheet, email sheet, enrich titles first, map). After they pick, render — and as they dictate outcomes per lead, record both note + epilogue via \`leadbay_report_outreach\` in one round trip.`,
 } as const;
 
@@ -1561,5 +1990,7 @@ export const PROMPT_CATALOG_INSTRUCTIONS: string = `This server exposes the foll
 - \`leadbay_qualify_top_n\` (optional args: count): Bulk-qualify the top N un-qualified leads in the active lens. Uses leadbay_bulk_qualify_leads with a sensible default budget.
 - \`leadbay_refine_audience\` (required args: instruction): Refine the kind of leads Leadbay surfaces beyond firmographics, with a free-text instruction. Handles the clarification round-trip if the new prompt is ambiguous.
 - \`leadbay_research_a_domain\` (required args: domain): Import a company by domain and run deep qualification + research in one pass. Use when a colleague mentions a name and you want everything Leadbay knows about it.
+- \`leadbay_schedule_weekly_arc\` (optional args: day, time, timezone, count, credit_cap): Set up a WEEKLY scheduled run of the full outreach arc. Captures day/time + timezone, lead count, and an unattended enrichment credit ceiling, reads \`leadbay_account_status\`, then EMITS a copy-pasteable host \`/schedule\` cron artefact that runs \`leadbay_weekly_outreach_arc\` — DRAFT-ONLY. Trigger on "schedule my weekly outreach", "run the arc every week". Does NOT install host cron or run the arc — it emits the block the host's scheduler runs. The scheduled run drafts; I review and send myself.
 - \`leadbay_setup_team_prospecting\` (required args: audience; optional args: rep_split): Manager-led prospecting setup: conversationally turn a natural-language audience ask into a Leadbay lens, validate the candidate leads, and persist them as one or more named campaigns the rep(s) can work through. Closes #3630 US3 end-to-end (within the current creator-scoped campaign visibility model).
+- \`leadbay_weekly_outreach_arc\` (optional args: count, audience): Run the full weekly outreach arc in one flow: pull up to 50 leads WITH contacts on the active lens, qualify, enrich the BUYER-PERSONA contacts (spend-gated), research, and produce ready-to-send Gmail drafts via \`message_compose_v1\` — then STOP for me to review and send. Trigger on "run my weekly arc", "weekly outreach run", "find 50 leads and draft the emails". DRAFT-ONLY: never sends, never calls \`leadbay_report_outreach\`. Schedule it weekly with \`leadbay_schedule_weekly_arc\`.
 - \`leadbay_work_campaign\` (optional args: campaign, mode): Work a campaign as a real outreach session: pick the campaign, assess what the user has (phones / emails / coords), then PROPOSE the right session mode (call sheet, email sheet, enrich titles first, map). After they pick, render — and as they dictate outcomes per lead, record both note + epilogue via \`leadbay_report_outreach\` in one round trip.`;

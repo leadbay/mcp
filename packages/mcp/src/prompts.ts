@@ -28,7 +28,9 @@ import {
   leadbay_qualify_top_n,
   leadbay_refine_audience,
   leadbay_research_a_domain,
+  leadbay_schedule_weekly_arc,
   leadbay_setup_team_prospecting,
+  leadbay_weekly_outreach_arc,
   leadbay_work_campaign,
   PROMPT_META,
 } from "./prompts.generated.js";
@@ -226,6 +228,87 @@ const CATALOG: CatalogEntry[] = [
         }),
       ),
     ],
+  },
+  {
+    name: "leadbay_weekly_outreach_arc",
+    description: PROMPT_META.leadbay_weekly_outreach_arc.short_description,
+    arguments: [
+      {
+        name: "count",
+        description:
+          "Optional: how many leads to run the arc on. Default 50, capped at 50.",
+        required: false,
+      },
+      {
+        name: "audience",
+        description:
+          "Optional: a fresh audience to target (e.g. 'dental clinics in Texas'). Omit to run on your ACTIVE lens — the default.",
+        required: false,
+      },
+    ],
+    render: (args) => [
+      userMessage(
+        substitutePlaceholders(leadbay_weekly_outreach_arc, {
+          count_phrase: args.count
+            ? ` on ${args.count} leads`
+            : " on 50 leads",
+          audience_block: args.audience
+            ? `Target audience: **${args.audience}** — if my active lens doesn't already cover it, set it up first (confirm before switching lenses).`
+            : "Use my active Leadbay lens as the audience.",
+        }),
+      ),
+    ],
+  },
+  {
+    name: "leadbay_schedule_weekly_arc",
+    description: PROMPT_META.leadbay_schedule_weekly_arc.short_description,
+    arguments: [
+      {
+        name: "day",
+        description:
+          "Optional: day of week to run (e.g. 'Monday'). Default Monday.",
+        required: false,
+      },
+      {
+        name: "time",
+        description:
+          "Optional: local time to run, 24h (e.g. '08:00'). Default 08:00.",
+        required: false,
+      },
+      {
+        name: "timezone",
+        description:
+          "Optional: IANA timezone (e.g. 'Europe/Paris'). Omit and the prompt asks / uses your local tz.",
+        required: false,
+      },
+      {
+        name: "count",
+        description: "Optional: how many leads each weekly run pulls. Default 50.",
+        required: false,
+      },
+      {
+        name: "credit_cap",
+        description:
+          "Optional: max enrichment credits the unattended run may spend per week without asking.",
+        required: false,
+      },
+    ],
+    render: (args) => {
+      const day = args.day ?? "Monday";
+      const time = args.time ?? "08:00";
+      const tz = args.timezone ? ` ${args.timezone}` : "";
+      const countPart = args.count ? `, ${args.count} leads` : "";
+      const capPart = args.credit_cap
+        ? `, capped at ${args.credit_cap} enrichment credits`
+        : "";
+      return [
+        userMessage(
+          substitutePlaceholders(leadbay_schedule_weekly_arc, {
+            day_phrase: ` — every ${day} at ${time}${tz}${countPart}${capPart}`,
+          }),
+        ),
+      ];
+    },
   },
   {
     name: "leadbay_setup_team_prospecting",

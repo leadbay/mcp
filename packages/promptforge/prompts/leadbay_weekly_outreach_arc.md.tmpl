@@ -1,0 +1,132 @@
+---
+name: leadbay_weekly_outreach_arc
+kind: prompt
+short_description: |
+  Run the full weekly outreach arc in one flow: pull up to 50 leads WITH
+  contacts on the active lens, qualify, enrich the BUYER-PERSONA contacts
+  (spend-gated), research, and produce ready-to-send Gmail drafts via
+  `message_compose_v1` — then STOP for me to review and send. Trigger on "run my
+  weekly arc", "weekly outreach run", "find 50 leads and draft the emails".
+  DRAFT-ONLY: never sends, never calls `leadbay_report_outreach`. Schedule it
+  weekly with `leadbay_schedule_weekly_arc`.
+arguments:
+  - name: count
+    description: "Optional: how many leads to run the arc on. Default 50, capped at 50."
+    required: false
+  - name: audience
+    description: "Optional: a fresh audience to target (e.g. 'dental clinics in Texas'). Omit to run on my ACTIVE lens — the default."
+    required: false
+expected_calls:
+  - leadbay_account_status
+  - leadbay_pull_leads
+  - leadbay_bulk_qualify_leads
+  - leadbay_qualify_status
+  - leadbay_recall_ordered_titles
+  - leadbay_enrich_titles
+  - leadbay_bulk_enrich_status
+  - leadbay_research_lead_by_id
+  - leadbay_prepare_outreach
+failure_modes:
+  - "Sends an email, calls leadbay_report_outreach, or writes a draft body into an outbound/send tool argument — the arc DRAFTS but STOPS before send; sending is the user's manual action in Gmail."
+  - "Stops at a research summary and never produces drafts — the deliverable is ready-to-send message_compose_v1 drafts, not a research recap."
+  - "Dumps email bodies as chat prose instead of routing each draft through message_compose_v1 (the composer IS the draft surface)."
+  - "Fans out leadbay_research_lead_by_id 50-wide in parallel (transport backpressure → 'stream closed') instead of serializing at most 3 at a time."
+  - "Launches paid leadbay_enrich_titles without first showing credits_remaining + enrichable_contacts, naming the persona, and getting a yes — the spend gate is mandatory."
+  - "Enriches by seniority instead of by buyer persona — picks COO / Director of Operations / CFO because they sound senior, when the user's buyer is a different department."
+  - "Re-pulls leadbay_pull_leads without the captured lensId — a mid-session lens shift discards the cohort."
+  - "Treats an async timeout from bulk_qualify / enrich as terminal instead of polling leadbay_qualify_status / leadbay_bulk_enrich_status to done."
+  - "Claims '50 drafts' when fewer leads have a reachable buyer — funnel must be stated honestly (pulled 50 → N have a buyer → N drafts)."
+---
+
+{{include:headers/agent-memory-preamble}}
+
+Run my full weekly Leadbay outreach arc{{arg:count_phrase}}. {{arg:audience_block}} Take it all the way to **ready-to-send Gmail drafts**, then stop so I can review and send them myself.
+
+{{include:gates/defer-to-tool-rendering}}
+
+{{include:heuristics/long-running-tools}}
+
+# PHASE 0 — RESUME CHECK
+
+If you're resuming an interrupted run (you see an earlier phase already completed in your task list, or the user / scheduler says "continue"), do NOT restart from Phase 1. Re-read the active `lensId` and your last completed phase from prior context, then resume from the next phase. If you genuinely have no state, start at Phase 1. (A scheduled weekly run can be interrupted mid-arc — resuming, not restarting, is what keeps the cohort intact.)
+
+# PHASE 1 — STATE + AUDIENCE
+
+Call `leadbay_account_status` to see my remaining quota, my **enrichment credits**, and my **active lens**. Note `web_fetch_remaining` (qualification budget) and the enrichment credit balance — Phase 3 spends credits.
+
+Resolve the audience:
+
+- **Default — use my active lens.** If I didn't name a fresh audience, the active lens IS the audience. Do NOT create a new lens.
+- **Fresh-audience fork.** Only if I described a NEW audience the active lens doesn't already cover, confirm once before switching, then continue on that lens. Do NOT silently overwrite my existing lens.
+
+# PHASE 2 — DISCOVER (up to 50)
+
+Call `leadbay_pull_leads({count:<requested, default 50, capped at 50>, lensId:<if known>})`. **Capture `response.lens.id` and pass it as an explicit `lensId` on every later call this session** — a mid-session lens shift would discard the cohort. Render the batch with the canonical layout:
+
+{{include:rendering/pull-leads-table}}
+
+If the batch is thin (fewer workable leads than requested), top it up: call `leadbay_bulk_qualify_leads({lensId:<captured>, count:<deficit, max 25>, wait_for_completion:false})`, capture `qualify_id`, poll `leadbay_qualify_status` every ~10s until `status:'done'`, then re-pull with the same `lensId`. Never re-pull without `lensId`.
+
+Note the funnel out loud: the `count` is the **discovery target**, not a guaranteed draft count. The leads that actually get drafts are the buyer-covered subset locked in Phase 3 — be honest about the shrinkage ("pulled 50 → 38 have a reachable buyer → 38 drafts").
+
+# PHASE 3 — ENRICH THE BUYER-PERSONA CONTACTS (load-bearing, paid gate)
+
+This is the phase that earns the "50 leads WITH contacts" promise. Contacts aren't attached by default and enrichment is paid — so spend it ONLY on the people who would actually **buy what I sell**, not on whoever is most senior.
+
+**Step A — work out MY buyer persona (before touching titles).** Infer my product / value-prop from my context — my org/account (`leadbay_account_status`) and especially my lens's `qualification_summary` (it tells you *why* these companies are good targets, which implies what I'm selling them). Map value-prop → the **buying department/persona, NOT seniority** (a sales/GTM tool → the revenue org: VP/Head/Director of Sales, BD, growth, marketing, RevOps; an ops tool → operations; a dev tool → engineering; Founder/CEO is a real buyer only at small companies ≤~50). State the persona in one line.
+
+**ANTI-PATTERN — do NOT** pick the most senior or "decision-maker-sounding" title regardless of department. Seniority is not the same as being my buyer.
+
+**Step B — find the persona-matching, enrichable contacts.** Call `leadbay_recall_ordered_titles({leadIds, lensId})` and `leadbay_enrich_titles({leadIds, lensId})` in **discovery mode** (no `titles`). These return `title_suggestions`, `auto_included_titles`, `available_in_selection`, `enrichable_contacts`, and `credits_remaining`. Treat them as a **menu to filter against my persona — not the answer.** If past-enriched titles or suggestions are off-persona, do NOT repeat them.
+
+**Step B.5 — coverage guarantee.** For each lead, determine whether it has an **enrichable buyer-persona contact** (use the discovery data; where ambiguous, a quick `leadbay_research_lead_by_id` to see that lead's contact titles). KEEP leads with ≥1 enrichable buyer contact — that is the "WITH contacts" promise. Drop leads whose only contacts are off-persona or who have no enrichable contact. If the lens genuinely can't supply enough buyer-ready leads, say so honestly rather than padding. State the funnel ("dropped 12 — no reachable buyer; 38 remain").
+
+**Step C — SPEND GATE (mandatory).** State the persona, the chosen titles, and "You have {credits_remaining} credits; this enriches {enrichable_contacts} <persona> contacts across {n} leads." Confirm via your host's choice widget — "Enrich these {enrichable_contacts} <persona> contacts now?" → ["Yes, enrich", "No — draft from existing contacts only", "Change the persona/titles"]. **Never launch a paid run without this.**
+
+> **Unattended (scheduled) runs:** when there is no interactive user to answer the gate — a scheduled weekly run — do NOT block forever and do NOT spend freely. Enrich only **within the pre-approved credit ceiling** carried in the run's instruction (the cap set at schedule time via `leadbay_schedule_weekly_arc`). If the persona enrichment would exceed that ceiling, SKIP enrichment and draft from already-available contacts. Never exceed the ceiling unattended.
+
+**Step D — launch + poll.** On yes (or within the unattended ceiling): `leadbay_enrich_titles({leadIds, lensId, titles:[...chosen], email:true, phone:true})` to launch, then poll `leadbay_bulk_enrich_status` until done (can take several minutes — keep polling; do not draft empty). Append `_(N credits remaining)_` at the very end of your reply.
+
+If enrichment is skipped, continue — draft from whatever contacts already exist.
+
+# PHASE 4 — RESEARCH (serialized)
+
+Call `leadbay_research_lead_by_id` on each buyer-covered lead. **Serialize — one at a time, or at most 3 in parallel.** Do not fire the whole cohort in parallel; it triggers transport backpressure (`"stream closed"`). If a call fails, retry that single lead once; if it fails again, note the lead id and continue. For each researched lead surface what makes it promising (cite a signal) and the **recommended contact** (name, title, why they're the right entry point).
+
+# PHASE 5 — DRAFT (the deliverable)
+
+For each buyer-covered lead, call `leadbay_prepare_outreach({leadId, lensId})` to get the brief + `recommended_contact` (post-enrichment, with email/phone), then render the draft.
+
+{{include:gates/builtin-widgets}}
+
+**Route each draft through `message_compose_v1`** (one composer per covered lead):
+
+- `{kind: "email", summary_title: "<Company> — <Contact> (<persona title>)", variants: [{label, subject, body}]}` — **2–3 variants per lead**, where the `label` describes the **STRATEGY** ("Reference the funding signal", "Peer-intro angle", "Lead with the pain"), never the tone ("Friendly", "Formal").
+- ABOVE each composer, ONE short markdown context line: score callout + sector fit + the LinkedIn-linked contact name + bare phone/email (those auto-linkify). Do NOT also paste the body into prose — the composer IS the draft.
+- **Flag ⚠ suspect contacts**: any enriched contact whose email domain doesn't match the company website, or who appears on more than one lead in this batch. Keep the phone but tell me the email looks off.
+
+{{include:rendering/prepare-outreach-brief}}
+
+When the host doesn't expose `message_compose_v1`, fall back to the single-record brief card above — but the email subject + body must still be fully drafted and ready to copy.
+
+# PHASE 6 — HANDOFF + STOP
+
+{{include:gates/draft-only-no-send}}
+
+State the honest funnel one last time ("pulled 50 → 38 buyer-covered → 38 drafts ready") and `_(N credits remaining)_` if you enriched. Then offer, via your host's choice widget:
+
+- "Review & send these in Gmail" — *you* do this manually; I won't send.
+- "Refine a specific draft" — name the lead and I'll revise that composer.
+- "Schedule this arc to run weekly" → routes to `leadbay_schedule_weekly_arc`.
+
+{{include:next-steps/ask-user-input-routing}}
+
+{{include:gates/stop-and-wait}}
+
+# Iron laws
+
+- DRAFT, never SEND. Compose into `message_compose_v1`; do not send and do not call `leadbay_report_outreach`. Sending is the user's manual step in Gmail.
+- Enrichment targets MY buyer persona (who buys what I sell), NEVER generic seniority.
+- NEVER launch paid enrichment without showing `credits_remaining` + `enrichable_contacts` and getting a yes — and on unattended runs, never exceed the pre-approved credit ceiling.
+- Carry the captured `lensId` on every call. Serialize research at ≤3 parallel.
+- The deliverable is ready-to-send drafts for the buyer-covered cohort — not a research summary, not one sample draft. State the funnel honestly.
