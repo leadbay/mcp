@@ -16,6 +16,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, LensPayload, FilterPayload } from "../types.js";
 import { resolveSectors, mergeFilter, filterWriteBody } from "./adjust-audience.js";
+import { resolveLocations } from "./_geo-helpers.js";
 
 import { leadbay_new_lens as NEW_LENS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -24,6 +25,8 @@ interface NewLensParams {
   sectors?: string[];
   exclude_sectors?: string[];
   sizes?: Array<{ min?: number; max?: number }>;
+  locations?: string[];         // free text (auto-resolved via /geo/search) or admin-area ids
+  exclude_locations?: string[]; // free text or ids to exclude
   base?: number; // lens id to clone from; defaults to the active/default lens
   description?: string;
   confirm?: boolean; // MUST be true to actually create; default = preview only
@@ -66,6 +69,17 @@ export const newLens: Tool<NewLensParams> = {
         },
         description: "Company size buckets, e.g. [{min:30,max:300}].",
       },
+      locations: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Geographic scope — free text (e.g. ['Indre-et-Loire', 'Bavaria']) or admin-area ids. Auto-resolved via /geo/search across all admin levels (city / county / département / région / state / country). Scopes the lens to a sales territory.",
+      },
+      exclude_locations: {
+        type: "array",
+        items: { type: "string" },
+        description: "Locations to exclude — free text or ids.",
+      },
       base: {
         type: "number",
         description:
@@ -84,13 +98,13 @@ export const newLens: Tool<NewLensParams> = {
   outputSchema: {
     type: "object",
     description:
-      "'preview' (default, NOTHING created — confirm with the user then re-call with confirm:true); 'created' on success; 'ambiguous_sectors' when free-text sectors didn't resolve (re-call with sector ids — the lens was NOT created).",
+      "'preview' (default, NOTHING created — confirm with the user then re-call with confirm:true); 'created' on success; 'ambiguous_sectors' / 'ambiguous_locations' when free-text sectors / locations didn't resolve (re-call with ids — the lens was NOT created).",
     properties: {
-      status: { type: "string", description: "'preview', 'created', 'ambiguous_sectors', or 'orphan_created' (filter write failed + cleanup failed)." },
+      status: { type: "string", description: "'preview', 'created', 'ambiguous_sectors', 'ambiguous_locations', or 'orphan_created' (filter write failed + cleanup failed)." },
       will_create: {
         type: "object",
         description:
-          "On 'preview': what WILL be created — {name, description, sectors, exclude_sectors, sizes}. Nothing has been written yet.",
+          "On 'preview': what WILL be created — {name, description, sectors, exclude_sectors, sizes, locations, exclude_locations}. Nothing has been written yet.",
       },
       filter_preview: { type: "object", description: "On 'preview': the FilterPayload that would be applied." },
       lens: {
@@ -101,6 +115,12 @@ export const newLens: Tool<NewLensParams> = {
         type: "array",
         description:
           "On 'ambiguous_sectors': per text {sector_text, matches:[{id,name,score}]}.",
+        items: { type: "object" },
+      },
+      location_ambiguities: {
+        type: "array",
+        description:
+          "On 'ambiguous_locations': per text {location_text, matches:[{id,name,country,level,score}]}. Re-call the chosen id via the SAME axis the text came from — an include text → locations; a text from exclude_locations → exclude_locations (NOT locations, which would include the area the user asked to exclude). The `message` field names the correct param per text.",
         items: { type: "object" },
       },
       filter_applied: { type: "object", description: "On 'created': the FilterPayload POSTed to the new lens." },
@@ -152,13 +172,65 @@ export const newLens: Tool<NewLensParams> = {
       };
     }
 
+    // Resolve locations the same way — BEFORE creating anything, so an
+    // unresolved area never leaves a half-built lens behind.
+    const includeLocRes = await resolveLocations(client, params.locations ?? []);
+    const excludeLocRes = await resolveLocations(
+      client,
+      params.exclude_locations ?? []
+    );
+    const locAmbiguities = [
+      ...includeLocRes.ambiguities,
+      ...excludeLocRes.ambiguities,
+    ];
+    if (locAmbiguities.length > 0) {
+      // Keep include vs exclude ambiguities separate: an INCLUDE pick retries
+      // through `locations`, an EXCLUDE pick through `exclude_locations`.
+      // Telling the agent to re-call an excluded area through `locations`
+      // would silently flip the exclusion into an inclusion.
+      const incMatch = includeLocRes.ambiguities.filter((a) => a.matches.length > 0);
+      const incNone = includeLocRes.ambiguities.filter((a) => a.matches.length === 0);
+      const excMatch = excludeLocRes.ambiguities.filter((a) => a.matches.length > 0);
+      const excNone = excludeLocRes.ambiguities.filter((a) => a.matches.length === 0);
+      const quote = (as: typeof locAmbiguities) =>
+        as.map((a) => `"${a.location_text}"`).join(", ");
+      const parts: string[] = [];
+      if (incNone.length > 0) {
+        parts.push(
+          `Couldn't find a location matching ${quote(incNone)}. Pick a known area and re-call via locations (lens not yet created).`
+        );
+      }
+      if (incMatch.length > 0) {
+        parts.push(
+          `${quote(incMatch)} matched multiple areas. Pick from the matches and re-call with the chosen id in locations.`
+        );
+      }
+      if (excNone.length > 0) {
+        parts.push(
+          `Couldn't find a location to exclude matching ${quote(excNone)}. Pick a known area and re-call via exclude_locations (lens not yet created).`
+        );
+      }
+      if (excMatch.length > 0) {
+        parts.push(
+          `${quote(excMatch)} (to exclude) matched multiple areas. Pick from the matches and re-call with the chosen id in exclude_locations — NOT locations, which would include it.`
+        );
+      }
+      return {
+        status: "ambiguous_locations",
+        location_ambiguities: locAmbiguities,
+        message: parts.join(" "),
+      };
+    }
+
     // Build the filter that WOULD be applied (used both for the preview and,
     // on confirm, the actual write).
     const merged = mergeFilter(
       EMPTY_FILTER,
       includeRes.resolved,
       excludeRes.resolved,
-      params.sizes
+      params.sizes,
+      includeLocRes.resolved,
+      excludeLocRes.resolved
     );
 
     // 2. Confirmation gate — never create silently. Unless confirm:true, return
@@ -173,6 +245,8 @@ export const newLens: Tool<NewLensParams> = {
           sectors: includeRes.resolved,
           exclude_sectors: excludeRes.resolved,
           sizes: merged.lens_filter.items[0].criteria.find((c) => c.type === "size") ?? null,
+          locations: includeLocRes.resolved,
+          exclude_locations: excludeLocRes.resolved,
         },
         filter_preview: merged,
         message: `About to create "${params.name}". Confirm with the user, then re-call with confirm:true.`,

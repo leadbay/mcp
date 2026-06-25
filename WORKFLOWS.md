@@ -50,6 +50,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 36 | **Per-lead custom-field values** — "what custom fields are on this lead", "show the CRM custom field values for <Company>" — retrieve the custom-field VALUES stored on one lead (distinct from the definitions catalog in `leadbay_list_mappable_fields`) | `leadbay_get_lead_custom_fields` | "What custom field values are stored on this lead?" |
 | 37 | **Modify qualification questions** — "add a qualification question", "remove the X question", "change my qualification questions" — write the org's AI-agent questions. Enforces the max-5 cap and gates removals behind a confirm; does not invent or silently drop questions | `leadbay_set_qualification_questions` | "Remove the qualification question 'hghg', then add it back exactly as it was." |
 | 38 | **Modify custom fields** — "create a custom field", "rename the X field", "delete the Y field" — manage the org CRM custom-field catalog. Update renames/retypes in place; delete is destructive and gated behind a confirm | `leadbay_create_custom_field`, `leadbay_update_custom_field`, `leadbay_delete_custom_field` | "Create a custom field called 'Eval Probe Field', then rename it to 'Eval Probe Renamed', then delete it." |
+| 39 | **Territory scoping — net-new accounts in a region** — "create a lens for net-new accounts in <département/région/state>", "scope discovery to <territory>", "restrict my rep's lens to <place>" — geography is set on the DISCOVER lens (not just Monitor): `leadbay_new_lens` / `leadbay_adjust_audience` accept `locations` (free text auto-resolved via /geo/search, or admin-area ids), writing a `location_ids` lens-filter criterion. Place names go to `locations`, never `sectors`/`refine_prompt`. Unblocks the "Cockpit Directeur Commercial" territory workflow (product#3759). | `leadbay_new_lens`, `leadbay_adjust_audience` | "Create a lens for net-new accounts in Indre-et-Loire" |
 
 ---
 
@@ -508,6 +509,24 @@ success_criteria:
 
 ```yaml scenario
 prompt: "Create a group for menuisiers, pergolas, vérandas"
+```
+
+```yaml expected
+workflow_name: Territory scoping — net-new accounts in a region
+prompt_name: ~
+required_calls:
+  - leadbay_new_lens
+forbidden_calls:
+  - leadbay_report_outreach
+success_criteria:
+  - "set geography on the DISCOVER lens — called leadbay_new_lens (or leadbay_adjust_audience) with a `locations` argument carrying the named territory, NOT just a Monitor/pull_followups location filter"
+  - "passed the place name (e.g. 'Indre-et-Loire') as a location, never as a sector or a refine_prompt instruction"
+  - "on a confident geo match the lens filter carried a location_ids criterion; on an ambiguous match returned the ambiguous-locations candidates and re-called with the id rather than guessing"
+  - "did NOT call leadbay_report_outreach"
+```
+
+```yaml scenario
+prompt: "Create a lens for net-new accounts in Indre-et-Loire"
 ```
 
 ```yaml expected

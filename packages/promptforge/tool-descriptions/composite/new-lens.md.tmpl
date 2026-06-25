@@ -3,8 +3,9 @@ name: leadbay_new_lens
 kind: tool-description
 short_description: |
   Create a new named lens (audience) in one call — clones a base lens, names
-  it, and applies sector/size criteria. Free-text sectors auto-resolve; the
-  lens is NOT created until they resolve. Does not switch the active lens.
+  it, and applies sector / size / geography criteria. Free-text sectors and
+  locations auto-resolve; the lens is NOT created until they resolve. Does not
+  switch the active lens.
 routing:
   triggers:
     - "create a lens"
@@ -14,6 +15,8 @@ routing:
     - "set up a lens for <sector>"
     - "new lens named <name>"
     - "I want a lens just for <X>"
+    - "create a lens for net-new accounts in <place>"
+    - "a lens scoped to <territory>"
   anti_triggers:
     - phrase: "narrow the audience / add or remove a sector on an EXISTING lens"
       route_to: leadbay_adjust_audience
@@ -30,7 +33,7 @@ routing:
     positive:
       - "Create a lens called Joinery for the fintech sector."
       - "Make me a new audience for healthcare companies, 30–300 people."
-      - "Set up a new lens named Nordics SaaS."
+      - "Create a lens for net-new accounts in Indre-et-Loire."
     negative:
       - "Add fintech to my Joinery lens."
       - "Show me my lenses."
@@ -40,7 +43,8 @@ rendering_hint: |
   created (name + resolved sectors/sizes as chips) and ASK the user to confirm
   via ask_user_input_v0 ("Create this lens?" / "Change something"). Only on
   "yes" re-call with confirm:true. On `created`: confirm "Created **<name>**."
-  On `ambiguous_sectors`: surface the candidate sectors to pick from.
+  On `ambiguous_sectors` / `ambiguous_locations`: surface the candidates to
+  pick from.
 next_steps: new-lens
 annotations:
   readOnlyHint: false
@@ -53,6 +57,8 @@ Create a brand-new lens (saved audience) and apply its sector/size criteria. Clo
 **Confirm before creating — two-step by default.** A call WITHOUT `confirm:true` is a dry run: it resolves the sectors/sizes and returns `status:"preview"` with `will_create` (what it WOULD build) — **nothing is created**. Show that to the user, get an explicit yes (ask via `ask_user_input_v0`), then re-call the SAME args with `confirm:true` to actually create. Never pass `confirm:true` on the first call — the user must see the preview first. (Sector ambiguity is still surfaced in the preview step, so they pick before confirming.)
 
 **Sectors resolve first.** Free-text `sectors`/`exclude_sectors` are auto-resolved against the taxonomy. If any don't resolve, the tool returns `status:"ambiguous_sectors"` with the candidates and **does NOT create the lens** — so re-calling after picking the right sector won't leave orphan half-built lenses. To discover valid sector labels up front, use `leadbay_list_sectors`.
+
+**Geography — scope a territory.** Pass `locations` (free text like `["Indre-et-Loire"]`, `["Bavaria"]`, or admin-area ids) to scope the lens to a sales territory, and `exclude_locations` to carve one out. Free text auto-resolves via `/geo/search` across every admin level (city / county / *département* / *région* / state / country). Like sectors, locations resolve BEFORE the lens is created — unresolved/ambiguous text returns `status:"ambiguous_locations"` with candidates and **does NOT create the lens**. Re-call the chosen id via the SAME axis it came from: an INCLUDE pick → `locations`; an EXCLUDE pick → `exclude_locations` (**NOT** `locations`, which would include the area the user asked to exclude). This is how a director spins up a lens for a rep's zone to surface net-new accounts there.
 
 **Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer `leadbay_my_lenses(switchToLensId=<new id>)` as a next step if they want to start pulling from it.
 
