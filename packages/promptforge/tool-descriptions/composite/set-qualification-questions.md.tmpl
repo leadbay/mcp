@@ -1,0 +1,34 @@
+---
+name: leadbay_set_qualification_questions
+kind: tool-description
+short_description: |
+  Modify the org's qualification questions — the AI-agent questions every lead is
+  scored against. Add, remove, or replace questions. Removing requires
+  confirm:true. Read them first with leadbay_get_qualification_questions.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: false
+  openWorldHint: true
+---
+Modify the organization's **qualification questions** — the AI-agent questions Leadbay scores every lead against. Use when the user wants to add, remove, or rewrite their qualification questions — e.g. "add a question about whether they run install crews", "remove the flooring question", "replace my questions with these three".
+
+The backend stores the list as a whole, so this tool reads the current questions and applies your change:
+
+- **`add`** — append questions (deduped against the current list).
+- **`remove`** — drop the exact question strings you pass.
+- **`questions`** — replace the ENTIRE list (mutually exclusive with add/remove).
+
+Leadbay allows **at most 5** qualification questions. If a change would exceed 5, the tool rejects with a clear limit message — remove some before adding.
+
+**Dropping any existing question is destructive** — it changes how every lead is scored. Any change that removes a current question requires `confirm:true` — including a same-count **swap** (remove one + add one) or a `questions` replacement that omits a current question, not only when the list gets shorter. Without `confirm`, the tool previews what would be removed and applies nothing. Pure additions never need confirm.
+
+Returns the resulting `{qualification_questions, count, previous_count, changed}`. Phrase questions as the yes/no scoring prompts Leadbay uses (e.g. "Is the company likely to …?").
+
+{{include:headers/tool-when-to-use}} the user wants to change the org's qualification questions.
+
+{{include:headers/tool-when-not-to-use}} to READ the questions (use leadbay_get_qualification_questions) or to change a single lead's data. This is org-level — it affects scoring for ALL leads.
+
+### RENDERING
+
+After a change, confirm in one line — e.g. **"Added 1 question — you now score leads against 4 questions."** or **"Removed 'the flooring question' — 3 questions remain."** Then list the resulting questions as a numbered list. When the result is a non-changing preview (a removal awaiting confirmation), surface the `hint` (what would be removed) and ask the user to confirm — do NOT auto-confirm.

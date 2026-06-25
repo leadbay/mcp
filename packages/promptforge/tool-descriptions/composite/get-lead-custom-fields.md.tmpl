@@ -1,0 +1,74 @@
+---
+name: leadbay_get_lead_custom_fields
+kind: tool-description
+short_description: |
+  Retrieve the CRM custom-field VALUES stored on one lead. Use when the user
+  asks what custom fields a specific company/lead has, or for the value of a
+  named custom field on a lead. Don't use it for the custom-field DEFINITIONS /
+  catalog (that's leadbay_list_mappable_fields) or for a lead's full research
+  dossier (that's leadbay_research_lead_by_id).
+routing:
+  triggers:
+    - "what custom fields are on this lead"
+    - "show the CRM custom field values for <Company>"
+    - "what's the <custom field name> on this lead"
+    - "get lead <UUID>'s custom fields"
+    - "does this lead have any custom field values"
+  anti_triggers:
+    - phrase: "what custom fields exist on my account"
+      route_to: leadbay_list_mappable_fields
+    - phrase: "give me the full research dossier on this lead"
+      route_to: leadbay_research_lead_by_id
+  prefer_when: "user wants the custom-field VALUES on ONE lead; pass `leadId`"
+  examples:
+    positive:
+      - "What custom field values are stored on this lead?"
+      - "Show me the CRM custom fields for that company."
+    negative:
+      - "What custom fields are defined on my account?"
+      - "Give me the full research breakdown on Acme Corp."
+rendering_hint: |
+  3-column markdown table: Field | Type | Value, one row per entry. When
+  `custom_fields` is empty, render the `hint` sentence instead of an empty
+  table.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Retrieve the CRM custom-field **values** stored on a single lead — the actual
+data (`value`) per custom field, not the field definitions.
+
+This is distinct from **leadbay_list_mappable_fields**, which returns the org's
+custom-field *catalog* (the definitions: id/name/type, used for import
+mapping). This tool answers "what does *this* lead hold for each custom field".
+
+Params: `leadId` (required UUID); `lensId` (optional escape hatch — normally
+omit; auto-resolves to the active lens).
+
+Returns:
+
+- **`custom_fields`** — one row per value: `{id, name, type, value}`. The lead
+  payload embeds each field's definition, so rows are fully named without a
+  separate catalog lookup. Empty array when the org has no custom fields or
+  none are set on this lead.
+- **`count`** — number of values.
+- **`hint`** — empty-state guidance (points at `leadbay_list_mappable_fields`
+  and the import path), or a degradation note in the rare case a value arrived
+  without an embedded definition and the catalog fallback failed.
+
+Reading a lead marks it seen (LEAD_SEEN) the same way the research tools do, so
+it ages out of the 'new' Discover view.
+
+Companion tools: **leadbay_list_mappable_fields** for the catalog/definitions;
+**leadbay_research_lead_by_id** for the full lead dossier (signals, contacts,
+qualification answers).
+
+### RENDERING
+
+Render `custom_fields` as a 3-column markdown table: **Field** (`name`, or the
+`id` when name is null) · **Type** (`type`) · **Value** (`value`, or "—" when
+null/empty). One row per entry, in the order returned. When `custom_fields` is
+empty, render the `hint` sentence instead of an empty table. Don't fabricate
+fields or values — render verbatim.

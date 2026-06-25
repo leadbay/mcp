@@ -917,6 +917,26 @@ WHEN NOT TO USE: pre-flight (the agent is not paying — the user is); for subsc
 `;
 // endregion: leadbay_create_topup_link
 
+// region: leadbay_delete_custom_field
+export const leadbay_delete_custom_field: string = `Delete an org-level CRM custom field. Use when the user explicitly wants to remove a custom field from their account — e.g. "delete the old 'Legacy Source' field".
+
+**This is destructive.** Removing the field drops its stored values from every lead and breaks any import mapping that targets \`CUSTOM.<id>\`. For that reason the tool has a safety gate:
+
+- Call with \`id\` only → the tool returns the field that WOULD be deleted (\`{id, name, type, deleted:false, hint}\`) and changes nothing. Surface the hint to the user and ask them to confirm.
+- Call with \`id\` + \`confirm:true\` → the field is deleted (\`{id, name, type, deleted:true}\`).
+
+\`id\` is the numeric custom-field id from \`leadbay_list_mappable_fields\` — NOT the \`CUSTOM.<id>\` mapping value.
+
+WHEN TO USE: the user explicitly asks to delete/remove a custom field — and only fire with confirm:true after they confirm.
+
+WHEN NOT TO USE: to rename or retype a field (use leadbay_update_custom_field) or to create one (use leadbay_create_custom_field).
+
+### RENDERING
+
+Before deleting (no confirm), render the \`hint\` and ask the user to confirm — do NOT auto-confirm on the user's behalf. After a confirmed delete, acknowledge in one line: **"Deleted custom field #12 'Legacy Source'."**
+`;
+// endregion: leadbay_delete_custom_field
+
 // region: leadbay_deselect_leads
 export const leadbay_deselect_leads: string = `Remove leads from the user's transient selection.
 
@@ -1359,6 +1379,71 @@ WHEN NOT TO USE: when leadbay_research_lead_by_id has already been called — it
 `;
 // endregion: leadbay_get_lead_activities
 
+// region: leadbay_get_lead_custom_fields
+export const leadbay_get_lead_custom_fields: string = `## WHEN TO USE
+
+Trigger phrases: "what custom fields are on this lead", "show the CRM custom field values for <Company>", "what's the <custom field name> on this lead", "get lead <UUID>'s custom fields", "does this lead have any custom field values".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "what custom fields exist on my account" → \`leadbay_list_mappable_fields\`; "give me the full research dossier on this lead" → \`leadbay_research_lead_by_id\`.
+
+Prefer when: user wants the custom-field VALUES on ONE lead; pass \`leadId\`
+
+Examples that SHOULD invoke this tool:
+- "What custom field values are stored on this lead?"
+- "Show me the CRM custom fields for that company."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "What custom fields are defined on my account?"
+- "Give me the full research breakdown on Acme Corp."
+
+## RENDER (quick)
+
+3-column markdown table: Field | Type | Value, one row per entry. When
+\`custom_fields\` is empty, render the \`hint\` sentence instead of an empty
+table.
+
+---
+
+Retrieve the CRM custom-field **values** stored on a single lead — the actual
+data (\`value\`) per custom field, not the field definitions.
+
+This is distinct from **leadbay_list_mappable_fields**, which returns the org's
+custom-field *catalog* (the definitions: id/name/type, used for import
+mapping). This tool answers "what does *this* lead hold for each custom field".
+
+Params: \`leadId\` (required UUID); \`lensId\` (optional escape hatch — normally
+omit; auto-resolves to the active lens).
+
+Returns:
+
+- **\`custom_fields\`** — one row per value: \`{id, name, type, value}\`. The lead
+  payload embeds each field's definition, so rows are fully named without a
+  separate catalog lookup. Empty array when the org has no custom fields or
+  none are set on this lead.
+- **\`count\`** — number of values.
+- **\`hint\`** — empty-state guidance (points at \`leadbay_list_mappable_fields\`
+  and the import path), or a degradation note in the rare case a value arrived
+  without an embedded definition and the catalog fallback failed.
+
+Reading a lead marks it seen (LEAD_SEEN) the same way the research tools do, so
+it ages out of the 'new' Discover view.
+
+Companion tools: **leadbay_list_mappable_fields** for the catalog/definitions;
+**leadbay_research_lead_by_id** for the full lead dossier (signals, contacts,
+qualification answers).
+
+### RENDERING
+
+Render \`custom_fields\` as a 3-column markdown table: **Field** (\`name\`, or the
+\`id\` when name is null) · **Type** (\`type\`) · **Value** (\`value\`, or "—" when
+null/empty). One row per entry, in the order returned. When \`custom_fields\` is
+empty, render the \`hint\` sentence instead of an empty table. Don't fabricate
+fields or values — render verbatim.
+`;
+// endregion: leadbay_get_lead_custom_fields
+
 // region: leadbay_get_lead_notes
 export const leadbay_get_lead_notes: string = `Read existing notes on a lead — context the human team or prior agent runs have already captured.
 
@@ -1403,6 +1488,73 @@ WHEN TO USE: before contacting the lead, to avoid duplicating outreach the team 
 WHEN NOT TO USE: when the lead summary's \`prospecting_actions_count\` is 0.
 `;
 // endregion: leadbay_get_prospecting_actions
+
+// region: leadbay_get_qualification_questions
+export const leadbay_get_qualification_questions: string = `## WHEN TO USE
+
+Trigger phrases: "what are my qualification questions", "what questions does Leadbay ask about each lead", "show me the org qualification questions", "how are my leads being qualified", "what's the qualification criteria".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "how did this lead score on the qualification questions" → \`leadbay_research_lead_by_id\`; "show my ideal buyer profile and intent tags" → \`leadbay_get_taste_profile\`.
+
+Prefer when: user wants the ORG-level qualification questions catalog, no lead and no buyer profile
+
+Examples that SHOULD invoke this tool:
+- "What qualification questions does Leadbay use to score my leads?"
+- "Show me my org's qualification questions."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "How did Acme Corp answer the qualification questions?"
+- "What's my ideal buyer profile?"
+
+## RENDER (quick)
+
+Numbered list of the questions (chat-native markdown), each one line. When
+\`is_admin\` is true, append the \`hint\` as a footnote (points at
+leadbay_set_qualification_questions for editing). When the list is empty,
+render the \`hint\` instead.
+
+---
+
+Retrieve the organization's **qualification questions** — the AI-agent questions
+Leadbay scores every lead against. These are the org-level questions that drive
+each lead's qualification boost; the per-lead ANSWERS to them surface inside
+\`leadbay_research_lead_by_id\`.
+
+Returns:
+
+- **\`qualification_questions\`** — the catalog. Each: \`{question, created_at,
+  lang}\`. Ordered as the backend returns them.
+- **\`count\`** — number of configured questions.
+- **\`is_admin\`** — whether the current user is an org admin. Modifying the
+  questions (\`leadbay_set_qualification_questions\`) is an org-admin action; for
+  admins a \`hint\` points there.
+- **\`hint\`** — operator note: the modify pointer, or an empty-state message
+  when no questions are configured.
+
+This tool only READS. To change the questions, use
+**leadbay_set_qualification_questions** (add / remove / replace). The result is
+cached on the client (it reuses the same taste-profile fetch as
+\`leadbay_get_taste_profile\`), so repeated calls in a session are cheap.
+
+Companion tools: **leadbay_set_qualification_questions** to modify the questions;
+**leadbay_get_taste_profile** when the user also wants the Ideal Buyer Profile +
+purchase-intent tags; **leadbay_research_lead_by_id** for how a SPECIFIC lead
+answered these questions; **leadbay_refine_prompt** to shape the AI agent's
+behaviour.
+
+### RENDERING
+
+Render \`qualification_questions\` as a numbered list — one question per line, in
+the order returned. Lead with a short heading like **"Qualification questions
+(N)"**. When \`qualification_questions\` is empty, render the \`hint\` sentence
+instead of an empty list. When \`is_admin\` is true and there are questions,
+append the \`hint\` as a one-line footnote (points at
+leadbay_set_qualification_questions). Do not invent questions or reword them —
+render verbatim.
+`;
+// endregion: leadbay_get_qualification_questions
 
 // region: leadbay_get_quota
 export const leadbay_get_quota: string = `Read remaining quota / spend across daily, weekly, and monthly windows for the org's resources (\`llm_completion\`, \`ai_rescore\`, \`web_fetch\`). Each entry shows \`current_units\` vs \`max_units\` and \`resets_at\`.
@@ -3707,6 +3859,31 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 `;
 // endregion: leadbay_set_pushback
 
+// region: leadbay_set_qualification_questions
+export const leadbay_set_qualification_questions: string = `Modify the organization's **qualification questions** — the AI-agent questions Leadbay scores every lead against. Use when the user wants to add, remove, or rewrite their qualification questions — e.g. "add a question about whether they run install crews", "remove the flooring question", "replace my questions with these three".
+
+The backend stores the list as a whole, so this tool reads the current questions and applies your change:
+
+- **\`add\`** — append questions (deduped against the current list).
+- **\`remove\`** — drop the exact question strings you pass.
+- **\`questions\`** — replace the ENTIRE list (mutually exclusive with add/remove).
+
+Leadbay allows **at most 5** qualification questions. If a change would exceed 5, the tool rejects with a clear limit message — remove some before adding.
+
+**Dropping any existing question is destructive** — it changes how every lead is scored. Any change that removes a current question requires \`confirm:true\` — including a same-count **swap** (remove one + add one) or a \`questions\` replacement that omits a current question, not only when the list gets shorter. Without \`confirm\`, the tool previews what would be removed and applies nothing. Pure additions never need confirm.
+
+Returns the resulting \`{qualification_questions, count, previous_count, changed}\`. Phrase questions as the yes/no scoring prompts Leadbay uses (e.g. "Is the company likely to …?").
+
+WHEN TO USE: the user wants to change the org's qualification questions.
+
+WHEN NOT TO USE: to READ the questions (use leadbay_get_qualification_questions) or to change a single lead's data. This is org-level — it affects scoring for ALL leads.
+
+### RENDERING
+
+After a change, confirm in one line — e.g. **"Added 1 question — you now score leads against 4 questions."** or **"Removed 'the flooring question' — 3 questions remain."** Then list the resulting questions as a numbered list. When the result is a non-changing preview (a removal awaiting confirmation), surface the \`hint\` (what would be removed) and ask the user to confirm — do NOT auto-confirm.
+`;
+// endregion: leadbay_set_qualification_questions
+
 // region: leadbay_set_user_prompt
 export const leadbay_set_user_prompt: string = `Set the org's intelligence-refinement prompt — free-text instruction that steers Leadbay's lead recommendations beyond firmographics. Admin-only. Setting this clears any pending clarification and triggers a full intelligence regeneration (web search + high-reasoning). \`dry_run:true\` returns the call shape without contacting the backend.
 
@@ -3948,6 +4125,23 @@ Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw).
 `;
 // endregion: leadbay_update_contact
 
+// region: leadbay_update_custom_field
+export const leadbay_update_custom_field: string = `Update an org-level CRM custom field in place. Use when the user wants to rename a custom field or change its type/config — e.g. "rename the 'Tier' field to 'Account Tier'" or "make the ARR field a PRICE in USD".
+
+Pass \`id\` (the numeric custom-field id from \`leadbay_list_mappable_fields\` — NOT the \`CUSTOM.<id>\` mapping value) plus any of \`name\`, \`type\`, \`config\`. The update is a partial merge over the current definition: a rename-only call keeps the existing type; a retype-only call keeps the name. At least one of \`name\` / \`type\` / \`config\` is required.
+
+Type + config rules mirror creation: \`EXTERNAL_ID\` requires \`config.url_template\` containing \`{value}\`; \`PRICE\` requires \`config.currency\`; \`DATE\`/\`DATETIME\` may set \`config.format\`. Returns the updated \`{id, name, type, config, mapping_value}\`.
+
+WHEN TO USE: the user wants to change an existing custom field's name or type.
+
+WHEN NOT TO USE: to CREATE a new field (use leadbay_create_custom_field) or to DELETE one (use leadbay_delete_custom_field). To read a lead's custom-field values use leadbay_get_lead_custom_fields; to list the catalog use leadbay_list_mappable_fields.
+
+### RENDERING
+
+Confirm the change in one line naming the field and what changed, e.g. **"Renamed custom field #12 → 'Account Tier' (TEXT)."** or **"Updated #13 'ARR' → PRICE (USD)."** Don't dump the raw payload.
+`;
+// endregion: leadbay_update_custom_field
+
 // region: leadbay_update_lens
 export const leadbay_update_lens: string = `Update lens metadata (name, description, mode flags). Does NOT change the audience filter — use leadbay_update_lens_filter for that.
 
@@ -3995,6 +4189,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_create_lens,
   leadbay_create_lens_draft,
   leadbay_create_topup_link,
+  leadbay_delete_custom_field,
   leadbay_deselect_leads,
   leadbay_discover_leads,
   leadbay_dislike_lead,
@@ -4008,11 +4203,13 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_get_enrichment_job_titles,
   leadbay_get_epilogue_responses,
   leadbay_get_lead_activities,
+  leadbay_get_lead_custom_fields,
   leadbay_get_lead_notes,
   leadbay_get_lead_profile,
   leadbay_get_lens_filter,
   leadbay_get_lens_scoring,
   leadbay_get_prospecting_actions,
+  leadbay_get_qualification_questions,
   leadbay_get_quota,
   leadbay_get_selection_ids,
   leadbay_get_taste_profile,
@@ -4059,11 +4256,13 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_set_active_lens,
   leadbay_set_epilogue_status,
   leadbay_set_pushback,
+  leadbay_set_qualification_questions,
   leadbay_set_user_prompt,
   leadbay_team_activity,
   leadbay_tour_plan,
   leadbay_unpin_contact,
   leadbay_update_contact,
+  leadbay_update_custom_field,
   leadbay_update_lens,
   leadbay_update_lens_filter,
 } as const;

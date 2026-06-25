@@ -20,9 +20,9 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { request as httpsRequestRaw } from "node:https";
-import { spawn } from "node:child_process";
+import { spawn, type SpawnOptions } from "node:child_process";
 import { AddressInfo } from "node:net";
-import { readdirSync } from "node:fs";
+import { readdirSync, existsSync } from "node:fs";
 
 // Stable loopback port for the OAuth callback. The Leadbay backend requires the
 // authorize redirect_uri to EXACTLY match the registered one (no RFC 8252
@@ -534,14 +534,20 @@ export function browserOpenCandidates(url: string): Array<{ cmd: string; args: s
     ];
   }
   if (platform === "win32") {
-    // `start` is a cmd builtin; double-quotes around an empty title prevent
-    // start from treating the URL as the window title. %SystemRoot% points at
-    // the Windows dir; fall back to the literal default + bare `cmd`.
+    // `start` is a cmd builtin; the empty-title `""` keeps start from treating
+    // the URL as the window title. The URL itself MUST be double-quoted: an
+    // OAuth authorize URL is wall-to-wall `&` (query-param separators), and cmd
+    // treats a bare `&` as a command separator — so an unquoted URL opens only
+    // the fragment before the first `&`. Wrapping it in quotes makes cmd pass
+    // the whole URL through literally (paired with windowsVerbatimArguments at
+    // spawn so Node doesn't strip the quotes). %SystemRoot% points at the
+    // Windows dir; fall back to the literal default + bare `cmd`.
     const sysRoot = process.env.SystemRoot || process.env.windir || "C:\\Windows";
     const cmdExe = `${sysRoot}\\System32\\cmd.exe`;
+    const quoted = `"${url}"`;
     return [
-      { cmd: cmdExe, args: ["/c", "start", '""', url] },
-      { cmd: "cmd", args: ["/c", "start", '""', url] },
+      { cmd: cmdExe, args: ["/c", "start", '""', quoted] },
+      { cmd: "cmd", args: ["/c", "start", '""', quoted] },
     ];
   }
   // Linux / other: xdg-open is conventionally in /usr/bin (sometimes /usr/local/bin).
@@ -567,7 +573,24 @@ export function browserLaunchEnv(debug?: (msg: string) => void): NodeJS.ProcessE
   const env = { ...process.env };
   if (process.platform !== "linux") return env;
 
-  const runtimeDir = env.XDG_RUNTIME_DIR;
+  // Claude Desktop spawns the .dxt server with a sanitized env that often
+  // strips XDG_RUNTIME_DIR too — which breaks the WAYLAND_DISPLAY/DBUS
+  // reconstruction below (both live under that dir). Rebuild it from the uid:
+  // /run/user/<uid> is the systemd-standard runtime dir on every modern Linux.
+  let runtimeDir = env.XDG_RUNTIME_DIR;
+  if (!runtimeDir || !existsSync(runtimeDir)) {
+    try {
+      const uid = process.getuid?.();
+      const candidate = uid !== undefined ? `/run/user/${uid}` : undefined;
+      if (candidate && existsSync(candidate)) {
+        runtimeDir = candidate;
+        env.XDG_RUNTIME_DIR = candidate;
+        debug?.(`browserLaunchEnv: injected XDG_RUNTIME_DIR=${candidate}`);
+      }
+    } catch {
+      /* getuid unavailable — fall through */
+    }
+  }
 
   if (!env.WAYLAND_DISPLAY && runtimeDir) {
     // Find a wayland-N socket in the runtime dir (wayland-0 is the default).
@@ -579,6 +602,18 @@ export function browserLaunchEnv(debug?: (msg: string) => void): NodeJS.ProcessE
       }
     } catch {
       /* runtime dir unreadable — fall through to X11 */
+    }
+  }
+
+  // Snap/Flatpak browsers (the common default on Ubuntu — firefox is a Snap)
+  // need the session bus to hand the URL to a running instance. Claude Desktop
+  // strips DBUS_SESSION_BUS_ADDRESS; reconstruct it from the standard socket
+  // at <runtimeDir>/bus so `xdg-open` doesn't silently no-op.
+  if (!env.DBUS_SESSION_BUS_ADDRESS && runtimeDir) {
+    const busPath = `${runtimeDir}/bus`;
+    if (existsSync(busPath)) {
+      env.DBUS_SESSION_BUS_ADDRESS = `unix:path=${busPath}`;
+      debug?.(`browserLaunchEnv: injected DBUS_SESSION_BUS_ADDRESS=unix:path=${busPath}`);
     }
   }
 
@@ -595,6 +630,34 @@ export function browserLaunchEnv(debug?: (msg: string) => void): NodeJS.ProcessE
       env.DISPLAY = ":0";
     }
     debug?.(`browserLaunchEnv: injected DISPLAY=${env.DISPLAY}`);
+  }
+
+  // An X11/XWayland browser (Chrome/Brave/Electron-based) needs the X authority
+  // cookie to connect to the display — without it the X server rejects the
+  // client ("Authorization required, but no authorization protocol specified")
+  // and the browser exits/segfaults, so no tab opens even though xdg-open
+  // returned 0. Claude Desktop strips XAUTHORITY; under Wayland/Mutter the
+  // Xwayland cookie lives at <runtimeDir>/.mutter-Xwaylandauth.* — reconstruct
+  // from there, falling back to ~/.Xauthority.
+  if (!env.XAUTHORITY) {
+    try {
+      let xauth: string | undefined;
+      if (runtimeDir) {
+        const cookie = readdirSync(runtimeDir).find((f) =>
+          /^\.mutter-Xwaylandauth\./.test(f)
+        );
+        if (cookie) xauth = `${runtimeDir}/${cookie}`;
+      }
+      if (!xauth && env.HOME && existsSync(`${env.HOME}/.Xauthority`)) {
+        xauth = `${env.HOME}/.Xauthority`;
+      }
+      if (xauth) {
+        env.XAUTHORITY = xauth;
+        debug?.(`browserLaunchEnv: injected XAUTHORITY=${xauth}`);
+      }
+    } catch {
+      /* runtime dir unreadable — proceed without (Wayland-native apps still work) */
+    }
   }
 
   return env;
@@ -622,7 +685,12 @@ export async function openInBrowser(
   for (const { cmd, args } of candidates) {
     try {
       await new Promise<void>((resolve, reject) => {
-        const child = spawn(cmd, args, { stdio: "ignore", detached: true, env: launchEnv });
+        const spawnOpts: SpawnOptions = { stdio: "ignore", detached: true, env: launchEnv };
+        // On Windows the candidate args carry a pre-quoted "<url>" (see
+        // browserOpenCandidates); verbatim mode stops Node's arg-quoter from
+        // mangling those quotes, so cmd sees the whole URL as one token.
+        if (process.platform === "win32") spawnOpts.windowsVerbatimArguments = true;
+        const child = spawn(cmd, args, spawnOpts);
         child.on("error", reject);
         child.on("spawn", () => {
           debug?.(`spawn OK: ${cmd} (pid=${child.pid})`);

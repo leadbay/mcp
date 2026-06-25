@@ -167,6 +167,19 @@ jobs:
           gh release upload "$TAG" packages/dxt/dist/*.dxt packages/dxt/dist/*.mcpb --clobber
           echo "Uploaded .dxt and .mcpb to release $TAG"
 
+          # Also publish fixed-name copies so docs can hardcode a stable URL.
+          # The newest release is GitHub's "Latest", so
+          #   …/releases/latest/download/leadbay-latest.dxt
+          # always resolves to the current version without per-release edits.
+          DXT=$(ls packages/dxt/dist/*.dxt | grep -v 'leadbay-latest' | head -1)
+          MCPB=$(ls packages/dxt/dist/*.mcpb | grep -v 'leadbay-latest' | head -1)
+          cp "$DXT" packages/dxt/dist/leadbay-latest.dxt
+          cp "$MCPB" packages/dxt/dist/leadbay-latest.mcpb
+          gh release upload "$TAG" \
+            packages/dxt/dist/leadbay-latest.dxt \
+            packages/dxt/dist/leadbay-latest.mcpb --clobber
+          echo "Uploaded fixed-name leadbay-latest.{dxt,mcpb} to release $TAG"
+
 
   publish-mcp-registry:
     name: Publish to MCP Registry

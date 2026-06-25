@@ -125,6 +125,10 @@ export interface LeadPayload {
   disliked: boolean;
   new?: boolean;
   exported?: boolean;
+  // CRM custom-field values stored on this lead. Self-describing entries
+  // (see LeadCustomFieldEntry). Empty array when the org has no custom fields
+  // or none are set on this lead. Surfaced by leadbay_get_lead_custom_fields.
+  custom_fields?: LeadCustomFieldEntry[];
   tags: LeadTag[];
   phone_numbers?: string[];
   keywords?: Array<{ keyword: string; score: number }>;
@@ -559,6 +563,16 @@ export interface CustomFieldDef {
   name: string;
   type: CustomCrmFieldKind;
   config?: CustomCrmFieldConfig | null;
+}
+
+// A custom-field VALUE as it appears on a lead detail/list payload
+// (`GET /lenses/{lensId}/leads/{leadId}` → `custom_fields[]`). The entry is
+// self-describing: it embeds the full field definition under `field`, so
+// reading a lead's custom fields needs NO join against /crm/custom_fields.
+// `value` is the stored cell text (null when set-but-empty). Verified live.
+export interface LeadCustomFieldEntry {
+  field: CustomFieldDef;
+  value: string | null;
 }
 
 export interface PreProcessingStatePayloadV15 {

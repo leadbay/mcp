@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -90,6 +90,24 @@ async function windowsStoreAppInstalled(packageName: string, appName: string): P
   });
 }
 
+/**
+ * A Microsoft Store (MSIX) install of Claude Desktop lives under
+ * `%LOCALAPPDATA%\Packages\Claude_<publisherhash>\…` — never at any of the
+ * traditional EXE paths, so the install-presence check missed Store users
+ * entirely (#3802). Glob the `Claude_` prefix: the publisher hash
+ * (e.g. `pzs8sxrjxfjjc`) is per-publisher and must not be hardcoded. Synchronous
+ * and PowerShell-free, so it's unit-testable against a temp dir.
+ */
+export function isClaudeStorePackagePresent(localAppData: string): boolean {
+  const packagesDir = join(localAppData, "Packages");
+  if (!existsSync(packagesDir)) return false;
+  try {
+    return readdirSync(packagesDir).some((name) => /^Claude_/i.test(name));
+  } catch {
+    return false;
+  }
+}
+
 async function isClaudeDesktopInstalled(home: string): Promise<boolean> {
   if (process.platform === "darwin") {
     return existsSync("/Applications/Claude.app") || existsSync(home + "/Applications/Claude.app");
@@ -98,12 +116,17 @@ async function isClaudeDesktopInstalled(home: string): Promise<boolean> {
     const local = process.env.LOCALAPPDATA ?? home + "/AppData/Local";
     const programFiles = process.env.ProgramFiles;
     const programFilesX86 = process.env["ProgramFiles(x86)"];
-    return [
+    const exeInstalled = [
       local + "/Programs/Claude/Claude.exe",
       local + "/Claude/Claude.exe",
       programFiles ? programFiles + "/Claude/Claude.exe" : null,
       programFilesX86 ? programFilesX86 + "/Claude/Claude.exe" : null,
     ].some((candidate) => candidate !== null && existsSync(candidate));
+    if (exeInstalled) return true;
+    // Microsoft Store install: MSIX package dir under %LOCALAPPDATA%\Packages.
+    if (isClaudeStorePackagePresent(local)) return true;
+    // Backstop when the package dir is unreadable: ask the Appx registry.
+    return await windowsStoreAppInstalled("AnthropicPBC.Claude", "Claude");
   }
 
   const desktopBin = await findOnPath("claude-desktop");

@@ -62,8 +62,10 @@ describe("browserOpenCandidates — PATH-independent launch", () => {
     try {
       const cands = browserOpenCandidates(URL_ARG);
       expect(cands[0].cmd).toBe("C:\\Windows\\System32\\cmd.exe");
-      // start + empty-title quoting preserved.
-      expect(cands[0].args).toEqual(["/c", "start", '""', URL_ARG]);
+      // start + empty-title quoting preserved. The URL is double-quoted so cmd
+      // doesn't truncate it at `&` (query-param separators) — bare `&` is a cmd
+      // command separator. Verbatim spawn (see oauth.ts) keeps the quotes.
+      expect(cands[0].args).toEqual(["/c", "start", '""', `"${URL_ARG}"`]);
       expect(cands.map((c) => c.cmd)).toContain("cmd"); // bare fallback kept
     } finally {
       if (savedRoot === undefined) delete process.env.SystemRoot;

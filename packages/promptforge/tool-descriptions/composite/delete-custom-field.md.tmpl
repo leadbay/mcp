@@ -1,0 +1,29 @@
+---
+name: leadbay_delete_custom_field
+kind: tool-description
+short_description: |
+  Delete an org CRM custom field. DESTRUCTIVE — drops the field's values from
+  every lead. Requires confirm:true. Pass the field id from
+  leadbay_list_mappable_fields.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: false
+  openWorldHint: true
+---
+Delete an org-level CRM custom field. Use when the user explicitly wants to remove a custom field from their account — e.g. "delete the old 'Legacy Source' field".
+
+**This is destructive.** Removing the field drops its stored values from every lead and breaks any import mapping that targets `CUSTOM.<id>`. For that reason the tool has a safety gate:
+
+- Call with `id` only → the tool returns the field that WOULD be deleted (`{id, name, type, deleted:false, hint}`) and changes nothing. Surface the hint to the user and ask them to confirm.
+- Call with `id` + `confirm:true` → the field is deleted (`{id, name, type, deleted:true}`).
+
+`id` is the numeric custom-field id from `leadbay_list_mappable_fields` — NOT the `CUSTOM.<id>` mapping value.
+
+{{include:headers/tool-when-to-use}} the user explicitly asks to delete/remove a custom field — and only fire with confirm:true after they confirm.
+
+{{include:headers/tool-when-not-to-use}} to rename or retype a field (use leadbay_update_custom_field) or to create one (use leadbay_create_custom_field).
+
+### RENDERING
+
+Before deleting (no confirm), render the `hint` and ask the user to confirm — do NOT auto-confirm on the user's behalf. After a confirmed delete, acknowledge in one line: **"Deleted custom field #12 'Legacy Source'."**

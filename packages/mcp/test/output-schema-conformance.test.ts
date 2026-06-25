@@ -162,6 +162,153 @@ interface ConformanceCase {
 
 const CASES: ConformanceCase[] = [
   {
+    toolName: "leadbay_set_qualification_questions",
+    arguments: { add: ["Is the company hiring installers?"] },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/users/me",
+          status: 200,
+          body: { id: "u", organization: { id: "org-1", name: "Test Co" } },
+        },
+        {
+          method: "GET",
+          path: /\/1\.5\/organizations\/org-1\/ai_agent_questions/,
+          status: 200,
+          body: [{ question: "Does the company run install crews?", created_at: "2026-05-30T00:00:00Z", lang: "en" }],
+        },
+        {
+          method: "POST",
+          path: /\/1\.5\/organizations\/org-1$/,
+          status: 204,
+          body: null,
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_update_custom_field",
+    arguments: { id: "12", name: "Account Tier" },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/crm/custom_fields",
+          status: 200,
+          body: [{ id: "12", name: "Tier", type: "TEXT" }],
+        },
+        {
+          method: "POST",
+          path: /\/1\.5\/crm\/custom_fields\/12$/,
+          status: 204,
+          body: null,
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_delete_custom_field",
+    arguments: { id: "12", confirm: true },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/crm/custom_fields",
+          status: 200,
+          body: [{ id: "12", name: "Legacy Source", type: "TEXT" }],
+        },
+        {
+          method: "DELETE",
+          path: /\/1\.5\/crm\/custom_fields\/12$/,
+          status: 204,
+          body: null,
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_get_qualification_questions",
+    arguments: {},
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/users/me",
+          status: 200,
+          body: {
+            id: "u",
+            email: "rep@example.com",
+            admin: false,
+            organization: { id: "org-1", name: "Test Co" },
+          },
+        },
+        {
+          method: "GET",
+          path: /\/1\.5\/organizations\/org-1\/ideal_buyer_profile/,
+          status: 200,
+          body: { summary: "IBP", key_characteristics: [], anti_patterns: [] },
+        },
+        {
+          method: "GET",
+          path: /\/1\.5\/organizations\/org-1\/purchase_intent_tags/,
+          status: 200,
+          body: [],
+        },
+        {
+          method: "GET",
+          path: /\/1\.5\/organizations\/org-1\/ai_agent_questions/,
+          status: 200,
+          body: [
+            { question: "Does the company run install crews?", created_at: "2026-05-30T00:00:00Z", lang: "en" },
+          ],
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_get_lead_custom_fields",
+    arguments: { leadId: "lead-7" },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.5/users/me",
+          status: 200,
+          body: {
+            id: "u",
+            organization: { id: "org-1", name: "Test Co" },
+            last_requested_lens: 42,
+          },
+        },
+        { method: "POST", path: "/1.5/interactions", status: 200, body: {} },
+        {
+          method: "GET",
+          path: /\/1\.5\/lenses\/42\/leads\/lead-7$/,
+          status: 200,
+          body: {
+            id: "lead-7",
+            name: "Acme",
+            score: 80,
+            ai_agent_lead_score: null,
+            location: null,
+            description: null,
+            size: null,
+            website: "acme.com",
+            tags: [],
+            liked: false,
+            disliked: false,
+            contacts_count: 0,
+            org_contacts_count: 0,
+            custom_fields: [
+              { field: { id: "12", name: "Account Tier", type: "TEXT" }, value: "Gold" },
+            ],
+          },
+        },
+      ]);
+    },
+  },
+  {
     toolName: "leadbay_resolve_import_rows",
     arguments: {
       records: [{ Company: "Apple", Domain: "apple.com" }],

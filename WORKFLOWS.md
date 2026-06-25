@@ -46,7 +46,11 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 32 | **Build an interactive artifact** — "build me a call sheet / interactive lead board with a campaign dropdown, notes, statuses, likes per lead" — the agent fetches headless view-models + usage guide via `leadbay_artifact_kit`, then assembles a single-file HTML artifact whose `lb.field`/`lb.action` view-models POPULATE a dropdown from `leadbay_list_campaigns` and submit `leadbay_report_outreach` / `leadbay_add_leads_to_campaign` / `leadbay_like_lead` (carrying `verification` + `_triggered_by` where required); the artifact owns all rendering | `leadbay_artifact_kit` *(no dedicated prompt)* | "Build me an interactive call sheet for these leads." |
 | 33 | **Manager team-activity view** — "how is my team doing", "top performers this month", "activity by rep" — `leadbay_team_activity` returns a per-rep leaderboard (`reps`, sorted by `total_activities`) + an activity time-series (`trend`) for a look-back window, the data behind the web Dashboard-Manager screen. Feeds a manager artifact (`lb.teamActivity` → table + Chart.js); quota/remaining stays on `leadbay_account_status` | `leadbay_team_activity` *(no dedicated prompt)* | "How is my team doing this month?" |
 | 34 | **Campaign builder from scratch (solo)** — "build me a campaign from scratch" — one guided flow: discover on the active lens → qualify/pick a cohort → enrich the BUYER PERSONA of the user's product (revenue org, not seniority) with a coverage guarantee → persist via `leadbay_create_campaign` → render the ready-to-work `leadbay_campaign_call_sheet` view, then hand off to `leadbay_work_campaign`. Distinct from the team flow (`leadbay_setup_team_prospecting`) and the work-an-existing-one flow (`leadbay_work_campaign`). | `leadbay_build_campaign` | *(multi-turn — see `turns:` contract)* |
-| 35 | **Territory scoping — net-new accounts in a region** — "create a lens for net-new accounts in <département/région/state>", "scope discovery to <territory>", "restrict my rep's lens to <place>" — geography is set on the DISCOVER lens (not just Monitor): `leadbay_new_lens` / `leadbay_adjust_audience` accept `locations` (free text auto-resolved via /geo/search, or admin-area ids), writing a `location_ids` lens-filter criterion. Place names go to `locations`, never `sectors`/`refine_prompt`. Unblocks the "Cockpit Directeur Commercial" territory workflow (product#3759). | `leadbay_new_lens`, `leadbay_adjust_audience` | "Create a lens for net-new accounts in Indre-et-Loire" |
+| 35 | **Org qualification questions** — "what qualification questions does Leadbay use", "how are my leads qualified" — retrieve the org-level AI-agent question catalog | `leadbay_get_qualification_questions` | "What qualification questions does Leadbay use to score my leads?" |
+| 36 | **Per-lead custom-field values** — "what custom fields are on this lead", "show the CRM custom field values for <Company>" — retrieve the custom-field VALUES stored on one lead (distinct from the definitions catalog in `leadbay_list_mappable_fields`) | `leadbay_get_lead_custom_fields` | "What custom field values are stored on this lead?" |
+| 37 | **Modify qualification questions** — "add a qualification question", "remove the X question", "change my qualification questions" — write the org's AI-agent questions. Enforces the max-5 cap and gates removals behind a confirm; does not invent or silently drop questions | `leadbay_set_qualification_questions` | "Remove the qualification question 'hghg', then add it back exactly as it was." |
+| 38 | **Modify custom fields** — "create a custom field", "rename the X field", "delete the Y field" — manage the org CRM custom-field catalog. Update renames/retypes in place; delete is destructive and gated behind a confirm | `leadbay_create_custom_field`, `leadbay_update_custom_field`, `leadbay_delete_custom_field` | "Create a custom field called 'Eval Probe Field', then rename it to 'Eval Probe Renamed', then delete it." |
+| 39 | **Territory scoping — net-new accounts in a region** — "create a lens for net-new accounts in <département/région/state>", "scope discovery to <territory>", "restrict my rep's lens to <place>" — geography is set on the DISCOVER lens (not just Monitor): `leadbay_new_lens` / `leadbay_adjust_audience` accept `locations` (free text auto-resolved via /geo/search, or admin-area ids), writing a `location_ids` lens-filter criterion. Place names go to `locations`, never `sectors`/`refine_prompt`. Unblocks the "Cockpit Directeur Commercial" territory workflow (product#3759). | `leadbay_new_lens`, `leadbay_adjust_audience` | "Create a lens for net-new accounts in Indre-et-Loire" |
 
 ---
 
@@ -523,6 +527,82 @@ success_criteria:
 
 ```yaml scenario
 prompt: "Create a lens for net-new accounts in Indre-et-Loire"
+```
+
+```yaml expected
+workflow_name: Org qualification questions
+prompt_name: ~
+required_calls:
+  - leadbay_get_qualification_questions
+forbidden_calls:
+  - leadbay_research_lead_by_id
+  - leadbay_get_taste_profile
+success_criteria:
+  - "called leadbay_get_qualification_questions at least once"
+  - "listed the org's qualification questions returned by the tool, verbatim (did not invent or reword them)"
+  - "did NOT fabricate a per-lead score or answer — these are org-level questions, not a single lead's responses"
+  - "did NOT call leadbay_research_lead_by_id or leadbay_get_taste_profile (this is the focused org-level questions tool)"
+```
+
+```yaml scenario
+prompt: "What qualification questions does Leadbay use to score my leads?"
+```
+
+```yaml expected
+workflow_name: Per-lead custom-field values
+prompt_name: ~
+required_calls:
+  - leadbay_get_lead_custom_fields
+forbidden_calls:
+  - leadbay_list_mappable_fields
+success_criteria:
+  - "called leadbay_get_lead_custom_fields with a lead id (discovering a lead first if needed)"
+  - "reported the lead's custom-field VALUES from the tool result — or, when the result is empty, correctly stated the lead/org has no custom-field values set (did not invent fields or values)"
+  - "did NOT call leadbay_list_mappable_fields — that returns field DEFINITIONS (the catalog), not a lead's values"
+```
+
+```yaml scenario
+prompt: "Pull one of my leads and show me its CRM custom field values."
+```
+
+```yaml expected
+workflow_name: Modify qualification questions
+prompt_name: ~
+required_calls:
+  - leadbay_set_qualification_questions
+forbidden_calls:
+  - leadbay_create_custom_field
+success_criteria:
+  - "removed the named question via leadbay_set_qualification_questions (remove mode) and then re-added it — a round-trip that nets back to the original set"
+  - "honored the confirm gate on the removal (re-called with confirm:true after the safety preview, since removing shrinks the list) rather than ignoring it"
+  - "reported each step truthfully from the tool result (removed N→N-1, re-added N-1→N) without inventing a change the tool did not return"
+  - "only touched the single named question; did NOT drop or rewrite the OTHER questions, and did NOT call leadbay_create_custom_field"
+# Self-restoring by construction: the scenario removes a question then adds the
+# SAME text back, so the org's question set is identical before and after. The
+# eval harness ALSO snapshots + restores the questions around the run as a
+# backstop. Never leaves the live org mutated.
+```
+
+```yaml scenario
+prompt: "Remove the qualification question 'hghg', then add it back exactly as it was."
+```
+
+```yaml expected
+workflow_name: Modify custom fields
+prompt_name: ~
+required_calls:
+  - leadbay_create_custom_field
+  - leadbay_update_custom_field
+  - leadbay_delete_custom_field
+success_criteria:
+  - "created the field, then renamed it via leadbay_update_custom_field, then deleted it via leadbay_delete_custom_field — using the field id returned by create, not a guessed id"
+  - "the final delete actually completed (passed confirm:true, or confirmed after the safety preview) so the throwaway field does not linger"
+  - "reported each step truthfully from tool results (created / renamed / deleted) without inventing ids or claiming a change the tool did not return"
+  - "did NOT touch or delete any OTHER custom field — only the one it just created"
+```
+
+```yaml scenario
+prompt: "Create a custom field called 'Eval Probe Field', then rename it to 'Eval Probe Renamed', then delete it."
 ```
 
 #### Workflow 30 — Account status: silent on unreadable quota

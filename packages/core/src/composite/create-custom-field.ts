@@ -7,10 +7,12 @@ import type {
 } from "../types.js";
 
 import { leadbay_create_custom_field as CREATE_CUSTOM_FIELD_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { sanitizeConfigForType } from "./_custom-field-config.js";
 interface CreateCustomFieldParams {
   name: string;
   type?: CustomCrmFieldKind;
-  config?: CustomCrmFieldConfig | null;
+  // Object preferred; a JSON string is also accepted (parsed by sanitize).
+  config?: CustomCrmFieldConfig | string | null;
   if_not_exists?: boolean;
 }
 
@@ -39,9 +41,9 @@ export const createCustomField: Tool<CreateCustomFieldParams> = {
           "Custom field type: TEXT, NUMBER, PRICE, DATE, DATETIME, or EXTERNAL_ID. Defaults to TEXT.",
       },
       config: {
-        type: ["object", "null"],
+        type: ["object", "string", "null"],
         description:
-          "Type-specific config. EXTERNAL_ID requires {url_template:'https://.../{value}'}; PRICE requires {currency:'USD'}; DATE/DATETIME may set {format}.",
+          "Type-specific config, as an object (preferred) or a JSON string. EXTERNAL_ID requires {url_template:'https://.../{value}'}; PRICE requires {currency:'USD'}; DATE/DATETIME may set {format}.",
       },
       if_not_exists: {
         type: "boolean",
@@ -85,10 +87,14 @@ export const createCustomField: Tool<CreateCustomFieldParams> = {
     }
 
     const type = params.type ?? "TEXT";
-    const config = params.config ?? null;
+    // Narrow config to exactly the key(s) the type accepts (also parses a
+    // stringified config — LLMs often pass nested JSON as a string). The
+    // backend deserializer rejects extra keys with a 500 and drops the
+    // required key when config arrives as an unparsed string.
+    const config = sanitizeConfigForType(type, params.config ?? null);
 
     if (type === "EXTERNAL_ID") {
-      const urlTemplate = config?.url_template ?? config?.urlTemplate;
+      const urlTemplate = config?.url_template;
       if (!urlTemplate || !urlTemplate.includes("{value}")) {
         throw client.makeError(
           "CUSTOM_FIELD_EXTERNAL_ID_TEMPLATE_REQUIRED",

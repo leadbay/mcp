@@ -17,6 +17,245 @@ import {
 import { inferRegionViaStargate, oauthLogin } from "../src/oauth.js";
 
 
+// Replaced at build time by tsup with the package.json version string.
+// Falls back to a dev sentinel when the global is undefined (raw ts-node runs).
+declare const __LEADBAY_MCP_VERSION__: string;
+const VERSION = typeof __LEADBAY_MCP_VERSION__ !== "undefined" ? __LEADBAY_MCP_VERSION__ : "0.0.0-dev";
+
+// ────────────────────────────────────────────────────────────────────────────
+// Localization (EN/FR)
+//
+// The installer auto-detects the user's region via GeoIP (inferRegionViaStargate).
+// We localize the whole UI to that region: French for `fr`, English for `us`.
+// The locale is purely cosmetic — the authoritative region for backend selection
+// is still the one loginWithOAuth computes and stores on the session. A VPN/travel
+// divergence only changes language, never which backend installs.
+
+type Locale = "en" | "fr";
+
+// String-only sub-dictionaries (installer/uninstaller) are JSON-injected into the
+// page so the inline client script can read them. The `server` sub-dictionary has
+// param-taking functions and stays server-side (SSE + summary builder).
+type InstallerStrings = {
+  docTitle: string;
+  steps: { 1: { title: string; sub: string }; 2: { title: string; sub: string }; 3: { title: string; sub: string } };
+  btnSignIn: string;
+  btnInstall: string;
+  btnBack: string;
+  btnRefresh: string;
+  noClientsDetected: string;
+  noAgentsDetected: string;
+  selectAtLeastOne: string;
+  openingSignIn: string;
+  oauthFailed: string;
+  successInstalled: string;
+  noneInstalled: string;
+  streamDisconnected: string;
+  closeWindow: string;
+  allSet: string;
+  somethingWrong: string;
+  badgeManual: string;
+  badgeUpdate: string;
+  badgeInstall: string;
+};
+
+type UninstallerStrings = {
+  docTitle: string;
+  steps: { 1: { title: string; sub: string }; 2: { title: string; sub: string } };
+  btnRemove: string;
+  btnBack: string;
+  btnRefresh: string;
+  noInstallDetected: string;
+  selectAtLeastOne: string;
+  successRemoved: string;
+  noneRemoved: string;
+  streamDisconnected: string;
+  closeWindow: string;
+  allSet: string;
+  somethingWrong: string;
+};
+
+type ServerStrings = {
+  loginExpired: string;
+  selectAtLeastOne: string;
+  noSelectedDetected: string;
+  installStopped: string;
+  uninstallStopped: string;
+  connectedTo: (label: string) => string;
+  toolFlags: (write: boolean, telemetry: boolean) => string;
+  refreshingDetection: string;
+  installing: (label: string) => string;
+  preparingManual: (label: string) => string;
+  removing: (label: string) => string;
+  installedSummary: (ok: number, total: number) => string;
+  manualReady: string;
+  removedSummary: (ok: number, total: number) => string;
+  restartClients: string;
+  followManual: string;
+  completeRemoval: string;
+  loggedInBackend: (region: string) => string;
+  settingsLine: (write: boolean, telemetry: boolean) => string;
+  installSummaryHeader: string;
+  noAgentsRemoved: string;
+};
+
+type Strings = { installer: InstallerStrings; uninstaller: UninstallerStrings; server: ServerStrings };
+
+const MESSAGES: Record<Locale, Strings> = {
+  en: {
+    installer: {
+      docTitle: "Leadbay MCP installer",
+      steps: {
+        1: { title: "Connect Leadbay", sub: "Sign in to install Leadbay across your AI agents." },
+        2: { title: "Choose your agents", sub: "Pick where to install Leadbay." },
+        3: { title: "Installing", sub: "Keep this window open until it's done." },
+      },
+      btnSignIn: "Sign in with Leadbay",
+      btnInstall: "Install",
+      btnBack: "Back",
+      btnRefresh: "Refresh",
+      noClientsDetected: "No supported MCP client detected on this machine.",
+      noAgentsDetected: "No supported agents detected.",
+      selectAtLeastOne: "Select at least one agent.",
+      openingSignIn: "Opening Leadbay sign-in in your browser...",
+      oauthFailed: "OAuth login failed.",
+      successInstalled: "MCP successfully installed",
+      noneInstalled: "No agents were installed.",
+      streamDisconnected: "Install stream disconnected.",
+      closeWindow: "You can close this window.",
+      allSet: "All set",
+      somethingWrong: "Something went wrong",
+      badgeManual: "manual",
+      badgeUpdate: "update",
+      badgeInstall: "install",
+    },
+    uninstaller: {
+      docTitle: "Leadbay MCP uninstaller",
+      steps: {
+        1: { title: "Remove Leadbay MCP", sub: "Select the agents to remove Leadbay MCP from." },
+        2: { title: "Removing", sub: "Keep this window open until it's done." },
+      },
+      btnRemove: "Remove selected",
+      btnBack: "Back",
+      btnRefresh: "Refresh",
+      noInstallDetected: "No Leadbay MCP installation detected on this machine.",
+      selectAtLeastOne: "Select at least one agent.",
+      successRemoved: "MCP successfully removed",
+      noneRemoved: "No agents were removed.",
+      streamDisconnected: "Uninstall stream disconnected.",
+      closeWindow: "You can close this window.",
+      allSet: "All set",
+      somethingWrong: "Something went wrong",
+    },
+    server: {
+      loginExpired: "Login expired. Go back and sign in again.",
+      selectAtLeastOne: "Select at least one agent.",
+      noSelectedDetected: "No selected agents were detected on this machine.",
+      installStopped: "Install stopped.",
+      uninstallStopped: "Uninstall stopped.",
+      connectedTo: (label) => `Connected to ${label}.`,
+      toolFlags: (write, telemetry) => `Write tools ${write ? "enabled" : "disabled"}; telemetry ${telemetry ? "enabled" : "disabled"}.`,
+      refreshingDetection: "Refreshing installed-agent detection...",
+      installing: (label) => `Installing ${label}...`,
+      preparingManual: (label) => `Preparing ${label} manual setup...`,
+      removing: (label) => `Removing from ${label}...`,
+      installedSummary: (ok, total) => `${ok}/${total} agent(s) installed, updated, or prepared.`,
+      manualReady: "Manual ChatGPT setup instructions ready.",
+      removedSummary: (ok, total) => `${ok}/${total} agent(s) removed.`,
+      restartClients: "Restart your MCP client(s) to pick up the new server.",
+      followManual: "Follow the manual setup instructions shown above.",
+      completeRemoval: "Restart your MCP client(s) to complete the removal.",
+      loggedInBackend: (region) => `Logged in to ${region.toUpperCase()} backend.`,
+      settingsLine: (write, telemetry) => `Settings: write tools ${write ? "on" : "off"}, telemetry ${telemetry ? "on" : "off"}.`,
+      installSummaryHeader: "Install summary:",
+      noAgentsRemoved: "No agents were removed.",
+    },
+  },
+  fr: {
+    installer: {
+      docTitle: "Installateur Leadbay MCP",
+      steps: {
+        1: { title: "Connectez Leadbay", sub: "Connectez-vous pour installer Leadbay sur vos agents IA." },
+        2: { title: "Choisissez vos agents", sub: "Choisissez où installer Leadbay." },
+        3: { title: "Installation en cours", sub: "Gardez cette fenêtre ouverte jusqu'à la fin." },
+      },
+      btnSignIn: "Se connecter avec Leadbay",
+      btnInstall: "Installer",
+      btnBack: "Retour",
+      btnRefresh: "Actualiser",
+      noClientsDetected: "Aucun client MCP compatible détecté sur cette machine.",
+      noAgentsDetected: "Aucun agent compatible détecté.",
+      selectAtLeastOne: "Sélectionnez au moins un agent.",
+      openingSignIn: "Ouverture de la connexion Leadbay dans votre navigateur...",
+      oauthFailed: "Échec de la connexion OAuth.",
+      successInstalled: "MCP installé avec succès",
+      noneInstalled: "Aucun agent n'a été installé.",
+      streamDisconnected: "Flux d'installation interrompu.",
+      closeWindow: "Vous pouvez fermer cette fenêtre.",
+      allSet: "Terminé",
+      somethingWrong: "Une erreur est survenue",
+      badgeManual: "manuel",
+      badgeUpdate: "mettre à jour",
+      badgeInstall: "installer",
+    },
+    uninstaller: {
+      docTitle: "Désinstallateur Leadbay MCP",
+      steps: {
+        1: { title: "Supprimer Leadbay MCP", sub: "Sélectionnez les agents desquels supprimer Leadbay MCP." },
+        2: { title: "Suppression en cours", sub: "Gardez cette fenêtre ouverte jusqu'à la fin." },
+      },
+      btnRemove: "Supprimer la sélection",
+      btnBack: "Retour",
+      btnRefresh: "Actualiser",
+      noInstallDetected: "Aucune installation Leadbay MCP détectée sur cette machine.",
+      selectAtLeastOne: "Sélectionnez au moins un agent.",
+      successRemoved: "MCP supprimé avec succès",
+      noneRemoved: "Aucun agent n'a été supprimé.",
+      streamDisconnected: "Flux de désinstallation interrompu.",
+      closeWindow: "Vous pouvez fermer cette fenêtre.",
+      allSet: "Terminé",
+      somethingWrong: "Une erreur est survenue",
+    },
+    server: {
+      loginExpired: "Session expirée. Revenez en arrière et reconnectez-vous.",
+      selectAtLeastOne: "Sélectionnez au moins un agent.",
+      noSelectedDetected: "Aucun des agents sélectionnés n'a été détecté sur cette machine.",
+      installStopped: "Installation arrêtée.",
+      uninstallStopped: "Désinstallation arrêtée.",
+      connectedTo: (label) => `Connecté à ${label}.`,
+      toolFlags: (write, telemetry) => `Outils d'écriture ${write ? "activés" : "désactivés"} ; télémétrie ${telemetry ? "activée" : "désactivée"}.`,
+      refreshingDetection: "Actualisation de la détection des agents installés...",
+      installing: (label) => `Installation de ${label}...`,
+      preparingManual: (label) => `Préparation de la configuration manuelle de ${label}...`,
+      removing: (label) => `Suppression de ${label}...`,
+      installedSummary: (ok, total) => `${ok}/${total} agent(s) installé(s), mis à jour ou préparé(s).`,
+      manualReady: "Instructions de configuration manuelle de ChatGPT prêtes.",
+      removedSummary: (ok, total) => `${ok}/${total} agent(s) supprimé(s).`,
+      restartClients: "Redémarrez votre/vos client(s) MCP pour charger le nouveau serveur.",
+      followManual: "Suivez les instructions de configuration manuelle ci-dessus.",
+      completeRemoval: "Redémarrez votre/vos client(s) MCP pour terminer la suppression.",
+      loggedInBackend: (region) => `Connecté au backend ${region.toUpperCase()}.`,
+      settingsLine: (write, telemetry) => `Paramètres : outils d'écriture ${write ? "activés" : "désactivés"}, télémétrie ${telemetry ? "activée" : "désactivée"}.`,
+      installSummaryHeader: "Récapitulatif de l'installation :",
+      noAgentsRemoved: "Aucun agent n'a été supprimé.",
+    },
+  },
+};
+
+// Probe GeoIP server-side to pick the page locale. Any failure → English; a
+// locale probe must never break the installer page.
+async function detectLocale(): Promise<Locale> {
+  try {
+    return (await inferRegionViaStargate({ staging: false })) === "fr" ? "fr" : "en";
+  } catch {
+    return "en";
+  }
+}
+
+function parseLocale(raw: string | null | undefined): Locale {
+  return raw === "fr" ? "fr" : "en";
+}
+
 type InstallRequest = { sessionId?: string; clientIds?: string[]; includeWrite?: boolean; telemetryEnabled?: boolean };
 type LoginSession = { token: string; region: "us" | "fr"; accountLabel: string; createdAt: number };
 type InstallResult = { id: string; label: string; ok: boolean; message: string };
@@ -198,12 +437,15 @@ export async function install(body: InstallRequest): Promise<{ ok: boolean; outp
   cleanupSessions();
   const session = body.sessionId ? sessions.get(body.sessionId) : undefined;
   const clientIds = body.clientIds ?? [];
-  if (!session) return { ok: false, output: "Login expired. Go back and sign in again." };
-  if (!clientIds.length) return { ok: false, output: "Select at least one agent." };
+  if (!session) return { ok: false, output: MESSAGES.en.server.loginExpired };
+  if (!clientIds.length) return { ok: false, output: MESSAGES.en.server.selectAtLeastOne };
+
+  const locale: Locale = session.region === "fr" ? "fr" : "en";
+  const s = MESSAGES[locale].server;
 
   const detected = await detectClients();
   const selected = detected.filter((client) => clientIds.includes(client.id));
-  if (!selected.length) return { ok: false, output: "No selected agents were detected on this machine." };
+  if (!selected.length) return { ok: false, output: s.noSelectedDetected };
 
   const includeWrite = body.includeWrite !== false;
   const telemetryEnabled = body.telemetryEnabled !== false;
@@ -211,13 +453,13 @@ export async function install(body: InstallRequest): Promise<{ ok: boolean; outp
   for (const client of selected) results.push(await installInto(client, session, includeWrite, telemetryEnabled));
 
   const output = [
-    `Logged in to ${session.region.toUpperCase()} backend.`,
-    `Settings: write tools ${includeWrite ? "on" : "off"}, telemetry ${telemetryEnabled ? "on" : "off"}.`,
+    s.loggedInBackend(session.region),
+    s.settingsLine(includeWrite, telemetryEnabled),
     "",
-    "Install summary:",
+    s.installSummaryHeader,
     ...results.map((result) => `${result.ok ? "OK" : "ERROR"} ${result.label}: ${result.message}`),
     "",
-    "Restart your MCP client(s) to pick up the new server.",
+    s.restartClients,
   ].join("\n");
   return { ok: results.some((result) => result.ok), output: sanitizeOutput(output), results };
 }
@@ -234,6 +476,8 @@ async function streamInstall(url: URL, res: ServerResponse, onDone?: () => void)
   const clientIds = (url.searchParams.get("clients") ?? "").split(",").filter(Boolean);
   const includeWrite = url.searchParams.get("write") !== "0";
   const telemetryEnabled = url.searchParams.get("telemetry") !== "0";
+  const locale = parseLocale(url.searchParams.get("locale"));
+  const s = MESSAGES[locale].server;
   const emit = (level: LogLevel, message: string) => sendSse(res, { level, message: sanitizeOutput(message) });
 
   // abort: recoverable error — close the stream but leave the server running so the user can retry.
@@ -241,28 +485,28 @@ async function streamInstall(url: URL, res: ServerResponse, onDone?: () => void)
   // finish: successful completion — close stream and signal the process to exit.
   const finish = (msg: string) => { emit("done", msg); res.end(); onDone?.(); };
 
-  if (!session) { emit("error", "Login expired. Go back and sign in again."); abort("Install stopped."); return; }
-  if (!clientIds.length) { emit("error", "Select at least one agent."); abort("Install stopped."); return; }
+  if (!session) { emit("error", s.loginExpired); abort(s.installStopped); return; }
+  if (!clientIds.length) { emit("error", s.selectAtLeastOne); abort(s.installStopped); return; }
 
-  emit("info", `Connected to ${session.accountLabel}.`);
-  emit("info", `Write tools ${includeWrite ? "enabled" : "disabled"}; telemetry ${telemetryEnabled ? "enabled" : "disabled"}.`);
-  emit("info", "Refreshing installed-agent detection...");
+  emit("info", s.connectedTo(session.accountLabel));
+  emit("info", s.toolFlags(includeWrite, telemetryEnabled));
+  emit("info", s.refreshingDetection);
 
   const detected = await detectClients();
   const selected = detected.filter((client) => clientIds.includes(client.id));
   const selectedHasOnlyManualSetup = selected.length > 0 && selected.every(isManualSetupClient);
-  if (!selected.length) { emit("error", "No selected agents were detected on this machine."); abort("Install stopped."); return; }
+  if (!selected.length) { emit("error", s.noSelectedDetected); abort(s.installStopped); return; }
 
   let okCount = 0;
   for (const client of selected) {
-    emit("active", isManualSetupClient(client) ? `Preparing ${client.label} manual setup...` : `Installing ${client.label}...`);
+    emit("active", isManualSetupClient(client) ? s.preparingManual(client.label) : s.installing(client.label));
     const result = await installInto(client, session, includeWrite, telemetryEnabled);
     if (result.ok) { okCount += 1; emit("success", `${result.label}: ${result.message}`); }
     else { emit("error", `${result.label}: ${result.message}`); }
   }
 
-  const summary = selectedHasOnlyManualSetup ? "Manual ChatGPT setup instructions ready." : `${okCount}/${selected.length} agent(s) installed, updated, or prepared.`;
-  const closing = selectedHasOnlyManualSetup ? "Follow the manual setup instructions shown above." : "Restart your MCP client(s) to pick up the new server.";
+  const summary = selectedHasOnlyManualSetup ? s.manualReady : s.installedSummary(okCount, selected.length);
+  const closing = selectedHasOnlyManualSetup ? s.followManual : s.restartClients;
   emit(okCount > 0 ? "success" : "error", summary);
   // Only exit the process when at least one install succeeded — all-failed is
   // recoverable and the user should be able to retry in the same wizard.
@@ -277,19 +521,21 @@ async function streamUninstall(url: URL, res: ServerResponse, onDone?: () => voi
   });
 
   const clientIds = (url.searchParams.get("clients") ?? "").split(",").filter(Boolean);
+  const locale = parseLocale(url.searchParams.get("locale"));
+  const s = MESSAGES[locale].server;
   const emit = (level: LogLevel, message: string) => sendSse(res, { level, message });
   const abort = (msg: string) => { emit("done", msg); res.end(); };
   const finish = (msg: string) => { emit("done", msg); res.end(); onDone?.(); };
 
-  if (!clientIds.length) { emit("error", "Select at least one agent."); abort("Uninstall stopped."); return; }
+  if (!clientIds.length) { emit("error", s.selectAtLeastOne); abort(s.uninstallStopped); return; }
 
   const detected = await detectClients();
   const selected = detected.filter((c) => clientIds.includes(c.id));
-  if (!selected.length) { emit("error", "No selected agents were detected on this machine."); abort("Uninstall stopped."); return; }
+  if (!selected.length) { emit("error", s.noSelectedDetected); abort(s.uninstallStopped); return; }
 
   let okCount = 0;
   for (const client of selected) {
-    emit("active", `Removing from ${client.label}...`);
+    emit("active", s.removing(client.label));
     let res2: { ok: boolean; message: string };
     if (client.id === "claude-code") {
       res2 = await uninstallFromClaudeCode();
@@ -306,17 +552,18 @@ async function streamUninstall(url: URL, res: ServerResponse, onDone?: () => voi
     else { emit("error", `${client.label}: ${res2.message}`); }
   }
 
-  emit(okCount > 0 ? "success" : "error", `${okCount}/${selected.length} agent(s) removed.`);
-  finish("Restart your MCP client(s) to complete the removal.");
+  emit(okCount > 0 ? "success" : "error", s.removedSummary(okCount, selected.length));
+  finish(s.completeRemoval);
 }
 
-function pageUninstallHtml(): string {
+export function pageUninstallHtml(locale: Locale = "en"): string {
+  const ui = MESSAGES[locale].uninstaller;
   return `<!doctype html>
-<html lang="en">
+<html lang="${locale}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Leadbay MCP uninstaller</title>
+  <title>${ui.docTitle}</title>
   <style>
     :root { color-scheme: light; --bg:#fff; --card:#fff; --strong:#1d2228; --muted:#9aa0ab; --line:#e7e9ee; --accent:#0d0f0e; --danger:#d14343; --ok:#16a34a; --warn:#b06a00; }
     * { box-sizing:border-box; }
@@ -360,6 +607,7 @@ function pageUninstallHtml(): string {
     .result-note { font-size:12.5px; color:var(--muted); text-align:center; margin-top:-6px; }
     @keyframes draw { to { stroke-dashoffset:0; } }
     @keyframes pop { 0%{transform:scale(.5);opacity:0;} 60%{transform:scale(1.06);} 100%{transform:scale(1);opacity:1;} }
+    .version { text-align:center; color:var(--muted); font-size:11px; margin:14px 0 0; letter-spacing:.02em; }
     @media (max-width:520px) { .actions{flex-direction:column;} button{width:100%;} }
   </style>
 </head>
@@ -367,8 +615,8 @@ function pageUninstallHtml(): string {
   <main>
     <div class="steps"><div class="dot active" id="dot-1"></div><div class="dot" id="dot-2"></div></div>
     <div class="card">
-      <h1 id="title">Remove Leadbay MCP</h1>
-      <p class="sub" id="sub">Select the agents to remove Leadbay MCP from.</p>
+      <h1 id="title">${ui.steps[1].title}</h1>
+      <p class="sub" id="sub">${ui.steps[1].sub}</p>
 
       <section id="step-1">
         <div class="spinner" id="spinner"></div>
@@ -386,18 +634,18 @@ function pageUninstallHtml(): string {
       </section>
 
       <div class="actions">
-        <button id="back" class="ghost hidden">Back</button>
-        <button id="refresh">Refresh</button>
-        <button class="danger" id="next">Remove selected</button>
+        <button id="back" class="ghost hidden">${ui.btnBack}</button>
+        <button id="refresh">${ui.btnRefresh}</button>
+        <button class="danger" id="next">${ui.btnRemove}</button>
       </div>
     </div>
+    <p class="version">v${VERSION}</p>
   </main>
   <script>
+    const LOCALE = "${locale}";
+    const T = ${JSON.stringify(ui)};
     const $ = (id) => document.getElementById(id);
-    const STEPS = {
-      1: { title: "Remove Leadbay MCP", sub: "Select the agents to remove Leadbay MCP from." },
-      2: { title: "Removing", sub: "Keep this window open until it's done." },
-    };
+    const STEPS = T.steps;
     const CHECK = "M20 33 l8 8 l16 -18";
     const CROSS = "M22 22 l20 20 M42 22 l-20 20";
     let step = 1;
@@ -409,18 +657,18 @@ function pageUninstallHtml(): string {
     function showResult(ok, msg) {
       $("sub").classList.add("hidden");
       $("result-msg").textContent = msg;
-      $("result-note").textContent = ok ? "You can close this window." : "";
+      $("result-note").textContent = ok ? T.closeWindow : "";
       $("ring-mark").setAttribute("d", ok ? CHECK : CROSS);
       const ring = $("ring"); ring.classList.remove("ok", "err"); void ring.getBoundingClientRect();
       ring.classList.add(ok ? "ok" : "err");
       $("result").classList.toggle("err", !ok);
       $("result").classList.remove("hidden");
-      $("title").textContent = ok ? "All set" : "Something went wrong";
+      $("title").textContent = ok ? T.allSet : T.somethingWrong;
       ["next", "back", "refresh"].forEach((id) => $(id).classList.add("hidden"));
     }
-    function renderAgents() { $("spinner").classList.add("hidden"); const root = $("agents"); if (!clients.length) { root.innerHTML = '<div class="sub">No Leadbay MCP installation detected on this machine.</div>'; return; } root.innerHTML = clients.map((c) => '<label class="agent"><input type="checkbox" data-client="' + esc(c.id) + '" checked /><span><strong>' + esc(c.label) + '</strong><span class="detail">' + esc(c.detail) + '</span></span></label>').join(""); }
-    async function refresh() { $("spinner").classList.remove("hidden"); $("agents").innerHTML = ""; const res = await fetch("/api/status"); const data = await res.json(); clients = (data.clients || []).filter((c) => c.configured); renderAgents(); if (!clients.length) say("No Leadbay MCP installation detected on this machine."); }
-    async function doUninstall() { const selected = [...document.querySelectorAll("[data-client]:checked")].map((el) => el.dataset.client); if (!selected.length) return say("Select at least one agent.", true); setStep(2); let okCount = 0, lastError = ""; const params = new URLSearchParams({ clients: selected.join(",") }); const events = new EventSource("/api/uninstall-stream?" + params.toString()); events.onmessage = (event) => { const data = JSON.parse(event.data); if (data.level === "error") lastError = data.message; if (data.level === "success") okCount += 1; if (data.level === "done") { events.close(); const ok = okCount > 0 && !lastError; showResult(ok, ok ? "MCP successfully removed" : (lastError || "No agents were removed.")); } else { say(data.message, data.level === "error"); } }; events.onerror = () => { events.close(); showResult(false, "Uninstall stream disconnected."); }; }
+    function renderAgents() { $("spinner").classList.add("hidden"); const root = $("agents"); if (!clients.length) { root.innerHTML = '<div class="sub">' + esc(T.noInstallDetected) + '</div>'; return; } root.innerHTML = clients.map((c) => '<label class="agent"><input type="checkbox" data-client="' + esc(c.id) + '" checked /><span><strong>' + esc(c.label) + '</strong><span class="detail">' + esc(c.detail) + '</span></span></label>').join(""); }
+    async function refresh() { $("spinner").classList.remove("hidden"); $("agents").innerHTML = ""; const res = await fetch("/api/status"); const data = await res.json(); clients = (data.clients || []).filter((c) => c.configured); renderAgents(); if (!clients.length) say(T.noInstallDetected); }
+    async function doUninstall() { const selected = [...document.querySelectorAll("[data-client]:checked")].map((el) => el.dataset.client); if (!selected.length) return say(T.selectAtLeastOne, true); setStep(2); let okCount = 0, lastError = ""; const params = new URLSearchParams({ clients: selected.join(","), locale: LOCALE }); const events = new EventSource("/api/uninstall-stream?" + params.toString()); events.onmessage = (event) => { const data = JSON.parse(event.data); if (data.level === "error") lastError = data.message; if (data.level === "success") okCount += 1; if (data.level === "done") { events.close(); const ok = okCount > 0 && !lastError; showResult(ok, ok ? T.successRemoved : (lastError || T.noneRemoved)); } else { say(data.message, data.level === "error"); } }; events.onerror = () => { events.close(); showResult(false, T.streamDisconnected); }; }
     $("back").addEventListener("click", () => setStep(1));
     $("refresh").addEventListener("click", refresh);
     $("next").addEventListener("click", doUninstall);
@@ -430,13 +678,14 @@ function pageUninstallHtml(): string {
 </html>`;
 }
 
-function pageHtml(): string {
+export function pageHtml(locale: Locale = "en"): string {
+  const ui = MESSAGES[locale].installer;
   return `<!doctype html>
-<html lang="en">
+<html lang="${locale}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Leadbay MCP installer</title>
+  <title>${ui.docTitle}</title>
   <style>
     :root { color-scheme: light; --bg:#fff; --card:#fff; --strong:#1d2228; --muted:#9aa0ab; --line:#e7e9ee; --accent:#0d0f0e; --cancel-line:#f0c8b8; --danger:#d14343; --ok:#16a34a; --warn:#b06a00; }
     * { box-sizing:border-box; }
@@ -484,6 +733,7 @@ function pageHtml(): string {
     .result-note { font-size:12.5px; color:var(--muted); text-align:center; margin-top:-6px; }
     @keyframes draw { to { stroke-dashoffset:0; } }
     @keyframes pop { 0%{transform:scale(.5);opacity:0;} 60%{transform:scale(1.06);} 100%{transform:scale(1);opacity:1;} }
+    .version { text-align:center; color:var(--muted); font-size:11px; margin:14px 0 0; letter-spacing:.02em; }
     @media (max-width:520px) { .actions{flex-direction:column;} button{width:100%;} }
   </style>
 </head>
@@ -491,8 +741,8 @@ function pageHtml(): string {
   <main>
     <div class="steps"><div class="dot active" id="dot-1"></div><div class="dot" id="dot-2"></div><div class="dot" id="dot-3"></div></div>
     <div class="card">
-      <h1 id="title">Connect Leadbay</h1>
-      <p class="sub" id="sub">Sign in to install Leadbay across your AI agents.</p>
+      <h1 id="title">${ui.steps[1].title}</h1>
+      <p class="sub" id="sub">${ui.steps[1].sub}</p>
 
       <section id="step-2" class="hidden">
         <div class="spinner" id="spinner"></div>
@@ -510,19 +760,18 @@ function pageHtml(): string {
       </section>
 
       <div class="actions">
-        <button id="back" class="cancel hidden">Back</button>
-        <button id="refresh" class="ghost hidden">Refresh</button>
-        <button class="primary" id="next">Sign in with Leadbay</button>
+        <button id="back" class="cancel hidden">${ui.btnBack}</button>
+        <button id="refresh" class="ghost hidden">${ui.btnRefresh}</button>
+        <button class="primary" id="next">${ui.btnSignIn}</button>
       </div>
     </div>
+    <p class="version">v${VERSION}</p>
   </main>
   <script>
+    const LOCALE = "${locale}";
+    const T = ${JSON.stringify(ui)};
     const $ = (id) => document.getElementById(id);
-    const STEPS = {
-      1: { title: "Connect Leadbay", sub: "Sign in to install Leadbay across your AI agents." },
-      2: { title: "Choose your agents", sub: "Pick where to install Leadbay." },
-      3: { title: "Installing", sub: "Keep this window open until it's done." },
-    };
+    const STEPS = T.steps;
     const CHECK = "M20 33 l8 8 l16 -18";
     const CROSS = "M22 22 l20 20 M42 22 l-20 20";
     let step = 1;
@@ -540,30 +789,30 @@ function pageHtml(): string {
       $("back").classList.toggle("hidden", step !== 2);
       $("refresh").classList.toggle("hidden", step !== 2);
       $("next").classList.toggle("hidden", step === 3);
-      $("next").textContent = step === 2 ? "Install" : "Sign in with Leadbay";
+      $("next").textContent = step === 2 ? T.btnInstall : T.btnSignIn;
     }
     // Final completion state: animated green check / red cross + message.
     function showResult(ok, msg) {
       $("sub").classList.add("hidden");
       $("result-msg").textContent = msg;
-      $("result-note").textContent = ok ? "You can close this window." : "";
+      $("result-note").textContent = ok ? T.closeWindow : "";
       $("ring-mark").setAttribute("d", ok ? CHECK : CROSS);
       const ring = $("ring"); ring.classList.remove("ok", "err"); void ring.getBoundingClientRect();
       ring.classList.add(ok ? "ok" : "err");
       $("result").classList.toggle("err", !ok);
       $("result").classList.remove("hidden");
-      $("title").textContent = ok ? "All set" : "Something went wrong";
+      $("title").textContent = ok ? T.allSet : T.somethingWrong;
       ["next", "back", "refresh"].forEach((id) => $(id).classList.add("hidden"));
     }
-    function renderAgents() { $("spinner").classList.add("hidden"); const root = $("agents"); if (!clients.length) { root.innerHTML = '<div class="sub">No supported MCP client detected on this machine.</div>'; return; } root.innerHTML = clients.map((client) => { const manual = client.id === "chatgpt-desktop"; const badgeText = manual ? "manual" : client.configured ? "update" : "install"; const badgeClass = manual ? "badge-update" : client.configured ? "badge-update" : "badge-install"; return '<label class="agent"><input type="checkbox" data-client="' + esc(client.id) + '" checked /><span><strong>' + esc(client.label) + ' <span class="badge-pill ' + badgeClass + '">' + badgeText + '</span></strong><span class="detail">' + esc(client.detail) + '</span></span></label>'; }).join(""); }
-    async function refresh() { $("spinner").classList.remove("hidden"); $("agents").innerHTML = ""; const res = await fetch("/api/status"); const data = await res.json(); clients = data.clients || []; renderAgents(); if (!clients.length) say("No supported agents detected."); }
-    async function doLogin() { $("next").disabled = true; say("Opening Leadbay sign-in in your browser..."); try { const res = await fetch("/api/oauth-login", { method:"POST" }); const data = await res.json(); if (!data.ok) return say(data.error || "OAuth login failed.", true); sessionId = data.sessionId; setStep(2); await refresh(); } finally { $("next").disabled = false; } }
+    function renderAgents() { $("spinner").classList.add("hidden"); const root = $("agents"); if (!clients.length) { root.innerHTML = '<div class="sub">' + esc(T.noClientsDetected) + '</div>'; return; } root.innerHTML = clients.map((client) => { const manual = client.id === "chatgpt-desktop"; const badgeText = manual ? T.badgeManual : client.configured ? T.badgeUpdate : T.badgeInstall; const badgeClass = manual ? "badge-update" : client.configured ? "badge-update" : "badge-install"; return '<label class="agent"><input type="checkbox" data-client="' + esc(client.id) + '" checked /><span><strong>' + esc(client.label) + ' <span class="badge-pill ' + badgeClass + '">' + esc(badgeText) + '</span></strong><span class="detail">' + esc(client.detail) + '</span></span></label>'; }).join(""); }
+    async function refresh() { $("spinner").classList.remove("hidden"); $("agents").innerHTML = ""; const res = await fetch("/api/status"); const data = await res.json(); clients = data.clients || []; renderAgents(); if (!clients.length) say(T.noAgentsDetected); }
+    async function doLogin() { $("next").disabled = true; say(T.openingSignIn); try { const res = await fetch("/api/oauth-login", { method:"POST" }); const data = await res.json(); if (!data.ok) return say(data.error || T.oauthFailed, true); sessionId = data.sessionId; setStep(2); await refresh(); } finally { $("next").disabled = false; } }
     async function install() {
       const selected = [...document.querySelectorAll("[data-client]:checked")].map((el) => el.dataset.client);
-      if (!selected.length) return say("Select at least one agent.", true);
+      if (!selected.length) return say(T.selectAtLeastOne, true);
       setStep(3);
       let okCount = 0, lastError = "";
-      const params = new URLSearchParams({ sessionId, clients: selected.join(","), write: "1", telemetry: "1" });
+      const params = new URLSearchParams({ sessionId, clients: selected.join(","), write: "1", telemetry: "1", locale: LOCALE });
       const events = new EventSource("/api/install-stream?" + params.toString());
       events.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -572,12 +821,12 @@ function pageHtml(): string {
         if (data.level === "done") {
           events.close();
           const ok = okCount > 0 && !lastError;
-          showResult(ok, ok ? "MCP successfully installed" : (lastError || "No agents were installed."));
+          showResult(ok, ok ? T.successInstalled : (lastError || T.noneInstalled));
         } else {
           say(data.message, data.level === "error");
         }
       };
-      events.onerror = () => { events.close(); showResult(false, "Install stream disconnected."); };
+      events.onerror = () => { events.close(); showResult(false, T.streamDisconnected); };
     }
     $("back").addEventListener("click", () => setStep(1));
     $("refresh").addEventListener("click", refresh);
@@ -628,7 +877,7 @@ async function openBrowser(url: string): Promise<void> {
 
 function makeGuiServer(
   options: InstallerGuiOptions,
-  pageContent: () => string,
+  pageContent: () => string | Promise<string>,
   extraRoutes: (req: import("node:http").IncomingMessage, res: ServerResponse, onDone: () => void) => Promise<boolean>,
   logLabel: string
 ): Promise<InstallerGuiHandle> {
@@ -642,7 +891,7 @@ function makeGuiServer(
     if (!isAllowedOrigin(req, expectedHost)) { sendJson(res, 403, { ok: false, error: "forbidden" }); return; }
     try {
       if (req.method === "GET" && req.url === "/") {
-        const raw = pageContent();
+        const raw = await pageContent();
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "content-length": Buffer.byteLength(raw) });
         res.end(raw);
         return;
@@ -670,7 +919,7 @@ function makeGuiServer(
 }
 
 export function startInstallerGui(options: InstallerGuiOptions = {}): Promise<InstallerGuiHandle> {
-  return makeGuiServer(options, pageHtml, async (req, res, onDone) => {
+  return makeGuiServer(options, async () => pageHtml(await detectLocale()), async (req, res, onDone) => {
     if (req.method === "GET" && req.url === "/api/status") {
       sendJson(res, 200, { os: formatInstallOsLabel(), hostedMcpUrl: HOSTED_MCP_URL, clients: await clientsWithConfiguredStatus() });
       return true;
@@ -686,7 +935,7 @@ export function startInstallerGui(options: InstallerGuiOptions = {}): Promise<In
 }
 
 export function startUninstallerGui(options: InstallerGuiOptions = {}): Promise<InstallerGuiHandle> {
-  return makeGuiServer(options, pageUninstallHtml, async (req, res, onDone) => {
+  return makeGuiServer(options, async () => pageUninstallHtml(await detectLocale()), async (req, res, onDone) => {
     if (req.method === "GET" && req.url === "/api/status") {
       sendJson(res, 200, { os: formatInstallOsLabel(), clients: await clientsWithConfiguredStatus() });
       return true;
