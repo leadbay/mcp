@@ -1,5 +1,11 @@
 # Changelog — @leadbay/mcp
 
+## 0.23.6 — 2026-06-25
+
+Geographic filter on Discover lenses (product#3759).
+
+- **`leadbay_new_lens` / `leadbay_adjust_audience`** now accept `locations` / `exclude_locations` — a geographic dimension on the Discover lens, mirroring the sector path. Free text (`["Indre-et-Loire"]`, `["Texas"]`) auto-resolves via `/geo/search`, or pass admin-area ids directly. Resolution happens first: ambiguous/unresolved text returns `ambiguous_locations` and the lens is **not** mutated (no half-built lens). Resolved ids merge into the lens filter as a `location_ids` criterion. Unblocks the "scope a territory → net-new accounts there" cockpit workflow — geography was previously settable only on the Monitor side.
+
 ## 0.23.3 — 2026-06-24
 
 - **Release plumbing only** — no functional change. First release on the updated CI that also publishes fixed-name `leadbay-latest.dxt` / `.mcpb` assets, so the docs can link a stable `…/releases/latest/download/leadbay-latest.dxt` that always resolves to the current version.
