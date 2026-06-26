@@ -1,5 +1,12 @@
 # Changelog — @leadbay/mcp
 
+## 0.23.8 — 2026-06-26
+
+Installer no longer hangs in Claude Cowork / headless terminals (product#3805).
+
+- **`installer`** — the guided installer awaited a detached browser-opener that resolved only on the child's `close` event, which a detached process often never emits; with no overall timeout the process dangled until the host (Claude Cowork) killed it ("running… then timeout", intermittently). It now reuses the hardened `openInBrowser` (resolves on `spawn`, not `close`), no longer blocks GUI startup on the browser open, and bounds the run with a watchdog that exits cleanly with hosted-MCP instructions instead of hanging. The installer always tries to open the browser — it never guesses "headless" and refuses to start.
+- **Docs** — README documents adding Leadbay on **Claude web / Cowork web** as a custom Connector (`Customize → Connectors → Add custom connector`, URL `https://leadbay-mcp-prod.fly.dev/mcp`; OAuth runs in-app), and the `claude mcp add --transport http` equivalent. Stale `@0.16` install snippets corrected to `@latest`.
+
 ## 0.23.7 — 2026-06-25
 
 Field-sales tour always renders the map (product#3779).

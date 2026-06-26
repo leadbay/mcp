@@ -59,16 +59,27 @@ On Linux, use the terminal-only path instead (no desktop installer window):
 npx -y @leadbay/mcp@latest install --oauth
 ```
 
-**In Claude Cowork or any headless / no-browser terminal**, the guided
-`installer` can't open a browser, so it detects that and prints a copy-paste
-command instead of hanging. Add Leadbay's hosted MCP — Claude handles sign-in
-in-app, no localhost callback needed:
+### Claude web / Cowork on the web (no terminal)
+
+On the web there's no terminal, so `npx … installer` doesn't apply — add
+Leadbay as a **custom Connector** instead. Claude connects to the hosted MCP
+from Anthropic's cloud and runs the OAuth sign-in in-app (no localhost
+callback, no client id/secret to fill in):
+
+1. **Customize → Connectors → "+" → Add custom connector**
+2. **Name:** `Leadbay`  ·  **URL:** `https://leadbay-mcp-prod.fly.dev/mcp`
+3. **Add**, then complete the Leadbay sign-in prompt.
+
+The same hosted URL works from a terminal that has the Claude Code CLI:
 
 ```bash
 claude mcp add --transport http leadbay https://leadbay-mcp-prod.fly.dev/mcp
 ```
 
-Or run the terminal install flow above (`install --oauth`).
+In **Claude Cowork with a terminal**, the guided `installer` works as usual —
+it opens your browser for sign-in and configures the detected clients. If the
+browser never opens, the installer no longer hangs: it exits after a short
+watchdog with the Connector / `claude mcp add` instructions above.
 
 From a repo checkout, run the same native installer with:
 

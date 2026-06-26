@@ -6,56 +6,26 @@ import { homedir } from "node:os";
 export const HOSTED_MCP_URL = "https://leadbay-mcp-prod.fly.dev/mcp";
 
 /**
- * Decide, conservatively, whether the guided GUI installer can ever open a
- * browser in this environment. When it can't (Claude Cowork and other headless
- * chat-agent sandboxes), the GUI server would dangle on a localhost callback no
- * external browser can reach — the user sees "running…" then a host timeout
- * (issue #3805). Detecting this up front lets the entrypoint short-circuit to a
- * copy-paste hosted-MCP command instead of hanging.
- *
- * Only return `headless: true` when we're confident — a real desktop must still
- * get the GUI. Signals (no new deps): an explicit `--no-open`, a `CI` env, or a
- * Linux box with no X11/Wayland display AND no interactive TTY. We require BOTH
- * "no display" and "no TTY" on Linux so a normal Linux desktop run (which has a
- * display) is never misclassified.
- */
-export function detectNoBrowserEnv(
-  argv: string[] = process.argv.slice(2),
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-  stdinIsTTY: boolean = process.stdin.isTTY === true
-): { headless: boolean; reason: string } {
-  if (argv.includes("--no-open")) {
-    return { headless: true, reason: "--no-open passed" };
-  }
-  if (env.CI) {
-    return { headless: true, reason: "CI environment" };
-  }
-  // macOS / Windows always have a window server when a user is logged in; we
-  // can't reliably probe it from here, so trust the desktop path.
-  if (platform === "linux") {
-    const hasDisplay = Boolean(env.DISPLAY) || Boolean(env.WAYLAND_DISPLAY);
-    if (!hasDisplay && !stdinIsTTY) {
-      return { headless: true, reason: "Linux with no DISPLAY/WAYLAND_DISPLAY and no TTY" };
-    }
-  }
-  return { headless: false, reason: "" };
-}
-
-/**
- * Print the one actionable fallback block for headless / no-browser runs: add
- * Leadbay's hosted HTTP MCP (Claude does OAuth in-app — no localhost callback),
- * or run the terminal install flow. Shared by the headless short-circuit and the
- * watchdog so both surface identical guidance.
+ * Print the actionable fallback block. The guided installer ALWAYS tries to
+ * open a browser; this is only printed by the entrypoint watchdog (#3805) when
+ * nothing ever opened, so the user isn't left staring at a hang. It covers the
+ * two no-local-browser paths to Leadbay's hosted HTTP MCP (Claude does OAuth
+ * in-app — no localhost callback):
+ *   - Claude web / Cowork web: add it as a custom Connector in the UI.
+ *   - A terminal with the `claude` CLI: one `claude mcp add` command.
  */
 export function printHostedMcpHelp(write: (s: string) => void = (s) => process.stderr.write(s)): void {
   write(
-    "\nNo browser/display detected (e.g. Claude Cowork or a headless sandbox).\n" +
-      "The guided installer needs a browser. Instead, add Leadbay's hosted MCP —\n" +
-      "Claude handles sign-in in-app, no localhost callback:\n\n" +
-      `  claude mcp add --transport http leadbay ${HOSTED_MCP_URL}\n\n` +
-      "Or run the terminal install flow:\n\n" +
-      "  npx -y @leadbay/mcp@latest install --oauth\n\n"
+    "\nThe guided installer couldn't complete (no browser opened in time).\n" +
+      "You can add Leadbay's hosted MCP directly — Claude signs in in-app,\n" +
+      "no localhost callback needed:\n\n" +
+      "  • Claude web / Cowork web:\n" +
+      "      Customize → Connectors → \"+\" → Add custom connector\n" +
+      `      Name: Leadbay   URL: ${HOSTED_MCP_URL}\n\n` +
+      "  • A terminal with the Claude Code CLI:\n" +
+      `      claude mcp add --transport http leadbay ${HOSTED_MCP_URL}\n\n` +
+      "  • Or re-run the terminal install flow:\n" +
+      "      npx -y @leadbay/mcp@latest install --oauth\n\n"
   );
 }
 

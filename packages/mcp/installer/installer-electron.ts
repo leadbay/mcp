@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { detectNoBrowserEnv, printHostedMcpHelp } from "./install-shared.js";
+import { printHostedMcpHelp } from "./install-shared.js";
 import type { InstallerGuiHandle } from "./installer-gui.js";
 
 // Overall ceiling on a guided GUI run. Long enough for a human to finish OAuth
@@ -44,16 +44,10 @@ export async function runInstallerLoop(
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
-  // Short-circuit obvious headless / no-browser environments (Claude Cowork and
-  // similar chat-agent sandboxes). Starting the GUI there only dangles on a
-  // localhost callback no external browser can reach. Print the hosted-MCP
-  // fallback and exit cleanly instead.
-  const { headless } = detectNoBrowserEnv(args);
-  if (headless) {
-    printHostedMcpHelp();
-    return;
-  }
-
+  // Always try to launch the GUI + open the browser — the installer does the
+  // whole job once a browser is up, and a chat-agent terminal (Claude Cowork)
+  // can often open one. We do NOT guess "headless" and refuse to start: the
+  // watchdog below is the safety net for the case where nothing ever opens.
   const { startInstallerGui, startUninstallerGui } = await import("./installer-gui.js");
   const opts = { openBrowser: !args.includes("--no-open") };
   const handle = args.includes("--uninstall")
