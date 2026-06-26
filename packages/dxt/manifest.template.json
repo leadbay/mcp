@@ -19,6 +19,7 @@
     "url": "https://github.com/leadbay/leadclaw"
   },
   "license": "MIT",
+  "privacy_policies": ["https://leadbay.ai/privacy"],
   "keywords": [
     "leadbay",
     "mcp",

@@ -223,6 +223,14 @@ leadbay_import_leads → leadbay_bulk_qualify_leads                             
 - Node.js 22+
 - A [Leadbay account](https://wow.leadbay.ai/?register=true)
 
+## Privacy Policy
+
+The Leadbay MCP server accesses your Leadbay account data (leads, contacts,
+campaigns, notes) on your behalf through the Leadbay API, using a token you
+authorize via OAuth. It does not read your conversation history, Claude memory,
+or local files. Data handling is governed by the Leadbay privacy policy:
+**https://leadbay.ai/privacy**.
+
 ## Building from source
 
 ```bash
