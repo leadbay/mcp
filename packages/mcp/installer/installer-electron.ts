@@ -3,10 +3,11 @@ import { fileURLToPath } from "node:url";
 import { printHostedMcpHelp } from "./install-shared.js";
 import type { InstallerGuiHandle } from "./installer-gui.js";
 
-// Overall ceiling on a guided GUI run. Long enough for a human to finish OAuth
-// + client selection once the browser opened; short enough to beat a chat-agent
-// host's own command timeout (Claude Cowork) with a clean, actionable message
-// instead of a silent hang (#3805).
+// Startup grace period before any browser connects to the GUI. It is DISARMED
+// the moment a browser actually reaches the GUI (handle.activity), so it only
+// ever fires in the no-browser case (#3805) — beating the chat-agent host's own
+// command timeout (Claude Cowork) with a clean, actionable message instead of a
+// silent hang. An active install keeps the full OAuth window (5 min in oauth.ts).
 export const WATCHDOG_MS = 120_000;
 
 export interface InstallerLoopResult {
@@ -15,15 +16,18 @@ export interface InstallerLoopResult {
 }
 
 /**
- * Race the GUI's done signal against an interrupt and an optional overall
- * watchdog. The watchdog only makes sense for the INSTALL flow: without it, a
- * headless run whose OAuth/browser GUI nobody can reach dangles forever until
- * the host kills it ("timeout" in Claude), and the watchdog turns that into a
- * clean exit with the hosted-MCP fallback guidance.
+ * Race the GUI's done signal against an interrupt and an optional STARTUP
+ * watchdog. The watchdog is a grace period that only fires when NOTHING ever
+ * connects to the GUI — the no-browser case (#3805) where the run would
+ * otherwise dangle until the host (Claude Cowork) kills it.
  *
- * Pass `watchdogMs = null` to disable it — the UNINSTALL flow has no
- * OAuth/browser step and legitimately waits for the user to review and select
- * clients to remove, so it must stay open until the user finishes or interrupts.
+ * Crucially it is DISARMED the moment `handle.activity` resolves (a browser
+ * actually loaded the GUI). After that the loop waits indefinitely for `done`
+ * or an interrupt, so a slow-but-active OAuth/MFA install — the existing flow
+ * already allows 5 minutes — is never cut off by this 2-minute ceiling.
+ *
+ * Pass `watchdogMs = null` to disable it entirely (the UNINSTALL flow has no
+ * browser step and legitimately waits for the user to select clients).
  */
 export async function runInstallerLoop(
   handle: InstallerGuiHandle,
@@ -42,6 +46,9 @@ export async function runInstallerLoop(
       racers.push(
         new Promise<InstallerLoopResult>((resolve) => {
           timer = setTimeout(() => resolve({ outcome: "timeout" }), watchdogMs);
+          // Disarm as soon as a browser reaches the GUI — from then on this is
+          // an active install and must get the full OAuth window, not a 2-min cap.
+          handle.activity.then(() => { if (timer) clearTimeout(timer); }).catch(() => undefined);
         })
       );
     }

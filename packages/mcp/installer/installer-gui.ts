@@ -303,7 +303,13 @@ async function clientsWithConfiguredStatus(): Promise<Array<DetectedClient & { c
     }))
   );
 }
-export type InstallerGuiHandle = { url: string; close: () => Promise<void>; done: Promise<void> };
+export type InstallerGuiHandle = {
+  url: string;
+  close: () => Promise<void>;
+  done: Promise<void>;
+  /** Resolves on the first allowed GUI request — proof a browser reached us. */
+  activity: Promise<void>;
+};
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   const raw = JSON.stringify(body);
@@ -859,8 +865,17 @@ function makeGuiServer(
   // Give the browser 1.5 s to render the final message before we kill the server.
   const onDone = () => setTimeout(() => { resolveDone(); }, 1500);
 
+  // Fires on the first allowed request — i.e. a browser actually loaded the
+  // GUI, proving one is reachable. The entrypoint uses this to DISARM the
+  // startup watchdog so a slow-but-active OAuth/MFA install (the existing flow
+  // allows 5 min) is never cut off; the watchdog only guards the no-browser
+  // case (#3805) where nothing ever connects.
+  let resolveActivity!: () => void;
+  const activity = new Promise<void>((r) => { resolveActivity = r; });
+
   const server = createServer(async (req, res) => {
     if (!isAllowedOrigin(req, expectedHost)) { sendJson(res, 403, { ok: false, error: "forbidden" }); return; }
+    resolveActivity();
     try {
       if (req.method === "GET" && req.url === "/") {
         const raw = await pageContent();
@@ -895,7 +910,7 @@ function makeGuiServer(
           process.stderr.write(`\n  Open this URL in your browser to continue:\n  ${url}\n\n`);
         });
       }
-      resolve({ url, done, close: () => new Promise((res, rej) => server.close((e) => e ? rej(e) : res())) });
+      resolve({ url, done, activity, close: () => new Promise((res, rej) => server.close((e) => e ? rej(e) : res())) });
     });
   });
 }
