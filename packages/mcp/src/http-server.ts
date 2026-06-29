@@ -110,6 +110,47 @@ function applyCors(c: Context): void {
   c.header("Access-Control-Expose-Headers", "WWW-Authenticate");
 }
 
+// ── Origin validation (DNS-rebinding defense, MCP HTTP transport spec) ───────
+//
+// A malicious web page can POST to a local/remote MCP endpoint from the user's
+// browser; the MCP spec requires servers to validate the `Origin` header to
+// reject those. We allowlist the connector hosts that legitimately drive this
+// server from a browser context (Claude web/desktop, ChatGPT) plus any extra
+// origins an operator pins via LEADBAY_MCP_ALLOWED_ORIGINS (comma-separated).
+//
+// `Origin` is a browser-only header: native MCP clients (Claude Desktop's MCP
+// runtime, Codex, curl, server-to-server) send NO Origin, and rejecting its
+// absence would break every non-browser caller. So the rule is: absent Origin →
+// allow; present-and-allowlisted → allow; present-and-foreign → 403. Discovery
+// (PRM) and OPTIONS stay world-open (`*`) — PRM must be world-readable per RFC
+// 9728 and a 403 there would break the sign-in handshake.
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://claude.ai",
+  "https://claude.com",
+  "https://chatgpt.com",
+];
+
+function allowedOrigins(): Set<string> {
+  const extra = (process.env.LEADBAY_MCP_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return new Set([...DEFAULT_ALLOWED_ORIGINS, ...extra]);
+}
+
+// Returns a 403 Response if the request carries a present, non-allowlisted
+// Origin; otherwise null (caller proceeds). The server's own origin is always
+// allowed so same-origin browser fetches and self-probes work.
+function rejectForeignOrigin(c: Context): Response | null {
+  const origin = c.req.header("origin");
+  if (!origin) return null; // non-browser caller — no Origin to validate
+  const allowed = allowedOrigins();
+  allowed.add(requestOrigin(c)); // same-origin requests
+  if (allowed.has(origin)) return null;
+  applyCors(c);
+  return c.json({ error: "forbidden origin" }, 403);
+}
+
 // RFC 9728 Protected Resource Metadata. Served unauthenticated with permissive
 // CORS so the desktop client can fetch it during discovery.
 function servePrm(c: Context, resourcePath: string): Response {
@@ -185,6 +226,9 @@ async function handleStreamable(
   c: Context,
   resourcePath: "/mcp" | "/fr/mcp"
 ): Promise<Response> {
+  const foreign = rejectForeignOrigin(c);
+  if (foreign) return foreign;
+
   const token = extractBearer(c.req.header("authorization"));
 
   // Auto-probe (no region pin) so a missing OR invalid/expired token both yield
@@ -252,6 +296,9 @@ app.all("/fr/mcp", (c) => handleStreamable(c, "/fr/mcp"));
 // Legacy SSE transport. Two endpoints: GET /sse opens the stream, POST
 // /messages?sessionId=... feeds JSON-RPC messages in.
 async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<Response> {
+  const foreign = rejectForeignOrigin(c);
+  if (foreign) return foreign;
+
   const token = extractBearer(c.req.header("authorization"));
 
   const resolved = await resolveClientFromToken(token);
@@ -281,6 +328,9 @@ app.get("/sse", (c) => handleSse(c, "/sse"));
 app.get("/fr/sse", (c) => handleSse(c, "/fr/sse"));
 
 app.post("/messages", async (c) => {
+  const foreign = rejectForeignOrigin(c);
+  if (foreign) return foreign;
+
   const sessionId = c.req.query("sessionId");
   if (!sessionId) {
     return c.json({ error: "missing sessionId" }, 400);
