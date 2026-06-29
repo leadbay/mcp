@@ -86,3 +86,17 @@ jobs:
             -f package=${{ matrix.package }} \
             -f dry_run=false
           echo "Dispatched release.yml for ${{ steps.ver.outputs.tag }}."
+
+      # Same GITHUB_TOKEN anti-loop suppression applies to build-image.yml — the
+      # tag push above won't fire it on its own. Dispatch it explicitly so the
+      # MCP container image is built for every auto-tagged release, in lock-step
+      # with the npm publish.
+      - name: Trigger build-image.yml
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh workflow run build-image.yml \
+            --ref "refs/tags/${{ steps.ver.outputs.tag }}"
+          echo "Dispatched build-image.yml for ${{ steps.ver.outputs.tag }}."
