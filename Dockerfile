@@ -5,7 +5,7 @@
 #   + mcp, then copy only the bundled dist/ + production deps into the runner.
 # Stage 2 (runner):  Node 22 slim, runs `dist/http-server.js` on $PORT.
 #
-# Build context = repo root (the leadclaw monorepo).
+# Build context = repo root (the mcp monorepo).
 # Build:  docker build -t leadbay-mcp .
 # Run:    docker run --rm -p 8080:8080 leadbay-mcp
 

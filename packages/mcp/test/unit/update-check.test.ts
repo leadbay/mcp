@@ -193,7 +193,7 @@ describe("checkForUpdate — 200 OK newer release", () => {
         etag: 'W/"new-etag"',
         body: {
           tag_name: "mcp-v0.10.2",
-          html_url: "https://github.com/leadbay/leadclaw/releases/tag/mcp-v0.10.2",
+          html_url: "https://github.com/leadbay/mcp/releases/tag/mcp-v0.10.2",
           assets: [
             { name: "leadbay-0.10.2.dxt", browser_download_url: "https://gh.example/0.10.2.dxt" },
             { name: "leadbay-0.10.2.mcpb", browser_download_url: "https://gh.example/0.10.2.mcpb" },
@@ -214,7 +214,7 @@ describe("checkForUpdate — 200 OK newer release", () => {
       latest_version: "0.10.2",
       // .dxt preferred over .mcpb when both assets are published.
       install_url: "https://gh.example/0.10.2.dxt",
-      release_url: "https://github.com/leadbay/leadclaw/releases/tag/mcp-v0.10.2",
+      release_url: "https://github.com/leadbay/mcp/releases/tag/mcp-v0.10.2",
     });
     const s = await store.read();
     expect(s.latest_known_version).toBe("0.10.2");

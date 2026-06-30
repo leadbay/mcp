@@ -38,10 +38,10 @@ const BASE = "https://api-us.leadbay.app";
 const CURRENT = "0.19.2";
 const LATEST = "0.20.0";
 const DXT_URL =
-  "https://github.com/leadbay/leadclaw/releases/download/mcp-v0.20.0/leadbay-0.20.0.dxt";
+  "https://github.com/leadbay/mcp/releases/download/mcp-v0.20.0/leadbay-0.20.0.dxt";
 const MCPB_URL =
-  "https://github.com/leadbay/leadclaw/releases/download/mcp-v0.20.0/leadbay-0.20.0.mcpb";
-const RELEASE_URL = "https://github.com/leadbay/leadclaw/releases/tag/mcp-v0.20.0";
+  "https://github.com/leadbay/mcp/releases/download/mcp-v0.20.0/leadbay-0.20.0.mcpb";
+const RELEASE_URL = "https://github.com/leadbay/mcp/releases/tag/mcp-v0.20.0";
 
 // A fetch stub returning one "newer release published" GitHub payload — enough
 // to populate the in-process update cache via checkForUpdate().
@@ -179,9 +179,9 @@ describe("proactive update surfacing — non-account_status tools (product#3742)
       last_check_time: Date.now(),
       latest_known_version: CURRENT,
       latest_known_install_url:
-        "https://github.com/leadbay/leadclaw/releases/download/mcp-v0.19.2/leadbay-0.19.2.dxt",
+        "https://github.com/leadbay/mcp/releases/download/mcp-v0.19.2/leadbay-0.19.2.dxt",
       latest_known_release_url:
-        "https://github.com/leadbay/leadclaw/releases/tag/mcp-v0.19.2",
+        "https://github.com/leadbay/mcp/releases/tag/mcp-v0.19.2",
       suppressed_versions: [],
     });
     const { mcpClient } = await connectWithUpdates(store);

@@ -12,7 +12,7 @@ Support email: support@leadbay.ai
 
 Website: https://leadbay.ai
 
-GitHub: https://github.com/leadbay/leadclaw/tree/main/packages/mcp
+GitHub: https://github.com/leadbay/mcp/tree/main/packages/mcp
 
 npm: https://www.npmjs.com/package/@leadbay/mcp
 

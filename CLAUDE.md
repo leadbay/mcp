@@ -1,4 +1,4 @@
-# leadclaw repo — Claude conventions
+# mcp repo — Claude conventions
 
 > Project-wide guidance for Claude (and any other agent) working in this
 > repo. Read this before opening files; the rules below are load-bearing.

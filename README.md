@@ -31,7 +31,7 @@ The fastest way to get started is the one-click Claude extension.
 
 **1. Download the extension**
 
-👉 **[Download the latest LeadMCP for Claude (.dxt)](https://github.com/leadbay/leadclaw/releases/latest)**
+👉 **[Download the latest LeadMCP for Claude (.dxt)](https://github.com/leadbay/mcp/releases/latest)**
 
 On the releases page, click the file ending in **`.dxt`** to download it.
 
@@ -99,10 +99,10 @@ Every supported way to connect LeadMCP:
 
 | Method | Command / action | Platforms | Notes |
 |--------|------------------|-----------|-------|
-| **`.dxt` / `.mcpb` bundle** | Download from [Releases](https://github.com/leadbay/leadclaw/releases/latest), double-click → **Install** | Claude Desktop | One-click. The recommended path for end users. |
+| **`.dxt` / `.mcpb` bundle** | Download from [Releases](https://github.com/leadbay/mcp/releases/latest), double-click → **Install** | Claude Desktop | One-click. The recommended path for end users. |
 | **Guided installer (GUI)** | `npx -y -p @leadbay/mcp@latest installer` | macOS, Windows, Linux | Browser wizard: sign in with Leadbay, pick clients. Works for everyone. |
 | **Local dev build** | `pnpm --filter @leadbay/mcp installer -- --local` | macOS, Windows, Linux | Registers clients against your local build. OAuth automatic. Build from source first (above). |
-| **Claude Code plugin marketplace** | `/plugin marketplace add leadbay/leadclaw` then `/plugin install leadbay@leadbay-leadclaw` | Claude Code | Registers the MCP server **and** installs auto-triggering skills. |
+| **Claude Code plugin marketplace** | `/plugin marketplace add leadbay/mcp` then `/plugin install leadbay@leadbay-mcp` | Claude Code | Registers the MCP server **and** installs auto-triggering skills. |
 
 ### What each installer writes per client
 
@@ -118,11 +118,11 @@ The GUI/CLI installers only touch clients that are actually installed on the mac
 ### Claude Code plugin marketplace
 
 ```bash
-/plugin marketplace add leadbay/leadclaw
+/plugin marketplace add leadbay/mcp
 ```
 
 ```bash
-/plugin install leadbay@leadbay-leadclaw
+/plugin install leadbay@leadbay-mcp
 ```
 
 Claude Code prompts for Leadbay auth/config. Registers the MCP server **and** installs skills (`leadbay_research_a_domain`, `leadbay_import_file`, `leadbay_log_outreach`, `leadbay_qualify_top_n`, `leadbay_refine_audience`, and others) that auto-trigger on natural-language asks.

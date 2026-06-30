@@ -5,7 +5,7 @@
   "description": "AI lead discovery, qualification, and outreach prep on your Leadbay account.",
   "version": "0.23.9",
   "repository": {
-    "url": "https://github.com/leadbay/leadclaw",
+    "url": "https://github.com/leadbay/mcp",
     "source": "github",
     "subfolder": "packages/mcp"
   },

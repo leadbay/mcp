@@ -11,12 +11,12 @@
     "email": "support@leadbay.ai",
     "url": "https://leadbay.ai"
   },
-  "homepage": "https://github.com/leadbay/leadclaw",
-  "documentation": "https://github.com/leadbay/leadclaw#readme",
-  "support": "https://github.com/leadbay/leadclaw/issues",
+  "homepage": "https://github.com/leadbay/mcp",
+  "documentation": "https://github.com/leadbay/mcp#readme",
+  "support": "https://github.com/leadbay/mcp/issues",
   "repository": {
     "type": "git",
-    "url": "https://github.com/leadbay/leadclaw"
+    "url": "https://github.com/leadbay/mcp"
   },
   "license": "MIT",
   "privacy_policies": ["https://www.leadbay.ai/privacy-policy"],
