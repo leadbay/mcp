@@ -61,13 +61,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/leadbay/leadclaw.git",
+    "url": "git+https://github.com/leadbay/mcp.git",
     "directory": "packages/mcp"
   },
   "bugs": {
-    "url": "https://github.com/leadbay/leadclaw/issues"
+    "url": "https://github.com/leadbay/mcp/issues"
   },
-  "homepage": "https://github.com/leadbay/leadclaw/tree/main/packages/mcp#readme",
+  "homepage": "https://github.com/leadbay/mcp/tree/main/packages/mcp#readme",
   "author": "Leadbay",
   "license": "MIT"
 }

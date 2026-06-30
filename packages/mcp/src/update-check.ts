@@ -15,7 +15,7 @@
 //      hits the wire — the on-disk throttle is shared across processes,
 //      so without force a Claude Desktop restart inside the 24h window
 //      would inherit a stale "latest" from the previous process.
-//   3. otherwise: GET api.github.com/repos/leadbay/leadclaw/releases/latest
+//   3. otherwise: GET api.github.com/repos/leadbay/mcp/releases/latest
 //      with If-None-Match: <state.etag> if present
 //      - 304: refresh last_check_time, keep latest_known_*
 //      - 200: parse tag_name → strip "mcp-v" prefix → semver compare
@@ -72,7 +72,7 @@ export function __resetUpdateCacheForTests(): void {
 }
 
 const RELEASES_LATEST_URL =
-  "https://api.github.com/repos/leadbay/leadclaw/releases/latest";
+  "https://api.github.com/repos/leadbay/mcp/releases/latest";
 // Once-per-day cadence. The MCP process can live for weeks in Claude
 // Desktop (single boot, many chats), so a 1h throttle would be too
 // aggressive in steady-state and a 1h re-check window from boot

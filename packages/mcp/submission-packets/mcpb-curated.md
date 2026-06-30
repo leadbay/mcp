@@ -16,9 +16,9 @@ Support email: support@leadbay.ai
 
 Website: https://leadbay.ai
 
-GitHub: https://github.com/leadbay/leadclaw
+GitHub: https://github.com/leadbay/mcp
 
-Package source: https://github.com/leadbay/leadclaw/tree/main/packages/dxt
+Package source: https://github.com/leadbay/mcp/tree/main/packages/dxt
 
 License: MIT
 
@@ -28,7 +28,7 @@ Bundle format: MCPB, emitted from `manifest_version: 0.3`.
 
 MCPB release URL:
 
-`https://github.com/leadbay/leadclaw/releases/download/mcp-v0.16.0/leadbay-0.16.0.mcpb`
+`https://github.com/leadbay/mcp/releases/download/mcp-v0.16.0/leadbay-0.16.0.mcpb`
 
 SHA-256:
 

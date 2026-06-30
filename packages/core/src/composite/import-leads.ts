@@ -1006,7 +1006,7 @@ async function pollRecordsToTerminal(
       throw client.makeError(
         "IMPORT_PAGINATION_RUNAWAY",
         `Records pagination exceeded ${maxPagesPerPoll} pages`,
-        `importId=${importId}. Please file a bug at https://github.com/leadbay/leadclaw/issues.`,
+        `importId=${importId}. Please file a bug at https://github.com/leadbay/mcp/issues.`,
         `GET /imports/${importId}/records`
       );
     }

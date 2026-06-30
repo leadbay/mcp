@@ -1,5 +1,5 @@
 {
-  "name": "leadclaw-workspace",
+  "name": "mcp-workspace",
   "version": "0.0.0",
   "private": true,
   "description": "Leadbay packages monorepo — @leadbay/core shared tools, @leadbay/mcp MCP server",

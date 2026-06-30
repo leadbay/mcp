@@ -148,7 +148,7 @@ EXAMPLE Claude Desktop config (~/Library/Application Support/Claude/claude_deskt
   }
 
 DOCS
-  https://github.com/leadbay/leadclaw#readme
+  https://github.com/leadbay/mcp#readme
 `.trim();
 
 type LogLevel = "debug" | "info" | "error";
