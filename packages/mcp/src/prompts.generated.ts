@@ -60,7 +60,7 @@ Call \`leadbay_pull_leads\` on the resolved lens. **Capture \`response.lens.id\`
 
 ## RENDERING — markdown table, three columns, score-bar driven
 
-Present the response as a markdown table sorted by \`score\` descending, with exactly three columns. Do not summarize in prose. Do not show the numeric score anywhere.
+Present the response as a markdown table **in the exact order the tool returned the leads** — this is the Discover-tab order (the backend orders by new-today first, then status, then score). Do **not** re-sort the rows (in particular, do NOT re-order by \`score\`); render them top-to-bottom as received so the list matches what the user sees in the Leadbay UI. Exactly three columns. Do not summarize in prose. Do not show the numeric score anywhere.
 
 ## Score-bar (10-segment, inline-code wrapped)
 
@@ -262,7 +262,7 @@ If the prompt's body and the tool's RENDERING appear to conflict, the tool's REN
 
 ## RENDERING — markdown table, three columns, score-bar driven
 
-Present the response as a markdown table sorted by \`score\` descending, with exactly three columns. Do not summarize in prose. Do not show the numeric score anywhere.
+Present the response as a markdown table **in the exact order the tool returned the leads** — this is the Discover-tab order (the backend orders by new-today first, then status, then score). Do **not** re-sort the rows (in particular, do NOT re-order by \`score\`); render them top-to-bottom as received so the list matches what the user sees in the Leadbay UI. Exactly three columns. Do not summarize in prose. Do not show the numeric score anywhere.
 
 ## Score-bar (10-segment, inline-code wrapped)
 
@@ -1173,7 +1173,7 @@ When \`bulk_qualify_leads\` returns, surface results in two parts.
 
 ## RENDERING — markdown table, three columns, score-bar driven
 
-Present the response as a markdown table sorted by \`score\` descending, with exactly three columns. Do not summarize in prose. Do not show the numeric score anywhere.
+Present the response as a markdown table **in the exact order the tool returned the leads** — this is the Discover-tab order (the backend orders by new-today first, then status, then score). Do **not** re-sort the rows (in particular, do NOT re-order by \`score\`); render them top-to-bottom as received so the list matches what the user sees in the Leadbay UI. Exactly three columns. Do not summarize in prose. Do not show the numeric score anywhere.
 
 ## Score-bar (10-segment, inline-code wrapped)
 

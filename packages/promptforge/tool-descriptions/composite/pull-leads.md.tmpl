@@ -4,9 +4,10 @@ kind: tool-description
 short_description: |
   Pull NEW leads from the Discover wishlist — fresh prospects, not known
   pipeline. For KNOWN leads to follow up with, use leadbay_pull_followups.
-  Render as a 3-col markdown table sorted by score desc; col 1 is the
-  inline-code 10-segment `▰❖▱` bar + linked company + location + size;
-  col 2 is why-fits ≤20 words; col 3 is linked contact + title.
+  Render as a 3-col markdown table in the order the tool returns them (the
+  Discover-tab order — do NOT re-sort by score); col 1 is the inline-code
+  10-segment `▰❖▱` bar + linked company + location + size; col 2 is
+  why-fits ≤20 words; col 3 is linked contact + title.
 routing:
   triggers:
     - "show me leads"
@@ -55,7 +56,8 @@ routing:
       - "Who should I get back to today?"
       - "Leads I should contact today."
 rendering_hint: |
-  3-col markdown table sorted by `score` desc — DO NOT print the numeric
+  3-col markdown table in the order the tool returns them (the Discover-tab
+  order — do NOT re-sort by score) — DO NOT print the numeric
   score. Col 1 = inline-code 10-segment bar (`▰` firmographic, `❖` AI
   booster cap at the right end of the filled run, `▱` empty;
   filled=round(score/10), ai=round(avg_boost/3.3)) + `<br>` + linked
