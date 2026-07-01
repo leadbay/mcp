@@ -1,5 +1,13 @@
 # Changelog — @leadbay/mcp
 
+## 0.23.10 — 2026-07-01
+
+A freshly-created lens no longer reads as "empty" (product#3833).
+
+- **`leadbay_new_lens`** — creating a lens with criteria queues an asynchronous backend wishlist rebuild, so an immediate `leadbay_pull_leads` can read empty for a few seconds while it computes. The `created` result now carries `computing_wishlist: true` and a "leads stream in — pull in ~30s" message so the agent waits instead of reporting an empty lens. A criteria-less clone inherits the base lens's leads immediately (`computing_wishlist: false`).
+- **`leadbay_pull_leads`** — on an EMPTY page where the backend reports the lens is still computing (`computing_wishlist`/`computing_scores`), `next_steps` now carries a single "Re-pull in ~30s" option (`kind: repull_computing`) instead of `null`, so the agent renders a wait-and-retry widget rather than "no leads." An empty page with nothing computing still returns `null` (a genuinely empty / over-narrow lens — no fabricated leads).
+- Confirmed against `leadbay/backend` (`POST /lenses/:id/filter` → `queueRefreshJob` → `RefreshLens`) and a live probe on `api-us`: a bare clone shows leads instantly; a filtered clone shows `computing_wishlist: true` then settles within ~1–30s.
+
 ## 0.23.9 — 2026-06-27
 
 MCP data plane now targets backend **/1.6** (was /1.5).
