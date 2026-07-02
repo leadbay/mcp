@@ -603,7 +603,7 @@ export function buildServer(
   // prompt only references tools it can call.
   const exposedNames = new Set(toolByName.keys());
   const server = new Server(
-    { name: "leadbay", version: opts.version ?? "0.0.0-dev" },
+    { name: "leadbay-mcp", version: opts.version ?? "0.0.0-dev" },
     {
       capabilities: {
         tools: {},

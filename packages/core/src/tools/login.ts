@@ -39,7 +39,7 @@ export const login: Tool<LoginParams> = {
     const startWith =
       client.region === "fr" ? "fr" : "us";
     ctx?.logger?.info?.(
-      `LeadClaw login: email=${params.email} startRegion=${startWith}`
+      `Leadbay login: email=${params.email} startRegion=${startWith}`
     );
 
     try {
@@ -54,7 +54,7 @@ export const login: Tool<LoginParams> = {
       if (client.baseUrl !== result.baseUrl) {
         client.setBaseUrl(result.baseUrl, result.region);
         ctx?.logger?.info?.(
-          `LeadClaw login: switched to region=${result.region} (account is in the ${result.region.toUpperCase()} backend)`
+          `Leadbay login: switched to region=${result.region} (account is in the ${result.region.toUpperCase()} backend)`
         );
       }
       client.setToken(result.token);
@@ -69,7 +69,7 @@ export const login: Tool<LoginParams> = {
         verified: result.verified,
       };
     } catch (err: any) {
-      ctx?.logger?.error?.(`LeadClaw login: failed: ${err?.message}`);
+      ctx?.logger?.error?.(`Leadbay login: failed: ${err?.message}`);
       return {
         error: true,
         code: "LOGIN_FAILED",

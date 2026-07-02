@@ -4,8 +4,10 @@
 //
 // Differs from scripts/build.mjs:
 //   - `name` is "leadbay-staging" so the bundle can coexist with the prod
-//     install in Claude Desktop's Extensions list.
-//   - `display_name` is "Leadbay (Staging)" so the user can tell them apart.
+//     install in Claude Desktop's Extensions list. (The prod bundle's `name`
+//     stays "leadbay" — it's the Claude Desktop extension-identity key, so
+//     renaming it would orphan existing installs instead of upgrading them.)
+//   - `display_name` is "Leadbay MCP (Staging)" so the user can tell them apart.
 //   - no token / region / backend URL config fields. The bundled server opts
 //     into OAuth bootstrap, uses staging stargate to infer region, opens the
 //     browser for consent, then persists the resulting token.
@@ -48,7 +50,7 @@ async function main() {
   const manifest = JSON.parse(manifestTpl.replaceAll("{{VERSION}}", version));
 
   manifest.name = "leadbay-staging";
-  manifest.display_name = "Leadbay (Staging)";
+  manifest.display_name = "Leadbay MCP (Staging)";
   manifest.description = "STAGING build - talks to staging.leadbay.app / api-{us,fr}-staging.leadbay.app. On first launch, the server opens your browser for OAuth and persists the token. No paste-the-token dance.";
 
   // Zero-config install: opt into startup OAuth and mark the auth environment

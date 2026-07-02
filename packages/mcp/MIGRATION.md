@@ -166,7 +166,7 @@ The legacy `leadbay-mcp install --include-write` flag is accepted but a no-op �
 
 ---
 
-# Migration: leadclaw / leadbay-mcp 0.1.x → 0.2.0
+# Migration: leadbay-mcp 0.1.x → 0.2.0
 
 This release is the autoplan-reviewed agent-experience overhaul. The OpenClaw
 plugin and MCP server gain a coherent composite-tool surface so an AI agent
@@ -277,7 +277,7 @@ additionally exposes the granular tools; most users don't need it.
 
 ### OpenClaw plugin
 
-In the plugin config (e.g. `openclaw config set plugins.entries.leadclaw.exposeWrite true`):
+In the plugin config (e.g. `openclaw config set plugins.entries.leadbay-mcp.exposeWrite true`):
 
 ```json
 {
