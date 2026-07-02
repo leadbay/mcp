@@ -2119,8 +2119,9 @@ On \`preview\` (default — NOTHING created yet): show the lens that WILL be
 created (name + resolved sectors/sizes as chips) and ASK the user to confirm
 via ask_user_input_v0 ("Create this lens?" / "Change something"). Only on
 "yes" re-call with confirm:true. On \`created\`: confirm "Created **<name>**."
-On \`ambiguous_sectors\` / \`ambiguous_locations\`: surface the candidates to
-pick from.
+(if \`computing_wishlist:true\`, add that leads stream in — pull in ~30s, don't
+report "empty"). On \`ambiguous_sectors\` / \`ambiguous_locations\`: surface the
+candidates to pick from.
 
 ---
 
@@ -2133,6 +2134,8 @@ Create a brand-new lens (saved audience) and apply its sector/size criteria. Clo
 **Geography — scope a territory.** Pass \`locations\` (free text like \`["Indre-et-Loire"]\`, \`["Bavaria"]\`, or admin-area ids) to scope the lens to a sales territory, and \`exclude_locations\` to carve one out. Free text auto-resolves via \`/geo/search\` across every admin level (city / county / *département* / *région* / state / country). Like sectors, locations resolve BEFORE the lens is created — unresolved/ambiguous text returns \`status:"ambiguous_locations"\` with candidates and **does NOT create the lens**. Re-call the chosen id via the SAME axis it came from: an INCLUDE pick → \`locations\`; an EXCLUDE pick → \`exclude_locations\` (**NOT** \`locations\`, which would include the area the user asked to exclude). This is how a director spins up a lens for a rep's zone to surface net-new accounts there.
 
 **Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer \`leadbay_my_lenses(switchToLensId=<new id>)\` as a next step if they want to start pulling from it.
+
+**Leads compute asynchronously.** When the lens has criteria, applying the filter kicks off a backend wishlist rebuild — the \`created\` result carries \`computing_wishlist:true\`. An immediate \`leadbay_pull_leads\` may read empty for a few seconds while it computes; that lens is *warming up*, not empty. Wait ~30s before the first pull (or offer the user a re-pull). A criteria-less clone inherits the base lens's leads right away (\`computing_wishlist:false\`).
 
 WHEN TO USE: when the user wants a NEW lens. Canonical phrasings: "create a lens called X", "make a new audience for Y", "set up a lens for <sector>".
 
@@ -2187,17 +2190,23 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 Pick the rows that fit. On \`created\`, the switch + pull rows are the natural
 follow-ups. On \`ambiguous_sectors\`, the only move is to pick a sector and re-call.
 
-| Observation                       | Suggest                                  | Calls                                                  |
-|-----------------------------------|------------------------------------------|--------------------------------------------------------|
-| \`preview\` (not yet created)       | "Yes, create this lens"                  | \`leadbay_new_lens(...same args..., confirm=true)\`      |
-| \`preview\` (not yet created)       | "Change the sectors/size first"          | (re-ask the user, then \`leadbay_new_lens\` with new args) |
-| Lens created                      | "Switch to it and pull leads"            | \`leadbay_my_lenses(switchToLensId=<new id>)\` then \`leadbay_pull_leads()\` |
-| Lens created                      | "Refine the audience further"            | \`leadbay_adjust_audience(lensName=<new name>, ...)\`    |
-| Lens created                      | "Leave it; keep my current lens active"  | (no call)                                              |
-| \`ambiguous_sectors\`               | "Pick the right sector and create"       | \`leadbay_new_lens(name=..., sectors=[<chosen id>])\`    |
+**\`created\` with \`computing_wishlist: true\`** — the new lens's leads are being
+(re)computed asynchronously. Do NOT fire an immediate \`leadbay_pull_leads\` and
+report "empty" — the lens is warming up, not empty. Tell the user the lens was
+created and its leads are streaming in, and offer to pull in ~30s.
 
-If nothing fits, default to "switch to the new lens and pull leads" — never
-invent a tool that doesn't exist.
+| Observation                             | Suggest                                  | Calls                                                  |
+|-----------------------------------------|------------------------------------------|--------------------------------------------------------|
+| \`preview\` (not yet created)             | "Yes, create this lens"                  | \`leadbay_new_lens(...same args..., confirm=true)\`      |
+| \`preview\` (not yet created)             | "Change the sectors/size first"          | (re-ask the user, then \`leadbay_new_lens\` with new args) |
+| Lens created, \`computing_wishlist=true\` | "Give it ~30s, then pull leads (the wishlist is still computing)" | \`leadbay_my_lenses(switchToLensId=<new id>)\` then \`leadbay_pull_leads()\` after ~30s |
+| Lens created (no criteria)              | "Switch to it and pull leads"            | \`leadbay_my_lenses(switchToLensId=<new id>)\` then \`leadbay_pull_leads()\` |
+| Lens created                            | "Refine the audience further"            | \`leadbay_adjust_audience(lensName=<new name>, ...)\`    |
+| Lens created                            | "Leave it; keep my current lens active"  | (no call)                                              |
+| \`ambiguous_sectors\`                     | "Pick the right sector and create"       | \`leadbay_new_lens(name=..., sectors=[<chosen id>])\`    |
+
+If nothing fits, default to "switch to the new lens and pull leads in ~30s
+(the wishlist may still be computing)" — never invent a tool that doesn't exist.
 `;
 // endregion: leadbay_new_lens
 
@@ -2817,6 +2826,7 @@ Pick 2–3 items below based on what was actually observed in the response. The 
 | Top row has phone but no email                             | "Show [Contact]'s call details + a 60-second opener"         | leadbay_prepare_outreach(leadId)                       |
 | Top row has contacts but no phone/email                    | "Order contact enrichment to surface email/phone first"      | leadbay_enrich_titles(...) or leadbay_prepare_outreach(leadId, enrich:true) |
 | \`computing_scores == true\` or \`computing_wishlist == true\` | "Scores are still being computed — re-pull in ~30s"          | leadbay_pull_leads (retry with same lensId)            |
+| Batch is EMPTY and \`computing_wishlist\`/\`computing_scores == true\` (e.g. a just-created lens) | render the \`next_steps\` widget — it carries "Re-pull in ~30s" (first) + "Refine audience". Do NOT report "no leads": the lens is warming up, not empty | leadbay_pull_leads (retry with same lensId after ~30s) |
 | User wants a narrower / wider audience                     | "Adjust the lens filters (sector / size)"                    | leadbay_adjust_audience(...)                           |
 | Phase 4 research was run (\`research_lead_by_id\` called) AND top contacts lack direct email/phone | "Enrich contacts on [Lead1], [Lead2] to get direct emails and phone numbers" | leadbay_enrich_contacts(leadId, contactId) — ONE call per contact (the tool takes a single leadId + contactId, never a list) |
 If nothing in the menu applies cleanly, suggest only "pull next page" and "research a specific lead in depth" — never invent a tool that doesn't exist.

@@ -124,6 +124,11 @@ export const newLens: Tool<NewLensParams> = {
         items: { type: "object" },
       },
       filter_applied: { type: "object", description: "On 'created': the FilterPayload POSTed to the new lens." },
+      computing_wishlist: {
+        type: "boolean",
+        description:
+          "On 'created': true when the lens has criteria and its wishlist is (re)computing asynchronously — an immediate leadbay_pull_leads may read empty; wait ~30s. False for a criteria-less clone (it inherits the base lens's leads immediately).",
+      },
       message: { type: "string" },
       _meta: { type: "object" },
     },
@@ -313,7 +318,15 @@ export const newLens: Tool<NewLensParams> = {
       status: "created",
       lens: { id: created.id, name: created.name },
       filter_applied: merged,
-      message: `Created "${created.name}".`,
+      // Applying the filter queued a backend wishlist refresh (#3833). The lens
+      // leads are (re)computed asynchronously, so an immediate pull_leads can
+      // read empty for a few seconds. Signal that here (flag-independent — the
+      // backend's own computing_wishlist can lag right after create) so the
+      // agent waits ~30s instead of reporting an empty lens.
+      computing_wishlist: hasCriteria,
+      message: hasCriteria
+        ? `Created "${created.name}". Leads stream in asynchronously — call leadbay_pull_leads in ~30s to see them (an immediate pull may show an empty lens while the wishlist computes).`
+        : `Created "${created.name}".`,
       _meta: { region: client.region },
     };
   },

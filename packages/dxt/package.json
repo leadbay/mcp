@@ -1,6 +1,6 @@
 {
   "name": "@leadbay/dxt",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "type": "module",
   "description": "Builds the Leadbay .dxt bundle (Claude Desktop 2026 extension format) from @leadbay/mcp.",

@@ -43,8 +43,9 @@ rendering_hint: |
   created (name + resolved sectors/sizes as chips) and ASK the user to confirm
   via ask_user_input_v0 ("Create this lens?" / "Change something"). Only on
   "yes" re-call with confirm:true. On `created`: confirm "Created **<name>**."
-  On `ambiguous_sectors` / `ambiguous_locations`: surface the candidates to
-  pick from.
+  (if `computing_wishlist:true`, add that leads stream in — pull in ~30s, don't
+  report "empty"). On `ambiguous_sectors` / `ambiguous_locations`: surface the
+  candidates to pick from.
 next_steps: new-lens
 annotations:
   readOnlyHint: false
@@ -61,6 +62,8 @@ Create a brand-new lens (saved audience) and apply its sector/size criteria. Clo
 **Geography — scope a territory.** Pass `locations` (free text like `["Indre-et-Loire"]`, `["Bavaria"]`, or admin-area ids) to scope the lens to a sales territory, and `exclude_locations` to carve one out. Free text auto-resolves via `/geo/search` across every admin level (city / county / *département* / *région* / state / country). Like sectors, locations resolve BEFORE the lens is created — unresolved/ambiguous text returns `status:"ambiguous_locations"` with candidates and **does NOT create the lens**. Re-call the chosen id via the SAME axis it came from: an INCLUDE pick → `locations`; an EXCLUDE pick → `exclude_locations` (**NOT** `locations`, which would include the area the user asked to exclude). This is how a director spins up a lens for a rep's zone to surface net-new accounts there.
 
 **Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer `leadbay_my_lenses(switchToLensId=<new id>)` as a next step if they want to start pulling from it.
+
+**Leads compute asynchronously.** When the lens has criteria, applying the filter kicks off a backend wishlist rebuild — the `created` result carries `computing_wishlist:true`. An immediate `leadbay_pull_leads` may read empty for a few seconds while it computes; that lens is *warming up*, not empty. Wait ~30s before the first pull (or offer the user a re-pull). A criteria-less clone inherits the base lens's leads right away (`computing_wishlist:false`).
 
 {{include:headers/tool-when-to-use}} when the user wants a NEW lens. Canonical phrasings: "create a lens called X", "make a new audience for Y", "set up a lens for <sector>".
 
