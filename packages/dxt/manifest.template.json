@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.3",
   "name": "leadbay",
-  "display_name": "Leadbay",
+  "display_name": "Leadbay MCP",
   "version": "{{VERSION}}",
   "description": "AI lead discovery, qualification, and outreach prep. Sign in with Leadbay OAuth, then ask Claude to find, research, and prepare outreach on B2B prospects.",
   "long_description": "Leadbay MCP surfaces your Leadbay inbox to Claude — fresh daily batches of AI-qualified leads, deep research on any company or contact, outreach-ready prep (email + LinkedIn), and outreach logging. On first launch, Claude Desktop opens Leadbay in your browser so you can authorize access with OAuth. Requires a Leadbay account (https://leadbay.ai).",

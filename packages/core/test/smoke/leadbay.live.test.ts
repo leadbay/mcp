@@ -36,7 +36,7 @@ if (!runLive) {
   );
 }
 
-describe.skipIf(!runLive)("LeadClaw live smoke (read-only endpoints)", () => {
+describe.skipIf(!runLive)("leadbay-mcp live smoke (read-only endpoints)", () => {
   const client = new LeadbayClient(BASE_URL, TOKEN);
 
   it("/users/me returns nested organization (post-v0.2 shape)", async () => {
