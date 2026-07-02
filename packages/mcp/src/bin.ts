@@ -61,7 +61,7 @@ import { parseWriteEnv } from "./env.js";
 import { initTelemetry } from "./telemetry.js";
 import { createDefaultUpdateStateStore } from "./update-state.js";
 import { checkForUpdate, recordRunningVersion } from "./update-check.js";
-import { oauthLogin, inferRegionViaStargate, BrowserOpenFailedError, openInBrowser } from "./oauth.js";
+import { oauthLogin, inferRegionViaStargate, BrowserOpenFailedError, openInBrowser, OAuthCallbackError, OAuthTimeoutError } from "./oauth.js";
 
 // Regional OAuth base URLs. Production is the default path; staging remains
 // available for `login --oauth --staging` and staging MCPB validation.
@@ -330,6 +330,33 @@ export function cacheOAuthClientId(authServerBaseUrl: string, clientId: string, 
     /* best-effort — a write failure just means we re-register next launch */
   }
 }
+// Evict a cached client_id so the next launch registers fresh. Pass a `port` to
+// drop just that port's entry (used when the backend rejected a cached id at
+// /authorize — the self-heal signal); omit `port` to drop the whole auth
+// server's cache (the `--reset-client` escape hatch, which doesn't know which
+// port will bind). Best-effort, same as its siblings.
+export function clearOAuthClientId(authServerBaseUrl: string, port?: number): void {
+  try {
+    const { readFileSync, writeFileSync } = require_("node:fs") as typeof import("node:fs");
+    const path = oauthClientCachePath();
+    let data: any;
+    try {
+      data = JSON.parse(readFileSync(path, "utf8"));
+    } catch {
+      return; // no cache file → nothing to clear
+    }
+    const server = data?.clients?.[authServerBaseUrl];
+    if (!server) return;
+    if (port === undefined) {
+      delete data.clients[authServerBaseUrl];
+    } else if (server.byPort && typeof server.byPort === "object") {
+      delete server.byPort[String(port)];
+    }
+    writeFileSync(path, JSON.stringify(data, null, 2) + "\n", { mode: 0o600 });
+  } catch {
+    /* best-effort — a stale entry just means one wasted re-registration */
+  }
+}
 
 // Tracks an in-flight browser-open spawn so shutdown can wait for it to be
 // DISPATCHED before exiting. Claude Desktop probes a freshly-installed
@@ -441,6 +468,18 @@ async function bootstrapOAuthIfMissing(logger: ToolLogger): Promise<boolean> {
         bootstrapDebug(`registered new client_id=${id} (port ${port}) — caching for ${authServerBaseUrl}`);
         cacheOAuthClientId(authServerBaseUrl, id, port);
       },
+      // Self-heal: a cached client_id the backend rejected at /authorize is the
+      // most plausible cause of the Mac "Something went wrong" page (product
+      // #3838). Evict it from disk immediately so even a failed in-run retry
+      // leaves the next launch to register fresh, and record the reason in the
+      // bootstrap trace (the recurrence signal — Claude Desktop hides our
+      // stderr, so this log is the only place it surfaces).
+      onCachedClientRejected: (port, cause) => {
+        bootstrapDebug(
+          `cached client_id rejected on port ${port} (${(cause as any)?.message ?? cause}) — evicting + re-registering`
+        );
+        clearOAuthClientId(authServerBaseUrl, port);
+      },
     });
 
     // Persist to ~/.config/leadbay/credentials.json so future launches are silent.
@@ -493,14 +532,29 @@ async function bootstrapOAuthIfMissing(logger: ToolLogger): Promise<boolean> {
       return false;
     }
     // Non-browser failure (region probe / discovery / registration / token
-    // exchange). OAuth can't complete this session, so record the reason — the
-    // gate surfaces it as AUTH_FAILED with restart guidance instead of leaving
-    // the user on a forever-"pending" message. Clear any stale sign-in URL: if
-    // we got far enough to mint one, its code/listener is no longer usable.
+    // exchange, or the authorize callback itself). OAuth can't complete this
+    // session, so record the reason — the gate surfaces it as AUTH_FAILED with
+    // restart guidance instead of leaving the user on a forever-"pending"
+    // message. Clear any stale sign-in URL: if we got far enough to mint one,
+    // its code/listener is no longer usable.
     const message = err?.message ?? String(err);
-    bootstrapFailureMessage = message;
+    // Classify for the trace + a sharper user-facing message. Reaching here
+    // with a callback/timeout error means the fresh-registration RETRY also
+    // failed (a first-attempt cached rejection would have been retried, not
+    // thrown) — so the authorize page rejected us even with a brand-new client,
+    // pointing at region/reachability rather than a stale cache.
+    const failClass =
+      err instanceof OAuthCallbackError ? "authorize-callback-error"
+      : err instanceof OAuthTimeoutError ? "authorize-timeout"
+      : "discovery/registration/token";
+    bootstrapFailureMessage =
+      err instanceof OAuthCallbackError || err instanceof OAuthTimeoutError
+        ? "Sign-in was rejected by Leadbay even after re-registering this device. " +
+          "This usually means the backend authorize page returned an error — " +
+          "check that your region is reachable and try again."
+        : message;
     pendingSignInUrl = undefined;
-    bootstrapDebug(`bootstrap FAILED (non-open): ${message}`);
+    bootstrapDebug(`bootstrap FAILED (non-open, ${failClass}): ${message}`);
     process.stderr.write(
       `[leadbay-mcp] OAuth bootstrap failed: ${message}\n` +
         `  Tools will return AUTH_FAILED until you restart the extension to retry.\n`
@@ -810,6 +864,8 @@ async function runLogin(args: string[]): Promise<number> {
         "  Then enter your password (hidden), or pipe it via stdin / set $LEADBAY_PASSWORD.\n" +
         "  --oauth             Use OAuth Authorization Code + PKCE in your browser instead of email/password.\n" +
         "                      Region is auto-detected via stargate GeoIP; pass --region to override.\n" +
+        "  --reset-client      With --oauth: clear the cached OAuth client and register fresh. Use if sign-in\n" +
+        "                      keeps landing on a 'Something went wrong' page (a stale client registration).\n" +
         "  --staging           Point at staging.leadbay.app endpoints. Use with --oauth for testing.\n" +
         "  --region            Pin the backend (us|fr); avoids sending your password to a backend you don't use.\n" +
         "                      Defaults to $LEADBAY_REGION if set; otherwise asks you to pass --allow-region-fallback.\n" +
@@ -876,6 +932,15 @@ async function runLogin(args: string[]): Promise<number> {
       }
     }
     const baseUrl = OAUTH_BASE_URLS[useStaging ? "staging" : "prod"][region];
+    // --reset-client: wipe the persisted DCR client_id cache for this auth
+    // server and force a fresh registration. The human escape hatch for a
+    // wedged cache (the Mac "Something went wrong" self-heal covers the common
+    // case automatically; this is for when a user wants to force it).
+    const resetClient = hasFlag(args, "reset-client");
+    if (resetClient) {
+      clearOAuthClientId(baseUrl);
+      process.stderr.write("Cleared the cached OAuth client — registering a fresh one.\n");
+    }
     try {
       const { hostname } = await import("node:os");
       const clientName = `Leadbay MCP @ ${hostname()}`;
@@ -883,6 +948,7 @@ async function runLogin(args: string[]): Promise<number> {
         authServerBaseUrl: baseUrl,
         clientName,
         log: (m) => process.stderr.write(m),
+        forceFreshRegistration: resetClient,
       });
       result = { region, baseUrl, token: accessToken, verified: true };
     } catch (err: any) {

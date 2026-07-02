@@ -102,6 +102,28 @@ export interface OAuthLoginOptions {
   getCachedClientId?: (port: number) => string | undefined;
   /** Persist a freshly-registered `client_id` for `port` so future launches reuse it. */
   onClientRegistered?: (clientId: string, port: number) => void;
+  /**
+   * Ignore any cached `client_id` for the first attempt and register fresh.
+   * Wires the `login --oauth --reset-client` escape hatch; also lets tests force
+   * a clean run. Default: false (reuse the cache when present).
+   */
+  forceFreshRegistration?: boolean;
+  /**
+   * Timeout for the FIRST attempt when it reused a cached `client_id`. Kept
+   * short so a no-callback hang (the user stranded on the backend's authorize
+   * error page) becomes a fast, retryable signal instead of a 5-minute dead
+   * end. The retry (fresh registration) uses the full `timeoutMs`. Default:
+   * 45_000. Ignored when no cached id is used.
+   */
+  cachedFirstAttemptTimeoutMs?: number;
+  /**
+   * Fired the moment the self-heal path triggers — i.e. a cached-client attempt
+   * failed with a rejection consistent with the backend not recognizing the
+   * cached `client_id`, so we're about to re-register. Best-effort (errors
+   * swallowed). Callers use it to evict the bad id from disk and/or log a
+   * diagnostic. `cause` is the attempt's error.
+   */
+  onCachedClientRejected?: (port: number, cause: unknown) => void;
 }
 
 /**
@@ -120,6 +142,49 @@ export class BrowserOpenFailedError extends Error {
     this.name = "BrowserOpenFailedError";
     this.authorizeUrl = authorizeUrl;
   }
+}
+
+/**
+ * Thrown by the loopback listener when the browser hits /callback with an
+ * OAuth error, a missing/invalid code/state, or a CSRF state mismatch. Tagged
+ * as a class (not a bare Error) so {@link isCachedClientRejection} can detect
+ * it without string-matching a message that may drift.
+ */
+export class OAuthCallbackError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OAuthCallbackError";
+  }
+}
+
+/**
+ * Thrown by the loopback listener when no /callback arrives before the
+ * attempt's timeout. Tagged so a SHORT first-attempt timeout with a cached
+ * client_id can be treated as a probable cached-client rejection (the user hit
+ * the backend's authorize error page and abandoned it) — see
+ * {@link isCachedClientRejection}.
+ */
+export class OAuthTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OAuthTimeoutError";
+  }
+}
+
+/**
+ * True when an `oauthLogin` attempt that reused a cached DCR `client_id` failed
+ * in a way consistent with the backend rejecting that client at /authorize
+ * (stale/GC'd registration, or one whose pinned redirect_uri no longer
+ * matches). The backend renders its own "Something went wrong" page, so the
+ * client can only observe this indirectly: either the loopback receives an
+ * `?error=` (callback error) or no callback arrives at all (a short first-
+ * attempt timeout). Both are retryable-once with a fresh registration.
+ *
+ * Discovery / registration / network errors are NOT these types, so they
+ * propagate immediately without a wasteful re-registration.
+ */
+export function isCachedClientRejection(err: unknown): boolean {
+  return err instanceof OAuthCallbackError || err instanceof OAuthTimeoutError;
 }
 
 export interface OAuthLoginResult {
@@ -325,6 +390,19 @@ export interface LoopbackListener {
   port: number;
   /** Resolves once the user hits the callback URL with a valid `state`. */
   waitForCallback: () => Promise<{ code: string; state: string }>;
+  /**
+   * Swap the `state` the callback is validated against. Used when
+   * {@link oauthLogin} retries with a freshly-generated state after a cached
+   * client_id was rejected — the same listener (and bound port) is reused.
+   */
+  setExpectedState: (state: string) => void;
+  /**
+   * Clear and re-arm the callback timeout with a new duration. Used to give the
+   * first (cached-client) attempt a SHORT window so a no-callback hang becomes a
+   * fast, retryable signal instead of a 5-minute dead end; the retry re-arms
+   * with the full timeout.
+   */
+  resetTimeout: (timeoutMs: number) => void;
   /** Always call this in a finally{} — frees the port. */
   close: () => void;
 }
@@ -345,12 +423,20 @@ export async function startLoopbackListener(opts: {
   preferredPorts?: number[];
 }): Promise<LoopbackListener> {
   // Resolved exactly once by the first matching /callback hit, or by timeout.
+  // A single settlement per callbackPromise; the promise is re-created on each
+  // waitForCallback() so oauthLogin's retry gets a fresh pending promise.
   let resolveCallback: (v: { code: string; state: string }) => void;
   let rejectCallback: (e: Error) => void;
-  const callbackPromise = new Promise<{ code: string; state: string }>((res, rej) => {
-    resolveCallback = res;
-    rejectCallback = rej;
-  });
+  const armPromise = () =>
+    new Promise<{ code: string; state: string }>((res, rej) => {
+      resolveCallback = res;
+      rejectCallback = rej;
+    });
+  let callbackPromise = armPromise();
+
+  // Mutable so a retry (fresh registration) can validate against a new state
+  // without tearing down the listener / rebinding the port.
+  let expectedState = opts.expectedState;
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     // Only accept GET /callback?... — everything else is noise (favicon probes,
@@ -368,7 +454,7 @@ export async function startLoopbackListener(opts: {
       res.statusCode = 400;
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.end(renderHtml("Authorization failed", `${errParam}${desc ? `: ${desc}` : ""}`));
-      rejectCallback(new Error(`OAuth authorization denied: ${errParam}${desc ? ` (${desc})` : ""}`));
+      rejectCallback(new OAuthCallbackError(`OAuth authorization denied: ${errParam}${desc ? ` (${desc})` : ""}`));
       return;
     }
     const code = params.get("code");
@@ -377,15 +463,15 @@ export async function startLoopbackListener(opts: {
       res.statusCode = 400;
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.end(renderHtml("Authorization failed", "Missing code or state parameter."));
-      rejectCallback(new Error("OAuth callback missing code or state"));
+      rejectCallback(new OAuthCallbackError("OAuth callback missing code or state"));
       return;
     }
-    if (state !== opts.expectedState) {
+    if (state !== expectedState) {
       // CSRF defense. Don't even tell the client which value we expected.
       res.statusCode = 400;
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.end(renderHtml("Authorization failed", "Invalid state parameter (possible CSRF)."));
-      rejectCallback(new Error("OAuth callback state mismatch (possible CSRF)"));
+      rejectCallback(new OAuthCallbackError("OAuth callback state mismatch (possible CSRF)"));
       return;
     }
     res.statusCode = 200;
@@ -422,16 +508,36 @@ export async function startLoopbackListener(opts: {
   const redirectUri = `http://127.0.0.1:${addr.port}/callback`;
 
   // Hard timeout — don't dangle forever if the user closes the browser tab.
-  const timer = setTimeout(() => {
-    rejectCallback(new Error(`OAuth login timed out after ${Math.round(opts.timeoutMs / 1000)}s`));
-  }, opts.timeoutMs);
+  // Mutable so resetTimeout() can re-arm it per attempt; the rejection is an
+  // OAuthTimeoutError so a short first-attempt timeout is recognizable as a
+  // probable cached-client rejection.
+  let timeoutMs = opts.timeoutMs;
+  let timer: ReturnType<typeof setTimeout>;
+  const armTimer = () => {
+    timer = setTimeout(() => {
+      rejectCallback(new OAuthTimeoutError(`OAuth login timed out after ${Math.round(timeoutMs / 1000)}s`));
+    }, timeoutMs);
+  };
+  armTimer();
 
   return {
     redirectUri,
     port: addr.port,
+    setExpectedState: (state: string) => {
+      expectedState = state;
+    },
+    resetTimeout: (ms: number) => {
+      clearTimeout(timer);
+      timeoutMs = ms;
+      armTimer();
+    },
     waitForCallback: () =>
+      // After this attempt settles, stop its timer and re-arm a fresh pending
+      // promise so a subsequent waitForCallback() (the retry) can resolve/reject
+      // independently — the same bound listener is reused across attempts.
       callbackPromise.finally(() => {
         clearTimeout(timer);
+        callbackPromise = armPromise();
       }),
     close: () => {
       clearTimeout(timer);
@@ -717,20 +823,28 @@ export async function oauthLogin(opts: OAuthLoginOptions): Promise<OAuthLoginRes
   const log = opts.log ?? (() => {});
   const open = opts.openBrowser ?? openInBrowser;
   const timeoutMs = opts.timeoutMs ?? 5 * 60 * 1000;
+  const cachedFirstAttemptTimeoutMs = opts.cachedFirstAttemptTimeoutMs ?? 45_000;
 
   log(`Discovering OAuth endpoints at ${opts.authServerBaseUrl}…\n`);
   const doc = await fetchDiscoveryDoc(opts.authServerBaseUrl);
 
-  const state = base64UrlEncode(randomBytes(16));
-  const pkce = generatePkce();
-
   log("Starting loopback listener on 127.0.0.1…\n");
+  // Created ONCE and reused across both attempts — the bound stable port and
+  // redirect_uri must not change between a rejected cached attempt and the
+  // fresh-registration retry (the backend pins the exact registered
+  // redirect_uri). attempt() resets the per-attempt timeout + expected state.
   const listener = await startLoopbackListener({
-    expectedState: state,
+    expectedState: "", // set per attempt via listener.setExpectedState
     timeoutMs,
     preferredPorts: LEADBAY_LOOPBACK_PORTS,
   });
-  try {
+  const boundPort = listener.port;
+
+  // A single sign-in attempt: pick/register a client_id, build the authorize
+  // URL, open the browser, wait for the loopback callback, exchange the code.
+  // state + PKCE are regenerated per attempt so a fresh registration carries a
+  // fresh challenge/state.
+  const attempt = async (a: { fromCache: boolean; timeoutMs: number }): Promise<OAuthLoginResult> => {
     // Reuse a cached client_id (keyed by the bound loopback port) — DCR is a
     // once-and-reuse operation; re-registering every launch is what exhausts
     // the backend's ~10-registrations/IP/hour limit (Claude Desktop fires
@@ -745,8 +859,7 @@ export async function oauthLogin(opts: OAuthLoginOptions): Promise<OAuthLoginRes
     // (LEADBAY_LOOPBACK_PORT) so this normally holds; the cache key includes the
     // port so a fallback to an ephemeral port forces a fresh registration for
     // that port instead of reusing a mismatched id.
-    const boundPort = listener.port;
-    let clientId = opts.getCachedClientId?.(boundPort);
+    let clientId = a.fromCache ? opts.getCachedClientId?.(boundPort) : undefined;
     if (clientId) {
       log(`Reusing cached OAuth client_id (${clientId}) for port ${boundPort} — skipping registration.\n`);
     } else {
@@ -764,6 +877,12 @@ export async function oauthLogin(opts: OAuthLoginOptions): Promise<OAuthLoginRes
       }
     }
 
+    // Fresh state + PKCE per attempt; the listener validates against this state.
+    const state = base64UrlEncode(randomBytes(16));
+    const pkce = generatePkce();
+    listener.setExpectedState(state);
+    listener.resetTimeout(a.timeoutMs);
+
     const authorizeUrl = new URL(doc.authorization_endpoint);
     authorizeUrl.searchParams.set("response_type", "code");
     authorizeUrl.searchParams.set("client_id", clientId);
@@ -775,7 +894,9 @@ export async function oauthLogin(opts: OAuthLoginOptions): Promise<OAuthLoginRes
     // Surface the live URL the moment it's known — the listener is already up,
     // so it's clickable now. The caller (non-blocking bootstrap) shows it to
     // the user, which is the reliable path when the spawned process can't open
-    // a browser itself.
+    // a browser itself. On the retry this fires again with the NEW authorize
+    // URL, so the caller's clickable link points at the working (re-registered)
+    // client instead of the stale one.
     if (opts.onAuthorizeUrl) {
       try {
         opts.onAuthorizeUrl(authorizeUrl.toString());
@@ -801,7 +922,7 @@ export async function oauthLogin(opts: OAuthLoginOptions): Promise<OAuthLoginRes
       }
     }
 
-    log("Waiting for authorization (5 min timeout)…\n");
+    log(`Waiting for authorization (${Math.round(a.timeoutMs / 1000)}s timeout)…\n`);
     const { code } = await listener.waitForCallback();
 
     log("Exchanging authorization code for access token…\n");
@@ -813,6 +934,44 @@ export async function oauthLogin(opts: OAuthLoginOptions): Promise<OAuthLoginRes
       redirectUri: listener.redirectUri,
     });
     return { accessToken };
+  };
+
+  try {
+    const usedCache = !opts.forceFreshRegistration && !!opts.getCachedClientId?.(boundPort);
+    // Short first window ONLY when reusing a cached id — so a no-callback hang
+    // (user stranded on the backend authorize error page) becomes a fast,
+    // retryable signal rather than a full-timeout dead end. Never exceed the
+    // caller's own timeout: if they set a timeout ≤ the short window, there is
+    // no shortening, and a timeout is then just an ordinary timeout the caller
+    // asked for — not a cached-rejection signal.
+    const firstTimeoutMs = usedCache ? Math.min(cachedFirstAttemptTimeoutMs, timeoutMs) : timeoutMs;
+    const firstAttemptWasShortened = usedCache && firstTimeoutMs < timeoutMs;
+    try {
+      return await attempt({ fromCache: usedCache, timeoutMs: firstTimeoutMs });
+    } catch (err) {
+      // Self-heal: a cached client_id that the backend rejected at /authorize is
+      // the most plausible cause of the "Something went wrong" page. Evict it
+      // (via onCachedClientRejected) and retry ONCE with a fresh registration on
+      // the full timeout. Retry when the cached attempt hit an explicit callback
+      // error (?error=), or timed out AFTER we deliberately shortened the first
+      // window (a genuine short-circuit — not a plain full-length timeout).
+      // Bounded to a single retry — never on the happy path, never when no cache
+      // was used — so the 429-avoidance guarantee holds.
+      const retryable =
+        usedCache &&
+        (err instanceof OAuthCallbackError ||
+          (err instanceof OAuthTimeoutError && firstAttemptWasShortened));
+      if (retryable) {
+        log("Re-registering the OAuth client and retrying sign-in…\n");
+        try {
+          opts.onCachedClientRejected?.(boundPort, err);
+        } catch {
+          /* diagnostics hook is best-effort */
+        }
+        return await attempt({ fromCache: false, timeoutMs });
+      }
+      throw err;
+    }
   } finally {
     listener.close();
   }

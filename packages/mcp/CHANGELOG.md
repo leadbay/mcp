@@ -1,5 +1,14 @@
 # Changelog — @leadbay/mcp
 
+## 0.23.11 — 2026-07-02
+
+OAuth sign-in self-heals a stale client registration instead of dead-ending on the backend "Something went wrong" page (product#3838).
+
+- **`oauth` — re-register once when a cached client is rejected**: `oauthLogin` reused the cached Dynamic-Client-Registration `client_id` (`~/.leadbay/oauth-client.json`) and sent it to the backend `/authorize` with no recovery. When the backend no longer recognizes that client (a stale/garbage-collected DCR registration, or one whose pinned `redirect_uri` no longer matches), the browser lands on the backend's own **"Something went wrong. Please try again."** page and the loopback either gets `?error=` or never gets a callback — and the flow never re-registered, so the user was stuck (reported on macOS, but platform-agnostic). The flow now detects a cached-client rejection — an `?error=` callback, or a no-callback hang caught by a short first-attempt window (default 45s, never exceeding the caller's own timeout) — evicts the bad id, re-registers **once**, and retries. A working cached id never re-registers and a no-cache first failure is not retried, so the ~10-registrations/IP/hour 429-avoidance guarantee holds.
+- **Diagnostics**: the `.dxt` bootstrap logs `cached client_id rejected … evicting + re-registering` to `~/.leadbay/oauth-bootstrap-debug.log` (the recurrence signal — Claude Desktop hides the spawned server's stderr), and classifies terminal failures (authorize-callback-error / authorize-timeout / discovery-registration) in the trace. When the retry itself fails, the `AUTH_FAILED` envelope says sign-in was rejected even after re-registering — pointing at region/reachability, not a stale cache.
+- **`login --oauth --reset-client`** (new flag): clears the persisted OAuth client cache and forces a fresh registration — the manual escape hatch for a wedged cache.
+- macOS browser launch was verified not to be the cause (`/usr/bin/open <url>` passes the URL as a single argv entry, so `&` is inert). New coverage: `oauth-self-heal.test.ts`, `oauth-client-clear.test.ts`.
+
 ## 0.23.10 — 2026-07-01
 
 A freshly-created lens no longer reads as "empty" (product#3833).
