@@ -1,13 +1,15 @@
 <p align="center">
-  <img src="logo.png" alt="LeadMCP" width="200">
+  <img src="logo.png" alt="Leadbay MCP" width="200">
 </p>
 
-<h1 align="center">LeadMCP</h1>
-<p align="center">MCP server that gives your B2B outreach agent superpowers. LeadMCP lets your agent tap into Leadbay's rich knowledge base of companies, turning outreach activity from senseless spamming into meaningful connections.</p>
-<p align="center">Ask your agent for new leads, and it will pull highly qualified companies that score well against your target profile and meet your qualification criteria.</p>
-<p align="center">Everything is personalized—nothing to configure. Leadbay runs advanced AI agents on your website and leverages deep B2B sales expertise to optimize how leads are sourced for you.</p>
-<p align="center">Tell your agent which leads you want it to prospect, connect your communication channels, and it will source contacts from Leadbay and handle outreach on your behalf. Enjoy the outreach you no longer have to do.
+<h1 align="center">Leadbay MCP</h1>
+<p align="center"><strong>Leadbay MCP connects your AI assistant to your Leadbay account, so you can work your leads by simply asking.</strong></p>
+<p align="center">Pull leads, qualify them, draft outreach, and log activity — in plain language. Your assistant acts on your real Leadbay data, with your permissions, just as you would in the app.</p>
+<p align="center">Everything is personalized — nothing to configure. Leadbay runs advanced AI on your website and market data to source and score leads against your target profile, so outreach becomes meaningful connection instead of senseless spamming.</p>
+<p align="center">Tell your assistant which leads to prospect, connect your channels, and it sources contacts from Leadbay and handles outreach on your behalf. Enjoy the outreach you no longer have to do.
 </p>
+
+> **MCP** stands for *Model Context Protocol* — an open standard that lets AI assistants like Claude securely connect to external tools and data. This server is open source and lives at [github.com/leadbay/mcp](https://github.com/leadbay/mcp).
 
 ---
 
@@ -21,17 +23,28 @@
 
 # For users
 
-Get LeadMCP running inside your AI assistant in a couple of minutes. No coding required.
+Get Leadbay MCP running inside your AI assistant in a couple of minutes. No coding required.
+
+> **New to Leadbay?** The friendly, screenshot-driven walkthrough — what a lens is, how scoring works, and the full MCP setup for every assistant — lives in the **[Leadbay user guide](https://docs.leadbay.ai/leadbay-mcp/what-is-leadbay-mcp)**. This README is the technical companion.
 
 > **No Leadbay account yet?** [Create one here](https://wow.leadbay.ai/?register=true) first — you'll need it to sign in during setup.
 
-## Install in Claude (recommended)
+## Connect on the web (no install)
 
-The fastest way to get started is the one-click Claude extension.
+If you use Claude on the web, Claude Desktop, or ChatGPT, the fastest path is a **custom connector** — no terminal, no tokens to copy. Add one URL and sign in with your browser:
+
+- **Name:** `Leadbay`
+- **URL:** `https://mcp.leadbay.app/mcp`  (EU accounts: `https://mcp.leadbay.app/fr/mcp`)
+
+In Claude: **Settings → Connectors → + → Add custom connector**, paste the URL, then open the connector and **Connect**. Sign in with Leadbay, click **Approve**, and you're linked. The server handles OAuth in-app; updates are automatic — you never touch a config file.
+
+## Install in Claude Desktop (one-click bundle)
+
+Prefer a bundled desktop extension? Grab the one-click file.
 
 **1. Download the extension**
 
-👉 **[Download the latest LeadMCP for Claude (.dxt)](https://github.com/leadbay/mcp/releases/latest)**
+👉 **[Download the latest Leadbay MCP for Claude (.dxt)](https://github.com/leadbay/mcp/releases/latest)**
 
 On the releases page, click the file ending in **`.dxt`** to download it.
 
@@ -49,9 +62,9 @@ Double-click the downloaded `.dxt` file. Claude opens and shows an install dialo
 
 Claude will prompt you to connect Leadbay. Sign in with your Leadbay account and you're ready — just ask your agent for leads.
 
-## Using another assistant?
+## Using a local assistant?
 
-LeadMCP also works with Claude Code, Claude Desktop, Cursor, and Codex. The **universal installer** sets everything up for you and lets you sign in with Leadbay.
+Leadbay MCP also works with Claude Code, Claude Desktop, Cursor, and Codex. The **universal installer** sets everything up for you and lets you sign in with Leadbay.
 
 Requires [Node.js 22+](https://nodejs.org). Then run:
 
@@ -69,11 +82,25 @@ npx -y -p @leadbay/mcp@latest installer --uninstall
 
 It opens an uninstall window showing only the assistants that have Leadbay connected — pick the ones to remove and click **Remove selected**. It only removes Leadbay; your other settings and connections are left untouched.
 
+## Ask for your first leads
+
+Open a new conversation and describe the outcome — you never name a tool, just say what you want, the way you'd ask a colleague:
+
+> *Show me today's leads and tell me which two are worth opening first.*
+
+A successful first reply is a **ranked table of prospects**, not a wall of text: each row has a fit score, a one-line why-it-fits, and the best contact to reach. Then keep going:
+
+> *Research the top one — is it a fit for us?*
+
+> *Draft me an outreach email to them.*
+
+> *I just emailed them. Log it as outreach.*
+
 ---
 
 # For developers
 
-Everything below is for contributors and anyone running LeadMCP from source or wiring it into automation.
+Everything below is for contributors and anyone running Leadbay MCP from source or wiring it into automation.
 
 ## Install a local version with the custom installer
 
@@ -95,11 +122,12 @@ pnpm --filter @leadbay/mcp installer -- --local
 
 ## All install methods
 
-Every supported way to connect LeadMCP:
+Every supported way to connect Leadbay MCP:
 
 | Method | Command / action | Platforms | Notes |
 |--------|------------------|-----------|-------|
-| **`.dxt` / `.mcpb` bundle** | Download from [Releases](https://github.com/leadbay/mcp/releases/latest), double-click → **Install** | Claude Desktop | One-click. The recommended path for end users. |
+| **Hosted connector (no install)** | Add custom connector → `https://mcp.leadbay.app/mcp` (EU `…/fr/mcp`) | Claude web / Desktop, ChatGPT | Browser OAuth in-app. Nothing to install; auto-updates. |
+| **`.dxt` / `.mcpb` bundle** | Download from [Releases](https://github.com/leadbay/mcp/releases/latest), double-click → **Install** | Claude Desktop | One-click desktop extension. |
 | **Guided installer (GUI)** | `npx -y -p @leadbay/mcp@latest installer` | macOS, Windows, Linux | Browser wizard: sign in with Leadbay, pick clients. Works for everyone. |
 | **Local dev build** | `pnpm --filter @leadbay/mcp installer -- --local` | macOS, Windows, Linux | Registers clients against your local build. OAuth automatic. Build from source first (above). |
 | **Claude Code plugin marketplace** | `/plugin marketplace add leadbay/mcp` then `/plugin install leadbay@leadbay-mcp` | Claude Code | Registers the MCP server **and** installs auto-triggering skills. |
@@ -125,7 +153,7 @@ The GUI/CLI installers only touch clients that are actually installed on the mac
 /plugin install leadbay@leadbay-mcp
 ```
 
-Claude Code prompts for Leadbay auth/config. Registers the MCP server **and** installs skills (`leadbay_research_a_domain`, `leadbay_import_file`, `leadbay_log_outreach`, `leadbay_qualify_top_n`, `leadbay_refine_audience`, and others) that auto-trigger on natural-language asks.
+Claude Code prompts for Leadbay auth/config. Registers the MCP server **and** installs a set of skills that auto-trigger on natural-language asks — including `leadbay_daily_check_in` ("get my leads today"), `leadbay_research_a_domain` ("research acme.com"), `leadbay_followup_check_in`, `leadbay_qualify_top_n`, `leadbay_refine_audience`, `leadbay_log_outreach`, `leadbay_import_file`, `leadbay_plan_tour_in_city`, `leadbay_prospecting_overview`, `leadbay_extend_my_lens`, `leadbay_setup_team_prospecting`, `leadbay_build_campaign`, and `leadbay_work_campaign`. Each `SKILL.md` is generated by `@leadbay/promptforge` from the same source as the MCP prompts, so the two surfaces never drift.
 
 ### Uninstall
 
@@ -137,56 +165,155 @@ Opens the uninstall wizard — only shows clients that already have Leadbay MCP 
 
 ## Tools
 
-### Read-only (always on)
+Your assistant calls these on your behalf — you never call them directly. You ask in plain language ("show me today's leads", "research acme.com", "log that I emailed Jane") and the agent picks the right tool. The default surface below is always exposed; the [full per-tool reference](https://docs.leadbay.ai/leadbay-mcp/tools-reference) lives in the user guide.
+
+### Always on — agent memory
+
+A local, per-account memory of your taste signals (preferred sectors, deal size, communication style). It never leaves your machine.
 
 | Tool | Description |
 |------|-------------|
-| `leadbay_pull_leads` | Pull today's fresh batch of scored leads |
-| `leadbay_pull_followups` | Pull leads that need follow-up action |
-| `leadbay_followups_map` | Geo-clustered follow-up map for travel planning |
-| `leadbay_tour_plan` | Build a visit plan for an upcoming trip |
-| `leadbay_research_lead_by_id` | Deep-dive research card for a single lead |
-| `leadbay_research_lead_by_name_fuzzy` | Look up a lead by company name |
-| `leadbay_prepare_outreach` | Build a personalized outreach brief for a lead |
-| `leadbay_account_status` | Check quota, credits, and account state |
-| `leadbay_list_campaigns` | List existing campaigns |
-| `leadbay_campaign_progression` | Campaign funnel metrics |
-| `leadbay_campaign_call_sheet` | Call sheet for a campaign |
-| `leadbay_bulk_enrich_status` | Status of a running enrichment job |
-| `leadbay_qualify_status` | Status of a running qualification job |
-| `leadbay_import_status` | Status of a running import job |
-| `leadbay_resolve_import_rows` | Resolve import rows to lead IDs |
-| `leadbay_list_mappable_fields` | List CRM fields available for mapping |
-| `leadbay_list_sectors` | List the sector taxonomy (real labels to target — no guessing) |
-| `leadbay_recall_ordered_titles` | List job titles previously enriched by the org (use before `leadbay_enrich_titles`) |
-| `leadbay_create_topup_link` | Generate a Stripe top-up link (quota recovery) |
-| `leadbay_open_billing_portal` | Open the billing portal |
+| `leadbay_agent_memory_recall` | Read the consolidated top taste signals |
+| `leadbay_agent_memory_capture` | Record a new learning after you reveal a preference |
+| `leadbay_agent_memory_review` | List entries; gate retractions / org promotion behind confirmation |
 
-### Write actions (gated by `LEADBAY_MCP_WRITE=1`, default ON since 0.3.0)
+### Read-only (always on)
+
+These never modify your account, so they're always safe to allow.
+
+**Discover & follow up**
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_pull_leads` | Pull today's fresh batch of scored, ranked leads |
+| `leadbay_pull_followups` | Pull the leads that need a follow-up action |
+| `leadbay_account_status` | Check quota, credits, and account state |
+| `leadbay_scan_portfolio_signals` | Scan your existing leads for a web signal in one pass ("which of my leads acquired a company since 2025?") — no quota burn |
+
+**Research a company**
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_research_lead_by_id` | Deep-dive research card for a known lead — details + AI qualification + contacts in one response |
+| `leadbay_research_lead_by_name_fuzzy` | Look up a lead by company name or domain when you don't have its ID |
+| `leadbay_account_history` | Full history on one account — current AI signals + all notes + interaction timeline, in one call ("why has this account resurfaced?") |
+| `leadbay_prepare_outreach` | Build a personalized outreach brief for a lead |
+
+**Travel & field sales**
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_followups_map` | Geo-cluster your follow-ups on a map for travel planning |
+| `leadbay_tour_plan` | Build a visit itinerary for an upcoming trip to a city |
+
+**Campaigns**
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_list_campaigns` | List your existing campaigns |
+| `leadbay_campaign_progression` | Show a campaign's funnel metrics |
+| `leadbay_campaign_call_sheet` | Pull the call sheet for a campaign |
+
+**Lenses, audience & qualification**
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_list_sectors` | List the real sector taxonomy labels — so you (and the agent) name sectors correctly, no guessing |
+| `leadbay_recall_ordered_titles` | Recall the job titles previously enriched by the org (use before `leadbay_enrich_titles`) |
+| `leadbay_seed_candidates` | Read-only discovery surface for building a bigger lens |
+| `leadbay_get_qualification_questions` | Retrieve the org's AI-agent qualification questions (how leads are scored) |
+| `leadbay_get_lead_custom_fields` | Retrieve the custom-field values stored on one lead |
+| `leadbay_list_mappable_fields` | List the CRM fields you can map an import onto |
+
+**Imports & jobs**
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_import_status` | Status of a running import job |
+| `leadbay_qualify_status` | Status of a running qualification job |
+| `leadbay_bulk_enrich_status` | Status of a running enrichment job |
+| `leadbay_resolve_import_rows` | Map imported rows back to their lead IDs |
+
+**Team, billing & product signals**
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_team_activity` | Manager-facing per-rep leaderboard + activity trend (non-admins are scoped to themselves) |
+| `leadbay_create_topup_link` | Generate a Stripe top-up link (you pay in your browser — nothing is charged automatically) |
+| `leadbay_open_billing_portal` | Open the billing portal |
+| `leadbay_acknowledge_notification` | Clear a terminal bulk-job notification so it stops resurfacing |
+| `leadbay_report_friction` | Report when a tool didn't deliver — helps improve the product (no account change) |
+| `leadbay_artifact_kit` | Fetch the headless view-models the agent uses to build an interactive HTML artifact |
+
+### Write actions (on by default since 0.3.0; set `LEADBAY_MCP_WRITE=0` to disable)
+
+These take action on your account. Every action is one you could take yourself in the app — there's nothing destructive at the platform level, and deletes are confirm-gated.
+
+**Qualify & enrich**
 
 | Tool | Description |
 |------|-------------|
 | `leadbay_bulk_qualify_leads` | Trigger AI qualification on a batch of leads |
-| `leadbay_enrich_titles` | Enrich contact job titles |
-| `leadbay_my_lenses` | List, switch, rename/describe, or delete your lenses (delete is confirm-gated) |
-| `leadbay_new_lens` | Create a new named lens with sectors/sizes (previews & confirms before creating) |
-| `leadbay_adjust_audience` | Adjust a lens audience by sector/size — pass `lensName` to edit a lens by name (edit-only, doesn't switch your active lens) |
-| `leadbay_refine_prompt` | Refine the qualification prompt |
-| `leadbay_answer_clarification` | Answer a clarification question from Leadbay |
-| `leadbay_report_outreach` | Log outreach activity (required after every contact) |
-| `leadbay_import_leads` | Import a list of company domains |
-| `leadbay_import_and_qualify` | Import + immediately qualify leads |
+| `leadbay_enrich_titles` | Enrich contacts by job title |
+
+**Outreach & activity**
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_report_outreach` | Log an outreach action (call, email, meeting) — required after every contact |
 | `leadbay_add_note` | Add a note to a lead |
-| `leadbay_like_lead` | Mark a lead as liked |
-| `leadbay_dislike_lead` | Mark a lead as disliked |
+| `leadbay_like_lead` | Mark a lead as liked — teaches your taste profile |
+| `leadbay_dislike_lead` | Mark a lead as disliked — teaches your taste profile |
+
+**Contacts**
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_add_contact` | Add a person to a company (name + optional LinkedIn / title / email / phone) |
+| `leadbay_remove_contact` | Remove a contact you added |
+| `leadbay_pin_contact` | Pin a contact as the priority on a company |
+| `leadbay_unpin_contact` | Unpin a contact |
+| `leadbay_update_contact` | Edit a contact's details (title, email, LinkedIn…) |
+
+**Lenses & audience**
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_my_lenses` | List, switch, rename/describe, or delete your lenses (delete is confirm-gated) |
+| `leadbay_new_lens` | Create a named lens with sector / company-size (and optional location) criteria |
+| `leadbay_adjust_audience` | Edit a lens's audience ("stop showing me companies over 50 employees"); pass `lensName` to edit a lens by name |
+| `leadbay_extend_lens` | Fill your current lens with more leads on demand (subject to a daily refill quota) |
+| `leadbay_refine_prompt` | Refine the qualification prompt that scores your leads |
+| `leadbay_answer_clarification` | Answer a clarification question Leadbay asked about your audience |
+
+**Imports & campaigns**
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_import_leads` | Import a list of company domains |
+| `leadbay_import_and_qualify` | Import a list and immediately qualify it |
 | `leadbay_create_campaign` | Create a new campaign |
 | `leadbay_add_leads_to_campaign` | Add leads to a campaign |
 | `leadbay_remove_leads_from_campaign` | Remove leads from a campaign |
-| `leadbay_create_custom_field` | Create a custom CRM field |
+
+**Custom fields & qualification questions**
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_create_custom_field` | Create a custom CRM field (e.g. to preserve a source-system ID) |
+| `leadbay_update_custom_field` | Rename or retype a custom field |
+| `leadbay_delete_custom_field` | Delete a custom field (confirm-gated) |
+| `leadbay_set_qualification_questions` | Modify the org's AI-agent qualification questions (max 5; removals confirm-gated) |
+
+**Feedback**
+
+| Tool | Description |
+|------|-------------|
+| `leadbay_send_feedback` | Send a message to the Leadbay team (same inbox as the in-app feedback form) |
 
 ### Advanced granular tools (gated by `LEADBAY_MCP_ADVANCED=1`)
 
-Low-level single-API-call tools for power users and integrations. Enabled by setting `LEADBAY_MCP_ADVANCED=1` in the MCP server's env.
+Low-level, single-API-call tools for power users and integrations (`leadbay_discover_leads`, `leadbay_get_lead_profile`, `leadbay_get_contacts`, `leadbay_list_lenses`, …). Off by default; enable by setting `LEADBAY_MCP_ADVANCED=1` in the MCP server's env. See [`packages/mcp/README.md`](packages/mcp/README.md#8-advanced) for the full list.
 
 ## How it works
 
@@ -202,9 +329,11 @@ You can also manage lenses directly from chat: `leadbay_my_lenses` lists them an
 |---------|----------|-------------|
 | `LEADBAY_TOKEN` | Yes | Local OAuth bearer credential (set by the installer) |
 | `LEADBAY_REGION` | Yes | `us` or `fr` |
-| `LEADBAY_MCP_WRITE` | No | Set to `0` to disable write tools (default: on) |
+| `LEADBAY_MCP_WRITE` | No | Set to `0` to disable write tools (default: on since 0.3.0) |
 | `LEADBAY_MCP_ADVANCED` | No | Set to `1` to expose granular tools (default: off) |
 | `LEADBAY_BASE_URL` | No | Override API URL (for staging/dev) |
+
+The full environment-variable reference (telemetry, mock mode, logging, timeouts) is in [`packages/mcp/README.md`](packages/mcp/README.md#environment-variables).
 
 ## Workflows
 
