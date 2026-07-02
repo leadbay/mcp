@@ -35,7 +35,7 @@ const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
 beforeEach(() => resetHttpMock());
 
 describe("buildPullLeadsNextSteps — empty-but-computing (#3833)", () => {
-  it("empty + computing_wishlist:true → single re-pull option", () => {
+  it("empty + computing_wishlist:true → re-pull option first, valid 2–4 widget count", () => {
     const ns = buildPullLeadsNextSteps({
       leadCount: 0,
       hasMore: false,
@@ -44,14 +44,18 @@ describe("buildPullLeadsNextSteps — empty-but-computing (#3833)", () => {
       computingScores: false,
     });
     expect(ns).not.toBeNull();
-    expect(ns!.options).toHaveLength(1);
+    // Host-widget contract requires 2–4 options; a single option is invalid.
+    expect(ns!.options.length).toBeGreaterThanOrEqual(2);
+    expect(ns!.options.length).toBeLessThanOrEqual(4);
     expect(ns!.options[0].kind).toBe("repull_computing");
-    expect(ns!.options[0].label.trim().split(/\s+/).length).toBeLessThanOrEqual(5);
+    for (const opt of ns!.options) {
+      expect(opt.label.trim().split(/\s+/).length).toBeLessThanOrEqual(5);
+    }
     expect(ns!.options[0].description).toMatch(/~30s/);
     expect(ns!.question).toMatch(/warming up/i);
   });
 
-  it("empty + computing_scores:true (wishlist false) → same single re-pull option", () => {
+  it("empty + computing_scores:true (wishlist false) → same re-pull-first, valid count", () => {
     const ns = buildPullLeadsNextSteps({
       leadCount: 0,
       hasMore: false,
@@ -60,7 +64,8 @@ describe("buildPullLeadsNextSteps — empty-but-computing (#3833)", () => {
       computingScores: true,
     });
     expect(ns).not.toBeNull();
-    expect(ns!.options).toHaveLength(1);
+    expect(ns!.options.length).toBeGreaterThanOrEqual(2);
+    expect(ns!.options.length).toBeLessThanOrEqual(4);
     expect(ns!.options[0].kind).toBe("repull_computing");
   });
 
@@ -111,7 +116,9 @@ describe("pullLeads.execute — empty wishlist while computing (#3833)", () => {
     expect(result.leads).toHaveLength(0);
     expect(result.computing_wishlist).toBe(true);
     expect(result.next_steps).not.toBeNull();
-    expect(result.next_steps.options).toHaveLength(1);
+    // Valid host-widget option count (2–4), re-pull nudge first.
+    expect(result.next_steps.options.length).toBeGreaterThanOrEqual(2);
+    expect(result.next_steps.options.length).toBeLessThanOrEqual(4);
     expect(result.next_steps.options[0].kind).toBe("repull_computing");
     // No per-lead fan-out on an empty batch.
     expect(

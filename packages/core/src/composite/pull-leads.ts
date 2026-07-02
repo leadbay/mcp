@@ -118,6 +118,12 @@ export function buildPullLeadsNextSteps(args: {
   if (leadCount <= 0) {
     // Empty page. If the lens is still warming up, nudge a re-pull rather than
     // letting the model conclude "empty." Otherwise no widget (genuinely empty).
+    //
+    // The host-widget contract (ask_user_input_v0 / AskUserQuestion) requires
+    // 2–4 mutually-exclusive options — a single option would make the model emit
+    // an invalid widget call (or silently drop to prose, losing the nudge). So
+    // pair the re-pull with the natural alternate move (the lens may be empty
+    // because the audience is too narrow → widen it), keeping the choice valid.
     if (computingWishlist || computingScores) {
       return {
         question: "This lens is still warming up. What next?",
@@ -127,6 +133,12 @@ export function buildPullLeadsNextSteps(args: {
             description:
               "Leads are still being computed for this lens — wait ~30s, then pull again to see them.",
             kind: "repull_computing",
+          },
+          {
+            label: "Refine audience",
+            description:
+              "Adjust the lens audience / filters (sector, size, prompt) — useful if it's coming back sparse.",
+            kind: "refine_audience",
           },
         ],
       };
@@ -243,7 +255,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
       next_steps: {
         type: ["object", "null"],
         description:
-          "Ready-made NEXT STEPS for the host's choice widget. Each option has a SHORT `label` (≤5 words, fits AskUserQuestion's label cap on Claude cowork/Claude Code) and a full `description`. For AskUserQuestion (cowork/Claude Code) pass each option as {label, description}. For ask_user_input_v0 (Claude chat/ChatGPT, string-only options) use the `description` as the option string. Use these VERBATIM, in order — do NOT re-derive, reword, or render as prose when a widget tool exists. options[0] is the artifact offer (build the lead triage board) whenever the batch is non-empty. When the batch is empty but the lens is still computing (computing_wishlist/computing_scores true), this carries a single 'Re-pull in ~30s' option (kind:repull_computing) — render it so the user waits rather than seeing 'no leads.' null only when the batch is empty AND nothing is computing (a genuinely empty / over-narrow lens).",
+          "Ready-made NEXT STEPS for the host's choice widget. Each option has a SHORT `label` (≤5 words, fits AskUserQuestion's label cap on Claude cowork/Claude Code) and a full `description`. For AskUserQuestion (cowork/Claude Code) pass each option as {label, description}. For ask_user_input_v0 (Claude chat/ChatGPT, string-only options) use the `description` as the option string. Use these VERBATIM, in order — do NOT re-derive, reword, or render as prose when a widget tool exists. options[0] is the artifact offer (build the lead triage board) whenever the batch is non-empty. When the batch is empty but the lens is still computing (computing_wishlist/computing_scores true), this carries a 'Re-pull in ~30s' option (kind:repull_computing) plus 'Refine audience' — render the widget so the user waits rather than seeing 'no leads.' null only when the batch is empty AND nothing is computing (a genuinely empty / over-narrow lens).",
         properties: {
           question: { type: "string" },
           options: {
