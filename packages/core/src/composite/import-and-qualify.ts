@@ -424,6 +424,11 @@ export const importAndQualify: Tool<
         description: "Lens id (escape hatch — defaults to active).",
       },
       dry_run: {
+        // Union type (boolean | "preview"): declare both JSON-Schema types so
+        // directory validators don't flag a missing `type`. The enum pins the
+        // only accepted string value.
+        type: ["boolean", "string"],
+        enum: [true, false, "preview"],
         description:
           "Optional. `true` runs preprocess only (no commit, no qualify). " +
           "`'preview'` runs preprocess and returns the wizard's per-column AI " +
