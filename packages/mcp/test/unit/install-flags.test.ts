@@ -50,7 +50,11 @@ describe("buildClaudeCodeAddArgs — Claude Code registration argv", () => {
     const args = buildClaudeCodeAddArgs("tok", "us", true, true);
     const sep = args.indexOf("--");
     expect(sep).toBeGreaterThan(0);
-    expect(args.slice(sep + 1)).toEqual(["npx", "-y", "-p", "@leadbay/mcp@latest", "leadbay-mcp"]);
+    // `--package=` long form (not `-p`): the short flag leaks into Claude
+    // Code's own arg parser after `--` and breaks the add, but the package
+    // must still be flagged + the `leadbay-mcp` bin named so npx can launch
+    // it (no bin is named `mcp`) — product#3847.
+    expect(args.slice(sep + 1)).toEqual(["npx", "-y", "--package=@leadbay/mcp@latest", "leadbay-mcp"]);
   });
 
   it("token and region are NOT placed after the `--` separator (would be passed to npx, not claude)", () => {
