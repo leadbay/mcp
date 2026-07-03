@@ -1,5 +1,11 @@
 # Changelog — @leadbay/mcp
 
+## 0.23.12 — 2026-07-03
+
+Claude Code install no longer fails with `unknown option '--scope'` / `--env` (product#3847).
+
+- **`buildClaudeCodeAddArgs` (installer)** — the `claude mcp add` command built its subprocess tail with a `-p` **short** flag (`-- npx -y -p @leadbay/mcp@latest leadbay-mcp`). Even after the `--` separator, `-p` leaks back into Claude Code's own Commander parser on current CLIs, which then rejects an *earlier* option (`--scope`, or `--env`) with a misleading `unknown option` error — so the install aborted with exit 1. The tail now uses the `=`-joined long form `-- npx -y --package=@leadbay/mcp@latest leadbay-mcp`: the package spec must stay flagged and the `leadbay-mcp` bin named explicitly (the package declares several bins and none is `mcp`, so a bare `npx -y @leadbay/mcp@latest` would die at launch with `could not determine executable to run`), while `--package=…` is left untouched by Claude Code's parser. Verified live against `claude 2.1.199`: install → registered, uninstall → removed.
+
 ## 0.23.11 — 2026-07-02
 
 Windows `.dxt` sign-in now opens the browser reliably (product#3839).

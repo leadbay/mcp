@@ -25,7 +25,22 @@ export function buildClaudeCodeAddArgs(
   if (localBinPath) {
     args.push("--", "node", localBinPath);
   } else {
-    args.push("--", "npx", "-y", "-p", "@leadbay/mcp@latest", "leadbay-mcp");
+    // `npx -y --package=@leadbay/mcp@latest leadbay-mcp` (product#3847).
+    // Two constraints must BOTH hold:
+    //  1. @leadbay/mcp declares several bins and NONE is named `mcp`, so npx
+    //     can't infer an executable from the package name alone — a bare
+    //     `npx -y @leadbay/mcp@latest` (with or without a trailing bin name)
+    //     dies at launch with `could not determine executable to run`. The
+    //     package spec MUST be flagged and the `leadbay-mcp` bin named
+    //     explicitly.
+    //  2. The SHORT flag `-p`, though after the `--` separator, leaks back
+    //     into Claude Code's own Commander parser on current CLIs, which then
+    //     rejects an EARLIER option (`--scope`/`--env`) with a misleading
+    //     `unknown option` error at `claude mcp add` time.
+    // The `=`-joined long form `--package=…` satisfies both: npx disambiguates
+    // the package, and Claude Code's parser leaves the `--long=value` token
+    // alone (verified against claude 2.1.199).
+    args.push("--", "npx", "-y", "--package=@leadbay/mcp@latest", "leadbay-mcp");
   }
   return args;
 }
