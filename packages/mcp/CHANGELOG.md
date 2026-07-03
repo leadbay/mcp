@@ -1,5 +1,11 @@
 # Changelog — @leadbay/mcp
 
+## 0.23.13 — 2026-07-03
+
+Directory-submission schema fix.
+
+- **`leadbay_import_and_qualify` `dry_run` param** now declares a JSON-Schema type (`["boolean","string"]` + `enum [true,false,"preview"]`). It previously carried only a description, so connector-directory validators (ChatGPT Apps SDK / Anthropic) rejected it with "Parameters missing type: dry_run". No behavior change — those were already the only accepted values. Introspection confirmed `dry_run` was the only untyped input property across all tools.
+
 ## 0.23.12 — 2026-07-03
 
 Claude Code install no longer fails with `unknown option '--scope'` / `--env` (product#3847).
