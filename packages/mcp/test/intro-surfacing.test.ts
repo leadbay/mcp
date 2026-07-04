@@ -121,6 +121,37 @@ describe("intro surfacing — brand-new user (product#3829)", () => {
     expect(setterCalls).toHaveLength(1);
   });
 
+  it("surfaces at most once under CONCURRENT first tool calls (product#3829 review)", async () => {
+    // Two tool calls that complete simultaneously at session start. Only ONE
+    // /me script and ONE setter script are provided: the fixed code installs a
+    // single shared /me-read promise both callers await, so exactly one /me read
+    // happens and exactly one caller attaches. The old code raced — both callers
+    // read /me (the second would even miss the single script) and both attached.
+    const { requests } = mockHttp([meScript(false), introSetterScript]);
+    const { mcpClient } = await connect("u.test-token");
+
+    const [a, b] = await Promise.all([
+      mcpClient.callTool({ name: "leadbay_ping_test", arguments: {} }),
+      mcpClient.callTool({ name: "leadbay_ping_test", arguments: {} }),
+    ]);
+
+    const withIntro = [a, b].filter(
+      (r) => (r.structuredContent as any)._meta?.intro !== undefined
+    );
+    expect(withIntro).toHaveLength(1);
+    expect((withIntro[0].structuredContent as any)._meta.intro).toMatchObject({
+      name: ARTY_INTRO.name,
+      calendly: ARTY_INTRO.calendly,
+    });
+
+    // Exactly one /me read (shared promise) and one setter POST — no racing.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(requests.filter((r) => r.path === "/1.6/users/me")).toHaveLength(1);
+    expect(
+      requests.filter((r) => r.path === "/1.6/users/arty_intro_shown")
+    ).toHaveLength(1);
+  });
+
   it("does NOT re-attach on subsequent calls in the same session", async () => {
     mockHttp([meScript(false), introSetterScript]);
     const { mcpClient } = await connect("u.test-token");

@@ -761,12 +761,17 @@ export function buildServer(
   const promptedVersionsThisSession = new Set<string>();
   const serverVersion = opts.version ?? "0.0.0-dev";
 
-  // Once we've surfaced (or decided not to surface) the one-time Arty intro this
-  // session we never re-check. Boolean, not a Set: the intro is per-user and
-  // there is one authenticated user per server process. Set synchronously the
-  // instant we decide, BEFORE the fire-and-forget setter POST lands, so a
-  // concurrent tool call in the same session can't double-surface (product#3829).
-  let introSurfacedThisSession = false;
+  // One-time Arty intro (product#3829). Concurrency-safe gating: the FIRST
+  // caller to reach the decision point installs a single shared /me-read promise
+  // (synchronously, before any await), and every concurrent caller awaits THAT
+  // same promise rather than racing its own /me read. Exactly one caller then
+  // claims the surface via the synchronous `introClaimed` flag, so even when N
+  // tool calls complete simultaneously at session start, `_meta.intro` is
+  // attached to at most one result. `introDone` short-circuits every later call
+  // once the decision has settled (attached, already-shown, or absent-field).
+  let introDone = false;
+  let introClaimed = false;
+  let introDecision: Promise<boolean> | null = null; // resolves true ⇢ surface
 
   // Fire-and-forget background re-check on every tool call. checkForUpdate
   // throttles to 24h via state.last_check_time (steady-state cost = one disk
@@ -980,7 +985,7 @@ export function buildServer(
   // intro has no background fetch, only a sync auth check + the 60s-cached
   // resolveMe + a field already on the response.
   const maybeAttachIntro = async (result: unknown): Promise<void> => {
-    if (introSurfacedThisSession) return;
+    if (introDone) return;
     // No token → resolveMe would 401; skip with no roundtrip. (Also: the
     // bootstrap gate returns an error envelope before execute() during OAuth
     // bootstrap, so no result reaches here then anyway.)
@@ -990,30 +995,47 @@ export function buildServer(
     }
     // Error envelopes ({error:true,...}) are serialized to a bare
     // {content,isError} that carries no _meta/structuredContent — attaching
-    // would be dropped AND burn the once-per-session gate, hiding the intro for
-    // the rest of the session if the first tool call errors. Skip; the next
-    // successful result carries it. (Checked BEFORE resolveMe so an erroring
-    // call neither pays the roundtrip nor burns the gate.)
+    // would be dropped AND consume the gate, hiding the intro for the rest of
+    // the session if the first tool call errors. Skip; the next successful
+    // result carries it. (Checked BEFORE the /me read so an erroring call
+    // neither pays the roundtrip nor burns the gate.)
     if ((result as Record<string, unknown>).error === true) return;
 
-    // resolveMe REJECTS on auth/network failure. The intro is a UX nicety —
-    // never break the tool, and don't burn the gate (retry next call).
-    let me;
-    try {
-      me = await client.resolveMe();
-    } catch (err: any) {
-      opts.logger?.warn?.(`intro.resolve_me_failed ${err?.message ?? err}`);
-      return;
+    // Install the shared decision promise SYNCHRONOUSLY (no await before this),
+    // so concurrent first callers all await the SAME /me read instead of each
+    // racing its own — the fix for the double-surface under simultaneous calls
+    // (product#3829 review). resolveMe is 60s-cached, so later sessions pay no
+    // roundtrip once warm.
+    if (introDecision === null) {
+      introDecision = (async () => {
+        try {
+          const me = await client.resolveMe();
+          // Surface ONLY when explicitly false. `true` → already shown;
+          // `undefined` → backend predates the field → surface nothing (MCP is
+          // safe to ship ahead of the backend). Either non-false outcome retires
+          // the gate for the session.
+          const shouldSurface = me.arty_intro_shown === false;
+          introDone = true;
+          return shouldSurface;
+        } catch (err: any) {
+          // resolveMe REJECTED (auth/network). The intro is a UX nicety — never
+          // break the tool, and DON'T retire the gate: reset introDecision so a
+          // later call retries the read.
+          opts.logger?.warn?.(`intro.resolve_me_failed ${err?.message ?? err}`);
+          introDecision = null;
+          return false;
+        }
+      })();
     }
 
-    // Only surface when the flag is EXPLICITLY false. `true` → already shown;
-    // `undefined` → backend predates the field (not deployed) → surface nothing,
-    // so the MCP is safe to ship ahead of the backend. Either way, set the gate
-    // so we don't re-read /me every call for the rest of the session.
-    if (me.arty_intro_shown !== false) {
-      introSurfacedThisSession = true;
-      return;
-    }
+    const shouldSurface = await introDecision;
+    if (!shouldSurface) return;
+
+    // Exactly one of the concurrently-waiting callers wins this synchronous
+    // claim; the rest fall through without attaching. This is what makes
+    // `_meta.intro` land on at most ONE result even under simultaneous calls.
+    if (introClaimed) return;
+    introClaimed = true;
 
     // Attach to the inner structured payload for markdown envelopes, else the
     // outer object — same target-selection as maybeAttachUpdate/Notifications.
@@ -1031,10 +1053,8 @@ export function buildServer(
         : {};
     target._meta = { ...existingMeta, intro: ARTY_INTRO };
 
-    // Set the gate BEFORE the await so a concurrent call can't double-surface.
-    introSurfacedThisSession = true;
-    // Persist last, fire-and-forget — the setter is idempotent server-side, so
-    // even a racing double-POST is harmless.
+    // Persist, fire-and-forget — the setter is idempotent server-side, so even
+    // a racing double-POST is harmless.
     void client.markArtyIntroShown().catch((err: any) => {
       opts.logger?.warn?.(`intro.mark_failed ${err?.message ?? err}`);
     });
