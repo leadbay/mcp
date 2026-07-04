@@ -38,6 +38,7 @@ import {
 import { NotificationsInbox } from "@leadbay/core";
 import { NOOP_TELEMETRY, type TelemetryHandle } from "./telemetry.js";
 import type { UpdateStateStore } from "./update-state.js";
+import { ARTY_INTRO } from "./intro.js";
 import {
   checkForUpdate,
   getCachedUpdateInfo,
@@ -195,6 +196,26 @@ function buildUpdateAvailableParagraph(has: (name: string) => boolean): string |
   );
 }
 
+// One-time welcome routing (product#3829). Only emitted when the intro surface
+// is wired (buildServer passes hasIntro when an intro-capable /me flag is
+// readable), mirroring buildUpdateAvailableParagraph's conditional gating.
+function buildIntroParagraph(hasIntro: boolean): string | null {
+  if (!hasIntro) return null;
+  return (
+    "One-time welcome: on rare occasion a tool result carries `_meta.intro` " +
+    "(`{ name, role, whatsapp, email, calendly }`). This is a first-contact " +
+    "greeting for a brand-new Leadbay user and appears at most ONCE, ever. When " +
+    "you see it, OPEN your reply with a brief, warm one-or-two-sentence welcome " +
+    "that introduces the person by `name` and `role` and offers instant help, " +
+    "rendering the three contacts as markdown links: `[WhatsApp](whatsapp)`, " +
+    "`[email](mailto:email)`, `[Book a call](calendly)`. Do NOT use a " +
+    "question/choice widget (ask_user_input_v0) — this is informational, not a " +
+    "prompt. Then CONTINUE with the user's actual request in the SAME turn " +
+    "(never let the greeting replace answering them). Never repeat this greeting " +
+    "later in the conversation."
+  );
+}
+
 function buildRhythmParagraph(has: (name: string) => boolean): string {
   if (has("leadbay_report_outreach")) {
     return (
@@ -318,7 +339,10 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
   return parts.join(" ");
 }
 
-export function buildServerInstructions(exposed: Set<string>): string {
+export function buildServerInstructions(
+  exposed: Set<string>,
+  opts: { hasIntro?: boolean } = {}
+): string {
   const has = (name: string) => exposed.has(name);
   const parts: string[] = [];
   // Verification mandate stays first when report_outreach is exposed (UC test
@@ -347,6 +371,8 @@ export function buildServerInstructions(exposed: Set<string>): string {
   parts.push(buildRhythmParagraph(has));
   const updateParagraph = buildUpdateAvailableParagraph(has);
   if (updateParagraph) parts.push(updateParagraph);
+  const introParagraph = buildIntroParagraph(opts.hasIntro ?? false);
+  if (introParagraph) parts.push(introParagraph);
   const promptsCatalog = buildPromptsCatalogParagraph(has);
   if (promptsCatalog) parts.push(promptsCatalog);
   parts.push(RESOURCES_PARAGRAPH);
@@ -613,7 +639,10 @@ export function buildServer(
         resources: { subscribe: true, listChanged: true },
         completions: {},
       },
-      instructions: buildServerInstructions(exposedNames),
+      // hasIntro: the intro rides on `_meta.intro` which maybeAttachIntro
+      // attaches from the /me `arty_intro_shown` flag — always available on the
+      // authenticated stdio server, so the routing paragraph is always emitted.
+      instructions: buildServerInstructions(exposedNames, { hasIntro: true }),
     }
   );
 
@@ -731,6 +760,13 @@ export function buildServer(
   // session = new opportunity to convert.
   const promptedVersionsThisSession = new Set<string>();
   const serverVersion = opts.version ?? "0.0.0-dev";
+
+  // Once we've surfaced (or decided not to surface) the one-time Arty intro this
+  // session we never re-check. Boolean, not a Set: the intro is per-user and
+  // there is one authenticated user per server process. Set synchronously the
+  // instant we decide, BEFORE the fire-and-forget setter POST lands, so a
+  // concurrent tool call in the same session can't double-surface (product#3829).
+  let introSurfacedThisSession = false;
 
   // Fire-and-forget background re-check on every tool call. checkForUpdate
   // throttles to 24h via state.last_check_time (steady-state cost = one disk
@@ -932,6 +968,76 @@ export function buildServer(
       ...existingMeta,
       notifications: entries,
     };
+  };
+
+  // Surface the one-time "intro to Arty" welcome on the FIRST tool result of a
+  // session for a brand-new user (product#3829). Reads the per-user
+  // `arty_intro_shown` flag from /me: false → attach `_meta.intro` + flip the
+  // flag; true/absent → nothing. The backend flag makes it one-time-ever across
+  // surfaces; the session boolean prevents a same-session double-surface.
+  //
+  // Deliberately does NOT mirror maybeAttachUpdate's in-flight-check wait — the
+  // intro has no background fetch, only a sync auth check + the 60s-cached
+  // resolveMe + a field already on the response.
+  const maybeAttachIntro = async (result: unknown): Promise<void> => {
+    if (introSurfacedThisSession) return;
+    // No token → resolveMe would 401; skip with no roundtrip. (Also: the
+    // bootstrap gate returns an error envelope before execute() during OAuth
+    // bootstrap, so no result reaches here then anyway.)
+    if (!client.isAuthenticated) return;
+    if (result === null || typeof result !== "object" || Array.isArray(result)) {
+      return;
+    }
+    // Error envelopes ({error:true,...}) are serialized to a bare
+    // {content,isError} that carries no _meta/structuredContent — attaching
+    // would be dropped AND burn the once-per-session gate, hiding the intro for
+    // the rest of the session if the first tool call errors. Skip; the next
+    // successful result carries it. (Checked BEFORE resolveMe so an erroring
+    // call neither pays the roundtrip nor burns the gate.)
+    if ((result as Record<string, unknown>).error === true) return;
+
+    // resolveMe REJECTS on auth/network failure. The intro is a UX nicety —
+    // never break the tool, and don't burn the gate (retry next call).
+    let me;
+    try {
+      me = await client.resolveMe();
+    } catch (err: any) {
+      opts.logger?.warn?.(`intro.resolve_me_failed ${err?.message ?? err}`);
+      return;
+    }
+
+    // Only surface when the flag is EXPLICITLY false. `true` → already shown;
+    // `undefined` → backend predates the field (not deployed) → surface nothing,
+    // so the MCP is safe to ship ahead of the backend. Either way, set the gate
+    // so we don't re-read /me every call for the rest of the session.
+    if (me.arty_intro_shown !== false) {
+      introSurfacedThisSession = true;
+      return;
+    }
+
+    // Attach to the inner structured payload for markdown envelopes, else the
+    // outer object — same target-selection as maybeAttachUpdate/Notifications.
+    const envelope = result as Record<string, unknown>;
+    const target =
+      envelope.__markdown_envelope === true &&
+      envelope.structured !== null &&
+      typeof envelope.structured === "object" &&
+      !Array.isArray(envelope.structured)
+        ? (envelope.structured as Record<string, unknown>)
+        : envelope;
+    const existingMeta =
+      target._meta && typeof target._meta === "object" && !Array.isArray(target._meta)
+        ? (target._meta as Record<string, unknown>)
+        : {};
+    target._meta = { ...existingMeta, intro: ARTY_INTRO };
+
+    // Set the gate BEFORE the await so a concurrent call can't double-surface.
+    introSurfacedThisSession = true;
+    // Persist last, fire-and-forget — the setter is idempotent server-side, so
+    // even a racing double-POST is harmless.
+    void client.markArtyIntroShown().catch((err: any) => {
+      opts.logger?.warn?.(`intro.mark_failed ${err?.message ?? err}`);
+    });
   };
 
   // A LeadbayError surfaced either via throw OR via the `{ error: true,
@@ -1251,6 +1357,11 @@ export function buildServer(
       // is non-empty. Same timing as maybeAttachUpdate so the field rides
       // along regardless of whether the response is markdown or JSON.
       maybeAttachNotifications(result);
+      // Inject `_meta.intro` (one-time Arty welcome) on the first tool result of
+      // a session for a brand-new user. Awaited so the /me read settles before
+      // the response is serialized; no-op (and cheap) once the session gate is
+      // set. Runs after the other two so it never clobbers their _meta keys.
+      await maybeAttachIntro(result);
       // Leadbay tools may return error envelopes ({ error: true, code, ... })
       // rather than throwing. Surface those as MCP isError so the LLM doesn't
       // treat them as success.
