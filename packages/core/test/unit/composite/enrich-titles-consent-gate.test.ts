@@ -56,8 +56,17 @@ const newClient = () => new LeadbayClient(BASE, "u.test-token");
 // The select → job_titles → preview → clear sequence common to every branch.
 // A launch fixture is appended ONLY where a launch is expected, so any
 // unexpected /launch throws (undeclared endpoint) and fails the test loudly.
+//
+// The consent gate splits the flow into two lock phases (product#3848 review):
+//   phase 1 (preview): select → job_titles → preview → clear
+//   phase 2 (launch, only on consent): select → launch → clear
+// so the launch path issues a SECOND select + clear. withLaunch appends that
+// whole phase-2 leg. The harness matches by (method, path) among unconsumed
+// scripts regardless of order, so declaring the right multiplicity is enough.
+// A user/me (readCreditsRemaining) is added when the elicit branch runs.
 function baseFlow(opts: { withCredits?: boolean; withLaunch?: boolean } = {}) {
   const seq: any[] = [
+    // phase 1: preview under the lock
     { method: "POST", path: /\/leads\/selection\/select/, status: 204 },
     {
       method: "GET",
@@ -71,6 +80,7 @@ function baseFlow(opts: { withCredits?: boolean; withLaunch?: boolean } = {}) {
       status: 200,
       body: previewBody,
     },
+    { method: "POST", path: "/1.6/leads/selection/clear", status: 204 },
   ];
   if (opts.withCredits) {
     seq.push({
@@ -81,13 +91,17 @@ function baseFlow(opts: { withCredits?: boolean; withLaunch?: boolean } = {}) {
     });
   }
   if (opts.withLaunch) {
-    seq.push({
-      method: "POST",
-      path: "/1.6/leads/selection/enrichment/launch",
-      status: 204,
-    });
+    // phase 2: re-select → launch → clear, under a fresh lock
+    seq.push(
+      { method: "POST", path: /\/leads\/selection\/select/, status: 204 },
+      {
+        method: "POST",
+        path: "/1.6/leads/selection/enrichment/launch",
+        status: 204,
+      },
+      { method: "POST", path: "/1.6/leads/selection/clear", status: 204 }
+    );
   }
-  seq.push({ method: "POST", path: "/1.6/leads/selection/clear", status: 204 });
   return mockHttp(seq);
 }
 
@@ -188,7 +202,8 @@ describe("enrich_titles consent gate (#3848)", () => {
   });
 
   it("elicit present + user accepts → launches", async () => {
-    const { requests } = baseFlow({ withLaunch: true });
+    // Not consented → elicits (reads credits) → accepts → launches.
+    const { requests } = baseFlow({ withCredits: true, withLaunch: true });
     const elicit = vi.fn(async () => ({
       action: "accept" as const,
       content: { confirm: true },
@@ -309,5 +324,37 @@ describe("enrich_titles consent gate (#3848)", () => {
     expect(res.mode).toBe("dry_run");
     expect(elicit).not.toHaveBeenCalled();
     expect(launchCalls(requests)).toHaveLength(0);
+  });
+
+  it("selection lock is NOT held during elicitation (product#3848 concurrency)", async () => {
+    // The lock is a boolean + wait-queue. If phase 1 still held it while we
+    // await the user, this acquire would deadlock: phase 1 can't release until
+    // elicit returns, and elicit can't return until acquire resolves. So the
+    // acquire succeeding INSIDE the elicit handler — and the whole call
+    // completing without timing out — is the proof the lock was released.
+    const { requests } = baseFlow({ withCredits: true, withLaunch: true });
+    const client = newClient();
+    let lockWasFreeDuringElicit = false;
+
+    const ctx: ToolContext = {
+      bulkTracker: new InMemoryBulkStore(),
+      elicit: async () => {
+        // Would hang forever if the lock were still held by phase 1.
+        await client.acquireSelectionLock();
+        lockWasFreeDuringElicit = true;
+        client.releaseSelectionLock();
+        return { action: "accept" as const, content: { confirm: true } };
+      },
+    };
+
+    const res: any = await enrichTitles.execute(
+      client,
+      { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE] },
+      ctx
+    );
+
+    expect(lockWasFreeDuringElicit).toBe(true);
+    expect(res.mode).toBe("launched");
+    expect(launchCalls(requests)).toHaveLength(1);
   });
 });

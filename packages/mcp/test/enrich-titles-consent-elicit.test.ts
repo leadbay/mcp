@@ -27,22 +27,31 @@ const BASE = "https://api-us.leadbay.app";
 const LENS_ID = 88;
 const TITLE = "VP of Sales";
 
-// The select → job_titles → preview → clear leg every branch walks. A /launch
-// fixture is appended only for the accept case; an unexpected launch on the
-// decline case hits an undeclared endpoint and fails loudly.
+// The consent gate uses two lock phases (product#3848 review): phase 1 previews
+// (select → job_titles → preview → clear); phase 2 launches on consent
+// (select → launch → clear). So a launch path issues a SECOND select + clear.
+// The harness matches by (method, path) among unconsumed scripts regardless of
+// order, so declaring the right multiplicity is what matters. A /launch fixture
+// is added only for launch cases; an unexpected launch on the decline case hits
+// an undeclared endpoint and fails loudly. Several /users/me scripts are
+// provided because the server + readCreditsRemaining may read it more than once.
+const meScript = () => ({
+  method: "GET",
+  path: "/1.6/users/me",
+  status: 200,
+  body: {
+    id: "u",
+    email: "a@b.com",
+    organization: { id: "org-1", billing: { ai_credits: 500 } },
+    last_requested_lens: LENS_ID,
+  },
+});
+
 function enrichFlow(opts: { withLaunch?: boolean } = {}) {
   const seq: any[] = [
-    {
-      method: "GET",
-      path: "/1.6/users/me",
-      status: 200,
-      body: {
-        id: "u",
-        email: "a@b.com",
-        organization: { id: "org-1", billing: { ai_credits: 500 } },
-        last_requested_lens: LENS_ID,
-      },
-    },
+    meScript(),
+    meScript(),
+    // phase 1: preview under the lock
     { method: "POST", path: /\/1\.6\/leads\/selection\/select/, status: 204 },
     {
       method: "GET",
@@ -61,15 +70,20 @@ function enrichFlow(opts: { withLaunch?: boolean } = {}) {
         previously_enriched_titles: [],
       },
     },
+    { method: "POST", path: "/1.6/leads/selection/clear", status: 204 },
   ];
   if (opts.withLaunch) {
-    seq.push({
-      method: "POST",
-      path: "/1.6/leads/selection/enrichment/launch",
-      status: 204,
-    });
+    // phase 2: re-select → launch → clear, under a fresh lock
+    seq.push(
+      { method: "POST", path: /\/1\.6\/leads\/selection\/select/, status: 204 },
+      {
+        method: "POST",
+        path: "/1.6/leads/selection/enrichment/launch",
+        status: 204,
+      },
+      { method: "POST", path: "/1.6/leads/selection/clear", status: 204 }
+    );
   }
-  seq.push({ method: "POST", path: "/1.6/leads/selection/clear", status: 204 });
   return mockHttp(seq);
 }
 
