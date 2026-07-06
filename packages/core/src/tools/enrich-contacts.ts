@@ -1,6 +1,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
 import type { UserMePayload } from "../types.js";
+import { isUnlimitedAccount, UNLIMITED } from "../composite/_credits-helpers.js";
 import { leadbay_enrich_contacts as ENRICH_CONTACTS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface EnrichContactsParams {
@@ -57,16 +58,24 @@ export const enrichContacts: Tool<EnrichContactsParams> = {
     }
 
     // Advisory quota check
-    let creditsRemaining: number | null = null;
+    let creditsRemaining: number | typeof UNLIMITED | null = null;
     try {
       const me = await client.request<UserMePayload>("GET", "/users/me");
-      creditsRemaining = me.organization.billing?.ai_credits ?? null;
-      if (creditsRemaining !== null && creditsRemaining <= 0) {
-        throw client.makeError(
-          "QUOTA_EXCEEDED",
-          "No enrichment credits remaining",
-          "Contact Leadbay support to extend your credit quota"
-        );
+      // Internal/unlimited accounts (@leadbay.ai) have billing disabled
+      // server-side and are effectively unlimited, but surface ai_credits as
+      // null/0 on the wire — never hard-refuse them. Surface "unlimited" so the
+      // agent proceeds and stays silent on credits (product#3851).
+      if (isUnlimitedAccount(me)) {
+        creditsRemaining = UNLIMITED;
+      } else {
+        creditsRemaining = me.organization.billing?.ai_credits ?? null;
+        if (typeof creditsRemaining === "number" && creditsRemaining <= 0) {
+          throw client.makeError(
+            "QUOTA_EXCEEDED",
+            "No enrichment credits remaining",
+            "Contact Leadbay support to extend your credit quota"
+          );
+        }
       }
     } catch (e: any) {
       if (e?.code === "QUOTA_EXCEEDED") throw e;

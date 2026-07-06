@@ -2,7 +2,7 @@ import type { LeadbayClient } from "../client.js";
 import type { Notification, Tool, ToolContext } from "../types.js";
 import { getContacts } from "../tools/get-contacts.js";
 import { isValidBulkId, type BulkRecord } from "../jobs/bulk-store.js";
-import { readCreditsRemaining } from "./_credits-helpers.js";
+import { readCreditsRemaining, UNLIMITED } from "./_credits-helpers.js";
 
 // Read a single notification by id from the paginated list endpoint.
 // Backend exposes list + per-id mutations only; this short list pass is
@@ -119,9 +119,9 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
         description: "True when overall_progress.done === total AND no partial_failures.",
       },
       credits_remaining: {
-        type: ["number", "null"],
+        type: ["number", "string", "null"],
         description:
-          "AI-credit balance re-read after the spend (force-refreshed /users/me → billing.ai_credits). Present only when all_done. Null = billing unavailable (don't read as zero). NOTE: a per-run 'credits used' figure is intentionally NOT returned — getContacts can't scope cost to this bulk, so any sum would conflate historical enrichments.",
+          "AI-credit balance re-read after the spend (force-refreshed /users/me → billing.ai_credits). Present only when all_done. Null = billing unavailable (don't read as zero). The string \"unlimited\" = an internal/unlimited account: omit the _(N credits remaining)_ line entirely (there is no finite balance to show). NOTE: a per-run 'credits used' figure is intentionally NOT returned — getContacts can't scope cost to this bulk, so any sum would conflate historical enrichments.",
       },
       partial_failures: {
         type: "array",
@@ -281,7 +281,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
         // We do NOT sum per-contact spend — getContacts can't scope cost to
         // this bulk. Skipped while still running to avoid an extra /me call
         // on every interim poll. Null when billing is unavailable.
-        const creditsRemaining: number | null = !inProgress
+        const creditsRemaining: number | typeof UNLIMITED | null = !inProgress
           ? await readCreditsRemaining(client, true)
           : null;
         return {
@@ -432,7 +432,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
     // force=true. Unambiguous and scope-free. Fetched once the job is done to
     // avoid an extra /me call on every interim poll. Null when billing is
     // unavailable.
-    let creditsRemaining: number | null = null;
+    let creditsRemaining: number | typeof UNLIMITED | null = null;
     if (allDone) {
       creditsRemaining = await readCreditsRemaining(client, true);
     }

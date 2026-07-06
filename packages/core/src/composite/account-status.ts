@@ -1,6 +1,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, QuotaStatusPayload, LensPayload } from "../types.js";
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
+import { isUnlimitedAccount } from "./_credits-helpers.js";
 
 import { leadbay_account_status as ACCOUNT_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
 export const accountStatus: Tool<Record<string, never>> = {
@@ -41,6 +42,11 @@ export const accountStatus: Tool<Record<string, never>> = {
               "True if Leadbay is mid-regenerating intelligence after a refine_prompt; new leads will reflect it shortly.",
           },
           plan: { type: ["string", "null"] },
+          unlimited_credits: {
+            type: "boolean",
+            description:
+              "True for internal/unlimited accounts (billing disabled server-side). When true, DO NOT read the null `plan` or absent quota as 'no credits' — the account has unlimited credits; enrichment/qualify proceed freely. Stay SILENT on credits: don't announce 'unlimited', don't show a balance, and never tell the user they're out of credits. False for normal accounts, where the usual quota/credit story applies.",
+          },
         },
       },
       last_requested_lens: {
@@ -194,6 +200,10 @@ export const accountStatus: Tool<Record<string, never>> = {
         ai_agent_enabled: me.organization.ai_agent_enabled ?? false,
         computing_intelligence: me.organization.computing_intelligence ?? false,
         plan: quota?.plan ?? me.organization.quota_plan ?? null,
+        // Internal/unlimited account (billing disabled). The backend zeroes
+        // plan/quota for these, so without this flag the agent misreads
+        // plan:null as "no credits" and refuses enrichment. product#3851.
+        unlimited_credits: isUnlimitedAccount(me),
       },
       // Lens is withheld unless the user asked (lensAsked, above). When present,
       // the id is normalized to the STRING form (my-lenses.ts) so it matches the
