@@ -284,18 +284,37 @@ jobs:
             local NEXT=""
             reserve_next
             echo "  → renumber package.json + server.json to $NEXT (in place)"
-            # Edit ONLY the version fields on the merged tree — this keeps every
-            # other field the PR set. (Safe: we proved above these files differ
-            # from main only in version fields.)
+            # Edit ONLY version-related content on the merged tree — the `version`
+            # fields AND server.json's @leadbay/mcp@<major.minor> npx pins (in
+            # runtimeArguments values + env-var descriptions). The pins must track
+            # NEXT's major.minor: version_diff_only treats pin drift as version-
+            # related/safe, so a minor-crossing renumber (e.g. 0.23 → 0.24) that
+            # rewrote only the numeric version would leave stale 0.23 pins and fail
+            # audit_version_files. Everything else the PR set is preserved.
             # shellcheck disable=SC2016  # single-quoted JS is intentional
             node -e '
               const fs = require("fs");
               const next = process.argv[1];
-              for (const path of ["packages/mcp/package.json", "packages/mcp/server.json"]) {
-                const o = JSON.parse(fs.readFileSync(path, "utf8"));
+              const [maj, min] = next.split(".");
+              const line = `${maj}.${min}`;
+              const pin = (s) => typeof s === "string"
+                ? s.replace(/@leadbay\/mcp@\d+\.\d+/g, `@leadbay/mcp@${line}`) : s;
+              // package.json: version only.
+              {
+                const o = JSON.parse(fs.readFileSync("packages/mcp/package.json", "utf8"));
                 if ("version" in o) o.version = next;
-                for (const p of (o.packages || [])) if ("version" in p) p.version = next;
-                fs.writeFileSync(path, JSON.stringify(o, null, 2) + "\n");
+                fs.writeFileSync("packages/mcp/package.json", JSON.stringify(o, null, 2) + "\n");
+              }
+              // server.json: version fields + the major.minor pins in prose.
+              {
+                const o = JSON.parse(fs.readFileSync("packages/mcp/server.json", "utf8"));
+                if ("version" in o) o.version = next;
+                for (const p of (o.packages || [])) {
+                  if ("version" in p) p.version = next;
+                  for (const a of (p.runtimeArguments || [])) a.value = pin(a.value);
+                  for (const e of (p.environmentVariables || [])) e.description = pin(e.description);
+                }
+                fs.writeFileSync("packages/mcp/server.json", JSON.stringify(o, null, 2) + "\n");
               }
             ' "$NEXT"
             git add packages/mcp/package.json packages/mcp/server.json
@@ -355,6 +374,24 @@ jobs:
           count=$(echo "$prs" | jq 'length')
           echo "Open PRs targeting main: $count"
           [ "$count" -eq 0 ] && { echo "Nothing to reconcile."; exit 0; }
+
+          # Pre-seed RESERVED with the version EVERY open PR head currently carries,
+          # so reserve_next() never hands PR B a number PR A already holds. Without
+          # this, an open PR sitting at 0.23.14 (that merged cleanly and isn't
+          # renumbered this pass) is invisible, and a renumbered PR B could be
+          # assigned 0.23.14 too — after either merges, the other has no delta vs
+          # main and auto-tag.yml skips its release. Read-only: fetch + git show,
+          # no checkout, no mutation.
+          while read -r seedhead; do
+            [ -z "$seedhead" ] && continue
+            git fetch origin "$seedhead" -q 2>/dev/null || continue
+            seedver=$(git show "origin/${seedhead}:packages/mcp/package.json" 2>/dev/null \
+                        | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).version||"")}catch{}})' 2>/dev/null || true)
+            if [ -n "$seedver" ] && [[ " $RESERVED " != *" $seedver "* ]]; then
+              RESERVED="$RESERVED$seedver "
+            fi
+          done < <(echo "$prs" | jq -r '.[].headRefName')
+          echo "Seeded RESERVED from open PR heads: [$RESERVED]"
 
           # Feed the loop via process substitution (NOT a pipe) so the loop body
           # runs in THIS shell — otherwise RESERVED (the per-PR version reservation)
