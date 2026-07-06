@@ -411,7 +411,15 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
     const email = params.email ?? !anyChannelSpecified;
     const phone = params.phone ?? false;
 
-    if (!email && !phone) {
+    const hasTitles = !!params.titles && params.titles.length > 0;
+
+    // The "one paid channel must be enabled" rule only applies to the
+    // launch/dry-run path (titles given). Discovery (no titles) is a FREE read
+    // — it must run regardless of channel flags, so a caller that merely spells
+    // out the default `phone:false` while omitting titles still gets the title
+    // menu/counts instead of BAD_INPUT (Codex P2). The consent gate below
+    // further protects the paid launch.
+    if (hasTitles && !email && !phone) {
       return {
         error: true,
         code: "BAD_INPUT",

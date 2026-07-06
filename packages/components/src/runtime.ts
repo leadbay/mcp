@@ -729,12 +729,16 @@ function enrichment(opts: EnrichOpts): Resource {
           // action). Never a blanket true — page load is not consent.
           ...(opts.confirm !== undefined ? { confirm: opts.confirm } : {}),
           _triggered_by: opts.ask,
-        })) as { bulk_id?: string; mode?: string; preview?: unknown };
-        bulkId = r?.bulk_id ?? null;
+        })) as { bulk_id?: string } & Record<string, unknown>;
+        bulkId = (r?.bulk_id as string | undefined) ?? null;
         if (!bulkId) {
           // No job launched (nothing enrichable / preview-only / awaiting
-          // confirmation) — terminal for this resource, not an error.
-          return { all_done: true, no_job: true, mode: r?.mode, preview: r?.preview };
+          // confirmation) — terminal for this resource, not an error. Preserve
+          // the FULL response (credits_remaining, would_launch, message,
+          // next_action, mode, preview) so an artifact can render the spend
+          // preview + re-call instructions on mode:"needs_confirmation" and
+          // drive explicit consent (Codex P2) — don't reduce it to {mode,preview}.
+          return { ...r, all_done: true, no_job: true };
         }
       }
       return call("leadbay_bulk_enrich_status", { bulk_id: bulkId, _triggered_by: opts.ask });

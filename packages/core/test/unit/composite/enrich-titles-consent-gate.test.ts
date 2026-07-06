@@ -136,6 +136,41 @@ describe("enrich_titles consent gate (#3848)", () => {
     expect(launchCalls(requests)).toHaveLength(0);
   });
 
+  it("NO titles + phone:false → free discovery still runs (not BAD_INPUT) (Codex P2)", async () => {
+    // Discovery (no titles) is a FREE read; the "one channel must be true" rule
+    // only gates the paid launch/dry-run path. A caller that spells out the
+    // default phone:false while omitting titles must still get the title menu.
+    const { requests } = mockHttp([
+      { method: "POST", path: /\/leads\/selection\/select/, status: 204 },
+      {
+        method: "GET",
+        path: "/1.6/leads/selection/enrichment/job_titles",
+        status: 200,
+        body: [TITLE, "CFO"],
+      },
+      {
+        method: "POST",
+        path: "/1.6/leads/selection/enrichment/preview",
+        status: 200,
+        body: { ...previewBody, title_suggestions: ["CFO"] },
+      },
+      { method: "GET", path: "/1.6/users/me", status: 200, body: meBody },
+      { method: "POST", path: "/1.6/leads/selection/clear", status: 204 },
+    ]);
+    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() };
+
+    const res: any = await enrichTitles.execute(
+      newClient(),
+      { leadIds: [LEAD_A], lensId: LENS_ID, phone: false }, // no titles + disabled channel flag
+      ctx
+    );
+
+    expect(res.code).not.toBe("BAD_INPUT");
+    expect(res.mode).toBe("discover");
+    expect(res.available_titles).toContain(TITLE);
+    expect(launchCalls(requests)).toHaveLength(0);
+  });
+
   it("phone:false with email unset → BAD_INPUT, never a silent email spend", async () => {
     // Once the caller names ANY channel, email no longer silently defaults on
     // (Codex P1). phone:false + email unset therefore enables NOTHING → the
