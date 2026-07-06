@@ -1031,7 +1031,11 @@ export const leadbay_enrich_titles: string = `Order contact enrichments by job t
 
 WHEN TO USE: as the agent's go-to enrichment entry point, immediately before proposing outreach.
 
-WHEN NOT TO USE: to enrich a single contact — that's leadbay_enrich_contacts (granular). Speculatively, before the user has committed to outreaching — enrichment spends credits.
+WHEN NOT TO USE: to enrich a single contact — that's leadbay_enrich_contacts (granular). Speculatively, before the user has committed to outreaching — enrichment spends credits. **NOT to add "titles" or "LinkedIn" to a list** — a contact's \`job_title\` and \`linkedin_page\` already ride on the contact record; they are FREE and need no enrichment. If the user asks for "title and LinkedIn only", read those fields directly (e.g. leadbay_get_contacts / leadbay_research_lead_by_id); do NOT launch a job here. This tool is strictly the PAID email/phone reveal.
+
+## CONSENT — email is a PAID default; never launch it silently
+
+The \`email\` channel defaults **ON** and is a paid reveal. A bare "enrich these titles" is **NOT** consent to spend. Flow: call this tool first **without** \`confirm\` (and without \`email\`/\`phone\`) → you get a preview (\`enrichable_contacts\` + \`credits_remaining\` + \`would_launch\` channels). On an elicitation-capable host the tool asks the user directly and, if they decline, returns \`mode:"needs_confirmation"\` and spends nothing. Surface that preview, get the user's explicit go-ahead, then re-call with \`confirm:true\` (and explicit \`email:true\`/\`phone:true\` for the channels they chose). Passing \`email:true\`/\`phone:true\` explicitly already counts as consent and launches directly.
 
 ## CREDIT COST — make spend visible
 

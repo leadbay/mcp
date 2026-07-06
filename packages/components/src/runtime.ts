@@ -707,6 +707,10 @@ function enrichment(opts: EnrichOpts): Resource {
           titles: opts.titles,
           email: opts.email ?? true,
           phone: opts.phone ?? false,
+          // An enrichment widget the user is interacting with IS the consent —
+          // send confirm so the composite's #3848 gate launches directly rather
+          // than eliciting again for a spend the user already initiated.
+          confirm: true,
           _triggered_by: opts.ask,
         })) as { bulk_id?: string; mode?: string; preview?: unknown };
         bulkId = r?.bulk_id ?? null;

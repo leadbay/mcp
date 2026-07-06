@@ -16,6 +16,7 @@ interface EnrichTitlesParams {
   phone?: boolean;
   candidateCount?: number;
   dry_run?: boolean;
+  confirm?: boolean;
 }
 
 const DEFAULT_CANDIDATE_COUNT = 25;
@@ -64,17 +65,22 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
         type: "boolean",
         description: "If true, don't launch — only preview.",
       },
+      confirm: {
+        type: "boolean",
+        description:
+          "Explicit go-ahead to spend on the paid enrichment. Without it — AND without an explicit email/phone channel — an elicitation-capable host will ask the user before launching, and a decline returns mode:'needs_confirmation' without spending. Passing email:true/phone:true also counts as consent.",
+      },
     },
     additionalProperties: false,
   },
   outputSchema: {
     type: "object",
     description:
-      "Branchy return shape; the `mode` (or `status`) field tells the agent which branch it got. Modes: 'discover' (no titles passed), 'preview_only' (no enrichable contacts), 'dry_run', 'already_launched' (idempotent reuse), 'launched_tracker_pending' (rare, soft-fail), 'launched' (happy path). Status: 'quota_exceeded' (429).",
+      "Branchy return shape; the `mode` (or `status`) field tells the agent which branch it got. Modes: 'discover' (no titles passed), 'preview_only' (no enrichable contacts), 'dry_run', 'needs_confirmation' (paid launch withheld pending user consent), 'already_launched' (idempotent reuse), 'launched_tracker_pending' (rare, soft-fail), 'launched' (happy path). Status: 'quota_exceeded' (429).",
     properties: {
       mode: {
         type: "string",
-        description: "'discover' | 'preview_only' | 'dry_run' | 'already_launched' | 'launched_tracker_pending' | 'launched'.",
+        description: "'discover' | 'preview_only' | 'dry_run' | 'needs_confirmation' | 'already_launched' | 'launched_tracker_pending' | 'launched'.",
       },
       status: {
         type: "string",
@@ -320,6 +326,72 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
             enrichable_contacts: preview.enrichable_contacts,
             credits_remaining: await readCreditsRemaining(client),
           };
+        }
+
+        // Consent gate (product#3848): a bare "enrich titles X" leaves email
+        // defaulted ON — a PAID reveal the user may not have asked for (title
+        // & LinkedIn already ride on the contact, free). Explicit email/phone
+        // OR confirm:true is consent. Otherwise, if the host can ask the user
+        // (ctx.elicit is wired in production for this tool), require an accept
+        // before launching; a decline returns needs_confirmation and spends
+        // nothing. Hosts without elicitation (OpenClaw, unit tests) keep the
+        // historical launch — the elicit presence, not the params, is the gate.
+        const channelChosenExplicitly =
+          params.email !== undefined || params.phone !== undefined;
+        const consented = params.confirm === true || channelChosenExplicitly;
+
+        if (!consented && typeof ctx?.elicit === "function") {
+          const creditsRemaining = await readCreditsRemaining(client);
+          let accepted = false;
+          try {
+            const answer = await ctx.elicit({
+              message:
+                `Enrich ${preview.enrichable_contacts} contact${preview.enrichable_contacts === 1 ? "" : "s"} — ` +
+                `email${phone ? " + phone" : ""}? This spends credits ` +
+                `(balance: ${creditsRemaining ?? "unknown"}).`,
+              requestedSchema: {
+                type: "object",
+                properties: {
+                  confirm: {
+                    type: "boolean",
+                    title: "Enrich now?",
+                    description:
+                      "Confirm to launch the paid email/phone enrichment on these contacts.",
+                  },
+                },
+                required: ["confirm"],
+              },
+            });
+            // accept with confirm !== false → launch. A form host that returns
+            // no content on accept is treated as consent (the user clicked OK).
+            accepted =
+              answer.action === "accept" &&
+              (answer.content as { confirm?: unknown } | undefined)?.confirm !==
+                false;
+          } catch (e: any) {
+            // Elicit transport failure → don't silently spend; withhold.
+            ctx?.logger?.warn?.(
+              `enrich_titles: elicit failed, withholding launch: ${e?.message ?? e}`
+            );
+            accepted = false;
+          }
+          if (!accepted) {
+            return {
+              mode: "needs_confirmation",
+              preview,
+              launched: false,
+              would_launch: { titles: params.titles, email, phone },
+              enrichable_contacts: preview.enrichable_contacts,
+              credits_remaining: creditsRemaining,
+              available_titles: availableTitles,
+              message:
+                "Enrichment not launched — awaiting confirmation. Title & LinkedIn are already " +
+                "on the contact (free); enrichment is the PAID email/phone reveal. Re-call with " +
+                "confirm:true (or email:true) to spend.",
+              next_action:
+                "Confirm the spend with the user, then call leadbay_enrich_titles again with confirm:true.",
+            };
+          }
         }
 
         // Two-phase launch: reserve a bulk slot via tracker BEFORE POSTing to
