@@ -4,12 +4,26 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Allow other workflows (pr-sync-on-release.yml) to request a run against a
+  # specific ref. A GITHUB_TOKEN push to a PR head does NOT fire the
+  # pull_request trigger above, so the sync bot dispatches this to produce a
+  # fresh build/typecheck/test result on the head it just updated.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (branch/SHA) to build; defaults to the dispatch ref"
+        required: false
+        type: string
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # For a dispatched run, build the requested ref (the synced PR head);
+          # for pull_request/push this input is empty so checkout uses its default.
+          ref: ${{ github.event.inputs.ref }}
 
       - uses: pnpm/action-setup@v4
         with:
