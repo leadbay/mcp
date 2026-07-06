@@ -398,17 +398,19 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
     params: EnrichTitlesParams,
     ctx?: ToolContext
   ) => {
-    // Channel resolution (product#3848): email defaults ON — but ONLY when the
-    // caller named NO channel at all. Once the user explicitly picks a channel
-    // (e.g. phone:true for a phone-only reveal), we must NOT silently add the
-    // paid email channel on top. Previously `email = params.email ?? true`
-    // meant a phone-only request still posted email:true, revealing emails the
-    // user never approved (Codex P1). So: a bare request (neither set) →
-    // email:true (the common case, still gated by consent below); any explicit
-    // channel choice → honour exactly what was set, unspecified channels off.
-    const anyChannelSpecified =
-      params.email !== undefined || params.phone !== undefined;
-    const email = params.email ?? !anyChannelSpecified;
+    // Channel resolution (product#3848). Rules, in order:
+    //  - email honours params.email if set.
+    //  - phone defaults off.
+    //  - email defaults ON only when the caller enabled NO paid channel — i.e.
+    //    neither email:true nor phone:true. A phone-only reveal (phone:true,
+    //    email unset) must NOT silently add email (Codex P1). But a mere
+    //    DISABLED flag like phone:false does not count as "picking a channel":
+    //    {confirm:true, phone:false} still means "launch the default email
+    //    spend I approved", so email must stay on there (Codex P2 round-4) —
+    //    keying off enabled channels, not merely present keys, gives that.
+    const anyChannelEnabled =
+      params.email === true || params.phone === true;
+    const email = params.email ?? !anyChannelEnabled;
     const phone = params.phone ?? false;
 
     const hasTitles = !!params.titles && params.titles.length > 0;

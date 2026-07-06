@@ -19,7 +19,11 @@ Order contact enrichments by job title across many leads. Contacts are NOT retur
 
 ## CONSENT — email is a PAID default; never launch it silently
 
-The `email` channel defaults **ON** and is a paid reveal. A bare "enrich these titles" is **NOT** consent to spend. Flow: call this tool first **without** `confirm` (and without `email`/`phone`) → you get a preview (`enrichable_contacts` + `credits_remaining` + `would_launch` channels). On an elicitation-capable host the tool asks the user directly and, if they decline, returns `mode:"needs_confirmation"` and spends nothing. Surface that preview, get the user's explicit go-ahead, then re-call with `confirm:true` (and explicit `email:true`/`phone:true` for the channels they chose). Passing `email:true`/`phone:true` explicitly already counts as consent and launches directly.
+The `email` channel defaults **ON** and is a paid reveal. A bare "enrich these titles" is **NOT** consent to spend.
+
+**To preview with ZERO spend risk on ANY host, pass `dry_run:true`** (or `confirm:false`). Either returns `enrichable_contacts` + `credits_remaining` + the `would_launch` channels and launches nothing — guaranteed, regardless of host. Use this as your first call. Then surface the balance + volume, get the user's explicit go-ahead, and re-call with `confirm:true` (and explicit `email:true`/`phone:true` for the channels they chose) to launch.
+
+Do NOT rely on a bare call (no `confirm`, no `dry_run`, no channels) as a "safe preview": on an elicitation-capable host it asks the user and withholds on decline (`mode:"needs_confirmation"`), but on a host WITHOUT elicitation (some direct/embedded callers) a bare call launches the default email spend directly. If you're unsure whether the host can elicit, use `dry_run:true`/`confirm:false` for the preview. Passing `email:true`/`phone:true` (or `confirm:true`) always counts as consent and launches.
 
 ## CREDIT COST — make spend visible
 

@@ -171,12 +171,13 @@ describe("enrich_titles consent gate (#3848)", () => {
     expect(launchCalls(requests)).toHaveLength(0);
   });
 
-  it("phone:false with email unset → BAD_INPUT, never a silent email spend", async () => {
-    // Once the caller names ANY channel, email no longer silently defaults on
-    // (Codex P1). phone:false + email unset therefore enables NOTHING → the
-    // BAD_INPUT guard fires. Previously email defaulted true and this launched a
-    // paid email reveal. No selection/HTTP call is even made (guard is first).
-    const { requests } = mockHttp([]);
+  it("phone:false (a DISABLED flag) is treated like no channel → email default, still gated", async () => {
+    // A merely disabled flag doesn't count as "picking a channel" (keying off
+    // ENABLED channels). So {titles, phone:false} behaves like a bare call:
+    // email defaults on, and consent still gates it — a declining elicit yields
+    // needs_confirmation, no spend. (Round-4: phone:false no longer trips
+    // BAD_INPUT, which was too aggressive and blocked confirm:true+phone:false.)
+    const { requests } = baseFlow({ withCredits: true });
     const elicit = vi.fn(async () => ({ action: "decline" as const }));
     const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore(), elicit };
 
@@ -186,9 +187,31 @@ describe("enrich_titles consent gate (#3848)", () => {
       ctx
     );
 
-    expect(res.code).toBe("BAD_INPUT");
-    expect(elicit).not.toHaveBeenCalled();
+    expect(res.mode).toBe("needs_confirmation");
+    expect(res.would_launch).toEqual({ titles: [TITLE], email: true, phone: false });
     expect(launchCalls(requests)).toHaveLength(0);
+  });
+
+  it("confirm:true + phone:false launches the approved default email spend (Codex P2 round-4)", async () => {
+    // The regression: {titles, confirm:true, phone:false} must launch the email
+    // spend the user approved — a disabled phone flag must not suppress the
+    // default email channel or trip BAD_INPUT. This is the documented confirm
+    // retry shape (agents add confirm:true and carry phone:false along).
+    const { requests } = baseFlow({ withLaunch: true });
+    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() };
+
+    const res: any = await enrichTitles.execute(
+      newClient(),
+      { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE], confirm: true, phone: false },
+      ctx
+    );
+
+    expect(res.mode).toBe("launched");
+    expect(res.email).toBe(true);
+    expect(res.phone).toBe(false);
+    expect(launchCalls(requests)).toHaveLength(1);
+    const launchReq = requests.find((r) => /\/enrichment\/launch/.test(r.path));
+    expect(JSON.parse(launchReq!.body ?? "{}")).toMatchObject({ email: true, phone: false });
   });
 
   it("phone:true with email unset launches phone ONLY — no silent email reveal (Codex P1)", async () => {
