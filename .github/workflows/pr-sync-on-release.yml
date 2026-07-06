@@ -1,0 +1,233 @@
+name: pr-sync-on-release
+
+# When a version bump lands on main, bring every open PR back in sync so the
+# release never leaves the others un-mergeable (product#3852).
+#
+# This repo bumps @leadbay/mcp inline in feature PRs (package.json + server.json
+# + CHANGELOG.md), so whichever PR merges first claims the version number and the
+# rest collide on those exact files. This workflow reconciles each open PR:
+#
+#   - Case A — PR does NOT touch the version files: merge main in and push, so
+#     CI + the diff stay fresh. (main has no "must be up to date" gate, so these
+#     already merge cleanly; this is a freshness nicety.)
+#   - Case B — PR DOES touch the version files and now conflicts:
+#       * conflict is only package.json / server.json → deterministically
+#         renumber the PR to the next patch above main's version (both files),
+#         keeping the server-json-version audit green, commit + push.
+#       * conflict includes CHANGELOG.md → never auto-edit prose. Label
+#         `needs-manual-rebase` + comment the target version for a human.
+#
+# Codex (the external chatgpt-codex-connector review bot) CANNOT do this — it
+# only comments and cannot push to a branch. This workflow owns version sync;
+# AGENTS.md points the reviewer here.
+#
+# Anti-loop: a push to a PR head made with GITHUB_TOKEN does NOT re-trigger
+# ci.yml's pull_request/push runs (GitHub suppresses GITHUB_TOKEN-triggered
+# runs — the same rule auto-tag.yml relies on). So there is no runaway loop.
+# Trade-off: CI won't auto-re-run on the freshly synced head; it re-fires on the
+# next human push. The merge itself is what restores mergeability, so that's OK.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/mcp/package.json"
+      - "packages/mcp/server.json"
+      - "packages/mcp/CHANGELOG.md"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Log actions without pushing / labeling / commenting"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # push to PR head branches
+  pull-requests: write # list, label, comment
+
+concurrency:
+  # One reconciliation pass at a time; never cancel a pass mid-flight (it may be
+  # partway through pushing to a branch).
+  group: pr-sync-on-release
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Reconcile open PRs with main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # push (default true) is the mutating counterpart to dispatch dry_run.
+          # A real push-to-main event has no inputs, so default to acting.
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          REPO: ${{ github.repository }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+
+          LABEL="needs-manual-rebase"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          MAIN_VER=$(node -p "require('./packages/mcp/package.json').version")
+          # Next patch above main's version, e.g. 0.23.13 -> 0.23.14. A patch bump
+          # never crosses a minor line, so the @leadbay/mcp@<major.minor> npx pins
+          # in server.json stay correct and the version audit passes untouched.
+          # shellcheck disable=SC2016  # single-quoted JS is intentional — $ must reach node, not bash
+          NEXT=$(node -e 'const [a,b,c]=process.argv[1].split(".").map(Number);console.log(`${a}.${b}.${c+1}`)' "$MAIN_VER")
+          echo "main @leadbay/mcp version: $MAIN_VER  → collision target: $NEXT"
+          echo "DRY_RUN=$DRY_RUN"
+
+          # Ensure the label exists before we try to apply it (idempotent).
+          if [ "$DRY_RUN" != "true" ]; then
+            gh label create "$LABEL" \
+              --repo "$REPO" \
+              --color "fbca04" \
+              --description "PR conflicts with a version bump on main — needs a manual rebase" \
+              2>/dev/null || true
+          fi
+
+          # --- helpers -----------------------------------------------------------
+          # flag: this PR needs a human — apply the label + a factual comment.
+          flag() { # $1=PR number  $2=comment body
+            local n="$1" body="$2"
+            echo "  → FLAG #$n: $body"
+            if [ "$DRY_RUN" != "true" ]; then
+              gh pr edit "$n" --repo "$REPO" --add-label "$LABEL" || true
+              gh pr comment "$n" --repo "$REPO" --body "$body" || true
+            fi
+          }
+          # note: PR was auto-fixed — comment only, and clear any stale label.
+          note() { # $1=PR number  $2=comment body
+            local n="$1" body="$2"
+            echo "  → NOTE #$n: $body"
+            if [ "$DRY_RUN" != "true" ]; then
+              gh pr comment "$n" --repo "$REPO" --body "$body" || true
+              gh pr edit "$n" --repo "$REPO" --remove-label "$LABEL" 2>/dev/null || true
+            fi
+          }
+          push_head() { # $1=PR number  $2=head ref
+            local n="$1" head="$2"
+            echo "  → PUSH #$n $head"
+            if [ "$DRY_RUN" != "true" ]; then
+              git push origin "HEAD:${head}"
+            fi
+          }
+          # -----------------------------------------------------------------------
+
+          # Enumerate open PRs (drafts included — this repo lives in drafts).
+          prs=$(gh pr list --repo "$REPO" --state open --limit 100 \
+                  --json number,headRefName,isDraft,headRepositoryOwner,files)
+
+          count=$(echo "$prs" | jq 'length')
+          echo "Open PRs: $count"
+          [ "$count" -eq 0 ] && { echo "Nothing to reconcile."; exit 0; }
+
+          echo "$prs" | jq -c '.[]' | while read -r pr; do
+            N=$(echo "$pr"     | jq -r '.number')
+            HEAD=$(echo "$pr"  | jq -r '.headRefName')
+            OWNER=$(echo "$pr" | jq -r '.headRepositoryOwner.login')
+            echo "── PR #$N ($HEAD) ──────────────────────────────────────"
+
+            # Fork guard: GITHUB_TOKEN can't push to a fork's head branch.
+            if [ "$OWNER" != "$REPO_OWNER" ]; then
+              flag "$N" "This PR is from a fork (\`$OWNER\`); the sync bot can't push to it. main shipped \`$MAIN_VER\` — please rebase on main manually."
+              continue
+            fi
+
+            # Does the PR touch any of the three version files?
+            touches_ver=$(echo "$pr" | jq -r \
+              '[.files[].path | test("^packages/mcp/(package|server)\\.json$|^packages/mcp/CHANGELOG\\.md$")] | any')
+
+            # Fresh checkout of the PR head.
+            git fetch origin "$HEAD" -q
+            git checkout -q -B "$HEAD" "origin/$HEAD"
+
+            # Already contains main? Nothing to do.
+            if git merge-base --is-ancestor origin/main HEAD; then
+              echo "  already up to date with main — skip"
+              continue
+            fi
+
+            if git merge --no-edit origin/main >/dev/null 2>&1; then
+              # Clean merge (Case A, or a Case B that happened not to collide).
+              push_head "$N" "$HEAD"
+              continue
+            fi
+
+            # Merge stopped on conflict — inspect what conflicted.
+            conflicts=$(git diff --name-only --diff-filter=U || true)
+            echo "  conflicts:"
+            printf '%s\n' "$conflicts" | while IFS= read -r f; do echo "    $f"; done
+
+            if [ "$touches_ver" != "true" ]; then
+              # Case A with a real (non-version) code conflict — human's job.
+              git merge --abort
+              flag "$N" "Couldn't auto-sync with main — this PR has a merge conflict outside the version files. main shipped \`$MAIN_VER\`; please rebase manually."
+              continue
+            fi
+
+            # Case B. If CHANGELOG is among the conflicts, don't touch prose.
+            if echo "$conflicts" | grep -q '^packages/mcp/CHANGELOG\.md$'; then
+              git merge --abort
+              flag "$N" "main shipped \`$MAIN_VER\`. Renumber this PR to \`$NEXT\` (package.json + server.json) and re-anchor your CHANGELOG section above main's, then push. The sync bot won't edit CHANGELOG prose."
+              continue
+            fi
+
+            # Only package.json / server.json conflict → deterministic renumber.
+            only_json=$(echo "$conflicts" | grep -vE '^packages/mcp/(package|server)\.json$' || true)
+            if [ -n "$only_json" ]; then
+              # Some other file also conflicts alongside the JSON — don't guess.
+              git merge --abort
+              flag "$N" "main shipped \`$MAIN_VER\`. This PR conflicts on the version files AND other files; renumber to \`$NEXT\` and rebase manually."
+              continue
+            fi
+
+            echo "  → renumber package.json + server.json to $NEXT"
+            # Take main's structure verbatim (server.json has no generator), then
+            # set the version field(s) to NEXT so auto-tag fires on merge.
+            git checkout origin/main -- packages/mcp/package.json packages/mcp/server.json
+
+            node -e '
+              const fs = require("fs");
+              const next = process.argv[1];
+              const pkgPath = "packages/mcp/package.json";
+              const srvPath = "packages/mcp/server.json";
+              const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+              pkg.version = next;
+              fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+              const srv = JSON.parse(fs.readFileSync(srvPath, "utf8"));
+              srv.version = next;
+              for (const p of (srv.packages || [])) p.version = next;
+              fs.writeFileSync(srvPath, JSON.stringify(srv, null, 2) + "\n");
+            ' "$NEXT"
+
+            git add packages/mcp/package.json packages/mcp/server.json
+            # Complete the merge commit (conflict markers on these two are now gone).
+            git commit --no-edit
+
+            # Gate: the version-consistency audit MUST pass on the result.
+            corepack enable >/dev/null 2>&1 || true
+            pnpm install --frozen-lockfile --silent
+            if ! pnpm --filter @leadbay/mcp exec vitest run test/audit/server-json-version.test.ts >/dev/null 2>&1; then
+              echo "  !! server-json-version audit failed after renumber — aborting this PR" >&2
+              git reset --hard "origin/$HEAD"
+              flag "$N" "main shipped \`$MAIN_VER\`. Auto-renumber to \`$NEXT\` failed the version audit — please rebase manually."
+              continue
+            fi
+
+            push_head "$N" "$HEAD"
+            note "$N" "Synced with main and renumbered @leadbay/mcp to \`$NEXT\` (main shipped \`$MAIN_VER\`). CHANGELOG left for you — confirm your entry reads as \`$NEXT\`."
+          done
+
+          echo "Reconciliation pass complete."

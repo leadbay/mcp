@@ -52,3 +52,12 @@ high-priority (P0/P1) issues:
 
 - **Secrets & credentials.** Flag secrets or PII written to logs. Do not
   rotate the expendable test-account credentials defensively.
+
+- **Version sync on release is automated — don't tell authors to hand-match
+  it.** When a version bump lands on `main`, the `pr-sync-on-release` workflow
+  reconciles the open PRs: it renumbers `packages/mcp/{package.json,server.json}`
+  to the next patch above main and flags a CHANGELOG collision with the
+  `needs-manual-rebase` label + a comment. So do NOT raise a review finding
+  asking a PR author to manually bump their version to match main — the workflow
+  owns that (Codex can only comment; it can't push to the branch). A stale
+  version number vs. main is expected on an open PR and is not a defect.
