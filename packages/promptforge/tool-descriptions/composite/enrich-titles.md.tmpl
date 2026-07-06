@@ -15,7 +15,15 @@ Order contact enrichments by job title across many leads. Contacts are NOT retur
 
 {{include:headers/tool-when-to-use}} as the agent's go-to enrichment entry point, immediately before proposing outreach.
 
-{{include:headers/tool-when-not-to-use}} to enrich a single contact — that's leadbay_enrich_contacts (granular). Speculatively, before the user has committed to outreaching — enrichment spends credits.
+{{include:headers/tool-when-not-to-use}} to enrich a single contact — that's leadbay_enrich_contacts (granular). Speculatively, before the user has committed to outreaching — enrichment spends credits. **NOT to add "titles" or "LinkedIn" to a list** — a contact's `job_title` and `linkedin_page` already ride on the contact record; they are FREE and need no enrichment. If the user asks for "title and LinkedIn only", read those fields directly (e.g. leadbay_get_contacts / leadbay_research_lead_by_id); do NOT launch a job here. This tool is strictly the PAID email/phone reveal.
+
+## CONSENT — email is a PAID default; never launch it silently
+
+The `email` channel defaults **ON** and is a paid reveal. A bare "enrich these titles" is **NOT** consent to spend.
+
+**To preview with ZERO spend risk on ANY host, pass `dry_run:true`** (or `confirm:false`). Either returns `enrichable_contacts` + `credits_remaining` + the `would_launch` channels and launches nothing — guaranteed, regardless of host. Use this as your first call. Then surface the balance + volume, get the user's explicit go-ahead, and re-call with `confirm:true` (and explicit `email:true`/`phone:true` for the channels they chose) to launch.
+
+Do NOT rely on a bare call (no `confirm`, no `dry_run`, no channels) as a "safe preview": on an elicitation-capable host it asks the user and withholds on decline (`mode:"needs_confirmation"`), but on a host WITHOUT elicitation (some direct/embedded callers) a bare call launches the default email spend directly. If you're unsure whether the host can elicit, use `dry_run:true`/`confirm:false` for the preview. Passing `email:true`/`phone:true` (or `confirm:true`) always counts as consent and launches.
 
 ## CREDIT COST — make spend visible
 

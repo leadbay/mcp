@@ -53,6 +53,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 39 | **Territory scoping — net-new accounts in a region** — "create a lens for net-new accounts in <département/région/state>", "scope discovery to <territory>", "restrict my rep's lens to <place>" — geography is set on the DISCOVER lens (not just Monitor): `leadbay_new_lens` / `leadbay_adjust_audience` accept `locations` (free text auto-resolved via /geo/search, or admin-area ids), writing a `location_ids` lens-filter criterion. Place names go to `locations`, never `sectors`/`refine_prompt`. Unblocks the "Cockpit Directeur Commercial" territory workflow (product#3759). | `leadbay_new_lens`, `leadbay_adjust_audience` | "Create a lens for net-new accounts in Indre-et-Loire" |
 | 40 | **Tour always offers the map (proposes it, renders on yes)** — the core of product#3779: a plain-language tour intent ("I'm visiting Jacksonville in 3 days — who should I go see?") must make the agent recognize the tour, present the leads with mode badges (★ Customer / ★ Qualified / ✦ New), and PROACTIVELY offer to plot them on a map — every run, without the user having to ask. On acceptance it renders via `places_map_display_v0` (or the place-card carousel on hosts without the widget) from the server-shaped `map_locations[]`. | `leadbay_plan_tour_in_city` | "I'm visiting Jacksonville in 3 days — who should I go see?" |
 | 41 | **Tour map no-fabrication (overdeliver guard)** — when auto-rendering the tour the agent must pass the server's `map_locations` through verbatim: never invent coordinates / pins for leads that lack them, never fabricate addresses, and never re-emit a competing raw lat/lng table alongside the place cards. Companion to #40. | `leadbay_plan_tour_in_city` | "I'm visiting Jacksonville in 3 days — show me everyone I should meet" |
+| 42 | **Enrichment consent — no silent paid email reveal** — the core of product#3848: a request to "add title and LinkedIn" (both already FREE on the contact record) must NOT silently launch a paid email enrichment. `leadbay_enrich_titles` withholds the paid launch until the user explicitly consents (elicitation prompt, or an explicit `email`/`phone`/`confirm` argument), surfacing `credits_remaining` + `enrichable_contacts` first. Explicit "go ahead and spend, enrich their emails" still launches. | `leadbay_enrich_titles` | "Add title and LinkedIn to these contacts" |
 
 ---
 
@@ -757,6 +758,24 @@ success_criteria:
 
 ```yaml scenario
 prompt: "I'm visiting Jacksonville in 3 days — show me everyone I should meet"
+```
+
+#### Workflow 42 — Enrichment consent (no silent paid email reveal)
+
+```yaml expected
+workflow_name: Enrichment consent — no silent paid email reveal
+prompt_name: ~
+forbidden_calls:
+  - leadbay_report_outreach
+success_criteria:
+  - "did NOT silently launch a paid email enrichment — a bare 'add title and LinkedIn' is not consent to spend"
+  - "recognized that title & LinkedIn are already on the contact record (free) and need no paid enrichment"
+  - "if it called leadbay_enrich_titles at all, it surfaced credits_remaining + enrichable_contacts and asked for confirmation before any launch (or got mode:needs_confirmation back and stopped)"
+  - "did NOT claim emails were enriched or reveal email data that was not requested"
+```
+
+```yaml scenario
+prompt: "Add title and LinkedIn to these contacts"
 ```
 
 ---
