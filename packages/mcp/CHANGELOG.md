@@ -1,5 +1,11 @@
 # Changelog — @leadbay/mcp
 
+## 0.23.14 — 2026-07-03
+
+Registry: publish the hosted remote endpoint so GitHub Copilot / VS Code can offer Leadbay as a one-click remote connector (product#3861).
+
+- **`server.json` `remotes`** — the registry entry now advertises the hosted Streamable HTTP endpoint (`https://mcp.leadbay.app/mcp`) alongside the npm package. Landed in code in 0.23.13 but needs this version bump to actually re-publish to the MCP Registry (the registry won't re-publish an already-published version). Auth is standard MCP OAuth (discovered via `.well-known`), so no header/API-key declaration.
+
 ## 0.23.13 — 2026-07-03
 
 Directory-submission schema fix.
