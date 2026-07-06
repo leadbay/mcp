@@ -398,7 +398,17 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
     params: EnrichTitlesParams,
     ctx?: ToolContext
   ) => {
-    const email = params.email ?? true;
+    // Channel resolution (product#3848): email defaults ON — but ONLY when the
+    // caller named NO channel at all. Once the user explicitly picks a channel
+    // (e.g. phone:true for a phone-only reveal), we must NOT silently add the
+    // paid email channel on top. Previously `email = params.email ?? true`
+    // meant a phone-only request still posted email:true, revealing emails the
+    // user never approved (Codex P1). So: a bare request (neither set) →
+    // email:true (the common case, still gated by consent below); any explicit
+    // channel choice → honour exactly what was set, unspecified channels off.
+    const anyChannelSpecified =
+      params.email !== undefined || params.phone !== undefined;
+    const email = params.email ?? !anyChannelSpecified;
     const phone = params.phone ?? false;
 
     if (!email && !phone) {

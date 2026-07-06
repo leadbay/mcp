@@ -136,17 +136,14 @@ describe("enrich_titles consent gate (#3848)", () => {
     expect(launchCalls(requests)).toHaveLength(0);
   });
 
-  it("phone:false with email unset does NOT bypass consent (disabled channel ≠ consent)", async () => {
-    // Regression: a disabled channel key present (phone:false) must not count
-    // as spend consent while email still defaults ON — that would relaunch the
-    // exact silent email spend the gate closes. The bug shape can arrive with
-    // phone:false as an unchecked artifact-form default.
-    const { requests } = baseFlow({ withCredits: true });
+  it("phone:false with email unset → BAD_INPUT, never a silent email spend", async () => {
+    // Once the caller names ANY channel, email no longer silently defaults on
+    // (Codex P1). phone:false + email unset therefore enables NOTHING → the
+    // BAD_INPUT guard fires. Previously email defaulted true and this launched a
+    // paid email reveal. No selection/HTTP call is even made (guard is first).
+    const { requests } = mockHttp([]);
     const elicit = vi.fn(async () => ({ action: "decline" as const }));
-    const ctx: ToolContext = {
-      bulkTracker: new InMemoryBulkStore(),
-      elicit,
-    };
+    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore(), elicit };
 
     const res: any = await enrichTitles.execute(
       newClient(),
@@ -154,10 +151,31 @@ describe("enrich_titles consent gate (#3848)", () => {
       ctx
     );
 
-    expect(res.mode).toBe("needs_confirmation");
-    expect(res.would_launch).toEqual({ titles: [TITLE], email: true, phone: false });
-    expect(elicit).toHaveBeenCalledTimes(1);
+    expect(res.code).toBe("BAD_INPUT");
+    expect(elicit).not.toHaveBeenCalled();
     expect(launchCalls(requests)).toHaveLength(0);
+  });
+
+  it("phone:true with email unset launches phone ONLY — no silent email reveal (Codex P1)", async () => {
+    // The core Codex finding: a phone-only request must not also post email.
+    // With the channel-default fix, email stays OFF (not defaulted true) when a
+    // channel was explicitly chosen, so the launch body is phone-only.
+    const { requests } = baseFlow({ withLaunch: true });
+    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() };
+
+    const res: any = await enrichTitles.execute(
+      newClient(),
+      { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE], phone: true },
+      ctx
+    );
+
+    expect(res.mode).toBe("launched");
+    expect(res.email).toBe(false); // NOT silently enabled
+    expect(res.phone).toBe(true);
+    expect(launchCalls(requests)).toHaveLength(1);
+    // Prove the launch body carried email:false, not a hidden email reveal.
+    const launchReq = requests.find((r) => /\/enrichment\/launch/.test(r.path));
+    expect(JSON.parse(launchReq!.body ?? "{}")).toMatchObject({ email: false, phone: true });
   });
 
   it("email:false + phone:true IS consent (an enabled channel) → launches without eliciting", async () => {

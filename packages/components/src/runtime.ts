@@ -690,14 +690,32 @@ interface EnrichOpts {
   phone?: boolean;
   /** Poll interval in ms (default 4000). */
   pollEvery?: number;
+  /** Explicit spend consent for the paid reveal. Set true ONLY from a real user
+   *  action (a click handler), NEVER by default — otherwise merely rendering the
+   *  widget would authorize the spend (product#3848 / Codex P1). Omitted → the
+   *  server's consent gate (elicitation / needs_confirmation) decides at launch,
+   *  so an auto-loaded widget can never silently spend. */
+  confirm?: boolean;
+  /** Auto-load on construction (default true, matching Resource). Safe now that
+   *  `confirm` is NOT auto-sent: an auto-load without an explicit `confirm`
+   *  hits the server consent gate, which elicits or returns needs_confirmation
+   *  rather than spending. For a paid launch, prefer autoLoad:false + a click. */
+  autoLoad?: boolean;
 }
 /** Enrichment job: launches via enrich_titles, then polls bulk_enrich_status
  *  until all_done. `.data` carries overall_progress + per-lead contacts; `.done`
  *  flips when complete; `.refresh()` forces a status read (the guaranteed path
- *  if the host caches auto-poll reads). */
+ *  if the host caches auto-poll reads).
+ *
+ *  IMPORTANT (product#3848 / Codex P1): this is a PAID launch, and it does NOT
+ *  self-confirm — `confirm` is forwarded ONLY if the caller passes it (from a
+ *  real user action). Without it, the server's consent gate decides (host
+ *  elicitation, or mode:needs_confirmation with no spend), so even an
+ *  auto-loaded widget cannot silently spend on a page render. */
 function enrichment(opts: EnrichOpts): Resource {
   let bulkId: string | null = null;
   return new Resource({
+    ...(opts.autoLoad !== undefined ? { autoLoad: opts.autoLoad } : {}),
     pollEvery: opts.pollEvery ?? 4000,
     until: (d) => Boolean((d as { all_done?: boolean })?.all_done),
     load: async () => {
@@ -705,17 +723,17 @@ function enrichment(opts: EnrichOpts): Resource {
         const r = (await call("leadbay_enrich_titles", {
           ...(opts.leadIds ? { leadIds: opts.leadIds } : {}),
           titles: opts.titles,
-          email: opts.email ?? true,
-          phone: opts.phone ?? false,
-          // An enrichment widget the user is interacting with IS the consent —
-          // send confirm so the composite's #3848 gate launches directly rather
-          // than eliciting again for a spend the user already initiated.
-          confirm: true,
+          ...(opts.email !== undefined ? { email: opts.email } : {}),
+          ...(opts.phone !== undefined ? { phone: opts.phone } : {}),
+          // Forward consent ONLY if the caller supplied it (from a real user
+          // action). Never a blanket true — page load is not consent.
+          ...(opts.confirm !== undefined ? { confirm: opts.confirm } : {}),
           _triggered_by: opts.ask,
         })) as { bulk_id?: string; mode?: string; preview?: unknown };
         bulkId = r?.bulk_id ?? null;
         if (!bulkId) {
-          // No job launched (nothing enrichable / preview-only) — terminal, not an error.
+          // No job launched (nothing enrichable / preview-only / awaiting
+          // confirmation) — terminal for this resource, not an error.
           return { all_done: true, no_job: true, mode: r?.mode, preview: r?.preview };
         }
       }
