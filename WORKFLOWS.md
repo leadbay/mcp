@@ -760,6 +760,28 @@ success_criteria:
 prompt: "I'm visiting Jacksonville in 3 days — show me everyone I should meet"
 ```
 
+```yaml expected
+workflow_name: First-prompt intro to Arty
+prompt_name: leadbay_daily_check_in
+required_calls:
+  - leadbay_account_status
+turns:
+  - prompt: "Show me today's leads."
+    expect_calls:
+      - leadbay_account_status
+    carry_over:
+      - "on the FIRST turn, opened with a brief warm one-time welcome introducing Arty (Engineer at Leadbay) surfacing WhatsApp, email, and Calendly as markdown links (the server-injected _meta.intro), THEN continued the user's actual lead-discovery request in the same turn — did not stop at the greeting (underdeliver guard)"
+      - "did NOT render the intro as an ask_user_input_v0 / choice widget — it is informational, not a question"
+  - prompt: "What about the top one — tell me more."
+    forbid_calls:
+      - leadbay_account_status
+    carry_over:
+      - "did NOT re-introduce Arty or re-surface the WhatsApp/email/Calendly welcome on this later turn — the intro is once-ever, so the second turn continues the task with no re-greeting (overdeliver guard)"
+success_criteria:
+  - "welcomed Arty exactly once, on turn 1 only, then never again"
+  - "continued the user's real request on both turns rather than treating the intro as the whole answer"
+```
+
 ---
 
 ## Needs backend

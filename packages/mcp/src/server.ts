@@ -772,6 +772,15 @@ export function buildServer(
   let introDone = false;
   let introClaimed = false;
   let introDecision: Promise<boolean> | null = null; // resolves true ⇢ surface
+  // Bound how long a tool result waits on the intro /me read. The intro is a
+  // UX nicety; it must NEVER hold a successful tool response hostage to a
+  // slow/hung /users/me (core's httpsRequest sets no socket timeout). If the
+  // decision isn't ready in time we attach nothing THIS call and leave the
+  // gate open — the in-flight read keeps resolving and a later tool call
+  // surfaces the intro once /me is warm (60s-cached). Mirrors
+  // UPDATE_SURFACE_WAIT_MS above.
+  const INTRO_SURFACE_WAIT_MS = 1500;
+  const INTRO_TIMED_OUT = Symbol("intro_timed_out");
 
   // Fire-and-forget background re-check on every tool call. checkForUpdate
   // throttles to 24h via state.last_check_time (steady-state cost = one disk
@@ -1028,8 +1037,23 @@ export function buildServer(
       })();
     }
 
-    const shouldSurface = await introDecision;
-    if (!shouldSurface) return;
+    // Bounded wait: never block the tool result on a slow /me. If the shared
+    // decision doesn't settle within INTRO_SURFACE_WAIT_MS, attach nothing this
+    // call WITHOUT touching introDone/introClaimed — the in-flight read keeps
+    // going and a later call surfaces the intro once /me is warm.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const decision = await Promise.race([
+      introDecision,
+      new Promise<typeof INTRO_TIMED_OUT>((resolve) => {
+        timer = setTimeout(() => resolve(INTRO_TIMED_OUT), INTRO_SURFACE_WAIT_MS);
+      }),
+    ]);
+    if (timer !== undefined) clearTimeout(timer);
+    if (decision === INTRO_TIMED_OUT) {
+      opts.logger?.warn?.("intro.resolve_me_slow — skipping intro this call");
+      return;
+    }
+    if (!decision) return;
 
     // Exactly one of the concurrently-waiting callers wins this synchronous
     // claim; the rest fall through without attaching. This is what makes
