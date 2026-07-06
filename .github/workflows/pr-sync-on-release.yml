@@ -26,6 +26,14 @@ name: pr-sync-on-release
 # runs — the same rule auto-tag.yml relies on). So there is no runaway loop.
 # Trade-off: CI won't auto-re-run on the freshly synced head; it re-fires on the
 # next human push. The merge itself is what restores mergeability, so that's OK.
+#
+# Security: the job checks out PR-head branches while holding a contents:write
+# token, so it must NEVER execute code or config from a PR branch. It only does
+# git plumbing (merge, checkout, commit, push) and reads the two version files
+# as DATA via node scripts that are sourced from this workflow (trusted, from
+# main). There is deliberately no `pnpm install`, no test runner, and no build
+# step over branch content — the version-consistency check is reimplemented here
+# as a pure JSON comparison (audit_version_files).
 
 on:
   push:
@@ -123,44 +131,122 @@ jobs:
               git push origin "HEAD:${head}"
             fi
           }
-          # renumber the two JSON files to $NEXT on the current (already-merged)
-          # HEAD, gate on the audit, then push + note. Assumes any merge is
-          # already complete/committed on HEAD. Returns non-zero if the audit
-          # fails (caller resets + flags). $1=PR number  $2=head ref
+          # version_diff_only: true if $1 (a package.json or server.json) differs
+          # from main ONLY in version-related fields — i.e. it is safe to renumber
+          # without discarding legitimate PR edits. Runs a trusted, data-only node
+          # script (from the workflow, checked out from main). It NEVER executes
+          # code from the PR branch: it reads the two file blobs as data and
+          # compares them field-by-field after neutralising the version.
+          #   $1 = repo-relative path to a candidate version file
+          #   $2 = git ref to compare against (origin/main)
+          # Reads the PR-side blob from the working tree, the main-side via `git show`.
+          version_diff_only() {
+            local path="$1" ref="$2" mainblob
+            mainblob=$(git show "${ref}:${path}") || return 1
+            # shellcheck disable=SC2016  # single-quoted JS is intentional — args reach node, not bash
+            MAIN_JSON="$mainblob" node -e '
+              const fs = require("fs");
+              const path = process.argv[1];
+              // Parse both as pure data. A parse error (e.g. leftover conflict
+              // markers) means "not safe to auto-renumber" → exit non-zero.
+              let cur, main;
+              try {
+                cur  = JSON.parse(fs.readFileSync(path, "utf8"));
+                main = JSON.parse(process.env.MAIN_JSON);
+              } catch { process.exit(2); }
+              // Neutralise every version field on both, then compare the rest.
+              const strip = (o) => {
+                const c = JSON.parse(JSON.stringify(o));
+                if ("version" in c) c.version = "0";
+                for (const p of (c.packages || [])) {
+                  if ("version" in p) p.version = "0";
+                  // npx pins carry the major.minor line; neutralise them too so a
+                  // legitimate pin bump on a minor crossing is not seen as a
+                  // non-version change (we only auto-handle patch bumps anyway).
+                  for (const a of (p.runtimeArguments || [])) {
+                    if (typeof a.value === "string") a.value = a.value.replace(/@leadbay\/mcp@\d+\.\d+/g, "@leadbay/mcp@X");
+                  }
+                  for (const e of (p.environmentVariables || [])) {
+                    if (typeof e.description === "string") e.description = e.description.replace(/@leadbay\/mcp@\d+\.\d+/g, "@leadbay/mcp@X");
+                  }
+                }
+                return JSON.stringify(c);
+              };
+              process.exit(strip(cur) === strip(main) ? 0 : 1);
+            ' "$path"
+          }
+
+          # audit_version_files: reimplements packages/mcp/test/audit/
+          # server-json-version.test.ts as a DATA-ONLY check — no pnpm install, no
+          # vitest, so no PR-branch code runs. Returns non-zero if any invariant
+          # fails. Operates on the working-tree files (post-renumber).
+          audit_version_files() {
+            # shellcheck disable=SC2016  # single-quoted JS is intentional
+            node -e '
+              const fs = require("fs");
+              const pkg = JSON.parse(fs.readFileSync("packages/mcp/package.json", "utf8"));
+              const raw = fs.readFileSync("packages/mcp/server.json", "utf8");
+              const srv = JSON.parse(raw);
+              const fail = (m) => { console.error("  audit: " + m); process.exit(1); };
+              if (srv.version !== pkg.version) fail("server.version != package.version");
+              if (srv.name !== pkg.mcpName) fail("server.name != package.mcpName");
+              for (const p of (srv.packages || [])) if (p.version !== pkg.version) fail("packages[].version mismatch");
+              const npmPkg = (srv.packages || []).find((p) => p.registryType === "npm");
+              if (!npmPkg || npmPkg.identifier !== pkg.name) fail("npm package identifier mismatch");
+              const [maj, min] = pkg.version.split(".");
+              const line = maj + "." + min;
+              const pins = [...raw.matchAll(/@leadbay\/mcp@(\d+\.\d+)/g)].map((m) => m[1]);
+              if (pins.length === 0) fail("no npx pins found");
+              for (const p of pins) if (p !== line) fail("pin " + p + " != " + line);
+            '
+          }
+
+          # renumber the two JSON files to $NEXT IN PLACE on the merged working
+          # tree (preserving any non-version PR edits), gate on a data-only audit,
+          # then push + note. Refuses (returns 2) when a version file carries
+          # non-version changes vs main, so legitimate edits are never dropped.
+          # Assumes the merge is already complete/committed on HEAD (clean path)
+          # OR the version files parse as clean JSON (no conflict markers).
+          # $1=PR number  $2=head ref
           renumber_and_push() {
             local n="$1" head="$2"
-            echo "  → renumber package.json + server.json to $NEXT"
-            # Take main's structure verbatim (server.json has no generator), then
-            # set the version field(s) to NEXT so auto-tag fires on merge.
-            git checkout origin/main -- packages/mcp/package.json packages/mcp/server.json
+            # Guard (Finding 1): only proceed if the version files differ from main
+            # solely in version fields. Otherwise the PR has real edits here and we
+            # must not touch it — hand to a human.
+            if ! version_diff_only packages/mcp/package.json origin/main \
+               || ! version_diff_only packages/mcp/server.json origin/main; then
+              echo "  version files carry non-version changes — flagging, not renumbering"
+              git merge --abort 2>/dev/null || git reset --hard "origin/$head"
+              flag "$n" "main shipped \`$MAIN_VER\`. This PR changes \`package.json\`/\`server.json\` beyond the version, so the sync bot won't touch them — renumber to \`$NEXT\` and rebase manually."
+              return 2
+            fi
+
+            echo "  → renumber package.json + server.json to $NEXT (in place)"
+            # Edit ONLY the version fields on the merged tree — this keeps every
+            # other field the PR set. (Safe: we proved above these files differ
+            # from main only in version fields.)
+            # shellcheck disable=SC2016  # single-quoted JS is intentional
             node -e '
               const fs = require("fs");
               const next = process.argv[1];
-              const pkgPath = "packages/mcp/package.json";
-              const srvPath = "packages/mcp/server.json";
-              const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-              pkg.version = next;
-              fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-              const srv = JSON.parse(fs.readFileSync(srvPath, "utf8"));
-              srv.version = next;
-              for (const p of (srv.packages || [])) p.version = next;
-              fs.writeFileSync(srvPath, JSON.stringify(srv, null, 2) + "\n");
+              for (const path of ["packages/mcp/package.json", "packages/mcp/server.json"]) {
+                const o = JSON.parse(fs.readFileSync(path, "utf8"));
+                if ("version" in o) o.version = next;
+                for (const p of (o.packages || [])) if ("version" in p) p.version = next;
+                fs.writeFileSync(path, JSON.stringify(o, null, 2) + "\n");
+              }
             ' "$NEXT"
             git add packages/mcp/package.json packages/mcp/server.json
             if [ -f .git/MERGE_HEAD ]; then
-              # Conflict path: merge is paused mid-way. Finish it as one commit
-              # (conflict markers on the two JSON files are gone after checkout).
               git commit --no-edit
             else
-              # Clean-collision path: merge already committed. Fold the renumber
-              # into that merge commit so the branch carries a single sync commit.
+              # Clean-collision path: merge already committed. Fold the renumber in.
               git commit --amend --no-edit
             fi
-            # Gate: the version-consistency audit MUST pass on the result.
-            corepack enable >/dev/null 2>&1 || true
-            pnpm install --frozen-lockfile --silent
-            if ! pnpm --filter @leadbay/mcp exec vitest run test/audit/server-json-version.test.ts >/dev/null 2>&1; then
-              echo "  !! server-json-version audit failed after renumber — aborting this PR" >&2
+            # Gate: DATA-ONLY audit (Finding 2 — no pnpm install / vitest, so no
+            # PR-branch code executes under the write-scoped token).
+            if ! audit_version_files; then
+              echo "  !! version audit failed after renumber — aborting this PR" >&2
               git reset --hard "origin/$head"
               flag "$n" "main shipped \`$MAIN_VER\`. Auto-renumber to \`$NEXT\` failed the version audit — please rebase manually."
               return 1
@@ -252,8 +338,13 @@ jobs:
             fi
 
             # Only package.json / server.json conflict → deterministic renumber.
-            # (Conflict markers are still in the tree; the checkout inside
-            # renumber_and_push replaces both files wholesale, clearing them.)
+            # Resolve the conflict markers by taking the PR's OWN version files
+            # (origin/$HEAD — the PR's legitimate content, no markers), NOT main's,
+            # so any non-version edits the PR made survive. renumber_and_push then
+            # verifies those files differ from main only by version (else it flags
+            # + aborts) and bumps only the version fields in place.
+            git checkout "origin/$HEAD" -- packages/mcp/package.json packages/mcp/server.json
+            git add packages/mcp/package.json packages/mcp/server.json
             renumber_and_push "$N" "$HEAD" || true
           done
 
