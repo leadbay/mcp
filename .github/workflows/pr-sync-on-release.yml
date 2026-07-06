@@ -92,13 +92,26 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           MAIN_VER=$(node -p "require('./packages/mcp/package.json').version")
-          # Next patch above main's version, e.g. 0.23.13 -> 0.23.14. A patch bump
-          # never crosses a minor line, so the @leadbay/mcp@<major.minor> npx pins
-          # in server.json stay correct and the version audit passes untouched.
-          # shellcheck disable=SC2016  # single-quoted JS is intentional — $ must reach node, not bash
-          NEXT=$(node -e 'const [a,b,c]=process.argv[1].split(".").map(Number);console.log(`${a}.${b}.${c+1}`)' "$MAIN_VER")
-          echo "main @leadbay/mcp version: $MAIN_VER  → collision target: $NEXT"
+          echo "main @leadbay/mcp version: $MAIN_VER"
           echo "DRY_RUN=$DRY_RUN"
+
+          # Distinct target version per renumbered PR. NEXT is chosen just-in-time
+          # by reserve_next(): the lowest patch strictly above main's version that
+          # is not already taken by main or by an earlier renumber in THIS pass.
+          # A single fixed NEXT would give every stale release PR the same number,
+          # so after the first merges, the next would carry no delta vs main and
+          # auto-tag.yml would never release it. A patch bump never crosses a minor
+          # line, so server.json's @leadbay/mcp@<major.minor> pins stay valid.
+          RESERVED=" $MAIN_VER " # space-delimited set of taken versions
+          # reserve_next: set global NEXT to the next free patch above MAIN_VER and
+          # mark it taken. Sets a GLOBAL (not stdout) on purpose — capturing via
+          # $(reserve_next) would run it in a subshell and lose the RESERVED update,
+          # so every PR would get the same number.
+          reserve_next() {
+            # shellcheck disable=SC2016  # single-quoted JS is intentional — args reach node, not bash
+            NEXT=$(node -e 'const [a,b,c]=process.argv[1].split(".").map(Number);const taken=new Set(process.argv[2].trim().split(/\s+/));let p=c+1;while(taken.has(`${a}.${b}.${p}`))p++;console.log(`${a}.${b}.${p}`)' "$MAIN_VER" "$RESERVED")
+            RESERVED="$RESERVED$NEXT "
+          }
 
           # Ensure the label exists before we try to apply it (idempotent).
           if [ "$DRY_RUN" != "true" ]; then
@@ -137,26 +150,40 @@ jobs:
             fi
             clear_label "$n"
           }
+          # push_head: push the current HEAD to the PR branch. Returns non-zero (and
+          # flags the PR) WITHOUT aborting the pass if the push is rejected — e.g. a
+          # non-fast-forward because someone pushed to the branch after we fetched
+          # it. Callers MUST treat a non-zero return as "this PR failed, move on".
           push_head() { # $1=PR number  $2=head ref
             local n="$1" head="$2"
             echo "  → PUSH #$n $head"
-            if [ "$DRY_RUN" != "true" ]; then
-              git push origin "HEAD:${head}"
-              # A GITHUB_TOKEN push does NOT fire ci.yml's pull_request trigger, so
-              # the synced head would otherwise carry no fresh build/test result.
-              # Dispatch ci.yml to re-verify it. Dispatch from the DEFAULT branch's
-              # copy of ci.yml (--ref main — that's where the workflow_dispatch
-              # entry lives) and pass the head as the `ref` input so it builds the
-              # branch we just updated. (Runs under the branch, not as a PR check —
-              # main has no required checks, so this is verification, not a gate.)
-              gh workflow run ci.yml --repo "$REPO" --ref main -f "ref=$head" \
-                && echo "  → dispatched ci.yml for $head" \
-                || echo "  → WARN: could not dispatch ci.yml for $head"
+            if [ "$DRY_RUN" = "true" ]; then
+              clear_label "$n"
+              return 0
             fi
+            # --force-with-lease guards against clobbering a concurrent push: it
+            # rejects if origin/$head moved since our fetch, rather than overwriting.
+            if ! git push --force-with-lease="refs/heads/${head}:origin/${head}" \
+                   origin "HEAD:${head}"; then
+              echo "  !! push to $head rejected (branch moved since fetch?) — flagging" >&2
+              flag "$n" "Couldn't push the synced branch — it changed since this run started (or the push was rejected). main shipped \`$MAIN_VER\`; re-run the sync or rebase manually."
+              return 1
+            fi
+            # A GITHUB_TOKEN push does NOT fire ci.yml's pull_request trigger, so
+            # the synced head would otherwise carry no fresh build/test result.
+            # Dispatch ci.yml to re-verify it. Dispatch from the DEFAULT branch's
+            # copy of ci.yml (--ref main — that's where the workflow_dispatch entry
+            # lives) and pass the head as the `ref` input so it builds the branch we
+            # just updated. (Runs under the branch, not as a PR check — main has no
+            # required checks, so this is verification, not a gate.)
+            gh workflow run ci.yml --repo "$REPO" --ref main -f "ref=$head" \
+              && echo "  → dispatched ci.yml for $head" \
+              || echo "  → WARN: could not dispatch ci.yml for $head"
             # A successfully pushed head is current — drop any stale flag. (Callers
             # that still need the label, e.g. the stale-CHANGELOG case, re-add it
             # via flag() right after.)
             clear_label "$n"
+            return 0
           }
           # version_diff_only: true if $1 (a package.json or server.json) differs
           # from main ONLY in version-related fields — i.e. it is safe to renumber
@@ -237,17 +264,25 @@ jobs:
           # $1=PR number  $2=head ref
           renumber_and_push() {
             local n="$1" head="$2"
-            # Guard (Finding 1): only proceed if the version files differ from main
-            # solely in version fields. Otherwise the PR has real edits here and we
-            # must not touch it — hand to a human.
+            # Guard: only proceed if the version files differ from main solely in
+            # version fields. Otherwise the PR has real edits here and we must not
+            # touch it — hand to a human. (Do this BEFORE reserving a version, so a
+            # flagged PR doesn't consume a number.)
             if ! version_diff_only packages/mcp/package.json origin/main \
                || ! version_diff_only packages/mcp/server.json origin/main; then
               echo "  version files carry non-version changes — flagging, not renumbering"
               git merge --abort 2>/dev/null || git reset --hard "origin/$head"
-              flag "$n" "main shipped \`$MAIN_VER\`. This PR changes \`package.json\`/\`server.json\` beyond the version, so the sync bot won't touch them — renumber to \`$NEXT\` and rebase manually."
+              flag "$n" "main shipped \`$MAIN_VER\`. This PR changes \`package.json\`/\`server.json\` beyond the version, so the sync bot won't touch them — bump above \`$MAIN_VER\` and rebase manually."
               return 2
             fi
 
+            # Reserve a version unique to THIS PR (see reserve_next — it sets NEXT
+            # and appends to the global RESERVED so every renumber gets a distinct
+            # number). `local NEXT` here is safe: bash dynamic scoping means the
+            # assignment inside reserve_next targets this local, while RESERVED
+            # (never declared local) stays the shared global.
+            local NEXT=""
+            reserve_next
             echo "  → renumber package.json + server.json to $NEXT (in place)"
             # Edit ONLY the version fields on the merged tree — this keeps every
             # other field the PR set. (Safe: we proved above these files differ
@@ -278,14 +313,18 @@ jobs:
               flag "$n" "main shipped \`$MAIN_VER\`. Auto-renumber to \`$NEXT\` failed the version audit — please rebase manually."
               return 1
             fi
-            push_head "$n" "$head"
-            # P2: we bumped package.json/server.json to $NEXT but never touch
-            # CHANGELOG prose. If the PR carried its own changelog entry, its
-            # header still reads ## <old> (e.g. $MAIN_VER) — on merge, release.yml
-            # extracts notes from "## $NEXT" and, finding none, falls back to
-            # generic notes, silently dropping the PR's real notes. So if the PR's
-            # own range touched CHANGELOG.md AND the file has no "## $NEXT" section,
-            # KEEP the manual-rebase label + tell the author to fix the header.
+            # Push. If it fails, push_head has already flagged the PR — bail out
+            # WITHOUT the success note (which would wrongly clear the label).
+            if ! push_head "$n" "$head"; then
+              return 1
+            fi
+            # We bumped package.json/server.json to $NEXT but never touch CHANGELOG
+            # prose. If the PR carried its own changelog entry, its header still
+            # reads ## <old> (e.g. $MAIN_VER) — on merge, release.yml extracts notes
+            # from "## $NEXT" and, finding none, falls back to generic notes,
+            # silently dropping the PR's real notes. So if the PR's own range touched
+            # CHANGELOG.md AND the file has no "## $NEXT" section, KEEP the
+            # manual-rebase label + tell the author to fix the header.
             local mb2 chl_touched=false
             mb2=$(git merge-base origin/main HEAD)
             if git diff --name-only "$mb2" HEAD -- packages/mcp/CHANGELOG.md | grep -q .; then
@@ -303,18 +342,24 @@ jobs:
           branch_ver() { node -p "require('./packages/mcp/package.json').version"; }
           # -----------------------------------------------------------------------
 
-          # Enumerate open PRs (drafts included — this repo lives in drafts).
-          # NB: we deliberately do NOT request `files` here — GitHub's file list is
+          # Enumerate open PRs whose BASE is main (drafts included — this repo lives
+          # in drafts). --base main is load-bearing: a stacked/release PR based on
+          # another branch must NOT have origin/main merged into it and pushed, which
+          # would corrupt its intended base.
+          # NB: we deliberately do NOT request `files` — GitHub's file list is
           # computed against the current base and is unreliable once main moves
-          # (see touches_ver below). Version-touch is derived from the branch range.
-          prs=$(gh pr list --repo "$REPO" --state open --limit 100 \
+          # (see touches_pkg below). Version-touch is derived from the branch range.
+          prs=$(gh pr list --repo "$REPO" --state open --base main --limit 100 \
                   --json number,headRefName,headRepositoryOwner)
 
           count=$(echo "$prs" | jq 'length')
-          echo "Open PRs: $count"
+          echo "Open PRs targeting main: $count"
           [ "$count" -eq 0 ] && { echo "Nothing to reconcile."; exit 0; }
 
-          echo "$prs" | jq -c '.[]' | while read -r pr; do
+          # Feed the loop via process substitution (NOT a pipe) so the loop body
+          # runs in THIS shell — otherwise RESERVED (the per-PR version reservation)
+          # would reset every iteration inside a pipe subshell.
+          while read -r pr; do
             N=$(echo "$pr"     | jq -r '.number')
             HEAD=$(echo "$pr"  | jq -r '.headRefName')
             OWNER=$(echo "$pr" | jq -r '.headRepositoryOwner.login')
@@ -338,36 +383,41 @@ jobs:
               continue
             fi
 
-            # Does the PR itself touch any of the three version files?
-            # Derive this from the PR's OWN commit range (merge-base..HEAD), NOT
-            # from `gh pr list --files`. GitHub computes .files against the CURRENT
-            # base, so once main ships the same version the PR already set, the
-            # version files become identical to main and GitHub DROPS them from the
-            # list — touches_ver would wrongly read false and the branch would skip
-            # renumbering, merging with no version delta so auto-tag never releases
-            # it. The branch-range diff is immune to main moving.
+            # What does the PR's OWN commit range (merge-base..HEAD) touch? Derive
+            # from the branch range, NOT `gh pr list --files`: GitHub computes
+            # .files against the CURRENT base, so once main ships the same version
+            # the PR already set, the version files become identical to main and
+            # GitHub DROPS them from the list — a file-list signal would wrongly
+            # read "untouched". The branch-range diff is immune to main moving.
+            #
+            # Track package/server SEPARATELY from CHANGELOG (Finding: a changelog-
+            # or docs-only PR must NEVER be renumbered — bumping its version would
+            # push an unintended release onto it). Only a package.json/server.json
+            # touch makes a PR eligible for renumbering.
             mb=$(git merge-base origin/main HEAD)
             if git diff --name-only "$mb" HEAD -- \
-                 packages/mcp/package.json packages/mcp/server.json packages/mcp/CHANGELOG.md \
-               | grep -q .; then
-              touches_ver=true
+                 packages/mcp/package.json packages/mcp/server.json | grep -q .; then
+              touches_pkg=true
             else
-              touches_ver=false
+              touches_pkg=false
             fi
-            echo "  touches_ver=$touches_ver (from branch range ${mb:0:7}..HEAD)"
+            echo "  touches_pkg=$touches_pkg (from branch range ${mb:0:7}..HEAD)"
 
             if git merge --no-edit origin/main >/dev/null 2>&1; then
-              # Clean merge. Two sub-cases when the PR touches the version files:
-              # if it bumped to the SAME number main just shipped, git merges
-              # without a conflict but the branch now equals main's version — on
-              # merge, auto-tag.yml sees no version change and never releases.
-              # Renumber above main so the PR's work still ships.
-              if [ "$touches_ver" = "true" ] && [ "$(branch_ver)" = "$MAIN_VER" ]; then
+              # Clean merge. If the PR bumped package/server to the SAME number main
+              # just shipped, git merges without a conflict but the branch now
+              # equals main's version — on merge, auto-tag.yml sees no version
+              # change and never releases. Renumber above main so it still ships.
+              # (Gated on touches_pkg, NOT changelog: a docs/changelog-only PR that
+              # happens to sit at main's version must be left alone.)
+              if [ "$touches_pkg" = "true" ] && [ "$(branch_ver)" = "$MAIN_VER" ]; then
                 echo "  clean merge but version == main ($MAIN_VER) — renumbering"
                 renumber_and_push "$N" "$HEAD" || true
               else
-                # Case A, or a Case B whose version already differs from main.
-                push_head "$N" "$HEAD"
+                # Case A (incl. changelog-only), or a Case B already above main.
+                # `|| true`: push_head flags the PR itself on failure; don't let a
+                # single rejected push abort the whole reconciliation pass.
+                push_head "$N" "$HEAD" || true
               fi
               continue
             fi
@@ -377,26 +427,19 @@ jobs:
             echo "  conflicts:"
             printf '%s\n' "$conflicts" | while IFS= read -r f; do echo "    $f"; done
 
-            if [ "$touches_ver" != "true" ]; then
-              # Case A with a real (non-version) code conflict — human's job.
-              git merge --abort
-              flag "$N" "Couldn't auto-sync with main — this PR has a merge conflict outside the version files. main shipped \`$MAIN_VER\`; please rebase manually."
-              continue
-            fi
-
-            # Case B. If CHANGELOG is among the conflicts, don't touch prose.
+            # If CHANGELOG is among the conflicts, don't touch prose — human's job.
             if echo "$conflicts" | grep -q '^packages/mcp/CHANGELOG\.md$'; then
               git merge --abort
-              flag "$N" "main shipped \`$MAIN_VER\`. Renumber this PR to \`$NEXT\` (package.json + server.json) and re-anchor your CHANGELOG section above main's, then push. The sync bot won't edit CHANGELOG prose."
+              flag "$N" "main shipped \`$MAIN_VER\`. Bump this PR's version above \`$MAIN_VER\` (package.json + server.json) and re-anchor your CHANGELOG section above main's, then push. The sync bot won't edit CHANGELOG prose."
               continue
             fi
 
-            # Only package.json / server.json conflict → deterministic renumber.
-            only_json=$(echo "$conflicts" | grep -vE '^packages/mcp/(package|server)\.json$' || true)
-            if [ -n "$only_json" ]; then
-              # Some other file also conflicts alongside the JSON — don't guess.
+            # Any conflict outside package.json/server.json → real code drift; don't
+            # guess. (Also covers a "no version files at all" conflict.)
+            non_json=$(echo "$conflicts" | grep -vE '^packages/mcp/(package|server)\.json$' || true)
+            if [ -n "$non_json" ] || [ -z "$conflicts" ]; then
               git merge --abort
-              flag "$N" "main shipped \`$MAIN_VER\`. This PR conflicts on the version files AND other files; renumber to \`$NEXT\` and rebase manually."
+              flag "$N" "Couldn't auto-sync with main — this PR has a merge conflict outside the version files. main shipped \`$MAIN_VER\`; please rebase manually."
               continue
             fi
 
@@ -409,6 +452,6 @@ jobs:
             git checkout "origin/$HEAD" -- packages/mcp/package.json packages/mcp/server.json
             git add packages/mcp/package.json packages/mcp/server.json
             renumber_and_push "$N" "$HEAD" || true
-          done
+          done < <(echo "$prs" | jq -c '.[]')
 
           echo "Reconciliation pass complete."
