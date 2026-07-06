@@ -286,6 +286,12 @@ export interface UserMePayload {
   last_requested_lens?: string | number | null;
   language?: string;
   free_ai_credits?: number;
+  // One-time "intro to Arty" welcome flag. `false` for a brand-new user →
+  // the MCP surfaces the intro once, then POSTs /users/arty_intro_shown to
+  // flip it. OPTIONAL: a backend that predates the field omits it; the MCP
+  // treats absent/undefined as "already shown" and surfaces nothing, so the
+  // MCP is safe to deploy before the backend flag ships (product#3829).
+  arty_intro_shown?: boolean;
 }
 
 export interface PaidContactPayload {

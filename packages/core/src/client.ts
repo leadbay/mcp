@@ -776,6 +776,14 @@ export class LeadbayClient {
     this.mePayloadCachedAt = null;
   }
 
+  // Flip the per-user "intro to Arty" welcome flag to true so the one-time
+  // greeting is never surfaced again (any surface). Idempotent server-side.
+  // Invalidates the /me cache so a subsequent resolveMe() reflects the flip.
+  async markArtyIntroShown(): Promise<void> {
+    await this.requestVoid("POST", "/users/arty_intro_shown");
+    this.invalidateMe();
+  }
+
   async resolveDefaultLens(): Promise<number> {
     const now = Date.now();
     if (
