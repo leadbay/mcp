@@ -122,6 +122,54 @@ describe("enrich_titles consent gate (#3848)", () => {
     expect(launchCalls(requests)).toHaveLength(0);
   });
 
+  it("phone:false with email unset does NOT bypass consent (disabled channel ≠ consent)", async () => {
+    // Regression: a disabled channel key present (phone:false) must not count
+    // as spend consent while email still defaults ON — that would relaunch the
+    // exact silent email spend the gate closes. The bug shape can arrive with
+    // phone:false as an unchecked artifact-form default.
+    const { requests } = baseFlow({ withCredits: true });
+    const elicit = vi.fn(async () => ({ action: "decline" as const }));
+    const ctx: ToolContext = {
+      bulkTracker: new InMemoryBulkStore(),
+      elicit,
+    };
+
+    const res: any = await enrichTitles.execute(
+      newClient(),
+      { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE], phone: false },
+      ctx
+    );
+
+    expect(res.mode).toBe("needs_confirmation");
+    expect(res.would_launch).toEqual({ titles: [TITLE], email: true, phone: false });
+    expect(elicit).toHaveBeenCalledTimes(1);
+    expect(launchCalls(requests)).toHaveLength(0);
+  });
+
+  it("email:false + phone:true IS consent (an enabled channel) → launches without eliciting", async () => {
+    // The inverse guard: explicitly disabling email while enabling phone is a
+    // real channel choice — phone:true counts as consent even though email is
+    // off. Proves the fix keys on ENABLED channels, not merely present keys.
+    const { requests } = baseFlow({ withLaunch: true });
+    const elicit = vi.fn(async () => ({ action: "decline" as const }));
+    const ctx: ToolContext = {
+      bulkTracker: new InMemoryBulkStore(),
+      elicit,
+    };
+
+    const res: any = await enrichTitles.execute(
+      newClient(),
+      { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE], email: false, phone: true },
+      ctx
+    );
+
+    expect(res.mode).toBe("launched");
+    expect(res.email).toBe(false);
+    expect(res.phone).toBe(true);
+    expect(elicit).not.toHaveBeenCalled();
+    expect(launchCalls(requests)).toHaveLength(1);
+  });
+
   it("elicit present + user cancels → needs_confirmation, NO launch", async () => {
     const { requests } = baseFlow({ withCredits: true });
     const ctx: ToolContext = {

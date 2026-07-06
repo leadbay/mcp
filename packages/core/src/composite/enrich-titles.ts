@@ -336,9 +336,14 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
         // before launching; a decline returns needs_confirmation and spends
         // nothing. Hosts without elicitation (OpenClaw, unit tests) keep the
         // historical launch — the elicit presence, not the params, is the gate.
-        const channelChosenExplicitly =
-          params.email !== undefined || params.phone !== undefined;
-        const consented = params.confirm === true || channelChosenExplicitly;
+        // Consent = an explicitly ENABLED paid channel (or confirm:true) — NOT
+        // merely a channel key being present. `phone:false` with email unset
+        // must NOT count: email would still default true (line 180), so
+        // treating a disabled channel as consent would relaunch the exact
+        // silent email spend this gate closes. Only `=== true` is consent.
+        const channelEnabledExplicitly =
+          params.email === true || params.phone === true;
+        const consented = params.confirm === true || channelEnabledExplicitly;
 
         if (!consented && typeof ctx?.elicit === "function") {
           const creditsRemaining = await readCreditsRemaining(client);
