@@ -260,8 +260,11 @@ jobs:
           # -----------------------------------------------------------------------
 
           # Enumerate open PRs (drafts included — this repo lives in drafts).
+          # NB: we deliberately do NOT request `files` here — GitHub's file list is
+          # computed against the current base and is unreliable once main moves
+          # (see touches_ver below). Version-touch is derived from the branch range.
           prs=$(gh pr list --repo "$REPO" --state open --limit 100 \
-                  --json number,headRefName,isDraft,headRepositoryOwner,files)
+                  --json number,headRefName,headRepositoryOwner)
 
           count=$(echo "$prs" | jq 'length')
           echo "Open PRs: $count"
@@ -279,10 +282,6 @@ jobs:
               continue
             fi
 
-            # Does the PR touch any of the three version files?
-            touches_ver=$(echo "$pr" | jq -r \
-              '[.files[].path | test("^packages/mcp/(package|server)\\.json$|^packages/mcp/CHANGELOG\\.md$")] | any')
-
             # Fresh checkout of the PR head.
             git fetch origin "$HEAD" -q
             git checkout -q -B "$HEAD" "origin/$HEAD"
@@ -292,6 +291,24 @@ jobs:
               echo "  already up to date with main — skip"
               continue
             fi
+
+            # Does the PR itself touch any of the three version files?
+            # Derive this from the PR's OWN commit range (merge-base..HEAD), NOT
+            # from `gh pr list --files`. GitHub computes .files against the CURRENT
+            # base, so once main ships the same version the PR already set, the
+            # version files become identical to main and GitHub DROPS them from the
+            # list — touches_ver would wrongly read false and the branch would skip
+            # renumbering, merging with no version delta so auto-tag never releases
+            # it. The branch-range diff is immune to main moving.
+            mb=$(git merge-base origin/main HEAD)
+            if git diff --name-only "$mb" HEAD -- \
+                 packages/mcp/package.json packages/mcp/server.json packages/mcp/CHANGELOG.md \
+               | grep -q .; then
+              touches_ver=true
+            else
+              touches_ver=false
+            fi
+            echo "  touches_ver=$touches_ver (from branch range ${mb:0:7}..HEAD)"
 
             if git merge --no-edit origin/main >/dev/null 2>&1; then
               # Clean merge. Two sub-cases when the PR touches the version files:
