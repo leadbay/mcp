@@ -311,6 +311,57 @@ describe("enrich_titles consent gate (#3848)", () => {
     expect(launchCalls(requests)).toHaveLength(1);
   });
 
+  it("explicit confirm:false + NO elicit → withholds, does not launch (Codex P2)", async () => {
+    // A direct/core/legacy caller (no ctx.elicit) that passes confirm:false is
+    // declining the spend. Previously willElicit was false so it launched
+    // anyway; now the veto returns needs_confirmation with no /launch.
+    const { requests } = baseFlow({ withCredits: true });
+    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() }; // no elicit
+
+    const res: any = await enrichTitles.execute(
+      newClient(),
+      { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE], confirm: false },
+      ctx
+    );
+
+    expect(res.mode).toBe("needs_confirmation");
+    expect(res.launched).toBe(false);
+    expect(launchCalls(requests)).toHaveLength(0);
+  });
+
+  it("confirm:false VETOES even an explicit channel → withholds", async () => {
+    // A veto wins over an explicit channel flag: the caller said "don't spend".
+    const { requests } = baseFlow({ withCredits: true });
+    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() };
+
+    const res: any = await enrichTitles.execute(
+      newClient(),
+      { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE], email: true, confirm: false },
+      ctx
+    );
+
+    expect(res.mode).toBe("needs_confirmation");
+    expect(launchCalls(requests)).toHaveLength(0);
+  });
+
+  it("confirm:false + elicit present → withholds directly, does NOT prompt", async () => {
+    // Veto short-circuits before elicitation — no point asking a user who
+    // already declined via the arg.
+    const { requests } = baseFlow({ withCredits: true });
+    const elicit = vi.fn(async () => ({ action: "accept" as const, content: { confirm: true } }));
+    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore(), elicit };
+
+    const res: any = await enrichTitles.execute(
+      newClient(),
+      { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE], confirm: false },
+      ctx
+    );
+
+    expect(res.mode).toBe("needs_confirmation");
+    expect(elicit).not.toHaveBeenCalled();
+    expect(launchCalls(requests)).toHaveLength(0);
+  });
+
   it("no channel + no elicit → launches (back-compat; keeps pinned suite green)", async () => {
     const { requests } = baseFlow({ withLaunch: true });
     const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() };

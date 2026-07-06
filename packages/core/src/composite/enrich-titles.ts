@@ -289,7 +289,7 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
       confirm: {
         type: "boolean",
         description:
-          "Explicit go-ahead to spend on the paid enrichment. Without it — AND without an explicit email/phone channel — an elicitation-capable host will ask the user before launching, and a decline returns mode:'needs_confirmation' without spending. Passing email:true/phone:true also counts as consent.",
+          "Explicit spend decision for the paid enrichment. true = go ahead and launch. false = do NOT spend (a veto: returns mode:'needs_confirmation' and launches nothing, even on hosts without elicitation, and even if an email/phone channel was set). Omitted (and no explicit email/phone channel) → an elicitation-capable host asks the user before launching; a decline returns mode:'needs_confirmation'. Passing email:true/phone:true also counts as consent.",
       },
     },
     additionalProperties: false,
@@ -465,8 +465,18 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
     // work or pins the backend selection (product#3848 review).
     const channelEnabledExplicitly =
       params.email === true || params.phone === true;
-    const consented = params.confirm === true || channelEnabledExplicitly;
-    const willElicit = !consented && typeof ctx?.elicit === "function";
+    // An explicit confirm:false is a VETO — the caller is declining the spend
+    // (e.g. a direct/core caller or an artifact passing confirm:false to avoid
+    // launching). It must withhold regardless of channel or elicit capability;
+    // it is NOT the same as confirm being absent (Codex P2). A veto wins even
+    // over an explicit channel flag: the caller said "don't spend".
+    const vetoed = params.confirm === false;
+    const consented =
+      !vetoed && (params.confirm === true || channelEnabledExplicitly);
+    // Only elicit when we're neither consented nor vetoed — a veto returns
+    // needs_confirmation directly, no prompt.
+    const willElicit =
+      !consented && !vetoed && typeof ctx?.elicit === "function";
 
     // Phase 1: PREVIEW under the selection lock. When willElicit, this phase
     // holds the lock ONLY for select → preview → clear; the launch happens later
@@ -593,6 +603,28 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
                 // the balance. No estimated cost — that rate is backend-only.
                 enrichable_contacts: preview.enrichable_contacts,
                 credits_remaining: await readCreditsRemaining(client),
+              },
+            };
+          } else if (vetoed) {
+            // Explicit confirm:false — the caller declined the spend. Withhold
+            // and return needs_confirmation (never launch), regardless of elicit
+            // capability (Codex P2).
+            outcome = {
+              kind: "terminal",
+              result: {
+                mode: "needs_confirmation",
+                preview,
+                launched: false,
+                would_launch: { titles: params.titles, email, phone },
+                enrichable_contacts: preview.enrichable_contacts,
+                credits_remaining: await readCreditsRemaining(client),
+                available_titles: availableTitles,
+                message:
+                  "Enrichment not launched — confirm:false was passed (spend declined). " +
+                  "Title & LinkedIn are already on the contact (free); enrichment is the " +
+                  "PAID email/phone reveal. Re-call with confirm:true (or email:true) to spend.",
+                next_action:
+                  "Re-call leadbay_enrich_titles with confirm:true once the user approves the spend.",
               },
             };
           } else if (!willElicit) {
