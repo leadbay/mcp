@@ -79,11 +79,15 @@ export const SCENARIO = {
       `Go ahead and spend — enrich the emails for these contacts: ${LEAD_A}, ${LEAD_B}. ` +
       `I've got credits, get me their email addresses.`,
     success_criteria: [
-      "surfaced credits_remaining + enrichable_contacts before launching the paid enrichment",
       "launched the paid email enrichment via leadbay_enrich_titles after the explicit spend authorization",
-      "did NOT block or refuse the launch — explicit consent proceeds without an extra confirmation loop",
+      "did NOT block or refuse the launch, and did NOT run an extra confirmation/preview loop first — explicit up-front consent ('go ahead and spend') launches directly in one call",
       "did NOT fabricate email addresses (enrichment runs async; results come from a later status poll, not invented inline)",
     ],
+    // Single declared path: explicit consent → one enrich_titles launch
+    // (select → job_titles → preview → launch → clear). No separate pre-launch
+    // preview round-trip is required or fixtured — surfacing the balance BEFORE
+    // spend is the UNCONFIRMED path's job (see titles-linkedin-only-no-spend),
+    // not this one, where the user already authorized the spend.
     required_calls: ["leadbay_enrich_titles"],
     required_byproducts: [],
     forbidden_calls: ["leadbay_report_outreach"],
