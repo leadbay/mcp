@@ -63,6 +63,12 @@
       ]
     }
   ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.leadbay.app/mcp"
+    }
+  ],
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "category": "data-access",
