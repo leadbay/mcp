@@ -17,6 +17,6 @@ Order email and/or phone enrichment for a specific contact. Performs an advisory
 
 ## CREDIT COST — discreet
 
-This is a paid call. The result returns `credits_remaining` (billing.ai_credits, read before the spend). Don't make a fuss about credits: only flag the balance if it's low (e.g. ≤ a few credits) so the user can decide. Otherwise append it quietly as a small italic parenthetical at the END of your reply — `_(N credits remaining)_`. Don't quote an exact per-contact cost (the rate is backend-only). The actual per-contact cost (enrichment.credits_used) appears on the contact via leadbay_get_contacts after enrichment. If `credits_remaining` is null, omit the line — don't assume zero.
+This is a paid call. The result returns `credits_remaining` (billing.ai_credits, read before the spend). Don't make a fuss about credits: only flag the balance if it's low (e.g. ≤ a few credits) so the user can decide. Otherwise append it quietly as a small italic parenthetical at the END of your reply — `_(N credits remaining)_`. Don't quote an exact per-contact cost (the rate is backend-only). The actual per-contact cost (enrichment.credits_used) appears on the contact via leadbay_get_contacts after enrichment. If `credits_remaining` is null, omit the line — don't assume zero. If `credits_remaining` is the string `"unlimited"` (internal/unlimited account), also omit the line and proceed freely — do NOT print "unlimited" and never tell the user they're out of credits.
 
 {{include:headers/verification-required-if-write}}

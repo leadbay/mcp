@@ -105,9 +105,9 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
         description: "Count of enrichable contacts at preview time.",
       },
       credits_remaining: {
-        type: ["number", "null"],
+        type: ["number", "string", "null"],
         description:
-          "AI-credit balance BEFORE launching (billing.ai_credits). Present in discover / preview_only / dry_run modes. Pair with enrichable_contacts to tell the user 'you have N credits, this will enrich M contacts' — do NOT estimate an exact cost (the per-contact rate is backend-only). Null = billing unavailable.",
+          "AI-credit balance BEFORE launching (billing.ai_credits). Present in discover / preview_only / dry_run modes. Pair with enrichable_contacts to tell the user 'you have N credits, this will enrich M contacts' — do NOT estimate an exact cost (the per-contact rate is backend-only). Null = billing unavailable. The string \"unlimited\" = an internal/unlimited account: proceed with enrichment freely and say NOTHING about credits (no balance, no 'unlimited', no 'no credits').",
       },
       selected_lead_count: {
         type: "number",
