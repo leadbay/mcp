@@ -123,6 +123,54 @@ jobs:
               git push origin "HEAD:${head}"
             fi
           }
+          # renumber the two JSON files to $NEXT on the current (already-merged)
+          # HEAD, gate on the audit, then push + note. Assumes any merge is
+          # already complete/committed on HEAD. Returns non-zero if the audit
+          # fails (caller resets + flags). $1=PR number  $2=head ref
+          renumber_and_push() {
+            local n="$1" head="$2"
+            echo "  → renumber package.json + server.json to $NEXT"
+            # Take main's structure verbatim (server.json has no generator), then
+            # set the version field(s) to NEXT so auto-tag fires on merge.
+            git checkout origin/main -- packages/mcp/package.json packages/mcp/server.json
+            node -e '
+              const fs = require("fs");
+              const next = process.argv[1];
+              const pkgPath = "packages/mcp/package.json";
+              const srvPath = "packages/mcp/server.json";
+              const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+              pkg.version = next;
+              fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+              const srv = JSON.parse(fs.readFileSync(srvPath, "utf8"));
+              srv.version = next;
+              for (const p of (srv.packages || [])) p.version = next;
+              fs.writeFileSync(srvPath, JSON.stringify(srv, null, 2) + "\n");
+            ' "$NEXT"
+            git add packages/mcp/package.json packages/mcp/server.json
+            if [ -f .git/MERGE_HEAD ]; then
+              # Conflict path: merge is paused mid-way. Finish it as one commit
+              # (conflict markers on the two JSON files are gone after checkout).
+              git commit --no-edit
+            else
+              # Clean-collision path: merge already committed. Fold the renumber
+              # into that merge commit so the branch carries a single sync commit.
+              git commit --amend --no-edit
+            fi
+            # Gate: the version-consistency audit MUST pass on the result.
+            corepack enable >/dev/null 2>&1 || true
+            pnpm install --frozen-lockfile --silent
+            if ! pnpm --filter @leadbay/mcp exec vitest run test/audit/server-json-version.test.ts >/dev/null 2>&1; then
+              echo "  !! server-json-version audit failed after renumber — aborting this PR" >&2
+              git reset --hard "origin/$head"
+              flag "$n" "main shipped \`$MAIN_VER\`. Auto-renumber to \`$NEXT\` failed the version audit — please rebase manually."
+              return 1
+            fi
+            push_head "$n" "$head"
+            note "$n" "Synced with main and renumbered @leadbay/mcp to \`$NEXT\` (main shipped \`$MAIN_VER\`). CHANGELOG left for you — confirm your entry reads as \`$NEXT\`."
+            return 0
+          }
+          # branch_ver: the @leadbay/mcp version on the current working tree.
+          branch_ver() { node -p "require('./packages/mcp/package.json').version"; }
           # -----------------------------------------------------------------------
 
           # Enumerate open PRs (drafts included — this repo lives in drafts).
@@ -160,8 +208,18 @@ jobs:
             fi
 
             if git merge --no-edit origin/main >/dev/null 2>&1; then
-              # Clean merge (Case A, or a Case B that happened not to collide).
-              push_head "$N" "$HEAD"
+              # Clean merge. Two sub-cases when the PR touches the version files:
+              # if it bumped to the SAME number main just shipped, git merges
+              # without a conflict but the branch now equals main's version — on
+              # merge, auto-tag.yml sees no version change and never releases.
+              # Renumber above main so the PR's work still ships.
+              if [ "$touches_ver" = "true" ] && [ "$(branch_ver)" = "$MAIN_VER" ]; then
+                echo "  clean merge but version == main ($MAIN_VER) — renumbering"
+                renumber_and_push "$N" "$HEAD" || true
+              else
+                # Case A, or a Case B whose version already differs from main.
+                push_head "$N" "$HEAD"
+              fi
               continue
             fi
 
@@ -193,41 +251,10 @@ jobs:
               continue
             fi
 
-            echo "  → renumber package.json + server.json to $NEXT"
-            # Take main's structure verbatim (server.json has no generator), then
-            # set the version field(s) to NEXT so auto-tag fires on merge.
-            git checkout origin/main -- packages/mcp/package.json packages/mcp/server.json
-
-            node -e '
-              const fs = require("fs");
-              const next = process.argv[1];
-              const pkgPath = "packages/mcp/package.json";
-              const srvPath = "packages/mcp/server.json";
-              const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-              pkg.version = next;
-              fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-              const srv = JSON.parse(fs.readFileSync(srvPath, "utf8"));
-              srv.version = next;
-              for (const p of (srv.packages || [])) p.version = next;
-              fs.writeFileSync(srvPath, JSON.stringify(srv, null, 2) + "\n");
-            ' "$NEXT"
-
-            git add packages/mcp/package.json packages/mcp/server.json
-            # Complete the merge commit (conflict markers on these two are now gone).
-            git commit --no-edit
-
-            # Gate: the version-consistency audit MUST pass on the result.
-            corepack enable >/dev/null 2>&1 || true
-            pnpm install --frozen-lockfile --silent
-            if ! pnpm --filter @leadbay/mcp exec vitest run test/audit/server-json-version.test.ts >/dev/null 2>&1; then
-              echo "  !! server-json-version audit failed after renumber — aborting this PR" >&2
-              git reset --hard "origin/$HEAD"
-              flag "$N" "main shipped \`$MAIN_VER\`. Auto-renumber to \`$NEXT\` failed the version audit — please rebase manually."
-              continue
-            fi
-
-            push_head "$N" "$HEAD"
-            note "$N" "Synced with main and renumbered @leadbay/mcp to \`$NEXT\` (main shipped \`$MAIN_VER\`). CHANGELOG left for you — confirm your entry reads as \`$NEXT\`."
+            # Only package.json / server.json conflict → deterministic renumber.
+            # (Conflict markers are still in the tree; the checkout inside
+            # renumber_and_push replaces both files wholesale, clearing them.)
+            renumber_and_push "$N" "$HEAD" || true
           done
 
           echo "Reconciliation pass complete."
