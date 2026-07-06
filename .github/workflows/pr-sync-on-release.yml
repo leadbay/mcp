@@ -119,14 +119,23 @@ jobs:
               gh pr comment "$n" --repo "$REPO" --body "$body" || true
             fi
           }
+          # clear_label: drop a stale needs-manual-rebase label. Safe/idempotent —
+          # call on every success or no-op path so a PR the bot (or author) has
+          # since made current never stays marked as needing a manual rebase.
+          clear_label() { # $1=PR number
+            local n="$1"
+            if [ "$DRY_RUN" != "true" ]; then
+              gh pr edit "$n" --repo "$REPO" --remove-label "$LABEL" 2>/dev/null || true
+            fi
+          }
           # note: PR was auto-fixed — comment only, and clear any stale label.
           note() { # $1=PR number  $2=comment body
             local n="$1" body="$2"
             echo "  → NOTE #$n: $body"
             if [ "$DRY_RUN" != "true" ]; then
               gh pr comment "$n" --repo "$REPO" --body "$body" || true
-              gh pr edit "$n" --repo "$REPO" --remove-label "$LABEL" 2>/dev/null || true
             fi
+            clear_label "$n"
           }
           push_head() { # $1=PR number  $2=head ref
             local n="$1" head="$2"
@@ -144,6 +153,10 @@ jobs:
                 && echo "  → dispatched ci.yml for $head" \
                 || echo "  → WARN: could not dispatch ci.yml for $head"
             fi
+            # A successfully pushed head is current — drop any stale flag. (Callers
+            # that still need the label, e.g. the stale-CHANGELOG case, re-add it
+            # via flag() right after.)
+            clear_label "$n"
           }
           # version_diff_only: true if $1 (a package.json or server.json) differs
           # from main ONLY in version-related fields — i.e. it is safe to renumber
@@ -317,9 +330,11 @@ jobs:
             git fetch origin "$HEAD" -q
             git checkout -q -B "$HEAD" "origin/$HEAD"
 
-            # Already contains main? Nothing to do.
+            # Already contains main? Nothing to do — but clear any stale flag: the
+            # branch is current, so a prior needs-manual-rebase no longer applies.
             if git merge-base --is-ancestor origin/main HEAD; then
               echo "  already up to date with main — skip"
+              clear_label "$N"
               continue
             fi
 
