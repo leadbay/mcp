@@ -89,8 +89,16 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          MAIN_VER=$(node -p "require('./packages/mcp/package.json').version")
-          echo "main @leadbay/mcp version: $MAIN_VER"
+          # Read MAIN_VER from origin/main, NOT the checked-out triggering SHA. The
+          # whole script merges/reserves against origin/main; with concurrent main
+          # pushes (or fetch-depth:0 pulling a newer tip), the triggering SHA can be
+          # an OLDER main than origin/main. Reading the working tree there would make
+          # RESERVED omit the real current main version and reserve_next could hand a
+          # PR the version already on origin/main. Refresh the ref, then read it.
+          git fetch origin main -q
+          MAIN_VER=$(git show origin/main:packages/mcp/package.json \
+                       | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).version||"")}catch{}})')
+          echo "origin/main @leadbay/mcp version: $MAIN_VER"
           echo "DRY_RUN=$DRY_RUN"
 
           # Distinct target version per renumbered PR. NEXT is chosen just-in-time
@@ -393,22 +401,33 @@ jobs:
           }
           # pr_changed_version: true (0) iff the PR AUTHOR bumped the version and that
           # bump nets a real change. Two conditions, both required:
-          #   1. some NON-MERGE commit unique to the PR changed the version field
-          #      (commit's version != its parent's). --no-merges is load-bearing: a
-          #      merge that pulls main's newer version in — whether the bot's sync
-          #      merge OR the author's own update-from-main — is NOT a PR-authored
-          #      bump, so a docs PR that merged a release in must not count; and
+          #   1. a commit unique to the PR AUTHORED a version change:
+          #        - a non-merge commit whose version != its parent's; OR
+          #        - a MERGE commit whose version != EVERY parent's (the author bumped
+          #          the version while resolving a `merge main` — the only commit that
+          #          carries the change). A merge that merely takes main's newer
+          #          version equals one parent, so it does NOT count (that's an
+          #          update-from-main, not a PR bump); and
           #   2. HEAD's version differs from the PR's fork-base version — excludes a
           #      bump that was later reverted (net-zero).
-          # Together they survive an update-from-main (real bump still true) while
-          # ignoring merged-in versions and true reverts.
+          # Together they survive an update-from-main, catch a bump made inside a
+          # merge resolution, and ignore both merged-in versions and true reverts.
           pr_changed_version() {
-            local c v pv authored=false
+            local c v p parents np authored=false
             while read -r c; do
               [ -z "$c" ] && continue
-              v=$(ver_at "$c"); pv=$(ver_at "${c}^" 2>/dev/null)
-              if [ "$v" != "$pv" ]; then authored=true; break; fi
-            done < <(git rev-list --no-merges origin/main..HEAD)
+              v=$(ver_at "$c")
+              parents=$(git rev-list --parents -n1 "$c" | cut -d' ' -f2-)
+              np=$(echo "$parents" | wc -w)
+              if [ "$np" -le 1 ]; then
+                [ "$v" != "$(ver_at "${c}^" 2>/dev/null)" ] && { authored=true; break; }
+              else
+                # merge: authored a bump only if its version differs from ALL parents
+                local differs_all=true
+                for p in $parents; do [ "$v" = "$(ver_at "$p")" ] && differs_all=false; done
+                [ "$differs_all" = "true" ] && { authored=true; break; }
+              fi
+            done < <(git rev-list origin/main..HEAD)
             [ "$authored" = "true" ] || return 1
             local fb; fb=$(pr_fork_base) || return 1
             [ "$(ver_at HEAD)" != "$(ver_at "$fb")" ]
