@@ -44,8 +44,12 @@ async function readExtraRefillQuota(
       "GET",
       `/organizations/${me.organization.id}/quota_status`,
     );
+    // Match case-insensitively: the backend emits this resource type as
+    // lowercase `lens_extra_refill` on the live wire, though older shapes /
+    // fixtures use uppercase `LENS_EXTRA_REFILL`. An exact-case === would miss
+    // the row and null out used_today/resets_at on the quota_exceeded path.
     const entry = quota.org?.resources?.find(
-      (r) => r.resource_type === "LENS_EXTRA_REFILL",
+      (r) => r.resource_type?.toUpperCase() === "LENS_EXTRA_REFILL",
     );
     return {
       count: entry?.count ?? null,
