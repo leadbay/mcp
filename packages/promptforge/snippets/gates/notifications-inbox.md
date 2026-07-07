@@ -20,6 +20,9 @@ Some Leadbay tool responses include a `_meta.notifications` array listing **back
 
 **Do NOT** interpret these entries as "things waiting for the user." The user expects you to handle them silently. They are signals to YOU — agent — that prior outputs need a refresh.
 
-**Don't poll.** When you launch a long operation (enrichment / qualification / import), simply continue the conversation — the next time you call any tool, the completed-work entry will appear in `_meta.notifications`. Status tools (`leadbay_bulk_enrich_status`, `leadbay_qualify_status`, `leadbay_import_status`) exist for the case where you want the answer NOW (mid-conversation), not for ambient polling.
+**Poll a job you launched THIS turn; don't poll one from a PREVIOUS turn.** The rule splits by *when* the work was kicked off:
+
+- **Previous turn / before an MCP restart** — don't poll. Simply continue the conversation; the next time you call any tool, the completed-work entry appears in `_meta.notifications` (also on `leadbay_account_status.notifications`). This is the ambient push path — leave it to do its job.
+- **This turn (you just launched it)** — do NOT end your turn on the "launched" ack. Stay active and poll the job's status tool (`leadbay_bulk_enrich_status`, `leadbay_qualify_status`, `leadbay_import_status`) in a loop until it reports done, then report the finished result yourself. "Done" means `all_done` — or, if progress plateaus (the `done` count stops climbing across a few polls because some items are unresolvable), the resolvable set is complete: report what landed and name what didn't, rather than spinning forever or deferring the result to a later turn. The user should never have to ask "is it done yet?" for work you kicked off in the same turn.
 
 Also surfaced as a top-level `notifications` array on `leadbay_account_status` — same shape, same handling.

@@ -35,7 +35,15 @@ Do NOT rely on a bare call (no `confirm`, no `dry_run`, no channels) as a "safe 
 
 **BEFORE (confirm before launching).** The discover / preview_only / dry_run modes return `enrichable_contacts` (the volume that would be enriched). Tell the user plainly: **"This will enrich {enrichable_contacts} contacts (email + phone reveals consume quota)."** then confirm the channels + go-ahead via `ask_user_input_v0` before launching. Do NOT quote an exact cost or a "credits" figure — the per-reveal rate is backend-side and enrichment is gated by quota, not a credit balance. The `credits_remaining` field is advisory context only; never present it as a spend gate and never refuse based on it.
 
-**AFTER (show refreshed quota).** Once the job finishes (poll `leadbay_bulk_enrich_status` until `all_done`), call `leadbay_account_status` and show the refreshed per-window quota — the canonical surface — so the user sees the usage they just consumed. Do NOT invent a "credits used" figure for the run (per-run cost can't be scoped reliably — a lead's contacts mix earlier enrichments).
+**AFTER (show refreshed quota).** Once the job is done (see the STAY ACTIVE section below), call `leadbay_account_status` and show the refreshed per-window quota — the canonical surface — so the user sees the usage they just consumed. Do NOT invent a "credits used" figure for the run (per-run cost can't be scoped reliably — a lead's contacts mix earlier enrichments).
+
+## AFTER LAUNCH — STAY ACTIVE UNTIL DONE
+
+When a launch returns `mode:"launched"` with a `bulk_id`, the enrichment runs ASYNC on the backend — the tool returns immediately, before any email/phone is attached. **Do NOT end your turn on this ack, and do NOT tell the user "I'll let you know when it's done."** Stay active in the SAME turn: call `leadbay_bulk_enrich_status({bulk_id})` in a loop, re-polling until the job is done (small batches typically finish in under ~2 min). Pass `include_contacts:true` on the read you intend to report from, so you get each lead's enriched contacts back. Then — on your own, without waiting for the user to reprompt — report the enrichment: which contacts now have emails / phones, and the counts (`overall_progress`, and `bulk_progress.success_count` / `failure_count` / `quota_hit_count`). Then show refreshed quota via `leadbay_account_status` (see AFTER above).
+
+**"Done" = `all_done:true` OR the resolvable work has plateaued.** Keep polling while `overall_progress.done` is still climbing. But `total` counts every matching contact, and some (unresolvable titles, contacts with no findable email) never flip to done — so a job can sit below 100% with `all_done:false` forever. When `overall_progress.done` has NOT advanced across ~2–3 consecutive polls, treat the resolvable set as complete: stop polling and report what resolved, naming the ones that didn't (`success_count` landed, the rest "no email found"). Do NOT spin indefinitely waiting for `all_done` on contacts the engine won't resolve, and do NOT `ScheduleWakeup` / defer the finished list to a later turn — deliver the resolved results in THIS reply.
+
+The `_meta.notifications` push is the FALLBACK for a job launched in an EARLIER turn or across an MCP restart — it is NOT a reason to stop early on a job you just launched this turn.
 
 {{include:gates/builtin-widgets}}
 

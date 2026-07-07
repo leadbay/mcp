@@ -80,8 +80,9 @@ export const launchBulkEnrichment: Tool<LaunchBulkEnrichmentParams> = {
       email,
       phone,
       hint:
-        "Enrichment job launched. Poll individual leads' contacts after ~60s via leadbay_get_contacts(leadId) — " +
-        "contact.enrichment.done flips to true when done.",
+        "Enrichment job launched (runs async). Stay active — poll individual leads' contacts via " +
+        "leadbay_get_contacts(leadId) (re-check every ~30s until contact.enrichment.done flips), then report " +
+        "when done. Don't end your turn on this ack and force the user to reprompt.",
     };
   },
 };

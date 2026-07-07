@@ -94,7 +94,7 @@ async function launchOnSelection(
               "No new enrichment was ordered; quota not spent. An identical bulk was launched " +
               `${bulkSecondsSinceOriginal ?? 0}s ago. Poll leadbay_bulk_enrich_status with this bulk_id for results.`,
             next_action:
-              "Call leadbay_bulk_enrich_status({bulk_id}) to check progress; include_contacts=true for the final read.",
+              "Poll leadbay_bulk_enrich_status({bulk_id}) until all_done, include_contacts=true on the final read, then report the completed enrichment — don't end your turn waiting.",
           };
         }
       }
@@ -175,7 +175,7 @@ async function launchOnSelection(
               "Enrichment job launched on the backend, but the local tracker record could not be flipped to 'launched'. " +
               "The bulk_id is still valid — leadbay_bulk_enrich_status will return status:'pending' until the tracker heals.",
             next_action:
-              "Wait ~60s, then call leadbay_bulk_enrich_status({bulk_id}). If it persists, restart the MCP.",
+              "Poll leadbay_bulk_enrich_status({bulk_id}) until all_done (it returns status:'pending' until the tracker heals — keep polling), then report the results. If pending persists >60s, restart the MCP.",
           };
         }
       }
@@ -192,19 +192,20 @@ async function launchOnSelection(
         durability: bulkRecord?.durability,
         notification_id: notificationId,
         message: notificationId
-          ? "Enrichment job launched. The MCP is now listening for the backend notification — when " +
-            "enrichment finishes, a `_meta.notifications` entry will surface on your next tool response " +
-            "(also visible in `leadbay_account_status.notifications`)."
+          ? "Enrichment job launched (runs async). Do NOT end your turn here — poll " +
+            "leadbay_bulk_enrich_status({bulk_id}) until all_done, then report the finished contacts yourself. " +
+            "(If you leave the conversation, the completion also surfaces later via _meta.notifications / " +
+            "leadbay_account_status.notifications — but for a job you launched this turn, poll it to completion now.)"
           : bulkRecord
-            ? "Enrichment job launched. Backend did not return a notification id this time; poll via " +
-              "leadbay_bulk_enrich_status with the bulk_id."
+            ? "Enrichment job launched (runs async). Poll leadbay_bulk_enrich_status({bulk_id}) until all_done — " +
+              "don't end your turn on this ack — then report the finished contacts."
             : "Enrichment job launched. No bulk_id tracker configured — poll leadbay_get_contacts per lead " +
-              "after ~60s; contact.enrichment.done flips to true.",
+              "(re-check every ~30s until contact.enrichment.done flips), then report the results.",
         next_action: notificationId
-          ? "Wait for the next `_meta.notifications` entry (typically <2 min for a small batch). If you want progress sooner, call leadbay_bulk_enrich_status({bulk_id})."
+          ? "Poll leadbay_bulk_enrich_status({bulk_id}) in a loop until all_done — OR until overall_progress.done stops climbing across a few polls (some contacts are unresolvable and never flip). Pass include_contacts=true on the read you report from, then report the resolved enrichment in THIS turn (name what landed and what didn't). Do not defer to a later turn."
           : bulkRecord
-            ? "Call leadbay_bulk_enrich_status({bulk_id}) after ~60s; pass include_contacts=true for the final read."
-            : "Wait ~60s, then call leadbay_research_lead_by_id or leadbay_get_contacts on the leads you care about.",
+            ? "Poll leadbay_bulk_enrich_status({bulk_id}) until all_done — or until overall_progress.done plateaus (unresolvable contacts never flip). Pass include_contacts=true on the read you report from, then report the resolved enrichment in this turn."
+            : "Re-check via leadbay_research_lead_by_id or leadbay_get_contacts on the leads you care about (every ~30s until contact.enrichment.done flips), then report — don't end your turn waiting.",
       };
     }
   }

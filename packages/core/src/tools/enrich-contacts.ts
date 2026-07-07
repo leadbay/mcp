@@ -96,7 +96,7 @@ export const enrichContacts: Tool<EnrichContactsParams> = {
       email_requested: email,
       phone_requested: phone,
       credits_remaining: creditsRemaining,
-      hint: "Enrichment started. Use leadbay_get_contacts after ~60 seconds to check results.",
+      hint: "Enrichment started (runs async). Re-check leadbay_get_contacts every ~30s until contact.enrichment.done is true, then report the result — don't end your turn leaving it for the user to reprompt.",
     };
   },
 };
