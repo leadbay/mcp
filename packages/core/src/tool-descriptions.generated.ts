@@ -561,6 +561,8 @@ WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id — that alread
 ## CREDIT COST — show the balance, discreetly
 
 Once \`all_done\` is true the result carries \`credits_remaining\` (the post-spend AI-credit balance). Don't make a fuss — no sentence, no callout. Just append ONE small italic line in parentheses at the very END of your reply: \`_(N credits remaining)_\`. If \`credits_remaining\` is null (billing unavailable), omit the line — don't print 0. If \`credits_remaining\` is the string \`"unlimited"\` (internal/unlimited account), also omit the line — there is no finite balance to show; do NOT print "unlimited". Do NOT report a "credits used" figure for this run: the per-contact cost can't be scoped to this specific enrichment (a lead's contact list mixes in earlier runs), so any "X used" number would be misleading.
+
+**Show the refreshed quota once the run completes.** This was a paid action — after \`all_done\`, call \`leadbay_account_status\` once and render the per-window %/$ quota gauge it returns, so the user sees where they now stand (this reflects the usage just consumed). That gauge is the canonical quota surface; the \`_(N credits remaining)_\` line above is only the discreet inline balance, not a substitute. Skip the gauge only for an \`unlimited_credits\` account, when \`quota\` is unreadable, or when billing is unavailable. Do this ONCE — not on every in-progress poll.
 `;
 // endregion: leadbay_bulk_enrich_status
 
