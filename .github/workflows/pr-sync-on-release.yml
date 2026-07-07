@@ -81,7 +81,6 @@ jobs:
           # A real push-to-main event has no inputs, so default to acting.
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           REPO: ${{ github.repository }}
-          REPO_OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
 
@@ -261,7 +260,7 @@ jobs:
           # non-version changes vs main, so legitimate edits are never dropped.
           # Assumes the merge is already complete/committed on HEAD (clean path)
           # OR the version files parse as clean JSON (no conflict markers).
-          # $1=PR number  $2=head ref
+          # $1=PR number  $2=head ref  $3=commit context (merge_pending|merge_done|none)
           renumber_and_push() {
             local n="$1" head="$2"
             # Guard: only proceed if the PR's OWN version files (origin/$head, clean —
@@ -330,12 +329,20 @@ jobs:
               }
             ' "$NEXT"
             git add packages/mcp/package.json packages/mcp/server.json
-            if [ -f .git/MERGE_HEAD ]; then
-              git commit --no-edit
-            else
-              # Clean-collision path: merge already committed. Fold the renumber in.
-              git commit --amend --no-edit
-            fi
+            # Commit context ($3) decides how to record the bump WITHOUT ever
+            # rewriting a user's commit:
+            #   merge_pending — a merge is paused (conflict path); finish it as one
+            #                   commit (git author = bot for the merge).
+            #   merge_done    — a clean merge git already auto-committed (bot-authored
+            #                   merge commit); fold the bump into THAT with --amend.
+            #   none          — branch already contained main, no merge happened;
+            #                   make a NEW bot commit (NEVER --amend the PR author's
+            #                   HEAD, which would rewrite user history/attribution).
+            case "${3:-}" in
+              merge_pending) git commit --no-edit ;;
+              merge_done)    git commit --amend --no-edit ;;
+              *)             git commit -m "chore(sync): set @leadbay/mcp to $NEXT (main shipped $MAIN_VER)" ;;
+            esac
             # Gate: DATA-ONLY audit (Finding 2 — no pnpm install / vitest, so no
             # PR-branch code executes under the write-scoped token).
             if ! audit_version_files; then
@@ -364,16 +371,28 @@ jobs:
           }
           # branch_ver: the @leadbay/mcp version on the current working tree.
           branch_ver() { node -p "require('./packages/mcp/package.json').version"; }
-          # changelog_stale: true (0) if the PR's own range touched CHANGELOG.md AND
-          # the working-tree CHANGELOG has no "## <version>" header for $1 — i.e. a
-          # release will ship generic notes. Used both after a renumber and on the
-          # clean-merge path where an already-above-main release PR is pushed without
-          # renumbering (so a stale header there isn't silently un-flagged).
+          # pr_changed_version: true (0) if the package.json version FIELD differs
+          # between two refs. Reads the value at each ref via git show (data-only);
+          # a missing/unparseable side reads as "" so a real value counts as a change.
+          # $1 = base ref   $2 = head ref
+          pr_changed_version() {
+            local a b va vb
+            a="$1"; b="$2"
+            va=$(git show "${a}:packages/mcp/package.json" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).version||"")}catch{}})' 2>/dev/null || true)
+            vb=$(git show "${b}:packages/mcp/package.json" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).version||"")}catch{}})' 2>/dev/null || true)
+            [ "$va" != "$vb" ]
+          }
+          # changelog_stale: true (0) if the PR's own commits touched CHANGELOG.md
+          # (history, not final-tree — a PR that added then dropped its entry back to
+          # main's content still lacks a "## <ver>" section) AND the working-tree
+          # CHANGELOG has no "## <version>" header for $1 → release.yml would ship
+          # generic notes. Used after a renumber and on the clean-merge/no-op paths
+          # so an already-above-main release PR's stale header isn't silently cleared.
           # $1 = the version the PR will ship at
           changelog_stale() {
             local ver="$1" mb2
             mb2=$(git merge-base origin/main HEAD)
-            git diff --name-only "$mb2" HEAD -- packages/mcp/CHANGELOG.md | grep -q . || return 1
+            git log --format= --name-only "$mb2..HEAD" -- packages/mcp/CHANGELOG.md | grep -q . || return 1
             grep -qE "^## +${ver//./\\.}( |$)" packages/mcp/CHANGELOG.md && return 1
             return 0
           }
@@ -395,7 +414,7 @@ jobs:
           # FAIL LOUDLY if the queue ever reaches it rather than silently drop PRs.
           PR_LIMIT=1000
           prs=$(gh pr list --repo "$REPO" --state open --base main --limit "$PR_LIMIT" \
-                  --json number,headRefName,headRepositoryOwner,headRepository)
+                  --json number,headRefName,headRepositoryOwner,headRepository,isCrossRepository)
 
           count=$(echo "$prs" | jq 'length')
           echo "Open PRs targeting main: $count"
@@ -450,13 +469,18 @@ jobs:
           # runs in THIS shell — otherwise RESERVED (the per-PR version reservation)
           # would reset every iteration inside a pipe subshell.
           while read -r pr; do
-            N=$(echo "$pr"     | jq -r '.number')
-            HEAD=$(echo "$pr"  | jq -r '.headRefName')
-            OWNER=$(echo "$pr" | jq -r '.headRepositoryOwner.login')
+            N=$(echo "$pr"      | jq -r '.number')
+            HEAD=$(echo "$pr"   | jq -r '.headRefName')
+            OWNER=$(echo "$pr"  | jq -r '.headRepositoryOwner.login')
+            XREPO=$(echo "$pr"  | jq -r '.isCrossRepository')
             echo "── PR #$N ($HEAD) ──────────────────────────────────────"
 
-            # Fork guard: GITHUB_TOKEN can't push to a fork's head branch.
-            if [ "$OWNER" != "$REPO_OWNER" ]; then
+            # Fork guard: a fork head isn't in origin, so fetch/push would fail or
+            # (worse) mutate a same-named base branch. Use isCrossRepository, NOT an
+            # owner comparison — a fork under the SAME org still shares the base
+            # owner but has a different head repo, so an owner check would wrongly
+            # treat it as pushable. isCrossRepository is true whenever head != base.
+            if [ "$XREPO" = "true" ]; then
               flag "$N" "This PR is from a fork (\`$OWNER\`); the sync bot can't push to it. main shipped \`$MAIN_VER\` — please rebase on main manually."
               continue
             fi
@@ -472,25 +496,21 @@ jobs:
             # GitHub DROPS them from the list — a file-list signal would wrongly
             # read "untouched". The branch-range diff is immune to main moving.
             #
-            # Track package/server SEPARATELY from CHANGELOG (a changelog- or
-            # docs-only PR must NEVER be renumbered — bumping its version would push
-            # an unintended release onto it). Only a package.json/server.json touch
-            # makes a PR eligible for renumbering.
-            #
-            # Use `git log --name-only` over the PR's commit range (mb..HEAD), NOT a
-            # final-tree diff: if the PR bumped these files and later merged main +
-            # resolved them back to main's contents, the tree diff is empty and the
-            # branch would be mis-read as "never touched version files" → skipped →
-            # merged with no delta → auto-tag skips the release. The history check
-            # survives the files becoming identical to main.
+            # touches_pkg = did the PR itself CHANGE the version field of
+            # package.json/server.json? A docs/changelog-only PR must never be
+            # renumbered, and a PR that touched then REVERTED these files (net-zero)
+            # must not either. So compare the version VALUE at the PR's merge-base
+            # vs its head — not a path touch (which reverts leave true) and not the
+            # final-tree diff vs main (which a bump-then-resolve-back-to-main leaves
+            # empty). Value-at-base ≠ value-at-head is true for a real bump even if
+            # HEAD now equals main, and false for a reverted edit.
             mb=$(git merge-base origin/main HEAD)
-            if git log --format= --name-only "$mb..HEAD" -- \
-                 packages/mcp/package.json packages/mcp/server.json | grep -q .; then
+            if pr_changed_version "$mb" HEAD; then
               touches_pkg=true
             else
               touches_pkg=false
             fi
-            echo "  touches_pkg=$touches_pkg (from branch history ${mb:0:7}..HEAD)"
+            echo "  touches_pkg=$touches_pkg (version-field change over ${mb:0:7}..HEAD)"
 
             # Already contains main? Then there's nothing to merge — BUT a release
             # PR can be up to date and still sit at MAIN_VER (e.g. it merged main in
@@ -501,7 +521,8 @@ jobs:
             if git merge-base --is-ancestor origin/main HEAD; then
               if [ "$touches_pkg" = "true" ] && [ "$(branch_ver)" = "$MAIN_VER" ]; then
                 echo "  up to date but version == main ($MAIN_VER) — renumbering"
-                renumber_and_push "$N" "$HEAD" || true
+                # No merge happened here → new bot commit, never amend user HEAD.
+                renumber_and_push "$N" "$HEAD" none || true
               elif [ "$touches_pkg" = "true" ] && changelog_stale "$(branch_ver)"; then
                 # Up to date and above main, but a stale CHANGELOG header would make
                 # release.yml ship generic notes — keep the warning, don't clear it.
@@ -523,7 +544,8 @@ jobs:
               # happens to sit at main's version must be left alone.)
               if [ "$touches_pkg" = "true" ] && [ "$(branch_ver)" = "$MAIN_VER" ]; then
                 echo "  clean merge but version == main ($MAIN_VER) — renumbering"
-                renumber_and_push "$N" "$HEAD" || true
+                # git auto-committed a bot-authored merge commit → fold bump in.
+                renumber_and_push "$N" "$HEAD" merge_done || true
               else
                 # Case A (incl. changelog-only), or a Case B already above main.
                 # `|| true`: push_head flags the PR itself on failure; don't let a
@@ -573,8 +595,8 @@ jobs:
             # Only package.json/server.json conflict → deterministic renumber. The
             # merge is still paused with markers, but renumber_and_push rebuilds both
             # files from main + NEXT (it doesn't read the marker'd tree — it guards
-            # on the PR's clean origin/$head blobs), then completes the merge commit.
-            renumber_and_push "$N" "$HEAD" || true
+            # on the PR's clean origin/$head blobs), then completes the paused merge.
+            renumber_and_push "$N" "$HEAD" merge_pending || true
           done < <(echo "$prs" | jq -c '.[]')
 
           echo "Reconciliation pass complete."
