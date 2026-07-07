@@ -8,20 +8,40 @@ import type { UserMePayload } from "../types.js";
 // is self-describing to the reading LLM. product#3851.
 export const UNLIMITED = "unlimited" as const;
 
-// Internal/test accounts (@leadbay.ai, and whitelisted domains) have
-// organization.disable_billing = true server-side, which zeroes their plan and
-// short-circuits every billing gate — they are effectively unlimited. But the
-// backend does NOT serialize disable_billing into /users/me, so on the wire an
-// internal account looks identical to a broke free account (plan: null, no
-// quota rows, ai_credits null/0). The only client-visible signal is the email
-// domain. This is the single source of truth for the detection — a future
-// backend flag can be swapped in here without touching call sites. product#3851.
+// An account is treated as UNLIMITED only when it is an internal @leadbay.ai
+// account AND its billing is disabled server-side (organization.disable_billing
+// = true). Both halves matter:
 //
-// Deliberately email-ONLY: gating on plan===null / ai_credits==0 would wrongly
-// unlock genuine plan-less paying orgs (the product#3761 class). A real out-of-
-// credits customer never has an @leadbay.ai address.
+//   • @leadbay.ai + billing DISABLED → genuinely unlimited: the backend
+//     removes all plan quotas, so quota/credits come back empty and would
+//     misread as "no credits". Stay silent on quota; enrichment proceeds.
+//     (product#3851)
+//   • @leadbay.ai + billing ENABLED → act like a REAL user: the org is metered
+//     (freemium or paid), has provisioned quota windows and a real cap, so the
+//     quota gauge and credit story apply exactly as for any customer.
+//
+// The backend does NOT serialize disable_billing directly, but it hard-codes
+// `billing.seats = 100_000` for disable_billing orgs (OrgPayload.kt) while a
+// normally-billed org reports its real (small) seat count. That seat sentinel
+// is the client-visible signal for "billing off". A future explicit flag can be
+// swapped in here without touching call sites.
+//
+// The email gate stays first: gating on quota/credits alone would wrongly
+// unlock genuine plan-less paying orgs (the product#3761 class). A real
+// customer never has an @leadbay.ai address.
+const DISABLE_BILLING_SEAT_SENTINEL = 100_000;
+
 export function isUnlimitedAccount(me: UserMePayload): boolean {
-  return me.email?.toLowerCase().trim().endsWith("@leadbay.ai") ?? false;
+  const isInternal = me.email?.toLowerCase().trim().endsWith("@leadbay.ai") ?? false;
+  if (!isInternal) return false;
+  const billing = me.organization.billing;
+  // Billing ABSENT (older backend, or an internal org that was never wired to
+  // billing) → nothing meters it → unlimited.
+  if (billing == null) return true;
+  // Billing PRESENT: it's disabled only when the backend stamped the
+  // disable_billing seat sentinel (100_000). A real (small) seat count means the
+  // org is metered — freemium or paid — so treat it as a real user.
+  return (billing.seats ?? 0) >= DISABLE_BILLING_SEAT_SENTINEL;
 }
 
 // Remaining AI-credit balance from /users/me → organization.billing.ai_credits
