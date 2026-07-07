@@ -24,11 +24,11 @@ name: pr-sync-on-release
 # Anti-loop: a push to a PR head made with GITHUB_TOKEN does NOT re-trigger
 # ci.yml's pull_request/push runs (GitHub suppresses GITHUB_TOKEN-triggered
 # runs — the same rule auto-tag.yml relies on). So there is no runaway loop.
-# Because of that suppression the synced head would carry no fresh CI result, so
-# after each push we explicitly `gh workflow run ci.yml --ref <head>` (ci.yml has
-# a workflow_dispatch entry that checks out the requested ref). That dispatched
-# run reports under the branch rather than as a PR check — fine here, since main
-# has no required status checks; it's re-verification, not a merge gate.
+# Consequence: the synced head carries no fresh CI result until the next human
+# push. We accept that rather than dispatch ci.yml — a workflow_dispatch would
+# run under main's ref (a failing synced head could make main look red) and still
+# attach no head check. The merge itself restores mergeability; a human push
+# re-runs CI when they pick the PR back up.
 #
 # Security: the job checks out PR-head branches while holding a contents:write
 # token, so it must NEVER execute code or config from a PR branch. It only does
@@ -55,7 +55,6 @@ on:
 permissions:
   contents: write # push to PR head branches
   pull-requests: write # list, label, comment
-  actions: write # dispatch ci.yml against the synced head (GITHUB_TOKEN pushes don't auto-fire it)
 
 concurrency:
   # One reconciliation pass at a time; never cancel a pass mid-flight (it may be
@@ -169,16 +168,12 @@ jobs:
               flag "$n" "Couldn't push the synced branch — it changed since this run started (or the push was rejected). main shipped \`$MAIN_VER\`; re-run the sync or rebase manually."
               return 1
             fi
-            # A GITHUB_TOKEN push does NOT fire ci.yml's pull_request trigger, so
-            # the synced head would otherwise carry no fresh build/test result.
-            # Dispatch ci.yml to re-verify it. Dispatch from the DEFAULT branch's
-            # copy of ci.yml (--ref main — that's where the workflow_dispatch entry
-            # lives) and pass the head as the `ref` input so it builds the branch we
-            # just updated. (Runs under the branch, not as a PR check — main has no
-            # required checks, so this is verification, not a gate.)
-            gh workflow run ci.yml --repo "$REPO" --ref main -f "ref=$head" \
-              && echo "  → dispatched ci.yml for $head" \
-              || echo "  → WARN: could not dispatch ci.yml for $head"
+            # NB: a GITHUB_TOKEN push does NOT fire ci.yml's pull_request trigger, so
+            # the synced head carries no fresh CI result until the next human push.
+            # We deliberately do NOT dispatch ci.yml here: dispatching with
+            # --ref main attributes the run to the main commit (a failing synced head
+            # could make main look red) and still leaves no head-attached check. The
+            # merge itself restores mergeability; CI re-runs when a human next pushes.
             # A successfully pushed head is current — drop any stale flag. (Callers
             # that still need the label, e.g. the stale-CHANGELOG case, re-add it
             # via flag() right after.)
@@ -354,28 +349,34 @@ jobs:
             if ! push_head "$n" "$head"; then
               return 1
             fi
-            # We bumped package.json/server.json to $NEXT but never touch CHANGELOG
-            # prose. If the PR carried its own changelog entry, its header still
-            # reads ## <old> (e.g. $MAIN_VER) — on merge, release.yml extracts notes
-            # from "## $NEXT" and, finding none, falls back to generic notes,
-            # silently dropping the PR's real notes. So if the PR's own range touched
-            # CHANGELOG.md AND the file has no "## $NEXT" section, KEEP the
+            # We set package.json/server.json to $NEXT but never touch CHANGELOG
+            # prose. If the PR carried its own changelog entry, its header may still
+            # read ## <old> — on merge, release.yml extracts notes from "## $NEXT"
+            # and, finding none, falls back to generic notes. If stale, KEEP the
             # manual-rebase label + tell the author to fix the header.
-            local mb2 chl_touched=false
-            mb2=$(git merge-base origin/main HEAD)
-            if git diff --name-only "$mb2" HEAD -- packages/mcp/CHANGELOG.md | grep -q .; then
-              chl_touched=true
-            fi
-            if [ "$chl_touched" = "true" ] && ! grep -qE "^## +${NEXT//./\\.}( |$)" packages/mcp/CHANGELOG.md; then
+            if changelog_stale "$NEXT"; then
               echo "  changelog touched but has no '## $NEXT' header — flagging"
-              flag "$n" "Synced with main and renumbered @leadbay/mcp to \`$NEXT\`, but your \`CHANGELOG.md\` still heads its section with the old version. Re-title it \`## $NEXT\` (release.yml pulls notes from \`## $NEXT\`) — otherwise the release ships generic notes."
+              flag "$n" "Synced with main; @leadbay/mcp is now \`$NEXT\`, but your \`CHANGELOG.md\` still heads its section with the old version. Re-title it \`## $NEXT\` (release.yml pulls notes from \`## $NEXT\`) — otherwise the release ships generic notes."
             else
-              note "$n" "Synced with main and renumbered @leadbay/mcp to \`$NEXT\` (main shipped \`$MAIN_VER\`)."
+              note "$n" "Synced with main; @leadbay/mcp is \`$NEXT\` (main shipped \`$MAIN_VER\`)."
             fi
             return 0
           }
           # branch_ver: the @leadbay/mcp version on the current working tree.
           branch_ver() { node -p "require('./packages/mcp/package.json').version"; }
+          # changelog_stale: true (0) if the PR's own range touched CHANGELOG.md AND
+          # the working-tree CHANGELOG has no "## <version>" header for $1 — i.e. a
+          # release will ship generic notes. Used both after a renumber and on the
+          # clean-merge path where an already-above-main release PR is pushed without
+          # renumbering (so a stale header there isn't silently un-flagged).
+          # $1 = the version the PR will ship at
+          changelog_stale() {
+            local ver="$1" mb2
+            mb2=$(git merge-base origin/main HEAD)
+            git diff --name-only "$mb2" HEAD -- packages/mcp/CHANGELOG.md | grep -q . || return 1
+            grep -qE "^## +${ver//./\\.}( |$)" packages/mcp/CHANGELOG.md && return 1
+            return 0
+          }
           # -----------------------------------------------------------------------
 
           # Enumerate open PRs whose BASE is main (drafts included — this repo lives
@@ -387,12 +388,22 @@ jobs:
           # (see touches_pkg below). Version-touch is derived from the branch range.
           # headRepository gives the head repo's owner/name so we can read a fork
           # PR's file over the API (a local `git fetch origin <head>` would miss it).
-          prs=$(gh pr list --repo "$REPO" --state open --base main --limit 100 \
+          # --limit is a hard cap on items fetched, so a silent truncation would
+          # leave PR #(cap+1)… unreconciled AND unseen by the version-reservation
+          # prepass — reintroducing the duplicate-version/auto-tag-skip this whole
+          # workflow prevents. Set it well above any realistic open-PR count and
+          # FAIL LOUDLY if the queue ever reaches it rather than silently drop PRs.
+          PR_LIMIT=1000
+          prs=$(gh pr list --repo "$REPO" --state open --base main --limit "$PR_LIMIT" \
                   --json number,headRefName,headRepositoryOwner,headRepository)
 
           count=$(echo "$prs" | jq 'length')
           echo "Open PRs targeting main: $count"
           [ "$count" -eq 0 ] && { echo "Nothing to reconcile."; exit 0; }
+          if [ "$count" -ge "$PR_LIMIT" ]; then
+            echo "!! Open-PR count ($count) hit the fetch cap ($PR_LIMIT) — some PRs may be omitted from reconciliation and version reservation. Raise PR_LIMIT." >&2
+            exit 1
+          fi
 
           # Pre-seed RESERVED with the version EVERY open PR head currently carries —
           # INCLUDING forks — so reserve_next() never hands PR B a number PR A (even
@@ -491,6 +502,11 @@ jobs:
               if [ "$touches_pkg" = "true" ] && [ "$(branch_ver)" = "$MAIN_VER" ]; then
                 echo "  up to date but version == main ($MAIN_VER) — renumbering"
                 renumber_and_push "$N" "$HEAD" || true
+              elif [ "$touches_pkg" = "true" ] && changelog_stale "$(branch_ver)"; then
+                # Up to date and above main, but a stale CHANGELOG header would make
+                # release.yml ship generic notes — keep the warning, don't clear it.
+                echo "  up to date but stale changelog header — flagging"
+                flag "$N" "This PR is current with main at \`$(branch_ver)\`, but your \`CHANGELOG.md\` has no \`## $(branch_ver)\` header — re-title your section or release.yml will ship generic notes."
               else
                 echo "  already up to date with main — skip"
                 clear_label "$N"
@@ -512,7 +528,15 @@ jobs:
                 # Case A (incl. changelog-only), or a Case B already above main.
                 # `|| true`: push_head flags the PR itself on failure; don't let a
                 # single rejected push abort the whole reconciliation pass.
-                push_head "$N" "$HEAD" || true
+                if push_head "$N" "$HEAD"; then
+                  # push_head cleared the label. But a release PR already ABOVE main
+                  # can still carry a stale CHANGELOG header — re-flag so the only
+                  # generic-notes warning isn't silently removed on a clean sync.
+                  if [ "$touches_pkg" = "true" ] && changelog_stale "$(branch_ver)"; then
+                    echo "  already-above-main release PR has stale changelog header — re-flagging"
+                    flag "$N" "Synced with main. @leadbay/mcp is \`$(branch_ver)\` but your \`CHANGELOG.md\` has no \`## $(branch_ver)\` header — re-title your section or release.yml will ship generic notes."
+                  fi
+                fi
               fi
               continue
             fi
