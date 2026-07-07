@@ -385,37 +385,40 @@ jobs:
           # NB: we deliberately do NOT request `files` — GitHub's file list is
           # computed against the current base and is unreliable once main moves
           # (see touches_pkg below). Version-touch is derived from the branch range.
+          # headRepository gives the head repo's owner/name so we can read a fork
+          # PR's file over the API (a local `git fetch origin <head>` would miss it).
           prs=$(gh pr list --repo "$REPO" --state open --base main --limit 100 \
-                  --json number,headRefName,headRepositoryOwner)
+                  --json number,headRefName,headRepositoryOwner,headRepository)
 
           count=$(echo "$prs" | jq 'length')
           echo "Open PRs targeting main: $count"
           [ "$count" -eq 0 ] && { echo "Nothing to reconcile."; exit 0; }
 
-          # Pre-seed RESERVED with the version EVERY open PR head currently carries,
-          # so reserve_next() never hands PR B a number PR A already holds. Without
-          # this, an open PR sitting at 0.23.14 (that merged cleanly and isn't
-          # renumbered this pass) is invisible, and a renumbered PR B could be
-          # assigned 0.23.14 too — after either merges, the other has no delta vs
-          # main and auto-tag.yml skips its release. Read-only: fetch + git show,
-          # no checkout, no mutation.
+          # Pre-seed RESERVED with the version EVERY open PR head currently carries —
+          # INCLUDING forks — so reserve_next() never hands PR B a number PR A (even
+          # a fork release PR) already holds. Read each head's package.json over the
+          # GitHub contents API on the HEAD repo (works for forks, which a local
+          # fetch from origin would miss). Read-only.
           # HEAD_VERS keeps EVERY head's version WITH duplicates (a multiset), so we
           # can later tell whether a PR's own version is unique among open PRs — a
           # PR already correctly one patch above main should keep its number rather
           # than be needlessly bumped (which would invalidate its CHANGELOG header).
           HEAD_VERS=" "
-          while read -r seedhead; do
-            [ -z "$seedhead" ] && continue
-            git fetch origin "$seedhead" -q 2>/dev/null || continue
-            seedver=$(git show "origin/${seedhead}:packages/mcp/package.json" 2>/dev/null \
+          while read -r seedline; do
+            [ -z "$seedline" ] && continue
+            seedowner=${seedline%%$'\t'*}; rest=${seedline#*$'\t'}
+            seedrepo=${rest%%$'\t'*}; seedref=${rest#*$'\t'}
+            [ -z "$seedowner" ] || [ -z "$seedrepo" ] || [ -z "$seedref" ] && continue
+            seedver=$(gh api "repos/${seedowner}/${seedrepo}/contents/packages/mcp/package.json?ref=${seedref}" \
+                        --jq '.content' 2>/dev/null | base64 -d 2>/dev/null \
                         | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).version||"")}catch{}})' 2>/dev/null || true)
             [ -z "$seedver" ] && continue
             HEAD_VERS="$HEAD_VERS$seedver "
             if [[ " $RESERVED " != *" $seedver "* ]]; then
               RESERVED="$RESERVED$seedver "
             fi
-          done < <(echo "$prs" | jq -r '.[].headRefName')
-          echo "Seeded RESERVED from open PR heads: [$RESERVED]"
+          done < <(echo "$prs" | jq -r '.[] | [.headRepositoryOwner.login, .headRepository.name, .headRefName] | @tsv')
+          echo "Seeded RESERVED from open PR heads (incl forks): [$RESERVED]"
 
           # ver_gt_main: true if $1 is strictly greater than MAIN_VER (semver-ish,
           # numeric per component). Used to tell "already above main" from "== main".
@@ -462,14 +465,21 @@ jobs:
             # docs-only PR must NEVER be renumbered — bumping its version would push
             # an unintended release onto it). Only a package.json/server.json touch
             # makes a PR eligible for renumbering.
+            #
+            # Use `git log --name-only` over the PR's commit range (mb..HEAD), NOT a
+            # final-tree diff: if the PR bumped these files and later merged main +
+            # resolved them back to main's contents, the tree diff is empty and the
+            # branch would be mis-read as "never touched version files" → skipped →
+            # merged with no delta → auto-tag skips the release. The history check
+            # survives the files becoming identical to main.
             mb=$(git merge-base origin/main HEAD)
-            if git diff --name-only "$mb" HEAD -- \
+            if git log --format= --name-only "$mb..HEAD" -- \
                  packages/mcp/package.json packages/mcp/server.json | grep -q .; then
               touches_pkg=true
             else
               touches_pkg=false
             fi
-            echo "  touches_pkg=$touches_pkg (from branch range ${mb:0:7}..HEAD)"
+            echo "  touches_pkg=$touches_pkg (from branch history ${mb:0:7}..HEAD)"
 
             # Already contains main? Then there's nothing to merge — BUT a release
             # PR can be up to date and still sit at MAIN_VER (e.g. it merged main in
@@ -513,9 +523,17 @@ jobs:
             printf '%s\n' "$conflicts" | while IFS= read -r f; do echo "    $f"; done
 
             # If CHANGELOG is among the conflicts, don't touch prose — human's job.
+            # Tailor the ask to whether this is a release PR: a version-bumping PR
+            # should renumber + re-anchor; a docs/changelog-only PR (touches_pkg
+            # false) should ONLY resolve the changelog — never be told to create a
+            # version bump.
             if echo "$conflicts" | grep -q '^packages/mcp/CHANGELOG\.md$'; then
               git merge --abort
-              flag "$N" "main shipped \`$MAIN_VER\`. Bump this PR's version above \`$MAIN_VER\` (package.json + server.json) and re-anchor your CHANGELOG section above main's, then push. The sync bot won't edit CHANGELOG prose."
+              if [ "$touches_pkg" = "true" ]; then
+                flag "$N" "main shipped \`$MAIN_VER\`. Bump this PR's version above \`$MAIN_VER\` (package.json + server.json) and re-anchor your CHANGELOG section above main's, then push. The sync bot won't edit CHANGELOG prose."
+              else
+                flag "$N" "main shipped \`$MAIN_VER\` and its release added a CHANGELOG section that conflicts with yours. Rebase and re-anchor your CHANGELOG entry above main's — no version bump needed. The sync bot won't edit CHANGELOG prose."
+              fi
               continue
             fi
 
