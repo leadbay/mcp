@@ -371,16 +371,26 @@ jobs:
           }
           # branch_ver: the @leadbay/mcp version on the current working tree.
           branch_ver() { node -p "require('./packages/mcp/package.json').version"; }
-          # pr_changed_version: true (0) if the package.json version FIELD differs
-          # between two refs. Reads the value at each ref via git show (data-only);
-          # a missing/unparseable side reads as "" so a real value counts as a change.
-          # $1 = base ref   $2 = head ref
+          # ver_at: echo the package.json version at a git ref (data-only via git
+          # show); empty if absent/unparseable.
+          ver_at() {
+            git show "${1}:packages/mcp/package.json" 2>/dev/null \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).version||"")}catch{}})' 2>/dev/null || true
+          }
+          # pr_changed_version: true (0) if the PR NET-changed the version field —
+          # comparing HEAD's version to the version at the PR's FORK POINT (the parent
+          # of the oldest first-parent commit unique to origin/main..HEAD), NOT the
+          # current merge-base. The current merge-base moves onto origin/main once the
+          # PR merges main in, which would make a real bump (0.23.13→0.23.14, then
+          # merge main@0.23.14) compare 0.23.14 vs 0.23.14 and read false. Anchoring
+          # to the fork point survives an update-from-main (fork base keeps the old
+          # value) while still reading false for a true revert (net-zero → equal).
           pr_changed_version() {
-            local a b va vb
-            a="$1"; b="$2"
-            va=$(git show "${a}:packages/mcp/package.json" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).version||"")}catch{}})' 2>/dev/null || true)
-            vb=$(git show "${b}:packages/mcp/package.json" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).version||"")}catch{}})' 2>/dev/null || true)
-            [ "$va" != "$vb" ]
+            local firstpr forkbase
+            firstpr=$(git rev-list --first-parent --reverse origin/main..HEAD | head -1)
+            [ -z "$firstpr" ] && return 1  # nothing unique to the PR
+            forkbase=$(git rev-parse "${firstpr}^" 2>/dev/null) || return 0
+            [ "$(ver_at HEAD)" != "$(ver_at "$forkbase")" ]
           }
           # changelog_stale: true (0) if the PR's own commits touched CHANGELOG.md
           # (history, not final-tree — a PR that added then dropped its entry back to
@@ -496,21 +506,16 @@ jobs:
             # GitHub DROPS them from the list — a file-list signal would wrongly
             # read "untouched". The branch-range diff is immune to main moving.
             #
-            # touches_pkg = did the PR itself CHANGE the version field of
-            # package.json/server.json? A docs/changelog-only PR must never be
-            # renumbered, and a PR that touched then REVERTED these files (net-zero)
-            # must not either. So compare the version VALUE at the PR's merge-base
-            # vs its head — not a path touch (which reverts leave true) and not the
-            # final-tree diff vs main (which a bump-then-resolve-back-to-main leaves
-            # empty). Value-at-base ≠ value-at-head is true for a real bump even if
-            # HEAD now equals main, and false for a reverted edit.
-            mb=$(git merge-base origin/main HEAD)
-            if pr_changed_version "$mb" HEAD; then
+            # touches_pkg = did the PR NET-change the version field? (See
+            # pr_changed_version: HEAD vs the PR's fork-point value.) A docs/
+            # changelog-only PR, a reverted edit, or a PR behind main all read false;
+            # a real bump reads true even after the PR merges main in.
+            if pr_changed_version; then
               touches_pkg=true
             else
               touches_pkg=false
             fi
-            echo "  touches_pkg=$touches_pkg (version-field change over ${mb:0:7}..HEAD)"
+            echo "  touches_pkg=$touches_pkg (net version-field change vs fork point)"
 
             # Already contains main? Then there's nothing to merge — BUT a release
             # PR can be up to date and still sit at MAIN_VER (e.g. it merged main in
