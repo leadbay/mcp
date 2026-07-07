@@ -183,7 +183,7 @@ resource-count table when \`spend[]\` is empty). Never say raw "credits".
 
 ---
 
-Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **Show quota the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` in dollar_cents (% used = the ratio, $ = \`/100\`); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`lens_extra_refill\` resource here before calling \`leadbay_extend_lens\`** — its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
+Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **Show quota the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` in dollar_cents (% used = the ratio, $ = \`/100\`); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — read it from **\`quota.org.resources[]\`** (the refill quota is ORG-scoped, not the user group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
 
 **Top-ups always beat waiting.** When a quota window is hit, the user has two options: wait for the window reset (\`resets_at\` in each quota entry) OR top up AI credits. Top-ups clear the throttle IMMEDIATELY; they are not subject to the same window. When you tell the user about a 429 / quota exhaustion, ALWAYS surface both options — "wait until <reset>" or "top up now (I can generate the link)" — and let them pick. Never default-recommend "wait until tomorrow" when a 30-second top-up unblocks the same operation.
 
@@ -242,9 +242,16 @@ to reconnect:
 - \`organization.unlimited_credits\` is true (internal/unlimited account — stay
   silent on quota; never announce "unlimited").
 
-**Pick the group.** Prefer \`quota.user\` (present for every caller). Use
-\`quota.org\` only when \`quota.user\` is absent (admins receive both — still show the
-caller's own \`user\` view). Call the chosen group \`<group>\` below.
+**Pick the group (for DISPLAY only).** Prefer \`quota.user\` (present for every
+caller). Use \`quota.org\` only when \`quota.user\` is absent (admins receive both —
+still show the caller's own \`user\` view). Call the chosen group \`<group>\` below.
+
+**Exception — lens-refill pre-checks are ORG-scoped.** This user-preference is for
+the display gauge ONLY. When you are pre-checking the \`LENS_EXTRA_REFILL\` resource
+before \`leadbay_extend_lens\`, always read **\`quota.org.resources[]\`** (never the
+user group) and match the resource type case-insensitively (\`LENS_EXTRA_REFILL\` /
+\`lens_extra_refill\`). Reading the user group there can miss an exhausted org
+refill quota and let a write call through that should have been skipped.
 
 **Per window (fixed order: daily → weekly → monthly).** Match entries by
 \`window_type\` (\`"daily"\` / \`"weekly"\` / \`"monthly"\`).

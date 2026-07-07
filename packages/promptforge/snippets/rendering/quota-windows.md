@@ -18,9 +18,16 @@ to reconnect:
 - `organization.unlimited_credits` is true (internal/unlimited account — stay
   silent on quota; never announce "unlimited").
 
-**Pick the group.** Prefer `quota.user` (present for every caller). Use
-`quota.org` only when `quota.user` is absent (admins receive both — still show the
-caller's own `user` view). Call the chosen group `<group>` below.
+**Pick the group (for DISPLAY only).** Prefer `quota.user` (present for every
+caller). Use `quota.org` only when `quota.user` is absent (admins receive both —
+still show the caller's own `user` view). Call the chosen group `<group>` below.
+
+**Exception — lens-refill pre-checks are ORG-scoped.** This user-preference is for
+the display gauge ONLY. When you are pre-checking the `LENS_EXTRA_REFILL` resource
+before `leadbay_extend_lens`, always read **`quota.org.resources[]`** (never the
+user group) and match the resource type case-insensitively (`LENS_EXTRA_REFILL` /
+`lens_extra_refill`). Reading the user group there can miss an exhausted org
+refill quota and let a write call through that should have been skipped.
 
 **Per window (fixed order: daily → weekly → monthly).** Match entries by
 `window_type` (`"daily"` / `"weekly"` / `"monthly"`).
