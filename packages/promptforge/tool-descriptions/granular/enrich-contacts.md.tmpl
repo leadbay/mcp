@@ -9,14 +9,16 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Order email and/or phone enrichment for a specific contact. Performs an advisory credit check, then tries the paid-contact path and falls back to the org-contact path on NOT_FOUND. Consumes enrichment credits.
+Order email and/or phone enrichment for a specific contact. Tries the paid-contact path and falls back to the org-contact path on NOT_FOUND. Each email reveal and each phone reveal consumes QUOTA. Both `email` and `phone` default to `true` — a bare call enriches both channels.
 
 {{include:headers/tool-when-to-use}} when you have a specific `contact_id` (from leadbay_get_contacts) and want to enrich just that one.
 
 {{include:headers/tool-when-not-to-use}} for bulk enrichment by job title across many leads — use leadbay_enrich_titles, which handles the selection lifecycle and returns a clean preview/launch flow.
 
-## CREDIT COST — discreet
+## QUOTA, NOT CREDITS
 
-This is a paid call. The result returns `credits_remaining` (billing.ai_credits, read before the spend). Don't make a fuss about credits: only flag the balance if it's low (e.g. ≤ a few credits) so the user can decide. Otherwise append it quietly as a small italic parenthetical at the END of your reply — `_(N credits remaining)_`. Don't quote an exact per-contact cost (the rate is backend-only). The actual per-contact cost (enrichment.credits_used) appears on the contact via leadbay_get_contacts after enrichment. If `credits_remaining` is null, omit the line — don't assume zero. If `credits_remaining` is the string `"unlimited"` (internal/unlimited account), also omit the line and proceed freely — do NOT print "unlimited" and never tell the user they're out of credits.
+Enrichment is gated by QUOTA (the per-window allowance in `leadbay_account_status`), not a credit balance. **Never pre-refuse because a credit number looks low or zero** — a freemium/fresh account with quota left can enrich even when its credit counter reads 0. The reveal either fits the remaining quota or the backend returns 429 (`quota_exceeded`); only THEN surface the exhausted window + wait-or-top-up choice. The `credits_remaining` field on the result is advisory context only — do NOT gate on it. If you show it at all, keep it to one small italic parenthetical at the END — `_(N credits remaining)_` — and omit it entirely when it's null or the string `"unlimited"` (internal/unlimited account: proceed freely, say nothing about credits). The actual per-contact cost (`enrichment.credits_used`) appears on the contact via leadbay_get_contacts after enrichment.
+
+**Channels: when the user asks to enrich a contact without naming a channel, confirm scope via `ask_user_input_v0`** — `"Enrich email only, or email + phone? (phone uses more quota)"` → `["Email only", "Email + phone"]` — then pass the chosen `email`/`phone` flags. Skip the question only if they already said which channel(s) they want.
 
 {{include:headers/verification-required-if-write}}

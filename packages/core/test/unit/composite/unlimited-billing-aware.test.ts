@@ -141,13 +141,18 @@ describe("enrich_contacts — billing-aware unlimited bypass", () => {
     expect(r.credits_remaining).toBe("unlimited");
   });
 
-  it("@leadbay.ai + billing ENABLED + ai_credits:0 → BLOCKED like a real user", async () => {
+  it("@leadbay.ai + billing ENABLED + ai_credits:0 → real user, NOT pre-blocked (quota gates server-side)", async () => {
+    // A metered internal account is a real user, but enrichment is no longer
+    // pre-refused on a credit balance — ai_credits is consumed-not-remaining, so
+    // 0 ≠ out of quota. The backend 429 is the real gate. (product#3865)
     mockHttp([
       { method: "GET", path: "/1.6/users/me", status: 200, body: { id: "u", email: "x@leadbay.ai", organization: { id: "org-1", billing: { seats: 1, ai_credits: 0 } } } },
+      { method: "POST", path: /\/leads\/lead-1\/enrich\/contacts\/c1\/enrich/, status: 204 },
     ]);
-    await expect(
-      enrichContacts.execute(newClient(), { leadId: "lead-1", contactId: "c1", email: true })
-    ).rejects.toMatchObject({ code: "QUOTA_EXCEEDED" });
+    const r: any = await enrichContacts.execute(newClient(), { leadId: "lead-1", contactId: "c1", email: true });
+    expect(r.triggered).toBe(true);
+    // metered account → real numeric balance surfaced, not the "unlimited" sentinel
+    expect(r.credits_remaining).toBe(0);
   });
 });
 

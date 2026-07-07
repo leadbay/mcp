@@ -558,11 +558,9 @@ WHEN TO USE: poll this after leadbay_enrich_titles returns a \`bulk_id\`. Defaul
 
 WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id — that already includes enriched contacts for a single lead.
 
-## CREDIT COST — show the balance, discreetly
+## QUOTA — show where the user stands after the spend
 
-Once \`all_done\` is true the result carries \`credits_remaining\` (the post-spend AI-credit balance). Don't make a fuss — no sentence, no callout. Just append ONE small italic line in parentheses at the very END of your reply: \`_(N credits remaining)_\`. If \`credits_remaining\` is null (billing unavailable), omit the line — don't print 0. If \`credits_remaining\` is the string \`"unlimited"\` (internal/unlimited account), also omit the line — there is no finite balance to show; do NOT print "unlimited". Do NOT report a "credits used" figure for this run: the per-contact cost can't be scoped to this specific enrichment (a lead's contact list mixes in earlier runs), so any "X used" number would be misleading.
-
-**Show the refreshed quota once the run completes.** This was a paid action — after \`all_done\`, call \`leadbay_account_status\` once and render the per-window %/$ quota gauge it returns, so the user sees where they now stand (this reflects the usage just consumed). That gauge is the canonical quota surface; the \`_(N credits remaining)_\` line above is only the discreet inline balance, not a substitute. Skip the gauge only for an \`unlimited_credits\` account, when \`quota\` is unreadable, or when billing is unavailable. Do this ONCE — not on every in-progress poll.
+Enrichment consumes QUOTA (the per-window allowance), not a separate credit wall. Once \`all_done\` is true, the enrichment has completed — show the user their refreshed quota: call \`leadbay_account_status\` and render the per-window quota it returns (the canonical surface). The result's \`credits_remaining\` field is advisory only; if you show it at all, keep it to ONE small italic parenthetical at the very END — \`_(N credits remaining)_\` — and omit it when it's null (billing unavailable) or the string \`"unlimited"\` (internal/unlimited account — say nothing about credits). Do NOT report a "credits used" figure for this run: the per-contact cost can't be scoped to this specific enrichment (a lead's contact list mixes in earlier runs), so any "X used" number would be misleading. Do the account_status refresh ONCE at completion — not on every in-progress poll.
 `;
 // endregion: leadbay_bulk_enrich_status
 
@@ -1082,15 +1080,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_dismiss_clarification
 
 // region: leadbay_enrich_contacts
-export const leadbay_enrich_contacts: string = `Order email and/or phone enrichment for a specific contact. Performs an advisory credit check, then tries the paid-contact path and falls back to the org-contact path on NOT_FOUND. Consumes enrichment credits.
+export const leadbay_enrich_contacts: string = `Order email and/or phone enrichment for a specific contact. Tries the paid-contact path and falls back to the org-contact path on NOT_FOUND. Each email reveal and each phone reveal consumes QUOTA. Both \`email\` and \`phone\` default to \`true\` — a bare call enriches both channels.
 
 WHEN TO USE: when you have a specific \`contact_id\` (from leadbay_get_contacts) and want to enrich just that one.
 
 WHEN NOT TO USE: for bulk enrichment by job title across many leads — use leadbay_enrich_titles, which handles the selection lifecycle and returns a clean preview/launch flow.
 
-## CREDIT COST — discreet
+## QUOTA, NOT CREDITS
 
-This is a paid call. The result returns \`credits_remaining\` (billing.ai_credits, read before the spend). Don't make a fuss about credits: only flag the balance if it's low (e.g. ≤ a few credits) so the user can decide. Otherwise append it quietly as a small italic parenthetical at the END of your reply — \`_(N credits remaining)_\`. Don't quote an exact per-contact cost (the rate is backend-only). The actual per-contact cost (enrichment.credits_used) appears on the contact via leadbay_get_contacts after enrichment. If \`credits_remaining\` is null, omit the line — don't assume zero. If \`credits_remaining\` is the string \`"unlimited"\` (internal/unlimited account), also omit the line and proceed freely — do NOT print "unlimited" and never tell the user they're out of credits.
+Enrichment is gated by QUOTA (the per-window allowance in \`leadbay_account_status\`), not a credit balance. **Never pre-refuse because a credit number looks low or zero** — a freemium/fresh account with quota left can enrich even when its credit counter reads 0. The reveal either fits the remaining quota or the backend returns 429 (\`quota_exceeded\`); only THEN surface the exhausted window + wait-or-top-up choice. The \`credits_remaining\` field on the result is advisory context only — do NOT gate on it. If you show it at all, keep it to one small italic parenthetical at the END — \`_(N credits remaining)_\` — and omit it entirely when it's null or the string \`"unlimited"\` (internal/unlimited account: proceed freely, say nothing about credits). The actual per-contact cost (\`enrichment.credits_used\`) appears on the contact via leadbay_get_contacts after enrichment.
+
+**Channels: when the user asks to enrich a contact without naming a channel, confirm scope via \`ask_user_input_v0\`** — \`"Enrich email only, or email + phone? (phone uses more quota)"\` → \`["Email only", "Email + phone"]\` — then pass the chosen \`email\`/\`phone\` flags. Skip the question only if they already said which channel(s) they want.
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
@@ -1101,23 +1101,27 @@ export const leadbay_enrich_titles: string = `Order contact enrichments by job t
 
 WHEN TO USE: as the agent's go-to enrichment entry point, immediately before proposing outreach.
 
-WHEN NOT TO USE: to enrich a single contact — that's leadbay_enrich_contacts (granular). Speculatively, before the user has committed to outreaching — enrichment spends credits. **NOT to add "titles" or "LinkedIn" to a list** — a contact's \`job_title\` and \`linkedin_page\` already ride on the contact record; they are FREE and need no enrichment. If the user asks for "title and LinkedIn only", read those fields directly (e.g. leadbay_get_contacts / leadbay_research_lead_by_id); do NOT launch a job here. This tool is strictly the PAID email/phone reveal.
+WHEN NOT TO USE: to enrich a single contact — that's leadbay_enrich_contacts (granular). Speculatively, before the user has committed to outreaching — enrichment consumes quota. **NOT to add "titles" or "LinkedIn" to a list** — a contact's \`job_title\` and \`linkedin_page\` already ride on the contact record; they are FREE and need no enrichment. If the user asks for "title and LinkedIn only", read those fields directly (e.g. leadbay_get_contacts / leadbay_research_lead_by_id); do NOT launch a job here. This tool is strictly the email / phone reveal, which consumes quota.
 
-## CONSENT — email is a PAID default; never launch it silently
+## ENRICHMENT CONSUMES QUOTA — the model to reason with
 
-The \`email\` channel defaults **ON** and is a paid reveal. A bare "enrich these titles" is **NOT** consent to spend.
+Each email reveal and each phone reveal **consumes quota** (the per-window daily / weekly / monthly allowance shown in \`leadbay_account_status\`). That is the ONLY thing that gates enrichment. Do **NOT** reason about, mention, or block on "credits": there is no separate credit wall the user must clear first — enrichment either fits the user's remaining quota or the backend returns 429 (\`{status:'quota_exceeded'}\`) when a window is actually exhausted. **Never pre-refuse enrichment because a credit number looks low or zero** — a fresh/freemium account with quota still available can enrich even when its credit counter reads 0. If and only if the backend returns \`quota_exceeded\`, tell the user which window is exhausted and offer the wait-or-top-up choice (see \`leadbay_account_status\`).
 
-**To preview with ZERO spend risk on ANY host, pass \`dry_run:true\`** (or \`confirm:false\`). Either returns \`enrichable_contacts\` + \`credits_remaining\` + the \`would_launch\` channels and launches nothing — guaranteed, regardless of host. Use this as your first call. Then surface the balance + volume, get the user's explicit go-ahead, and re-call with \`confirm:true\` (and explicit \`email:true\`/\`phone:true\` for the channels they chose) to launch.
+## CONSENT — email is the default channel; phone is opt-in; never launch silently
+
+The \`email\` channel defaults **ON**; \`phone\` defaults **OFF**. A bare "enrich these titles" is **NOT** consent to spend quota.
+
+**When the user asks to enrich without naming channels, ASK which channels via \`ask_user_input_v0\`** — email is included by default, so the real question is whether to add phone: \`"Enrich email only, or email + phone? (phone reveals use more quota)"\` → \`["Email only", "Email + phone"]\`. Then launch with the chosen channels (\`email:true\` always; \`phone:true\` if they picked email + phone). Only skip this question if the user already named the channel(s) explicitly ("just emails", "get their phone numbers too", etc.).
+
+**To preview with ZERO spend risk on ANY host, pass \`dry_run:true\`** (or \`confirm:false\`). Either returns \`enrichable_contacts\` + the \`would_launch\` channels and launches nothing — guaranteed, regardless of host. Use this as your first call. Then surface the volume, get the user's explicit go-ahead (and channel choice, above), and re-call with \`confirm:true\` (and explicit \`email:true\`/\`phone:true\` for the channels they chose) to launch.
 
 Do NOT rely on a bare call (no \`confirm\`, no \`dry_run\`, no channels) as a "safe preview": on an elicitation-capable host it asks the user and withholds on decline (\`mode:"needs_confirmation"\`), but on a host WITHOUT elicitation (some direct/embedded callers) a bare call launches the default email spend directly. If you're unsure whether the host can elicit, use \`dry_run:true\`/\`confirm:false\` for the preview. Passing \`email:true\`/\`phone:true\` (or \`confirm:true\`) always counts as consent and launches.
 
-## CREDIT COST — make spend visible
+## SHOW WHAT WILL RUN, AND WHERE QUOTA STANDS
 
-Enrichment is the main PAID operation. Surface cost both before and after.
+**BEFORE (confirm before launching).** The discover / preview_only / dry_run modes return \`enrichable_contacts\` (the volume that would be enriched). Tell the user plainly: **"This will enrich {enrichable_contacts} contacts (email + phone reveals consume quota)."** then confirm the channels + go-ahead via \`ask_user_input_v0\` before launching. Do NOT quote an exact cost or a "credits" figure — the per-reveal rate is backend-side and enrichment is gated by quota, not a credit balance. The \`credits_remaining\` field is advisory context only; never present it as a spend gate and never refuse based on it.
 
-**BEFORE (confirm before launching).** The discover / preview_only / dry_run modes return \`credits_remaining\` (the balance) and \`enrichable_contacts\` (the volume that would be enriched). Tell the user plainly: **"You have {credits_remaining} credits. This will enrich {enrichable_contacts} contacts."** then ask them to confirm before you launch the paid run. Route that confirmation through \`ask_user_input_v0\` ("Enrich {enrichable_contacts} contacts now?" → ["Yes, enrich", "No, cancel"]). Do NOT state an exact estimated cost — the per-contact credit rate lives backend-side and is not in the preview; show the balance and the count, never a fabricated "will cost N credits". If \`credits_remaining\` is null, billing is unavailable — say the balance is unknown, don't assume zero or unlimited. If \`credits_remaining\` is the string \`"unlimited"\`, this is an internal/unlimited account: proceed freely and say NOTHING about credits — drop the "You have {credits_remaining} credits" sentence entirely (still name the count and still confirm before launching); do NOT announce "unlimited" and never tell the user they're out of credits.
-
-**AFTER (show the balance, discreetly).** Once the job finishes — poll \`leadbay_bulk_enrich_status\`, which returns \`credits_remaining\` (the post-spend balance). Don't make a fuss: append ONE small italic line in parentheses at the very END of your reply — \`_(N credits remaining)_\`. Omit it if \`credits_remaining\` is null. Omit it too if \`credits_remaining\` is the string \`"unlimited"\` (internal/unlimited account) — do NOT print \`_(unlimited credits remaining)_\` or otherwise announce unlimited. Do NOT report a "credits used" figure: per-run cost can't be scoped reliably (a lead's contacts mix earlier enrichments), so only the balance is shown.
+**AFTER (show refreshed quota).** Once the job finishes (poll \`leadbay_bulk_enrich_status\` until \`all_done\`), call \`leadbay_account_status\` and show the refreshed per-window quota — the canonical surface — so the user sees the usage they just consumed. Do NOT invent a "credits used" figure for the run (per-run cost can't be scoped reliably — a lead's contacts mix earlier enrichments).
 
 ## GATE — PREFER BUILT-IN HOST WIDGETS
 

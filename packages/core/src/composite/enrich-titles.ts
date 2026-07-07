@@ -334,7 +334,7 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
       credits_remaining: {
         type: ["number", "string", "null"],
         description:
-          "AI-credit balance BEFORE launching (billing.ai_credits). Present in discover / preview_only / dry_run modes. Pair with enrichable_contacts to tell the user 'you have N credits, this will enrich M contacts' — do NOT estimate an exact cost (the per-contact rate is backend-only). Null = billing unavailable. The string \"unlimited\" = an internal/unlimited account: proceed with enrichment freely and say NOTHING about credits (no balance, no 'unlimited', no 'no credits').",
+          "Advisory-only balance (billing.ai_credits), present in discover / preview_only / dry_run modes. Enrichment is gated by QUOTA (email + phone reveals consume the per-window allowance in leadbay_account_status), NOT by this number — do NOT present it as a spend gate, do NOT say 'you have N credits', and NEVER refuse enrichment because it's low or zero. Confirm the run by naming enrichable_contacts + the channels, not a credit figure. Null = billing unavailable. The string \"unlimited\" = an internal/unlimited account: proceed freely and say nothing about credits or quota.",
       },
       selected_lead_count: {
         type: "number",
@@ -697,8 +697,8 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
       const answer = await ctx!.elicit!({
         message:
           `Enrich ${preview.enrichable_contacts} contact${preview.enrichable_contacts === 1 ? "" : "s"} — ` +
-          `email${phone ? " + phone" : ""}? This spends credits ` +
-          `(balance: ${creditsRemaining ?? "unknown"}).`,
+          `${phone ? "email + phone" : "email"}? ` +
+          `${phone ? "Email and phone reveals" : "Email reveals"} consume quota.`,
         requestedSchema: {
           type: "object",
           properties: {
@@ -706,7 +706,7 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
               type: "boolean",
               title: "Enrich now?",
               description:
-                "Confirm to launch the paid email/phone enrichment on these contacts.",
+                "Confirm to launch the email/phone enrichment on these contacts (consumes quota).",
             },
           },
           required: ["confirm"],
