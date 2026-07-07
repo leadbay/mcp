@@ -377,41 +377,38 @@ jobs:
             git show "${1}:packages/mcp/package.json" 2>/dev/null \
               | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).version||"")}catch{}})' 2>/dev/null || true
           }
-          # BOT_NAME: the identity this workflow commits under. Its sync merges pull
-          # main's version into a PR; those must NOT be mistaken for a PR-authored bump.
-          BOT_NAME="github-actions[bot]"
-          # pr_fork_base: parent of the oldest first-parent commit unique to
-          # origin/main..HEAD that is NOT one of the bot's own sync commits — i.e. the
-          # point where the PR author first diverged from main, ignoring later bot
-          # merges of main. Echoes the commit; empty if the PR has no human commit.
+          # pr_fork_base: parent of the oldest first-parent, NON-MERGE commit unique
+          # to origin/main..HEAD — the point where the PR author first diverged from
+          # main. --no-merges skips both the bot's sync merges AND the author's own
+          # "merge main in" commits, so the base is a real PR commit's parent. Echoes
+          # the commit; returns non-zero if the PR has no non-merge commit of its own.
           pr_fork_base() {
             local c
             while read -r c; do
               [ -z "$c" ] && continue
-              [ "$(git show -s --format='%an' "$c")" = "$BOT_NAME" ] && continue
               git rev-parse "${c}^" 2>/dev/null && return 0
               return 1
-            done < <(git rev-list --first-parent --reverse origin/main..HEAD)
+            done < <(git rev-list --first-parent --no-merges --reverse origin/main..HEAD)
             return 1
           }
           # pr_changed_version: true (0) iff the PR AUTHOR bumped the version and that
           # bump nets a real change. Two conditions, both required:
-          #   1. some HUMAN (non-bot) commit unique to the PR changed the version field
-          #      (commit's version != its first-parent's) — excludes versions the bot's
-          #      own sync merge of main brought in (else a docs PR the bot updated would
-          #      look bumped); and
+          #   1. some NON-MERGE commit unique to the PR changed the version field
+          #      (commit's version != its parent's). --no-merges is load-bearing: a
+          #      merge that pulls main's newer version in — whether the bot's sync
+          #      merge OR the author's own update-from-main — is NOT a PR-authored
+          #      bump, so a docs PR that merged a release in must not count; and
           #   2. HEAD's version differs from the PR's fork-base version — excludes a
           #      bump that was later reverted (net-zero).
           # Together they survive an update-from-main (real bump still true) while
-          # ignoring bot-merged versions and true reverts.
+          # ignoring merged-in versions and true reverts.
           pr_changed_version() {
             local c v pv authored=false
             while read -r c; do
               [ -z "$c" ] && continue
-              [ "$(git show -s --format='%an' "$c")" = "$BOT_NAME" ] && continue
               v=$(ver_at "$c"); pv=$(ver_at "${c}^" 2>/dev/null)
               if [ "$v" != "$pv" ]; then authored=true; break; fi
-            done < <(git rev-list origin/main..HEAD)
+            done < <(git rev-list --no-merges origin/main..HEAD)
             [ "$authored" = "true" ] || return 1
             local fb; fb=$(pr_fork_base) || return 1
             [ "$(ver_at HEAD)" != "$(ver_at "$fb")" ]
