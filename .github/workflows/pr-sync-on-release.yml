@@ -377,20 +377,44 @@ jobs:
             git show "${1}:packages/mcp/package.json" 2>/dev/null \
               | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).version||"")}catch{}})' 2>/dev/null || true
           }
-          # pr_changed_version: true (0) if the PR NET-changed the version field —
-          # comparing HEAD's version to the version at the PR's FORK POINT (the parent
-          # of the oldest first-parent commit unique to origin/main..HEAD), NOT the
-          # current merge-base. The current merge-base moves onto origin/main once the
-          # PR merges main in, which would make a real bump (0.23.13→0.23.14, then
-          # merge main@0.23.14) compare 0.23.14 vs 0.23.14 and read false. Anchoring
-          # to the fork point survives an update-from-main (fork base keeps the old
-          # value) while still reading false for a true revert (net-zero → equal).
+          # BOT_NAME: the identity this workflow commits under. Its sync merges pull
+          # main's version into a PR; those must NOT be mistaken for a PR-authored bump.
+          BOT_NAME="github-actions[bot]"
+          # pr_fork_base: parent of the oldest first-parent commit unique to
+          # origin/main..HEAD that is NOT one of the bot's own sync commits — i.e. the
+          # point where the PR author first diverged from main, ignoring later bot
+          # merges of main. Echoes the commit; empty if the PR has no human commit.
+          pr_fork_base() {
+            local c
+            while read -r c; do
+              [ -z "$c" ] && continue
+              [ "$(git show -s --format='%an' "$c")" = "$BOT_NAME" ] && continue
+              git rev-parse "${c}^" 2>/dev/null && return 0
+              return 1
+            done < <(git rev-list --first-parent --reverse origin/main..HEAD)
+            return 1
+          }
+          # pr_changed_version: true (0) iff the PR AUTHOR bumped the version and that
+          # bump nets a real change. Two conditions, both required:
+          #   1. some HUMAN (non-bot) commit unique to the PR changed the version field
+          #      (commit's version != its first-parent's) — excludes versions the bot's
+          #      own sync merge of main brought in (else a docs PR the bot updated would
+          #      look bumped); and
+          #   2. HEAD's version differs from the PR's fork-base version — excludes a
+          #      bump that was later reverted (net-zero).
+          # Together they survive an update-from-main (real bump still true) while
+          # ignoring bot-merged versions and true reverts.
           pr_changed_version() {
-            local firstpr forkbase
-            firstpr=$(git rev-list --first-parent --reverse origin/main..HEAD | head -1)
-            [ -z "$firstpr" ] && return 1  # nothing unique to the PR
-            forkbase=$(git rev-parse "${firstpr}^" 2>/dev/null) || return 0
-            [ "$(ver_at HEAD)" != "$(ver_at "$forkbase")" ]
+            local c v pv authored=false
+            while read -r c; do
+              [ -z "$c" ] && continue
+              [ "$(git show -s --format='%an' "$c")" = "$BOT_NAME" ] && continue
+              v=$(ver_at "$c"); pv=$(ver_at "${c}^" 2>/dev/null)
+              if [ "$v" != "$pv" ]; then authored=true; break; fi
+            done < <(git rev-list origin/main..HEAD)
+            [ "$authored" = "true" ] || return 1
+            local fb; fb=$(pr_fork_base) || return 1
+            [ "$(ver_at HEAD)" != "$(ver_at "$fb")" ]
           }
           # changelog_stale: true (0) if the PR's own commits touched CHANGELOG.md
           # (history, not final-tree — a PR that added then dropped its entry back to
@@ -449,8 +473,11 @@ jobs:
             seedowner=${seedline%%$'\t'*}; rest=${seedline#*$'\t'}
             seedrepo=${rest%%$'\t'*}; seedref=${rest#*$'\t'}
             [ -z "$seedowner" ] || [ -z "$seedrepo" ] || [ -z "$seedref" ] && continue
-            seedver=$(gh api "repos/${seedowner}/${seedrepo}/contents/packages/mcp/package.json?ref=${seedref}" \
-                        --jq '.content' 2>/dev/null | base64 -d 2>/dev/null \
+            # Pass ref as a proper query FIELD (-X GET -f) so gh URL-encodes it —
+            # a branch name with '#', '&', etc. would otherwise truncate/split the
+            # query and yield an empty version, dropping it from RESERVED/HEAD_VERS.
+            seedver=$(gh api -X GET "repos/${seedowner}/${seedrepo}/contents/packages/mcp/package.json" \
+                        -f "ref=${seedref}" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null \
                         | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).version||"")}catch{}})' 2>/dev/null || true)
             [ -z "$seedver" ] && continue
             HEAD_VERS="$HEAD_VERS$seedver "
@@ -524,8 +551,13 @@ jobs:
             # package/server and equals main's version, renumber it in place;
             # otherwise it's a genuine no-op — just clear any stale flag.
             if git merge-base --is-ancestor origin/main HEAD; then
-              if [ "$touches_pkg" = "true" ] && [ "$(branch_ver)" = "$MAIN_VER" ]; then
-                echo "  up to date but version == main ($MAIN_VER) — renumbering"
+              # Renumber a release PR that has no distinct version: either it equals
+              # main, OR it shares its version with another open PR (both would merge
+              # with a colliding/absent delta — auto-tag skips the second). A version
+              # that is strictly above main AND unique is left as-is.
+              if [ "$touches_pkg" = "true" ] && \
+                 { [ "$(branch_ver)" = "$MAIN_VER" ] || ! own_version_unique "$(branch_ver)"; }; then
+                echo "  up to date but version collides ($(branch_ver)) — renumbering"
                 # No merge happened here → new bot commit, never amend user HEAD.
                 renumber_and_push "$N" "$HEAD" none || true
               elif [ "$touches_pkg" = "true" ] && changelog_stale "$(branch_ver)"; then
@@ -541,14 +573,14 @@ jobs:
             fi
 
             if git merge --no-edit origin/main >/dev/null 2>&1; then
-              # Clean merge. If the PR bumped package/server to the SAME number main
-              # just shipped, git merges without a conflict but the branch now
-              # equals main's version — on merge, auto-tag.yml sees no version
-              # change and never releases. Renumber above main so it still ships.
-              # (Gated on touches_pkg, NOT changelog: a docs/changelog-only PR that
-              # happens to sit at main's version must be left alone.)
-              if [ "$touches_pkg" = "true" ] && [ "$(branch_ver)" = "$MAIN_VER" ]; then
-                echo "  clean merge but version == main ($MAIN_VER) — renumbering"
+              # Clean merge. Renumber if the PR now has no distinct version — it equals
+              # main (auto-tag would see no delta) OR shares its number with another
+              # open PR (the second to merge would collide/skip). Above-main + unique
+              # is left as-is. (Gated on touches_pkg: a docs/changelog-only PR that
+              # happens to sit at a colliding version must be left alone.)
+              if [ "$touches_pkg" = "true" ] && \
+                 { [ "$(branch_ver)" = "$MAIN_VER" ] || ! own_version_unique "$(branch_ver)"; }; then
+                echo "  clean merge but version collides ($(branch_ver)) — renumbering"
                 # git auto-committed a bot-authored merge commit → fold bump in.
                 renumber_and_push "$N" "$HEAD" merge_done || true
               else
