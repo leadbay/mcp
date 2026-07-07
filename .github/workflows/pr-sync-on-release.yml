@@ -185,27 +185,32 @@ jobs:
             clear_label "$n"
             return 0
           }
-          # version_diff_only: true if $1 (a package.json or server.json) differs
-          # from main ONLY in version-related fields — i.e. it is safe to renumber
-          # without discarding legitimate PR edits. Runs a trusted, data-only node
-          # script (from the workflow, checked out from main). It NEVER executes
-          # code from the PR branch: it reads the two file blobs as data and
-          # compares them field-by-field after neutralising the version.
-          #   $1 = repo-relative path to a candidate version file
-          #   $2 = git ref to compare against (origin/main)
-          # Reads the PR-side blob from the working tree, the main-side via `git show`.
-          version_diff_only() {
-            local path="$1" ref="$2" mainblob
-            mainblob=$(git show "${ref}:${path}") || return 1
+          # version_diff_only_ref: true if the PR's OWN commits changed the file ONLY
+          # in version-related fields. Compares the file at the PR's merge-base with
+          # main against the file at the PR head — so a NON-version change main made
+          # concurrently (which the PR didn't touch) does NOT count against the PR;
+          # only what the PR itself edited matters. If the PR added a non-version
+          # edit here, it's unsafe to rebuild from main + version → return 1.
+          # Data-only, sourced from the workflow (trusted); reads blobs via git show,
+          # never executes PR code.
+          #   $1 = candidate git ref (e.g. origin/<head>)
+          #   $2 = repo-relative path to a version file
+          #   $3 = main-side git ref (origin/main)
+          version_diff_only_ref() {
+            local curref="$1" path="$2" mainref="$3" base curblob baseblob
+            base=$(git merge-base "$mainref" "$curref") || return 1
+            curblob=$(git show "${curref}:${path}") || return 2
+            # The file as it stood at the PR's fork point. If it did not exist there,
+            # default to an empty JSON object so any PR content reads as a change.
+            baseblob=$(git show "${base}:${path}" 2>/dev/null || true)
+            [ -z "$baseblob" ] && baseblob="{}"
             # shellcheck disable=SC2016  # single-quoted JS is intentional — args reach node, not bash
-            MAIN_JSON="$mainblob" node -e '
-              const fs = require("fs");
-              const path = process.argv[1];
-              // Parse both as pure data. A parse error (e.g. leftover conflict
-              // markers) means "not safe to auto-renumber" → exit non-zero.
+            CUR_JSON="$curblob" MAIN_JSON="$baseblob" node -e '
+              // "main" here is the MERGE-BASE snapshot; compare it to the PR head to
+              // see what the PR itself changed. Parse error → not safe → exit >0.
               let cur, main;
               try {
-                cur  = JSON.parse(fs.readFileSync(path, "utf8"));
+                cur  = JSON.parse(process.env.CUR_JSON);
                 main = JSON.parse(process.env.MAIN_JSON);
               } catch { process.exit(2); }
               // Neutralise every version field on both, then compare the rest.
@@ -227,7 +232,7 @@ jobs:
                 return JSON.stringify(c);
               };
               process.exit(strip(cur) === strip(main) ? 0 : 1);
-            ' "$path"
+            '
           }
 
           # audit_version_files: reimplements packages/mcp/test/audit/
@@ -264,33 +269,47 @@ jobs:
           # $1=PR number  $2=head ref
           renumber_and_push() {
             local n="$1" head="$2"
-            # Guard: only proceed if the version files differ from main solely in
-            # version fields. Otherwise the PR has real edits here and we must not
-            # touch it — hand to a human. (Do this BEFORE reserving a version, so a
-            # flagged PR doesn't consume a number.)
-            if ! version_diff_only packages/mcp/package.json origin/main \
-               || ! version_diff_only packages/mcp/server.json origin/main; then
+            # Guard: only proceed if the PR's OWN version files (origin/$head, clean —
+            # no conflict markers) differ from main SOLELY in version fields. If so,
+            # the PR made no non-version edits there, so we can safely take main's
+            # copy (which carries any concurrent non-version change main made in the
+            # same window) and just set the version — no line-merge of reformatted
+            # JSON. If the PR DID make a non-version edit here, flag for a human.
+            # (Run BEFORE reserving a version so a flagged PR doesn't consume one.)
+            if ! version_diff_only_ref "origin/$head" packages/mcp/package.json origin/main \
+               || ! version_diff_only_ref "origin/$head" packages/mcp/server.json origin/main; then
               echo "  version files carry non-version changes — flagging, not renumbering"
               git merge --abort 2>/dev/null || git reset --hard "origin/$head"
               flag "$n" "main shipped \`$MAIN_VER\`. This PR changes \`package.json\`/\`server.json\` beyond the version, so the sync bot won't touch them — bump above \`$MAIN_VER\` and rebase manually."
               return 2
             fi
 
-            # Reserve a version unique to THIS PR (see reserve_next — it sets NEXT
-            # and appends to the global RESERVED so every renumber gets a distinct
-            # number). `local NEXT` here is safe: bash dynamic scoping means the
-            # assignment inside reserve_next targets this local, while RESERVED
-            # (never declared local) stays the shared global.
-            local NEXT=""
-            reserve_next
-            echo "  → renumber package.json + server.json to $NEXT (in place)"
-            # Edit ONLY version-related content on the merged tree — the `version`
-            # fields AND server.json's @leadbay/mcp@<major.minor> npx pins (in
-            # runtimeArguments values + env-var descriptions). The pins must track
-            # NEXT's major.minor: version_diff_only treats pin drift as version-
-            # related/safe, so a minor-crossing renumber (e.g. 0.23 → 0.24) that
-            # rewrote only the numeric version would leave stale 0.23 pins and fail
-            # audit_version_files. Everything else the PR set is preserved.
+            # If this PR is ALREADY at a valid, unique version strictly above main,
+            # keep it — don't reserve a fresh number. Bumping a PR that correctly
+            # sits at e.g. 0.23.15 to 0.23.16 would needlessly invalidate its
+            # matching CHANGELOG header. Only renumber when its version collides
+            # (== main, or shared with another open PR). Read the PR's own version.
+            local cur NEXT=""
+            cur=$(git show "origin/${head}:packages/mcp/package.json" \
+                    | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).version||"")}catch{}})')
+            if ver_gt_main "$cur" && own_version_unique "$cur"; then
+              echo "  version $cur already unique + above main ($MAIN_VER) — keeping it"
+              NEXT="$cur"
+            else
+              # Reserve a version unique to THIS PR (reserve_next sets NEXT and
+              # appends to the global RESERVED). `local NEXT` is safe: bash dynamic
+              # scoping targets this local, while RESERVED (never local) stays global.
+              reserve_next
+            fi
+            echo "  → version files ← main + version $NEXT"
+            # Build the result from MAIN's version files (they hold main's concurrent
+            # non-version changes) and set the version fields + @leadbay/mcp@<maj.min>
+            # npx pins to NEXT. This preserves main's hunks (Finding 9) AND — because
+            # the guard proved the PR added nothing non-version here — loses nothing
+            # from the PR. Pins must track NEXT's line or audit_version_files rejects
+            # a minor-crossing renumber (Finding 6).
+            git show origin/main:packages/mcp/package.json > packages/mcp/package.json
+            git show origin/main:packages/mcp/server.json  > packages/mcp/server.json
             # shellcheck disable=SC2016  # single-quoted JS is intentional
             node -e '
               const fs = require("fs");
@@ -299,13 +318,11 @@ jobs:
               const line = `${maj}.${min}`;
               const pin = (s) => typeof s === "string"
                 ? s.replace(/@leadbay\/mcp@\d+\.\d+/g, `@leadbay/mcp@${line}`) : s;
-              // package.json: version only.
               {
                 const o = JSON.parse(fs.readFileSync("packages/mcp/package.json", "utf8"));
                 if ("version" in o) o.version = next;
                 fs.writeFileSync("packages/mcp/package.json", JSON.stringify(o, null, 2) + "\n");
               }
-              // server.json: version fields + the major.minor pins in prose.
               {
                 const o = JSON.parse(fs.readFileSync("packages/mcp/server.json", "utf8"));
                 if ("version" in o) o.version = next;
@@ -382,16 +399,38 @@ jobs:
           # assigned 0.23.14 too — after either merges, the other has no delta vs
           # main and auto-tag.yml skips its release. Read-only: fetch + git show,
           # no checkout, no mutation.
+          # HEAD_VERS keeps EVERY head's version WITH duplicates (a multiset), so we
+          # can later tell whether a PR's own version is unique among open PRs — a
+          # PR already correctly one patch above main should keep its number rather
+          # than be needlessly bumped (which would invalidate its CHANGELOG header).
+          HEAD_VERS=" "
           while read -r seedhead; do
             [ -z "$seedhead" ] && continue
             git fetch origin "$seedhead" -q 2>/dev/null || continue
             seedver=$(git show "origin/${seedhead}:packages/mcp/package.json" 2>/dev/null \
                         | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).version||"")}catch{}})' 2>/dev/null || true)
-            if [ -n "$seedver" ] && [[ " $RESERVED " != *" $seedver "* ]]; then
+            [ -z "$seedver" ] && continue
+            HEAD_VERS="$HEAD_VERS$seedver "
+            if [[ " $RESERVED " != *" $seedver "* ]]; then
               RESERVED="$RESERVED$seedver "
             fi
           done < <(echo "$prs" | jq -r '.[].headRefName')
           echo "Seeded RESERVED from open PR heads: [$RESERVED]"
+
+          # ver_gt_main: true if $1 is strictly greater than MAIN_VER (semver-ish,
+          # numeric per component). Used to tell "already above main" from "== main".
+          ver_gt_main() {
+            # shellcheck disable=SC2016  # single-quoted JS is intentional
+            node -e 'const a=process.argv[1].split(".").map(Number),b=process.argv[2].split(".").map(Number);for(let i=0;i<3;i++){if((a[i]||0)>(b[i]||0))process.exit(0);if((a[i]||0)<(b[i]||0))process.exit(1)}process.exit(1)' "$1" "$MAIN_VER"
+          }
+          # own_version_unique: true if version $1 is carried by at most ONE open PR
+          # head (i.e. this PR's own, not also held by another). Counts occurrences
+          # in the HEAD_VERS multiset.
+          own_version_unique() {
+            local v="$1" c
+            c=$(printf '%s' "$HEAD_VERS" | tr ' ' '\n' | grep -cx -- "$v" || true)
+            [ "${c:-0}" -le 1 ]
+          }
 
           # Feed the loop via process substitution (NOT a pipe) so the loop body
           # runs in THIS shell — otherwise RESERVED (the per-PR version reservation)
@@ -412,14 +451,6 @@ jobs:
             git fetch origin "$HEAD" -q
             git checkout -q -B "$HEAD" "origin/$HEAD"
 
-            # Already contains main? Nothing to do — but clear any stale flag: the
-            # branch is current, so a prior needs-manual-rebase no longer applies.
-            if git merge-base --is-ancestor origin/main HEAD; then
-              echo "  already up to date with main — skip"
-              clear_label "$N"
-              continue
-            fi
-
             # What does the PR's OWN commit range (merge-base..HEAD) touch? Derive
             # from the branch range, NOT `gh pr list --files`: GitHub computes
             # .files against the CURRENT base, so once main ships the same version
@@ -427,10 +458,10 @@ jobs:
             # GitHub DROPS them from the list — a file-list signal would wrongly
             # read "untouched". The branch-range diff is immune to main moving.
             #
-            # Track package/server SEPARATELY from CHANGELOG (Finding: a changelog-
-            # or docs-only PR must NEVER be renumbered — bumping its version would
-            # push an unintended release onto it). Only a package.json/server.json
-            # touch makes a PR eligible for renumbering.
+            # Track package/server SEPARATELY from CHANGELOG (a changelog- or
+            # docs-only PR must NEVER be renumbered — bumping its version would push
+            # an unintended release onto it). Only a package.json/server.json touch
+            # makes a PR eligible for renumbering.
             mb=$(git merge-base origin/main HEAD)
             if git diff --name-only "$mb" HEAD -- \
                  packages/mcp/package.json packages/mcp/server.json | grep -q .; then
@@ -439,6 +470,23 @@ jobs:
               touches_pkg=false
             fi
             echo "  touches_pkg=$touches_pkg (from branch range ${mb:0:7}..HEAD)"
+
+            # Already contains main? Then there's nothing to merge — BUT a release
+            # PR can be up to date and still sit at MAIN_VER (e.g. it merged main in
+            # after another PR shipped the same number). That branch has no version
+            # delta, so on merge auto-tag.yml would skip its release. If it touched
+            # package/server and equals main's version, renumber it in place;
+            # otherwise it's a genuine no-op — just clear any stale flag.
+            if git merge-base --is-ancestor origin/main HEAD; then
+              if [ "$touches_pkg" = "true" ] && [ "$(branch_ver)" = "$MAIN_VER" ]; then
+                echo "  up to date but version == main ($MAIN_VER) — renumbering"
+                renumber_and_push "$N" "$HEAD" || true
+              else
+                echo "  already up to date with main — skip"
+                clear_label "$N"
+              fi
+              continue
+            fi
 
             if git merge --no-edit origin/main >/dev/null 2>&1; then
               # Clean merge. If the PR bumped package/server to the SAME number main
@@ -480,14 +528,10 @@ jobs:
               continue
             fi
 
-            # Only package.json / server.json conflict → deterministic renumber.
-            # Resolve the conflict markers by taking the PR's OWN version files
-            # (origin/$HEAD — the PR's legitimate content, no markers), NOT main's,
-            # so any non-version edits the PR made survive. renumber_and_push then
-            # verifies those files differ from main only by version (else it flags
-            # + aborts) and bumps only the version fields in place.
-            git checkout "origin/$HEAD" -- packages/mcp/package.json packages/mcp/server.json
-            git add packages/mcp/package.json packages/mcp/server.json
+            # Only package.json/server.json conflict → deterministic renumber. The
+            # merge is still paused with markers, but renumber_and_push rebuilds both
+            # files from main + NEXT (it doesn't read the marker'd tree — it guards
+            # on the PR's clean origin/$head blobs), then completes the merge commit.
             renumber_and_push "$N" "$HEAD" || true
           done < <(echo "$prs" | jq -c '.[]')
 
