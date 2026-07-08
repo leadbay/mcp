@@ -111,7 +111,7 @@ describe("bulk_enrich_status — fast path polls to completion (product#3866)", 
     expect(res.credits_remaining).toBeUndefined();
   });
 
-  it("poll 2 reports terminal: all_done=true, credits force-read", async () => {
+  it("poll 2 reports terminal: all_done=true, contacts + credits force-read", async () => {
     const { tracker, bulkId } = await seedLaunchedRecord();
     mockHttp([
       {
@@ -119,6 +119,33 @@ describe("bulk_enrich_status — fast path polls to completion (product#3866)", 
         path: /\/1\.6\/notifications/,
         status: 200,
         body: notificationsPage(false, 2),
+      },
+      // include_contacts:true → the terminal fast path fans out getContacts per
+      // lead (org + paid contact paths). Mock both so the contacts actually come
+      // back and the swallowed-error path can't mask an empty result.
+      {
+        method: "GET",
+        path: /\/1\.6\/leads\/lead-a\/contacts\?IncludeEnriched=true/,
+        status: 200,
+        body: [
+          {
+            id: "c1",
+            first_name: "Alice",
+            last_name: "",
+            email: "alice@x.com",
+            phone_number: null,
+            linkedin_page: null,
+            job_title: "CEO",
+            recommended: true,
+            enrichment: { done: true, credits_used: 1 },
+          },
+        ],
+      },
+      {
+        method: "GET",
+        path: /\/1\.6\/leads\/lead-a\/enrich\/contacts\?IncludeEnriched=true/,
+        status: 200,
+        body: [],
       },
       // Terminal fast path force-reads the post-spend balance via GET /users/me.
       {
@@ -141,6 +168,10 @@ describe("bulk_enrich_status — fast path polls to completion (product#3866)", 
     expect(res.overall_progress.total).toBe(2);
     expect(res.bulk_progress.success_count).toBe(2);
     expect(res.credits_remaining).toBe(42);
+    // The contacts contract this test claims to cover: the enriched contact
+    // actually comes back, not a bare {lead_id}.
+    expect(res.leads[0].contacts).toBeDefined();
+    expect(res.leads[0].contacts[0].email).toBe("alice@x.com");
   });
 
   it("plateau report: include_contacts returns contacts even while in_progress", async () => {

@@ -191,21 +191,21 @@ async function launchOnSelection(
         launched_at: bulkRecord?.launched_at,
         durability: bulkRecord?.durability,
         notification_id: notificationId,
-        message: notificationId
+        // Branch on bulkRecord FIRST: leadbay_bulk_enrich_status needs a real
+        // bulk_id (tracker handle). A notification_id can come back even with no
+        // tracker (legacy / OpenClaw raw-launch fall-through) — in that case
+        // bulk_id is undefined, so the agent must use the per-lead fallback, not
+        // poll a nonexistent bulk_id.
+        message: bulkRecord
           ? "Enrichment job launched (runs async). Do NOT end your turn here — poll " +
             "leadbay_bulk_enrich_status({bulk_id}) until all_done, then report the finished contacts yourself. " +
             "(If you leave the conversation, the completion also surfaces later via _meta.notifications / " +
             "leadbay_account_status.notifications — but for a job you launched this turn, poll it to completion now.)"
-          : bulkRecord
-            ? "Enrichment job launched (runs async). Poll leadbay_bulk_enrich_status({bulk_id}) until all_done — " +
-              "don't end your turn on this ack — then report the finished contacts."
-            : "Enrichment job launched. No bulk_id tracker configured — poll leadbay_get_contacts per lead " +
-              "(re-check every ~30s until contact.enrichment.done flips), then report the results.",
-        next_action: notificationId
-          ? "Poll leadbay_bulk_enrich_status({bulk_id}) in a loop until all_done — OR until overall_progress.done stops climbing across a few polls (some contacts are unresolvable and never flip). Pass include_contacts=true on the read you report from, then report the resolved enrichment in THIS turn (name what landed and what didn't). Do not defer to a later turn."
-          : bulkRecord
-            ? "Poll leadbay_bulk_enrich_status({bulk_id}) until all_done — or until overall_progress.done plateaus (unresolvable contacts never flip). Pass include_contacts=true on the read you report from, then report the resolved enrichment in this turn."
-            : "Re-check via leadbay_research_lead_by_id or leadbay_get_contacts on the leads you care about (every ~30s until contact.enrichment.done flips), then report — don't end your turn waiting.",
+          : "Enrichment job launched. No bulk_id tracker configured — poll leadbay_get_contacts per lead " +
+            "(re-check every ~30s until contact.enrichment.done flips), then report the results.",
+        next_action: bulkRecord
+          ? "Poll leadbay_bulk_enrich_status({bulk_id}) in a loop until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15–30s apart, ~90s–2min elapsed; don't call a plateau from the first back-to-back reads while the backend spins up). Pass include_contacts=true on the read you report from, then report the resolved enrichment in THIS turn (name what landed and what didn't). Do not defer to a later turn."
+          : "Re-check via leadbay_research_lead_by_id or leadbay_get_contacts on the leads you care about (every ~30s until contact.enrichment.done flips), then report — don't end your turn waiting.",
       };
     }
   }

@@ -24,7 +24,7 @@ Some Leadbay tool responses include a `_meta.notifications` array listing **back
 
 - **Previous turn / before an MCP restart** — don't poll. Simply continue the conversation; the next time you call any tool, the completed-work entry appears in `_meta.notifications` (also on `leadbay_account_status.notifications`). This is the ambient push path — leave it to do its job.
 - **This turn (you just launched it)** — do NOT end your turn on the "launched" ack. Stay active and poll the job's status tool in a loop until it reports done, then report the finished result yourself, rather than spinning forever or deferring the result to a later turn. Each status tool has its OWN terminal signal — poll until:
-  - `leadbay_bulk_enrich_status` → `all_done:true` — OR `overall_progress.done` stops climbing across a few polls (some contacts are unresolvable, so `all_done` can stay false forever): report what resolved and name what didn't.
+  - `leadbay_bulk_enrich_status` → `all_done:true` — OR `overall_progress.done` holds steady across several SPACED polls (~15–30s apart) over at least ~90s–2 min of elapsed time (some contacts are unresolvable, so `all_done` can stay false forever). Don't call a plateau from the first few back-to-back reads — early on `done` sits flat while the backend spins up. Once the plateau is real, report what resolved and name what didn't.
   - `leadbay_qualify_status` → `still_running` is empty (also `in_progress:false`): every launched lead has finished or failed.
   - `leadbay_import_status` → `status:"complete"` (or `"failed"`).
 
