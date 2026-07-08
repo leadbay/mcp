@@ -23,6 +23,7 @@ vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
 import { bulkEnrichStatus } from "../../../src/composite/bulk-enrich-status.js";
+import { enrichTitles } from "../../../src/composite/enrich-titles.js";
 import { InMemoryBulkStore } from "../../../src/jobs/bulk-store.js";
 
 const BASE = "https://api-us.leadbay.app";
@@ -441,5 +442,71 @@ describe("bulk_enrich_status — legacy fallback scopes counts to requested titl
     expect(res.overall_progress.total).toBe(1);
     expect(res.overall_progress.done).toBe(0);
     expect(res.all_done).toBe(false);
+  });
+});
+
+describe("enrich_titles — aged pending reuse relaunches instead of reusing", () => {
+  it("an aged (>60s) pending record is retired and a fresh launch is POSTed", async () => {
+    // Codex round 12: an aged pending reuse is ambiguous — it could be a
+    // pre-launch crash (NO backend job exists) or a post-launch markLaunched
+    // failure (job ran). Reusing it and telling the agent "don't relaunch" is
+    // wrong for the crash case. Since re-launch is server-idempotent, an aged
+    // pending must be retired and re-launched. Drive the clock with an injectable
+    // `now` so the seeded pending reads as >60s old on reuse.
+    let clock = 1_000_000_000_000;
+    const tracker = new InMemoryBulkStore({ now: () => clock });
+
+    // Seed a pending record (as if a prior call reserved it then crashed before
+    // /launch). Same fingerprint as the run below → it's the reuse candidate.
+    await tracker.findOrCreatePending({
+      lead_ids: [LEAD_A],
+      titles: ["CEO"],
+      email: true,
+      phone: false,
+      lens_id: LENS_ID,
+      selection_source: "explicit",
+    });
+    // Advance the clock 61s so the reuse classifies it as AGED.
+    clock += 61_000;
+
+    mockHttp([
+      { method: "POST", path: /\/leads\/selection\/select/, status: 204 },
+      {
+        method: "GET",
+        path: "/1.6/leads/selection/enrichment/job_titles",
+        status: 200,
+        body: ["CEO"],
+      },
+      {
+        method: "POST",
+        path: "/1.6/leads/selection/enrichment/preview",
+        status: 200,
+        body: {
+          enrichable_contacts: 3,
+          title_suggestions: [],
+          auto_included_titles: [],
+          previously_enriched_titles: [],
+        },
+      },
+      // The relaunch: if the aged pending were (wrongly) reused, NO /launch would
+      // fire and this script would go unconsumed.
+      { method: "POST", path: "/1.6/leads/selection/enrichment/launch", status: 204 },
+      { method: "POST", path: "/1.6/leads/selection/clear", status: 204 },
+    ]);
+
+    const res: any = await enrichTitles.execute(
+      newClient(),
+      { leadIds: [LEAD_A], lensId: LENS_ID, titles: ["CEO"], email: true, confirm: true },
+      { bulkTracker: tracker }
+    );
+
+    // It relaunched (fresh job), not reused the stale pending.
+    expect(res.mode).toBe("launched");
+    expect(res.launched).toBe(true);
+    // A /launch POST was actually made.
+    const launchCalls = getHttpRequests().filter(
+      (r) => r.method === "POST" && /\/enrichment\/launch/.test(r.path)
+    );
+    expect(launchCalls).toHaveLength(1);
   });
 });

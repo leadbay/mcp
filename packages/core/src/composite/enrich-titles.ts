@@ -75,28 +75,51 @@ async function launchOnSelection(
         bulkReused = res.reused;
         bulkSecondsSinceOriginal = res.seconds_since_original;
 
-        if (bulkReused && res.record.status !== "failed") {
-          // Skip /launch — quota preserved. The original launch's record is
-          // reused verbatim so the agent polls the same bulk_id.
-          //
-          // A reused record can be status:"pending" for TWO very different
-          // reasons, and only one is stuck:
-          //   (a) STUCK — the original launch hit launched_tracker_pending
-          //       (markLaunched threw) and will never heal; bulk_enrich_status
-          //       returns BULK_PENDING forever, so route to the per-lead fallback.
-          //   (b) FRESH concurrent launch — a second identical call arrived while
-          //       the first is still between findOrCreatePending and markLaunched;
-          //       findOrCreatePending returns the first call's pending record as
-          //       the serialization point. This is NORMAL and will flip to
-          //       'launched' momentarily — the agent should just poll
-          //       bulk_enrich_status as usual, NOT be told the job is unhealable.
-          // Distinguish by age: a fresh concurrent pending is seconds old; a
-          // genuinely stuck one has sat past the launch window. Use the same
-          // ~60s boundary as the tracker-pending "restart the MCP" guidance.
-          const STUCK_PENDING_AGE_S = 60;
-          const reusedPending =
-            res.record.status === "pending" &&
-            (bulkSecondsSinceOriginal ?? 0) >= STUCK_PENDING_AGE_S;
+        // An AGED pending reuse is ambiguous and must NOT be reused as-is:
+        //   - pre-launch crash: process died after findOrCreatePending but
+        //     before the /launch POST → NO backend job exists.
+        //   - post-launch markLaunched failure: the job DID run but the tracker
+        //     never flipped to 'launched'.
+        // The record alone can't tell these apart (notification_id is only set
+        // on success). Since re-launch is server-idempotent (backend no-ops
+        // already-enriched contacts — idempotentHint), the safe resolution is to
+        // retire the aged pending and fall through to a fresh launch: correct
+        // whether no job existed (now one does) or one did (backend no-ops, the
+        // tracker reconciles). A FRESH concurrent pending (<60s) is the normal
+        // serialization point between a live first call's findOrCreatePending and
+        // markLaunched — leave it alone and reuse so we don't double-launch.
+        const AGED_PENDING_S = 60;
+        const agedPending =
+          bulkReused &&
+          res.record.status === "pending" &&
+          (bulkSecondsSinceOriginal ?? 0) >= AGED_PENDING_S;
+        if (agedPending) {
+          try {
+            await tracker.markFailed(res.record.bulk_id);
+          } catch (e: any) {
+            ctx?.logger?.warn?.(
+              `enrich_titles: markFailed on aged pending failed: ${e?.message ?? e}`
+            );
+          }
+          bulkReused = false;
+          // Re-reserve a fresh pending record for the relaunch below.
+          const fresh = await tracker.findOrCreatePending({
+            lead_ids: leadIds,
+            titles,
+            email,
+            phone,
+            lens_id: lensId,
+            selection_source: selectionSource,
+          });
+          bulkRecord = {
+            bulk_id: fresh.record.bulk_id,
+            launched_at: fresh.record.launched_at,
+            durability: fresh.record.durability,
+          };
+        } else if (bulkReused && res.record.status !== "failed") {
+          // Reuse verbatim: either 'launched' (poll the same bulk_id) or a FRESH
+          // concurrent 'pending' (<60s) that will flip to launched momentarily —
+          // in both cases the agent polls bulk_enrich_status normally.
           return {
             mode: "already_launched",
             re_used: true,
@@ -110,15 +133,11 @@ async function launchOnSelection(
             email,
             phone,
             preview,
-            message: reusedPending
-              ? "No new enrichment was ordered; quota not spent. An identical bulk was launched " +
-                `${bulkSecondsSinceOriginal ?? 0}s ago, but its tracker record is stuck 'pending' and won't heal — ` +
-                "leadbay_bulk_enrich_status will only return BULK_PENDING for this handle. The backend job did run; track it per-lead instead."
-              : "No new enrichment was ordered; quota not spent. An identical bulk was launched " +
-                `${bulkSecondsSinceOriginal ?? 0}s ago. Poll leadbay_bulk_enrich_status with this bulk_id for results.`,
-            next_action: reusedPending
-              ? "Do NOT poll leadbay_bulk_enrich_status — this bulk_id is stuck 'pending'. Track results per lead via leadbay_get_contacts(leadId) / leadbay_research_lead_by_id for the returned lead_ids (re-check every ~30s until contact.enrichment.done flips), stop once the done set plateaus (~90s–2min), then report the resolved contacts and name the rest. Do not relaunch."
-              : "Poll leadbay_bulk_enrich_status({bulk_id}) until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15–30s apart, ~90s–2min elapsed; unresolvable contacts never flip, so a reused bulk can stay all_done:false forever). include_contacts=true on the read you report from, then report the resolved enrichment in this turn — don't end your turn waiting or spin forever.",
+            message:
+              "No new enrichment was ordered; quota not spent. An identical bulk was launched " +
+              `${bulkSecondsSinceOriginal ?? 0}s ago. Poll leadbay_bulk_enrich_status with this bulk_id for results.`,
+            next_action:
+              "Poll leadbay_bulk_enrich_status({bulk_id}) until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15–30s apart, ~90s–2min elapsed; unresolvable contacts never flip, so a reused bulk can stay all_done:false forever). include_contacts=true on the read you report from, then report the resolved enrichment in this turn — don't end your turn waiting or spin forever.",
           };
         }
       }
@@ -231,10 +250,15 @@ async function launchOnSelection(
         // bulk_id is undefined, so the agent must use the per-lead fallback, not
         // poll a nonexistent bulk_id.
         message: bulkRecord
-          ? "Enrichment job launched (runs async). Do NOT end your turn here — poll " +
-            "leadbay_bulk_enrich_status({bulk_id}) until all_done, then report the finished contacts yourself. " +
-            "(If you leave the conversation, the completion also surfaces later via _meta.notifications / " +
-            "leadbay_account_status.notifications — but for a job you launched this turn, poll it to completion now.)"
+          ? notificationId
+            ? "Enrichment job launched (runs async). Do NOT end your turn here — poll " +
+              "leadbay_bulk_enrich_status({bulk_id}) until all_done, then report the finished contacts yourself. " +
+              "(If you leave the conversation, the completion also surfaces later via _meta.notifications / " +
+              "leadbay_account_status.notifications — but for a job you launched this turn, poll it to completion now.)"
+            : "Enrichment job launched (runs async). Do NOT end your turn here — poll " +
+              "leadbay_bulk_enrich_status({bulk_id}) until all_done, then report the finished contacts yourself. " +
+              "(No notification id was returned, so there is NO automatic _meta.notifications completion for this job — " +
+              "if you don't finish it this turn, you (or the user) must poll leadbay_bulk_enrich_status({bulk_id}) again later; it will NOT surface on its own.)"
           : "Enrichment job launched. No bulk_id tracker configured — poll leadbay_get_contacts per lead " +
             "(re-check every ~30s until contact.enrichment.done flips), then report the results. Stop once the " +
             "set of done contacts stops growing across a couple of spaced re-checks (~90s–2min elapsed): some " +
