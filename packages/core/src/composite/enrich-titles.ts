@@ -79,13 +79,24 @@ async function launchOnSelection(
           // Skip /launch — quota preserved. The original launch's record is
           // reused verbatim so the agent polls the same bulk_id.
           //
-          // A reused record can still be stuck status:"pending" (the original
-          // launch hit the launched_tracker_pending path — markLaunched threw
-          // and never healed). bulk_enrich_status returns BULK_PENDING for that
-          // handle forever, so a pending reuse must route to the per-lead
-          // fallback exactly like the fresh tracker-pending branch — NOT to
-          // "poll bulk_enrich_status".
-          const reusedPending = res.record.status === "pending";
+          // A reused record can be status:"pending" for TWO very different
+          // reasons, and only one is stuck:
+          //   (a) STUCK — the original launch hit launched_tracker_pending
+          //       (markLaunched threw) and will never heal; bulk_enrich_status
+          //       returns BULK_PENDING forever, so route to the per-lead fallback.
+          //   (b) FRESH concurrent launch — a second identical call arrived while
+          //       the first is still between findOrCreatePending and markLaunched;
+          //       findOrCreatePending returns the first call's pending record as
+          //       the serialization point. This is NORMAL and will flip to
+          //       'launched' momentarily — the agent should just poll
+          //       bulk_enrich_status as usual, NOT be told the job is unhealable.
+          // Distinguish by age: a fresh concurrent pending is seconds old; a
+          // genuinely stuck one has sat past the launch window. Use the same
+          // ~60s boundary as the tracker-pending "restart the MCP" guidance.
+          const STUCK_PENDING_AGE_S = 60;
+          const reusedPending =
+            res.record.status === "pending" &&
+            (bulkSecondsSinceOriginal ?? 0) >= STUCK_PENDING_AGE_S;
           return {
             mode: "already_launched",
             re_used: true,
@@ -205,6 +216,11 @@ async function launchOnSelection(
         titles,
         email,
         phone,
+        // Always surface the resolved lead IDs — in the no-tracker branch there's
+        // no bulk_id to poll, and the caller may have omitted leadIds (wishlist
+        // default), so without these the agent has no identifiers to follow the
+        // job it just launched via leadbay_get_contacts / research_lead_by_id.
+        lead_ids: leadIds,
         bulk_id: bulkRecord?.bulk_id,
         launched_at: bulkRecord?.launched_at,
         durability: bulkRecord?.durability,
@@ -226,7 +242,7 @@ async function launchOnSelection(
             "polling forever.",
         next_action: bulkRecord
           ? "Poll leadbay_bulk_enrich_status({bulk_id}) in a loop until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15–30s apart, ~90s–2min elapsed; don't call a plateau from the first back-to-back reads while the backend spins up). Pass include_contacts=true on the read you report from, then report the resolved enrichment in THIS turn (name what landed and what didn't). Do not defer to a later turn."
-          : "Re-check via leadbay_research_lead_by_id or leadbay_get_contacts on the leads you care about (every ~30s until contact.enrichment.done flips). Stop once the done set stops growing across a couple of spaced re-checks (~90s–2min elapsed) — unresolvable contacts never flip — then report the resolved ones and name the rest. Don't poll forever or end your turn waiting.",
+          : "Re-check via leadbay_research_lead_by_id or leadbay_get_contacts for the returned lead_ids (every ~30s until contact.enrichment.done flips). Stop once the done set stops growing across a couple of spaced re-checks (~90s–2min elapsed) — unresolvable contacts never flip — then report the resolved ones and name the rest. Don't poll forever or end your turn waiting.",
       };
     }
   }
