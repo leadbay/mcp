@@ -8,7 +8,7 @@
  * this process as an MCP server.
  */
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { LeadbayClient, createDefaultBulkStore, NotificationsInbox } from "@leadbay/core";
+import { LeadbayClient, InMemoryBulkStore, NotificationsInbox } from "@leadbay/core";
 import { buildServer } from "../../../src/server.js";
 
 const REGIONS: Record<string, string> = {
@@ -27,7 +27,14 @@ async function main(): Promise<void> {
   // leadbay_bulk_enrich_status can poll it (Workflow 43 / product#3866). Without
   // these, bulk_enrich_status errors "No BulkTracker configured" and the
   // stay-active poll-to-completion behavior is untestable end-to-end.
-  const bulkTracker = await createDefaultBulkStore({});
+  //
+  // Use an in-memory store, NOT createDefaultBulkStore (file-backed at
+  // ~/.leadbay/bulks.json): each eval session spawns a fresh server process, so
+  // a per-process in-memory store isolates runs. A shared file would let the
+  // 5-min idempotency window reuse a prior record on a retry with the same
+  // account/leads/titles — findOrCreatePending would skip the backend launch and
+  // the eval would poll stale results instead of exercising launch-and-poll.
+  const bulkTracker = new InMemoryBulkStore();
   const notificationsInbox = new NotificationsInbox();
   const server = buildServer(client, {
     includeWrite: true,

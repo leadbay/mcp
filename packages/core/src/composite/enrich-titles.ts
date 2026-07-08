@@ -202,10 +202,13 @@ async function launchOnSelection(
             "(If you leave the conversation, the completion also surfaces later via _meta.notifications / " +
             "leadbay_account_status.notifications — but for a job you launched this turn, poll it to completion now.)"
           : "Enrichment job launched. No bulk_id tracker configured — poll leadbay_get_contacts per lead " +
-            "(re-check every ~30s until contact.enrichment.done flips), then report the results.",
+            "(re-check every ~30s until contact.enrichment.done flips), then report the results. Stop once the " +
+            "set of done contacts stops growing across a couple of spaced re-checks (~90s–2min elapsed): some " +
+            "contacts are unresolvable and never flip, so report the resolved ones and name the rest rather than " +
+            "polling forever.",
         next_action: bulkRecord
           ? "Poll leadbay_bulk_enrich_status({bulk_id}) in a loop until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15–30s apart, ~90s–2min elapsed; don't call a plateau from the first back-to-back reads while the backend spins up). Pass include_contacts=true on the read you report from, then report the resolved enrichment in THIS turn (name what landed and what didn't). Do not defer to a later turn."
-          : "Re-check via leadbay_research_lead_by_id or leadbay_get_contacts on the leads you care about (every ~30s until contact.enrichment.done flips), then report — don't end your turn waiting.",
+          : "Re-check via leadbay_research_lead_by_id or leadbay_get_contacts on the leads you care about (every ~30s until contact.enrichment.done flips). Stop once the done set stops growing across a couple of spaced re-checks (~90s–2min elapsed) — unresolvable contacts never flip — then report the resolved ones and name the rest. Don't poll forever or end your turn waiting.",
       };
     }
   }

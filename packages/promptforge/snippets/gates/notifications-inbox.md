@@ -26,8 +26,8 @@ Some Leadbay tool responses include a `_meta.notifications` array listing **back
 - **This turn (you just launched it)** — do NOT end your turn on the "launched" ack. Stay active and poll the job's status tool in a loop until it reports done, then report the finished result yourself, rather than spinning forever or deferring the result to a later turn. Each status tool has its OWN terminal signal — poll until:
   - `leadbay_bulk_enrich_status` → `all_done:true` — OR `overall_progress.done` holds steady across several SPACED polls (~15–30s apart) over at least ~90s–2 min of elapsed time (some contacts are unresolvable, so `all_done` can stay false forever). Don't call a plateau from the first few back-to-back reads — early on `done` sits flat while the backend spins up. Once the plateau is real, report what resolved and name what didn't.
   - `leadbay_qualify_status` → `still_running` is empty (also `in_progress:false`): every launched lead has finished or failed.
-  - `leadbay_import_status` → `status:"complete"` (or `"failed"`).
+  - `leadbay_import_status` → `status:"complete"` (or `"failed"`). BUT imports are the exception to the stay-active loop: a large `leadbay_import_leads({wait_for_completion:false})` is meant to return a handle and resolve over minutes, and the tool does ONE refresh pass per call. Don't block the conversation looping on it — surface the returned progress/handle and let the completion arrive via `_meta.notifications` — UNLESS the user explicitly asked you to wait for the import, or it's a small import that finishes quickly.
 
-  The user should never have to ask "is it done yet?" for work you kicked off in the same turn.
+  For enrichment and qualification (and for imports the user explicitly asked you to wait on), the user should never have to ask "is it done yet?" for work you kicked off in the same turn.
 
 Also surfaced as a top-level `notifications` array on `leadbay_account_status` — same shape, same handling.
