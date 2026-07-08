@@ -251,16 +251,16 @@ async function launchOnSelection(
         // poll a nonexistent bulk_id.
         message: bulkRecord
           ? notificationId
-            ? "Enrichment job launched (runs async). Do NOT end your turn here — poll " +
+            ? "Enrichment job launched (runs async). Unless the user asked NOT to wait (background/'I'll check later'), do NOT end your turn here — poll " +
               "leadbay_bulk_enrich_status({bulk_id}) until all_done OR until progress plateaus (overall_progress.done " +
               "stops climbing across spaced polls — unresolvable contacts keep all_done:false forever), then report the " +
-              "finished contacts yourself. (If you leave the conversation, the completion also surfaces later via " +
-              "_meta.notifications / leadbay_account_status.notifications — but for a job you launched this turn, poll it now.)"
-            : "Enrichment job launched (runs async). Do NOT end your turn here — poll " +
+              "finished contacts yourself. (If the user DID ask not to wait, hand back the bulk_id instead. Either way, if you leave the conversation the completion also surfaces later via " +
+              "_meta.notifications / leadbay_account_status.notifications — but for a job you launched this turn and were NOT told to background, poll it now.)"
+            : "Enrichment job launched (runs async). Unless the user asked NOT to wait (background/'I'll check later'), do NOT end your turn here — poll " +
               "leadbay_bulk_enrich_status({bulk_id}) until all_done OR until progress plateaus (overall_progress.done stops " +
               "climbing across spaced polls — unresolvable contacts keep all_done:false forever), then report the finished " +
               "contacts yourself. (No notification id was returned, so there is NO automatic _meta.notifications completion " +
-              "for this job — if you don't finish it this turn, you (or the user) must poll leadbay_bulk_enrich_status({bulk_id}) again later; it will NOT surface on its own.)"
+              "for this job — if you background it or don't finish this turn, you (or the user) must poll leadbay_bulk_enrich_status({bulk_id}) again later; it will NOT surface on its own.)"
           : "Enrichment job launched. No bulk_id tracker configured — poll leadbay_get_contacts per lead " +
             "(re-check every ~30s; a contact is done only when the REQUESTED channel landed — requested email and/or " +
             "phone_number present — not contact.enrichment.done alone), then report the results. Stop once the " +
