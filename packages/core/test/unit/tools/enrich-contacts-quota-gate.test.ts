@@ -90,4 +90,20 @@ describe("leadbay_enrich_contacts — quota, not credits, is the gate", () => {
     expect(result.triggered).toBe(true);
     expect(result.credits_remaining).toBe("unlimited");
   });
+
+  it("bare call enriches BOTH channels (email + phone default true)", async () => {
+    const { requests } = mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 200, body: meNormalZero },
+      {
+        method: "POST",
+        path: "/1.6/leads/L1/enrich/contacts/C1/enrich?email=true&phone=true",
+        status: 204,
+      },
+    ]);
+    const result: any = await enrichContacts.execute(client(), { leadId: "L1", contactId: "C1" });
+    expect(result.email_requested).toBe(true);
+    expect(result.phone_requested).toBe(true);
+    const paidCall = requests.find((r) => r.path.includes("/enrich/contacts/C1/enrich"));
+    expect(paidCall!.path).toBe("/1.6/leads/L1/enrich/contacts/C1/enrich?email=true&phone=true");
+  });
 });

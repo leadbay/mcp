@@ -35,13 +35,18 @@ export function isUnlimitedAccount(me: UserMePayload): boolean {
   const isInternal = me.email?.toLowerCase().trim().endsWith("@leadbay.ai") ?? false;
   if (!isInternal) return false;
   const billing = me.organization.billing;
-  // Billing ABSENT (older backend, or an internal org that was never wired to
-  // billing) → nothing meters it → unlimited.
+  // Billing ABSENT (older backend, or an internal org never wired to billing)
+  // → nothing meters it → unlimited.
   if (billing == null) return true;
-  // Billing PRESENT: it's disabled only when the backend stamped the
-  // disable_billing seat sentinel (100_000). A real (small) seat count means the
-  // org is metered — freemium or paid — so treat it as a real user.
-  return (billing.seats ?? 0) >= DISABLE_BILLING_SEAT_SENTINEL;
+  // Billing PRESENT but seats ABSENT → unknown/legacy shape (e.g. the pre-3865
+  // internal fixtures that only carried {ai_credits:0}). Treat a missing seat
+  // count as still-unlimited so we don't regress the product#3851 internal
+  // path — only a POSITIVE, small seat count is proof of active metering.
+  if (billing.seats == null) return true;
+  // Billing PRESENT with an explicit seat count: disabled only when the backend
+  // stamped the disable_billing seat sentinel (100_000). A real (small) seat
+  // count means the org is metered — freemium or paid — so treat as a real user.
+  return billing.seats >= DISABLE_BILLING_SEAT_SENTINEL;
 }
 
 // Remaining AI-credit balance from /users/me → organization.billing.ai_credits
