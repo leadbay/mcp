@@ -78,6 +78,14 @@ async function launchOnSelection(
         if (bulkReused && res.record.status !== "failed") {
           // Skip /launch — quota preserved. The original launch's record is
           // reused verbatim so the agent polls the same bulk_id.
+          //
+          // A reused record can still be stuck status:"pending" (the original
+          // launch hit the launched_tracker_pending path — markLaunched threw
+          // and never healed). bulk_enrich_status returns BULK_PENDING for that
+          // handle forever, so a pending reuse must route to the per-lead
+          // fallback exactly like the fresh tracker-pending branch — NOT to
+          // "poll bulk_enrich_status".
+          const reusedPending = res.record.status === "pending";
           return {
             mode: "already_launched",
             re_used: true,
@@ -86,15 +94,20 @@ async function launchOnSelection(
             durability: res.record.durability,
             notification_id: res.record.notification_id ?? null,
             seconds_since_original_launch: bulkSecondsSinceOriginal ?? 0,
+            lead_ids: leadIds,
             titles,
             email,
             phone,
             preview,
-            message:
-              "No new enrichment was ordered; quota not spent. An identical bulk was launched " +
-              `${bulkSecondsSinceOriginal ?? 0}s ago. Poll leadbay_bulk_enrich_status with this bulk_id for results.`,
-            next_action:
-              "Poll leadbay_bulk_enrich_status({bulk_id}) until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15–30s apart, ~90s–2min elapsed; unresolvable contacts never flip, so a reused bulk can stay all_done:false forever). include_contacts=true on the read you report from, then report the resolved enrichment in this turn — don't end your turn waiting or spin forever.",
+            message: reusedPending
+              ? "No new enrichment was ordered; quota not spent. An identical bulk was launched " +
+                `${bulkSecondsSinceOriginal ?? 0}s ago, but its tracker record is stuck 'pending' and won't heal — ` +
+                "leadbay_bulk_enrich_status will only return BULK_PENDING for this handle. The backend job did run; track it per-lead instead."
+              : "No new enrichment was ordered; quota not spent. An identical bulk was launched " +
+                `${bulkSecondsSinceOriginal ?? 0}s ago. Poll leadbay_bulk_enrich_status with this bulk_id for results.`,
+            next_action: reusedPending
+              ? "Do NOT poll leadbay_bulk_enrich_status — this bulk_id is stuck 'pending'. Track results per lead via leadbay_get_contacts(leadId) / leadbay_research_lead_by_id for the returned lead_ids (re-check every ~30s until contact.enrichment.done flips), stop once the done set plateaus (~90s–2min), then report the resolved contacts and name the rest. Do not relaunch."
+              : "Poll leadbay_bulk_enrich_status({bulk_id}) until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15–30s apart, ~90s–2min elapsed; unresolvable contacts never flip, so a reused bulk can stay all_done:false forever). include_contacts=true on the read you report from, then report the resolved enrichment in this turn — don't end your turn waiting or spin forever.",
           };
         }
       }
@@ -168,6 +181,11 @@ async function launchOnSelection(
             bulk_id: bulkRecord.bulk_id,
             launched_at: bulkRecord.launched_at,
             durability: bulkRecord.durability,
+            // Surface the resolved lead IDs so the agent can follow the backend
+            // job per-lead — bulk_enrich_status is unusable for this stuck handle,
+            // and the caller may have omitted leadIds (wishlist default), so
+            // without these it has no identifiers to poll.
+            lead_ids: leadIds,
             titles,
             email,
             phone,
@@ -175,7 +193,7 @@ async function launchOnSelection(
               "Enrichment job launched on the backend, but the local tracker record could not be flipped to 'launched' and will NOT heal on its own this session. " +
               "leadbay_bulk_enrich_status({bulk_id}) will keep returning status:'pending' (BULK_PENDING) — do NOT poll it in a loop expecting completion. The backend job is running regardless; track it per-lead instead.",
             next_action:
-              "Do NOT poll leadbay_bulk_enrich_status — this bulk_id is stuck 'pending' and won't flip. Track results per lead via leadbay_get_contacts(leadId) / leadbay_research_lead_by_id (re-check every ~30s until contact.enrichment.done flips), stop once the done set plateaus (~90s–2min), then report the resolved contacts and name the rest. (The launch already succeeded — do not relaunch.)",
+              "Do NOT poll leadbay_bulk_enrich_status — this bulk_id is stuck 'pending' and won't flip. Track results per lead via leadbay_get_contacts(leadId) / leadbay_research_lead_by_id for the returned lead_ids (re-check every ~30s until contact.enrichment.done flips), stop once the done set plateaus (~90s–2min), then report the resolved contacts and name the rest. (The launch already succeeded — do not relaunch.)",
           };
         }
       }

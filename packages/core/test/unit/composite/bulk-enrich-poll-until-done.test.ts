@@ -364,6 +364,14 @@ describe("bulk_enrich_status — legacy fallback scopes counts to requested titl
         status: 200,
         body: [],
       },
+      // done === total → terminal, so bulkEnrichStatus force-reads the balance
+      // via GET /users/me. Declare it so no undeclared HTTP is swallowed.
+      {
+        method: "GET",
+        path: /\/1\.6\/users\/me/,
+        status: 200,
+        body: { id: "u", organization: { id: "org", billing: { ai_credits: 5 } } },
+      },
     ]);
 
     const res: any = await bulkEnrichStatus.execute(
@@ -376,5 +384,62 @@ describe("bulk_enrich_status — legacy fallback scopes counts to requested titl
     expect(res.overall_progress.total).toBe(1);
     expect(res.overall_progress.done).toBe(1);
     expect(res.leads[0].enrichment_progress).toEqual({ done: 1, total: 1 });
+  });
+
+  it("phone-only run: an email-enriched contact with no phone_number is NOT done yet", async () => {
+    // Channel-aware fallback progress (Codex round 10). A phone-only run on a
+    // title whose contact was previously EMAIL-enriched (enrichment.done:true,
+    // has email, no phone_number) must NOT count as done — otherwise all_done
+    // flips true before the phone reveal lands and the agent reports stale data.
+    const tracker = new InMemoryBulkStore();
+    const { record } = await tracker.findOrCreatePending({
+      lead_ids: [LEAD_A],
+      titles: ["CEO"],
+      email: false,
+      phone: true, // phone-only run
+      lens_id: LENS_ID,
+      selection_source: "explicit",
+    });
+    await tracker.markLaunched(record.bulk_id, null); // legacy fallback
+
+    mockHttp([
+      {
+        method: "GET",
+        path: /\/1\.6\/leads\/lead-a\/contacts\?IncludeEnriched=true/,
+        status: 200,
+        body: [
+          {
+            id: "ceo",
+            first_name: "Cora",
+            last_name: "",
+            email: "ceo@x.com", // email already present from an earlier run
+            phone_number: null, // phone NOT resolved yet — the requested channel
+            linkedin_page: null,
+            job_title: "CEO",
+            recommended: true,
+            enrichment: { done: true, credits_used: 1 },
+          },
+        ],
+      },
+      {
+        method: "GET",
+        path: /\/1\.6\/leads\/lead-a\/enrich\/contacts\?IncludeEnriched=true/,
+        status: 200,
+        body: [],
+      },
+      // Not terminal (done < total) → no /users/me read expected.
+    ]);
+
+    const res: any = await bulkEnrichStatus.execute(
+      newClient(),
+      { bulk_id: record.bulk_id },
+      { bulkTracker: tracker }
+    );
+
+    // The contact is enrichable (matches title) but the phone hasn't landed, so
+    // it counts toward total, NOT done — job is not all_done.
+    expect(res.overall_progress.total).toBe(1);
+    expect(res.overall_progress.done).toBe(0);
+    expect(res.all_done).toBe(false);
   });
 });

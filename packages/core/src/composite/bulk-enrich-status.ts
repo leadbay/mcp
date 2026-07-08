@@ -376,7 +376,20 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
                 (typeof c.job_title === "string" &&
                   wantTitles.has(c.job_title.trim().toLowerCase())))
           );
-          const done = enrichable.filter((c) => c.enrichment?.done === true).length;
+          // "done" must reflect the channels THIS run requested, not just the
+          // contact's enrichment.done flag. A contact previously email-enriched
+          // (enrichment.done:true, has email) but with no phone_number is NOT
+          // done for a phone-only run — counting it would flip all_done:true
+          // before the phone reveal lands. Require every requested channel's
+          // field to be populated (record.email → email; record.phone →
+          // phone_number) in addition to enrichment.done.
+          const channelResolved = (c: any): boolean => {
+            if (c.enrichment?.done !== true) return false;
+            if (record.email && !c.email) return false;
+            if (record.phone && !c.phone_number) return false;
+            return true;
+          };
+          const done = enrichable.filter(channelResolved).length;
           const total = enrichable.length;
           doneSoFar += 1;
           ctx?.progress?.({
