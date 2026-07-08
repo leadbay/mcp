@@ -252,11 +252,17 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
       if (n && n.bulk_progress) {
         const bp = n.bulk_progress;
         const inProgress = n.in_progress;
-        // Once terminal, fetch per-lead contacts so the agent can drive
-        // outreach. Skip the fan-out while still running — the agent will
-        // see the final state surfaced via _meta.notifications anyway.
+        // Fetch per-lead contacts whenever the agent opts in with
+        // include_contacts, even while the notification still reads
+        // in_progress. A job can plateau below 100% forever (unresolvable
+        // titles / no findable email keep it in_progress), and the
+        // stay-active guidance tells the agent to report the RESOLVED
+        // contacts at that plateau — so the report read must return the
+        // contacts that DID land, not bare {lead_id}. The agent only sets
+        // include_contacts on the read it reports from, so the fan-out stays
+        // off the cheap interim polls (it defaults false).
         let leads: Array<{ lead_id: string; contacts?: any[] }> = [];
-        if (!inProgress && includeContacts) {
+        if (includeContacts) {
           leads = await pMap<string, { lead_id: string; contacts?: any[] }>(
             record.lead_ids,
             async (leadId) => {
@@ -276,12 +282,14 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
         ctx?.logger?.info?.(
           `bulk.status_checked_via_notification bulk_id=${record.bulk_id} notification_id=${notifId} done=${bp.success_count}/${bp.total_count} in_progress=${inProgress} wall_ms=${Date.now() - startMs}`
         );
-        // Cost surfacing (AFTER), same contract as the legacy fan-out path:
-        // once terminal, re-read the post-spend AI-credit balance (force=true).
-        // We do NOT sum per-contact spend — getContacts can't scope cost to
-        // this bulk. Skipped while still running to avoid an extra /me call
-        // on every interim poll. Null when billing is unavailable.
-        const creditsRemaining: number | typeof UNLIMITED | null = !inProgress
+        // Cost surfacing (AFTER): re-read the post-spend AI-credit balance
+        // (force=true) on any read the agent will report from — terminal OR a
+        // plateau report (include_contacts). We do NOT sum per-contact spend —
+        // getContacts can't scope cost to this bulk. Skipped on the cheap
+        // interim polls (include_contacts=false, still in_progress) to avoid an
+        // extra /me call each time. Null when billing is unavailable.
+        const isReportRead = !inProgress || includeContacts;
+        const creditsRemaining: number | typeof UNLIMITED | null = isReportRead
           ? await readCreditsRemaining(client, true)
           : null;
         return {
@@ -307,7 +315,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
           bulk_progress: bp,
           in_progress: inProgress,
           all_done: !inProgress,
-          ...(!inProgress ? { credits_remaining: creditsRemaining } : {}),
+          ...(isReportRead ? { credits_remaining: creditsRemaining } : {}),
           ...(bp.quota_hit_count > 0
             ? {
                 quota_hit_hint:
