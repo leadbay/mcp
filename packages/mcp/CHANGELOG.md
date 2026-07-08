@@ -1,5 +1,14 @@
 # Changelog — @leadbay/mcp
 
+## 0.24.0 — 2026-07-08
+
+Enrichment stays active until done, then self-reports — no reprompt (product#3866).
+
+- **`leadbay_enrich_titles` / `leadbay_bulk_enrich_status`** — after launching an async enrichment the agent now stays active in the same turn, polls `leadbay_bulk_enrich_status` until the job is done (`all_done`, or a spaced-poll plateau for contacts the backend can't resolve), then reports the resolved emails/phones + refreshed quota on its own. Previously the agent ended its turn on the launch ack and the user had to reprompt to get results.
+- **`leadbay_bulk_enrich_status`** — the notification fast path now returns per-lead contacts on any `include_contacts` read (not only when terminal), so a plateau report has real contact data; the legacy fan-out scopes progress to the requested titles and channels (email → `email`, phone → `phone_number`), so pre-existing enrichments of other roles/channels no longer inflate a run's counts or flip `all_done` early.
+- **Bulk store** — `notification_id` now survives a file-backed reload (it was previously dropped by `validateRecord`, forcing the slower per-lead fallback on every status check in production).
+- **Edge cases** — bounded polling everywhere (no infinite loops on unresolvable contacts), tracker-pending / aged-pending launches route safely (relaunch is server-idempotent), and explicit "don't wait / background" requests are honored.
+
 ## 0.23.14 — 2026-07-03
 
 Registry: publish the hosted remote endpoint so GitHub Copilot / VS Code can offer Leadbay as a one-click remote connector (product#3861).
