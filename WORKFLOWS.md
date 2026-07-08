@@ -807,7 +807,7 @@ success_criteria:
   - "pulled the current leads first (leadbay_pull_leads) and scoped enrichment to the top 5 — passed the picked leadIds (or candidateCount:5), NOT the tool's default candidate set, so it did not spend quota on more contacts than the user asked for"
   - "launched the paid enrichment via leadbay_enrich_titles after the explicit spend authorization (the user said 'go ahead and spend … and give me the finished results in this same reply, don't make me ask again')"
   - "did NOT stop after the launch ack and force the user to reprompt — stayed active in the same turn"
-  - "polled leadbay_bulk_enrich_status REPEATEDLY (more than once) — kept polling while progress was climbing, rather than checking once and stopping"
+  - "stayed active on leadbay_bulk_enrich_status until the job was done: if the first read was already all_done (small/fast/already-enriched batch) a single poll is correct; otherwise it kept polling while progress was in-progress/climbing rather than reporting off one still-running read"
   - "set include_contacts=true on the read it reported from, to pull the enriched contacts"
   - "reported the resolved enrichment IN THIS SAME REPLY — which contacts now have emails/phones, per-lead counts, and refreshed quota (via leadbay_account_status; did NOT print a 'credits remaining' line) — and did NOT defer the results to a scheduled re-check / later turn (no ScheduleWakeup punt)"
   - "if progress plateaued below 100% (unresolvable contacts), it stopped polling and reported what resolved, naming the ones with no findable email — did NOT spin forever waiting for all_done"
