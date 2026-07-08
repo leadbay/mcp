@@ -3,9 +3,9 @@ name: leadbay_account_status
 kind: tool-description
 short_description: |
   Show the user's account state — admin rights, language, last-active lens,
-  current quota usage across daily/weekly/monthly windows for
-  llm_completion / ai_rescore / web_fetch / LENS_EXTRA_REFILL, plus
-  regeneration flags.
+  and quota usage shown like the web app: a percentage-used + dollar-spend
+  gauge for each daily/weekly/monthly window, with a per-resource breakdown,
+  plus regeneration flags.
 routing:
   triggers:
     - "what's my account status"
@@ -24,20 +24,20 @@ routing:
       - "Show me today's leads."
       - "What should I follow up on?"
 rendering_hint: |
-  Report ONLY user + org by default. NEVER mention the lens unless the user
-  explicitly asks ("which lens?"); a plain "what account" ask is NOT a lens
-  question — omit the lens. When asked, use `last_requested_lens_name`, NEVER
-  the numeric id. If `quota_error` is set, stay SILENT on quota: omit it, do NOT
-  mention an error/401 or tell the user to reconnect (NOT a broken login — same
-  token read user/org fine). Else render `quota.org.resources` (NOT
-  quota.resources) as a table.
+  Report user + org, AND quota whenever readable — include quota even on a plain
+  "what account?" ask. NEVER mention the lens unless asked (use
+  `last_requested_lens_name`, never the id). SILENT on quota ONLY when
+  `quota_error` set, `unlimited_credits` true, or quota null. Else render
+  Daily/Weekly/Monthly from `quota.user` (fall back to `quota.org` if `user`
+  absent) as `$used / $cap (N% used) · resets` (or a resource-count table when
+  `spend[]` empty). Never say raw "credits".
 annotations:
   readOnlyHint: true
   destructiveHint: false
   idempotentHint: true
   openWorldHint: true
 ---
-Show the user's account state — admin rights, language, last-active lens, current quota usage across daily/weekly/monthly windows for llm_completion / ai_rescore / web_fetch / LENS_EXTRA_REFILL resources, and whether the org's intelligence is mid-regeneration. **Pre-check `LENS_EXTRA_REFILL` here before calling `leadbay_extend_lens`** — its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
+Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **Show quota the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in `quota.<group>.spend[]` carries `current_units` / `max_units` in dollar_cents (% used = the ratio, $ = `/100`); the `quota.<group>.resources[]` list gives the per-resource usage breakdown (`count`, plus `max_units` when a per-resource cap exists). **Pre-check the `LENS_EXTRA_REFILL` resource here before calling `leadbay_extend_lens`** — look in **`quota.org.resources[]`** first (admins), and fall back to **`quota.user.resources[]`** when `quota.org` is absent (non-admin callers only get the `user` group), matching the resource type **case-insensitively** (it may arrive as `LENS_EXTRA_REFILL` or `lens_extra_refill`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
 
 **Top-ups always beat waiting.** When a quota window is hit, the user has two options: wait for the window reset (`resets_at` in each quota entry) OR top up AI credits. Top-ups clear the throttle IMMEDIATELY; they are not subject to the same window. When you tell the user about a 429 / quota exhaustion, ALWAYS surface both options — "wait until <reset>" or "top up now (I can generate the link)" — and let them pick. Never default-recommend "wait until tomorrow" when a 30-second top-up unblocks the same operation.
 
@@ -48,6 +48,12 @@ Show the user's account state — admin rights, language, last-active lens, curr
 **`notifications` block.** The response now includes a top-level `notifications` array listing background work the user (or agent) initiated that has since completed (`bulk_enrich`, `bulk_qualify`, `import`). These are signals to revise prior agent outputs the just-finished work might have made stale — they're NOT a pending-task list for the user. After revising (or confirming nothing is affected), call `leadbay_acknowledge_notification(notification_id)`. Full handling protocol below.
 
 {{include:gates/notifications-inbox}}
+
+---
+
+{{include:rendering/quota-windows}}
+
+---
 
 {{include:headers/tool-when-to-use}} at the start of a session to know what the agent can/can't do, after a 429 to explain to the user which resource window was exhausted and when it resets (and to offer the top-up alternative), and after the user signals a top-up so the agent can resume the interrupted workflow.
 

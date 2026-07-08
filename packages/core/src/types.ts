@@ -197,6 +197,11 @@ export interface BillingStatePayload {
   status: string;
   ai_credits: number | null;
   ai_credits_quota: number | null;
+  // Seat count. The backend hard-codes this to 100_000 when the org has
+  // disable_billing=true (OrgPayload.kt) — the wire signal that billing is
+  // OFF and the org is genuinely unlimited (product#3851). A normally-billed
+  // org (freemium or paid) reports its real, small seat count.
+  seats?: number | null;
   freemium?: { daily_quota: number; monthly_quota: number };
 }
 
@@ -451,8 +456,20 @@ export interface ProspectingActionsPayload {
 // ─── Quota status (live endpoint) ─────────────────────────────────────────
 
 export type QuotaWindow = "daily" | "weekly" | "monthly";
-export type QuotaResource = "llm_completion" | "ai_rescore" | "web_fetch" | string;
+export type QuotaResource =
+  | "llm_completion"
+  | "ai_rescore"
+  | "web_fetch"
+  | "lens_extra_refill"
+  | "contact_enrichment_phone"
+  | "contact_enrichment_email"
+  | string;
 
+// The per-window SPEND gauge — this is the numerator/denominator the frontend
+// quota widget renders as a percentage. Both fields are in dollar_cents, so the
+// dollar figure is `/100` and the % used is `current_units / max_units`. Only
+// populated when the org has an OVERALL_SPEND (COST_CENTS) quota provisioned;
+// internal / free orgs return an empty `spend[]` and fall back to `resources[]`.
 export interface QuotaSpend {
   current_units: number;
   max_units: number;
@@ -462,23 +479,32 @@ export interface QuotaSpend {
 
 export interface QuotaResourceUsage {
   resource_type: QuotaResource;
-  // Amount USED in this window — not remaining, not a cap. The API returns no
-  // cap field; never infer "unlimited / no quota" from its absence.
+  // Amount USED in this window — not remaining. The per-resource cap, when a
+  // count-quota is provisioned, is `max_units` (below); it is null/absent when
+  // no such quota exists — never infer "unlimited / no quota" from its absence.
   count: number;
+  // The per-resource cap for this window, or null when no count-quota is
+  // provisioned for this resource. Present on the wire (ResourceEntry.maxUnits).
+  max_units?: number | null;
   window_type: QuotaWindow;
   resets_at: string;
 }
 
 export interface QuotaStatusPayload {
-  plan: string;
+  plan: string | null;
+  // ORG-scope group is only populated for admin users; null otherwise. Prefer
+  // the `user` group (present for every caller) for the caller's own view.
   org: {
     spend: QuotaSpend[];
     resources: QuotaResourceUsage[];
-  };
+  } | null;
   user?: {
     spend?: QuotaSpend[];
     resources?: QuotaResourceUsage[];
-  };
+  } | null;
+  // Top-up balance (dollar_cents). Present only when the org has an active
+  // top-up; null otherwise. Clears throttles immediately, outside the windows.
+  topup?: { remaining_cents: number; total_credit_cents: number } | null;
 }
 
 // ─── File-import wizard payloads (POST /1.6/imports/...) ──────────────────

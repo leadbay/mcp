@@ -57,29 +57,23 @@ export const enrichContacts: Tool<EnrichContactsParams> = {
       );
     }
 
-    // Advisory quota check
+    // Enrichment (email / phone reveals) is gated by QUOTA server-side — the
+    // backend returns 429 / QUOTA_EXCEEDED when the user's daily/weekly/monthly
+    // window is actually exhausted. We do NOT pre-refuse client-side: the old
+    // `billing.ai_credits <= 0` block was wrong (ai_credits is credits
+    // CONSUMED, an accumulator that starts at 0 — not the remaining balance), so
+    // it falsely blocked freemium accounts that had quota left but hadn't spent
+    // yet. The credit balance is advisory context only, never a gate.
     let creditsRemaining: number | typeof UNLIMITED | null = null;
     try {
       const me = await client.request<UserMePayload>("GET", "/users/me");
-      // Internal/unlimited accounts (@leadbay.ai) have billing disabled
-      // server-side and are effectively unlimited, but surface ai_credits as
-      // null/0 on the wire — never hard-refuse them. Surface "unlimited" so the
-      // agent proceeds and stays silent on credits (product#3851).
-      if (isUnlimitedAccount(me)) {
-        creditsRemaining = UNLIMITED;
-      } else {
-        creditsRemaining = me.organization.billing?.ai_credits ?? null;
-        if (typeof creditsRemaining === "number" && creditsRemaining <= 0) {
-          throw client.makeError(
-            "QUOTA_EXCEEDED",
-            "No enrichment credits remaining",
-            "Contact Leadbay support to extend your credit quota"
-          );
-        }
-      }
-    } catch (e: any) {
-      if (e?.code === "QUOTA_EXCEEDED") throw e;
-      // Advisory check failed, proceed anyway — server will enforce
+      // Internal/unlimited accounts (@leadbay.ai, billing disabled) surface as
+      // "unlimited" so the agent stays silent on credits (product#3851).
+      creditsRemaining = isUnlimitedAccount(me)
+        ? UNLIMITED
+        : me.organization.billing?.ai_credits ?? null;
+    } catch {
+      // Advisory read failed — proceed; the server enforces quota via 429.
     }
 
     // Try paid contact enrichment path first

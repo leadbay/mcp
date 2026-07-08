@@ -29,7 +29,7 @@ The user wants more leads on the current lens — a bigger batch than what the s
 
 # PHASE 1 — PRE-CHECK QUOTA
 
-Call `leadbay_account_status` and read `quota.org.resources[]` for the `LENS_EXTRA_REFILL` entry. If `count` is at/over the daily cap and `extra_count` (when provided) wouldn't fit, **skip PHASE 2 and surface the three options via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`) now**: smaller count / wait until `resets_at` / upgrade plan. Don't waste a write call you already know will 429.
+Call `leadbay_account_status` and find the `LENS_EXTRA_REFILL` entry — in `quota.org.resources[]` first, falling back to `quota.user.resources[]` when `quota.org` is absent (non-admin callers only get the `user` group), matching the type case-insensitively (`LENS_EXTRA_REFILL` / `lens_extra_refill`). If `count` is at/over the daily cap and `extra_count` (when provided) wouldn't fit, **skip PHASE 2 and surface the three options via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`) now**: smaller count / wait until `resets_at` / upgrade plan. Don't waste a write call you already know will 429.
 
 # PHASE 2 — PICK SEEDS SILENTLY
 

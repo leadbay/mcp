@@ -23,11 +23,6 @@ const meBodyFull = {
   email: "a@b.com",
   organization: { id: "org-1", billing: { ai_credits: 10 } },
 };
-const meBodyZeroCredits = {
-  id: "u",
-  email: "a@b.com",
-  organization: { id: "org-1", billing: { ai_credits: 0 } },
-};
 
 beforeEach(() => {
   resetHttpMock();
@@ -52,16 +47,11 @@ describe("leadbay_enrich_contacts — validation", () => {
 });
 
 describe("leadbay_enrich_contacts — quota advisory", () => {
-  it("quota 0 credits → throws QUOTA_EXCEEDED without enriching", async () => {
-    const { requests } = mockHttp([
-      { method: "GET", path: "/1.6/users/me", status: 200, body: meBodyZeroCredits },
-    ]);
-    await expect(
-      enrichContacts.execute(client(), { leadId: "L1", contactId: "C1" })
-    ).rejects.toMatchObject({ code: "QUOTA_EXCEEDED" });
-    expect(requests.filter((r) => r.path.includes("/enrich"))).toHaveLength(0);
-  });
-
+  // NOTE (product#3865): the former "0 credits → throws QUOTA_EXCEEDED" test was
+  // removed — the client no longer pre-refuses on ai_credits (it's credits
+  // CONSUMED, not remaining; quota gates server-side). The replacement coverage
+  // ("0 credits → proceeds", "backend 429 propagates") lives in the new file
+  // enrich-contacts-quota-gate.test.ts, per the new-tests-in-new-files rule.
   it("advisory-check failure does NOT block enrichment", async () => {
     mockHttp([
       { method: "GET", path: "/1.6/users/me", status: 500, body: {} },

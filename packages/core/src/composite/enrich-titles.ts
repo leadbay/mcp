@@ -334,7 +334,7 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
       credits_remaining: {
         type: ["number", "string", "null"],
         description:
-          "AI-credit balance BEFORE launching (billing.ai_credits). Present in discover / preview_only / dry_run modes. Pair with enrichable_contacts to tell the user 'you have N credits, this will enrich M contacts' — do NOT estimate an exact cost (the per-contact rate is backend-only). Null = billing unavailable. The string \"unlimited\" = an internal/unlimited account: proceed with enrichment freely and say NOTHING about credits (no balance, no 'unlimited', no 'no credits').",
+          "Advisory-only balance (billing.ai_credits), present in discover / preview_only / dry_run modes. Enrichment is gated by QUOTA (email + phone reveals consume the per-window allowance in leadbay_account_status), NOT by this number — do NOT present it as a spend gate, do NOT say 'you have N credits', and NEVER refuse enrichment because it's low or zero. Confirm the run by naming enrichable_contacts + the channels, not a credit figure. Null = billing unavailable. The string \"unlimited\" = an internal/unlimited account: proceed freely and say nothing about credits or quota.",
       },
       selected_lead_count: {
         type: "number",
@@ -692,13 +692,20 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
     // held (the preview phase already released it), so a user leaving the prompt
     // open never blocks other selection-based composites (product#3848 review).
     const creditsRemaining = await readCreditsRemaining(client);
+    // The caller reached elicitation with NO explicit channel — email is on by
+    // default and phone is off. Rather than silently confirm an email-only run
+    // (which hides the phone option the no-channel flow promises), OFFER the
+    // phone choice IN the prompt: an include_phone toggle the user can flip.
+    // When phone was already explicitly requested we skip the toggle (it's
+    // already decided) and just confirm. `effectivePhone` folds the answer in.
+    let effectivePhone = phone;
     let accepted = false;
     try {
       const answer = await ctx!.elicit!({
         message:
           `Enrich ${preview.enrichable_contacts} contact${preview.enrichable_contacts === 1 ? "" : "s"} — ` +
-          `email${phone ? " + phone" : ""}? This spends credits ` +
-          `(balance: ${creditsRemaining ?? "unknown"}).`,
+          `email is included${phone ? " + phone" : ""}. Email and phone reveals each consume quota.` +
+          (phone ? "" : " Add phone numbers too?"),
         requestedSchema: {
           type: "object",
           properties: {
@@ -706,18 +713,34 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
               type: "boolean",
               title: "Enrich now?",
               description:
-                "Confirm to launch the paid email/phone enrichment on these contacts.",
+                "Confirm to launch enrichment on these contacts (email reveal consumes quota).",
             },
+            // Only offered when phone wasn't already chosen — lets the user opt
+            // into the phone reveal (extra quota) instead of email-only.
+            ...(phone
+              ? {}
+              : {
+                  include_phone: {
+                    type: "boolean",
+                    title: "Also reveal phone numbers?",
+                    description:
+                      "Opt in to phone reveals as well (uses more quota than email alone). Leave off for email only.",
+                  },
+                }),
           },
           required: ["confirm"],
         },
       });
       // accept with confirm !== false → launch. A form host that returns
       // no content on accept is treated as consent (the user clicked OK).
-      accepted =
-        answer.action === "accept" &&
-        (answer.content as { confirm?: unknown } | undefined)?.confirm !==
-          false;
+      const content = answer.content as
+        | { confirm?: unknown; include_phone?: unknown }
+        | undefined;
+      accepted = answer.action === "accept" && content?.confirm !== false;
+      // Fold the user's phone choice in (only when phone wasn't pre-set).
+      if (accepted && !phone && content?.include_phone === true) {
+        effectivePhone = true;
+      }
     } catch (e: any) {
       // Elicit transport failure → don't silently spend; withhold.
       ctx?.logger?.warn?.(
@@ -745,13 +768,14 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
 
     // User accepted the spend. Launch under a FRESH selection lock — the preview
     // phase cleared the selection, so launchEnrichment re-selects the same leads.
+    // Use effectivePhone: the user may have opted into phone via the elicitation.
     return await launchEnrichment(
       client,
       {
         leadIds,
         titles: params.titles!,
         email,
-        phone,
+        phone: effectivePhone,
         lensId,
         selectionSource,
         preview,
