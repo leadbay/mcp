@@ -1,0 +1,236 @@
+name: codex-autofix
+
+# When a PR is marked ready for review, let Codex FIX it — not just review it.
+#
+# Background: the external `chatgpt-codex-connector` GitHub App auto-reviews PRs
+# on ready-for-review, but in review mode it can only COMMENT — it cannot push
+# to a branch (see AGENTS.md "Review guidelines" and pr-sync-on-release.yml).
+# So the "apply the fix" half of the loop was always a human pushing
+# `address Codex round N` commits by hand. This workflow closes that loop: it
+# runs the Codex CLI itself (openai/codex-action → `codex exec`) with write
+# access to the workspace, lets Codex apply the P0/P1 fixes the repo's own
+# AGENTS.md rubric calls for, runs the repo gates, and pushes the fix to the PR
+# head — then re-triggers evaluation (CI + a fresh Codex review).
+#
+# Guarded to no-op until a key is set: without `secrets.OPENAI_API_KEY` the job
+# skips cleanly (never errors), and it skips fork PRs (it holds a write token
+# and runs branch code). Both gates are evaluated in the `preflight` job because
+# `secrets.*` cannot be read in a workflow-level `if:`.
+#
+# Anti-loop / re-evaluation: GitHub SUPPRESSES workflow runs triggered by pushes
+# made with GITHUB_TOKEN (the same rule auto-tag.yml and pr-sync-on-release.yml
+# rely on). So the fix commit we push with GITHUB_TOKEN does NOT fire ci.yml or
+# the Codex review on its own. To actually RE-EVALUATE we therefore act
+# explicitly after pushing: dispatch ci.yml for the head and post an
+# `@codex review` comment so Codex Cloud reviews the new commit. (Upgrade path:
+# push with a PAT / deploy key instead of GITHUB_TOKEN — a non-GITHUB_TOKEN push
+# re-fires ci.yml and the auto-review with no explicit dispatch. Left as a
+# documented option; the default needs no secret beyond OPENAI_API_KEY.)
+
+on:
+  pull_request:
+    types: [ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "PR number to autofix (manual runs)"
+        required: true
+        type: string
+      dry_run:
+        description: "Run Codex + gates but do NOT commit / push / comment"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # push the fix to the PR head branch
+  pull-requests: write # comment on the PR
+  actions: write # dispatch ci.yml on the pushed head to re-evaluate
+
+concurrency:
+  # One autofix per PR at a time; never cancel a run mid-push.
+  group: codex-autofix-${{ github.event.pull_request.number || github.event.inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  # Gate the expensive job on the secret being present and the PR being
+  # same-repo (not a fork). secrets.* is unavailable in a workflow-level `if:`,
+  # so resolve it here and expose a boolean the real job depends on.
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+    steps:
+      - id: gate
+        env:
+          HAS_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
+          # For pull_request events, head.repo.full_name is empty on forks'
+          # cross-repo PRs only when the fork differs from the base repo.
+          IS_SAME_REPO: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$HAS_KEY" = "true" ] && [ "$IS_SAME_REPO" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping codex-autofix: HAS_KEY=$HAS_KEY IS_SAME_REPO=$IS_SAME_REPO"
+          fi
+
+  autofix:
+    needs: preflight
+    if: needs.preflight.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # Resolve the target PR + its head ref for both event types.
+      - name: Resolve PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR_FROM_EVENT: ${{ github.event.pull_request.number }}
+          PR_FROM_INPUT: ${{ github.event.inputs.pr }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            NUM="$PR_FROM_INPUT"
+          else
+            NUM="$PR_FROM_EVENT"
+          fi
+          HEAD_REF=$(gh pr view "$NUM" --repo "$REPO" --json headRefName -q .headRefName)
+          echo "number=$NUM" >> "$GITHUB_OUTPUT"
+          echo "head_ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
+          echo "Autofixing PR #$NUM (head: $HEAD_REF)"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.head_ref }}
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Codex reads the diff + AGENTS.md rubric (via the prompt file) and edits
+      # the workspace. It does NOT commit/push — the action only mutates files;
+      # we gate + push below. OPENAI_API_KEY is consumed only by the action's
+      # proxy, never exposed to a build/test step.
+      - name: Run Codex autofix
+        id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/autofix-prompt.md
+          permission-profile: ":workspace"
+          output-file: ${{ runner.temp }}/codex-final-message.txt
+
+      # Regenerate anything template-derived, then run the exact gates ci.yml
+      # runs. If any gate fails we must NOT push a broken commit.
+      - name: Gates
+        id: gates
+        run: |
+          set -euo pipefail
+          pnpm prompts:build
+          pnpm -r build
+          pnpm -r typecheck
+          pnpm -r test
+
+      # Everything below only runs when the gates passed. Decide whether Codex
+      # actually changed anything, then push + re-evaluate (or just comment).
+      - name: Push fix and re-evaluate
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          FINAL_MSG_FILE: ${{ runner.temp }}/codex-final-message.txt
+        run: |
+          set -euo pipefail
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          FINAL_MSG="(no final message)"
+          if [ -s "$FINAL_MSG_FILE" ]; then
+            FINAL_MSG=$(cat "$FINAL_MSG_FILE")
+          fi
+          BODY_FILE="$(mktemp)"
+
+          # Nothing to push → leave a note so the reviewer knows autofix ran clean.
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Codex made no changes."
+            if [ "$DRY_RUN" != "true" ]; then
+              {
+                printf '%s\n\n' '🤖 **Codex autofix**: no changes needed — gates green.'
+                printf '<details><summary>Codex summary</summary>\n\n%s\n</details>\n' "$FINAL_MSG"
+              } > "$BODY_FILE"
+              gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$BODY_FILE" || true
+            fi
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "fix: apply Codex autofix (P0/P1 per AGENTS.md)" \
+                     -m "Co-Authored-By: Codex <codex@openai.com>"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "DRY_RUN: would push to $HEAD_REF and re-trigger CI + review."
+            git --no-pager show --stat HEAD
+            exit 0
+          fi
+
+          # --force-with-lease: reject rather than clobber if the branch moved
+          # since our checkout (a human pushed in the meantime).
+          if ! git push --force-with-lease="refs/heads/${HEAD_REF}:origin/${HEAD_REF}" \
+                 origin "HEAD:${HEAD_REF}"; then
+            # shellcheck disable=SC2016  # backticked code in the message is literal, not a var
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body \
+              '🤖 **Codex autofix**: prepared a fix but the push was rejected — the branch moved since this run started. Re-run `codex-autofix` (workflow_dispatch) once the branch is settled.' || true
+            exit 1
+          fi
+
+          # Re-evaluate. A GITHUB_TOKEN push does NOT re-fire ci.yml or the Codex
+          # review, so trigger both explicitly.
+          gh workflow run ci.yml --repo "$REPO" --ref "$HEAD_REF" 2>/dev/null \
+            || echo "note: could not dispatch ci.yml (it may lack workflow_dispatch); a human push will re-run CI."
+          {
+            printf '%s\n\n' '🤖 **Codex autofix** pushed a fix and requested re-review.'
+            # shellcheck disable=SC2016  # literal '@codex review' mention, not a var
+            printf '%s\n\n' '@codex review'
+            printf '<details><summary>Codex summary</summary>\n\n%s\n</details>\n' "$FINAL_MSG"
+          } > "$BODY_FILE"
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$BODY_FILE" || true
+
+      # If a gate failed, DON'T fail the whole PR — just report it so a human
+      # can pick it up. Codex's partial work is discarded (never pushed).
+      - name: Report gate failure
+        if: failure() && steps.gates.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          FINAL_MSG_FILE: ${{ runner.temp }}/codex-final-message.txt
+        run: |
+          set -euo pipefail
+          FINAL_MSG="(no final message)"
+          if [ -s "$FINAL_MSG_FILE" ]; then
+            FINAL_MSG=$(cat "$FINAL_MSG_FILE")
+          fi
+          if [ "$DRY_RUN" != "true" ]; then
+            BODY_FILE="$(mktemp)"
+            {
+              # shellcheck disable=SC2016  # backticked code in the message is literal, not a var
+              printf '%s\n\n' '🤖 **Codex autofix**: attempted a fix but the repo gates (`build` / `typecheck` / `test`) did not pass, so nothing was pushed. A human should take this one.'
+              printf '<details><summary>Codex summary</summary>\n\n%s\n</details>\n' "$FINAL_MSG"
+            } > "$BODY_FILE"
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$BODY_FILE" || true
+          fi
