@@ -27,7 +27,7 @@
     "leadbay_token": {
       "type": "string",
       "title": "Leadbay bearer token",
-      "description": "Mint with: npx -y @leadbay/mcp@0.13 login --email <you> --region <us|fr>",
+      "description": "OAuth bearer token, set by the installer. Get one with: npx -y @leadbay/mcp install --oauth",
       "sensitive": true,
       "required": true
     },

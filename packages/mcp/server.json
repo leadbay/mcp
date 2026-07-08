@@ -33,7 +33,7 @@
       "environmentVariables": [
         {
           "name": "LEADBAY_TOKEN",
-          "description": "Bearer token; mint with `npx -y @leadbay/mcp@0.23 login --email <you> --region <us|fr>`.",
+          "description": "OAuth bearer token, set by the installer. Get one with `npx -y @leadbay/mcp install --oauth` (browser sign-in).",
           "isRequired": true,
           "isSecret": true
         },

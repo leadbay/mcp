@@ -22,7 +22,7 @@ Package: `@leadbay/mcp@0.6.2`
 
 Install command: `npx -y @leadbay/mcp@0.6`
 
-Token mint command: `npx -y @leadbay/mcp@0.6 login --email <you> --region <us|fr>`
+Token setup: browser OAuth via `npx -y @leadbay/mcp install --oauth` (the installer signs in and writes the credential).
 
 License: MIT
 
@@ -44,13 +44,13 @@ Leadbay MCP gives Claude access to the same B2B prospecting workflow teams use i
 
 ## Authentication
 
-Authentication type: Bearer token.
+Authentication type: OAuth 2.0 (Authorization Code + PKCE). The resulting bearer token is passed to the MCP server via `LEADBAY_TOKEN`.
 
-OAuth scopes requested: None.
+OAuth scopes requested: None (the token grants access to the authenticated user's own Leadbay account).
 
-OAuth justification: Not applicable. Users mint a Leadbay bearer token locally with the CLI and paste or provide it to Claude through secure connector configuration.
+OAuth flow: The installer (`npx -y @leadbay/mcp install --oauth`) runs a browser sign-in against the regional Leadbay authorization server and writes the credential locally. The hosted remote endpoint performs the same OAuth sign-in in-app on first connect, with no token to copy-paste.
 
-Secret handling: `LEADBAY_TOKEN` is required and should be stored as a secret. The CLI writes credentials to a 0600-mode local file by default and does not print tokens unless the user explicitly passes `--unsafe-print-token`.
+Secret handling: `LEADBAY_TOKEN` is required for the stdio transport and should be stored as a secret. The CLI writes credentials to a 0600-mode local file by default and does not print tokens unless the user explicitly passes `--unsafe-print-token`.
 
 Required environment variables:
 
