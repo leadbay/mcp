@@ -792,16 +792,19 @@ user asks once and gets the completed results without a second prompt.
 workflow_name: Enrichment stays active until done (no reprompt)
 prompt_name: ~
 required_calls:
+  - leadbay_pull_leads
   - leadbay_enrich_titles
   - leadbay_bulk_enrich_status
   - leadbay_account_status
 required_order:
+  - leadbay_pull_leads
   - leadbay_enrich_titles
   - leadbay_bulk_enrich_status
   - leadbay_account_status
 forbidden_calls:
   - leadbay_report_outreach
 success_criteria:
+  - "pulled the current leads first (leadbay_pull_leads) and scoped enrichment to the top 5 — passed the picked leadIds (or candidateCount:5), NOT the tool's default candidate set, so it did not spend quota on more contacts than the user asked for"
   - "launched the paid enrichment via leadbay_enrich_titles after the explicit spend authorization (the user said 'go ahead and spend … and give me the finished results in this same reply, don't make me ask again')"
   - "did NOT stop after the launch ack and force the user to reprompt — stayed active in the same turn"
   - "polled leadbay_bulk_enrich_status REPEATEDLY (more than once) — kept polling while progress was climbing, rather than checking once and stopping"

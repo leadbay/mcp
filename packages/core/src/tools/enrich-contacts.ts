@@ -96,7 +96,7 @@ export const enrichContacts: Tool<EnrichContactsParams> = {
       email_requested: email,
       phone_requested: phone,
       credits_remaining: creditsRemaining,
-      hint: "Enrichment started (runs async). Re-check leadbay_get_contacts every ~30s until contact.enrichment.done is true, then report the result — don't end your turn leaving it for the user to reprompt.",
+      hint: "Enrichment started (runs async). Re-check leadbay_get_contacts every ~30s until contact.enrichment.done is true, then report the result — don't end your turn leaving it for the user to reprompt. But bound the wait: if it hasn't flipped after ~90s–2min of spaced re-checks, the requested email/phone likely can't be resolved — report that plainly (naming the channel that didn't resolve) rather than polling forever.",
     };
   },
 };

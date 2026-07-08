@@ -94,7 +94,7 @@ async function launchOnSelection(
               "No new enrichment was ordered; quota not spent. An identical bulk was launched " +
               `${bulkSecondsSinceOriginal ?? 0}s ago. Poll leadbay_bulk_enrich_status with this bulk_id for results.`,
             next_action:
-              "Poll leadbay_bulk_enrich_status({bulk_id}) until all_done, include_contacts=true on the final read, then report the completed enrichment — don't end your turn waiting.",
+              "Poll leadbay_bulk_enrich_status({bulk_id}) until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15–30s apart, ~90s–2min elapsed; unresolvable contacts never flip, so a reused bulk can stay all_done:false forever). include_contacts=true on the read you report from, then report the resolved enrichment in this turn — don't end your turn waiting or spin forever.",
           };
         }
       }
