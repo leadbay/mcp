@@ -44,13 +44,19 @@ async function readExtraRefillQuota(
       "GET",
       `/organizations/${me.organization.id}/quota_status`,
     );
-    // Match case-insensitively: the backend emits this resource type as
-    // lowercase `lens_extra_refill` on the live wire, though older shapes /
-    // fixtures use uppercase `LENS_EXTRA_REFILL`. An exact-case === would miss
-    // the row and null out used_today/resets_at on the quota_exceeded path.
-    const entry = quota.org?.resources?.find(
-      (r) => r.resource_type?.toUpperCase() === "LENS_EXTRA_REFILL",
-    );
+    // Look in the org group first (admins get it, and the refill quota is
+    // org-scoped there), then fall back to the user group — non-admin callers
+    // only receive `user`, so reading org-only would make the row invisible for
+    // them and skip the pre-check entirely. Match case-insensitively: the
+    // backend emits this resource type as lowercase `lens_extra_refill` on the
+    // live wire, though older shapes / fixtures use uppercase
+    // `LENS_EXTRA_REFILL`. An exact-case === would miss the row and null out
+    // used_today/resets_at on the quota_exceeded path.
+    const isRefill = (r: { resource_type?: string }) =>
+      r.resource_type?.toUpperCase() === "LENS_EXTRA_REFILL";
+    const entry =
+      quota.org?.resources?.find(isRefill) ??
+      quota.user?.resources?.find(isRefill);
     return {
       count: entry?.count ?? null,
       resets_at: entry?.resets_at ?? null,

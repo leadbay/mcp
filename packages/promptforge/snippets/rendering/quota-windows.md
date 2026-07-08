@@ -22,12 +22,16 @@ to reconnect:
 caller). Use `quota.org` only when `quota.user` is absent (admins receive both —
 still show the caller's own `user` view). Call the chosen group `<group>` below.
 
-**Exception — lens-refill pre-checks are ORG-scoped.** This user-preference is for
-the display gauge ONLY. When you are pre-checking the `LENS_EXTRA_REFILL` resource
-before `leadbay_extend_lens`, always read **`quota.org.resources[]`** (never the
-user group) and match the resource type case-insensitively (`LENS_EXTRA_REFILL` /
-`lens_extra_refill`). Reading the user group there can miss an exhausted org
-refill quota and let a write call through that should have been skipped.
+**Exception — lens-refill pre-checks read the refill row, ORG-first.** This
+user-preference is for the display gauge ONLY. When you pre-check the
+`LENS_EXTRA_REFILL` resource before `leadbay_extend_lens`, look for the row in
+**`quota.org.resources[]` first** (admins get the org group, and the refill
+quota is org-scoped there); when `quota.org` is absent — non-admin callers only
+receive the `user` group — fall back to **`quota.user.resources[]`**. Match the
+resource type case-insensitively (`LENS_EXTRA_REFILL` / `lens_extra_refill`).
+Skipping the `user` fallback for non-admins would make the row invisible even
+when the quota data exists, so the agent burns the write and hits the very 429
+this pre-check exists to avoid.
 
 **Per window (fixed order: daily → weekly → monthly).** Match entries by
 `window_type` (`"daily"` / `"weekly"` / `"monthly"`).

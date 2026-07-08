@@ -692,13 +692,20 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
     // held (the preview phase already released it), so a user leaving the prompt
     // open never blocks other selection-based composites (product#3848 review).
     const creditsRemaining = await readCreditsRemaining(client);
+    // The caller reached elicitation with NO explicit channel — email is on by
+    // default and phone is off. Rather than silently confirm an email-only run
+    // (which hides the phone option the no-channel flow promises), OFFER the
+    // phone choice IN the prompt: an include_phone toggle the user can flip.
+    // When phone was already explicitly requested we skip the toggle (it's
+    // already decided) and just confirm. `effectivePhone` folds the answer in.
+    let effectivePhone = phone;
     let accepted = false;
     try {
       const answer = await ctx!.elicit!({
         message:
           `Enrich ${preview.enrichable_contacts} contact${preview.enrichable_contacts === 1 ? "" : "s"} — ` +
-          `${phone ? "email + phone" : "email"}? ` +
-          `${phone ? "Email and phone reveals" : "Email reveals"} consume quota.`,
+          `email is included${phone ? " + phone" : ""}. Email and phone reveals each consume quota.` +
+          (phone ? "" : " Add phone numbers too?"),
         requestedSchema: {
           type: "object",
           properties: {
@@ -706,18 +713,34 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
               type: "boolean",
               title: "Enrich now?",
               description:
-                "Confirm to launch the email/phone enrichment on these contacts (consumes quota).",
+                "Confirm to launch enrichment on these contacts (email reveal consumes quota).",
             },
+            // Only offered when phone wasn't already chosen — lets the user opt
+            // into the phone reveal (extra quota) instead of email-only.
+            ...(phone
+              ? {}
+              : {
+                  include_phone: {
+                    type: "boolean",
+                    title: "Also reveal phone numbers?",
+                    description:
+                      "Opt in to phone reveals as well (uses more quota than email alone). Leave off for email only.",
+                  },
+                }),
           },
           required: ["confirm"],
         },
       });
       // accept with confirm !== false → launch. A form host that returns
       // no content on accept is treated as consent (the user clicked OK).
-      accepted =
-        answer.action === "accept" &&
-        (answer.content as { confirm?: unknown } | undefined)?.confirm !==
-          false;
+      const content = answer.content as
+        | { confirm?: unknown; include_phone?: unknown }
+        | undefined;
+      accepted = answer.action === "accept" && content?.confirm !== false;
+      // Fold the user's phone choice in (only when phone wasn't pre-set).
+      if (accepted && !phone && content?.include_phone === true) {
+        effectivePhone = true;
+      }
     } catch (e: any) {
       // Elicit transport failure → don't silently spend; withhold.
       ctx?.logger?.warn?.(
@@ -745,13 +768,14 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
 
     // User accepted the spend. Launch under a FRESH selection lock — the preview
     // phase cleared the selection, so launchEnrichment re-selects the same leads.
+    // Use effectivePhone: the user may have opted into phone via the elicitation.
     return await launchEnrichment(
       client,
       {
         leadIds,
         titles: params.titles!,
         email,
-        phone,
+        phone: effectivePhone,
         lensId,
         selectionSource,
         preview,
