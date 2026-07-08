@@ -794,9 +794,11 @@ prompt_name: ~
 required_calls:
   - leadbay_enrich_titles
   - leadbay_bulk_enrich_status
+  - leadbay_account_status
 required_order:
   - leadbay_enrich_titles
   - leadbay_bulk_enrich_status
+  - leadbay_account_status
 forbidden_calls:
   - leadbay_report_outreach
 success_criteria:
