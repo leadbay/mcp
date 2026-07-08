@@ -7,8 +7,10 @@
  * stdout/stdin carry the MCP stdio protocol — the claude CLI connects to
  * this process as an MCP server.
  */
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { LeadbayClient, InMemoryBulkStore, NotificationsInbox } from "@leadbay/core";
+import { LeadbayClient, LocalBulkStore, NotificationsInbox } from "@leadbay/core";
 import { buildServer } from "../../../src/server.js";
 
 const REGIONS: Record<string, string> = {
@@ -28,13 +30,21 @@ async function main(): Promise<void> {
   // these, bulk_enrich_status errors "No BulkTracker configured" and the
   // stay-active poll-to-completion behavior is untestable end-to-end.
   //
-  // Use an in-memory store, NOT createDefaultBulkStore (file-backed at
-  // ~/.leadbay/bulks.json): each eval session spawns a fresh server process, so
-  // a per-process in-memory store isolates runs. A shared file would let the
-  // 5-min idempotency window reuse a prior record on a retry with the same
-  // account/leads/titles — findOrCreatePending would skip the backend launch and
-  // the eval would poll stale results instead of exercising launch-and-poll.
-  const bulkTracker = new InMemoryBulkStore();
+  // Store selection is a PER-EVAL-SESSION file, not process memory and not the
+  // shared default (~/.leadbay/bulks.json):
+  //   - In-memory would be lost between turns — the live runner spawns a fresh
+  //     server process per user turn, so a multi-turn flow (WF34: turn 2 launches
+  //     enrich_titles, turn 3 polls bulk_enrich_status) would see BULK_NOT_FOUND.
+  //   - The shared default would let the 5-min idempotency window reuse a prior
+  //     record across separate eval sessions, skipping the backend launch.
+  // A path unique per eval session (set by the harness via LEADBAY_BULK_STORE_PATH)
+  // survives across that session's turns while staying isolated from other runs.
+  // Fallback: a per-process file so a single-turn run still works when the harness
+  // didn't set the env var.
+  const bulkStorePath =
+    process.env.LEADBAY_BULK_STORE_PATH ||
+    join(homedir(), ".leadbay", `bulks.eval.${process.pid}.json`);
+  const bulkTracker = new LocalBulkStore({ backend: "file", path: bulkStorePath });
   const notificationsInbox = new NotificationsInbox();
   const server = buildServer(client, {
     includeWrite: true,
