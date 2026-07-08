@@ -1891,7 +1891,7 @@ Specifically for import status:
 // endregion: leadbay_import_status
 
 // region: leadbay_launch_bulk_enrichment
-export const leadbay_launch_bulk_enrichment: string = `Launch a bulk-enrichment job against the current selection. The backend requires \`email=true\` OR \`phone=true\` (both can be true). Returns 204 with no body — there is no bulk_id and no per-job status endpoint. Track results by polling individual leads via leadbay_get_contacts after ~60s; \`contact.enrichment.done\` flips to true. \`dry_run:true\` returns the call shape without contacting the backend.
+export const leadbay_launch_bulk_enrichment: string = `Launch a bulk-enrichment job against the current selection. The backend requires \`email=true\` OR \`phone=true\` (both can be true). Returns 204 with no body — there is no bulk_id and no per-job status endpoint. Track results by polling individual leads via leadbay_get_contacts after ~60s; a contact is done for this run only when the REQUESTED channel landed (requested \`email\` and/or \`phone_number\` present), not \`contact.enrichment.done\` alone (that flag is already true for a contact enriched on the other channel earlier). \`dry_run:true\` returns the call shape without contacting the backend.
 
 WHEN TO USE: low-level.
 
