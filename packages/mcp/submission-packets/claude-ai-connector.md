@@ -22,7 +22,7 @@ Package: `@leadbay/mcp@0.6.2`
 
 Install command: `npx -y @leadbay/mcp@0.6`
 
-Token setup: browser OAuth via `npx -y @leadbay/mcp install --oauth` (the installer signs in and writes the credential).
+Token setup: run the guided installer `npx -y -p @leadbay/mcp@latest installer` and sign in with your browser — it writes the credential for you.
 
 License: MIT
 
@@ -48,7 +48,7 @@ Authentication type: OAuth 2.0 (Authorization Code + PKCE). The resulting bearer
 
 OAuth scopes requested: None (the token grants access to the authenticated user's own Leadbay account).
 
-OAuth flow: The installer (`npx -y @leadbay/mcp install --oauth`) runs a browser sign-in against the regional Leadbay authorization server and writes the credential locally. The hosted remote endpoint performs the same OAuth sign-in in-app on first connect, with no token to copy-paste.
+OAuth flow: The guided installer (`npx -y -p @leadbay/mcp@latest installer`) runs a browser sign-in against the regional Leadbay authorization server and writes the credential locally. The hosted remote endpoint performs the same sign-in in-app on first connect, with no token to copy-paste.
 
 Secret handling: `LEADBAY_TOKEN` is required for the stdio transport and should be stored as a secret. The CLI writes credentials to a 0600-mode local file by default and does not print tokens unless the user explicitly passes `--unsafe-print-token`.
 
