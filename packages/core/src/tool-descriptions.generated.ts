@@ -219,7 +219,12 @@ Some Leadbay tool responses include a \`_meta.notifications\` array listing **ba
 **Poll a job you launched THIS turn; don't poll one from a PREVIOUS turn.** The rule splits by *when* the work was kicked off:
 
 - **Previous turn / before an MCP restart** — don't poll. Simply continue the conversation; the next time you call any tool, the completed-work entry appears in \`_meta.notifications\` (also on \`leadbay_account_status.notifications\`). This is the ambient push path — leave it to do its job.
-- **This turn (you just launched it)** — do NOT end your turn on the "launched" ack. Stay active and poll the job's status tool (\`leadbay_bulk_enrich_status\`, \`leadbay_qualify_status\`, \`leadbay_import_status\`) in a loop until it reports done, then report the finished result yourself. "Done" means \`all_done\` — or, if progress plateaus (the \`done\` count stops climbing across a few polls because some items are unresolvable), the resolvable set is complete: report what landed and name what didn't, rather than spinning forever or deferring the result to a later turn. The user should never have to ask "is it done yet?" for work you kicked off in the same turn.
+- **This turn (you just launched it)** — do NOT end your turn on the "launched" ack. Stay active and poll the job's status tool in a loop until it reports done, then report the finished result yourself, rather than spinning forever or deferring the result to a later turn. Each status tool has its OWN terminal signal — poll until:
+  - \`leadbay_bulk_enrich_status\` → \`all_done:true\` — OR \`overall_progress.done\` stops climbing across a few polls (some contacts are unresolvable, so \`all_done\` can stay false forever): report what resolved and name what didn't.
+  - \`leadbay_qualify_status\` → \`still_running\` is empty (also \`in_progress:false\`): every launched lead has finished or failed.
+  - \`leadbay_import_status\` → \`status:"complete"\` (or \`"failed"\`).
+
+  The user should never have to ask "is it done yet?" for work you kicked off in the same turn.
 
 Also surfaced as a top-level \`notifications\` array on \`leadbay_account_status\` — same shape, same handling.
 
