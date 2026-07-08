@@ -20,6 +20,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync, openSync, writeSync, closeSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
 import { randomUUID, createHash } from "node:crypto";
 import type {
   MCPEvidence,
@@ -110,6 +111,7 @@ function writeMcpConfig(
   tmpDir: string,
   token: string,
   region: string,
+  bulkStorePath: string,
 ): string {
   const configPath = join(tmpDir, "mcp-config.json");
   const tsxBin = findTsx();
@@ -121,6 +123,13 @@ function writeMcpConfig(
         env: {
           LEADBAY_TOKEN: token,
           LEADBAY_REGION: region,
+          // Session-scoped bulk-store path so the file survives across the
+          // fresh-per-turn MCP server processes. Without this, a multi-turn
+          // flow (WF34: turn 2 launches enrich_titles, turn 3 polls
+          // bulk_enrich_status) would BULK_NOT_FOUND because each turn's server
+          // falls back to a per-process path. Keyed on session_id → stable
+          // across the session's turns, isolated from other sessions.
+          LEADBAY_BULK_STORE_PATH: bulkStorePath,
         },
       },
     },
@@ -407,7 +416,10 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
   try {
     rawLogFd = openSync(rawLogPath, "w");
     stderrFd = openSync(stderrLogPath, "w");
-    const mcpConfigPath = writeMcpConfig(tmpDir, token, region);
+    // Session-scoped bulk-store file: stable across this session's per-turn
+    // server processes (multi-turn launch→poll), isolated from other sessions.
+    const bulkStorePath = join(homedir(), ".leadbay", `bulks.eval.${session_id}.json`);
+    const mcpConfigPath = writeMcpConfig(tmpDir, token, region, bulkStorePath);
     const evalSettingsPath = writeEvalSettings(tmpDir);
 
     const modelFlag = opts.model ?? process.env.EVAL_MODEL;
