@@ -252,13 +252,15 @@ async function launchOnSelection(
         message: bulkRecord
           ? notificationId
             ? "Enrichment job launched (runs async). Do NOT end your turn here — poll " +
-              "leadbay_bulk_enrich_status({bulk_id}) until all_done, then report the finished contacts yourself. " +
-              "(If you leave the conversation, the completion also surfaces later via _meta.notifications / " +
-              "leadbay_account_status.notifications — but for a job you launched this turn, poll it to completion now.)"
+              "leadbay_bulk_enrich_status({bulk_id}) until all_done OR until progress plateaus (overall_progress.done " +
+              "stops climbing across spaced polls — unresolvable contacts keep all_done:false forever), then report the " +
+              "finished contacts yourself. (If you leave the conversation, the completion also surfaces later via " +
+              "_meta.notifications / leadbay_account_status.notifications — but for a job you launched this turn, poll it now.)"
             : "Enrichment job launched (runs async). Do NOT end your turn here — poll " +
-              "leadbay_bulk_enrich_status({bulk_id}) until all_done, then report the finished contacts yourself. " +
-              "(No notification id was returned, so there is NO automatic _meta.notifications completion for this job — " +
-              "if you don't finish it this turn, you (or the user) must poll leadbay_bulk_enrich_status({bulk_id}) again later; it will NOT surface on its own.)"
+              "leadbay_bulk_enrich_status({bulk_id}) until all_done OR until progress plateaus (overall_progress.done stops " +
+              "climbing across spaced polls — unresolvable contacts keep all_done:false forever), then report the finished " +
+              "contacts yourself. (No notification id was returned, so there is NO automatic _meta.notifications completion " +
+              "for this job — if you don't finish it this turn, you (or the user) must poll leadbay_bulk_enrich_status({bulk_id}) again later; it will NOT surface on its own.)"
           : "Enrichment job launched. No bulk_id tracker configured — poll leadbay_get_contacts per lead " +
             "(re-check every ~30s until contact.enrichment.done flips), then report the results. Stop once the " +
             "set of done contacts stops growing across a couple of spaced re-checks (~90s–2min elapsed): some " +
