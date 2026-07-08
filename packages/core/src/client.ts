@@ -426,7 +426,7 @@ export class LeadbayClient {
       throw this.makeError(
         "NOT_AUTHENTICATED",
         "Not logged in to Leadbay",
-        "Set LEADBAY_TOKEN in your MCP client config, or run: npx -y @leadbay/mcp install --email <you> --region <us|fr>",
+        "Set LEADBAY_TOKEN in your MCP client config, or run: npx -y -p @leadbay/mcp@latest installer",
         path
       );
     }
@@ -480,7 +480,7 @@ export class LeadbayClient {
       throw this.makeError(
         "NOT_AUTHENTICATED",
         "Not logged in to Leadbay",
-        "Set LEADBAY_TOKEN in your MCP client config, or run: npx -y @leadbay/mcp install --email <you> --region <us|fr>",
+        "Set LEADBAY_TOKEN in your MCP client config, or run: npx -y -p @leadbay/mcp@latest installer",
         path
       );
     }
@@ -534,7 +534,7 @@ export class LeadbayClient {
       throw this.makeError(
         "NOT_AUTHENTICATED",
         "Not logged in to Leadbay",
-        "Set LEADBAY_TOKEN in your MCP client config, or run: npx -y @leadbay/mcp install --email <you> --region <us|fr>",
+        "Set LEADBAY_TOKEN in your MCP client config, or run: npx -y -p @leadbay/mcp@latest installer",
         path
       );
     }
