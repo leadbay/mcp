@@ -121,7 +121,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
       credits_remaining: {
         type: ["number", "string", "null"],
         description:
-          "AI-credit balance re-read after the spend (force-refreshed /users/me → billing.ai_credits). Present only when all_done. Null = billing unavailable (don't read as zero). The string \"unlimited\" = an internal/unlimited account: omit the _(N credits remaining)_ line entirely (there is no finite balance to show). NOTE: a per-run 'credits used' figure is intentionally NOT returned — getContacts can't scope cost to this bulk, so any sum would conflate historical enrichments.",
+          "Advisory internal context only — do NOT display it. It's billing.ai_credits (a CONSUMED counter, not a remaining balance), so it can read 0 on a fresh/quota-backed account and printing _(N credits remaining)_ would falsely say 'out of credits'. Enrichment is gated by QUOTA, not this number. When all_done, show the user's standing by calling leadbay_account_status and rendering its per-window quota gauge — never a credits line here. (\"unlimited\" = internal/unlimited account; still nothing to display.) A per-run 'credits used' figure is intentionally NOT returned — getContacts can't scope cost to this bulk.",
       },
       partial_failures: {
         type: "array",

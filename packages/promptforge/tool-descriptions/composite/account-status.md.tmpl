@@ -25,11 +25,12 @@ routing:
       - "What should I follow up on?"
 rendering_hint: |
   Report user + org, AND quota whenever readable — include quota even on a plain
-  "what account am I connected to?" ask. NEVER mention the lens unless asked (use
-  `last_requested_lens_name`, never the id). Stay SILENT on quota ONLY when
-  `quota_error` is set, `unlimited_credits` is true, or quota is null. Else render
-  Daily/Weekly/Monthly from `user` as `$used / $cap (N% used) · resets` (or a
-  resource-count table when `spend[]` is empty). Never say raw "credits".
+  "what account?" ask. NEVER mention the lens unless asked (use
+  `last_requested_lens_name`, never the id). SILENT on quota ONLY when
+  `quota_error` set, `unlimited_credits` true, or quota null. Else render
+  Daily/Weekly/Monthly from `quota.user` (fall back to `quota.org` if `user`
+  absent) as `$used / $cap (N% used) · resets` (or a resource-count table when
+  `spend[]` empty). Never say raw "credits".
 annotations:
   readOnlyHint: true
   destructiveHint: false

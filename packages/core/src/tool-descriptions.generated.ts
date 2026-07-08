@@ -175,11 +175,12 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 ## RENDER (quick)
 
 Report user + org, AND quota whenever readable — include quota even on a plain
-"what account am I connected to?" ask. NEVER mention the lens unless asked (use
-\`last_requested_lens_name\`, never the id). Stay SILENT on quota ONLY when
-\`quota_error\` is set, \`unlimited_credits\` is true, or quota is null. Else render
-Daily/Weekly/Monthly from \`user\` as \`$used / $cap (N% used) · resets\` (or a
-resource-count table when \`spend[]\` is empty). Never say raw "credits".
+"what account?" ask. NEVER mention the lens unless asked (use
+\`last_requested_lens_name\`, never the id). SILENT on quota ONLY when
+\`quota_error\` set, \`unlimited_credits\` true, or quota null. Else render
+Daily/Weekly/Monthly from \`quota.user\` (fall back to \`quota.org\` if \`user\`
+absent) as \`$used / $cap (N% used) · resets\` (or a resource-count table when
+\`spend[]\` empty). Never say raw "credits".
 
 ---
 
@@ -1197,7 +1198,7 @@ Queue an additive extra-refill on a lens — more leads on the same criteria, wi
 
 **Seeds are optional at the wire level** — omit or empty array → backend falls back to default centroid strategies (same behaviour as a normal fill). The response's \`accepted_seeds\` echoes the subset that passed validation. Prefer the seeded path because it gives the recommender a signal beyond the lens centroid (which it already biases on).
 
-**Quota gate.** Each call is charged against the per-org daily \`LENS_EXTRA_REFILL\` quota at pre-flight time (FREEMIUM=0 / TIER1=150 / TIER2=1000). The **full requested batch** must fit — there is no partial fulfillment. **Pre-check via \`leadbay_account_status\`**: look at \`quota.org.resources[]\` for the \`LENS_EXTRA_REFILL\` entry to see how much was used today and when it resets.
+**Quota gate.** Each call is charged against the per-org daily \`LENS_EXTRA_REFILL\` quota at pre-flight time (FREEMIUM=0 / TIER1=150 / TIER2=1000). The **full requested batch** must fit — there is no partial fulfillment. **Pre-check via \`leadbay_account_status\`**: look for the \`LENS_EXTRA_REFILL\` entry in \`quota.org.resources[]\` first, and fall back to \`quota.user.resources[]\` when \`quota.org\` is absent (non-admin callers only get the \`user\` group). Match the resource type case-insensitively (\`LENS_EXTRA_REFILL\` / \`lens_extra_refill\`). Read \`count\` (used today) and \`resets_at\`.
 
 **Status envelope (translated from raw API errors so the agent routes on \`status\`).**
 
@@ -1650,7 +1651,7 @@ render verbatim.
 // endregion: leadbay_get_qualification_questions
 
 // region: leadbay_get_quota
-export const leadbay_get_quota: string = `Read remaining quota / spend across daily, weekly, and monthly windows for the org's resources (\`llm_completion\`, \`ai_rescore\`, \`web_fetch\`). Each entry shows \`current_units\` vs \`max_units\` and \`resets_at\`.
+export const leadbay_get_quota: string = `Read quota / spend across daily, weekly, and monthly windows. The response has two scope groups: **\`user\`** (present for every caller) and **\`org\`** (admin-only — \`null\` for non-admins). **Read from \`user\` first**, falling back to \`org\` only when \`user\` is absent. Each group carries \`spend[]\` (the dollar-spend gauge: \`current_units\` / \`max_units\` in dollar_cents → % used = the ratio, $ = \`/100\`) and \`resources[]\` (per-resource usage: \`{resource_type, count (used), max_units (cap or null), window_type, resets_at}\`). \`spend[]\` is empty for orgs with no OVERALL_SPEND quota — fall back to the \`resources[]\` counts then. There is also a top-level \`topup\` ({remaining_cents, total_credit_cents}) when present. Resource types may arrive lowercase (\`lens_extra_refill\`) or uppercase — match case-insensitively. Present quota as a percentage / dollar figure, never raw "credits".
 
 WHEN TO USE: after a 429 error, to explain to the user which window was hit and when it resets.
 

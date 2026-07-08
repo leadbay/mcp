@@ -2,15 +2,15 @@
 name: leadbay_get_quota
 kind: tool-description
 short_description: |
-  Read remaining quota / spend across daily, weekly, and monthly windows for
-  the org's resources (llm_completion, ai_rescore, web_fetch).
+  Read quota / spend across daily, weekly, and monthly windows (llm_completion,
+  ai_rescore, web_fetch, enrichment, lens_extra_refill).
 annotations:
   readOnlyHint: true
   destructiveHint: false
   idempotentHint: true
   openWorldHint: true
 ---
-Read remaining quota / spend across daily, weekly, and monthly windows for the org's resources (`llm_completion`, `ai_rescore`, `web_fetch`). Each entry shows `current_units` vs `max_units` and `resets_at`.
+Read quota / spend across daily, weekly, and monthly windows. The response has two scope groups: **`user`** (present for every caller) and **`org`** (admin-only — `null` for non-admins). **Read from `user` first**, falling back to `org` only when `user` is absent. Each group carries `spend[]` (the dollar-spend gauge: `current_units` / `max_units` in dollar_cents → % used = the ratio, $ = `/100`) and `resources[]` (per-resource usage: `{resource_type, count (used), max_units (cap or null), window_type, resets_at}`). `spend[]` is empty for orgs with no OVERALL_SPEND quota — fall back to the `resources[]` counts then. There is also a top-level `topup` ({remaining_cents, total_credit_cents}) when present. Resource types may arrive lowercase (`lens_extra_refill`) or uppercase — match case-insensitively. Present quota as a percentage / dollar figure, never raw "credits".
 
 {{include:headers/tool-when-to-use}} after a 429 error, to explain to the user which window was hit and when it resets.
 

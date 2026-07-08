@@ -52,7 +52,7 @@ Queue an additive extra-refill on a lens — more leads on the same criteria, wi
 
 **Seeds are optional at the wire level** — omit or empty array → backend falls back to default centroid strategies (same behaviour as a normal fill). The response's `accepted_seeds` echoes the subset that passed validation. Prefer the seeded path because it gives the recommender a signal beyond the lens centroid (which it already biases on).
 
-**Quota gate.** Each call is charged against the per-org daily `LENS_EXTRA_REFILL` quota at pre-flight time (FREEMIUM=0 / TIER1=150 / TIER2=1000). The **full requested batch** must fit — there is no partial fulfillment. **Pre-check via `leadbay_account_status`**: look at `quota.org.resources[]` for the `LENS_EXTRA_REFILL` entry to see how much was used today and when it resets.
+**Quota gate.** Each call is charged against the per-org daily `LENS_EXTRA_REFILL` quota at pre-flight time (FREEMIUM=0 / TIER1=150 / TIER2=1000). The **full requested batch** must fit — there is no partial fulfillment. **Pre-check via `leadbay_account_status`**: look for the `LENS_EXTRA_REFILL` entry in `quota.org.resources[]` first, and fall back to `quota.user.resources[]` when `quota.org` is absent (non-admin callers only get the `user` group). Match the resource type case-insensitively (`LENS_EXTRA_REFILL` / `lens_extra_refill`). Read `count` (used today) and `resets_at`.
 
 **Status envelope (translated from raw API errors so the agent routes on `status`).**
 
