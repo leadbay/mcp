@@ -172,10 +172,10 @@ async function launchOnSelection(
             email,
             phone,
             message:
-              "Enrichment job launched on the backend, but the local tracker record could not be flipped to 'launched'. " +
-              "The bulk_id is still valid — leadbay_bulk_enrich_status will return status:'pending' until the tracker heals.",
+              "Enrichment job launched on the backend, but the local tracker record could not be flipped to 'launched' and will NOT heal on its own this session. " +
+              "leadbay_bulk_enrich_status({bulk_id}) will keep returning status:'pending' (BULK_PENDING) — do NOT poll it in a loop expecting completion. The backend job is running regardless; track it per-lead instead.",
             next_action:
-              "Poll leadbay_bulk_enrich_status({bulk_id}) until all_done (it returns status:'pending' until the tracker heals — keep polling), then report the results. If pending persists >60s, restart the MCP.",
+              "Do NOT poll leadbay_bulk_enrich_status — this bulk_id is stuck 'pending' and won't flip. Track results per lead via leadbay_get_contacts(leadId) / leadbay_research_lead_by_id (re-check every ~30s until contact.enrichment.done flips), stop once the done set plateaus (~90s–2min), then report the resolved contacts and name the rest. (The launch already succeeded — do not relaunch.)",
           };
         }
       }

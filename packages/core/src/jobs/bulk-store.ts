@@ -502,6 +502,11 @@ export class LocalBulkStore implements BulkTracker {
       if (typeof r.lens_id !== "number") throw new Error("invalid lens_id");
       if (r.selection_source !== "explicit" && r.selection_source !== "wishlist")
         throw new Error("invalid selection_source");
+      if (
+        r.notification_id != null &&
+        typeof r.notification_id !== "string"
+      )
+        throw new Error("invalid notification_id");
       return {
         kind: "enrich",
         bulk_id: r.bulk_id,
@@ -514,6 +519,13 @@ export class LocalBulkStore implements BulkTracker {
         selection_source: r.selection_source,
         status: r.status,
         idempotency_key: r.idempotency_key,
+        // Preserve the persisted notification_id — dropping it on reload forced
+        // bulk_enrich_status onto the legacy per-lead fallback every time
+        // (the fast path keys off record.notification_id), even in production
+        // where the default store is file-backed.
+        ...(r.notification_id != null
+          ? { notification_id: r.notification_id as string }
+          : {}),
         durability: this.backend,
       };
     }
