@@ -358,7 +358,24 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
         try {
           const out: any = await getContacts.execute(client, { leadId });
           const contacts: any[] = Array.isArray(out?.contacts) ? out.contacts : [];
-          const enrichable = contacts.filter((c) => c && c.enrichment);
+          // Scope the fallback progress to the titles THIS bulk enriched.
+          // getContacts returns the lead's FULL contact list, so a lead with
+          // earlier enriched contacts of other roles (CFO/Sales) would otherwise
+          // inflate this run's done/total. When record.titles is set, count only
+          // contacts whose job_title matches a requested title (case-insensitive);
+          // if titles is empty (discover / no-title launch), fall back to all
+          // enrichable contacts.
+          const wantTitles = new Set(
+            (record.titles ?? []).map((t) => t.trim().toLowerCase())
+          );
+          const enrichable = contacts.filter(
+            (c) =>
+              c &&
+              c.enrichment &&
+              (wantTitles.size === 0 ||
+                (typeof c.job_title === "string" &&
+                  wantTitles.has(c.job_title.trim().toLowerCase())))
+          );
           const done = enrichable.filter((c) => c.enrichment?.done === true).length;
           const total = enrichable.length;
           doneSoFar += 1;

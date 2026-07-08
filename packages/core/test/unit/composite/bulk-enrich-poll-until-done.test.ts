@@ -309,3 +309,72 @@ describe("bulk_enrich_status — fast path polls to completion (product#3866)", 
     expect([first.all_done, second.all_done]).toEqual([false, true]);
   });
 });
+
+describe("bulk_enrich_status — legacy fallback scopes counts to requested titles", () => {
+  it("does not count pre-existing contacts of other roles in this bulk's progress", async () => {
+    // No notification_id → forces the legacy per-lead fan-out path. The lead
+    // carries a CEO contact (this bulk's title, done) AND a pre-existing CFO
+    // contact enriched in an earlier run (other title, done). overall_progress
+    // must count ONLY the CEO — otherwise a CEO run's done/total is inflated by
+    // the unrelated historical CFO enrichment. (Codex round 8.)
+    const tracker = new InMemoryBulkStore();
+    const { record } = await tracker.findOrCreatePending({
+      lead_ids: [LEAD_A],
+      titles: ["CEO"],
+      email: true,
+      phone: false,
+      lens_id: LENS_ID,
+      selection_source: "explicit",
+    });
+    await tracker.markLaunched(record.bulk_id, null); // null → legacy fan-out
+
+    mockHttp([
+      {
+        method: "GET",
+        path: /\/1\.6\/leads\/lead-a\/contacts\?IncludeEnriched=true/,
+        status: 200,
+        body: [
+          {
+            id: "ceo",
+            first_name: "Cora",
+            last_name: "",
+            email: "ceo@x.com",
+            phone_number: null,
+            linkedin_page: null,
+            job_title: "CEO",
+            recommended: true,
+            enrichment: { done: true, credits_used: 1 },
+          },
+          {
+            id: "cfo",
+            first_name: "Fred",
+            last_name: "",
+            email: "cfo@x.com",
+            phone_number: null,
+            linkedin_page: null,
+            job_title: "CFO",
+            recommended: false,
+            enrichment: { done: true, credits_used: 1 }, // enriched in an earlier run
+          },
+        ],
+      },
+      {
+        method: "GET",
+        path: /\/1\.6\/leads\/lead-a\/enrich\/contacts\?IncludeEnriched=true/,
+        status: 200,
+        body: [],
+      },
+    ]);
+
+    const res: any = await bulkEnrichStatus.execute(
+      newClient(),
+      { bulk_id: record.bulk_id },
+      { bulkTracker: tracker }
+    );
+
+    // Only the CEO counts toward this bulk — NOT the pre-existing CFO.
+    expect(res.overall_progress.total).toBe(1);
+    expect(res.overall_progress.done).toBe(1);
+    expect(res.leads[0].enrichment_progress).toEqual({ done: 1, total: 1 });
+  });
+});
