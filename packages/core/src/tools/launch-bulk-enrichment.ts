@@ -80,8 +80,17 @@ export const launchBulkEnrichment: Tool<LaunchBulkEnrichmentParams> = {
       email,
       phone,
       hint:
-        "Enrichment job launched. Poll individual leads' contacts after ~60s via leadbay_get_contacts(leadId) — " +
-        "contact.enrichment.done flips to true when done.",
+        "Enrichment job launched (runs async). Stay active — poll individual leads' contacts via " +
+        "leadbay_get_contacts(leadId) (re-check every ~30s). A contact is done only when the REQUESTED channel landed — " +
+        [email ? "`email` present" : null, phone ? "`phone_number` present" : null]
+          .filter(Boolean)
+          .join(" AND ") +
+        " — NOT contact.enrichment.done alone (already true for a contact enriched on the other channel earlier). Then report " +
+        "when done. Don't end your turn on this ack and force the user to reprompt. Bound the wait: stop once " +
+        "the done set stops growing across a couple of spaced re-checks (~90s–2min elapsed) — unresolvable " +
+        "contacts never flip — then report the resolved ones and name the rest rather than polling forever. " +
+        "EXCEPTION: if the user explicitly asked NOT to wait (background/'I'll check later'), don't run this loop — " +
+        "say the job launched and that they can re-check the leads' contacts (via leadbay_get_contacts) later.",
     };
   },
 };
