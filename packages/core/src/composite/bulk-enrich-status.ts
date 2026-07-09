@@ -262,6 +262,11 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
         // include_contacts on the read it reports from, so the fan-out stays
         // off the cheap interim polls (it defaults false).
         let leads: Array<{ lead_id: string; contacts?: any[] }> = [];
+        const fastPartialFailures: Array<{
+          lead_id: string;
+          code: string;
+          retry_after?: number;
+        }> = [];
         if (includeContacts) {
           leads = await pMap<string, { lead_id: string; contacts?: any[] }>(
             record.lead_ids,
@@ -269,8 +274,33 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
               try {
                 const out: any = await getContacts.execute(client, { leadId });
                 const contacts: any[] = Array.isArray(out?.contacts) ? out.contacts : [];
+                // getContacts uses allSettled internally — a rejected endpoint
+                // becomes [] but is reported via _fetch_errors. Surface it as a
+                // partial_failure so a transient 429 during a plateau report read
+                // is distinguishable from "nothing resolved" (the agent's plateau
+                // rule then keeps polling / honors retry_after instead of reporting
+                // these leads as permanently unresolvable).
+                const fe: any[] = Array.isArray(out?._fetch_errors)
+                  ? out._fetch_errors
+                  : [];
+                if (fe.length > 0) {
+                  fastPartialFailures.push({
+                    lead_id: leadId,
+                    code: fe[0]?.code ?? "FETCH_ERROR",
+                    ...(fe[0]?.retry_after !== undefined
+                      ? { retry_after: fe[0].retry_after }
+                      : {}),
+                  });
+                }
                 return { lead_id: leadId, contacts };
-              } catch {
+              } catch (err: any) {
+                fastPartialFailures.push({
+                  lead_id: leadId,
+                  code: err?.code ?? "UNKNOWN",
+                  ...(err?._meta?.retry_after !== undefined
+                    ? { retry_after: err._meta.retry_after }
+                    : {}),
+                });
                 return { lead_id: leadId };
               }
             },
@@ -315,6 +345,9 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
           bulk_progress: bp,
           in_progress: inProgress,
           all_done: !inProgress,
+          ...(fastPartialFailures.length > 0
+            ? { partial_failures: fastPartialFailures }
+            : {}),
           ...(isReportRead ? { credits_remaining: creditsRemaining } : {}),
           ...(bp.quota_hit_count > 0
             ? {

@@ -240,6 +240,59 @@ describe("bulk_enrich_status — fast path polls to completion (product#3866)", 
     expect(res.credits_remaining).toBe(7);
   });
 
+  it("fast-path plateau report: a transient 429 on a contact fetch surfaces as partial_failures (not a false empty)", async () => {
+    // Codex round 22: on the notification fast path, include_contacts fans out to
+    // getContacts, which uses allSettled — a rejected endpoint (429) becomes []
+    // instead of throwing. Without surfacing it, a transient error is
+    // indistinguishable from "nothing resolved" and the plateau rule would report
+    // the lead as permanently unresolvable. The fast path must emit
+    // partial_failures so the agent keeps polling / honors retry_after.
+    const { tracker, bulkId } = await seedLaunchedRecord();
+    mockHttp([
+      // in_progress notification (plateau read)
+      {
+        method: "GET",
+        path: /\/1\.6\/notifications/,
+        status: 200,
+        body: notificationsPage(true, 1),
+      },
+      // lead-a org contacts endpoint → transient 429 (getContacts allSettled
+      // turns this into [] + _fetch_errors)
+      {
+        method: "GET",
+        path: /\/1\.6\/leads\/lead-a\/contacts\?IncludeEnriched=true/,
+        status: 429,
+        body: { code: "QUOTA_EXCEEDED" },
+        responseHeaders: { "retry-after": "30" },
+      },
+      // paid contacts endpoint succeeds but empty
+      {
+        method: "GET",
+        path: /\/1\.6\/leads\/lead-a\/enrich\/contacts\?IncludeEnriched=true/,
+        status: 200,
+        body: [],
+      },
+      // report read → force-reads /users/me
+      {
+        method: "GET",
+        path: /\/1\.6\/users\/me/,
+        status: 200,
+        body: { id: "u", organization: { id: "org", billing: { ai_credits: 3 } } },
+      },
+    ]);
+
+    const res: any = await bulkEnrichStatus.execute(
+      newClient(),
+      { bulk_id: bulkId, include_contacts: true },
+      { bulkTracker: tracker }
+    );
+
+    // The transient fetch failure is surfaced — NOT collapsed to a false empty.
+    expect(res.partial_failures).toBeDefined();
+    expect(res.partial_failures.length).toBeGreaterThan(0);
+    expect(res.partial_failures[0].lead_id).toBe(LEAD_A);
+  });
+
   it("interim poll: include_contacts=false while in_progress stays cheap (no contacts, no credit read)", async () => {
     // The other half of the contract: a cheap interim poll must NOT fan out and
     // must NOT read /users/me — only one GET /notifications is consumed.
