@@ -88,7 +88,9 @@ export const launchBulkEnrichment: Tool<LaunchBulkEnrichmentParams> = {
         " — NOT contact.enrichment.done alone (already true for a contact enriched on the other channel earlier). Then report " +
         "when done. Don't end your turn on this ack and force the user to reprompt. Bound the wait: stop once " +
         "the done set stops growing across a couple of spaced re-checks (~90s–2min elapsed) — unresolvable " +
-        "contacts never flip — then report the resolved ones and name the rest rather than polling forever.",
+        "contacts never flip — then report the resolved ones and name the rest rather than polling forever. " +
+        "EXCEPTION: if the user explicitly asked NOT to wait (background/'I'll check later'), don't run this loop — " +
+        "say the job launched and that they can re-check the leads' contacts (via leadbay_get_contacts) later.",
     };
   },
 };

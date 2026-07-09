@@ -101,7 +101,7 @@ export const enrichContacts: Tool<EnrichContactsParams> = {
         [email ? "`email` present" : null, phone ? "`phone_number` present" : null]
           .filter(Boolean)
           .join(" AND ") +
-        " (contact.enrichment.done alone is NOT enough: a contact previously enriched for the other channel already shows done:true, so a phone reveal can be reported before phone_number arrives). Then report the result — don't end your turn leaving it for the user to reprompt. Bound the wait: if the requested field hasn't landed after ~90s–2min of spaced re-checks, it likely can't be resolved — report that plainly (naming the channel that didn't resolve) rather than polling forever.",
+        " (contact.enrichment.done alone is NOT enough: a contact previously enriched for the other channel already shows done:true, so a phone reveal can be reported before phone_number arrives). Then report the result — don't end your turn leaving it for the user to reprompt. Bound the wait: if the requested field hasn't landed after ~90s–2min of spaced re-checks, it likely can't be resolved — report that plainly (naming the channel that didn't resolve) rather than polling forever. EXCEPTION: if the user explicitly asked NOT to wait (background/'I'll check later'), don't run this loop — hand back the leadId + contactId and tell them to ask again / re-check later.",
     };
   },
 };
