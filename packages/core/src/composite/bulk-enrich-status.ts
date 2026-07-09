@@ -252,19 +252,55 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
       if (n && n.bulk_progress) {
         const bp = n.bulk_progress;
         const inProgress = n.in_progress;
-        // Once terminal, fetch per-lead contacts so the agent can drive
-        // outreach. Skip the fan-out while still running — the agent will
-        // see the final state surfaced via _meta.notifications anyway.
+        // Fetch per-lead contacts whenever the agent opts in with
+        // include_contacts, even while the notification still reads
+        // in_progress. A job can plateau below 100% forever (unresolvable
+        // titles / no findable email keep it in_progress), and the
+        // stay-active guidance tells the agent to report the RESOLVED
+        // contacts at that plateau — so the report read must return the
+        // contacts that DID land, not bare {lead_id}. The agent only sets
+        // include_contacts on the read it reports from, so the fan-out stays
+        // off the cheap interim polls (it defaults false).
         let leads: Array<{ lead_id: string; contacts?: any[] }> = [];
-        if (!inProgress && includeContacts) {
+        const fastPartialFailures: Array<{
+          lead_id: string;
+          code: string;
+          retry_after?: number;
+        }> = [];
+        if (includeContacts) {
           leads = await pMap<string, { lead_id: string; contacts?: any[] }>(
             record.lead_ids,
             async (leadId) => {
               try {
                 const out: any = await getContacts.execute(client, { leadId });
                 const contacts: any[] = Array.isArray(out?.contacts) ? out.contacts : [];
+                // getContacts uses allSettled internally — a rejected endpoint
+                // becomes [] but is reported via _fetch_errors. Surface it as a
+                // partial_failure so a transient 429 during a plateau report read
+                // is distinguishable from "nothing resolved" (the agent's plateau
+                // rule then keeps polling / honors retry_after instead of reporting
+                // these leads as permanently unresolvable).
+                const fe: any[] = Array.isArray(out?._fetch_errors)
+                  ? out._fetch_errors
+                  : [];
+                if (fe.length > 0) {
+                  fastPartialFailures.push({
+                    lead_id: leadId,
+                    code: fe[0]?.code ?? "FETCH_ERROR",
+                    ...(fe[0]?.retry_after !== undefined
+                      ? { retry_after: fe[0].retry_after }
+                      : {}),
+                  });
+                }
                 return { lead_id: leadId, contacts };
-              } catch {
+              } catch (err: any) {
+                fastPartialFailures.push({
+                  lead_id: leadId,
+                  code: err?.code ?? "UNKNOWN",
+                  ...(err?._meta?.retry_after !== undefined
+                    ? { retry_after: err._meta.retry_after }
+                    : {}),
+                });
                 return { lead_id: leadId };
               }
             },
@@ -276,12 +312,14 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
         ctx?.logger?.info?.(
           `bulk.status_checked_via_notification bulk_id=${record.bulk_id} notification_id=${notifId} done=${bp.success_count}/${bp.total_count} in_progress=${inProgress} wall_ms=${Date.now() - startMs}`
         );
-        // Cost surfacing (AFTER), same contract as the legacy fan-out path:
-        // once terminal, re-read the post-spend AI-credit balance (force=true).
-        // We do NOT sum per-contact spend — getContacts can't scope cost to
-        // this bulk. Skipped while still running to avoid an extra /me call
-        // on every interim poll. Null when billing is unavailable.
-        const creditsRemaining: number | typeof UNLIMITED | null = !inProgress
+        // Cost surfacing (AFTER): re-read the post-spend AI-credit balance
+        // (force=true) on any read the agent will report from — terminal OR a
+        // plateau report (include_contacts). We do NOT sum per-contact spend —
+        // getContacts can't scope cost to this bulk. Skipped on the cheap
+        // interim polls (include_contacts=false, still in_progress) to avoid an
+        // extra /me call each time. Null when billing is unavailable.
+        const isReportRead = !inProgress || includeContacts;
+        const creditsRemaining: number | typeof UNLIMITED | null = isReportRead
           ? await readCreditsRemaining(client, true)
           : null;
         return {
@@ -307,7 +345,10 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
           bulk_progress: bp,
           in_progress: inProgress,
           all_done: !inProgress,
-          ...(!inProgress ? { credits_remaining: creditsRemaining } : {}),
+          ...(fastPartialFailures.length > 0
+            ? { partial_failures: fastPartialFailures }
+            : {}),
+          ...(isReportRead ? { credits_remaining: creditsRemaining } : {}),
           ...(bp.quota_hit_count > 0
             ? {
                 quota_hit_hint:
@@ -350,8 +391,38 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
         try {
           const out: any = await getContacts.execute(client, { leadId });
           const contacts: any[] = Array.isArray(out?.contacts) ? out.contacts : [];
-          const enrichable = contacts.filter((c) => c && c.enrichment);
-          const done = enrichable.filter((c) => c.enrichment?.done === true).length;
+          // Scope the fallback progress to the titles THIS bulk enriched.
+          // getContacts returns the lead's FULL contact list, so a lead with
+          // earlier enriched contacts of other roles (CFO/Sales) would otherwise
+          // inflate this run's done/total. When record.titles is set, count only
+          // contacts whose job_title matches a requested title (case-insensitive);
+          // if titles is empty (discover / no-title launch), fall back to all
+          // enrichable contacts.
+          const wantTitles = new Set(
+            (record.titles ?? []).map((t) => t.trim().toLowerCase())
+          );
+          const enrichable = contacts.filter(
+            (c) =>
+              c &&
+              c.enrichment &&
+              (wantTitles.size === 0 ||
+                (typeof c.job_title === "string" &&
+                  wantTitles.has(c.job_title.trim().toLowerCase())))
+          );
+          // "done" must reflect the channels THIS run requested, not just the
+          // contact's enrichment.done flag. A contact previously email-enriched
+          // (enrichment.done:true, has email) but with no phone_number is NOT
+          // done for a phone-only run — counting it would flip all_done:true
+          // before the phone reveal lands. Require every requested channel's
+          // field to be populated (record.email → email; record.phone →
+          // phone_number) in addition to enrichment.done.
+          const channelResolved = (c: any): boolean => {
+            if (c.enrichment?.done !== true) return false;
+            if (record.email && !c.email) return false;
+            if (record.phone && !c.phone_number) return false;
+            return true;
+          };
+          const done = enrichable.filter(channelResolved).length;
           const total = enrichable.length;
           doneSoFar += 1;
           ctx?.progress?.({

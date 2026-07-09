@@ -45,7 +45,22 @@ export const getContacts: Tool<GetContactsParams> = {
     const paidContacts =
       paidResult.status === "fulfilled" ? paidResult.value : [];
 
+    // Additive failure signal (ignored by existing callers): allSettled turns a
+    // rejected endpoint into [], so a transient 429 is otherwise indistinguishable
+    // from "no contacts". Surface the rejections so status pollers can emit
+    // partial_failures / honor retry_after instead of reporting a false empty.
+    const fetchErrors: Array<{ endpoint: "org" | "paid"; code?: string; retry_after?: number }> = [];
+    if (orgResult.status === "rejected") {
+      const e: any = orgResult.reason;
+      fetchErrors.push({ endpoint: "org", code: e?.code, retry_after: e?._meta?.retry_after });
+    }
+    if (paidResult.status === "rejected") {
+      const e: any = paidResult.reason;
+      fetchErrors.push({ endpoint: "paid", code: e?.code, retry_after: e?._meta?.retry_after });
+    }
+
     return {
+      ...(fetchErrors.length > 0 ? { _fetch_errors: fetchErrors } : {}),
       contacts: [
         ...orgContacts.map((c) => ({
           id: c.id,
