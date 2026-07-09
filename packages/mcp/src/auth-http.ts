@@ -121,7 +121,7 @@ export interface ProtectedResourceMetadata {
 
 /** RFC 9728 Protected Resource Metadata for a hosted MCP endpoint. `resourceUrl`
  *  is the canonical endpoint the client connected to (e.g.
- *  https://leadbay-mcp-prod.fly.dev/mcp). */
+ *  https://mcp.leadbay.app/mcp). */
 export function protectedResourceMetadata(opts: {
   resourceUrl: string;
   region: "us" | "fr";
