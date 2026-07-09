@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
-export const HOSTED_MCP_URL = "https://leadbay-mcp-prod.fly.dev/mcp";
+export const HOSTED_MCP_URL = "https://mcp.leadbay.app/mcp";
 
 /**
  * Print the actionable fallback block. The guided installer ALWAYS tries to

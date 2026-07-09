@@ -67,13 +67,13 @@ from Anthropic's cloud and runs the OAuth sign-in in-app (no localhost
 callback, no client id/secret to fill in):
 
 1. **Customize → Connectors → "+" → Add custom connector**
-2. **Name:** `Leadbay`  ·  **URL:** `https://leadbay-mcp-prod.fly.dev/mcp`
+2. **Name:** `Leadbay`  ·  **URL:** `https://mcp.leadbay.app/mcp`
 3. **Add**, then complete the Leadbay sign-in prompt.
 
 The same hosted URL works from a terminal that has the Claude Code CLI:
 
 ```bash
-claude mcp add --transport http leadbay https://leadbay-mcp-prod.fly.dev/mcp
+claude mcp add --transport http leadbay https://mcp.leadbay.app/mcp
 ```
 
 In **Claude Cowork with a terminal**, the guided `installer` works as usual —
@@ -183,61 +183,27 @@ Default writes a `0600`-mode JSON file at the platform-correct credentials path 
 
 ## 2. Updating the hosted MCP
 
-The hosted MCP at `https://leadbay-mcp-prod.fly.dev/mcp` can be updated in two ways.
+The hosted MCP at `https://mcp.leadbay.app/mcp` runs self-hosted on the Leadbay
+k3s cluster (`leadbay/infra`). Deploys are automatic and driven off release tags
+— there is nothing to run by hand:
 
-### Deploy from this repo
+1. Bump `packages/mcp/package.json` in a normal PR and merge to `main`.
+   `auto-tag.yml` pushes the matching `mcp-v<ver>` tag.
+2. `build-image.yml` builds this repo's `Dockerfile` and pushes the image to
+   Azure Container Registry as `leadbay.azurecr.io/mcp:<commit-sha>` (and
+   `:latest`).
+3. Argo CD Image Updater in `leadbay/infra` watches for the new SHA-tagged image
+   and rolls the `mcp` workload automatically.
 
-Use this when you want Fly to run the exact code in the current checkout or after merging to `main`:
-
-```bash
-fly deploy --app leadbay-mcp-prod
-```
-
-```bash
-curl https://leadbay-mcp-prod.fly.dev/healthz
-```
-
-This is the current production path. Fly builds the repo `Dockerfile`, bundles `packages/mcp`, and starts `node dist/http-server.js`.
-
-### Deploy from a published npm package
-
-Use this when you want the remote MCP to run a package that has already been published to npm. Prefer pinning an exact version so production deploys are reproducible:
-
-```dockerfile
-FROM node:22-slim
-
-WORKDIR /app
-RUN npm install -g @leadbay/mcp@0.15.0
-
-ENV NODE_ENV=production
-ENV PORT=8080
-EXPOSE 8080
-
-CMD ["leadbay-mcp-http"]
-```
-
-Then point Fly at that Dockerfile and deploy:
-
-```toml
-[build]
-  dockerfile = 'Dockerfile.npm'
-```
+To confirm the live endpoint is serving the expected version:
 
 ```bash
-fly deploy --app leadbay-mcp-prod
+curl https://mcp.leadbay.app/healthz
+# {"ok":true,"version":"<published-version>"}
 ```
 
-```bash
-curl https://leadbay-mcp-prod.fly.dev/healthz
-```
-
-Avoid `@latest` for production unless you intentionally want Fly deploys to pick up whatever version npm currently marks as latest:
-
-```dockerfile
-RUN npm install -g @leadbay/mcp@latest
-```
-
-That is convenient for quick tests, but less safe for production because the deployed version is no longer visible from a repo diff.
+Infrastructure details (workload manifests, Argo CD app, DNS) live in
+`leadbay/infra` — not this repo.
 
 ## 3. Quickstart
 
@@ -317,8 +283,8 @@ Leadbay connection OK.
 Leadbay runs a hosted MCP server that any remote-MCP client can connect to without a local install. Pick the URL for your account's region:
 
 ```
-https://leadbay-mcp-prod.fly.dev/mcp       # US accounts
-https://leadbay-mcp-prod.fly.dev/fr/mcp    # FR accounts
+https://mcp.leadbay.app/mcp       # US accounts
+https://mcp.leadbay.app/fr/mcp    # FR accounts
 ```
 
 - **Claude Desktop**: Settings → Connectors → Add custom connector → paste the URL.
