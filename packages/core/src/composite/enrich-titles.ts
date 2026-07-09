@@ -111,6 +111,34 @@ async function launchOnSelection(
             lens_id: lensId,
             selection_source: selectionSource,
           });
+          // Concurrency guard: between our markFailed and this re-reserve, another
+          // caller retrying the same selection could have created (or be about to
+          // launch) the fresh pending row — findOrCreatePending then returns it
+          // with reused:true. If so, do NOT launch again (that would double-spend
+          // the same selection within the idempotency window). Defer to that
+          // caller's reservation and tell the agent to poll it, exactly like the
+          // normal reuse branch.
+          if (fresh.reused) {
+            return {
+              mode: "already_launched",
+              re_used: true,
+              bulk_id: fresh.record.bulk_id,
+              launched_at: fresh.record.launched_at,
+              durability: fresh.record.durability,
+              notification_id: fresh.record.notification_id ?? null,
+              seconds_since_original_launch: fresh.seconds_since_original ?? 0,
+              lead_ids: leadIds,
+              titles,
+              email,
+              phone,
+              preview,
+              message:
+                "No new enrichment was ordered; quota not spent. A concurrent identical launch is already in flight. " +
+                "Poll leadbay_bulk_enrich_status with this bulk_id for results.",
+              next_action:
+                "Unless the user explicitly asked NOT to wait, poll leadbay_bulk_enrich_status({bulk_id}) until all_done — OR until overall_progress.done plateaus across spaced polls (~90s–2min; unresolvable contacts never flip). include_contacts=true on the read you report from, then report the resolved enrichment in this turn. If the user asked not to wait, hand back the bulk_id instead.",
+            };
+          }
           bulkRecord = {
             bulk_id: fresh.record.bulk_id,
             launched_at: fresh.record.launched_at,
@@ -223,7 +251,7 @@ async function launchOnSelection(
               "Enrichment job launched on the backend, but the local tracker record could not be flipped to 'launched' and will NOT heal on its own this session. " +
               "leadbay_bulk_enrich_status({bulk_id}) will keep returning status:'pending' (BULK_PENDING) — do NOT poll it in a loop expecting completion. The backend job is running regardless; track it per-lead instead.",
             next_action:
-              "Do NOT poll leadbay_bulk_enrich_status — this bulk_id is stuck 'pending' and won't flip. Track results per lead via leadbay_get_contacts(leadId) / leadbay_research_lead_by_id for the returned lead_ids (re-check every ~30s; a contact is done only when the REQUESTED channel landed — requested email and/or phone_number present — not contact.enrichment.done alone), stop once the done set plateaus (~90s–2min), then report the resolved contacts and name the rest. (The launch already succeeded — do not relaunch.)",
+              "Do NOT poll leadbay_bulk_enrich_status — this bulk_id is stuck 'pending' and won't flip. Track results per lead via leadbay_get_contacts(leadId) / leadbay_research_lead_by_id for the returned lead_ids (re-check every ~30s). get_contacts returns each lead's FULL contact list, so only count/report contacts whose job_title matches the enriched titles (" + titles.join(", ") + ") — don't attribute a pre-existing CFO/Sales email to this run — and a contact is done only when the REQUESTED channel landed (requested email and/or phone_number present, not contact.enrichment.done alone). Stop once the done set plateaus (~90s–2min), then report the resolved contacts and name the rest. (The launch already succeeded — do not relaunch.)",
           };
         }
       }
