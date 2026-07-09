@@ -533,10 +533,17 @@ describe("enrich_titles — aged pending reuse relaunches instead of reusing", (
     tracker.findOrCreatePending = async (args: any) => {
       calls += 1;
       const out = await inner.findOrCreatePending(args);
-      // 1st call = the aged-pending lookup (reused:true, aged). 2nd call = the
-      // re-reserve after markFailed — force reused:true to model a concurrent
-      // caller having already created + owning the fresh reservation.
-      if (calls >= 2) return { ...out, reused: true, seconds_since_original: 1 };
+      // 1st call = the aged-pending lookup (returns the seeded aged row). 2nd call
+      // = the re-reserve after markFailed — model a CONCURRENT caller having
+      // already created + owning a DIFFERENT fresh reservation (reused:true, a new
+      // bulk_id distinct from the retired stale one). The guard must defer to it.
+      if (calls >= 2) {
+        return {
+          record: { ...out.record, bulk_id: "concurrent-fresh-bulk-id" },
+          reused: true,
+          seconds_since_original: 1,
+        };
+      }
       return out;
     };
 
@@ -576,5 +583,72 @@ describe("enrich_titles — aged pending reuse relaunches instead of reusing", (
       (r) => r.method === "POST" && /\/enrichment\/launch/.test(r.path)
     );
     expect(launchCalls).toHaveLength(0);
+  });
+
+  it("markFailed throws → same stale row comes back reused → relaunches (not stuck)", async () => {
+    // Codex round 21: if markFailed throws, the aged row survives, so the
+    // re-reserve returns THAT SAME row with reused:true. The guard must NOT defer
+    // to it (that leaves a pre-launch-crash handle stuck 'pending' forever) — it
+    // must relaunch on the stale record instead. Distinguished by bulk_id equality.
+    let clock = 1_000_000_000_000;
+    const inner = new InMemoryBulkStore({ now: () => clock });
+    const { record: aged } = await inner.findOrCreatePending({
+      lead_ids: [LEAD_A],
+      titles: ["CEO"],
+      email: true,
+      phone: false,
+      lens_id: LENS_ID,
+      selection_source: "explicit",
+    });
+    clock += 61_000; // aged
+
+    const tracker: any = Object.create(inner);
+    // markFailed fails to retire the stale row.
+    tracker.markFailed = async () => {
+      throw new Error("store write failed");
+    };
+    // The re-reserve then finds the still-alive stale row → SAME bulk_id, reused.
+    tracker.findOrCreatePending = async () => ({
+      record: aged,
+      reused: true,
+      seconds_since_original: 61,
+    });
+
+    mockHttp([
+      { method: "POST", path: /\/leads\/selection\/select/, status: 204 },
+      {
+        method: "GET",
+        path: "/1.6/leads/selection/enrichment/job_titles",
+        status: 200,
+        body: ["CEO"],
+      },
+      {
+        method: "POST",
+        path: "/1.6/leads/selection/enrichment/preview",
+        status: 200,
+        body: {
+          enrichable_contacts: 3,
+          title_suggestions: [],
+          auto_included_titles: [],
+          previously_enriched_titles: [],
+        },
+      },
+      // The relaunch MUST fire (same-id stale row is not a concurrent reservation).
+      { method: "POST", path: "/1.6/leads/selection/enrichment/launch", status: 204 },
+      { method: "POST", path: "/1.6/leads/selection/clear", status: 204 },
+    ]);
+
+    const res: any = await enrichTitles.execute(
+      newClient(),
+      { leadIds: [LEAD_A], lensId: LENS_ID, titles: ["CEO"], email: true, confirm: true },
+      { bulkTracker: tracker }
+    );
+
+    // Relaunched, not deferred to the stuck handle.
+    expect(res.mode).toBe("launched");
+    const launchCalls = getHttpRequests().filter(
+      (r) => r.method === "POST" && /\/enrichment\/launch/.test(r.path)
+    );
+    expect(launchCalls).toHaveLength(1);
   });
 });

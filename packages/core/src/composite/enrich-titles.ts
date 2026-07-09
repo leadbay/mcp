@@ -94,8 +94,9 @@ async function launchOnSelection(
           res.record.status === "pending" &&
           (bulkSecondsSinceOriginal ?? 0) >= AGED_PENDING_S;
         if (agedPending) {
+          const staleBulkId = res.record.bulk_id;
           try {
-            await tracker.markFailed(res.record.bulk_id);
+            await tracker.markFailed(staleBulkId);
           } catch (e: any) {
             ctx?.logger?.warn?.(
               `enrich_titles: markFailed on aged pending failed: ${e?.message ?? e}`
@@ -113,12 +114,18 @@ async function launchOnSelection(
           });
           // Concurrency guard: between our markFailed and this re-reserve, another
           // caller retrying the same selection could have created (or be about to
-          // launch) the fresh pending row — findOrCreatePending then returns it
-          // with reused:true. If so, do NOT launch again (that would double-spend
-          // the same selection within the idempotency window). Defer to that
-          // caller's reservation and tell the agent to poll it, exactly like the
-          // normal reuse branch.
-          if (fresh.reused) {
+          // launch) a fresh pending row — findOrCreatePending then returns it with
+          // reused:true. If so, do NOT launch again (that would double-spend the
+          // same selection within the idempotency window). Defer to that caller's
+          // reservation and tell the agent to poll it.
+          //
+          // BUT only when it's a GENUINELY NEW row (different bulk_id). If
+          // markFailed threw, the stale aged row survives and findOrCreatePending
+          // returns THAT same row with reused:true — deferring to it would leave a
+          // pre-launch-crash handle stuck 'pending' forever with no backend job.
+          // In that case proceed to (re)launch on the stale record instead (a
+          // relaunch is server-idempotent).
+          if (fresh.reused && fresh.record.bulk_id !== staleBulkId) {
             return {
               mode: "already_launched",
               re_used: true,
@@ -252,7 +259,7 @@ async function launchOnSelection(
               "Enrichment job launched on the backend, but the local tracker record could not be flipped to 'launched' and will NOT heal on its own this session. " +
               "leadbay_bulk_enrich_status({bulk_id}) will keep returning status:'pending' (BULK_PENDING) — do NOT poll it in a loop expecting completion. The backend job is running regardless; track it per-lead instead.",
             next_action:
-              "Do NOT poll leadbay_bulk_enrich_status — this bulk_id is stuck 'pending' and won't flip. Track results per lead via leadbay_get_contacts(leadId) / leadbay_research_lead_by_id for the returned lead_ids (re-check every ~30s). get_contacts returns each lead's FULL contact list, so only count/report contacts whose job_title matches the enriched titles (" + titles.join(", ") + ") — don't attribute a pre-existing CFO/Sales email to this run — and a contact is done only when the REQUESTED channel landed (requested email and/or phone_number present, not contact.enrichment.done alone). Stop once the done set plateaus (~90s–2min), then report the resolved contacts and name the rest. (The launch already succeeded — do not relaunch.)",
+              "Do NOT poll leadbay_bulk_enrich_status — this bulk_id is stuck 'pending' and won't flip. If the user asked NOT to wait (background/'I'll check later'), just hand back the returned lead_ids and let them re-check later. Otherwise track results per lead via leadbay_get_contacts(leadId) / leadbay_research_lead_by_id for the returned lead_ids (re-check every ~30s). get_contacts returns each lead's FULL contact list, so only count/report contacts whose job_title matches the enriched titles (" + titles.join(", ") + ") — don't attribute a pre-existing CFO/Sales email to this run — and a contact is done only when the REQUESTED channel landed (requested email and/or phone_number present, not contact.enrichment.done alone). Stop once the done set plateaus (~90s–2min), then report the resolved contacts and name the rest. (The launch already succeeded — do not relaunch.)",
           };
         }
       }
@@ -290,7 +297,7 @@ async function launchOnSelection(
               "climbing across spaced polls — unresolvable contacts keep all_done:false forever), then report the finished " +
               "contacts yourself. (No notification id was returned, so there is NO automatic _meta.notifications completion " +
               "for this job — if you background it or don't finish this turn, you (or the user) must poll leadbay_bulk_enrich_status({bulk_id}) again later; it will NOT surface on its own.)"
-          : "Enrichment job launched. No bulk_id tracker configured — poll leadbay_get_contacts per lead " +
+          : "Enrichment job launched. No bulk_id tracker configured. Unless the user asked NOT to wait (background/'I'll check later' — in which case hand back the lead_ids and let them re-check later), poll leadbay_get_contacts per lead " +
             "(re-check every ~30s). get_contacts returns each lead's FULL contact list, so only count/report contacts " +
             "whose job_title matches the enriched titles (" + titles.join(", ") + ") — don't attribute a pre-existing " +
             "email of an unrelated role to this run — and a contact is done only when the REQUESTED channel landed " +
@@ -299,7 +306,7 @@ async function launchOnSelection(
             "some contacts are unresolvable and never flip, so report the resolved ones and name the rest rather than " +
             "polling forever.",
         next_action: bulkRecord
-          ? "Unless the user explicitly asked NOT to wait (background/'I'll check later'), poll leadbay_bulk_enrich_status({bulk_id}) in a loop until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15–30s apart, ~90s–2min elapsed; don't call a plateau from the first back-to-back reads while the backend spins up). Pass include_contacts=true on the read you report from, then report the resolved enrichment in THIS turn (name what landed and what didn't). If the user DID ask not to wait, hand back the bulk_id instead of polling (and if notification_id is null, tell them to ask again later — nothing auto-surfaces)."
+          ? "Unless the user explicitly asked NOT to wait (background/'I'll check later'), poll leadbay_bulk_enrich_status({bulk_id}) in a loop until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15–30s apart, ~90s–2min elapsed; don't call a plateau from the first back-to-back reads while the backend spins up, and don't call it a plateau while partial_failures is present — that's a transient fetch error, keep polling/respect retry_after). Pass include_contacts=true on the read you report from, then report the resolved enrichment in THIS turn (name what landed and what didn't). If the user DID ask not to wait, hand back the bulk_id instead of polling (and if notification_id is null, tell them to ask again later — nothing auto-surfaces)."
           : "Unless the user asked not to wait, re-check via leadbay_research_lead_by_id or leadbay_get_contacts for the returned lead_ids (every ~30s). get_contacts returns each lead's FULL contact list, so only count/report contacts whose job_title matches the enriched titles (" + titles.join(", ") + ") — don't attribute a pre-existing email of an unrelated role to this run. Treat a contact as done only when the REQUESTED channel landed — the requested email present and/or phone_number present — NOT contact.enrichment.done alone (it's already true for a contact enriched on the other channel earlier). Stop once the done set stops growing across a couple of spaced re-checks (~90s–2min elapsed) — unresolvable contacts never flip — then report the resolved ones and name the rest. Don't poll forever or end your turn waiting. If the user asked not to wait, hand back the lead_ids and let them re-check later.",
       };
     }
