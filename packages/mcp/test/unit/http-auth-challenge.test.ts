@@ -16,7 +16,7 @@ function initRequest(url: string, headers: Record<string, string> = {}): Request
 }
 
 describe("hosted MCP OAuth challenge", () => {
-  it("POST /mcp with no token → 401 + WWW-Authenticate pointing at us metadata", async () => {
+  it("POST /mcp with no token → 401 + WWW-Authenticate pointing at /mcp metadata", async () => {
     mockHttp([]); // no token → no backend probe
     const res = await app.fetch(initRequest("https://mcp.test/mcp"));
     expect(res.status).toBe(401);
