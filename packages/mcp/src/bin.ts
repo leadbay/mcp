@@ -1580,7 +1580,20 @@ async function main(): Promise<void> {
 
   // Telemetry (PostHog + Sentry). ON by default; opt-out via
   // LEADBAY_TELEMETRY_DISABLED=1. See packages/mcp/src/telemetry.ts.
-  const telemetry = initTelemetry({ version: VERSION, logger });
+  //
+  // flushAt:1 because stdio is a short-lived, single-user process: a session of
+  // one or two tool calls that disconnects inside 10s would otherwise never
+  // reach the default 20-event batch, and only shutdown() would flush it (lost
+  // on a SIGKILL / missed stdin-end). One telemetry POST per tool call is
+  // noise-level next to the tool's own network round-trip. flushInterval is a
+  // modest backstop. (The HTTP server keeps the batching defaults — it's
+  // long-lived and flushes its tail via a shutdown hook.)
+  const telemetry = initTelemetry({
+    version: VERSION,
+    logger,
+    flushAt: 1,
+    flushInterval: 5_000,
+  });
   const { client, authState } = await resolveClientFromEnv(logger);
   // True when OAuth bootstrap is running in the background and the client is
   // still tokenless. The CallTool handler gates tools on this (see the

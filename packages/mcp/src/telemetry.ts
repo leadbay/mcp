@@ -58,17 +58,39 @@ import {
   type VersionUpdatedProps,
 } from "./telemetry-events.js";
 
+// Per-call identity override. The stdio server has ONE long-lived user, so it
+// relies on the module-scoped `me` resolved once by identify(). The HTTP server
+// (http-server.ts) is multi-tenant: each request carries its own bearer token →
+// potentially a different user. It can't use the single-`me` model without
+// latching the first caller's identity onto everyone. So the HTTP path resolves
+// identity per request and passes it here, overriding distinctId/groups/region
+// for THAT call only. When omitted (stdio), the module-scoped identity is used
+// and behavior is unchanged.
+export interface CaptureIdentity {
+  // Canonical PostHog distinctId — the user's email when known, else an
+  // `mcp:user-<id>` / `mcp:unknown` sentinel (mirrors distinctIdFor()).
+  distinctId: string;
+  // PostHog group analytics — `{ organization: <id> }` when known.
+  groups?: Record<string, string>;
+  // Region tag for baseProps (the module-scoped `region` is set by identify(),
+  // which the HTTP path doesn't call, so it must ride on the identity instead).
+  region?: string;
+}
+
 export interface TelemetryHandle {
   // Returns a promise that resolves once identity settles (either /users/me
   // landed and we identified, or it failed and we fell back to anonymous).
   // Production callers (bin.ts) fire-and-forget; tests await the promise
   // to make capture assertions deterministic.
   identify(client: LeadbayClient): Promise<void>;
-  captureToolCall(props: ToolCallProps): void;
-  captureCompositeCall(props: CompositeCallProps): void;
-  captureQuotaHit(props: QuotaHitProps): void;
-  captureTopupLink(props: TopupLinkProps): void;
-  captureStartup(props: StartupProps): void;
+  // The optional `identity` arg is the per-request override (see CaptureIdentity).
+  // Passing it also BYPASSES the pre-identity pending-events buffer — the caller
+  // already has identity in hand, so there's nothing to wait for.
+  captureToolCall(props: ToolCallProps, identity?: CaptureIdentity): void;
+  captureCompositeCall(props: CompositeCallProps, identity?: CaptureIdentity): void;
+  captureQuotaHit(props: QuotaHitProps, identity?: CaptureIdentity): void;
+  captureTopupLink(props: TopupLinkProps, identity?: CaptureIdentity): void;
+  captureStartup(props: StartupProps, identity?: CaptureIdentity): void;
   captureAgentMemoryCaptured(props: AgentMemoryCapturedProps): void;
   captureAgentMemoryRecalled(props: AgentMemoryRecalledProps): void;
   captureAgentMemoryPruned(props: AgentMemoryPrunedProps): void;
@@ -94,11 +116,11 @@ export interface TelemetryHandle {
 
 export const NOOP_TELEMETRY: TelemetryHandle = {
   identify: async () => {},
-  captureToolCall: () => {},
-  captureCompositeCall: () => {},
-  captureQuotaHit: () => {},
-  captureTopupLink: () => {},
-  captureStartup: () => {},
+  captureToolCall: (_props?, _identity?) => {},
+  captureCompositeCall: (_props?, _identity?) => {},
+  captureQuotaHit: (_props?, _identity?) => {},
+  captureTopupLink: (_props?, _identity?) => {},
+  captureStartup: (_props?, _identity?) => {},
   captureAgentMemoryCaptured: () => {},
   captureAgentMemoryRecalled: () => {},
   captureAgentMemoryPruned: () => {},
@@ -116,6 +138,13 @@ export const NOOP_TELEMETRY: TelemetryHandle = {
 interface InitOpts {
   version: string;
   logger?: ToolLogger;
+  // PostHog batching knobs. Default to the SDK-ish 20 / 10_000ms. The stdio
+  // server (bin.ts) is short-lived and single-user — it passes flushAt:1 so
+  // each event is handed off immediately rather than waiting for a 20-event
+  // batch a brief session never reaches. The long-lived HTTP server keeps the
+  // batching defaults (and flushes the tail via its SIGTERM/SIGINT hook).
+  flushAt?: number;
+  flushInterval?: number;
 }
 
 interface BufferedEvent {
@@ -153,6 +182,8 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
   if (!posthogKey && !sentryDsn) return NOOP_TELEMETRY;
 
   const { version, logger } = opts;
+  const flushAt = opts.flushAt ?? 20;
+  const flushInterval = opts.flushInterval ?? 10_000;
   const environment =
     process.env.LEADBAY_ENV ??
     (version.includes("-dev.") ? "dev" : "production");
@@ -165,8 +196,8 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
     if (posthogKey) {
       posthog = new PostHog(posthogKey, {
         host: process.env.LEADBAY_POSTHOG_HOST ?? EMBEDDED_POSTHOG_HOST,
-        flushAt: 20,
-        flushInterval: 10_000,
+        flushAt,
+        flushInterval,
         disableGeoip: false,
       });
     }
@@ -250,22 +281,43 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
       : undefined;
   };
 
-  const doCapture = (event: string, properties: Record<string, unknown>) => {
+  const doCapture = (
+    event: string,
+    properties: Record<string, unknown>,
+    identity?: CaptureIdentity
+  ) => {
     if (!posthog) return;
     try {
+      // A per-call identity (HTTP multi-tenant path) overrides the module-scoped
+      // distinctId/groups/region. Its region is merged into baseProps so the event
+      // carries the caller's region even though identify() never ran for this handle.
+      const props = identity?.region
+        ? { ...baseProps(), region: identity.region, ...properties }
+        : { ...baseProps(), ...properties };
       posthog.capture({
-        distinctId: distinctIdFor(),
+        distinctId: identity ? identity.distinctId : distinctIdFor(),
         event,
-        properties: { ...baseProps(), ...properties },
-        groups: groupsFor(),
+        properties: props,
+        groups: identity ? identity.groups : groupsFor(),
       });
     } catch (err: any) {
       logger?.warn?.(`posthog capture failed: ${err?.message ?? err}`);
     }
   };
 
-  const emit = (event: string, properties: Record<string, unknown>) => {
+  const emit = (
+    event: string,
+    properties: Record<string, unknown>,
+    identity?: CaptureIdentity
+  ) => {
     if (!posthog) return;
+    // A per-call identity means the caller already resolved who this is — there's
+    // nothing to wait for, so skip the pre-identity buffer and capture now. The
+    // buffer only bridges the stdio gap where identify() resolves async after boot.
+    if (identity) {
+      doCapture(event, properties, identity);
+      return;
+    }
     if (!me) {
       pendingEvents.push({ event, properties });
       return;
@@ -332,20 +384,20 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
       })();
       return identityPromise;
     },
-    captureToolCall(props) {
-      emit(EV_TOOL_CALL, { ...props });
+    captureToolCall(props, identity) {
+      emit(EV_TOOL_CALL, { ...props }, identity);
     },
-    captureCompositeCall(props) {
-      emit(EV_COMPOSITE_CALL, { ...props });
+    captureCompositeCall(props, identity) {
+      emit(EV_COMPOSITE_CALL, { ...props }, identity);
     },
-    captureQuotaHit(props) {
-      emit(EV_QUOTA_HIT, { ...props });
+    captureQuotaHit(props, identity) {
+      emit(EV_QUOTA_HIT, { ...props }, identity);
     },
-    captureTopupLink(props) {
-      emit(EV_TOPUP_LINK, { ...props });
+    captureTopupLink(props, identity) {
+      emit(EV_TOPUP_LINK, { ...props }, identity);
     },
-    captureStartup(props) {
-      emit(EV_STARTUP, { ...props });
+    captureStartup(props, identity) {
+      emit(EV_STARTUP, { ...props }, identity);
     },
     captureAgentMemoryCaptured(props) {
       emit(EV_AGENT_MEMORY_CAPTURED, { ...props });
@@ -468,6 +520,21 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
       }
     },
     async shutdown() {
+      // If identity never resolved, events captured pre-identity are still sitting
+      // in pendingEvents and have NEVER reached posthog's own queue — so
+      // posthog.shutdown() below would flush nothing and they'd be lost. Drain
+      // them here first, anonymously: reuse the SAME id:"unknown" fallback the
+      // identify-failure path uses, so distinctIdFor() yields a stable
+      // "mcp:user-unknown" (consistent with anonymous events from that path).
+      // No-op when identity already resolved (buffer already drained by
+      // flushPending()).
+      if (!me) {
+        me = {
+          id: "unknown",
+          organization: { id: "unknown", name: "unknown" },
+        } as UserMePayload;
+        flushPending();
+      }
       // Bounded so a network hang can't block process exit.
       const tasks: Promise<unknown>[] = [];
       if (posthog) tasks.push(posthog.shutdown(2000).catch(() => undefined));

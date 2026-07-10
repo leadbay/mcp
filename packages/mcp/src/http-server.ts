@@ -24,7 +24,7 @@ import { serve } from "@hono/node-server";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import type { LeadbayClient } from "@leadbay/core";
+import type { LeadbayClient, ToolLogger } from "@leadbay/core";
 import { buildServer } from "./server.js";
 import {
   resolveClientFromToken,
@@ -32,12 +32,86 @@ import {
   buildWwwAuthenticate,
 } from "./auth-http.js";
 import { parseWriteEnv } from "./env.js";
+import {
+  initTelemetry,
+  type CaptureIdentity,
+  type TelemetryHandle,
+} from "./telemetry.js";
 
 declare const __LEADBAY_MCP_VERSION__: string;
 const VERSION = typeof __LEADBAY_MCP_VERSION__ !== "undefined" ? __LEADBAY_MCP_VERSION__ : "0.0.0-dev";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const HOST = process.env.HOST ?? "0.0.0.0";
+
+// Stderr logger. The HTTP server has no JSON-RPC-on-stdout constraint (that's
+// stdio only), but keep telemetry/auth logging on stderr to match the boot log.
+const logger: ToolLogger = {
+  info: (m: string) => process.stderr.write(`[leadbay-mcp-http info] ${m}\n`),
+  warn: (m: string) => process.stderr.write(`[leadbay-mcp-http warn] ${m}\n`),
+  error: (m: string) => process.stderr.write(`[leadbay-mcp-http error] ${m}\n`),
+};
+
+// ONE process-level telemetry handle, reused across every request. Batching
+// defaults (flushAt:20 / flushInterval:10_000) suit the long-lived Fly process;
+// the tail is flushed by the SIGTERM/SIGINT hook at the entrypoint. Identity is
+// NOT resolved here — this server is multi-tenant, so each request binds its own
+// identity via bindTelemetryIdentity() below. initTelemetry returns NOOP when
+// telemetry is disabled (LEADBAY_TELEMETRY_ENABLED=false / NODE_ENV=test / no
+// keys), so the call sites stay branch-free.
+const telemetry: TelemetryHandle = initTelemetry({ version: VERSION, logger });
+
+// Max time to wait on /users/me for a request's telemetry identity before
+// giving up and attributing to "mcp:unknown". Bounds the worst case so a hung
+// /users/me can never delay a tool response on the telemetry path.
+const IDENTITY_RESOLVE_TIMEOUT_MS = 1500;
+
+// Resolve the PostHog identity for a request from its own (per-request) client.
+// The auth probe used client.request("GET","/users/me") directly rather than
+// resolveMe(), so this is a fresh fetch — but it's bounded, 60s-cached per
+// client (so a multi-call SSE session pays once), and never blocks the tool: on
+// timeout or error we attribute to "mcp:unknown" so the event STILL lands.
+export async function resolveIdentity(client: LeadbayClient): Promise<CaptureIdentity> {
+  const region = client.region;
+  try {
+    const me = await Promise.race([
+      client.resolveMe(),
+      new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), IDENTITY_RESOLVE_TIMEOUT_MS)
+      ),
+    ]);
+    if (!me) return { distinctId: "mcp:unknown", region };
+    const distinctId = me.email ?? (me.id ? `mcp:user-${me.id}` : "mcp:unknown");
+    return {
+      distinctId,
+      groups: me.organization?.id ? { organization: me.organization.id } : undefined,
+      region,
+    };
+  } catch (err: any) {
+    logger.warn?.(`telemetry identity resolve failed: ${err?.message ?? err}`);
+    return { distinctId: "mcp:unknown", region };
+  }
+}
+
+// Wrap the shared handle so every capture in THIS request/session carries the
+// caller's identity (the server.ts capture sites don't know the identity — the
+// wrapper injects it). identify()/shutdown() are inert: a closing request or an
+// evicted SSE session must NEVER shut down the shared process-level client.
+export function bindTelemetryIdentity(
+  base: TelemetryHandle,
+  identity: CaptureIdentity
+): TelemetryHandle {
+  return {
+    ...base,
+    captureToolCall: (p) => base.captureToolCall(p, identity),
+    captureCompositeCall: (p) => base.captureCompositeCall(p, identity),
+    captureQuotaHit: (p) => base.captureQuotaHit(p, identity),
+    captureTopupLink: (p) => base.captureTopupLink(p, identity),
+    captureStartup: (p) => base.captureStartup(p, identity),
+    identify: async () => {},
+    shutdown: async () => {},
+  };
+}
 
 // In-memory session map for the legacy SSE transport. Streamable HTTP keeps
 // its own session table inside the transport instance, so we only need to
@@ -74,10 +148,19 @@ function extractBearer(authHeader: string | undefined): string | undefined {
 // Build a fresh MCP server bound to the caller's resolved client. One server per
 // session — keeps tenant isolation explicit and avoids any cross-request state
 // leaking through the LeadbayClient.
-function buildServerFromClient(client: LeadbayClient): Server {
+function buildServerFromClient(
+  client: LeadbayClient,
+  requestTelemetry: TelemetryHandle
+): Server {
   const includeWrite = parseWriteEnv();
   const includeAdvanced = process.env.LEADBAY_MCP_ADVANCED === "1";
-  return buildServer(client, { version: VERSION, includeWrite, includeAdvanced });
+  return buildServer(client, {
+    version: VERSION,
+    includeWrite,
+    includeAdvanced,
+    logger,
+    telemetry: requestTelemetry,
+  });
 }
 
 // ── OAuth resource-server discovery (MCP authorization spec / RFC 9728) ──────
@@ -233,12 +316,20 @@ async function handleStreamable(
 
   // Auto-probe (no region pin) so a missing OR invalid/expired token both yield
   // a 401 challenge, and a valid token routes to whichever region owns it.
-  const resolved = await resolveClientFromToken(token);
+  const resolved = await resolveClientFromToken(token, { logger });
   if (resolved.authState === "missing" || resolved.authState === "expired") {
     return sendChallenge(c, resourcePath, resolved.authState);
   }
 
-  const server = buildServerFromClient(resolved.client);
+  // Resolve identity for THIS request and bind it onto the shared telemetry
+  // handle so every tool-call event carries the caller's distinctId. Without
+  // this the hosted server emitted nothing (buildServer defaulted to NOOP) —
+  // product#3876.
+  const identity = await resolveIdentity(resolved.client);
+  const server = buildServerFromClient(
+    resolved.client,
+    bindTelemetryIdentity(telemetry, identity)
+  );
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     // Return JSON responses instead of SSE so non-SSE clients (e.g. Codex) work.
@@ -301,14 +392,20 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
 
   const token = extractBearer(c.req.header("authorization"));
 
-  const resolved = await resolveClientFromToken(token);
+  const resolved = await resolveClientFromToken(token, { logger });
   if (resolved.authState === "missing" || resolved.authState === "expired") {
     return sendChallenge(c, resourcePath, resolved.authState);
   }
 
+  // Resolve identity ONCE per SSE session; the bound handle rides in this
+  // session's server, so every later POST /messages call attributes correctly.
+  const identity = await resolveIdentity(resolved.client);
   const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
   const transport = new SSEServerTransport("/messages", env.outgoing);
-  const server = buildServerFromClient(resolved.client);
+  const server = buildServerFromClient(
+    resolved.client,
+    bindTelemetryIdentity(telemetry, identity)
+  );
   await server.connect(transport);
 
   const sessionId = transport.sessionId;
@@ -371,5 +468,21 @@ if (isEntrypoint) {
     process.stderr.write(
       `leadbay-mcp-http ${VERSION} listening on http://${info.address}:${info.port} (boot=${_boot})\n`
     );
+    // Process-level boot signal (no per-user identity — no request yet). Lets us
+    // correlate "events stopped" in PostHog with a Fly restart/redeploy.
+    telemetry.captureStartup({ auth_state: "ok", region: "unknown" });
   });
+
+  // Flush the shared PostHog client on Fly's SIGTERM (sent on every redeploy)
+  // and on SIGINT — without this the last unflushed batch (up to flushInterval /
+  // flushAt) is lost on each deploy.
+  const gracefulShutdown = async () => {
+    try {
+      await telemetry.shutdown();
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.once("SIGTERM", () => void gracefulShutdown());
+  process.once("SIGINT", () => void gracefulShutdown());
 }

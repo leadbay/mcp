@@ -1,5 +1,17 @@
 # Changelog — @leadbay/mcp
 
+## 0.24.1 — 2026-07-10
+
+Fix PostHog tool-call events silently dropped (product#3876). The hosted HTTP
+server (`mcp.leadbay.app` — ChatGPT / Claude custom connectors) built its
+per-request server without a telemetry handle, so every tool call over HTTP
+produced zero events; only stdio logged. It now wires a process-level PostHog
+client with per-request identity (correct multi-tenant attribution, no identity
+latch), flushes on SIGTERM/SIGINT (Fly redeploys), and emits a startup event.
+Also hardens the stdio path: `shutdown()` now flushes buffered events when
+identity never resolved, and stdio uses `flushAt:1` so short sessions deliver
+promptly.
+
 ## 0.24.0 — 2026-07-08
 
 Enrichment stays active until done, then self-reports — no reprompt (product#3866).
