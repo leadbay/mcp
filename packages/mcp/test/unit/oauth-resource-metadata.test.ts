@@ -58,7 +58,9 @@ describe("OAuth resource-server helpers", () => {
 });
 
 describe("protected resource metadata routes", () => {
-  it("bare /.well-known/oauth-protected-resource → us, resource /mcp", async () => {
+  // The bare shared URL (/mcp) defaults to FR — the majority region. US users
+  // use the explicit /us/mcp; /fr/mcp stays valid.
+  it("bare /.well-known/oauth-protected-resource → fr default, resource /mcp", async () => {
     const res = await app.fetch(
       new Request("https://mcp.test/.well-known/oauth-protected-resource")
     );
@@ -66,17 +68,17 @@ describe("protected resource metadata routes", () => {
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     const body = await res.json();
     expect(body.resource).toBe("https://mcp.test/mcp");
-    expect(body.authorization_servers).toEqual([US_AS]);
+    expect(body.authorization_servers).toEqual([FR_AS]);
   });
 
-  it("path-suffix /mcp → us authorization server", async () => {
+  it("path-suffix /mcp → fr authorization server (default)", async () => {
     const res = await app.fetch(
       new Request("https://mcp.test/.well-known/oauth-protected-resource/mcp")
     );
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.resource).toBe("https://mcp.test/mcp");
-    expect(body.authorization_servers).toEqual([US_AS]);
+    expect(body.authorization_servers).toEqual([FR_AS]);
   });
 
   it("path-suffix /fr/mcp → fr authorization server", async () => {
@@ -89,13 +91,13 @@ describe("protected resource metadata routes", () => {
     expect(body.authorization_servers).toEqual([FR_AS]);
   });
 
-  it("unknown suffix falls back to the primary /mcp resource", async () => {
+  it("unknown suffix falls back to the primary /mcp resource (fr default)", async () => {
     const res = await app.fetch(
       new Request("https://mcp.test/.well-known/oauth-protected-resource/bogus")
     );
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.resource).toBe("https://mcp.test/mcp");
-    expect(body.authorization_servers).toEqual([US_AS]);
+    expect(body.authorization_servers).toEqual([FR_AS]);
   });
 });
