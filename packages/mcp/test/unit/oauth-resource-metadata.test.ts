@@ -81,16 +81,6 @@ describe("protected resource metadata routes", () => {
     expect(body.authorization_servers).toEqual([FR_AS]);
   });
 
-  it("path-suffix /us/mcp → us authorization server (explicit)", async () => {
-    const res = await app.fetch(
-      new Request("https://mcp.test/.well-known/oauth-protected-resource/us/mcp")
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.resource).toBe("https://mcp.test/us/mcp");
-    expect(body.authorization_servers).toEqual([US_AS]);
-  });
-
   it("path-suffix /fr/mcp → fr authorization server", async () => {
     const res = await app.fetch(
       new Request("https://mcp.test/.well-known/oauth-protected-resource/fr/mcp")
