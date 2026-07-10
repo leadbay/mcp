@@ -1,6 +1,10 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool, ToolContext } from "../types.js";
-import { discoverLeads } from "../tools/discover-leads.js";
+import type {
+  LeadbayError,
+  Tool,
+  ToolContext,
+  WishlistResponse,
+} from "../types.js";
 import { researchLeadById } from "./research-lead-by-id.js";
 
 import { leadbay_research_lead_by_name_fuzzy as RESEARCH_LEAD_BY_NAME_FUZZY_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -12,10 +16,30 @@ interface ResearchLeadByNameFuzzyParams {
   response_format?: "json" | "markdown";
 }
 
-interface DiscoverMatch {
+interface ResolvedMatch {
   id: string;
   name: string;
   score: number | null;
+  lensId?: number;
+}
+
+interface SearchSuggestion {
+  text: string;
+  match_type?: "COMPANY" | "DOMAIN" | "PERSON";
+  matchType?: "COMPANY" | "DOMAIN" | "PERSON";
+  company_name?: string | null;
+  companyName?: string | null;
+  lead_id?: string;
+  leadId?: string;
+  in_discover?: boolean;
+  inDiscover?: boolean;
+  in_monitor?: boolean;
+  inMonitor?: boolean;
+  in_activate?: boolean;
+  inActivate?: boolean;
+  // The backend uses LongAsStringSerializer for this field.
+  lens_id?: string | number | null;
+  lensId?: string | number | null;
 }
 
 // Pulled out so tests can exercise the ranking rule directly. Substring,
@@ -23,7 +47,7 @@ interface DiscoverMatch {
 export function rankSubstringMatches(
   needle: string,
   candidates: Array<{ id: string; name: string; score: number | null }>
-): DiscoverMatch[] {
+): ResolvedMatch[] {
   const n = needle.toLowerCase();
   const hits = candidates.filter((c) =>
     typeof c.name === "string" && c.name.toLowerCase().includes(n)
@@ -34,6 +58,79 @@ export function rankSubstringMatches(
     return bScore - aScore;
   });
   return hits;
+}
+
+function parseLensId(value: unknown): number | undefined {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function suggestionName(suggestion: SearchSuggestion): string {
+  const companyName = (
+    suggestion.company_name ?? suggestion.companyName
+  )?.trim();
+  return companyName || suggestion.text.trim();
+}
+
+function suggestionLeadId(suggestion: SearchSuggestion): string | undefined {
+  return suggestion.lead_id ?? suggestion.leadId;
+}
+
+function isLeadbayError(error: unknown): error is LeadbayError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as Partial<LeadbayError>).error === true &&
+    typeof (error as Partial<LeadbayError>).code === "string" &&
+    typeof (error as Partial<LeadbayError>).message === "string" &&
+    typeof (error as Partial<LeadbayError>).hint === "string"
+  );
+}
+
+async function resolveWithinLens(
+  client: LeadbayClient,
+  query: string,
+  lensId: number
+): Promise<ResolvedMatch[]> {
+  const results = await client.request<WishlistResponse>(
+    "GET",
+    `/lenses/${lensId}/leads/wishlist?q=${encodeURIComponent(query)}&count=50&page=0&contacts=false`
+  );
+  // The backend applied q across names, domains, and contacts. Preserve its
+  // filtered ordering instead of repeating the old name-substring filter,
+  // which would discard valid normalized/domain/contact matches.
+  return results.items.map((lead) => ({
+    id: lead.id,
+    name: lead.name,
+    score: lead.score,
+    lensId,
+  }));
+}
+
+async function resolveAcrossVisibleCorpus(
+  client: LeadbayClient,
+  query: string
+): Promise<ResolvedMatch[]> {
+  const suggestions = await client.request<SearchSuggestion[]>(
+    "GET",
+    `/search/suggest?q=${encodeURIComponent(query)}`
+  );
+  return suggestions
+    .map((suggestion) => {
+      const id = suggestionLeadId(suggestion);
+      return {
+        id: id ?? "",
+        name: suggestionName(suggestion),
+        score: null,
+        lensId: parseLensId(suggestion.lens_id ?? suggestion.lensId),
+      };
+    })
+    .filter((suggestion) => suggestion.id !== "" && suggestion.name !== "");
 }
 
 export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
@@ -52,12 +149,12 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
       companyName: {
         type: "string",
         description:
-          "Company name to look up. Substring fuzzy-match against the top 50 of the active lens's wishlist; ties broken by descending lead score.",
+          "Company name, domain, or contact name to resolve across visible Leadbay leads in Discover, Monitor, and Activate.",
       },
       lensId: {
         type: "number",
         description:
-          "Lens id (escape hatch — normally omit; auto-resolves to the active lens)",
+          "Optional strict scope. When supplied, search only this lens's wishlist; normally omit to search all visible Leadbay leads.",
       },
       concise: {
         type: "boolean",
@@ -89,7 +186,11 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
     params: ResearchLeadByNameFuzzyParams,
     ctx?: ToolContext
   ) => {
-    if (!params.companyName || typeof params.companyName !== "string") {
+    if (
+      !params.companyName ||
+      typeof params.companyName !== "string" ||
+      params.companyName.trim() === ""
+    ) {
       throw client.makeError(
         "INVALID_PARAMS",
         "companyName is required",
@@ -97,36 +198,57 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
       );
     }
 
-    const lensId = params.lensId ?? (await client.resolveDefaultLens());
-    const results = await discoverLeads.execute(
-      client,
-      { lensId, count: 50, page: 0 },
-      ctx
-    );
+    const query = params.companyName.trim();
+    let ranked: ResolvedMatch[];
+    let lensId = params.lensId;
+    let usedActiveLensFallback = false;
 
-    const allLeads = (results.leads as Array<{
-      id: string;
-      name: string;
-      score: number | null;
-    }>);
-
-    const ranked = rankSubstringMatches(params.companyName, allLeads);
+    if (lensId !== undefined) {
+      ranked = await resolveWithinLens(client, query, lensId);
+    } else {
+      try {
+        ranked = await resolveAcrossVisibleCorpus(client, query);
+      } catch (error) {
+        // A structured API response is authoritative and should remain visible.
+        // Only a transport/parser failure gets the legacy active-lens fallback.
+        // This keeps lookups usable during a search-route connectivity incident
+        // without silently treating the lens as the normal search universe.
+        if (isLeadbayError(error)) throw error;
+        lensId = await client.resolveDefaultLens();
+        usedActiveLensFallback = true;
+        ctx?.logger?.warn?.(
+          "Cross-tab company search was unavailable; falling back to the active lens for this lookup."
+        );
+        // Keep the degraded path compatible with the legacy resolver. Unlike
+        // an explicit lens search, this fallback is not the authoritative
+        // cross-tab result and therefore retains the old name ranking rule.
+        ranked = rankSubstringMatches(
+          query,
+          await resolveWithinLens(client, query, lensId)
+        );
+      }
+    }
 
     if (ranked.length === 0) {
-      const nearestNames = [...allLeads]
-        .sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity))
-        .slice(0, 5)
-        .map((l) => ({ leadId: l.id, name: l.name, score: l.score }));
+      const scope = usedActiveLensFallback
+        ? `in active lens ${lensId}; cross-tab search was unavailable`
+        : params.lensId === undefined
+          ? "across your visible Leadbay leads"
+          : `in lens ${params.lensId}`;
+      const hint = usedActiveLensFallback
+        ? `Only active lens ${lensId} was checked because cross-tab search was unavailable. Retry later before concluding the company is missing or offering to import it.`
+        : params.lensId === undefined
+          ? "Search checks company names, domains, and contact names across Discover, Monitor, and Activate. Confirm the spelling or domain, or add/import the company first."
+          : "This lookup was intentionally restricted to the supplied lens. Omit lensId to search visible leads across Discover, Monitor, and Activate.";
       throw client.makeError(
         "LEAD_NOT_FOUND",
-        `No lead matching "${params.companyName}" in the current lens (top-50 wishlist)`,
-        `Call leadbay_pull_leads to see what's available. Top-scoring leads currently in this lens: ${nearestNames
-          .map((n) => n.name)
-          .join(", ")}.`
+        `No lead matching "${query}" ${scope}`,
+        hint
       );
     }
 
     const [primary, ...rest] = ranked;
+    lensId = primary.lensId ?? lensId ?? (await client.resolveDefaultLens());
     const candidates = rest.slice(0, 4).map((m) => ({
       leadId: m.id,
       name: m.name,
@@ -142,7 +264,7 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
         response_format: params.response_format,
         _resolved: {
           from: "companyName",
-          query: params.companyName,
+          query,
           candidates,
         },
       },

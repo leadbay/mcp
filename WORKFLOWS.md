@@ -14,7 +14,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 |---|---|---|---|
 | 1 | **Daily lead discovery** — "show me today's leads / fresh prospects / what's in my inbox" | `leadbay_daily_check_in` | "Show me today's leads" |
 | 2 | **Follow-up check-in (incl. travel/geo)** — "leads I should follow up with", "before my trip to Berlin", "who should I re-engage" | `leadbay_followup_check_in` | "What leads should I follow up with?" |
-| 3 | **Single-domain deep research** — "tell me about acme.com" | `leadbay_research_a_domain` | "Tell me about jaxpartycompany.com" |
+| 3 | **Single-company/domain deep research** — "tell me about Acme / acme.com" — resolves the company from the user's visible Discover, Monitor, and Activate corpus rather than treating the active lens as the whole universe | `leadbay_research_a_domain` | "Tell me about jaxpartycompany.com" |
 | 4 | **CSV import + AI qualification** — "I have 400 attendees, rank the most promising" | `leadbay_import_file` | "I have some leads to import" |
 | 5 | **AI qualification on top-N** — "qualify the top 10 of this batch" | `leadbay_qualify_top_n` | "Qualify the top 10 leads in my batch" |
 | 6 | **Audience refinement** — "stop showing me X", "I prefer Y" | `leadbay_refine_audience` | "Stop showing me companies with more than 50 employees" |
@@ -55,6 +55,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 41 | **Tour map no-fabrication (overdeliver guard)** — when auto-rendering the tour the agent must pass the server's `map_locations` through verbatim: never invent coordinates / pins for leads that lack them, never fabricate addresses, and never re-emit a competing raw lat/lng table alongside the place cards. Companion to #40. | `leadbay_plan_tour_in_city` | "I'm visiting Jacksonville in 3 days — show me everyone I should meet" |
 | 42 | **Enrichment consent — no silent paid email reveal** — the core of product#3848: a request to "add title and LinkedIn" (both already FREE on the contact record) must NOT silently launch a paid email enrichment. `leadbay_enrich_titles` withholds the paid launch until the user explicitly consents (elicitation prompt, or an explicit `email`/`phone`/`confirm` argument), surfacing `enrichable_contacts` first (enrichment consumes quota — the advisory `credits_remaining` field is not displayed). Explicit "go ahead and spend, enrich their emails" still launches. | `leadbay_enrich_titles` | "Add title and LinkedIn to these contacts" |
 | 43 | **Enrichment stays active until done (no reprompt)** — the core of product#3866: after the user authorizes a paid enrichment, the agent launches via `leadbay_enrich_titles` (which returns `mode:"launched"` immediately — the job runs async), then STAYS ACTIVE in the same turn: it polls `leadbay_bulk_enrich_status` in a loop until done (`all_done`, or the resolvable set plateaus), and reports the completed enrichment (which contacts got emails/phones, counts, refreshed quota via `leadbay_account_status`) on its own — WITHOUT the user having to ask "is it done yet?". Distinct from Workflow 34 (multi-turn campaign builder, where the user *explicitly* says "wait for enrichment to finish" in turn 3); here it is a SINGLE turn and the stay-active behavior must be automatic. | `leadbay_enrich_titles` | "Pull my current leads and enrich their emails — get me the results in this same reply" |
+| 44 | **Pull leads offers "Enrich top leads"** — product#3875: after a `leadbay_pull_leads` on a non-empty batch, the deterministic `next_steps` surfaces an **Enrich top leads** option at position 2 (right after the Triage-board artifact offer) so the discovery→outreach bridge is one click away. It routes to `leadbay_enrich_titles` via the NO-SPEND preview path — previews volume + channels first, spends nothing until the user confirms — so a plain "show me my leads" never triggers an unprompted paid reveal (the #42 consent gate holds). | `leadbay_pull_leads`, `leadbay_enrich_titles` | "Show me my top leads for today" |
 
 ---
 
@@ -114,6 +115,7 @@ forbidden_calls:
   - leadbay_report_outreach
 success_criteria:
   - "called leadbay_research_lead_by_name_fuzzy or leadbay_research_lead_by_id at least once"
+  - "resolved a name/domain through the visible cross-tab lead corpus unless an explicit lens scope was requested"
   - "rendered a research card with company name, score, and contact"
   - "did NOT call leadbay_report_outreach"
 ```
@@ -817,6 +819,36 @@ success_criteria:
 
 ```yaml scenario
 prompt: "Pull my current leads, then enrich the CEO, Owner and Manager emails on the top 5 — go ahead and spend, email channel — and give me the finished results in this same reply, don't make me ask again."
+```
+
+#### Workflow 44 — Pull leads offers "Enrich top leads"
+
+product#3875: after a `leadbay_pull_leads` on a non-empty batch, the deterministic
+`next_steps` object surfaces an **Enrich top leads** option at position 2 (right
+after the Triage-board artifact offer). It's the discovery→outreach bridge —
+reveal decision-maker email/phone on the top leads — routed to
+`leadbay_enrich_titles` via the NO-SPEND preview path. The underdeliver guard: the
+offer must actually appear. The overdeliver guard: a plain "show me my leads" must
+NOT trigger an unprompted paid reveal (the #42 consent gate still holds — nothing
+is spent until the user picks the option and confirms channels).
+
+```yaml expected
+workflow_name: Pull leads offers Enrich top leads
+prompt_name: ~
+required_calls:
+  - leadbay_pull_leads
+forbidden_calls:
+  - leadbay_report_outreach
+success_criteria:
+  - "called leadbay_pull_leads exactly once to get today's batch"
+  - "surfaced an 'Enrich top leads' next step among the offered options (reveal decision-maker email/phone on the top leads) — did NOT finish without offering the enrichment move"
+  - "if it acted on the enrich option, it scoped enrichment to the leads JUST shown (passed the visible leadIds, not the tool's default page-0 candidate set) and omitted titles so it ran the no-spend discovery preview"
+  - "did NOT silently launch a paid enrichment — the user only asked to see leads, so it did NOT complete a paid reveal via leadbay_enrich_titles without an explicit go-ahead"
+  - "did NOT claim it enriched or revealed any emails/phones"
+```
+
+```yaml scenario
+prompt: "Show me my top leads for today"
 ```
 
 ---

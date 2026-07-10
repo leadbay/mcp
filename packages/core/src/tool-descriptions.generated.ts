@@ -2931,6 +2931,7 @@ Pick 2–3 items below based on what was actually observed in the response. The 
 | Observation                                                | Suggest                                                      | Calls                                                  |
 |------------------------------------------------------------|--------------------------------------------------------------|--------------------------------------------------------|
 | ≥ 5 leads returned (any batch)                             | "Build an interactive lead triage board for this batch"      | emit antArtifact from data in hand (do NOT re-call leadbay_pull_leads) |
+| ≥ 1 lead returned (any batch)                              | "Enrich top leads" (reveal decision-maker email/phone on the top leads) | leadbay_enrich_titles({ leadIds: shown leads[].id, lensId }) — scope to the leads JUST shown; OMIT \`titles\` so it runs the no-spend discovery preview. Confirm titles + channels, then re-call with titles + confirm to launch |
 | \`has_more == true\`                                         | "Pull the next page (page N+1 of M)"                         | leadbay_pull_leads(page = current + 1, lensId = pinned)|
 | ≥ 3 rows have \`qualification_summary.answered == 0\`        | "Deepen AI qualification on the rows without ❖ caps"         | leadbay_bulk_qualify_leads(leadIds=[…])                |
 | User points at a single row                                | "Research [Company] in depth"                                | leadbay_research_lead_by_id(leadId)                    |
@@ -3413,30 +3414,23 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ---
 
-Thin wrapper around **leadbay_research_lead_by_id**. Accepts a \`companyName\`,
-fuzzy-matches it against the top 50 of the active (or supplied) lens's
-wishlist, picks the highest-scoring substring hit, and delegates the actual
-research to \`leadbay_research_lead_by_id\`. Returns the **same payload shape**
-as \`_by_id\`, with two additions on \`_meta\`:
+Resolves \`companyName\` across visible Discover, Monitor, and Activate leads,
+then delegates to **leadbay_research_lead_by_id**. Supplying \`lensId\`
+deliberately restricts the backend search to that lens. The result matches
+\`_by_id\`, plus:
 
-- \`_meta.resolved_from\`: \`"companyName"\` (so the agent knows the entry point).
-- \`_meta.resolved_query\`: the original \`companyName\` string.
-- \`_meta.match_candidates[]\`: up to 4 next-best substring matches as
-  \`{leadId, name, score}\` — surface these when ambiguity is plausible so the
-  user can redirect.
+- \`_meta.resolved_from\`: \`"companyName"\`
+- \`_meta.resolved_query\`: the original query
+- \`_meta.match_candidates[]\`: up to 4 \`{leadId, name, score}\` alternatives
 
-On zero matches, throws \`LEAD_NOT_FOUND\` with a \`nearest_names[]\` payload (the
-top 5 by score from the lens, regardless of substring) so the agent can offer
-"did you mean…" disambiguation.
+\`LEAD_NOT_FOUND\` identifies whether the complete visible corpus, an explicit
+lens, or only a degraded active-lens fallback was searched.
 
-WHEN TO USE: when the user references a company by
-name and you don't yet have its \`lead_id\`. If \`_meta.match_candidates\` is
-non-empty, offer the next-best matches in NEXT STEPS so the user can correct
-a wrong fuzzy hit.
+WHEN TO USE: for a company/domain/contact reference
+without a \`lead_id\`. Offer \`_meta.match_candidates\` when present.
 
-WHEN NOT TO USE: when you already have the UUID — use
-leadbay_research_lead_by_id directly. This wrapper costs one extra
-\`discoverLeads\` round-trip; skipping it when you can is cheaper.
+WHEN NOT TO USE: with a UUID; call
+leadbay_research_lead_by_id directly.
 
 ---
 
@@ -3577,9 +3571,9 @@ out?"\`
 
 When \`_meta.match_candidates\` is non-empty, prepend one extra NEXT STEPS row:
 
-| Observation                                            | Suggest                                                              | Calls                                                                  |
-|--------------------------------------------------------|----------------------------------------------------------------------|------------------------------------------------------------------------|
-| \`_meta.match_candidates\` non-empty                     | "Did you mean **&lt;next-best.name&gt;**?"                                | leadbay_research_lead_by_id(leadId=&lt;next-best.leadId&gt;)                |
+| Observation | Suggest | Calls |
+|---|---|---|
+| Alternatives found | "Did you mean **&lt;next-best.name&gt;**?" | leadbay_research_lead_by_id(leadId=&lt;next-best.leadId&gt;) |
 `;
 // endregion: leadbay_research_lead_by_name_fuzzy
 

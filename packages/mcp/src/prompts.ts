@@ -85,7 +85,7 @@ const CATALOG: CatalogEntry[] = [
       {
         name: "domain",
         description:
-          "The company's primary domain (e.g. 'acme.com'). Protocol/path are stripped.",
+          "Company name or domain (for example 'Acme Corporation' or 'acme.com'). The legacy argument key remains `domain` for client compatibility.",
         required: true,
       },
     ],

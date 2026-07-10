@@ -1,6 +1,6 @@
 ---
 name: leadbay_research_a_domain
-description: "Import a company by domain and run deep qualification + research in one pass. Use when a colleague mentions a name and you want everything Leadbay knows about it."
+description: "Resolve a company by name or domain across the user's visible Discover, Monitor, and Activate corpus, then return everything Leadbay knows about it."
 ---
 
 
@@ -17,30 +17,18 @@ GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships i
 If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
 
 
-Research the company with domain '<The company's primary domain (e.g. 'acme.com'). Protocol/path are stripped. If not provided in the user's most recent message, ask once before proceeding.>' for me using Leadbay.
+Research the company name or domain '<Company name or domain (for example 'Acme Corporation' or 'acme.com'). The legacy argument key remains `domain` for client compatibility. If not provided in the user's most recent message, ask once before proceeding.>' for me using Leadbay.
 
-# PHASE 1 — IMPORT + QUALIFY
-Call `leadbay_import_and_qualify` with `domains=[{domain:'<the domain (as extracted above)>'}]`. This imports the lead AND runs AI qualification in one call. If the response indicates `quota_blocked` or `still_running`, say so explicitly. Render the import status using the canonical terse single-record summary (never an enumeration of every imported lead):
+# PHASE 1 — RESOLVE + DEEP DIVE
+Call `leadbay_research_lead_by_name_fuzzy` with
+`companyName:'<the domain (as extracted above)>'`. Omit `lensId`: the default search deliberately
+covers the user's visible Discover, Monitor, and Activate corpus, including
+other lenses and leads outside the active lens's first page. The composite
+resolves the lead and returns the full deep-research payload in one call.
 
-## RENDERING — import result summary (single-record, terse)
-
-The response carries either a completed result or an async handle. Render a brief summary; do NOT enumerate every imported lead.
-
-**Header — single line, choose by status:**
-
-- Completed: `"✓ Import complete — N leads imported · M failed · P resolved-with-ambiguity"`
-- Running: `"⏳ Import running — handle_id <id>; poll leadbay_import_status"`
-- Pending qualification (`leadbay_import_and_qualify`): `"✓ Imported N leads · qualifying M of them — qualify_id <id>"`
-
-**When failures or ambiguous rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): `<row identifier or domain> · <reason>`. Then `"*+N more — leadbay_import_status for full detail*"`.
-
-**When the user's request implied a downstream use** ("import then prep outreach for them"), emit `Imported leadIds: <up to 5 ids, then '+N more'>` — just the ids. Let the next composite render the leads.
-
-Defer the full list of imported leads to `leadbay_pull_leads` or `leadbay_research_lead_by_id` in NEXT STEPS.
-
-
-# PHASE 2 — DEEP DIVE
-When the import resolves, call `leadbay_research_lead_by_id` on the new leadId. Render the result using the canonical single-record card layout — detect MODE A (Discovery) since the user asked to "research" a domain rather than to prepare outreach:
+Render the result using the canonical single-record card layout — detect MODE A
+(Discovery) since the user asked to research a company rather than prepare
+outreach:
 
 ## RENDERING — single-record research card, mode-adaptive
 
@@ -112,10 +100,16 @@ When the response carries `social_urls` (the post-fix multi-platform URL block o
 
 
 
+# PHASE 2 — NOT FOUND
+If the resolver returns `LEAD_NOT_FOUND`, say that the existing visible corpus
+was searched. **Do NOT call `leadbay_import_and_qualify` automatically.** Offer
+to import and qualify the company as a separate, explicit next step; only call
+it after the user agrees.
+
 # PHASE 3 — SUMMARY
 Place a 2–3 sentence summary ABOVE the card with:
 - Who is this company (1 sentence)
-- Their fit (cite specific `qualification_answers` from the qualification response)
+- Their fit (cite specific qualification answers or signals from the research response)
 - Which contact would I email first (one short clause — the card's contacts table carries the rest)
 
 The card itself handles the signal callouts (`📈 business signals`, `💡 prospecting clues`). Do NOT re-narrate signals in prose above the card — that's what the card sections are for. Be honest about uncertainty: if any field is missing from tool responses, say "not surfaced by qualification" rather than guessing.
