@@ -166,8 +166,7 @@ export function buildPullLeadsNextSteps(args: {
   // gate is never bypassed). Sits at position 2, right after the artifact offer.
   options.push({
     label: "Enrich top leads",
-    description:
-      "Reveal decision-maker emails/phones on the top leads — previews the volume first, no quota spent until you confirm the channels.",
+    description: "Reveal decision-maker emails/phones on the top leads (previews first, no spend until you confirm).",
     kind: "enrich_top_leads",
   });
 
