@@ -3,23 +3,17 @@ import { vi } from "vitest";
 import { resetHttpMock, httpsMockFactory } from "../harness.js";
 vi.mock("node:https", () => httpsMockFactory());
 
-import {
-  protectedResourceMetadata,
-  buildWwwAuthenticate,
-  STARGATE_AUTH_SERVER,
-} from "../../src/auth-http.js";
-import { app } from "../../src/http-server.js";
+import { buildWwwAuthenticate } from "../../src/auth-http.js";
 
 beforeEach(() => resetHttpMock());
 
+// NOTE: the per-region PRM tests that lived here (regionAuthServer, us/fr
+// authorization_servers, /fr/mcp → fr) tested the pre-Stargate region-per-path
+// model, which this PR removes — Stargate is now the single authorization server.
+// Those obsolete tests are dropped; the single-Stargate-server coverage lives in
+// the new file oauth-single-auth-server.test.ts (repo rule: new tests in new
+// files). Only this region-agnostic helper test remains here.
 describe("OAuth resource-server helpers", () => {
-  it("protectedResourceMetadata advertises the single Stargate authorization server", () => {
-    const doc = protectedResourceMetadata({ resourceUrl: "https://mcp.test/mcp" });
-    expect(doc.resource).toBe("https://mcp.test/mcp");
-    expect(doc.authorization_servers).toEqual([STARGATE_AUTH_SERVER]);
-    expect(doc.bearer_methods_supported).toEqual(["header"]);
-  });
-
   it("buildWwwAuthenticate omits error for missing, sets invalid_token for expired", () => {
     const missing = buildWwwAuthenticate({
       resourceMetadataUrl: "https://mcp.test/.well-known/oauth-protected-resource/mcp",
@@ -37,38 +31,5 @@ describe("OAuth resource-server helpers", () => {
     });
     expect(expired).toContain('error="invalid_token"');
     expect(expired).toContain("resource_metadata=");
-  });
-});
-
-describe("protected resource metadata routes", () => {
-  it("bare /.well-known/oauth-protected-resource → Stargate auth server, resource /mcp", async () => {
-    const res = await app.fetch(
-      new Request("https://mcp.test/.well-known/oauth-protected-resource")
-    );
-    expect(res.status).toBe(200);
-    expect(res.headers.get("access-control-allow-origin")).toBe("*");
-    const body = await res.json();
-    expect(body.resource).toBe("https://mcp.test/mcp");
-    expect(body.authorization_servers).toEqual([STARGATE_AUTH_SERVER]);
-  });
-
-  it("path-suffix /mcp → Stargate auth server", async () => {
-    const res = await app.fetch(
-      new Request("https://mcp.test/.well-known/oauth-protected-resource/mcp")
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.resource).toBe("https://mcp.test/mcp");
-    expect(body.authorization_servers).toEqual([STARGATE_AUTH_SERVER]);
-  });
-
-  it("unknown suffix falls back to the primary /mcp resource", async () => {
-    const res = await app.fetch(
-      new Request("https://mcp.test/.well-known/oauth-protected-resource/bogus")
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.resource).toBe("https://mcp.test/mcp");
-    expect(body.authorization_servers).toEqual([STARGATE_AUTH_SERVER]);
   });
 });
