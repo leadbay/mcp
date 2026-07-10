@@ -34,6 +34,7 @@ import {
 import { parseWriteEnv } from "./env.js";
 import {
   initTelemetry,
+  NOOP_TELEMETRY,
   type CaptureIdentity,
   type TelemetryHandle,
 } from "./telemetry.js";
@@ -72,6 +73,16 @@ const IDENTITY_RESOLVE_TIMEOUT_MS = 1500;
 // client (so a multi-call SSE session pays once), and never blocks the tool: on
 // timeout or error we attribute to "mcp:unknown" so the event STILL lands.
 export async function resolveIdentity(client: LeadbayClient): Promise<CaptureIdentity> {
+  return (await resolveTelemetryContext(client)).identity;
+}
+
+// Resolve BOTH the per-request PostHog identity AND whether the user has opted
+// out of telemetry (telemetry_enabled — product#3879), from a single bounded
+// /users/me. `enabled` defaults to true when the field is absent (older backend)
+// or when identity resolution failed — the same opt-out default as everywhere.
+async function resolveTelemetryContext(
+  client: LeadbayClient
+): Promise<{ identity: CaptureIdentity; enabled: boolean }> {
   const region = client.region;
   try {
     const me = await Promise.race([
@@ -80,21 +91,35 @@ export async function resolveIdentity(client: LeadbayClient): Promise<CaptureIde
         setTimeout(() => resolve(null), IDENTITY_RESOLVE_TIMEOUT_MS)
       ),
     ]);
-    if (!me) return { distinctId: "mcp:unknown", region };
+    if (!me) return { identity: { distinctId: "mcp:unknown", region }, enabled: true };
     const distinctId = me.email ?? (me.id ? `mcp:user-${me.id}` : "mcp:unknown");
     return {
-      distinctId,
-      groups: me.organization?.id ? { organization: me.organization.id } : undefined,
-      region,
-      // name/email so leadbay_send_feedback attributes correctly on HTTP — the
-      // module-scoped `me` is never populated here (Codex P2).
-      ...(me.name ? { name: me.name } : {}),
-      ...(me.email ? { email: me.email } : {}),
+      identity: {
+        distinctId,
+        groups: me.organization?.id ? { organization: me.organization.id } : undefined,
+        region,
+        // name/email so leadbay_send_feedback attributes correctly on HTTP — the
+        // module-scoped `me` is never populated here (Codex P2).
+        ...(me.name ? { name: me.name } : {}),
+        ...(me.email ? { email: me.email } : {}),
+      },
+      // Honor the per-user opt-out (product#3879). Absent field → enabled.
+      enabled: me.telemetry_enabled !== false,
     };
   } catch (err: any) {
     logger.warn?.(`telemetry identity resolve failed: ${err?.message ?? err}`);
-    return { distinctId: "mcp:unknown", region };
+    return { identity: { distinctId: "mcp:unknown", region }, enabled: true };
   }
+}
+
+// The telemetry handle to use for a request: the shared handle bound to this
+// request's identity, OR NOOP_TELEMETRY when the user has opted out. This is the
+// web-safe enforcement point — on the multi-tenant hosted server a disabled
+// user's tool calls emit NOTHING, per-request, without affecting other tenants.
+export async function telemetryHandleForRequest(client: LeadbayClient): Promise<TelemetryHandle> {
+  const { identity, enabled } = await resolveTelemetryContext(client);
+  if (!enabled) return NOOP_TELEMETRY;
+  return bindTelemetryIdentity(telemetry, identity);
 }
 
 // Wrap the shared handle so every capture in THIS request/session carries the
@@ -340,13 +365,13 @@ async function handleStreamable(
   }
 
   // Resolve identity for THIS request and bind it onto the shared telemetry
-  // handle so every tool-call event carries the caller's distinctId. Without
-  // this the hosted server emitted nothing (buildServer defaulted to NOOP) —
-  // product#3876.
-  const identity = await resolveIdentity(resolved.client);
+  // handle so every tool-call event carries the caller's distinctId (without
+  // this the hosted server emitted nothing — product#3876). If the user has
+  // opted out (telemetry_enabled=false), this returns NOOP so a disabled user's
+  // events are suppressed per-request — product#3879.
   const server = buildServerFromClient(
     resolved.client,
-    bindTelemetryIdentity(telemetry, identity)
+    await telemetryHandleForRequest(resolved.client)
   );
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
@@ -417,12 +442,12 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
 
   // Resolve identity ONCE per SSE session; the bound handle rides in this
   // session's server, so every later POST /messages call attributes correctly.
-  const identity = await resolveIdentity(resolved.client);
+  // A user who opted out gets NOOP for the whole session (product#3879).
   const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
   const transport = new SSEServerTransport("/messages", env.outgoing);
   const server = buildServerFromClient(
     resolved.client,
-    bindTelemetryIdentity(telemetry, identity)
+    await telemetryHandleForRequest(resolved.client)
   );
   await server.connect(transport);
 

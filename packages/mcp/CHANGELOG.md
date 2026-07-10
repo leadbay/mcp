@@ -1,5 +1,15 @@
 # Changelog — @leadbay/mcp
 
+## 0.25.0 — 2026-07-13
+
+Add `leadbay_set_telemetry` — an in-product control to enable, disable, or check
+product-usage telemetry (product#3879). Telemetry stays ON by default (opt-out).
+The preference is stored per-user on the Leadbay account (via `POST
+/users/telemetry`, read from `GET /users/me`), so it works the same on the
+hosted/web connector as on a local install. On the hosted server a user who
+opts out has their telemetry suppressed per-request. Requires the backend
+`telemetry_enabled` field (leadbay/backend) + api-specs contract.
+
 ## 0.24.2 — 2026-07-13
 
 Release bump to publish a fresh hosted HTTP-server image carrying the 0.24.1

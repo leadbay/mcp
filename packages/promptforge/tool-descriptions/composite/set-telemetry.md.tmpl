@@ -1,0 +1,70 @@
+---
+name: leadbay_set_telemetry
+kind: tool-description
+short_description: |
+  Turn product-usage telemetry ON or OFF for the user, or report the current
+  setting. Use when the user asks to opt out of / into analytics, disable or
+  enable telemetry/tracking, or check whether telemetry is on. Telemetry is ON
+  by default (opt-out model). Don't use it for sending feedback or reporting a
+  bug (that's leadbay_send_feedback / leadbay_report_friction).
+routing:
+  triggers:
+    - "disable telemetry"
+    - "turn off telemetry"
+    - "opt out of analytics"
+    - "stop sending usage data"
+    - "enable telemetry"
+    - "turn analytics back on"
+    - "is telemetry on"
+    - "is my usage being tracked"
+    - "what's my telemetry setting"
+  anti_triggers:
+    - phrase: "I want to report a bug / send feedback"
+      route_to: leadbay_send_feedback
+    - phrase: "this tool is frustrating / that didn't work"
+      route_to: leadbay_report_friction
+  prefer_when: "user wants to change or read the telemetry/analytics on-off preference for their account"
+  examples:
+    positive:
+      - "Turn off telemetry, I don't want my usage tracked."
+      - "Re-enable analytics for my account."
+      - "Is telemetry currently on for me?"
+    negative:
+      - "I want to report a bug in the pull-leads tool."
+      - "Send feedback to the Leadbay team."
+      - "Why isn't my event showing up in PostHog?"
+rendering_hint: |
+  One short confirmation line reflecting the result: state whether telemetry is
+  now ON or OFF (or, for `status`, what it currently is) and — from `hint` —
+  the one-line way to flip it. No table; a single sentence is enough.
+annotations:
+  readOnlyHint: false
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Enable, disable, or check **product-usage telemetry** for the current user.
+
+Telemetry (PostHog analytics — which tools fire, durations, error rates; never
+tool arguments, response bodies, or lead PII) is **ON by default** (opt-out
+model). This tool is the in-product control so a user can change or check the
+setting without editing config or environment variables — and it works the same
+on the hosted/web connector as on a local install, because the preference is
+stored on the user's Leadbay account (not the machine).
+
+Parameter:
+
+- **`action`** — `"enable"` | `"disable"` | `"status"`. Defaults to `"status"`
+  (a bare call safely reports the setting without changing it).
+
+Returns:
+
+- **`telemetry_enabled`** — the setting AFTER this call.
+- **`changed`** — whether this call actually flipped it (`false` for `status`
+  and for a no-op set, e.g. disabling when already off).
+- **`action`**, **`region`**, and a one-line **`hint`** describing how to flip it.
+
+Setting the preference takes effect for the user's telemetry going forward: the
+Leadbay MCP server reads this flag and stops emitting analytics events for a
+user who has opted out. `enable`/`disable` are idempotent — setting the value it
+already has is a no-op that reports `changed: false`.
