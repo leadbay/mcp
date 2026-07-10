@@ -2,22 +2,20 @@
 name: leadbay_research_a_domain
 kind: prompt
 short_description: |
-  Import a company by domain and run deep qualification + research in one
-  pass. Use when a colleague mentions a name and you want everything Leadbay
-  knows about it.
+  Resolve a company by name or domain across the user's visible Discover,
+  Monitor, and Activate corpus, then return everything Leadbay knows about it.
 arguments:
   - name: domain
     description: "The company's primary domain (e.g. 'acme.com'). Protocol/path are stripped."
     required: true
 expected_calls:
-  - leadbay_import_and_qualify
-  - leadbay_research_lead_by_id
+  - leadbay_research_lead_by_name_fuzzy
 failure_modes:
   - Fabricates qualification answers not present in any tool response
-  - Reports certainty about fit when qualification didn't actually run (e.g. quota_blocked)
-  - Skips the research step after import completes
-  - Renders the research_lead_by_id result as a freeform narrative instead of the canonical research-company-card layout (the card with header score bar, pill row, signal sections, contacts table is the structural contract; commentary belongs ABOVE or BELOW it)
-  - Enumerates every imported lead in prose instead of the terse single-record summary from the import-result rendering snippet
+  - Calls leadbay_import_and_qualify before searching the existing visible corpus
+  - Treats the active lens as the entire search universe when the user did not request a lens scope
+  - Imports a missing company without the user's explicit permission
+  - Renders the research result as a freeform narrative instead of the canonical research-company-card layout (the card with header score bar, pill row, signal sections, contacts table is the structural contract; commentary belongs ABOVE or BELOW it)
 ---
 
 {{include:headers/agent-memory-preamble}}
@@ -28,20 +26,29 @@ failure_modes:
 
 Research the company with domain '{{arg:domain}}' for me using Leadbay.
 
-# PHASE 1 — IMPORT + QUALIFY
-Call `leadbay_import_and_qualify` with `domains=[{domain:'{{arg:domain}}'}]`. This imports the lead AND runs AI qualification in one call. If the response indicates `quota_blocked` or `still_running`, say so explicitly. Render the import status using the canonical terse single-record summary (never an enumeration of every imported lead):
+# PHASE 1 — RESOLVE + DEEP DIVE
+Call `leadbay_research_lead_by_name_fuzzy` with
+`companyName:'{{arg:domain}}'`. Omit `lensId`: the default search deliberately
+covers the user's visible Discover, Monitor, and Activate corpus, including
+other lenses and leads outside the active lens's first page. The composite
+resolves the lead and returns the full deep-research payload in one call.
 
-{{include:rendering/import-result}}
-
-# PHASE 2 — DEEP DIVE
-When the import resolves, call `leadbay_research_lead_by_id` on the new leadId. Render the result using the canonical single-record card layout — detect MODE A (Discovery) since the user asked to "research" a domain rather than to prepare outreach:
+Render the result using the canonical single-record card layout — detect MODE A
+(Discovery) since the user asked to research a company rather than prepare
+outreach:
 
 {{include:rendering/research-company-card}}
+
+# PHASE 2 — NOT FOUND
+If the resolver returns `LEAD_NOT_FOUND`, say that the existing visible corpus
+was searched. **Do NOT call `leadbay_import_and_qualify` automatically.** Offer
+to import and qualify the company as a separate, explicit next step; only call
+it after the user agrees.
 
 # PHASE 3 — SUMMARY
 Place a 2–3 sentence summary ABOVE the card with:
 - Who is this company (1 sentence)
-- Their fit (cite specific `qualification_answers` from the qualification response)
+- Their fit (cite specific qualification answers or signals from the research response)
 - Which contact would I email first (one short clause — the card's contacts table carries the rest)
 
 The card itself handles the signal callouts (`📈 business signals`, `💡 prospecting clues`). Do NOT re-narrate signals in prose above the card — that's what the card sections are for. Be honest about uncertainty: if any field is missing from tool responses, say "not surfaced by qualification" rather than guessing.
