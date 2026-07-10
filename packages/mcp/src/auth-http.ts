@@ -6,7 +6,7 @@
 // this file never imports the CLI entrypoint.
 
 
-import { createClient, REGIONS, type LeadbayClient, type LeadbayError, type ToolLogger } from "@leadbay/core";
+import { createClient, type LeadbayError, type ToolLogger } from "@leadbay/core";
 import { makeBrokenClient, type ResolvedClient } from "./broken-client.js";
 
 export interface ResolveTokenOptions {
@@ -16,6 +16,13 @@ export interface ResolveTokenOptions {
   // Optional baseUrl override. Mirrors $LEADBAY_BASE_URL in stdio.
   baseUrl?: string;
   logger?: ToolLogger;
+  // When true (the default for the hosted HTTP path), validate the bearer with a
+  // single lightweight `/users/me` probe against the region the suffix names, so
+  // an expired/revoked token yields authState:"expired" and the caller can emit
+  // the RFC 6750 `invalid_token` challenge that drives the host's silent refresh.
+  // Set false to skip the round-trip (e.g. an explicit region/baseUrl pin where
+  // the caller doesn't need the refresh signal).
+  validate?: boolean;
 }
 
 /**
@@ -35,7 +42,7 @@ export async function resolveClientFromToken(
   token: string | undefined,
   opts: ResolveTokenOptions = {}
 ): Promise<ResolvedClient> {
-  const { region, baseUrl, logger } = opts;
+  const { region, baseUrl, logger, validate = true } = opts;
 
   if (!token || token.length === 0) {
     // Same broken-client pattern as stdio: let the JSON-RPC handshake
@@ -67,10 +74,35 @@ export async function resolveClientFromToken(
 
   // Stargate-issued tokens carry a `_us`/`_fr` region suffix, so we route directly
   // to the owning backend — no dual-region auto-probe. An untagged/legacy token
-  // (no known suffix) falls back to us; the backend returns an auth error envelope
-  // if it doesn't own the token.
+  // (no known suffix) falls back to us; the backend rejects it if it doesn't own
+  // the token.
   const tokenRegion = regionFromToken(token) ?? "us";
-  return { client: createClient({ token, region: tokenRegion }), authState: "ok" };
+  const client = createClient({ token, region: tokenRegion });
+
+  if (!validate) {
+    return { client, authState: "ok" };
+  }
+
+  // Single-region validation probe against the owning backend. Unlike the old
+  // dual-region auto-probe this is ONE round-trip (the suffix already told us the
+  // region). A rejected token (AUTH_EXPIRED / NOT_AUTHENTICATED) surfaces as
+  // authState:"expired" so the caller emits `error="invalid_token"` and the host
+  // silently refreshes — instead of the failure only appearing on a later tool
+  // call, which leaves a host with a stale token stuck. retryOn401:false so a bad
+  // token fails fast rather than double-probing.
+  try {
+    await client.request("GET", "/users/me", undefined, { retryOn401: false });
+    return { client, authState: "ok" };
+  } catch (e) {
+    const code = (e as LeadbayError)?.code;
+    if (code === "AUTH_EXPIRED" || code === "NOT_AUTHENTICATED") {
+      logger?.warn?.("hosted MCP bearer rejected by backend — emitting invalid_token challenge");
+      return { client, authState: "expired" };
+    }
+    // A non-auth failure (network, 5xx) is not an auth problem: don't force the
+    // user through re-auth. Proceed as ok; a real fault re-surfaces on the tool call.
+    return { client, authState: "ok" };
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────

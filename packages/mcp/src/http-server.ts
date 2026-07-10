@@ -8,6 +8,7 @@
 //
 // Endpoints:
 //   POST /mcp                  Streamable HTTP transport (current MCP spec)
+//   POST /fr/mcp               Compat alias for the README's EU connector URL
 //   GET  /sse, POST /messages  Legacy SSE transport (older hosts)
 //   GET  /healthz              Liveness probe for Fly/Render
 //
@@ -89,7 +90,13 @@ function buildServerFromClient(client: LeadbayClient): Server {
 // the token, not the URL.
 
 const PRM_PREFIX = "/.well-known/oauth-protected-resource";
-const RESOURCE_PATHS = ["/mcp", "/sse"] as const;
+// `/fr/*` are compat aliases: the README shipped `https://mcp.leadbay.app/fr/mcp`
+// as the EU connector URL, so existing EU users still connect there. Under the
+// Stargate-centered flow the path no longer pins a region — every path advertises
+// the same single Stargate auth server and the token's `_fr`/`_us` suffix
+// self-routes tool calls — so `/fr/mcp` behaves identically to `/mcp`. Kept as an
+// alias (not a redirect) so those users don't 404.
+const RESOURCE_PATHS = ["/mcp", "/sse", "/fr/mcp", "/fr/sse"] as const;
 
 // Public origin of this request. Fly terminates TLS and forwards over http, so
 // trust x-forwarded-proto; fall back to the request URL (host + scheme).
@@ -209,6 +216,7 @@ app.options("*", (c) => {
 // Cap request bodies at 1 MB to prevent OOM on the 256 MB Fly VM.
 const MCP_BODY_LIMIT = bodyLimit({ maxSize: 1 * 1024 * 1024 });
 app.use("/mcp", MCP_BODY_LIMIT);
+app.use("/fr/mcp", MCP_BODY_LIMIT); // compat alias (see RESOURCE_PATHS)
 app.use("/messages", MCP_BODY_LIMIT);
 
 // Streamable HTTP transport. Stateless mode (no sessionIdGenerator) is the
@@ -217,15 +225,17 @@ app.use("/messages", MCP_BODY_LIMIT);
 // passing `sessionIdGenerator: randomUUID`.
 async function handleStreamable(
   c: Context,
-  resourcePath: "/mcp"
+  resourcePath: "/mcp" | "/fr/mcp"
 ): Promise<Response> {
   const foreign = rejectForeignOrigin(c);
   if (foreign) return foreign;
 
   const token = extractBearer(c.req.header("authorization"));
 
-  // Auto-probe (no region pin) so a missing OR invalid/expired token both yield
-  // a 401 challenge, and a valid token routes to whichever region owns it.
+  // Resolve + validate: the token's `_fr`/`_us` suffix names the owning region, so
+  // this is a single-region `/users/me` probe. A missing token → "missing", a
+  // rejected token → "expired"; both emit a 401 challenge so the host prompts
+  // sign-in (missing) or silently refreshes (expired). A valid token → "ok".
   const resolved = await resolveClientFromToken(token);
   if (resolved.authState === "missing" || resolved.authState === "expired") {
     return sendChallenge(c, resourcePath, resolved.authState);
@@ -284,10 +294,13 @@ async function handleStreamable(
 }
 
 app.all("/mcp", (c) => handleStreamable(c, "/mcp"));
+// Compat alias for the README's published EU connector URL. Same behavior as
+// /mcp — the token suffix, not the path, selects the region.
+app.all("/fr/mcp", (c) => handleStreamable(c, "/fr/mcp"));
 
 // Legacy SSE transport. Two endpoints: GET /sse opens the stream, POST
 // /messages?sessionId=... feeds JSON-RPC messages in.
-async function handleSse(c: Context, resourcePath: "/sse"): Promise<Response> {
+async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<Response> {
   const foreign = rejectForeignOrigin(c);
   if (foreign) return foreign;
 
@@ -317,6 +330,7 @@ async function handleSse(c: Context, resourcePath: "/sse"): Promise<Response> {
 }
 
 app.get("/sse", (c) => handleSse(c, "/sse"));
+app.get("/fr/sse", (c) => handleSse(c, "/fr/sse")); // compat alias (see RESOURCE_PATHS)
 
 app.post("/messages", async (c) => {
   const foreign = rejectForeignOrigin(c);
