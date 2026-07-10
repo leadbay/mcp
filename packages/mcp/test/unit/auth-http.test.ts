@@ -3,12 +3,23 @@ import { vi } from "vitest";
 import { mockHttp, resetHttpMock, httpsMockFactory } from "../harness.js";
 vi.mock("node:https", () => httpsMockFactory());
 
-import { resolveClientFromToken } from "../../src/auth-http.js";
+import { resolveClientFromToken, regionFromToken } from "../../src/auth-http.js";
 
 const BASE_US = "https://api-us.leadbay.app";
-const BASE_FR = "https://api-fr.leadbay.app";
 
 beforeEach(() => resetHttpMock());
+
+describe("regionFromToken", () => {
+  it("decodes the trailing region suffix", () => {
+    expect(regionFromToken("o.sometoken_fr")).toBe("fr");
+    expect(regionFromToken("o.sometoken_us")).toBe("us");
+  });
+
+  it("returns undefined for an untagged or unknown-suffix token", () => {
+    expect(regionFromToken("o.sometoken")).toBeUndefined();
+    expect(regionFromToken("o.sometoken_xx")).toBeUndefined();
+  });
+});
 
 describe("resolveClientFromToken", () => {
   it("missing token → AUTH_MISSING broken client", async () => {
@@ -31,58 +42,35 @@ describe("resolveClientFromToken", () => {
     expect(requests).toHaveLength(0);
   });
 
-  it("token + explicit region=us → no probe call, ok authState", async () => {
+  it("explicit region pin → ok, no probe call", async () => {
     const { requests } = mockHttp([]);
     const result = await resolveClientFromToken("tok", { region: "us" });
     expect(result.authState).toBe("ok");
-    expect(requests).toHaveLength(0); // pinned region skips probe
+    expect(requests).toHaveLength(0);
   });
 
-  it("token + explicit region=fr → no probe call, ok authState", async () => {
-    const { requests } = mockHttp([]);
-    const result = await resolveClientFromToken("tok", { region: "fr" });
-    expect(result.authState).toBe("ok");
-    expect(requests).toHaveLength(0); // pinned region skips probe
-  });
-
-  it("token + baseUrl → no probe call, ok authState", async () => {
+  it("explicit baseUrl → ok, no probe call", async () => {
     const { requests } = mockHttp([]);
     const result = await resolveClientFromToken("tok", { baseUrl: BASE_US });
     expect(result.authState).toBe("ok");
     expect(requests).toHaveLength(0);
   });
 
-  it("auto-probe: first region to respond wins", async () => {
-    // Respond to /users/me on us; fr gets a 401 (will be ignored since us wins)
-    mockHttp([
-      { method: "GET", path: "/1.6/users/me", status: 200, body: { id: "u1" } },
-      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "NOT_AUTHENTICATED", message: "bad" } },
-    ]);
-    const result = await resolveClientFromToken("tok");
+  it("region-suffixed token → ok, routed by the suffix, no probe call", async () => {
+    // Stargate-centered flow: region decoded from the `_fr`/`_us` suffix; no
+    // dual-region /users/me probe. Any real auth failure surfaces on the tool call.
+    const { requests } = mockHttp([]);
+    const fr = await resolveClientFromToken("o.sometoken_fr");
+    expect(fr.authState).toBe("ok");
+    const us = await resolveClientFromToken("o.sometoken_us");
+    expect(us.authState).toBe("ok");
+    expect(requests).toHaveLength(0);
+  });
+
+  it("untagged legacy token → ok (falls back to a region), no probe call", async () => {
+    const { requests } = mockHttp([]);
+    const result = await resolveClientFromToken("o.legacytoken");
     expect(result.authState).toBe("ok");
-  });
-
-  it("auto-probe: both regions return AUTH_EXPIRED → expired broken client", async () => {
-    mockHttp([
-      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "token expired" } },
-      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "token expired" } },
-    ]);
-    const result = await resolveClientFromToken("tok");
-    expect(result.authState).toBe("expired");
-    await expect(result.client.request("GET", "/any")).rejects.toMatchObject({
-      code: "AUTH_EXPIRED",
-    });
-  });
-
-  it("auto-probe: both regions return network error → probe_failed with live client", async () => {
-    mockHttp([
-      { method: "GET", path: "/1.6/users/me", status: 500, body: { error: true, code: "SERVER_ERROR", message: "oops" } },
-      { method: "GET", path: "/1.6/users/me", status: 500, body: { error: true, code: "SERVER_ERROR", message: "oops" } },
-    ]);
-    const result = await resolveClientFromToken("tok");
-    expect(result.authState).toBe("probe_failed");
-    // Falls back to a live (non-broken) client — it should be able to make calls
-    // (whether they succeed depends on the backend, not our code)
-    expect(result.client).toBeDefined();
+    expect(requests).toHaveLength(0);
   });
 });

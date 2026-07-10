@@ -10,13 +10,25 @@ import { createClient, REGIONS, type LeadbayClient, type LeadbayError, type Tool
 import { makeBrokenClient, type ResolvedClient } from "./broken-client.js";
 
 export interface ResolveTokenOptions {
-  // Optional region pin. Provided by the HTTP transport from a header
-  // (`X-Leadbay-Region: us|fr`) or query param. When omitted, we probe both
-  // backends in parallel — same trade-off as the stdio env path.
+  // Optional region pin. Normally unused — the region is decoded from the token's
+  // `_us`/`_fr` suffix (Stargate-centered flow). An explicit pin still wins.
   region?: "us" | "fr";
   // Optional baseUrl override. Mirrors $LEADBAY_BASE_URL in stdio.
   baseUrl?: string;
   logger?: ToolLogger;
+}
+
+/**
+ * Decode the region from a Stargate-issued access token's trailing suffix:
+ * `o.<token>_fr` / `o.<token>_us` → "fr" / "us". Returns undefined for an
+ * untagged/legacy token (caller falls back). The token body isn't otherwise
+ * inspected here — the backend validates it.
+ */
+export function regionFromToken(token: string): "us" | "fr" | undefined {
+  const i = token.lastIndexOf("_");
+  if (i < 0) return undefined;
+  const tag = token.slice(i + 1).toLowerCase();
+  return tag === "us" || tag === "fr" ? tag : undefined;
 }
 
 export async function resolveClientFromToken(
@@ -53,46 +65,12 @@ export async function resolveClientFromToken(
     return { client: createClient(config), authState: "ok" };
   }
 
-  // Auto-probe path: token is sent to BOTH api-us and api-fr. Hosted callers
-  // should set the region header to avoid this; the warning here goes to
-  // server logs (the user can't see stderr on a hosted endpoint).
-  logger?.info?.("hosted MCP: region unpinned, probing api-us + api-fr in parallel");
-
-  const probe = async (r: "us" | "fr"): Promise<LeadbayClient> => {
-    const c = createClient({ token, region: r });
-    await c.request("GET", "/users/me");
-    return c;
-  };
-
-  try {
-    const client = await Promise.any([probe("us"), probe("fr")]);
-    return { client, authState: "ok" };
-  } catch (err: any) {
-    const errors: any[] = err?.errors ?? [];
-    const firstAuth = errors.find(
-      (e) => e?.code === "AUTH_EXPIRED" || e?.code === "NOT_AUTHENTICATED"
-    );
-    if (firstAuth) {
-      return {
-        client: makeBrokenClient(
-          {
-            error: true,
-            code: firstAuth.code,
-            message: firstAuth.message,
-            hint: "Verify the bearer token is valid. Pin the region with an `X-Leadbay-Region: us|fr` header to skip auto-probing. Authenticate again with `npx -y @leadbay/mcp login --oauth`.",
-          } satisfies LeadbayError,
-          "us"
-        ),
-        authState: "expired",
-      };
-    }
-    // Non-auth failure (network, DNS) — fall back to us so the server can
-    // still answer tool calls with an error envelope rather than dying.
-    return {
-      client: createClient({ token, region: "us" }),
-      authState: "probe_failed",
-    };
-  }
+  // Stargate-issued tokens carry a `_us`/`_fr` region suffix, so we route directly
+  // to the owning backend — no dual-region auto-probe. An untagged/legacy token
+  // (no known suffix) falls back to us; the backend returns an auth error envelope
+  // if it doesn't own the token.
+  const tokenRegion = regionFromToken(token) ?? "us";
+  return { client: createClient({ token, region: tokenRegion }), authState: "ok" };
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -102,16 +80,17 @@ export async function resolveClientFromToken(
 // remote client (Claude Desktop, ChatGPT) only runs its sign-in flow when the
 // server (a) returns 401 + a `WWW-Authenticate` header pointing at protected
 // resource metadata and (b) serves that metadata advertising the authorization
-// server. Without it the client never prompts — the reported bug. The Leadbay
-// regional backends already act as the OAuth authorization server (they serve
-// /.well-known/oauth-authorization-server + register/authorize/token); we just
-// point the client at the right one.
+// server. Without it the client never prompts.
+//
+// Stargate is the single, region-agnostic OAuth authority (it fronts both
+// regional backends and routes by the token/code region suffix). So discovery
+// advertises ONE authorization server for everyone — the shared connector URL
+// works regardless of the user's region, and the region rides in the token
+// suffix, not the connector path.
 
-/** Region → OAuth authorization server (the regional backend that serves the
- *  authorization-server metadata, registration, and token endpoints). */
-export function regionAuthServer(region: "us" | "fr"): string {
-  return region === "fr" ? REGIONS.fr : REGIONS.us;
-}
+/** The single OAuth authorization server (Stargate). Overridable for staging/tests. */
+export const STARGATE_AUTH_SERVER =
+  process.env.LEADBAY_AUTH_SERVER ?? "https://auth.leadbay.app";
 
 export interface ProtectedResourceMetadata {
   resource: string;
@@ -121,14 +100,13 @@ export interface ProtectedResourceMetadata {
 
 /** RFC 9728 Protected Resource Metadata for a hosted MCP endpoint. `resourceUrl`
  *  is the canonical endpoint the client connected to (e.g.
- *  https://mcp.leadbay.app/mcp). */
+ *  https://mcp.leadbay.app/mcp). Advertises the single Stargate auth server. */
 export function protectedResourceMetadata(opts: {
   resourceUrl: string;
-  region: "us" | "fr";
 }): ProtectedResourceMetadata {
   return {
     resource: opts.resourceUrl,
-    authorization_servers: [regionAuthServer(opts.region)],
+    authorization_servers: [STARGATE_AUTH_SERVER],
     bearer_methods_supported: ["header"],
   };
 }

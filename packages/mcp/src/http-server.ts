@@ -82,19 +82,14 @@ function buildServerFromClient(client: LeadbayClient): Server {
 
 // ── OAuth resource-server discovery (MCP authorization spec / RFC 9728) ──────
 //
-// OAuth discovery runs before we know who the user is, and Leadbay OAuth is
-// single-region (a token is issued by, and valid for, one regional backend).
-// So the region is encoded in the connector URL the user pastes: a US user adds
-// /mcp, a FR user adds /fr/mcp. The path only selects which authorization server
-// the sign-in prompt points at; tool requests auto-probe both regions, so a
-// valid token routes correctly regardless.
+// Stargate is the single, region-agnostic OAuth authority. Discovery advertises
+// ONE authorization server for everyone, so the shared connector URL works for
+// any region — no `/us` vs `/fr` connector path. The user's region is decided at
+// consent and rides in the token's `_us`/`_fr` suffix, so tool requests route by
+// the token, not the URL.
 
 const PRM_PREFIX = "/.well-known/oauth-protected-resource";
-const RESOURCE_PATHS = ["/mcp", "/fr/mcp", "/sse", "/fr/sse"] as const;
-
-function regionForResourcePath(resourcePath: string): "us" | "fr" {
-  return /^\/fr(\/|$)/.test(resourcePath) ? "fr" : "us";
-}
+const RESOURCE_PATHS = ["/mcp", "/sse"] as const;
 
 // Public origin of this request. Fly terminates TLS and forwards over http, so
 // trust x-forwarded-proto; fall back to the request URL (host + scheme).
@@ -159,7 +154,6 @@ function servePrm(c: Context, resourcePath: string): Response {
   return c.json(
     protectedResourceMetadata({
       resourceUrl: `${requestOrigin(c)}${resourcePath}`,
-      region: regionForResourcePath(resourcePath),
     })
   );
 }
@@ -215,7 +209,6 @@ app.options("*", (c) => {
 // Cap request bodies at 1 MB to prevent OOM on the 256 MB Fly VM.
 const MCP_BODY_LIMIT = bodyLimit({ maxSize: 1 * 1024 * 1024 });
 app.use("/mcp", MCP_BODY_LIMIT);
-app.use("/fr/mcp", MCP_BODY_LIMIT);
 app.use("/messages", MCP_BODY_LIMIT);
 
 // Streamable HTTP transport. Stateless mode (no sessionIdGenerator) is the
@@ -224,7 +217,7 @@ app.use("/messages", MCP_BODY_LIMIT);
 // passing `sessionIdGenerator: randomUUID`.
 async function handleStreamable(
   c: Context,
-  resourcePath: "/mcp" | "/fr/mcp"
+  resourcePath: "/mcp"
 ): Promise<Response> {
   const foreign = rejectForeignOrigin(c);
   if (foreign) return foreign;
@@ -291,11 +284,10 @@ async function handleStreamable(
 }
 
 app.all("/mcp", (c) => handleStreamable(c, "/mcp"));
-app.all("/fr/mcp", (c) => handleStreamable(c, "/fr/mcp"));
 
 // Legacy SSE transport. Two endpoints: GET /sse opens the stream, POST
 // /messages?sessionId=... feeds JSON-RPC messages in.
-async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<Response> {
+async function handleSse(c: Context, resourcePath: "/sse"): Promise<Response> {
   const foreign = rejectForeignOrigin(c);
   if (foreign) return foreign;
 
@@ -325,7 +317,6 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
 }
 
 app.get("/sse", (c) => handleSse(c, "/sse"));
-app.get("/fr/sse", (c) => handleSse(c, "/fr/sse"));
 
 app.post("/messages", async (c) => {
   const foreign = rejectForeignOrigin(c);

@@ -45,17 +45,17 @@ describe("hosted MCP OAuth challenge — empty body (product#3761)", () => {
     expect(body).not.toMatch(QUOTABLE_PROSE);
   });
 
-  it("expired token → 401, invalid_token in header, body empty + no quotable prose", async () => {
-    // Auto-probe hits both regions; both 401 AUTH_EXPIRED → expired.
-    mockHttp([
-      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "token expired" } },
-      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "token expired" } },
-    ]);
-    const res = await app.fetch(initRequest("https://mcp.test/mcp", { authorization: "Bearer stale" }));
+  it("no-token challenge body stays empty across repeated probes (no quotable prose)", async () => {
+    // Under the Stargate-centered flow a token resolves by its region suffix with
+    // no /users/me probe, so an expired token no longer produces a 401 at
+    // resolution — the auth failure surfaces later on the tool call. The 401
+    // challenge this file guards is the MISSING-token one; re-assert its body
+    // stays empty (the product#3761 contract) on a fresh request.
+    mockHttp([]);
+    const res = await app.fetch(initRequest("https://mcp.test/mcp"));
 
     expect(res.status).toBe(401);
-    // The machine-actionable error signal lives in the header, not the body.
-    expect(res.headers.get("www-authenticate") ?? "").toContain('error="invalid_token"');
+    expect(res.headers.get("www-authenticate") ?? "").toContain("resource_metadata=");
 
     const body = await res.text();
     expect(body).toBe("");

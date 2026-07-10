@@ -16,8 +16,8 @@ function initRequest(url: string, headers: Record<string, string> = {}): Request
 }
 
 describe("hosted MCP OAuth challenge", () => {
-  it("POST /mcp with no token → 401 + WWW-Authenticate pointing at us metadata", async () => {
-    mockHttp([]); // no token → no backend probe
+  it("POST /mcp with no token → 401 + WWW-Authenticate pointing at /mcp metadata", async () => {
+    mockHttp([]); // no token → no backend call
     const res = await app.fetch(initRequest("https://mcp.test/mcp"));
     expect(res.status).toBe(401);
     const wwwAuth = res.headers.get("www-authenticate") ?? "";
@@ -29,35 +29,14 @@ describe("hosted MCP OAuth challenge", () => {
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
   });
 
-  it("POST /fr/mcp with no token → 401 pointing at fr metadata", async () => {
-    mockHttp([]);
-    const res = await app.fetch(initRequest("https://mcp.test/fr/mcp"));
-    expect(res.status).toBe(401);
-    expect(res.headers.get("www-authenticate") ?? "").toContain(
-      'resource_metadata="https://mcp.test/.well-known/oauth-protected-resource/fr/mcp"'
+  it("POST /mcp with a region-suffixed token resolves without a probe (no 401 at resolution)", async () => {
+    // Stargate-centered flow: the region is decoded from the token's `_fr` suffix,
+    // so token resolution no longer probes /users/me and does not 401 here. Any
+    // real auth failure surfaces on the actual tool call against the backend.
+    mockHttp([]); // resolution makes NO backend call now
+    const res = await app.fetch(
+      initRequest("https://mcp.test/mcp", { authorization: "Bearer o.sometoken_fr" })
     );
-  });
-
-  it("POST /mcp with an expired token → 401 invalid_token", async () => {
-    // Auto-probe hits both regions; both 401 AUTH_EXPIRED → expired.
-    mockHttp([
-      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "token expired" } },
-      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "token expired" } },
-    ]);
-    const res = await app.fetch(initRequest("https://mcp.test/mcp", { authorization: "Bearer stale" }));
-    expect(res.status).toBe(401);
-    const wwwAuth = res.headers.get("www-authenticate") ?? "";
-    expect(wwwAuth).toContain('error="invalid_token"');
-    expect(wwwAuth).toContain("resource_metadata=");
-  });
-
-  it("transient probe failure does NOT force re-auth (no 401)", async () => {
-    // Both regions return a non-auth error → probe_failed → proceed (not a 401).
-    mockHttp([
-      { method: "GET", path: "/1.6/users/me", status: 500, body: { error: true, code: "SERVER_ERROR", message: "oops" } },
-      { method: "GET", path: "/1.6/users/me", status: 500, body: { error: true, code: "SERVER_ERROR", message: "oops" } },
-    ]);
-    const res = await app.fetch(initRequest("https://mcp.test/mcp", { authorization: "Bearer tok" }));
     expect(res.status).not.toBe(401);
     expect(res.headers.get("www-authenticate")).toBeNull();
   });
