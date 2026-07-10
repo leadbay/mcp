@@ -91,10 +91,10 @@ export interface TelemetryHandle {
   captureQuotaHit(props: QuotaHitProps, identity?: CaptureIdentity): void;
   captureTopupLink(props: TopupLinkProps, identity?: CaptureIdentity): void;
   captureStartup(props: StartupProps, identity?: CaptureIdentity): void;
-  captureAgentMemoryCaptured(props: AgentMemoryCapturedProps): void;
-  captureAgentMemoryRecalled(props: AgentMemoryRecalledProps): void;
-  captureAgentMemoryPruned(props: AgentMemoryPrunedProps): void;
-  captureFrictionReported(props: FrictionReportedProps): void;
+  captureAgentMemoryCaptured(props: AgentMemoryCapturedProps, identity?: CaptureIdentity): void;
+  captureAgentMemoryRecalled(props: AgentMemoryRecalledProps, identity?: CaptureIdentity): void;
+  captureAgentMemoryPruned(props: AgentMemoryPrunedProps, identity?: CaptureIdentity): void;
+  captureFrictionReported(props: FrictionReportedProps, identity?: CaptureIdentity): void;
   captureException(err: unknown, ctx: ExceptionCtx): void;
   // User-authored feedback → Sentry's feedback inbox, the SAME place the
   // web app's feedback form lands (Sentry.captureFeedback). name/email are
@@ -399,17 +399,17 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
     captureStartup(props, identity) {
       emit(EV_STARTUP, { ...props }, identity);
     },
-    captureAgentMemoryCaptured(props) {
-      emit(EV_AGENT_MEMORY_CAPTURED, { ...props });
+    captureAgentMemoryCaptured(props, identity) {
+      emit(EV_AGENT_MEMORY_CAPTURED, { ...props }, identity);
     },
-    captureAgentMemoryRecalled(props) {
-      emit(EV_AGENT_MEMORY_RECALLED, { ...props });
+    captureAgentMemoryRecalled(props, identity) {
+      emit(EV_AGENT_MEMORY_RECALLED, { ...props }, identity);
     },
-    captureAgentMemoryPruned(props) {
-      emit(EV_AGENT_MEMORY_PRUNED, { ...props });
+    captureAgentMemoryPruned(props, identity) {
+      emit(EV_AGENT_MEMORY_PRUNED, { ...props }, identity);
     },
-    captureFrictionReported(props) {
-      emit(EV_FRICTION_REPORTED, { ...props });
+    captureFrictionReported(props, identity) {
+      emit(EV_FRICTION_REPORTED, { ...props }, identity);
     },
     captureUpdateCheck(props) {
       emit(EV_MCP_UPDATE_CHECK, { ...props });

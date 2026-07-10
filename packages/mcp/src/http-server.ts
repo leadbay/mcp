@@ -97,6 +97,14 @@ export async function resolveIdentity(client: LeadbayClient): Promise<CaptureIde
 // caller's identity (the server.ts capture sites don't know the identity — the
 // wrapper injects it). identify()/shutdown() are inert: a closing request or an
 // evicted SSE session must NEVER shut down the shared process-level client.
+//
+// EVERY PostHog capture method server.ts can fire per request must be wrapped —
+// not just the tool-call ones. friction (leadbay_report_friction) and the
+// agent-memory events also emit() on this handle, and since the HTTP base handle
+// never calls identify(), an unwrapped method would sit in the pending buffer
+// until process shutdown and then flush as anonymous. captureException /
+// captureFeedback go to Sentry (identity via ctx / bounded flush), not the
+// PostHog pending buffer, so they stay on the base handle.
 export function bindTelemetryIdentity(
   base: TelemetryHandle,
   identity: CaptureIdentity
@@ -108,6 +116,10 @@ export function bindTelemetryIdentity(
     captureQuotaHit: (p) => base.captureQuotaHit(p, identity),
     captureTopupLink: (p) => base.captureTopupLink(p, identity),
     captureStartup: (p) => base.captureStartup(p, identity),
+    captureAgentMemoryCaptured: (p) => base.captureAgentMemoryCaptured(p, identity),
+    captureAgentMemoryRecalled: (p) => base.captureAgentMemoryRecalled(p, identity),
+    captureAgentMemoryPruned: (p) => base.captureAgentMemoryPruned(p, identity),
+    captureFrictionReported: (p) => base.captureFrictionReported(p, identity),
     identify: async () => {},
     shutdown: async () => {},
   };
@@ -469,8 +481,14 @@ if (isEntrypoint) {
       `leadbay-mcp-http ${VERSION} listening on http://${info.address}:${info.port} (boot=${_boot})\n`
     );
     // Process-level boot signal (no per-user identity — no request yet). Lets us
-    // correlate "events stopped" in PostHog with a Fly restart/redeploy.
-    telemetry.captureStartup({ auth_state: "ok", region: "unknown" });
+    // correlate "events stopped" in PostHog with a Fly restart/redeploy. Pass an
+    // explicit process-level identity: the shared handle never calls identify()
+    // in the HTTP process, so without an override this would buffer in
+    // pendingEvents and only surface at shutdown (or be lost on a crash).
+    telemetry.captureStartup(
+      { auth_state: "ok", region: "unknown" },
+      { distinctId: "mcp:http-server", region: "unknown" }
+    );
   });
 
   // Flush the shared PostHog client on Fly's SIGTERM (sent on every redeploy)

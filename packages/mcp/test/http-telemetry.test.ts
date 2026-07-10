@@ -131,6 +131,31 @@ describe("hosted HTTP MCP — telemetry wiring (product#3876)", () => {
     expect(base.identify).not.toHaveBeenCalled();
   });
 
+  it("the wrapper injects identity into friction + agent-memory captures too (not just tool calls)", () => {
+    // These fire per HTTP request when leadbay_report_friction / the agent-memory
+    // tools run. Before the fix they fell through to the base handle with NO
+    // identity — and since the HTTP base never identifies, they buffered until
+    // shutdown and flushed anonymous. The wrapper must forward identity for them.
+    const identity = { distinctId: "alice@leadbay.test", groups: { organization: "org-a" }, region: "us" };
+    const seen: Record<string, unknown> = {};
+    const base: TelemetryHandle = {
+      ...NOOP_TELEMETRY,
+      captureFrictionReported: (_p, id) => { seen.friction = id; },
+      captureAgentMemoryCaptured: (_p, id) => { seen.memCaptured = id; },
+      captureAgentMemoryRecalled: (_p, id) => { seen.memRecalled = id; },
+      captureAgentMemoryPruned: (_p, id) => { seen.memPruned = id; },
+    };
+    const bound = bindTelemetryIdentity(base, identity);
+    bound.captureFrictionReported({ category: "x", user_quote: "q" });
+    bound.captureAgentMemoryCaptured({});
+    bound.captureAgentMemoryRecalled({});
+    bound.captureAgentMemoryPruned({ action: "prune" });
+    expect(seen.friction).toEqual(identity);
+    expect(seen.memCaptured).toEqual(identity);
+    expect(seen.memRecalled).toEqual(identity);
+    expect(seen.memPruned).toEqual(identity);
+  });
+
   it("resolveIdentity maps /users/me to distinctId + groups + region", async () => {
     mockHttp([
       {

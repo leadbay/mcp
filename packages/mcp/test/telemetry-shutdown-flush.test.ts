@@ -144,4 +144,18 @@ describe("telemetry per-call identity override", () => {
     // Buffered — nothing reached posthog.capture until identity resolves or shutdown flushes.
     expect(calls.captures).toHaveLength(0);
   });
+
+  it("a startup event with an explicit identity captures immediately (HTTP boot signal not buffered)", async () => {
+    // The HTTP server never calls identify(), so its boot signal must pass an
+    // explicit identity or it would sit in pendingEvents until shutdown (or be
+    // lost on a crash). With the override, it captures on the spot.
+    const t = initTelemetry({ version: "9.9.9-dev" });
+    t.captureStartup(
+      { auth_state: "ok", region: "unknown" },
+      { distinctId: "mcp:http-server", region: "unknown" }
+    );
+    expect(calls.captures).toHaveLength(1);
+    expect(calls.captures[0].distinctId).toBe("mcp:http-server");
+    expect(calls.captures[0].event).toBe("mcp startup");
+  });
 });
