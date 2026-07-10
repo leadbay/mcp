@@ -99,9 +99,9 @@ export async function resolveClientFromToken(
 
   // Probe candidates: a suffixed token names exactly one region; an untagged token
   // tries both (primary first, then the sibling) so a valid legacy token in EITHER
-  // region resolves. A rejected token (AUTH_EXPIRED / NOT_AUTHENTICATED) is only
-  // fatal after every candidate rejects it. A non-auth fault (5xx/network) is not
-  // an auth problem — proceed as ok so we don't force spurious re-auth.
+  // region resolves. A candidate's outcome is one of: OK (return immediately),
+  // auth-reject (try the next), or non-auth fault (try the next — it might be a
+  // transient/backend error while the token is valid elsewhere).
   const candidates: ("us" | "fr")[] = suffixRegion
     ? [suffixRegion]
     : primaryRegion === "us"
@@ -109,6 +109,7 @@ export async function resolveClientFromToken(
       : ["fr", "us"];
 
   let sawAuthReject = false;
+  let sawNonAuthFault = false;
   for (const r of candidates) {
     const client = createClient({ token, region: r });
     try {
@@ -119,17 +120,23 @@ export async function resolveClientFromToken(
       const code = (e as LeadbayError)?.code;
       if (code === "AUTH_EXPIRED" || code === "NOT_AUTHENTICATED") {
         sawAuthReject = true;
-        continue; // try the next region (untagged token might live there)
+      } else {
+        // Non-auth fault (5xx / network) on THIS region — do NOT bind here yet. The
+        // token may be valid in the sibling region (e.g. US 503 while FR is healthy
+        // on the shared /mcp URL), so keep probing the remaining candidates.
+        sawNonAuthFault = true;
       }
-      // Non-auth fault on this region: don't force re-auth. Proceed as ok against it.
-      return { client, authState: "ok" };
+      continue;
     }
   }
 
-  // Every candidate rejected the token on auth grounds → genuinely expired/revoked.
-  // Emit the invalid_token challenge so the host silently refreshes. Bind the
-  // broken/live client to the primary region for the challenge response.
-  if (sawAuthReject) {
+  // No candidate returned OK. If ANY candidate rejected on auth grounds AND none
+  // hit a transient fault that could be masking a valid token, treat as genuinely
+  // expired → invalid_token challenge (host silently refreshes). But if a non-auth
+  // fault occurred on any candidate, we can't be sure the token is invalid, so
+  // proceed as ok (don't force spurious re-auth); a real fault re-surfaces on the
+  // tool call. Bind the client to the primary region for the response.
+  if (sawAuthReject && !sawNonAuthFault) {
     logger?.warn?.("hosted MCP bearer rejected by all candidate regions — emitting invalid_token challenge");
     return { client: createClient({ token, region: primaryRegion }), authState: "expired" };
   }

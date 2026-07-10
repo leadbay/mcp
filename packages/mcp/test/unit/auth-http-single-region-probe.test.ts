@@ -94,6 +94,43 @@ describe("resolveClientFromToken — single-region validation probe", () => {
     expect(requests).toHaveLength(2); // probed both before declaring expired
   });
 
+  it("untagged token → US 503 (transient) then FR 200 → ok, does NOT bind to failing US", async () => {
+    // Codex P2: a non-auth fault on the first candidate must NOT short-circuit to
+    // "ok" bound to that failing region. It must keep probing — a healthy FR token
+    // resolves against FR even though US had a transient 503.
+    const { requests } = mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 503, body: {} },
+      { method: "GET", path: "/1.6/users/me", status: 200, body: { id: "u1" } },
+    ]);
+    const result = await resolveClientFromToken("o.legacyfrtoken");
+    expect(result.authState).toBe("ok");
+    expect(requests).toHaveLength(2); // US 503 → still tried FR
+    expect(requests[0].url).toContain("api-us");
+    expect(requests[1].url).toContain("api-fr");
+  });
+
+  it("untagged token → US 401 then FR 503 → ok (a transient fault masks a possible valid token, no forced re-auth)", async () => {
+    // One region auth-rejects, the other has a transient fault → we can't be sure
+    // the token is invalid, so DON'T force re-auth (expired). Proceed as ok.
+    const { requests } = mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "x" } },
+      { method: "GET", path: "/1.6/users/me", status: 503, body: {} },
+    ]);
+    const result = await resolveClientFromToken("o.ambiguous");
+    expect(result.authState).toBe("ok");
+    expect(requests).toHaveLength(2); // probed both
+  });
+
+  it("untagged token → BOTH regions 5xx → ok (transient, not expired)", async () => {
+    const { requests } = mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 503, body: {} },
+      { method: "GET", path: "/1.6/users/me", status: 500, body: {} },
+    ]);
+    const result = await resolveClientFromToken("o.legacytoken");
+    expect(result.authState).toBe("ok"); // never expired on non-auth faults
+    expect(requests).toHaveLength(2);
+  });
+
   it("preferRegion fr → untagged token probes FR FIRST (for the /fr/mcp alias)", async () => {
     const { requests } = mockHttp([
       { method: "GET", path: "/1.6/users/me", status: 200, body: { id: "u1" } },
