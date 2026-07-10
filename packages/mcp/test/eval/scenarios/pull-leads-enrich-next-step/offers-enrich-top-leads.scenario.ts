@@ -131,7 +131,7 @@ export const SCENARIO = {
     success_criteria: [
       "called leadbay_pull_leads exactly once to get today's batch",
       "surfaced an 'Enrich top leads' next step among the offered options (reveal decision-maker email/phone on the top leads) — did NOT finish without offering the enrichment move",
-      "framed enrichment as a preview-first offer: it makes clear the volume/channels are previewed and no quota is spent until the user confirms",
+      "if it acted on the enrich option, it scoped enrichment to the leads JUST shown (passed the visible leads[].id, not the tool's default page-0 candidate set) and OMITTED titles so it ran the no-spend discovery preview — not a paid launch",
       "did NOT silently launch a paid enrichment — the user only asked to see leads, so it did NOT POST /leads/selection/enrichment/launch",
       "did NOT claim it enriched or revealed any emails/phones",
     ],

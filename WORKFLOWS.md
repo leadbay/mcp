@@ -842,7 +842,7 @@ forbidden_calls:
 success_criteria:
   - "called leadbay_pull_leads exactly once to get today's batch"
   - "surfaced an 'Enrich top leads' next step among the offered options (reveal decision-maker email/phone on the top leads) — did NOT finish without offering the enrichment move"
-  - "framed enrichment as a preview-first offer: made clear the volume/channels are previewed and no quota is spent until the user confirms"
+  - "if it acted on the enrich option, it scoped enrichment to the leads JUST shown (passed the visible leadIds, not the tool's default page-0 candidate set) and omitted titles so it ran the no-spend discovery preview"
   - "did NOT silently launch a paid enrichment — the user only asked to see leads, so it did NOT complete a paid reveal via leadbay_enrich_titles without an explicit go-ahead"
   - "did NOT claim it enriched or revealed any emails/phones"
 ```
