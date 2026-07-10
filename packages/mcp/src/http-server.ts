@@ -86,6 +86,10 @@ export async function resolveIdentity(client: LeadbayClient): Promise<CaptureIde
       distinctId,
       groups: me.organization?.id ? { organization: me.organization.id } : undefined,
       region,
+      // name/email so leadbay_send_feedback attributes correctly on HTTP — the
+      // module-scoped `me` is never populated here (Codex P2).
+      ...(me.name ? { name: me.name } : {}),
+      ...(me.email ? { email: me.email } : {}),
     };
   } catch (err: any) {
     logger.warn?.(`telemetry identity resolve failed: ${err?.message ?? err}`);
@@ -98,13 +102,14 @@ export async function resolveIdentity(client: LeadbayClient): Promise<CaptureIde
 // wrapper injects it). identify()/shutdown() are inert: a closing request or an
 // evicted SSE session must NEVER shut down the shared process-level client.
 //
-// EVERY PostHog capture method server.ts can fire per request must be wrapped —
-// not just the tool-call ones. friction (leadbay_report_friction) and the
-// agent-memory events also emit() on this handle, and since the HTTP base handle
-// never calls identify(), an unwrapped method would sit in the pending buffer
-// until process shutdown and then flush as anonymous. captureException /
-// captureFeedback go to Sentry (identity via ctx / bounded flush), not the
-// PostHog pending buffer, so they stay on the base handle.
+// EVERY capture method server.ts can fire per request must forward the
+// request's identity — not just the tool-call ones. The PostHog methods
+// (friction, agent-memory, …) otherwise emit() on the shared handle whose `me`
+// is never populated on HTTP, so they'd buffer until shutdown and flush
+// anonymous. captureFeedback must forward it too: it fills the Sentry feedback
+// name/email from identity (Codex P2 — hosted feedback was landing anonymous).
+// captureException stays on the base: its ctx already carries region/org and it
+// goes to Sentry, not the PostHog pending buffer.
 export function bindTelemetryIdentity(
   base: TelemetryHandle,
   identity: CaptureIdentity
@@ -120,6 +125,7 @@ export function bindTelemetryIdentity(
     captureAgentMemoryRecalled: (p) => base.captureAgentMemoryRecalled(p, identity),
     captureAgentMemoryPruned: (p) => base.captureAgentMemoryPruned(p, identity),
     captureFrictionReported: (p) => base.captureFrictionReported(p, identity),
+    captureFeedback: (message, opts) => base.captureFeedback(message, opts, identity),
     identify: async () => {},
     shutdown: async () => {},
   };

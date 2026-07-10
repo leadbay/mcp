@@ -21,7 +21,7 @@
  */
 
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { resetHttpMock, httpsMockFactory } from "./harness.js";
+import { mockHttp, resetHttpMock, httpsMockFactory } from "./harness.js";
 
 vi.mock("node:https", () => httpsMockFactory());
 
@@ -63,6 +63,7 @@ vi.mock("@sentry/node", () => ({
 }));
 
 import { initTelemetry } from "../src/telemetry.js";
+import { LeadbayClient } from "@leadbay/core";
 
 let savedNodeEnv: string | undefined;
 
@@ -157,5 +158,38 @@ describe("telemetry per-call identity override", () => {
     expect(calls.captures).toHaveLength(1);
     expect(calls.captures[0].distinctId).toBe("mcp:http-server");
     expect(calls.captures[0].event).toBe("mcp startup");
+  });
+});
+
+describe("telemetry shutdown races in-flight identify (Codex P2)", () => {
+  it("awaits an in-flight identify so buffered events attribute to the real user, not mcp:user-unknown", async () => {
+    // /users/me resolves to a real user. identify() is fired but NOT awaited
+    // (production fire-and-forget). A tool-call event is captured while identity
+    // is still in flight (buffered). shutdown() must race identityPromise so the
+    // buffered event flushes as the real email — not the anonymous sentinel.
+    mockHttp([
+      {
+        method: "GET",
+        path: "/1.6/users/me",
+        status: 200,
+        body: { id: "u1", email: "carol@leadbay.test", name: "Carol", organization: { id: "org-c", name: "Cee" } },
+      },
+    ]);
+    const t = initTelemetry({ version: "9.9.9-dev" });
+    const client = new LeadbayClient("https://api-us.leadbay.app", "u.tok", "us");
+    // Fire-and-forget identify (do NOT await) — mirrors bin.ts. The event is
+    // captured immediately after, before /users/me settles → buffered.
+    void t.identify(client);
+    t.captureToolCall({ tool: "leadbay_pull_leads", ok: true, duration_ms: 5, format: "json", bytes: 10 });
+    // Buffered — identity hasn't resolved yet on this tick.
+    expect(calls.captures).toHaveLength(0);
+
+    await t.shutdown();
+
+    // The buffered event flushed attributed to the REAL user (identity won the
+    // race), not "mcp:user-unknown".
+    const toolCalls = calls.captures.filter((c) => c.event === "mcp tool called");
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0].distinctId).toBe("carol@leadbay.test");
   });
 });

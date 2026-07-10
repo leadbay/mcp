@@ -60,7 +60,12 @@ export async function resolveClientFromToken(
 
   const probe = async (r: "us" | "fr"): Promise<LeadbayClient> => {
     const c = createClient({ token, region: r });
-    await c.request("GET", "/users/me");
+    // resolveMe() (not a bare request) so the winning client's /users/me cache
+    // is warm — the telemetry path (resolveIdentity) then reuses it instead of
+    // re-fetching, avoiding a second backend round trip per stateless HTTP
+    // request (Codex P2). Same error semantics: resolveMe wraps the same
+    // request("GET","/users/me") and rejects identically on a bad token.
+    await c.resolveMe();
     return c;
   };
 

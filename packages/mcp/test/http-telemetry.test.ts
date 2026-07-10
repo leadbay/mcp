@@ -32,6 +32,7 @@ import { buildServer } from "../src/server.js";
 import { NOOP_TELEMETRY, type TelemetryHandle } from "../src/telemetry.js";
 import type { ToolCallProps } from "../src/telemetry-events.js";
 import { resolveIdentity, bindTelemetryIdentity } from "../src/http-server.js";
+import { resolveClientFromToken } from "../src/auth-http.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
@@ -131,6 +132,25 @@ describe("hosted HTTP MCP — telemetry wiring (product#3876)", () => {
     expect(base.identify).not.toHaveBeenCalled();
   });
 
+  it("the wrapper forwards identity to captureFeedback so hosted feedback attributes to the user", async () => {
+    // leadbay_send_feedback on HTTP flows ctx.sendFeedback → captureFeedback.
+    // Before the fix the wrapper spread the base handle, so captureFeedback used
+    // the module-scoped `me` (never set on HTTP) and Sentry feedback landed
+    // anonymous even though resolveIdentity() found the user (Codex P2).
+    const identity = { distinctId: "alice@leadbay.test", region: "us", name: "Alice", email: "alice@leadbay.test" };
+    let seenIdentity: unknown;
+    let seenMessage: unknown;
+    const base: TelemetryHandle = {
+      ...NOOP_TELEMETRY,
+      captureFeedback: async (message, _opts, id) => { seenMessage = message; seenIdentity = id; return true; },
+    };
+    const bound = bindTelemetryIdentity(base, identity);
+    const sent = await bound.captureFeedback("bug: X is broken", { associatedEventId: "evt-1" });
+    expect(sent).toBe(true);
+    expect(seenMessage).toBe("bug: X is broken");
+    expect(seenIdentity).toEqual(identity);
+  });
+
   it("the wrapper injects identity into friction + agent-memory captures too (not just tool calls)", () => {
     // These fire per HTTP request when leadbay_report_friction / the agent-memory
     // tools run. Before the fix they fell through to the base handle with NO
@@ -171,7 +191,29 @@ describe("hosted HTTP MCP — telemetry wiring (product#3876)", () => {
       distinctId: "alice@leadbay.test",
       groups: { organization: "org-a" },
       region: "us",
+      // name/email ride along for Sentry feedback attribution on HTTP.
+      name: "Alice",
+      email: "alice@leadbay.test",
     });
+  });
+
+  it("resolveMe caches /users/me so repeat identity resolution adds no fetch (Codex P2 double-fetch)", async () => {
+    // Codex P2: the auth probe used a bare request() that did NOT warm the
+    // client's /users/me cache, so resolveIdentity() refetched — a second
+    // round trip per stateless HTTP request. The fix switches the probe to
+    // resolveMe(), which caches (60s TTL). This asserts the cache-reuse
+    // mechanism: once resolveMe has run on a client, resolveIdentity() on it
+    // adds ZERO /users/me requests. (Only one script is provided, so a second
+    // fetch would throw "no script matched" — the strongest possible proof.)
+    const me = { id: "u1", email: "alice@leadbay.test", name: "Alice", organization: { id: "org-a", name: "Acme" } };
+    const h = mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: me }]);
+    const client = new LeadbayClient(BASE, "u.tok", "us");
+    await client.resolveMe(); // warms the cache, as the auth probe now does
+    const afterProbe = h.requests.filter((r) => r.path === "/1.6/users/me").length;
+    const identity = await resolveIdentity(client); // must be a cache hit
+    expect(identity.distinctId).toBe("alice@leadbay.test");
+    const afterIdentity = h.requests.filter((r) => r.path === "/1.6/users/me").length;
+    expect(afterIdentity).toBe(afterProbe); // no additional fetch
   });
 
   it("resolveIdentity falls back to mcp:unknown when /users/me fails (event still lands)", async () => {

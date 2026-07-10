@@ -75,6 +75,12 @@ export interface CaptureIdentity {
   // Region tag for baseProps (the module-scoped `region` is set by identify(),
   // which the HTTP path doesn't call, so it must ride on the identity instead).
   region?: string;
+  // Name/email for Sentry feedback attribution (captureFeedback). The module-
+  // scoped `me` is never populated on the HTTP path, so these must ride on the
+  // per-request identity or hosted feedback lands anonymous even after
+  // resolveIdentity() found the user.
+  name?: string;
+  email?: string;
 }
 
 export interface TelemetryHandle {
@@ -101,7 +107,7 @@ export interface TelemetryHandle {
   // filled from the identified `/users/me` when available, mirroring the web
   // form. Returns true if it was actually sent to Sentry, false otherwise
   // (telemetry disabled / Sentry not ready) so the tool can report honestly.
-  captureFeedback(message: string, opts?: { associatedEventId?: string }): Promise<boolean>;
+  captureFeedback(message: string, opts?: { associatedEventId?: string }, identity?: CaptureIdentity): Promise<boolean>;
   // Auto-update lifecycle. Optional on the interface so out-of-tree
   // TelemetryHandle implementations don't have to implement them; the
   // update-check site null-checks before calling. NOOP_TELEMETRY +
@@ -464,20 +470,26 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
         logger?.warn?.(`sentry captureException failed: ${e?.message ?? e}`);
       }
     },
-    async captureFeedback(message, opts) {
+    async captureFeedback(message, opts, identity) {
       // Mirrors the web app's feedback form (Sentry.captureFeedback with
       // name/email/message) so MCP feedback lands in the SAME Sentry inbox.
       // name/email come from the identified /users/me when available.
       if (!sentryReady) return false;
       const trimmed = (message ?? "").trim();
       if (!trimmed) return false;
-      // Wait (bounded) for /users/me so name/email attach — otherwise feedback
-      // sent in the first second of a session (e.g. "report a bug" as the very
-      // first message) lands ANONYMOUS and the team can't attribute or reply.
-      // identify() is idempotent and fire-and-forget elsewhere; awaiting its
-      // promise here doesn't re-trigger it. Cap at 2s so a hung /users/me can't
-      // block the feedback — better an anonymous report than a dropped one.
-      if (identityPromise) {
+      // A per-request identity (HTTP multi-tenant path) already resolved the
+      // user for THIS request, so there's nothing to wait for — use it directly.
+      // Without this, hosted feedback would fall through to the module-scoped
+      // `me` (never populated on HTTP) and land anonymous even though
+      // resolveIdentity() found the user (Codex P2). Only wait on identifyPromise
+      // when no override is supplied (stdio, where identify() populates `me`).
+      if (!identity && identityPromise) {
+        // Wait (bounded) for /users/me so name/email attach — otherwise feedback
+        // sent in the first second of a session (e.g. "report a bug" as the very
+        // first message) lands ANONYMOUS and the team can't attribute or reply.
+        // identify() is idempotent and fire-and-forget elsewhere; awaiting its
+        // promise here doesn't re-trigger it. Cap at 2s so a hung /users/me can't
+        // block the feedback — better an anonymous report than a dropped one.
         let waitTimer: ReturnType<typeof setTimeout> | undefined;
         try {
           await Promise.race([
@@ -495,11 +507,15 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
           if (waitTimer) clearTimeout(waitTimer);
         }
       }
+      // Prefer the per-request identity's name/email (HTTP); fall back to the
+      // module-scoped `me` (stdio, populated by identify()).
+      const fbName = identity?.name ?? me?.name;
+      const fbEmail = identity?.email ?? me?.email;
       try {
         Sentry.captureFeedback({
           message: trimmed,
-          ...(me?.name ? { name: me.name } : {}),
-          ...(me?.email ? { email: me.email } : {}),
+          ...(fbName ? { name: fbName } : {}),
+          ...(fbEmail ? { email: fbEmail } : {}),
           ...(opts?.associatedEventId
             ? { associatedEventId: opts.associatedEventId }
             : {}),
@@ -520,14 +536,36 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
       }
     },
     async shutdown() {
-      // If identity never resolved, events captured pre-identity are still sitting
-      // in pendingEvents and have NEVER reached posthog's own queue — so
+      // If identify() is still in flight (a short session exiting while
+      // /users/me is mid-request), give it a brief bounded chance to land
+      // before we fall back to anonymous — otherwise we'd stamp
+      // "mcp:user-unknown" onto events that would have attributed correctly
+      // milliseconds later. identify() resolves `me` and drains the buffer via
+      // flushPending() itself, so on a win the `if (!me)` below is a no-op. The
+      // 1.5s bound stays well inside posthog.shutdown's own 2s budget so a hung
+      // /users/me still can't block process exit.
+      if (!me && identityPromise) {
+        let waitTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            identityPromise,
+            new Promise<void>((resolve) => {
+              waitTimer = setTimeout(resolve, 1500);
+            }),
+          ]);
+        } catch {
+          // identify() swallows its own errors; ignore and fall through.
+        } finally {
+          if (waitTimer) clearTimeout(waitTimer);
+        }
+      }
+      // If identity STILL hasn't resolved, events captured pre-identity are
+      // sitting in pendingEvents and have NEVER reached posthog's own queue — so
       // posthog.shutdown() below would flush nothing and they'd be lost. Drain
-      // them here first, anonymously: reuse the SAME id:"unknown" fallback the
+      // them here, anonymously: reuse the SAME id:"unknown" fallback the
       // identify-failure path uses, so distinctIdFor() yields a stable
       // "mcp:user-unknown" (consistent with anonymous events from that path).
-      // No-op when identity already resolved (buffer already drained by
-      // flushPending()).
+      // No-op when identity resolved (buffer already drained by flushPending()).
       if (!me) {
         me = {
           id: "unknown",
