@@ -34,7 +34,7 @@ Get Leadbay MCP running inside your AI assistant in a couple of minutes. No codi
 If you use Claude on the web, Claude Desktop, or ChatGPT, the fastest path is a **custom connector** — no terminal, no tokens to copy. Add one URL and sign in with your browser:
 
 - **Name:** `Leadbay`
-- **URL:** `https://mcp.leadbay.app/mcp`  (US accounts: `https://mcp.leadbay.app/us/mcp`)
+- **URL:** `https://mcp.leadbay.app/mcp`  (EU accounts: `https://mcp.leadbay.app/fr/mcp`)
 
 In Claude: **Settings → Connectors → + → Add custom connector**, paste the URL, then open the connector and **Connect**. Sign in with Leadbay, click **Approve**, and you're linked. The server handles OAuth in-app; updates are automatic — you never touch a config file.
 
@@ -126,7 +126,7 @@ Every supported way to connect Leadbay MCP:
 
 | Method | Command / action | Platforms | Notes |
 |--------|------------------|-----------|-------|
-| **Hosted connector (no install)** | Add custom connector → `https://mcp.leadbay.app/mcp` (US `…/us/mcp`) | Claude web / Desktop, ChatGPT | Browser OAuth in-app. Nothing to install; auto-updates. |
+| **Hosted connector (no install)** | Add custom connector → `https://mcp.leadbay.app/mcp` (EU `…/fr/mcp`) | Claude web / Desktop, ChatGPT | Browser OAuth in-app. Nothing to install; auto-updates. |
 | **`.dxt` / `.mcpb` bundle** | Download from [Releases](https://github.com/leadbay/mcp/releases/latest), double-click → **Install** | Claude Desktop | One-click desktop extension. |
 | **Guided installer (GUI)** | `npx -y -p @leadbay/mcp@latest installer` | macOS, Windows, Linux | Browser wizard: sign in with Leadbay, pick clients. Works for everyone. |
 | **Local dev build** | `pnpm --filter @leadbay/mcp installer -- --local` | macOS, Windows, Linux | Registers clients against your local build. OAuth automatic. Build from source first (above). |
