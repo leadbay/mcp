@@ -6,7 +6,7 @@
 // this file never imports the CLI entrypoint.
 
 
-import { createClient, type LeadbayError, type ToolLogger } from "@leadbay/core";
+import { createClient, type LeadbayError, type ToolLogger, type UserMePayload } from "@leadbay/core";
 import { makeBrokenClient, type ResolvedClient } from "./broken-client.js";
 
 export interface ResolveTokenOptions {
@@ -118,8 +118,18 @@ export async function resolveClientFromToken(
   for (const r of candidates) {
     const client = createClient({ token, region: r });
     try {
-      // retryOn401:false so a bad token fails fast rather than double-probing.
-      await client.request("GET", "/users/me", undefined, { retryOn401: false });
+      // Fail-fast validation: retryOn401:false. We must NOT retry a 401 here — the
+      // auto-retry would mask an auth rejection and prevent the dual-region fallback
+      // (a legacy FR token 401'ing on US must move to FR, not retry US and bind there).
+      // Cache-warming for telemetry is handled after success via seedMe(), so this
+      // still avoids the second /users/me round trip resolveIdentity would otherwise do.
+      const me = await client.request<UserMePayload>(
+        "GET",
+        "/users/me",
+        undefined,
+        { retryOn401: false }
+      );
+      client.seedMe(me); // warm the /users/me cache so resolveIdentity reuses it
       return { client, authState: "ok" };
     } catch (e) {
       const code = (e as LeadbayError)?.code;

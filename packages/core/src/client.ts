@@ -776,6 +776,15 @@ export class LeadbayClient {
     this.mePayloadCachedAt = null;
   }
 
+  // Warm the /users/me cache from a payload the caller already fetched, so the
+  // next resolveMe() is a cache hit (no extra round trip). Used by the hosted
+  // HTTP auth probe: it validates the token with a fail-fast /users/me request
+  // and seeds the result here, so the telemetry path's resolveMe() reuses it.
+  seedMe(me: UserMePayload): void {
+    this.mePayload = me;
+    this.mePayloadCachedAt = Date.now();
+  }
+
   async resolveDefaultLens(): Promise<number> {
     const now = Date.now();
     if (
