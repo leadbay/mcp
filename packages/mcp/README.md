@@ -280,11 +280,11 @@ Leadbay connection OK.
 
 ### Claude Desktop / ChatGPT / remote-MCP clients
 
-Leadbay runs a hosted MCP server that any remote-MCP client can connect to without a local install. The shared URL works for everyone; US accounts have an explicit variant:
+Leadbay runs a hosted MCP server that any remote-MCP client can connect to without a local install. Pick the URL for your account's region:
 
 ```
-https://mcp.leadbay.app/mcp       # default (works for all accounts)
-https://mcp.leadbay.app/us/mcp    # US accounts (explicit)
+https://mcp.leadbay.app/mcp       # US accounts
+https://mcp.leadbay.app/fr/mcp    # FR accounts
 ```
 
 - **Claude Desktop**: Settings → Connectors → Add custom connector → paste the URL.
@@ -292,7 +292,7 @@ https://mcp.leadbay.app/us/mcp    # US accounts (explicit)
 
 On first connect the client runs the Leadbay OAuth sign-in (the server advertises OAuth 2.0 Protected Resource Metadata per RFC 9728 and challenges unauthenticated requests with `401 + WWW-Authenticate`). Sign in once in the browser; the client stores the token and sends it as `Authorization: Bearer <token>` on every request. No token to copy-paste, no local Node install needed.
 
-OAuth discovery happens before sign-in and Leadbay tokens are region-scoped, so the URL picks which regional authorization server the sign-in prompt points at. The bare `/mcp` defaults to the majority region (FR); US accounts can use the explicit `/us/mcp`. A wrong-region choice still completes sign-in — the backend bridges cross-region OAuth — so most users can just paste the shared `/mcp`. If the sign-in prompt never appears, you're on an old build of the hosted server (pre-0.21.0); it auto-updates on release.
+The region is encoded in the URL because OAuth discovery happens before sign-in and Leadbay tokens are region-scoped — a US account uses `/mcp`, a FR account uses `/fr/mcp`. If the sign-in prompt never appears, you're on an old build of the hosted server (pre-0.21.0); it auto-updates on release.
 
 **Updates are automatic** — the hosted server is always running the latest published release. You never need to update a config file or restart anything on your side.
 
