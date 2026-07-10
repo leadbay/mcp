@@ -11,8 +11,15 @@ import { makeBrokenClient, type ResolvedClient } from "./broken-client.js";
 
 export interface ResolveTokenOptions {
   // Optional region pin. Normally unused — the region is decoded from the token's
-  // `_us`/`_fr` suffix (Stargate-centered flow). An explicit pin still wins.
+  // `_us`/`_fr` suffix (Stargate-centered flow). An explicit pin still wins and
+  // SKIPS validation (no probe).
   region?: "us" | "fr";
+  // Preferred region for the validation probe of an UNTAGGED (legacy, no-suffix)
+  // token: probe this region first, then fall back to the sibling. Unlike `region`
+  // it does NOT skip validation and does NOT pin — a valid token in EITHER region
+  // still resolves. The hosted `/fr/mcp` compat alias sets this to "fr" so legacy
+  // EU tokens probe FR first. Ignored for suffixed tokens (the suffix decides).
+  preferRegion?: "us" | "fr";
   // Optional baseUrl override. Mirrors $LEADBAY_BASE_URL in stdio.
   baseUrl?: string;
   logger?: ToolLogger;
@@ -42,7 +49,7 @@ export async function resolveClientFromToken(
   token: string | undefined,
   opts: ResolveTokenOptions = {}
 ): Promise<ResolvedClient> {
-  const { region, baseUrl, logger, validate = true } = opts;
+  const { region, preferRegion, baseUrl, logger, validate = true } = opts;
 
   if (!token || token.length === 0) {
     // Same broken-client pattern as stdio: let the JSON-RPC handshake
@@ -73,36 +80,60 @@ export async function resolveClientFromToken(
   }
 
   // Stargate-issued tokens carry a `_us`/`_fr` region suffix, so we route directly
-  // to the owning backend — no dual-region auto-probe. An untagged/legacy token
-  // (no known suffix) falls back to us; the backend rejects it if it doesn't own
-  // the token.
-  const tokenRegion = regionFromToken(token) ?? "us";
-  const client = createClient({ token, region: tokenRegion });
+  // to the owning backend. A legacy/untagged token has NO suffix — we must not pin
+  // it to one region, or an existing FR token validated only against US would 401
+  // and be falsely reported expired. So:
+  //   - suffixed token  → probe the one region the suffix names.
+  //   - untagged token  → probe the preferred region (a `_fr` path hint via `opts`
+  //                       can't reach here since it early-returns above, so the
+  //                       preference is US-first), then FALL BACK to the other
+  //                       region; only expired if BOTH reject.
+  const suffixRegion = regionFromToken(token);
+  // Untagged token: probe `preferRegion` first (e.g. "fr" from the /fr/mcp alias),
+  // else default US-first. Suffixed token: the suffix is authoritative.
+  const primaryRegion: "us" | "fr" = suffixRegion ?? preferRegion ?? "us";
 
   if (!validate) {
-    return { client, authState: "ok" };
+    return { client: createClient({ token, region: primaryRegion }), authState: "ok" };
   }
 
-  // Single-region validation probe against the owning backend. Unlike the old
-  // dual-region auto-probe this is ONE round-trip (the suffix already told us the
-  // region). A rejected token (AUTH_EXPIRED / NOT_AUTHENTICATED) surfaces as
-  // authState:"expired" so the caller emits `error="invalid_token"` and the host
-  // silently refreshes — instead of the failure only appearing on a later tool
-  // call, which leaves a host with a stale token stuck. retryOn401:false so a bad
-  // token fails fast rather than double-probing.
-  try {
-    await client.request("GET", "/users/me", undefined, { retryOn401: false });
-    return { client, authState: "ok" };
-  } catch (e) {
-    const code = (e as LeadbayError)?.code;
-    if (code === "AUTH_EXPIRED" || code === "NOT_AUTHENTICATED") {
-      logger?.warn?.("hosted MCP bearer rejected by backend — emitting invalid_token challenge");
-      return { client, authState: "expired" };
+  // Probe candidates: a suffixed token names exactly one region; an untagged token
+  // tries both (primary first, then the sibling) so a valid legacy token in EITHER
+  // region resolves. A rejected token (AUTH_EXPIRED / NOT_AUTHENTICATED) is only
+  // fatal after every candidate rejects it. A non-auth fault (5xx/network) is not
+  // an auth problem — proceed as ok so we don't force spurious re-auth.
+  const candidates: ("us" | "fr")[] = suffixRegion
+    ? [suffixRegion]
+    : primaryRegion === "us"
+      ? ["us", "fr"]
+      : ["fr", "us"];
+
+  let sawAuthReject = false;
+  for (const r of candidates) {
+    const client = createClient({ token, region: r });
+    try {
+      // retryOn401:false so a bad token fails fast rather than double-probing.
+      await client.request("GET", "/users/me", undefined, { retryOn401: false });
+      return { client, authState: "ok" };
+    } catch (e) {
+      const code = (e as LeadbayError)?.code;
+      if (code === "AUTH_EXPIRED" || code === "NOT_AUTHENTICATED") {
+        sawAuthReject = true;
+        continue; // try the next region (untagged token might live there)
+      }
+      // Non-auth fault on this region: don't force re-auth. Proceed as ok against it.
+      return { client, authState: "ok" };
     }
-    // A non-auth failure (network, 5xx) is not an auth problem: don't force the
-    // user through re-auth. Proceed as ok; a real fault re-surfaces on the tool call.
-    return { client, authState: "ok" };
   }
+
+  // Every candidate rejected the token on auth grounds → genuinely expired/revoked.
+  // Emit the invalid_token challenge so the host silently refreshes. Bind the
+  // broken/live client to the primary region for the challenge response.
+  if (sawAuthReject) {
+    logger?.warn?.("hosted MCP bearer rejected by all candidate regions — emitting invalid_token challenge");
+    return { client: createClient({ token, region: primaryRegion }), authState: "expired" };
+  }
+  return { client: createClient({ token, region: primaryRegion }), authState: "ok" };
 }
 
 // ────────────────────────────────────────────────────────────────────────────

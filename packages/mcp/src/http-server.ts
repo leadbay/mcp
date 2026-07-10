@@ -232,11 +232,14 @@ async function handleStreamable(
 
   const token = extractBearer(c.req.header("authorization"));
 
-  // Resolve + validate: the token's `_fr`/`_us` suffix names the owning region, so
-  // this is a single-region `/users/me` probe. A missing token → "missing", a
-  // rejected token → "expired"; both emit a 401 challenge so the host prompts
-  // sign-in (missing) or silently refreshes (expired). A valid token → "ok".
-  const resolved = await resolveClientFromToken(token);
+  // Resolve + validate. A suffixed token names its region → one `/users/me` probe.
+  // An untagged/legacy token has no suffix, so it's probed against both regions
+  // (never falsely pinned): on the /fr/mcp compat alias we prefer FR first so
+  // existing EU tokens resolve without a wasted US round-trip. A missing token →
+  // "missing", a token rejected by ALL candidate regions → "expired"; both emit a
+  // 401 challenge (sign-in / silent refresh). A valid token → "ok".
+  const preferRegion = resourcePath === "/fr/mcp" ? "fr" : undefined;
+  const resolved = await resolveClientFromToken(token, { preferRegion });
   if (resolved.authState === "missing" || resolved.authState === "expired") {
     return sendChallenge(c, resourcePath, resolved.authState);
   }
@@ -306,7 +309,9 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
 
   const token = extractBearer(c.req.header("authorization"));
 
-  const resolved = await resolveClientFromToken(token);
+  // /fr/sse prefers FR for untagged legacy tokens (see handleStreamable).
+  const preferRegion = resourcePath === "/fr/sse" ? "fr" : undefined;
+  const resolved = await resolveClientFromToken(token, { preferRegion });
   if (resolved.authState === "missing" || resolved.authState === "expired") {
     return sendChallenge(c, resourcePath, resolved.authState);
   }

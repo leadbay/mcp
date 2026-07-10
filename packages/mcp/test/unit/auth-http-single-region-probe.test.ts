@@ -28,13 +28,14 @@ describe("regionFromToken", () => {
 });
 
 describe("resolveClientFromToken — single-region validation probe", () => {
-  it("region-suffixed token → ok via ONE probe against the owning backend", async () => {
+  it("region-suffixed token → ok via ONE probe against the OWNING backend", async () => {
     const { requests } = mockHttp([
       { method: "GET", path: "/1.6/users/me", status: 200, body: { id: "u1" } },
     ]);
     const fr = await resolveClientFromToken("o.sometoken_fr");
     expect(fr.authState).toBe("ok");
     expect(requests).toHaveLength(1); // exactly one probe, not the old two
+    expect(requests[0].url).toContain("api-fr"); // routed by the _fr suffix
   });
 
   it("rejected token → expired (drives the invalid_token refresh challenge)", async () => {
@@ -56,12 +57,60 @@ describe("resolveClientFromToken — single-region validation probe", () => {
     expect(requests).toHaveLength(0);
   });
 
-  it("untagged legacy token → ok via a probe against the fallback region", async () => {
+  it("untagged legacy token → ok via a probe against the fallback region (US first)", async () => {
     const { requests } = mockHttp([
       { method: "GET", path: "/1.6/users/me", status: 200, body: { id: "u1" } },
     ]);
     const result = await resolveClientFromToken("o.legacytoken");
     expect(result.authState).toBe("ok");
     expect(requests).toHaveLength(1);
+    expect(requests[0].url).toContain("api-us"); // default primary for untagged
+  });
+
+  // --- Legacy/untagged tokens must NOT be pinned to one region (Codex P1) ---
+
+  it("untagged FR token → US 401 then FR 200 → ok (falls back, NOT falsely expired)", async () => {
+    // The regression: an existing FR bearer with no suffix, probed only against US,
+    // would 401 and be reported expired even though it's valid in FR. It must fall
+    // back to FR and resolve ok.
+    const { requests } = mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "not us" } },
+      { method: "GET", path: "/1.6/users/me", status: 200, body: { id: "u1" } },
+    ]);
+    const result = await resolveClientFromToken("o.legacyfrtoken");
+    expect(result.authState).toBe("ok");
+    expect(requests).toHaveLength(2); // US rejected → fell back to FR
+    expect(requests[0].url).toContain("api-us");
+    expect(requests[1].url).toContain("api-fr");
+  });
+
+  it("untagged token → expired ONLY when BOTH regions reject it", async () => {
+    const { requests } = mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "x" } },
+      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "x" } },
+    ]);
+    const result = await resolveClientFromToken("o.trulyexpired");
+    expect(result.authState).toBe("expired");
+    expect(requests).toHaveLength(2); // probed both before declaring expired
+  });
+
+  it("preferRegion fr → untagged token probes FR FIRST (for the /fr/mcp alias)", async () => {
+    const { requests } = mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 200, body: { id: "u1" } },
+    ]);
+    const result = await resolveClientFromToken("o.legacyfrtoken", { preferRegion: "fr" });
+    expect(result.authState).toBe("ok");
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toContain("api-fr"); // FR probed first, resolved immediately
+  });
+
+  it("suffix wins over preferRegion (a _us token still probes US even on /fr)", async () => {
+    const { requests } = mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 200, body: { id: "u1" } },
+    ]);
+    const result = await resolveClientFromToken("o.sometoken_us", { preferRegion: "fr" });
+    expect(result.authState).toBe("ok");
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toContain("api-us");
   });
 });
