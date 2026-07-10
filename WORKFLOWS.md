@@ -14,7 +14,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 |---|---|---|---|
 | 1 | **Daily lead discovery** — "show me today's leads / fresh prospects / what's in my inbox" | `leadbay_daily_check_in` | "Show me today's leads" |
 | 2 | **Follow-up check-in (incl. travel/geo)** — "leads I should follow up with", "before my trip to Berlin", "who should I re-engage" | `leadbay_followup_check_in` | "What leads should I follow up with?" |
-| 3 | **Single-domain deep research** — "tell me about acme.com" | `leadbay_research_a_domain` | "Tell me about jaxpartycompany.com" |
+| 3 | **Single-company/domain deep research** — "tell me about Acme / acme.com" — resolves the company from the user's visible Discover, Monitor, and Activate corpus rather than treating the active lens as the whole universe | `leadbay_research_a_domain` | "Tell me about jaxpartycompany.com" |
 | 4 | **CSV import + AI qualification** — "I have 400 attendees, rank the most promising" | `leadbay_import_file` | "I have some leads to import" |
 | 5 | **AI qualification on top-N** — "qualify the top 10 of this batch" | `leadbay_qualify_top_n` | "Qualify the top 10 leads in my batch" |
 | 6 | **Audience refinement** — "stop showing me X", "I prefer Y" | `leadbay_refine_audience` | "Stop showing me companies with more than 50 employees" |
@@ -114,6 +114,7 @@ forbidden_calls:
   - leadbay_report_outreach
 success_criteria:
   - "called leadbay_research_lead_by_name_fuzzy or leadbay_research_lead_by_id at least once"
+  - "resolved a name/domain through the visible cross-tab lead corpus unless an explicit lens scope was requested"
   - "rendered a research card with company name, score, and contact"
   - "did NOT call leadbay_report_outreach"
 ```
