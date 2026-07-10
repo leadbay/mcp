@@ -109,16 +109,35 @@ describe("resolveClientFromToken — single-region validation probe", () => {
     expect(requests[1].url).toContain("api-fr");
   });
 
-  it("untagged token → US 401 then FR 503 → ok (a transient fault masks a possible valid token, no forced re-auth)", async () => {
+  it("untagged token → US 401 then FR 503 → ok BOUND TO FR (the transient region, not the rejecting one)", async () => {
     // One region auth-rejects, the other has a transient fault → we can't be sure
-    // the token is invalid, so DON'T force re-auth (expired). Proceed as ok.
+    // the token is invalid, so DON'T force re-auth. Crucially (Codex P2) the client
+    // must bind to FR — the region with the TRANSIENT fault where the token is
+    // plausibly valid — NOT to US, which already auth-rejected it (the next tool
+    // call to US would fail auth needlessly).
     const { requests } = mockHttp([
       { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "x" } },
       { method: "GET", path: "/1.6/users/me", status: 503, body: {} },
     ]);
     const result = await resolveClientFromToken("o.ambiguous");
     expect(result.authState).toBe("ok");
-    expect(requests).toHaveLength(2); // probed both
+    expect(requests).toHaveLength(2); // probed both (US, then FR)
+    expect(result.client.region).toBe("fr"); // bound to the transient region, NOT the rejecting US
+  });
+
+  it("untagged token → FR 401 then US 503 → ok BOUND TO US (mirror: bind to the transient region)", async () => {
+    // Symmetric to the above with regions swapped, so the fix isn't accidentally
+    // just always-FR: FR auth-rejects, US is transient → bind to US.
+    const { requests } = mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "x" } },
+      { method: "GET", path: "/1.6/users/me", status: 503, body: {} },
+    ]);
+    // preferRegion fr → probes FR first (401), then US (503) → binds US.
+    const result = await resolveClientFromToken("o.ambiguous2", { preferRegion: "fr" });
+    expect(result.authState).toBe("ok");
+    expect(requests).toHaveLength(2);
+    expect(requests[0].url).toContain("api-fr"); // FR probed first
+    expect(result.client.region).toBe("us"); // bound to the transient US, not the rejecting FR
   });
 
   it("untagged token → BOTH regions 5xx → ok (transient, not expired)", async () => {
