@@ -3414,20 +3414,24 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 ---
 
 Thin wrapper around **leadbay_research_lead_by_id**. Accepts a \`companyName\`,
-fuzzy-matches it against the top 50 of the active (or supplied) lens's
-wishlist, picks the highest-scoring substring hit, and delegates the actual
-research to \`leadbay_research_lead_by_id\`. Returns the **same payload shape**
-as \`_by_id\`, with two additions on \`_meta\`:
+resolves it through Leadbay's cross-tab search (company names, domains, and
+contact names across the user's visible Discover, Monitor, and Activate
+corpus), and delegates the selected lead to
+\`leadbay_research_lead_by_id\`. A supplied \`lensId\` is a deliberate override:
+it restricts resolution to that lens's wishlist using the backend's name
+filter. Returns the **same payload shape** as \`_by_id\`, with additions on
+\`_meta\`:
 
 - \`_meta.resolved_from\`: \`"companyName"\` (so the agent knows the entry point).
 - \`_meta.resolved_query\`: the original \`companyName\` string.
-- \`_meta.match_candidates[]\`: up to 4 next-best substring matches as
+- \`_meta.match_candidates[]\`: up to 4 next-best matches as
   \`{leadId, name, score}\` — surface these when ambiguity is plausible so the
   user can redirect.
 
-On zero matches, throws \`LEAD_NOT_FOUND\` with a \`nearest_names[]\` payload (the
-top 5 by score from the lens, regardless of substring) so the agent can offer
-"did you mean…" disambiguation.
+On zero matches, throws \`LEAD_NOT_FOUND\` with a scope-aware hint. With no
+\`lensId\`, zero means the visible cross-tab corpus was searched. With an
+explicit \`lensId\`, the hint tells the agent to omit it if the user did not
+intend a strict lens scope.
 
 WHEN TO USE: when the user references a company by
 name and you don't yet have its \`lead_id\`. If \`_meta.match_candidates\` is
@@ -3436,7 +3440,7 @@ a wrong fuzzy hit.
 
 WHEN NOT TO USE: when you already have the UUID — use
 leadbay_research_lead_by_id directly. This wrapper costs one extra
-\`discoverLeads\` round-trip; skipping it when you can is cheaper.
+search round-trip; skipping it when you can is cheaper.
 
 ---
 
