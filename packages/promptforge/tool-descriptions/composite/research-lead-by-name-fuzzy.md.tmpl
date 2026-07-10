@@ -2,12 +2,9 @@
 name: leadbay_research_lead_by_name_fuzzy
 kind: tool-description
 short_description: |
-  Look up a lead by company name, domain, or contact name across the user's
-  visible Discover, Monitor, and Activate leads, then return the same rich payload as
-  leadbay_research_lead_by_id plus a `_meta.match_candidates` list when the
-  name was ambiguous. Use when the user references a company by name and you
-  don't yet have its lead_id. Don't use it when you already have the UUID —
-  that's leadbay_research_lead_by_id.
+  Resolve a company name, domain, or contact across visible Discover, Monitor,
+  and Activate leads, then return its research card. Use without a lead_id;
+  use leadbay_research_lead_by_id when the UUID is known.
 routing:
   triggers:
     - "look up <Company>"
@@ -32,34 +29,23 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Thin wrapper around **leadbay_research_lead_by_id**. Accepts a `companyName`,
-resolves it through Leadbay's cross-tab search (company names, domains, and
-contact names across the user's visible Discover, Monitor, and Activate
-corpus), and delegates the selected lead to
-`leadbay_research_lead_by_id`. A supplied `lensId` is a deliberate override:
-it restricts resolution to that lens's wishlist using the backend's name
-filter. Returns the **same payload shape** as `_by_id`, with additions on
-`_meta`:
+Resolves `companyName` across visible Discover, Monitor, and Activate leads,
+then delegates to **leadbay_research_lead_by_id**. Supplying `lensId`
+deliberately restricts the backend search to that lens. The result matches
+`_by_id`, plus:
 
-- `_meta.resolved_from`: `"companyName"` (so the agent knows the entry point).
-- `_meta.resolved_query`: the original `companyName` string.
-- `_meta.match_candidates[]`: up to 4 next-best matches as
-  `{leadId, name, score}` — surface these when ambiguity is plausible so the
-  user can redirect.
+- `_meta.resolved_from`: `"companyName"`
+- `_meta.resolved_query`: the original query
+- `_meta.match_candidates[]`: up to 4 `{leadId, name, score}` alternatives
 
-On zero matches, throws `LEAD_NOT_FOUND` with a scope-aware hint. With no
-`lensId`, zero means the visible cross-tab corpus was searched. With an
-explicit `lensId`, the hint tells the agent to omit it if the user did not
-intend a strict lens scope.
+`LEAD_NOT_FOUND` identifies whether the complete visible corpus, an explicit
+lens, or only a degraded active-lens fallback was searched.
 
-{{include:headers/tool-when-to-use}} when the user references a company by
-name and you don't yet have its `lead_id`. If `_meta.match_candidates` is
-non-empty, offer the next-best matches in NEXT STEPS so the user can correct
-a wrong fuzzy hit.
+{{include:headers/tool-when-to-use}} for a company/domain/contact reference
+without a `lead_id`. Offer `_meta.match_candidates` when present.
 
-{{include:headers/tool-when-not-to-use}} when you already have the UUID — use
-leadbay_research_lead_by_id directly. This wrapper costs one extra
-search round-trip; skipping it when you can is cheaper.
+{{include:headers/tool-when-not-to-use}} with a UUID; call
+leadbay_research_lead_by_id directly.
 
 ---
 
@@ -71,6 +57,6 @@ search round-trip; skipping it when you can is cheaper.
 
 When `_meta.match_candidates` is non-empty, prepend one extra NEXT STEPS row:
 
-| Observation                                            | Suggest                                                              | Calls                                                                  |
-|--------------------------------------------------------|----------------------------------------------------------------------|------------------------------------------------------------------------|
-| `_meta.match_candidates` non-empty                     | "Did you mean **&lt;next-best.name&gt;**?"                                | leadbay_research_lead_by_id(leadId=&lt;next-best.leadId&gt;)                |
+| Observation | Suggest | Calls |
+|---|---|---|
+| Alternatives found | "Did you mean **&lt;next-best.name&gt;**?" | leadbay_research_lead_by_id(leadId=&lt;next-best.leadId&gt;) |

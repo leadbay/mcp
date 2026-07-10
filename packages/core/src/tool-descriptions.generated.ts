@@ -3413,34 +3413,23 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ---
 
-Thin wrapper around **leadbay_research_lead_by_id**. Accepts a \`companyName\`,
-resolves it through Leadbay's cross-tab search (company names, domains, and
-contact names across the user's visible Discover, Monitor, and Activate
-corpus), and delegates the selected lead to
-\`leadbay_research_lead_by_id\`. A supplied \`lensId\` is a deliberate override:
-it restricts resolution to that lens's wishlist using the backend's name
-filter. Returns the **same payload shape** as \`_by_id\`, with additions on
-\`_meta\`:
+Resolves \`companyName\` across visible Discover, Monitor, and Activate leads,
+then delegates to **leadbay_research_lead_by_id**. Supplying \`lensId\`
+deliberately restricts the backend search to that lens. The result matches
+\`_by_id\`, plus:
 
-- \`_meta.resolved_from\`: \`"companyName"\` (so the agent knows the entry point).
-- \`_meta.resolved_query\`: the original \`companyName\` string.
-- \`_meta.match_candidates[]\`: up to 4 next-best matches as
-  \`{leadId, name, score}\` — surface these when ambiguity is plausible so the
-  user can redirect.
+- \`_meta.resolved_from\`: \`"companyName"\`
+- \`_meta.resolved_query\`: the original query
+- \`_meta.match_candidates[]\`: up to 4 \`{leadId, name, score}\` alternatives
 
-On zero matches, throws \`LEAD_NOT_FOUND\` with a scope-aware hint. With no
-\`lensId\`, zero means the visible cross-tab corpus was searched. With an
-explicit \`lensId\`, the hint tells the agent to omit it if the user did not
-intend a strict lens scope.
+\`LEAD_NOT_FOUND\` identifies whether the complete visible corpus, an explicit
+lens, or only a degraded active-lens fallback was searched.
 
-WHEN TO USE: when the user references a company by
-name and you don't yet have its \`lead_id\`. If \`_meta.match_candidates\` is
-non-empty, offer the next-best matches in NEXT STEPS so the user can correct
-a wrong fuzzy hit.
+WHEN TO USE: for a company/domain/contact reference
+without a \`lead_id\`. Offer \`_meta.match_candidates\` when present.
 
-WHEN NOT TO USE: when you already have the UUID — use
-leadbay_research_lead_by_id directly. This wrapper costs one extra
-search round-trip; skipping it when you can is cheaper.
+WHEN NOT TO USE: with a UUID; call
+leadbay_research_lead_by_id directly.
 
 ---
 
@@ -3581,9 +3570,9 @@ out?"\`
 
 When \`_meta.match_candidates\` is non-empty, prepend one extra NEXT STEPS row:
 
-| Observation                                            | Suggest                                                              | Calls                                                                  |
-|--------------------------------------------------------|----------------------------------------------------------------------|------------------------------------------------------------------------|
-| \`_meta.match_candidates\` non-empty                     | "Did you mean **&lt;next-best.name&gt;**?"                                | leadbay_research_lead_by_id(leadId=&lt;next-best.leadId&gt;)                |
+| Observation | Suggest | Calls |
+|---|---|---|
+| Alternatives found | "Did you mean **&lt;next-best.name&gt;**?" | leadbay_research_lead_by_id(leadId=&lt;next-best.leadId&gt;) |
 `;
 // endregion: leadbay_research_lead_by_name_fuzzy
 

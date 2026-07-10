@@ -1,5 +1,10 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool, ToolContext, WishlistResponse } from "../types.js";
+import type {
+  LeadbayError,
+  Tool,
+  ToolContext,
+  WishlistResponse,
+} from "../types.js";
 import { researchLeadById } from "./research-lead-by-id.js";
 
 import { leadbay_research_lead_by_name_fuzzy as RESEARCH_LEAD_BY_NAME_FUZZY_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -76,11 +81,14 @@ function suggestionLeadId(suggestion: SearchSuggestion): string | undefined {
   return suggestion.lead_id ?? suggestion.leadId;
 }
 
-function isLeadbayError(error: unknown): boolean {
+function isLeadbayError(error: unknown): error is LeadbayError {
   return (
     typeof error === "object" &&
     error !== null &&
-    typeof (error as { code?: unknown }).code === "string"
+    (error as Partial<LeadbayError>).error === true &&
+    typeof (error as Partial<LeadbayError>).code === "string" &&
+    typeof (error as Partial<LeadbayError>).message === "string" &&
+    typeof (error as Partial<LeadbayError>).hint === "string"
   );
 }
 
@@ -93,14 +101,13 @@ async function resolveWithinLens(
     "GET",
     `/lenses/${lensId}/leads/wishlist?q=${encodeURIComponent(query)}&count=50&page=0&contacts=false`
   );
-  const allLeads = results.items.map((lead) => ({
+  // The backend applied q across names, domains, and contacts. Preserve its
+  // filtered ordering instead of repeating the old name-substring filter,
+  // which would discard valid normalized/domain/contact matches.
+  return results.items.map((lead) => ({
     id: lead.id,
     name: lead.name,
     score: lead.score,
-    lensId,
-  }));
-  return rankSubstringMatches(query, allLeads).map((match) => ({
-    ...match,
     lensId,
   }));
 }
@@ -194,6 +201,7 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
     const query = params.companyName.trim();
     let ranked: ResolvedMatch[];
     let lensId = params.lensId;
+    let usedActiveLensFallback = false;
 
     if (lensId !== undefined) {
       ranked = await resolveWithinLens(client, query, lensId);
@@ -207,20 +215,31 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
         // without silently treating the lens as the normal search universe.
         if (isLeadbayError(error)) throw error;
         lensId = await client.resolveDefaultLens();
+        usedActiveLensFallback = true;
         ctx?.logger?.warn?.(
           "Cross-tab company search was unavailable; falling back to the active lens for this lookup."
         );
-        ranked = await resolveWithinLens(client, query, lensId);
+        // Keep the degraded path compatible with the legacy resolver. Unlike
+        // an explicit lens search, this fallback is not the authoritative
+        // cross-tab result and therefore retains the old name ranking rule.
+        ranked = rankSubstringMatches(
+          query,
+          await resolveWithinLens(client, query, lensId)
+        );
       }
     }
 
     if (ranked.length === 0) {
-      const scope = params.lensId === undefined
-        ? "across your visible Leadbay leads"
-        : `in lens ${params.lensId}`;
-      const hint = params.lensId === undefined
-        ? "Search checks company names, domains, and contact names across Discover, Monitor, and Activate. Confirm the spelling or domain, or add/import the company first."
-        : "This lookup was intentionally restricted to the supplied lens. Omit lensId to search visible leads across Discover, Monitor, and Activate.";
+      const scope = usedActiveLensFallback
+        ? `in active lens ${lensId}; cross-tab search was unavailable`
+        : params.lensId === undefined
+          ? "across your visible Leadbay leads"
+          : `in lens ${params.lensId}`;
+      const hint = usedActiveLensFallback
+        ? `Only active lens ${lensId} was checked because cross-tab search was unavailable. Retry later before concluding the company is missing or offering to import it.`
+        : params.lensId === undefined
+          ? "Search checks company names, domains, and contact names across Discover, Monitor, and Activate. Confirm the spelling or domain, or add/import the company first."
+          : "This lookup was intentionally restricted to the supplied lens. Omit lensId to search visible leads across Discover, Monitor, and Activate.";
       throw client.makeError(
         "LEAD_NOT_FOUND",
         `No lead matching "${query}" ${scope}`,

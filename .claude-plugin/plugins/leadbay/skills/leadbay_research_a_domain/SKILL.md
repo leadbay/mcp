@@ -17,7 +17,7 @@ GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships i
 If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
 
 
-Research the company with domain '<The company's primary domain (e.g. 'acme.com'). Protocol/path are stripped. If not provided in the user's most recent message, ask once before proceeding.>' for me using Leadbay.
+Research the company name or domain '<Company name or domain (for example 'Acme Corporation' or 'acme.com'). The legacy argument key remains `domain` for client compatibility. If not provided in the user's most recent message, ask once before proceeding.>' for me using Leadbay.
 
 # PHASE 1 — RESOLVE + DEEP DIVE
 Call `leadbay_research_lead_by_name_fuzzy` with

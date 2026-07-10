@@ -6,7 +6,7 @@ short_description: |
   Monitor, and Activate corpus, then return everything Leadbay knows about it.
 arguments:
   - name: domain
-    description: "The company's primary domain (e.g. 'acme.com'). Protocol/path are stripped."
+    description: "Company name or domain (for example 'Acme Corporation' or 'acme.com'). The legacy argument key remains `domain` for client compatibility."
     required: true
 expected_calls:
   - leadbay_research_lead_by_name_fuzzy
@@ -24,7 +24,7 @@ failure_modes:
 
 {{include:gates/defer-to-tool-rendering}}
 
-Research the company with domain '{{arg:domain}}' for me using Leadbay.
+Research the company name or domain '{{arg:domain}}' for me using Leadbay.
 
 # PHASE 1 — RESOLVE + DEEP DIVE
 Call `leadbay_research_lead_by_name_fuzzy` with
