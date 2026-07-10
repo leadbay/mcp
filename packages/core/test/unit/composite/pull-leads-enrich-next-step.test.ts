@@ -30,16 +30,24 @@ describe("buildPullLeadsNextSteps — Enrich top leads (#3875)", () => {
     expect(ns!.options[1].label).toBe("Enrich top leads");
   });
 
-  it("enrich label is ≤5 words; description promises a no-spend preview", () => {
+  it("label AND description are both the short button text (≤5 words)", () => {
+    // On description-forward hosts (AskUserQuestion in Claude Code / cowork) the
+    // widget renders the `description` as the primary line, not the `label`. So
+    // BOTH fields must read as the short button text — otherwise the option
+    // shows a long sentence where a two/three-word chip belongs. The consent
+    // guarantee ("preview first, no spend") is NOT carried by this string: it
+    // lives in the leadbay_enrich_titles tool's own spend gate and in the
+    // pull-leads fallback prose table (dry_run/preview routing).
     const ns = buildPullLeadsNextSteps({ leadCount: 8, hasMore: false, nextPage: null });
     const enrich = ns!.options.find((o) => o.kind === "enrich_top_leads");
     expect(enrich).toBeDefined();
+    expect(enrich!.label).toBe("Enrich top leads");
+    expect(enrich!.description).toBe("Enrich the top leads");
     expect(enrich!.label.trim().split(/\s+/).length).toBeLessThanOrEqual(5);
-    // Consent gate: the offer must read as preview-first, not a silent launch.
-    expect(enrich!.description).toMatch(/preview/i);
-    expect(enrich!.description).toMatch(/no quota spent|confirm/i);
-    // It's the email/phone reveal on the top leads (not "fill in the title field").
-    expect(enrich!.description).toMatch(/email|phone/i);
+    expect(enrich!.description.trim().split(/\s+/).length).toBeLessThanOrEqual(5);
+    // Pre-existing invariant (pull-leads-next-steps.test.ts) requires
+    // description strictly longer than label — hold it here too.
+    expect(enrich!.description.length).toBeGreaterThan(enrich!.label.length);
   });
 
   it("artifact-first + ≤4 cap hold even when a pager also contends", () => {

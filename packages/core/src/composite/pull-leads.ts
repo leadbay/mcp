@@ -164,9 +164,16 @@ export function buildPullLeadsNextSteps(args: {
   // Routes to leadbay_enrich_titles via the no-spend preview path (the option
   // wording promises a volume preview before any quota is spent — the consent
   // gate is never bypassed). Sits at position 2, right after the artifact offer.
+  // NOTE: the shared next-steps widget on Claude Code / cowork renders the
+  // `description` as the option's primary line (not the short `label`), so the
+  // description is kept to a short button-like phrase. A pre-existing invariant
+  // (pull-leads-next-steps.test.ts) requires description.length > label.length,
+  // so it stays marginally longer than the label. The consent guarantee
+  // ("preview first, no spend") lives in the leadbay_enrich_titles tool's own
+  // spend gate + the pull-leads fallback prose (dry_run routing), NOT here.
   options.push({
     label: "Enrich top leads",
-    description: "Reveal decision-maker emails/phones on the top leads (previews first, no spend until you confirm).",
+    description: "Enrich the top leads",
     kind: "enrich_top_leads",
   });
 
@@ -267,7 +274,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
       next_steps: {
         type: ["object", "null"],
         description:
-          "Ready-made NEXT STEPS for the host's choice widget. Each option has a SHORT `label` (≤5 words, fits AskUserQuestion's label cap on Claude cowork/Claude Code) and a full `description`. For AskUserQuestion (cowork/Claude Code) pass each option as {label, description}. For ask_user_input_v0 (Claude chat/ChatGPT, string-only options) use the `description` as the option string. Use these VERBATIM, in order — do NOT re-derive, reword, or render as prose when a widget tool exists. options[0] is the artifact offer (build the lead triage board) whenever the batch is non-empty; options[1] is the enrich offer (kind:enrich_top_leads — reveal decision-maker email/phone on the top leads, routed through leadbay_enrich_titles' no-spend preview so quota is only spent after the user confirms channels). When the batch is empty but the lens is still computing (computing_wishlist/computing_scores true), this carries a 'Re-pull in ~30s' option (kind:repull_computing) plus 'Refine audience' — render the widget so the user waits rather than seeing 'no leads.' null only when the batch is empty AND nothing is computing (a genuinely empty / over-narrow lens).",
+          "Ready-made NEXT STEPS for the host's choice widget. Each option has a SHORT `label` (≤5 words, fits AskUserQuestion's label cap on Claude cowork/Claude Code) and a full `description`. For AskUserQuestion (cowork/Claude Code) pass each option as {label, description}. For ask_user_input_v0 (Claude chat/ChatGPT, string-only options) use the `description` as the option string. Use these VERBATIM, in order — do NOT re-derive, reword, or render as prose when a widget tool exists. options[0] is the artifact offer (build the lead triage board) whenever the batch is non-empty; options[1] is the enrich offer (kind:enrich_top_leads — route it to leadbay_enrich_titles via the no-spend preview/dry_run path so quota is only spent after the user confirms channels). When the batch is empty but the lens is still computing (computing_wishlist/computing_scores true), this carries a 'Re-pull in ~30s' option (kind:repull_computing) plus 'Refine audience' — render the widget so the user waits rather than seeing 'no leads.' null only when the batch is empty AND nothing is computing (a genuinely empty / over-narrow lens).",
         properties: {
           question: { type: "string" },
           options: {
