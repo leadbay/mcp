@@ -1,5 +1,11 @@
 # Changelog — @leadbay/mcp
 
+## 0.24.2 — 2026-07-13
+
+Release bump to publish a fresh hosted HTTP-server image carrying the 0.24.1
+telemetry fix (the hosted `mcp.leadbay.app` endpoint deploys from the release
+image, separately from npm). No code changes.
+
 ## 0.24.1 — 2026-07-10
 
 Fix PostHog tool-call events silently dropped (product#3876). The hosted HTTP
