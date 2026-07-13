@@ -52,37 +52,11 @@ describe("resolveClientFromToken", () => {
     expect(requests).toHaveLength(0);
   });
 
-  it("auto-probe: first region to respond wins", async () => {
-    // Respond to /users/me on us; fr gets a 401 (will be ignored since us wins)
-    mockHttp([
-      { method: "GET", path: "/1.6/users/me", status: 200, body: { id: "u1" } },
-      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "NOT_AUTHENTICATED", message: "bad" } },
-    ]);
-    const result = await resolveClientFromToken("tok");
-    expect(result.authState).toBe("ok");
-  });
-
-  it("auto-probe: both regions return AUTH_EXPIRED → expired broken client", async () => {
-    mockHttp([
-      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "token expired" } },
-      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "token expired" } },
-    ]);
-    const result = await resolveClientFromToken("tok");
-    expect(result.authState).toBe("expired");
-    await expect(result.client.request("GET", "/any")).rejects.toMatchObject({
-      code: "AUTH_EXPIRED",
-    });
-  });
-
-  it("auto-probe: both regions return network error → probe_failed with live client", async () => {
-    mockHttp([
-      { method: "GET", path: "/1.6/users/me", status: 500, body: { error: true, code: "SERVER_ERROR", message: "oops" } },
-      { method: "GET", path: "/1.6/users/me", status: 500, body: { error: true, code: "SERVER_ERROR", message: "oops" } },
-    ]);
-    const result = await resolveClientFromToken("tok");
-    expect(result.authState).toBe("probe_failed");
-    // Falls back to a live (non-broken) client — it should be able to make calls
-    // (whether they succeed depends on the backend, not our code)
-    expect(result.client).toBeDefined();
-  });
+  // NOTE: the three "auto-probe" tests that lived here (first-region-wins,
+  // dual-region AUTH_EXPIRED → expired, dual-region 5xx → probe_failed) tested the
+  // pre-Stargate DUAL-region probe model, which this PR removes: the region is now
+  // decoded from the token suffix and validated with a SINGLE-region probe. Those
+  // obsolete tests are dropped; the single-region probe / expired / validate:false
+  // / region-from-token coverage lives in the new file
+  // auth-http-single-region-probe.test.ts (repo rule: new tests in new files).
 });
