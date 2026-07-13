@@ -133,8 +133,7 @@ export async function telemetryHandleForRequest(client: LeadbayClient): Promise<
 // is never populated on HTTP, so they'd buffer until shutdown and flush
 // anonymous. captureFeedback must forward it too: it fills the Sentry feedback
 // name/email from identity (Codex P2 — hosted feedback was landing anonymous).
-// captureException stays on the base: its ctx already carries region/org and it
-// goes to Sentry, not the PostHog pending buffer.
+//
 // `isSuppressed` is an OPTIONAL live opt-out predicate, consulted synchronously
 // on every capture. It exists for long-lived SSE sessions (product#3879): the
 // server + bound handle are built ONCE at GET /sse, but a user can call
@@ -143,6 +142,12 @@ export async function telemetryHandleForRequest(client: LeadbayClient): Promise<
 // session client's cached telemetry_enabled (refreshed in POST /messages after
 // the tool's invalidateMe()), the predicate flips the same session live. Omitted
 // on the streamable path (each request re-resolves), where the decision is fixed.
+//
+// captureException is gated by isSuppressed TOO: server.ts fires it on tool
+// errors (Sentry), so an opted-out SSE user would otherwise still leak Sentry
+// telemetry even though the streamable path returns full NOOP for the same
+// preference (Codex P1). When NOT suppressed it passes through to base unchanged
+// (its ctx already carries region/org).
 export function bindTelemetryIdentity(
   base: TelemetryHandle,
   identity: CaptureIdentity,
@@ -164,6 +169,7 @@ export function bindTelemetryIdentity(
     captureAgentMemoryRecalled: on((p) => base.captureAgentMemoryRecalled(p, identity)),
     captureAgentMemoryPruned: on((p) => base.captureAgentMemoryPruned(p, identity)),
     captureFrictionReported: on((p) => base.captureFrictionReported(p, identity)),
+    captureException: on((err, ctx) => base.captureException(err, ctx)),
     captureFeedback: async (message, opts) => {
       if (isSuppressed?.()) return false;
       return base.captureFeedback(message, opts, identity);

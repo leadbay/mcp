@@ -132,6 +132,26 @@ describe("hosted HTTP per-user telemetry opt-out (product#3879)", () => {
     handle.captureToolCall({ tool: "leadbay_pull_leads", ok: true, duration_ms: 5, format: "json", bytes: 10 });
     expect(posthogState.captures).toHaveLength(1); // still 1 — the flip took effect on the same handle
   });
+
+  it("captureException is suppressed too when opted out (no Sentry leak for opted-out SSE users)", () => {
+    // server.ts fires captureException on tool errors → Sentry. A suppressed
+    // session must drop it, matching the streamable NOOP path (Codex P1).
+    const identity = { distinctId: "alice@leadbay.test", region: "us" };
+    let suppressed = false;
+    let exceptionCalls = 0;
+    const base: TelemetryHandle = {
+      ...NOOP_TELEMETRY,
+      captureException: () => { exceptionCalls++; },
+    };
+    const handle = bindTelemetryIdentity(base, identity, () => suppressed);
+
+    handle.captureException(new Error("boom"), { tool: "leadbay_pull_leads" });
+    expect(exceptionCalls).toBe(1); // enabled → forwarded to Sentry
+
+    suppressed = true;
+    handle.captureException(new Error("boom2"), { tool: "leadbay_pull_leads" });
+    expect(exceptionCalls).toBe(1); // opted out → suppressed, not sent
+  });
 });
 
 // The process-level real handle (mocked PostHog) that bindTelemetryIdentity wraps.
