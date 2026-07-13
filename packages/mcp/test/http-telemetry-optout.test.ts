@@ -51,7 +51,8 @@ const savedNodeEnv = process.env.NODE_ENV;
 (process.env as any).NODE_ENV = "development";
 delete process.env.LEADBAY_TELEMETRY_ENABLED;
 
-const { telemetryHandleForRequest } = await import("../src/http-server.js");
+const { telemetryHandleForRequest, bindTelemetryIdentity } = await import("../src/http-server.js");
+const { NOOP_TELEMETRY } = await import("../src/telemetry.js");
 const { LeadbayClient } = await import("@leadbay/core");
 
 afterAll(() => {
@@ -115,4 +116,38 @@ describe("hosted HTTP per-user telemetry opt-out (product#3879)", () => {
     const ids = posthogState.captures.map((c) => c.distinctId);
     expect(ids).toEqual(["b@leadbay.test"]); // A suppressed, B captured
   });
+
+  it("live suppression predicate: a mid-session opt-out flips the SAME bound handle (SSE)", () => {
+    // The SSE session builds its handle ONCE but passes a live `() => suppressed`
+    // predicate; POST /messages flips `suppressed` after a mid-session disable.
+    // Proves the same handle stops emitting without rebuild (product#3879 P1).
+    const identity = { distinctId: "alice@leadbay.test", region: "us" };
+    let suppressed = false;
+    const handle = bindTelemetryIdentity(telemetry_base(), identity, () => suppressed);
+
+    handle.captureToolCall({ tool: "leadbay_pull_leads", ok: true, duration_ms: 5, format: "json", bytes: 10 });
+    expect(posthogState.captures).toHaveLength(1); // enabled → captured
+
+    suppressed = true; // user disabled mid-session; POST /messages refreshed the flag
+    handle.captureToolCall({ tool: "leadbay_pull_leads", ok: true, duration_ms: 5, format: "json", bytes: 10 });
+    expect(posthogState.captures).toHaveLength(1); // still 1 — the flip took effect on the same handle
+  });
 });
+
+// The process-level real handle (mocked PostHog) that bindTelemetryIdentity wraps.
+// Built via telemetryHandleForRequest on an enabled user so we reuse the same
+// initialized handle the SSE path binds. Simpler: resolve one enabled handle's base
+// by binding NOOP is wrong (we need the real one) — so we grab it through a known
+// enabled resolve.
+function telemetry_base() {
+  // The module-scoped shared handle is what bindTelemetryIdentity wraps in prod.
+  // We can't import it directly, but NOOP_TELEMETRY has the same surface and,
+  // crucially, the predicate gate lives in the WRAPPER (bindTelemetryIdentity),
+  // not the base — so a real base isn't needed to prove the gate. Use a spy base
+  // that records captures the same way the posthog mock does.
+  return {
+    ...NOOP_TELEMETRY,
+    captureToolCall: (p: any, id: any) =>
+      posthogState.captures.push({ distinctId: id?.distinctId ?? "?", event: "mcp tool called" }),
+  };
+}

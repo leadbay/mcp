@@ -89,9 +89,13 @@ export const setTelemetry: Tool<SetTelemetryParams> = {
       changed: true,
       action,
       region: client.region,
+      // Deliberately does NOT claim events stop instantly. The preference is
+      // saved on the account and honored per-request on the hosted server (and
+      // on the next session for a local install, whose telemetry gate is set at
+      // process start) — so "saved" is the honest promise, not "stops now".
       hint: target
         ? "Telemetry is now ON — thanks for helping improve Leadbay."
-        : "Telemetry is now OFF. No further product-usage events will be sent for you.",
+        : "Telemetry is now OFF for your account. Product-usage events stop being sent for you (on the next request on the hosted connector, or the next session on a local install).",
     };
   },
 };

@@ -135,22 +135,39 @@ export async function telemetryHandleForRequest(client: LeadbayClient): Promise<
 // name/email from identity (Codex P2 — hosted feedback was landing anonymous).
 // captureException stays on the base: its ctx already carries region/org and it
 // goes to Sentry, not the PostHog pending buffer.
+// `isSuppressed` is an OPTIONAL live opt-out predicate, consulted synchronously
+// on every capture. It exists for long-lived SSE sessions (product#3879): the
+// server + bound handle are built ONCE at GET /sse, but a user can call
+// leadbay_set_telemetry with disable mid-session — so a fixed NOOP-vs-real
+// decision at connect would keep emitting until reconnect. Backed by the
+// session client's cached telemetry_enabled (refreshed in POST /messages after
+// the tool's invalidateMe()), the predicate flips the same session live. Omitted
+// on the streamable path (each request re-resolves), where the decision is fixed.
 export function bindTelemetryIdentity(
   base: TelemetryHandle,
-  identity: CaptureIdentity
+  identity: CaptureIdentity,
+  isSuppressed?: () => boolean
 ): TelemetryHandle {
+  const on = <A extends unknown[]>(fn: (...a: A) => void) =>
+    (...a: A) => {
+      if (isSuppressed?.()) return;
+      fn(...a);
+    };
   return {
     ...base,
-    captureToolCall: (p) => base.captureToolCall(p, identity),
-    captureCompositeCall: (p) => base.captureCompositeCall(p, identity),
-    captureQuotaHit: (p) => base.captureQuotaHit(p, identity),
-    captureTopupLink: (p) => base.captureTopupLink(p, identity),
-    captureStartup: (p) => base.captureStartup(p, identity),
-    captureAgentMemoryCaptured: (p) => base.captureAgentMemoryCaptured(p, identity),
-    captureAgentMemoryRecalled: (p) => base.captureAgentMemoryRecalled(p, identity),
-    captureAgentMemoryPruned: (p) => base.captureAgentMemoryPruned(p, identity),
-    captureFrictionReported: (p) => base.captureFrictionReported(p, identity),
-    captureFeedback: (message, opts) => base.captureFeedback(message, opts, identity),
+    captureToolCall: on((p) => base.captureToolCall(p, identity)),
+    captureCompositeCall: on((p) => base.captureCompositeCall(p, identity)),
+    captureQuotaHit: on((p) => base.captureQuotaHit(p, identity)),
+    captureTopupLink: on((p) => base.captureTopupLink(p, identity)),
+    captureStartup: on((p) => base.captureStartup(p, identity)),
+    captureAgentMemoryCaptured: on((p) => base.captureAgentMemoryCaptured(p, identity)),
+    captureAgentMemoryRecalled: on((p) => base.captureAgentMemoryRecalled(p, identity)),
+    captureAgentMemoryPruned: on((p) => base.captureAgentMemoryPruned(p, identity)),
+    captureFrictionReported: on((p) => base.captureFrictionReported(p, identity)),
+    captureFeedback: async (message, opts) => {
+      if (isSuppressed?.()) return false;
+      return base.captureFeedback(message, opts, identity);
+    },
     identify: async () => {},
     shutdown: async () => {},
   };
@@ -164,6 +181,12 @@ interface SseSession {
   transport: SSEServerTransport;
   server: Server;
   createdAt: number;
+  client: LeadbayClient;
+  // Live opt-out for this session (product#3879). The bound telemetry handle
+  // reads this on every capture; POST /messages refreshes it before dispatch,
+  // so a mid-session leadbay_set_telemetry disable takes effect on the next
+  // message instead of only after reconnect.
+  suppressed: boolean;
 }
 const sseSessions = new Map<string, SseSession>();
 
@@ -440,19 +463,31 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
     return sendChallenge(c, resourcePath, resolved.authState);
   }
 
-  // Resolve identity ONCE per SSE session; the bound handle rides in this
-  // session's server, so every later POST /messages call attributes correctly.
-  // A user who opted out gets NOOP for the whole session (product#3879).
+  // Resolve identity ONCE per SSE session for attribution, but the opt-out is
+  // LIVE: the session holds a mutable `suppressed` flag the bound handle reads
+  // on every capture, and POST /messages refreshes it before each dispatch. So
+  // a mid-session leadbay_set_telemetry disable takes effect on the next
+  // message, not only after reconnect (product#3879).
+  const { identity, enabled } = await resolveTelemetryContext(resolved.client);
+  const session: SseSession = {
+    transport: undefined as unknown as SSEServerTransport, // set below
+    server: undefined as unknown as Server, // set below
+    createdAt: Date.now(),
+    client: resolved.client,
+    suppressed: !enabled,
+  };
   const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
   const transport = new SSEServerTransport("/messages", env.outgoing);
   const server = buildServerFromClient(
     resolved.client,
-    await telemetryHandleForRequest(resolved.client)
+    bindTelemetryIdentity(telemetry, identity, () => session.suppressed)
   );
   await server.connect(transport);
 
   const sessionId = transport.sessionId;
-  sseSessions.set(sessionId, { transport, server, createdAt: Date.now() });
+  session.transport = transport;
+  session.server = server;
+  sseSessions.set(sessionId, session);
   transport.onclose = () => {
     sseSessions.delete(sessionId);
     server.close().catch(() => {});
@@ -478,6 +513,23 @@ app.post("/messages", async (c) => {
   const session = sseSessions.get(sessionId);
   if (!session) {
     return c.json({ error: "unknown sessionId" }, 404);
+  }
+  // Refresh the session's opt-out BEFORE dispatching (product#3879): if the
+  // user disabled telemetry earlier in this same session, leadbay_set_telemetry
+  // invalidated the client's /users/me cache, so this resolveMe re-fetches the
+  // fresh telemetry_enabled and flips session.suppressed — which the bound
+  // handle reads on this message's captures. Bounded + best-effort: a failed
+  // read leaves the last known value rather than blocking the tool call.
+  try {
+    const me = await Promise.race([
+      session.client.resolveMe(),
+      new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), IDENTITY_RESOLVE_TIMEOUT_MS)
+      ),
+    ]);
+    if (me) session.suppressed = me.telemetry_enabled === false;
+  } catch {
+    // keep the last known suppressed value
   }
   const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
   const body = await c.req.json().catch(() => undefined);
