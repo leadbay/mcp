@@ -89,13 +89,14 @@ export const setTelemetry: Tool<SetTelemetryParams> = {
       changed: true,
       action,
       region: client.region,
-      // Deliberately does NOT claim events stop instantly. The preference is
-      // saved on the account and honored per-request on the hosted server (and
-      // on the next session for a local install, whose telemetry gate is set at
-      // process start) — so "saved" is the honest promise, not "stops now".
+      // Honest about WHERE the account flag is enforced: the hosted connector
+      // reads it per-request. A local (stdio) install decides telemetry at
+      // process start from LEADBAY_TELEMETRY_ENABLED and does NOT consult this
+      // account flag, so we make NO local-opt-out promise — we point local users
+      // at the env var instead of implying the flag governs them.
       hint: target
-        ? "Telemetry is now ON — thanks for helping improve Leadbay."
-        : "Telemetry is now OFF for your account. Product-usage events stop being sent for you (on the next request on the hosted connector, or the next session on a local install).",
+        ? "Telemetry is now ON for your account — thanks for helping improve Leadbay."
+        : "Telemetry is now OFF for your account — the hosted Leadbay connector stops sending your product-usage events. On a local (self-hosted / stdio) install, also set LEADBAY_TELEMETRY_ENABLED=false to stop events there.",
     };
   },
 };

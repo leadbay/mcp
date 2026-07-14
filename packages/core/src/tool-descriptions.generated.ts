@@ -4112,9 +4112,13 @@ Enable, disable, or check **product-usage telemetry** for the current user.
 Telemetry (PostHog analytics — which tools fire, durations, error rates; never
 tool arguments, response bodies, or lead PII) is **ON by default** (opt-out
 model). This tool is the in-product control so a user can change or check the
-setting without editing config or environment variables — and it works the same
-on the hosted/web connector as on a local install, because the preference is
-stored on the user's Leadbay account (not the machine).
+setting without editing config. The preference is stored on the user's Leadbay
+account. The **hosted/web connector** reads it per-request and stops sending a
+disabled user's events. A **local (self-hosted / stdio) install** decides
+telemetry at process start from the \`LEADBAY_TELEMETRY_ENABLED\` env var and does
+NOT consult this account flag — so a local user who wants to opt out should also
+set \`LEADBAY_TELEMETRY_ENABLED=false\`. Do NOT tell a local user that disabling
+here alone stops their events.
 
 Parameter:
 
@@ -4128,10 +4132,11 @@ Returns:
   and for a no-op set, e.g. disabling when already off).
 - **\`action\`**, **\`region\`**, and a one-line **\`hint\`** describing how to flip it.
 
-Setting the preference takes effect for the user's telemetry going forward: the
-Leadbay MCP server reads this flag and stops emitting analytics events for a
-user who has opted out. \`enable\`/\`disable\` are idempotent — setting the value it
-already has is a no-op that reports \`changed: false\`.
+Setting the preference takes effect going forward on the **hosted connector**,
+which reads the flag per-request and stops emitting analytics for an opted-out
+user. On a local install the account flag is not consulted (see above).
+\`enable\`/\`disable\` are idempotent — setting the value it already has is a no-op
+that reports \`changed: false\`.
 `;
 // endregion: leadbay_set_telemetry
 

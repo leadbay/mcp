@@ -665,7 +665,7 @@ After your first authenticated call, your PostHog `distinctId` is set to your Le
 
 **Errors to Sentry**: only unexpected throws (TypeError, network failures, parse bugs). Expected business outcomes — quota walls, missing resources, auth expiry, billing suspension — stay in PostHog only.
 
-**Opt out** — the simplest way is to just ask the agent: "turn off telemetry" (or "is telemetry on?"). That calls the `leadbay_set_telemetry` tool, which stores your choice on your Leadbay account, so it applies everywhere you use Leadbay — including the hosted/web connector where there's no local config to edit.
+**Opt out** — the simplest way is to just ask the agent: "turn off telemetry" (or "is telemetry on?"). That calls the `leadbay_set_telemetry` tool, which stores your choice on your Leadbay account. The **hosted/web connector** honors it per-request (there's no local config to edit there). On a **local install** the server decides telemetry at startup from `LEADBAY_TELEMETRY_ENABLED` and does not read the account flag, so also set `LEADBAY_TELEMETRY_ENABLED=false` (below) to stop events locally.
 
 You can also opt out via config: `leadbay-mcp install` writes `LEADBAY_TELEMETRY_ENABLED=true` into your MCP client's env block by default. Most clients (Claude Desktop, Cursor) render env-var booleans as a toggle in their settings UI, so you can flip it without editing the file. To opt out at install time, pass `--no-telemetry`; to opt out manually, flip the env value to `"false"`:
 
