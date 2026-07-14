@@ -128,6 +128,25 @@ describe("hosted HTTP per-user telemetry opt-out (product#3879)", () => {
     expect(ids).toEqual(["b@leadbay.test"]); // A suppressed, B captured
   });
 
+  it("SSE refresh reads FRESH /users/me: resolveMe(true) bypasses the 60s cache (Codex P1)", async () => {
+    // The per-message SSE opt-out refresh uses resolveMe(true) so a disable made
+    // from ANOTHER session (which only invalidates ITS client) is still seen —
+    // a cached read would reuse stale telemetry_enabled:true and keep leaking.
+    // Prove the mechanism: force reads hit the backend every time; a plain
+    // cached read does not.
+    const h = mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 200, body: meWith(true) },
+      { method: "GET", path: "/1.6/users/me", status: 200, body: meWith(false) },
+    ]);
+    const client = new LeadbayClient("https://api-us.leadbay.app", "u.tok", "us");
+    const first = await client.resolveMe(true); // fresh
+    const second = await client.resolveMe(true); // fresh again — NOT the cached first
+    const meCount = h.requests.filter((r) => r.path === "/1.6/users/me").length;
+    expect(meCount).toBe(2); // both forced reads hit the backend (cache bypassed)
+    expect(first.telemetry_enabled).toBe(true);
+    expect(second.telemetry_enabled).toBe(false); // saw the cross-session disable
+  });
+
   it("live suppression predicate: a mid-session opt-out flips the SAME bound handle (SSE)", () => {
     // The SSE session builds its handle ONCE but passes a live `() => suppressed`
     // predicate; POST /messages flips `suppressed` after a mid-session disable.

@@ -536,20 +536,21 @@ app.post("/messages", async (c) => {
   if (!session) {
     return c.json({ error: "unknown sessionId" }, 404);
   }
-  // Refresh the session's opt-out BEFORE dispatching (product#3879): if the
-  // user disabled telemetry earlier in this same session, leadbay_set_telemetry
-  // invalidated the client's /users/me cache, so this resolveMe re-fetches the
-  // fresh telemetry_enabled and flips session.suppressed — which the bound
-  // handle reads on this message's captures. Bounded so it never blocks the tool.
+  // Refresh the session's opt-out BEFORE dispatching (product#3879), reading
+  // FRESH /users/me — resolveMe(true) bypasses the 60s cache. A cached read
+  // would miss a disable made from ANOTHER connector/session (that only
+  // invalidateMe()s ITS client, not this session's), leaving telemetry_enabled
+  // stale-true and leaking this user's events until the TTL expired (Codex P1).
+  // Bounded so it never blocks the tool.
   //
   // FAIL CLOSED on an unknown preference (Codex P1): a timed-out/errored refresh
   // suppresses this message's telemetry rather than keeping the last known value.
-  // Otherwise a mid-session disable followed by a transient read failure would
-  // keep leaking an opted-out user's events. A dropped data point for an enabled
-  // user is the acceptable cost; it self-corrects on the next successful refresh.
+  // Otherwise a disable followed by a transient read failure would keep leaking
+  // an opted-out user's events. A dropped data point for an enabled user is the
+  // acceptable cost; it self-corrects on the next successful refresh.
   try {
     const me = await Promise.race([
-      session.client.resolveMe(),
+      session.client.resolveMe(true),
       new Promise<null>((resolve) =>
         setTimeout(() => resolve(null), IDENTITY_RESOLVE_TIMEOUT_MS)
       ),
