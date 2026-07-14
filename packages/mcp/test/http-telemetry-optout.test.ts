@@ -82,12 +82,12 @@ describe("hosted HTTP per-user telemetry opt-out (product#3879)", () => {
     expect(posthogState.captures[0].distinctId).toBe("alice@leadbay.test");
   });
 
-  it("telemetry_enabled=false → the request handle is NOOP, event suppressed", async () => {
+  it("telemetry_enabled=false → analytics suppressed, tool-call event not emitted", async () => {
     mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: meWith(false) }]);
     const client = new LeadbayClient("https://api-us.leadbay.app", "u.tok", "us");
     const handle = await telemetryHandleForRequest(client);
     handle.captureToolCall({ tool: "leadbay_pull_leads", ok: true, duration_ms: 5, format: "json", bytes: 10 });
-    // The load-bearing guarantee: a disabled user's tool call emits NOTHING.
+    // The load-bearing guarantee: a disabled user's tool call emits NO analytics.
     expect(posthogState.captures).toHaveLength(0);
   });
 
@@ -99,7 +99,7 @@ describe("hosted HTTP per-user telemetry opt-out (product#3879)", () => {
     expect(posthogState.captures).toHaveLength(1);
   });
 
-  it("FAILS CLOSED: /users/me error → preference unknown → NOOP, nothing emitted (Codex P1)", async () => {
+  it("FAILS CLOSED: /users/me error → preference unknown → analytics suppressed (Codex P1)", async () => {
     // Transient backend failure means we can't see telemetry_enabled. Suppress
     // rather than leak an opted-out user's telemetry — the enforcement point
     // must not fail open.
@@ -142,6 +142,27 @@ describe("hosted HTTP per-user telemetry opt-out (product#3879)", () => {
     suppressed = true; // user disabled mid-session; POST /messages refreshed the flag
     handle.captureToolCall({ tool: "leadbay_pull_leads", ok: true, duration_ms: 5, format: "json", bytes: 10 });
     expect(posthogState.captures).toHaveLength(1); // still 1 — the flip took effect on the same handle
+  });
+
+  it("captureFeedback stays LIVE when opted out — explicit user feedback is not analytics (Codex P2)", async () => {
+    // Opting out of telemetry must NOT silently drop leadbay_send_feedback:
+    // it's an explicit user-initiated "deliver my message to the team" action.
+    const identity = { distinctId: "alice@leadbay.test", region: "us" };
+    let feedbackSent = 0;
+    const base: TelemetryHandle = {
+      ...NOOP_TELEMETRY,
+      captureToolCall: () => { posthogState.captures.push({ distinctId: "x", event: "mcp tool called" }); },
+      captureFeedback: async () => { feedbackSent++; return true; },
+    };
+    const handle = bindTelemetryIdentity(base, identity, () => true); // fully suppressed
+
+    // Analytics suppressed…
+    handle.captureToolCall({ tool: "leadbay_pull_leads", ok: true, duration_ms: 5, format: "json", bytes: 10 });
+    expect(posthogState.captures).toHaveLength(0);
+    // …but the user's explicit feedback still goes through.
+    const sent = await handle.captureFeedback("scores feel off this week");
+    expect(sent).toBe(true);
+    expect(feedbackSent).toBe(1);
   });
 
   it("captureException is suppressed too when opted out (no Sentry leak for opted-out SSE users)", () => {

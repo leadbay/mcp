@@ -34,7 +34,6 @@ import {
 import { parseWriteEnv } from "./env.js";
 import {
   initTelemetry,
-  NOOP_TELEMETRY,
   type CaptureIdentity,
   type TelemetryHandle,
 } from "./telemetry.js";
@@ -124,14 +123,17 @@ async function resolveTelemetryContext(
   }
 }
 
-// The telemetry handle to use for a request: the shared handle bound to this
-// request's identity, OR NOOP_TELEMETRY when the user has opted out. This is the
-// web-safe enforcement point — on the multi-tenant hosted server a disabled
-// user's tool calls emit NOTHING, per-request, without affecting other tenants.
+// The telemetry handle to use for a request. Always the shared handle bound to
+// this request's identity; when the user has opted out we pass an always-true
+// isSuppressed predicate so analytics + error telemetry are dropped — but the
+// wrapper deliberately keeps captureFeedback LIVE, because leadbay_send_feedback
+// is an explicit user-initiated action (deliver my message to the team), not
+// passive telemetry (Codex P2). This is the web-safe enforcement point — on the
+// multi-tenant hosted server a disabled user's tool calls emit no analytics,
+// per-request, without affecting other tenants or their own feedback.
 export async function telemetryHandleForRequest(client: LeadbayClient): Promise<TelemetryHandle> {
   const { identity, enabled } = await resolveTelemetryContext(client);
-  if (!enabled) return NOOP_TELEMETRY;
-  return bindTelemetryIdentity(telemetry, identity);
+  return bindTelemetryIdentity(telemetry, identity, enabled ? undefined : () => true);
 }
 
 // Wrap the shared handle so every capture in THIS request/session carries the
@@ -156,10 +158,10 @@ export async function telemetryHandleForRequest(client: LeadbayClient): Promise<
 // on the streamable path (each request re-resolves), where the decision is fixed.
 //
 // captureException is gated by isSuppressed TOO: server.ts fires it on tool
-// errors (Sentry), so an opted-out SSE user would otherwise still leak Sentry
-// telemetry even though the streamable path returns full NOOP for the same
-// preference (Codex P1). When NOT suppressed it passes through to base unchanged
-// (its ctx already carries region/org).
+// errors (Sentry), so an opted-out user would otherwise still leak Sentry error
+// telemetry (Codex P1). When NOT suppressed it passes through to base unchanged
+// (its ctx already carries region/org). captureFeedback is the ONE method left
+// live even when suppressed — see below.
 export function bindTelemetryIdentity(
   base: TelemetryHandle,
   identity: CaptureIdentity,
@@ -182,10 +184,12 @@ export function bindTelemetryIdentity(
     captureAgentMemoryPruned: on((p) => base.captureAgentMemoryPruned(p, identity)),
     captureFrictionReported: on((p) => base.captureFrictionReported(p, identity)),
     captureException: on((err, ctx) => base.captureException(err, ctx)),
-    captureFeedback: async (message, opts) => {
-      if (isSuppressed?.()) return false;
-      return base.captureFeedback(message, opts, identity);
-    },
+    // captureFeedback is NOT gated by isSuppressed (Codex P2): leadbay_send_feedback
+    // is an explicit user-initiated "deliver my message to the team" action, not
+    // passive telemetry. Opting out of analytics must not silently drop the user's
+    // own feedback (it would return sent:false). Identity still rides along so the
+    // Sentry feedback is attributed.
+    captureFeedback: (message, opts) => base.captureFeedback(message, opts, identity),
     identify: async () => {},
     shutdown: async () => {},
   };
