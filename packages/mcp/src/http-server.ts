@@ -78,8 +78,17 @@ export async function resolveIdentity(client: LeadbayClient): Promise<CaptureIde
 
 // Resolve BOTH the per-request PostHog identity AND whether the user has opted
 // out of telemetry (telemetry_enabled — product#3879), from a single bounded
-// /users/me. `enabled` defaults to true when the field is absent (older backend)
-// or when identity resolution failed — the same opt-out default as everywhere.
+// /users/me.
+//
+// FAIL CLOSED on an unknown preference (Codex P1): when /users/me times out or
+// errors we cannot see the user's telemetry_enabled, so we return enabled:false
+// and emit NOTHING for that request. Rationale: this is the enforcement point
+// for a privacy opt-out — leaking an opted-out user's telemetry on transient API
+// slowness is a consent violation and is NOT recoverable (the event is already
+// sent), whereas the cost of failing closed is only a dropped data point for an
+// enabled user on that one request (self-corrects on the next successful read).
+// Note: an absent telemetry_enabled on a SUCCESSFUL read still means enabled
+// (older backend / opt-out default) — that's a known preference, not an unknown one.
 async function resolveTelemetryContext(
   client: LeadbayClient
 ): Promise<{ identity: CaptureIdentity; enabled: boolean }> {
@@ -91,7 +100,8 @@ async function resolveTelemetryContext(
         setTimeout(() => resolve(null), IDENTITY_RESOLVE_TIMEOUT_MS)
       ),
     ]);
-    if (!me) return { identity: { distinctId: "mcp:unknown", region }, enabled: true };
+    // Unknown preference (timeout) → fail closed.
+    if (!me) return { identity: { distinctId: "mcp:unknown", region }, enabled: false };
     const distinctId = me.email ?? (me.id ? `mcp:user-${me.id}` : "mcp:unknown");
     return {
       identity: {
@@ -103,12 +113,14 @@ async function resolveTelemetryContext(
         ...(me.name ? { name: me.name } : {}),
         ...(me.email ? { email: me.email } : {}),
       },
-      // Honor the per-user opt-out (product#3879). Absent field → enabled.
+      // Known preference: honor the per-user opt-out. Absent field → enabled
+      // (older backend / opt-out default).
       enabled: me.telemetry_enabled !== false,
     };
   } catch (err: any) {
+    // Unknown preference (error) → fail closed.
     logger.warn?.(`telemetry identity resolve failed: ${err?.message ?? err}`);
-    return { identity: { distinctId: "mcp:unknown", region }, enabled: true };
+    return { identity: { distinctId: "mcp:unknown", region }, enabled: false };
   }
 }
 
@@ -524,8 +536,13 @@ app.post("/messages", async (c) => {
   // user disabled telemetry earlier in this same session, leadbay_set_telemetry
   // invalidated the client's /users/me cache, so this resolveMe re-fetches the
   // fresh telemetry_enabled and flips session.suppressed — which the bound
-  // handle reads on this message's captures. Bounded + best-effort: a failed
-  // read leaves the last known value rather than blocking the tool call.
+  // handle reads on this message's captures. Bounded so it never blocks the tool.
+  //
+  // FAIL CLOSED on an unknown preference (Codex P1): a timed-out/errored refresh
+  // suppresses this message's telemetry rather than keeping the last known value.
+  // Otherwise a mid-session disable followed by a transient read failure would
+  // keep leaking an opted-out user's events. A dropped data point for an enabled
+  // user is the acceptable cost; it self-corrects on the next successful refresh.
   try {
     const me = await Promise.race([
       session.client.resolveMe(),
@@ -533,9 +550,9 @@ app.post("/messages", async (c) => {
         setTimeout(() => resolve(null), IDENTITY_RESOLVE_TIMEOUT_MS)
       ),
     ]);
-    if (me) session.suppressed = me.telemetry_enabled === false;
+    session.suppressed = me ? me.telemetry_enabled === false : true;
   } catch {
-    // keep the last known suppressed value
+    session.suppressed = true;
   }
   const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
   const body = await c.req.json().catch(() => undefined);

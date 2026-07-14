@@ -99,6 +99,17 @@ describe("hosted HTTP per-user telemetry opt-out (product#3879)", () => {
     expect(posthogState.captures).toHaveLength(1);
   });
 
+  it("FAILS CLOSED: /users/me error → preference unknown → NOOP, nothing emitted (Codex P1)", async () => {
+    // Transient backend failure means we can't see telemetry_enabled. Suppress
+    // rather than leak an opted-out user's telemetry — the enforcement point
+    // must not fail open.
+    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 500, body: { error: true, code: "SERVER_ERROR", message: "oops" } }]);
+    const client = new LeadbayClient("https://api-us.leadbay.app", "u.tok", "us");
+    const handle = await telemetryHandleForRequest(client);
+    handle.captureToolCall({ tool: "leadbay_pull_leads", ok: true, duration_ms: 5, format: "json", bytes: 10 });
+    expect(posthogState.captures).toHaveLength(0);
+  });
+
   it("multi-tenant: user A (disabled) suppressed while user B (enabled) still captures", async () => {
     // Two sequential requests, two different clients/users. A opted out, B did not.
     mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: {
