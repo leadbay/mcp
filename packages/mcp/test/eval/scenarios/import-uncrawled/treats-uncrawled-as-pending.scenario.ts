@@ -102,13 +102,20 @@ const RECORDS_PAGE = {
   pagination: { page: 0, pages: 1, total: 5 },
 };
 
+// The exact rows the agent must import — same names/domains the fixtures above
+// reconcile (2 matched, 3 NO_MATCH → uncrawled). These are embedded in BOTH the
+// prompt args and the user_intent so a wired-up eval agent has real rows to act
+// on (the sandboxed session cannot read an attached file).
+const IMPORT_ROWS =
+  "Stripe (stripe.com), Figma (figma.com), Linear (linear.app), " +
+  "Vanta (vanta.com), Ramp (ramp.com)";
+
 export const SCENARIO = {
   name: "import-treats-uncrawled-as-pending",
   prompt: "leadbay_import_file",
   tier: "gate",
   args: {
-    instruction:
-      "Import these five companies (name + website) and qualify them.",
+    instruction: `Import these five companies (name + website) and qualify them: ${IMPORT_ROWS}.`,
   },
   backendFixtures: [
     { method: "GET", path: P("/users/me"), status: 200, body: { id: "u-1", email: "milstan@leadbay.ai", admin: true, organization: { id: "org-1", name: "Org" } } },
@@ -122,7 +129,7 @@ export const SCENARIO = {
   ],
   mission: {
     user_intent:
-      "I have five companies (name + website) to import into Leadbay and qualify. Import them and tell me what happened.",
+      `I have five companies (name + website) to import into Leadbay and qualify: ${IMPORT_ROWS}. Import them and tell me what happened.`,
     success_criteria: [
       "imported the two matched companies (Stripe, Figma) and reported them as imported",
       "reported Linear, Vanta, and Ramp as PENDING a crawl / late-import — NOT as failed, rejected, errored, or a backend problem",

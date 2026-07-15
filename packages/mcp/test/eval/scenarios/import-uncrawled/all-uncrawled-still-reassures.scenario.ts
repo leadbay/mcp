@@ -57,12 +57,19 @@ const RECORDS_PAGE = {
   pagination: { page: 0, pages: 1, total: 4 },
 };
 
+// The exact rows the agent must import — same names/domains the RECORDS_PAGE
+// fixture returns (all NO_MATCH → uncrawled). Embedded in BOTH the prompt args
+// and the user_intent so a wired-up eval agent has real rows to act on (the
+// sandboxed session cannot read an attached file).
+const IMPORT_ROWS =
+  "Cortex (cortex.io), Warp (warp.dev), Resend (resend.com), Baseten (baseten.co)";
+
 export const SCENARIO = {
   name: "import-all-uncrawled-still-reassures",
   prompt: "leadbay_import_file",
   tier: "gate",
   args: {
-    instruction: "Import these four companies (name + website).",
+    instruction: `Import these four companies (name + website): ${IMPORT_ROWS}.`,
   },
   backendFixtures: [
     { method: "GET", path: P("/users/me"), status: 200, body: { id: "u-1", email: "milstan@leadbay.ai", admin: true, organization: { id: "org-1", name: "Org" } } },
@@ -72,7 +79,7 @@ export const SCENARIO = {
   ],
   mission: {
     user_intent:
-      "Import these four companies into Leadbay. (Every one comes back uncrawled.)",
+      `Import these four companies into Leadbay: ${IMPORT_ROWS}.`,
     success_criteria: [
       "reported all four rows as PENDING a crawl / late-import, not as a failed import",
       "reassured the user the domains are fine and Leadbay will crawl them in the background and add the leads later",
