@@ -23,15 +23,18 @@ Retrieve the current state of an async lead import. Pass `handle_id` returned by
 Specifically for import status:
 
 - Running → `"⏳ Import still running — N% complete; check back in ~M minutes."`
-- Complete → `"✓ Import complete — N leads imported, M failed."`
-- Error / failed → `"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."`
+- Complete → `"✓ Import complete — N imported · P pending crawl · Q need attention."` (partition `not_imported` as in the render block below; `uncrawled` rows are **pending crawl**, not failures — drop any zero segment).
+- Error / failed → `"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."` — reserve this ONLY for a true transport/backend error on the import itself, never for `uncrawled` rows inside an otherwise-complete import.
+
+{{include:rendering/uncrawled-status}}
 
 ---
 
 ## NEXT STEPS
 
-| Observation             | Suggest                                | Calls                          |
-|-------------------------|----------------------------------------|--------------------------------|
-| Status: complete        | "See the imported leads"               | leadbay_pull_leads             |
-| Status: running         | "Check again in N minutes"             | leadbay_import_status — re-call|
-| Status: error / failed  | "Diagnose the failure"                 | leadbay_resolve_import_rows    |
+| Observation                          | Suggest                                              | Calls                          |
+|--------------------------------------|------------------------------------------------------|--------------------------------|
+| Status: complete                     | "See the imported leads"                             | leadbay_pull_leads             |
+| Pending-crawl (`uncrawled`) rows     | "Re-check shortly — Leadbay is crawling and will add them" | leadbay_import_status — re-call|
+| Status: running                      | "Check again in N minutes"                           | leadbay_import_status — re-call|
+| Status: error / failed (true error)  | "Diagnose the failure"                               | leadbay_resolve_import_rows    |

@@ -609,7 +609,7 @@ The agent calls `leadbay_import_leads({ domains: [...] })`, gets back `{ leads: 
 
 Suitable for **occasional automation**. **Not** suitable for high-cadence (>5 calls/day) — the right primitive is a clean async-import-with-crawl backend endpoint, tracked as a follow-up in `leadbay/backend`.
 
-**Limitation:** the wedge maps domains to leads the crawler already knows. Uncrawled domains land in `not_imported` with `reason: "uncrawled"` — the tool does **not** create new leads for unknown websites; the caller decides what to do (skip, queue for the backend follow-up, etc.).
+**`uncrawled` rows are pending, not failed.** The wedge matches domains the crawler already knows. A domain the crawler hasn't indexed yet lands in `not_imported` with `reason: "uncrawled"` — the import still completes, and Leadbay then crawls that domain in the background and adds the lead asynchronously (a *late import*), so those rows commonly resolve on their own within minutes to hours. Re-check with `leadbay_import_status` to pick up late matches. `uncrawled` is **not** a failure and **not** a bad website — never surface it to the user as one.
 
 ### Importing + qualifying in one verb (0.5.0)
 
