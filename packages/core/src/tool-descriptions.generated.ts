@@ -1790,7 +1790,7 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 |------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
 | Status: running                                | "Check progress"                                              | leadbay_import_status(handle_id)                       |
 | Status: complete, imports succeeded            | "Run AI qualification on the imported leads"                  | leadbay_bulk_qualify_leads([leadIds]) — or use leadbay_import_and_qualify next time |
-| Pending-crawl (\`uncrawled\`) rows present       | "Re-check shortly — Leadbay crawls those domains and adds them later (not failures)" | leadbay_import_status(handle_id)                       |
+| Pending-crawl (\`uncrawled\`) rows present       | "Re-check shortly — Leadbay crawls those domains and adds them later (not failures)" | leadbay_import_status({importIds}) — pass the \`importIds\` (\`import_ids\` from import_and_qualify) the import returned; \`handle_id\` only exists for async \`wait_for_completion:false\` runs |
 | Ambiguous / unresolved rows present            | "Resolve the ambiguous rows"                                  | leadbay_resolve_import_rows(records, identity_mappings)|
 | \`malformed\` / bad-mapping rows present         | "Check the org's mappable fields and remap the bad rows"      | leadbay_list_mappable_fields                           |
 | User wants to see the imported leads           | "See the imported leads in your view"                         | leadbay_pull_leads                                     |
@@ -1875,7 +1875,7 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 |------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
 | Status: running                                | "Check progress"                                              | leadbay_import_status(handle_id)                       |
 | Status: complete, imports succeeded            | "Run AI qualification on the imported leads"                  | leadbay_bulk_qualify_leads([leadIds]) — or use leadbay_import_and_qualify next time |
-| Pending-crawl (\`uncrawled\`) rows present       | "Re-check shortly — Leadbay crawls those domains and adds them later (not failures)" | leadbay_import_status(handle_id)                       |
+| Pending-crawl (\`uncrawled\`) rows present       | "Re-check shortly — Leadbay crawls those domains and adds them later (not failures)" | leadbay_import_status({importIds}) — pass the \`importIds\` (\`import_ids\` from import_and_qualify) the import returned; \`handle_id\` only exists for async \`wait_for_completion:false\` runs |
 | Ambiguous / unresolved rows present            | "Resolve the ambiguous rows"                                  | leadbay_resolve_import_rows(records, identity_mappings)|
 | \`malformed\` / bad-mapping rows present         | "Check the org's mappable fields and remap the bad rows"      | leadbay_list_mappable_fields                           |
 | User wants to see the imported leads           | "See the imported leads in your view"                         | leadbay_pull_leads                                     |
@@ -1884,9 +1884,9 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 // endregion: leadbay_import_leads
 
 // region: leadbay_import_status
-export const leadbay_import_status: string = `Retrieve the current state of an async lead import. Pass \`handle_id\` returned by \`leadbay_import_leads({wait_for_completion:false})\`, or pass legacy \`importIds[]\` to inspect backend wizard rows. This status call performs a single refresh pass and never polls in a loop.
+export const leadbay_import_status: string = `Retrieve the current state of an async lead import. Pass \`handle_id\` (only returned by an async \`leadbay_import_leads({wait_for_completion:false})\` run), OR pass \`importIds[]\` to inspect the backend wizard rows — a **completed** import returns \`importIds\` (and \`leadbay_import_and_qualify\` returns \`import_ids\`) but no \`handle_id\`, so \`importIds[]\` is the key to use when re-checking a finished import for late/pending-crawl matches. This status call performs a single refresh pass and never polls in a loop.
 
-WHEN TO USE: after leadbay_import_leads or leadbay_import_and_qualify returns \`{status:'running', handle_id}\` for the import phase, call this tool later to retrieve progress or the final import result without re-running the import.
+WHEN TO USE: after an async import returns \`{status:'running', handle_id}\`, poll with that \`handle_id\`; OR after a completed import that had \`uncrawled\` (pending-crawl) rows, re-call later with the returned \`importIds\` to pick up the leads Leadbay has since crawled and added.
 
 WHEN NOT TO USE: for qualification handles returned as \`qualify_id\` — use leadbay_qualify_status for those; or when you still want the legacy blocking behavior from leadbay_import_leads with \`wait_for_completion=true\`.
 
