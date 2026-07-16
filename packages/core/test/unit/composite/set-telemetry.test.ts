@@ -52,19 +52,26 @@ describe("leadbay_set_telemetry", () => {
     mockHttp([
       meWith(true),
       { method: "POST", path: "/1.6/users/telemetry", status: 204, body: {} },
+      meWith(false), // post-write resolveMe(true) — cache now reflects disabled
     ]);
-    const result: any = await setTelemetry.execute(newClient(), { action: "disable" });
+    const client = newClient();
+    const result: any = await setTelemetry.execute(client, { action: "disable" });
     expect(result.telemetry_enabled).toBe(false);
     expect(result.changed).toBe(true);
     const post = getHttpRequests().find((r) => r.method === "POST" && r.path === "/1.6/users/telemetry");
     expect(post).toBeTruthy();
     expect(JSON.parse(post!.body ?? "{}")).toEqual({ telemetry_enabled: false });
+    // After the write the cache reflects the NEW value (not null) — this is what
+    // lets the hosted suppression predicate drop THIS request's own tracking so
+    // the opt-out call doesn't track itself (Codex P2).
+    expect(client.cachedTelemetryEnabled()).toBe(false);
   });
 
   it("enable — currently OFF → POSTs telemetry_enabled:true, changed:true", async () => {
     mockHttp([
       meWith(false),
       { method: "POST", path: "/1.6/users/telemetry", status: 204, body: {} },
+      meWith(true), // post-write resolveMe(true) — cache now reflects enabled
     ]);
     const result: any = await setTelemetry.execute(newClient(), { action: "enable" });
     expect(result.telemetry_enabled).toBe(true);

@@ -91,6 +91,23 @@ describe("hosted HTTP per-user telemetry opt-out (product#3879)", () => {
     expect(posthogState.captures).toHaveLength(0);
   });
 
+  it("the opt-out request does NOT track itself: an enabled→disabled flip mid-request suppresses the post-execute capture (Codex P2)", async () => {
+    // Enabled at resolve time → the handle is built. Then set_telemetry's
+    // execute() flips the account flag and refreshes the client cache to
+    // disabled (modeled by a second /users/me returning false). The predicate is
+    // LIVE, so server.ts's post-execute captureToolCall for THIS request now sees
+    // the disabled cache and is suppressed — the disable call isn't tracked.
+    mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 200, body: meWith(true) },  // resolve: enabled
+      { method: "GET", path: "/1.6/users/me", status: 200, body: meWith(false) }, // post-flip cache: disabled
+    ]);
+    const client = new LeadbayClient("https://api-us.leadbay.app", "u.tok", "us");
+    const handle = await telemetryHandleForRequest(client); // enabled at build time
+    await client.resolveMe(true); // simulate execute()'s post-write refresh → cache = disabled
+    handle.captureToolCall({ tool: "leadbay_set_telemetry", ok: true, duration_ms: 5, format: "json", bytes: 10 });
+    expect(posthogState.captures).toHaveLength(0); // the opt-out request suppressed itself
+  });
+
   it("telemetry_enabled absent (older backend) → treated as enabled, event captured", async () => {
     mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: meWith(undefined) }]);
     const client = new LeadbayClient("https://api-us.leadbay.app", "u.tok", "us");

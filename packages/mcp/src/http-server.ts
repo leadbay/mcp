@@ -124,16 +124,22 @@ async function resolveTelemetryContext(
 }
 
 // The telemetry handle to use for a request. Always the shared handle bound to
-// this request's identity; when the user has opted out we pass an always-true
-// isSuppressed predicate so analytics + error telemetry are dropped — but the
-// wrapper deliberately keeps captureFeedback LIVE, because leadbay_send_feedback
-// is an explicit user-initiated action (deliver my message to the team), not
-// passive telemetry (Codex P2). This is the web-safe enforcement point — on the
-// multi-tenant hosted server a disabled user's tool calls emit no analytics,
-// per-request, without affecting other tenants or their own feedback.
+// this request's identity; the isSuppressed predicate drops analytics + error
+// telemetry when the user is opted out — but keeps captureFeedback LIVE, because
+// leadbay_send_feedback is an explicit user-initiated action, not passive
+// telemetry (Codex P2). Web-safe: on the multi-tenant hosted server a disabled
+// user's tool calls emit no analytics, per-request, without affecting others.
+//
+// The predicate is LIVE (read at capture time), not a fixed pre-execute
+// decision: it suppresses if EITHER the initial /users/me said disabled, OR the
+// client's cache now says disabled. This closes the "opt-out request tracks
+// itself" gap (Codex P2) — a `leadbay_set_telemetry disable` flips the cache
+// inside execute(), so server.ts's post-execute captureToolCall for THIS request
+// sees the fresh disabled state and is suppressed.
 export async function telemetryHandleForRequest(client: LeadbayClient): Promise<TelemetryHandle> {
   const { identity, enabled } = await resolveTelemetryContext(client);
-  return bindTelemetryIdentity(telemetry, identity, enabled ? undefined : () => true);
+  const isSuppressed = () => !enabled || client.cachedTelemetryEnabled() === false;
+  return bindTelemetryIdentity(telemetry, identity, isSuppressed);
 }
 
 // Wrap the shared handle so every capture in THIS request/session carries the

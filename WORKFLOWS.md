@@ -1004,7 +1004,7 @@ A `turns:` contract has no separate `yaml scenario` block.
 
 ```yaml expected
 workflow_name: Telemetry enable/disable/status
-prompt_name: leadbay_set_telemetry
+prompt_name: ~
 required_calls:
   - leadbay_set_telemetry
 forbidden_calls:

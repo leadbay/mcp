@@ -110,9 +110,12 @@ export const setTelemetry: Tool<SetTelemetryParams> = {
     await client.requestVoid("POST", "/users/telemetry", {
       telemetry_enabled: target,
     });
-    // The /me cache holds telemetry_enabled; invalidate so the next read (here
-    // and elsewhere) reflects the flip.
-    client.invalidateMe();
+    // Re-fetch (forced) so the /me cache holds the NEW value — not null. This
+    // matters for the hosted suppression predicate, which reads
+    // client.cachedTelemetryEnabled() AT CAPTURE TIME: after a `disable` the
+    // cache now says false, so server.ts's post-execute captureToolCall for THIS
+    // request is suppressed — the opt-out call doesn't track itself (Codex P2).
+    await client.resolveMe(true);
 
     return {
       telemetry_enabled: target,

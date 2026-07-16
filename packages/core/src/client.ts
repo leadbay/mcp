@@ -776,6 +776,17 @@ export class LeadbayClient {
     this.mePayloadCachedAt = null;
   }
 
+  // Synchronous read of the last-cached telemetry preference, without a fetch.
+  // Returns undefined when /users/me hasn't been resolved (or was invalidated).
+  // The hosted telemetry suppression predicate reads this AT CAPTURE TIME so a
+  // leadbay_set_telemetry disable within the same request suppresses that very
+  // request's tracking — the opt-out action isn't itself the last tracked event
+  // (product#3879). resolveMe() keeps mePayload populated after a write, so this
+  // reflects the post-write state.
+  cachedTelemetryEnabled(): boolean | undefined {
+    return this.mePayload?.telemetry_enabled;
+  }
+
   async resolveDefaultLens(): Promise<number> {
     const now = Date.now();
     if (
