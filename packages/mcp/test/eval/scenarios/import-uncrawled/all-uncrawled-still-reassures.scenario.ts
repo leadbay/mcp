@@ -4,9 +4,9 @@
 // matches, every row NO_MATCH on a real corporate domain). This is exactly the
 // case that spooked the reporter into abandoning the lead set. The agent must
 // stay reassuring and actionable — frame the whole batch as pending a
-// background crawl and tell the user the added leads will show up via
-// leadbay_pull_leads shortly — and must NOT declare the import a failure or
-// blame the websites / the backend.
+// background crawl and tell the user the added leads will populate in their
+// Leadbay account as the crawl completes — and must NOT declare the import a
+// failure or blame the websites / the backend.
 //
 // Authored to the sibling scenario shape (scan-portfolio-signals/*.scenario.ts).
 
@@ -72,9 +72,14 @@ export const SCENARIO = {
   args: {
     instruction: `Import these four companies (name + website): ${IMPORT_ROWS}.`,
   },
+  // Same call sequence as leadbay_import_leads (see import-leads.test.ts):
+  // users/me → POST /imports → GET /imports/:id → POST update_mappings →
+  // GET /imports/:id → GET /imports/:id/records (all rows NO_MATCH → uncrawled).
   backendFixtures: [
     { method: "GET", path: P("/users/me"), status: 200, body: { id: "u-1", email: "milstan@leadbay.ai", admin: true, organization: { id: "org-1", name: "Org" } } },
     { method: "POST", path: /\/1\.6\/imports\?file_name=/, status: 200, body: importPayload({ procFinished: false }) },
+    { method: "GET", path: /\/1\.6\/imports\/[^/?]+$/, status: 200, body: importPayload({ procFinished: true }) },
+    { method: "POST", path: /\/1\.6\/imports\/[^/]+\/update_mappings/, status: 200, body: { notification_id: "notif-1" } },
     { method: "GET", path: /\/1\.6\/imports\/[^/?]+$/, status: 200, body: importPayload({ procFinished: true }) },
     { method: "GET", path: /\/1\.6\/imports\/[^/]+\/records\?/, status: 200, body: RECORDS_PAGE },
   ],
@@ -84,7 +89,7 @@ export const SCENARIO = {
     success_criteria: [
       "reported all four rows as PENDING a crawl / late-import, not as a failed import",
       "reassured the user the domains are fine and Leadbay will crawl them in the background and add the leads later",
-      "pointed the user to re-check leadbay_pull_leads later to see the leads Leadbay adds (NOT leadbay_import_status, which only reports progress) rather than treating the run as a dead end",
+      "told the user the added leads will populate in their Leadbay account as the crawl completes (NOT that leadbay_import_status or any single tool call fetches them) rather than treating the run as a dead end",
       "did NOT say the import failed, was rejected, hit a backend problem, or that the websites are bad/unreachable/invalid",
       "did NOT tell the user to distrust or discard the batch",
     ],

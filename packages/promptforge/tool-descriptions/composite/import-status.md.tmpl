@@ -10,9 +10,9 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Retrieve the current **status/progress** of a lead import. Pass `handle_id` (only returned by an async `leadbay_import_leads({wait_for_completion:false})` run) — this resolves the stored result (leads + not_imported) when that async run has completed in this MCP instance. OR pass `importIds[]` (a completed import returns `importIds`; `leadbay_import_and_qualify` returns `import_ids`) to refresh the backend wizard rows' phase + record counts. Note: the `importIds[]` path returns status/progress only — it does NOT re-reconcile records or return refreshed leads/not_imported. This status call performs a single refresh pass and never polls in a loop.
+Retrieve the current **status/progress** of a lead import. Pass `handle_id` — returned by either `leadbay_import_leads` OR `leadbay_import_and_qualify` when called with `wait_for_completion:false` — to resolve the stored result (leads + not_imported) once that async run has completed in this MCP instance. **If you were given a `handle_id`, poll with it, not with `importIds[]`** — only the `handle_id` path returns the stored result/not_imported breakdown. Pass `importIds[]` (a completed import returns `importIds`; `leadbay_import_and_qualify` returns `import_ids`) only when you don't have a handle, to refresh the backend wizard rows' phase + record counts. Note: the `importIds[]` path returns status/progress only — it does NOT re-reconcile records or return refreshed leads/not_imported. This status call performs a single refresh pass and never polls in a loop.
 
-{{include:headers/tool-when-to-use}} after an async import returns `{status:'running', handle_id}`, poll with that `handle_id`; OR to check whether a finished import is still processing. To actually SEE the leads Leadbay has since crawled and added for pending-crawl (`uncrawled`) rows, use `leadbay_pull_leads` a bit later — not this tool.
+{{include:headers/tool-when-to-use}} after an async import (`leadbay_import_leads` OR `leadbay_import_and_qualify` with `wait_for_completion:false`) returns `{status:'running', handle_id}`, poll with that `handle_id`; OR to check whether a finished import is still processing. This tool does NOT surface the leads Leadbay adds later for pending-crawl (`uncrawled`) rows — those populate in the user's Leadbay account as the crawl completes; no tool here fetches them on demand (re-run the import to pull them back through the MCP).
 
 {{include:headers/tool-when-not-to-use}} for qualification handles returned as `qualify_id` — use leadbay_qualify_status for those; or when you still want the legacy blocking behavior from leadbay_import_leads with `wait_for_completion=true`.
 
@@ -24,8 +24,10 @@ Specifically for import status:
 
 This tool returns `status`, `importIds`, and `progress` ({phase, records_processed, records_total}). It carries a `result` object (with `leads` + `not_imported`) ONLY when resolving an async `handle_id` whose run completed in this MCP instance — the `importIds[]` status-check path does NOT return `result`. **Render only from the fields actually present; never invent counts.**
 
-- Running → `"⏳ Import still running — records_processed/records_total done; check back in ~M minutes."`
-- Complete, **no `result`** (the usual `importIds` status check) → `"✓ Import complete — records_processed/records_total records processed."` Do NOT report pending-crawl / need-attention bucket counts here — the row-level `not_imported` breakdown isn't in this response; to see the imported/late-added leads use `leadbay_pull_leads`.
+Caveat on `progress`: `records_processed` counts only the rows that MATCHED an existing lead (backend `imported_records`), not every row that finished processing — so for a complete import whose rows are mostly/all `uncrawled` (pending crawl), `records_processed` is legitimately low or 0. Never read a low `records_processed` on a `complete` import as "stuck" or "failed": once `status:"complete"`, processing is done; the pending-crawl rows just matched no existing lead yet.
+
+- Running → `"⏳ Import still running — phase <phase>; check back in ~M minutes."` (use the phase; don't turn the matched-count into an "X/Y processed" progress bar).
+- Complete, **no `result`** (the usual `importIds` status check) → `"✓ Import complete."` Do NOT append a `records_processed/records_total` fraction (it undercounts pending-crawl rows and looks stuck) and do NOT report pending-crawl / need-attention bucket counts — the row-level `not_imported` breakdown isn't in this response.
 - Complete, **`result` present** (async handle resolved) → then, and only then, partition `result.not_imported` into `"✓ Import complete — N imported · P pending crawl · Q need attention"` using the render block below (`uncrawled` = **pending crawl**, not failures; drop any zero segment).
 - Error / failed → `"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."` — reserve this ONLY for a true transport/backend error on the import itself, never for `uncrawled` rows.
 
@@ -37,7 +39,7 @@ This tool returns `status`, `importIds`, and `progress` ({phase, records_process
 
 | Observation                          | Suggest                                              | Calls                          |
 |--------------------------------------|------------------------------------------------------|--------------------------------|
-| Status: complete                     | "See the imported leads"                             | leadbay_pull_leads             |
-| Pending-crawl (`uncrawled`) rows     | "Leadbay is crawling them — check back shortly to see the ones it added" | leadbay_pull_leads (later) |
+| Status: complete                     | "See the imported (matched) leads"                   | leadbay_pull_leads             |
+| Pending-crawl (`uncrawled`) rows     | "Leadbay is crawling them — they'll appear in your Leadbay account as it completes" | No on-demand fetch; re-run the import later to pull them back through the MCP |
 | Status: running                      | "Check again in N minutes"                           | leadbay_import_status — re-call|
 | Status: error / failed (true error)  | "Diagnose the failure"                               | leadbay_resolve_import_rows    |

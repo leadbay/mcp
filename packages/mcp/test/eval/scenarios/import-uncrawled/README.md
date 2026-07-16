@@ -25,7 +25,7 @@ for (const s of [PENDING, ALL_UNCRAWLED]) {
 
 | Scenario | Failure mode it catches |
 |---|---|
-| `treats-uncrawled-as-pending` | **Mislabel.** Import returns a mix of matched + `uncrawled` rows (real corporate domains). The agent must report matched leads as imported and the `uncrawled` rows as PENDING a background crawl (the added leads show up later via `leadbay_pull_leads`; `leadbay_import_status` only reports progress) — never as failed / rejected / a backend problem / bad websites (the original #3858 failure). |
+| `treats-uncrawled-as-pending` | **Mislabel.** Import returns a mix of matched + `uncrawled` rows (real corporate domains). The agent must report matched leads as imported and the `uncrawled` rows as PENDING a background crawl (the added leads populate in the user's Leadbay account as the crawl completes; no tool fetches them on demand — `leadbay_import_status` only reports progress) — never as failed / rejected / a backend problem / bad websites (the original #3858 failure). |
 | `all-uncrawled-still-reassures` | **Boundary.** The whole batch comes back `uncrawled` (0 immediate matches) — the exact case that spooked the reporter. The agent must stay reassuring and actionable (pending late-crawl, re-check later) and must not declare the import failed or tell the user to distrust the batch. |
 
 ## Why this is a prompt fix, not a backend fix

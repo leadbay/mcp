@@ -9,11 +9,12 @@
 // immediately; Leadbay then crawls the domain in the background and adds the
 // lead asynchronously (a late import). Those rows are PENDING, not errors.
 //
-// This scenario plants an import where SOME rows match immediately and SOME
-// come back NO_MATCH (→ uncrawled) with real corporate domains, and asserts
-// the agent frames uncrawled rows as pending/late-crawl (the added leads show
-// up later via leadbay_pull_leads; leadbay_import_status only reports progress)
-// and NEVER calls them failed / rejected / a backend problem / bad websites.
+// This scenario plants an import (via leadbay_import_leads) where SOME rows
+// match immediately and SOME come back NO_MATCH (→ uncrawled) with real
+// corporate domains, and asserts the agent frames uncrawled rows as
+// pending/late-crawl (the leads populate in the user's Leadbay account as the
+// crawl completes; leadbay_import_status only reports progress) and NEVER calls
+// them failed / rejected / a backend problem / bad websites.
 //
 // Authored to the sibling scenario shape (scan-portfolio-signals/*.scenario.ts).
 
@@ -115,26 +116,30 @@ export const SCENARIO = {
   prompt: "leadbay_import_file",
   tier: "gate",
   args: {
-    instruction: `Import these five companies (name + website) and qualify them: ${IMPORT_ROWS}.`,
+    instruction: `Import these five companies (name + website): ${IMPORT_ROWS}.`,
   },
+  // Fixture the exact call sequence leadbay_import_leads makes (see the working
+  // unit test import-leads.test.ts): users/me → POST /imports → GET /imports/:id
+  // → POST /imports/:id/update_mappings → GET /imports/:id → GET /imports/:id/records.
   backendFixtures: [
     { method: "GET", path: P("/users/me"), status: 200, body: { id: "u-1", email: "milstan@leadbay.ai", admin: true, organization: { id: "org-1", name: "Org" } } },
-    // Create import + poll pre-processing/processing to done.
+    // Create import + first status read.
     { method: "POST", path: /\/1\.6\/imports\?file_name=/, status: 200, body: importPayload({ procFinished: false }) },
+    { method: "GET", path: /\/1\.6\/imports\/[^/?]+$/, status: 200, body: importPayload({ procFinished: true }) },
+    // Commit the mapping, then poll to processing-done.
+    { method: "POST", path: /\/1\.6\/imports\/[^/]+\/update_mappings/, status: 200, body: { notification_id: "notif-1" } },
     { method: "GET", path: /\/1\.6\/imports\/[^/?]+$/, status: 200, body: importPayload({ procFinished: true }) },
     // Reconcile the rows → 2 matched, 3 uncrawled.
     { method: "GET", path: /\/1\.6\/imports\/[^/]+\/records\?/, status: 200, body: RECORDS_PAGE },
-    // Qualification of the two matched leads (import_and_qualify path).
-    { method: "POST", path: /\/1\.6\/imports\/[^/]+\/leads/, status: 200, body: { lead_ids: ["lead-stripe", "lead-figma"] } },
   ],
   mission: {
     user_intent:
-      `I have five companies (name + website) to import into Leadbay and qualify: ${IMPORT_ROWS}. Import them and tell me what happened.`,
+      `I have five companies (name + website) to import into Leadbay: ${IMPORT_ROWS}. Import them and tell me what happened.`,
     success_criteria: [
       "imported the two matched companies (Stripe, Figma) and reported them as imported",
       "reported Linear, Vanta, and Ramp as PENDING a crawl / late-import — NOT as failed, rejected, errored, or a backend problem",
       "did NOT tell the user the uncrawled websites are bad, unreachable, invalid, or the reason for a failure",
-      "explained the uncrawled rows will be crawled in the background, and that the leads Leadbay adds for them can be seen by re-checking leadbay_pull_leads later (NOT that leadbay_import_status returns the added leads)",
+      "explained the uncrawled rows will be crawled in the background and that the leads populate in the user's Leadbay account as the crawl completes — did NOT claim leadbay_import_status returns the added leads",
       "did NOT frame a 3-of-5 uncrawled outcome as the import failing or as a reason to distrust the lead set",
     ],
     required_calls: [],
