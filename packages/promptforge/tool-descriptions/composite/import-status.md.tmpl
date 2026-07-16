@@ -10,9 +10,9 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Retrieve the current state of an async lead import. Pass `handle_id` (only returned by an async `leadbay_import_leads({wait_for_completion:false})` run), OR pass `importIds[]` to inspect the backend wizard rows — a **completed** import returns `importIds` (and `leadbay_import_and_qualify` returns `import_ids`) but no `handle_id`, so `importIds[]` is the key to use when re-checking a finished import for late/pending-crawl matches. This status call performs a single refresh pass and never polls in a loop.
+Retrieve the current **status/progress** of a lead import. Pass `handle_id` (only returned by an async `leadbay_import_leads({wait_for_completion:false})` run) — this resolves the stored result (leads + not_imported) when that async run has completed in this MCP instance. OR pass `importIds[]` (a completed import returns `importIds`; `leadbay_import_and_qualify` returns `import_ids`) to refresh the backend wizard rows' phase + record counts. Note: the `importIds[]` path returns status/progress only — it does NOT re-reconcile records or return refreshed leads/not_imported. This status call performs a single refresh pass and never polls in a loop.
 
-{{include:headers/tool-when-to-use}} after an async import returns `{status:'running', handle_id}`, poll with that `handle_id`; OR after a completed import that had `uncrawled` (pending-crawl) rows, re-call later with the returned `importIds` to pick up the leads Leadbay has since crawled and added.
+{{include:headers/tool-when-to-use}} after an async import returns `{status:'running', handle_id}`, poll with that `handle_id`; OR to check whether a finished import is still processing. To actually SEE the leads Leadbay has since crawled and added for pending-crawl (`uncrawled`) rows, use `leadbay_pull_leads` a bit later — not this tool.
 
 {{include:headers/tool-when-not-to-use}} for qualification handles returned as `qualify_id` — use leadbay_qualify_status for those; or when you still want the legacy blocking behavior from leadbay_import_leads with `wait_for_completion=true`.
 
@@ -35,6 +35,6 @@ Specifically for import status:
 | Observation                          | Suggest                                              | Calls                          |
 |--------------------------------------|------------------------------------------------------|--------------------------------|
 | Status: complete                     | "See the imported leads"                             | leadbay_pull_leads             |
-| Pending-crawl (`uncrawled`) rows     | "Re-check shortly — Leadbay is crawling and will add them" | leadbay_import_status — re-call|
+| Pending-crawl (`uncrawled`) rows     | "Leadbay is crawling them — check back shortly to see the ones it added" | leadbay_pull_leads (later) |
 | Status: running                      | "Check again in N minutes"                           | leadbay_import_status — re-call|
 | Status: error / failed (true error)  | "Diagnose the failure"                               | leadbay_resolve_import_rows    |
