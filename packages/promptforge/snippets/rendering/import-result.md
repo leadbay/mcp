@@ -15,7 +15,7 @@ Partition `not_imported` by `reason` into TWO buckets before you write the heade
 
 Count `uncrawled` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
 
-**When the "need attention" or pending-crawl rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): `<row identifier or domain> · <reason>`. Label each row by its real reason — "pending crawl" for `uncrawled`, and the specific reason otherwise. Frame pending rows reassuringly (Leadbay is crawling them; the leads it adds will show up in `leadbay_pull_leads` shortly), not as errors. Then `"*+N more — leadbay_import_status for full detail*"`.
+**When the "need attention" or pending-crawl rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): `<row identifier or domain> · <reason>`. Label each row by its real reason — "pending crawl" for `uncrawled`, and the specific reason otherwise. Frame pending rows reassuringly (Leadbay is crawling them; the leads it adds will show up in `leadbay_pull_leads` shortly), not as errors. The full `not_imported` breakdown is already in THIS response — list from it directly; then `"*+N more (see the full not_imported list in the response)*"`.
 
 **When the user's request implied a downstream use** ("import then prep outreach for them"), emit `Imported leadIds: <up to 5 ids, then '+N more'>` — just the ids. Let the next composite render the leads.
 

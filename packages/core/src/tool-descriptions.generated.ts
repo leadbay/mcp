@@ -1750,7 +1750,7 @@ Partition \`not_imported\` by \`reason\` into TWO buckets before you write the h
 
 Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
 
-**When the "need attention" or pending-crawl rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): \`<row identifier or domain> · <reason>\`. Label each row by its real reason — "pending crawl" for \`uncrawled\`, and the specific reason otherwise. Frame pending rows reassuringly (Leadbay is crawling them; the leads it adds will show up in \`leadbay_pull_leads\` shortly), not as errors. Then \`"*+N more — leadbay_import_status for full detail*"\`.
+**When the "need attention" or pending-crawl rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): \`<row identifier or domain> · <reason>\`. Label each row by its real reason — "pending crawl" for \`uncrawled\`, and the specific reason otherwise. Frame pending rows reassuringly (Leadbay is crawling them; the leads it adds will show up in \`leadbay_pull_leads\` shortly), not as errors. The full \`not_imported\` breakdown is already in THIS response — list from it directly; then \`"*+N more (see the full not_imported list in the response)*"\`.
 
 **When the user's request implied a downstream use** ("import then prep outreach for them"), emit \`Imported leadIds: <up to 5 ids, then '+N more'>\` — just the ids. Let the next composite render the leads.
 
@@ -1835,7 +1835,7 @@ Partition \`not_imported\` by \`reason\` into TWO buckets before you write the h
 
 Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
 
-**When the "need attention" or pending-crawl rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): \`<row identifier or domain> · <reason>\`. Label each row by its real reason — "pending crawl" for \`uncrawled\`, and the specific reason otherwise. Frame pending rows reassuringly (Leadbay is crawling them; the leads it adds will show up in \`leadbay_pull_leads\` shortly), not as errors. Then \`"*+N more — leadbay_import_status for full detail*"\`.
+**When the "need attention" or pending-crawl rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): \`<row identifier or domain> · <reason>\`. Label each row by its real reason — "pending crawl" for \`uncrawled\`, and the specific reason otherwise. Frame pending rows reassuringly (Leadbay is crawling them; the leads it adds will show up in \`leadbay_pull_leads\` shortly), not as errors. The full \`not_imported\` breakdown is already in THIS response — list from it directly; then \`"*+N more (see the full not_imported list in the response)*"\`.
 
 **When the user's request implied a downstream use** ("import then prep outreach for them"), emit \`Imported leadIds: <up to 5 ids, then '+N more'>\` — just the ids. Let the next composite render the leads.
 
@@ -1908,9 +1908,12 @@ After the status line, propose the obvious refresh / progress-check / recovery a
 
 Specifically for import status:
 
-- Running → \`"⏳ Import still running — N% complete; check back in ~M minutes."\`
-- Complete → \`"✓ Import complete — N imported · P pending crawl · Q need attention."\` (partition \`not_imported\` as in the render block below; \`uncrawled\` rows are **pending crawl**, not failures — drop any zero segment).
-- Error / failed → \`"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."\` — reserve this ONLY for a true transport/backend error on the import itself, never for \`uncrawled\` rows inside an otherwise-complete import.
+This tool returns \`status\`, \`importIds\`, and \`progress\` ({phase, records_processed, records_total}). It carries a \`result\` object (with \`leads\` + \`not_imported\`) ONLY when resolving an async \`handle_id\` whose run completed in this MCP instance — the \`importIds[]\` status-check path does NOT return \`result\`. **Render only from the fields actually present; never invent counts.**
+
+- Running → \`"⏳ Import still running — records_processed/records_total done; check back in ~M minutes."\`
+- Complete, **no \`result\`** (the usual \`importIds\` status check) → \`"✓ Import complete — records_processed/records_total records processed."\` Do NOT report pending-crawl / need-attention bucket counts here — the row-level \`not_imported\` breakdown isn't in this response; to see the imported/late-added leads use \`leadbay_pull_leads\`.
+- Complete, **\`result\` present** (async handle resolved) → then, and only then, partition \`result.not_imported\` into \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` using the render block below (\`uncrawled\` = **pending crawl**, not failures; drop any zero segment).
+- Error / failed → \`"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."\` — reserve this ONLY for a true transport/backend error on the import itself, never for \`uncrawled\` rows.
 
 **\`uncrawled\` is NOT a failed import — it means "pending a crawl".** A row lands \`uncrawled\` when Leadbay's crawler hasn't indexed that company's domain **yet**. The website is real and fine — the problem is not the URL. The import itself completed successfully; Leadbay then crawls the domain in the background and adds the lead asynchronously (a *late import*), so these rows commonly resolve on their own within minutes to hours. To **see** the leads Leadbay has since added, re-check the user's lead list with \`leadbay_pull_leads\` (or \`leadbay_research_lead_by_name_fuzzy\` for one specific company) a bit later. \`leadbay_import_status\` only refreshes the import's status/progress counts — it does not re-fetch the added leads — so use it for a "is it done?" check, not to retrieve the new lead IDs.
 

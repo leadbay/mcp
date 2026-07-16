@@ -22,9 +22,12 @@ Retrieve the current **status/progress** of a lead import. Pass `handle_id` (onl
 
 Specifically for import status:
 
-- Running → `"⏳ Import still running — N% complete; check back in ~M minutes."`
-- Complete → `"✓ Import complete — N imported · P pending crawl · Q need attention."` (partition `not_imported` as in the render block below; `uncrawled` rows are **pending crawl**, not failures — drop any zero segment).
-- Error / failed → `"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."` — reserve this ONLY for a true transport/backend error on the import itself, never for `uncrawled` rows inside an otherwise-complete import.
+This tool returns `status`, `importIds`, and `progress` ({phase, records_processed, records_total}). It carries a `result` object (with `leads` + `not_imported`) ONLY when resolving an async `handle_id` whose run completed in this MCP instance — the `importIds[]` status-check path does NOT return `result`. **Render only from the fields actually present; never invent counts.**
+
+- Running → `"⏳ Import still running — records_processed/records_total done; check back in ~M minutes."`
+- Complete, **no `result`** (the usual `importIds` status check) → `"✓ Import complete — records_processed/records_total records processed."` Do NOT report pending-crawl / need-attention bucket counts here — the row-level `not_imported` breakdown isn't in this response; to see the imported/late-added leads use `leadbay_pull_leads`.
+- Complete, **`result` present** (async handle resolved) → then, and only then, partition `result.not_imported` into `"✓ Import complete — N imported · P pending crawl · Q need attention"` using the render block below (`uncrawled` = **pending crawl**, not failures; drop any zero segment).
+- Error / failed → `"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."` — reserve this ONLY for a true transport/backend error on the import itself, never for `uncrawled` rows.
 
 {{include:rendering/uncrawled-status}}
 
