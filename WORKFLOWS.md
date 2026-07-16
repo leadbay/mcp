@@ -127,12 +127,13 @@ prompt: "Tell me about jaxpartycompany.com"
 ```yaml expected
 workflow_name: CSV import + qualify
 prompt_name: leadbay_import_file
-required_calls: []
+required_calls:
+  - leadbay_import_and_qualify
 forbidden_calls:
   - leadbay_report_outreach
 success_criteria:
-  - "launched an import covering the provided companies — via the combined leadbay_import_and_qualify OR leadbay_import_leads"
-  - "initiated qualification of the imported leads — either as part of leadbay_import_and_qualify, or via a separate leadbay_bulk_qualify_leads"
+  - "launched an import covering the provided companies via leadbay_import_and_qualify (the prompt's preferred single-verb path; the older leadbay_import_leads + leadbay_bulk_qualify_leads chain is also valid in production but this contract pins the preferred path for a deterministic guard)"
+  - "initiated qualification of the imported leads as part of that call"
   - "did NOT call leadbay_report_outreach"
   - "if any rows come back uncrawled, framed them as PENDING a background crawl (not failed / rejected / a backend problem / bad websites)"
 ```
