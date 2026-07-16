@@ -91,7 +91,7 @@ export const SCENARIO = {
       `Import these four companies into Leadbay: ${IMPORT_ROWS}.`,
     success_criteria: [
       "reported all four rows as PENDING a crawl / late-import, not as a failed import",
-      "reassured the user the domains are fine and Leadbay will crawl them in the background and add the leads later",
+      "framed the rows as not-yet-matched/crawled (pending) and reassured the user Leadbay will crawl them and add the leads later — without either declaring the websites bad OR certifying every domain is valid",
       "told the user the added leads will populate in their Leadbay account as the crawl completes (NOT that leadbay_import_status or any single tool call fetches them) rather than treating the run as a dead end",
       "did NOT say the import failed, was rejected, hit a backend problem, or that the websites are bad/unreachable/invalid",
       "did NOT tell the user to distrust or discard the batch",

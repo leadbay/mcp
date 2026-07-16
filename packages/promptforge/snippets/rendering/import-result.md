@@ -6,7 +6,7 @@ The response carries either a completed result or an async handle. Render a brie
 
 Otherwise, partition `not_imported` by `reason` into TWO buckets before you write the header:
 
-- **Pending crawl** — `reason: "uncrawled"`: the website is real, Leadbay just hasn't crawled that domain yet and will add the lead asynchronously. These are NOT failures. (See the note below.)
+- **Pending crawl** — `reason: "uncrawled"`: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously. These are NOT failures. (The label doesn't verify the URL resolves — don't claim the site is bad, but don't certify it's valid either. See the note below.)
 - **Need attention** — `reason` ∈ `malformed` / `internal_error` / `no_match` / `ambiguous`: genuinely un-actionable or needs a follow-up call.
 
 **Header — single line, choose by status:**

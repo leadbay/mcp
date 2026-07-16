@@ -1724,7 +1724,7 @@ WHEN NOT TO USE: discovery (use leadbay_pull_leads); single-lead deep dive (use 
 
 Budgets: \`total_budget_ms\` caps wall-clock; \`per_lead_budget_ms\` caps each lead's poll. For short transport timeouts, pass \`wait_for_completion:false\` and poll \`leadbay_import_status\`. Outputs \`qualified[]\`, \`still_running[]\`, \`not_imported[]\`, \`qualify_id\` (resumable handle). Idempotent within a 5-min window. \`dry_run:'preview'\` returns mapping hints + custom-field candidates without importing.
 
-\`not_imported\` rows with \`reason:"uncrawled"\` are **pending a background crawl**, NOT failures: the website is fine, Leadbay just hasn't indexed that domain yet and will add the lead asynchronously. Surface them as pending; the leads populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — \`leadbay_import_status\` returns status/progress only, and \`leadbay_pull_leads\` reads the active lens's wishlist so an imported lead outside that lens may not appear). To pull those specific companies back through the MCP, re-run the import later. A large \`uncrawled\` share on a fresh list is normal.
+\`not_imported\` rows with \`reason:"uncrawled"\` are **pending a background crawl**, NOT failures: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously (the label doesn't verify the URL resolves — don't call the site bad, but don't certify it valid either). Surface them as pending; the leads populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — \`leadbay_import_status\` returns status/progress only, and \`leadbay_pull_leads\` reads the active lens's wishlist so an imported lead outside that lens may not appear). To pull those specific companies back through the MCP, re-run the import later. A large \`uncrawled\` share on a fresh list is normal.
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
@@ -1741,7 +1741,7 @@ The response carries either a completed result or an async handle. Render a brie
 
 Otherwise, partition \`not_imported\` by \`reason\` into TWO buckets before you write the header:
 
-- **Pending crawl** — \`reason: "uncrawled"\`: the website is real, Leadbay just hasn't crawled that domain yet and will add the lead asynchronously. These are NOT failures. (See the note below.)
+- **Pending crawl** — \`reason: "uncrawled"\`: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously. These are NOT failures. (The label doesn't verify the URL resolves — don't claim the site is bad, but don't certify it's valid either. See the note below.)
 - **Need attention** — \`reason\` ∈ \`malformed\` / \`internal_error\` / \`no_match\` / \`ambiguous\`: genuinely un-actionable or needs a follow-up call.
 
 **Header — single line, choose by status:**
@@ -1805,7 +1805,7 @@ export const leadbay_import_leads: string = `Import leads into Leadbay's CRM via
 
 TWO MODES: (A) Domain-list shortcut — pass \`domains: [{domain, name?}]\`. The tool builds a 2-column CSV (LEAD_NAME, LEAD_WEBSITE) and imports with the default mapping. (B) Custom records + mapping — pass \`records: [{Col1, Col2, ...}]\` plus \`mappings.fields: {Col1: 'LEAD_NAME', ...}\`. \`mappings.fields\` must include LEADBAY_ID, CRM_ID, SIREN, LEAD_NAME, or LEAD_WEBSITE (resolver needs at least one identity key). Pass exactly one of \`domains\` / \`records\`. Reserved column \`MCP_ROW_ID\` cannot appear in records/mappings — the tool injects it for stable reconciliation.
 
-\`not_imported\` rows with \`reason:"uncrawled"\` are **pending a background crawl**, NOT failures: the website is fine, Leadbay just hasn't indexed that domain yet and will add the lead asynchronously. Surface them as pending; the leads populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — \`leadbay_import_status\` returns status/progress only, and \`leadbay_pull_leads\` reads the active lens's wishlist so an imported lead outside that lens may not appear). To pull those specific companies back through the MCP, re-run the import later. A large \`uncrawled\` share on a fresh list is normal.
+\`not_imported\` rows with \`reason:"uncrawled"\` are **pending a background crawl**, NOT failures: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously (the label doesn't verify the URL resolves — don't call the site bad, but don't certify it valid either). Surface them as pending; the leads populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — \`leadbay_import_status\` returns status/progress only, and \`leadbay_pull_leads\` reads the active lens's wishlist so an imported lead outside that lens may not appear). To pull those specific companies back through the MCP, re-run the import later. A large \`uncrawled\` share on a fresh list is normal.
 
 MUTATES USER STATE: each call creates a row in the user's CRM-imports list (visible in the web UI) and touches onboarding state. Suitable for occasional automation, NOT for high-cadence (>5 calls/day). Imported leads are NOT auto-promoted to the user's Monitor view; lens-scoring threshold decides. For messy files call leadbay_resolve_import_rows first, then pass \`records_for_import\`/\`mappings_for_import\` here. Agents should inspect every column, build a preservation plan, and pass an explicit final mapping. For each meaningful column decide standard field, CONTACT_* field, Leadbay note, custom field, derived helper, or skip with a reason. For contact-only exports, derive a company-domain column from CONTACT_EMAIL only when it's a real business domain. Multiple rows can share the same LEADBAY_ID and import as separate contacts on that lead. Custom fields use \`CUSTOM.<id>\` in \`mappings.fields\` or the \`mappings.custom_fields\` shorthand. For source-system deep links create a custom field via leadbay_create_custom_field first (prefer EXTERNAL_ID + url_template). Preserve meaningful per-lead notes by calling leadbay_add_note after import returns lead IDs.
 
@@ -1828,7 +1828,7 @@ The response carries either a completed result or an async handle. Render a brie
 
 Otherwise, partition \`not_imported\` by \`reason\` into TWO buckets before you write the header:
 
-- **Pending crawl** — \`reason: "uncrawled"\`: the website is real, Leadbay just hasn't crawled that domain yet and will add the lead asynchronously. These are NOT failures. (See the note below.)
+- **Pending crawl** — \`reason: "uncrawled"\`: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously. These are NOT failures. (The label doesn't verify the URL resolves — don't claim the site is bad, but don't certify it's valid either. See the note below.)
 - **Need attention** — \`reason\` ∈ \`malformed\` / \`internal_error\` / \`no_match\` / \`ambiguous\`: genuinely un-actionable or needs a follow-up call.
 
 **Header — single line, choose by status:**
