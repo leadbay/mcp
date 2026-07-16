@@ -26,6 +26,15 @@ function isEnabled(telemetry_enabled: boolean | undefined): boolean {
 const LOCAL_OFF_CAVEAT =
   " On a local (self-hosted / stdio) install, also set LEADBAY_TELEMETRY_ENABLED=false to stop events there — the account flag alone does not.";
 
+// The mirror caveat for ON / status / no-op-enable responses (Codex P2). This is
+// the ACCOUNT setting; a local/stdio process decides telemetry at startup from
+// LEADBAY_TELEMETRY_ENABLED and does NOT consult the account flag — so a local
+// install launched with LEADBAY_TELEMETRY_ENABLED=false is NOT sending events
+// even when this reports the account as ON. Never let "ON" imply a local install
+// is definitely emitting.
+const LOCAL_ON_CAVEAT =
+  " This is your account setting; a local (self-hosted / stdio) install follows LEADBAY_TELEMETRY_ENABLED at startup instead, so it may not be sending events regardless.";
+
 const VALID_ACTIONS = ["enable", "disable", "status"] as const;
 
 export const setTelemetry: Tool<SetTelemetryParams> = {
@@ -88,7 +97,7 @@ export const setTelemetry: Tool<SetTelemetryParams> = {
         action,
         region: client.region,
         hint: currentlyEnabled
-          ? "Telemetry is ON. Call with action:'disable' to opt out."
+          ? "Telemetry is ON for your account. Call with action:'disable' to opt out." + LOCAL_ON_CAVEAT
           : "Telemetry is OFF for your account. Call with action:'enable' to opt back in." + LOCAL_OFF_CAVEAT,
       };
     }
@@ -102,7 +111,7 @@ export const setTelemetry: Tool<SetTelemetryParams> = {
         action,
         region: client.region,
         hint: target
-          ? "Telemetry was already ON; nothing to change. Call leadbay_set_telemetry with action:'disable' to opt out."
+          ? "Telemetry was already ON for your account; nothing to change. Call leadbay_set_telemetry with action:'disable' to opt out." + LOCAL_ON_CAVEAT
           : "Telemetry was already OFF for your account; nothing to change. Call leadbay_set_telemetry with action:'enable' to opt back in." + LOCAL_OFF_CAVEAT,
       };
     }
@@ -116,11 +125,13 @@ export const setTelemetry: Tool<SetTelemetryParams> = {
     // `false` even if the follow-up /users/me refresh throws — so the opt-out
     // request never fails open and emits (error) telemetry for itself.
     client.setCachedTelemetryEnabled(target);
-    // Best-effort forced refresh to reconcile the full /me payload with the
-    // backend. Its failure is non-fatal: the stamp above already holds the
-    // correct telemetry_enabled, so we swallow rather than throw out of a
-    // successful opt-out (which would trip the server's error-telemetry path).
-    await client.resolveMe(true).catch(() => undefined);
+    // Fire-and-forget the forced refresh (Codex P2 — do NOT await). It only
+    // reconciles the full /me payload with the backend; the stamp above already
+    // holds the correct telemetry_enabled, and resolveMe has no timeout/abort on
+    // this path, so awaiting it would let a slow/stalled backend make a
+    // successful opt-out appear to hang. Its failure is non-fatal and swallowed
+    // (throwing would trip the server's error-telemetry path for this request).
+    void client.resolveMe(true).catch(() => undefined);
 
     return {
       telemetry_enabled: target,
@@ -131,7 +142,7 @@ export const setTelemetry: Tool<SetTelemetryParams> = {
       // reads it per-request; a local/stdio install needs the env var (see
       // LOCAL_OFF_CAVEAT). Never imply the account flag alone stops local events.
       hint: target
-        ? "Telemetry is now ON for your account — thanks for helping improve Leadbay."
+        ? "Telemetry is now ON for your account — thanks for helping improve Leadbay." + LOCAL_ON_CAVEAT
         : "Telemetry is now OFF for your account — the hosted Leadbay connector stops sending your product-usage events." + LOCAL_OFF_CAVEAT,
     };
   },
