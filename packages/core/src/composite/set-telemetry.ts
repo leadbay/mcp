@@ -110,12 +110,17 @@ export const setTelemetry: Tool<SetTelemetryParams> = {
     await client.requestVoid("POST", "/users/telemetry", {
       telemetry_enabled: target,
     });
-    // Re-fetch (forced) so the /me cache holds the NEW value — not null. This
-    // matters for the hosted suppression predicate, which reads
-    // client.cachedTelemetryEnabled() AT CAPTURE TIME: after a `disable` the
-    // cache now says false, so server.ts's post-execute captureToolCall for THIS
-    // request is suppressed — the opt-out call doesn't track itself (Codex P2).
-    await client.resolveMe(true);
+    // Stamp the cache to the new value FIRST, synchronously (Codex P2 — fail
+    // closed). The hosted suppression predicate reads client.cachedTelemetryEnabled()
+    // at capture time; stamping before the refresh means a `disable` reflects
+    // `false` even if the follow-up /users/me refresh throws — so the opt-out
+    // request never fails open and emits (error) telemetry for itself.
+    client.setCachedTelemetryEnabled(target);
+    // Best-effort forced refresh to reconcile the full /me payload with the
+    // backend. Its failure is non-fatal: the stamp above already holds the
+    // correct telemetry_enabled, so we swallow rather than throw out of a
+    // successful opt-out (which would trip the server's error-telemetry path).
+    await client.resolveMe(true).catch(() => undefined);
 
     return {
       telemetry_enabled: target,

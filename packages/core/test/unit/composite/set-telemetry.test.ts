@@ -67,6 +67,25 @@ describe("leadbay_set_telemetry", () => {
     expect(client.cachedTelemetryEnabled()).toBe(false);
   });
 
+  it("disable — fail CLOSED when the post-write refresh errors: no throw, cache still says OFF [Codex P2]", async () => {
+    // POST succeeds → account is now OFF. The forced /users/me refresh then 500s.
+    // The tool must NOT throw (that would trip server.ts's error-telemetry path
+    // for the opt-out request), and the cache must already read false so the
+    // hosted suppression predicate drops this request's own capture.
+    mockHttp([
+      meWith(true),
+      { method: "POST", path: "/1.6/users/telemetry", status: 204, body: {} },
+      { method: "GET", path: "/1.6/users/me", status: 500, body: { error: true, code: "SERVER_ERROR", message: "transient" } },
+    ]);
+    const client = newClient();
+    const result: any = await setTelemetry.execute(client, { action: "disable" });
+    expect(result.error).toBeUndefined();   // did NOT throw / error-envelope
+    expect(result.telemetry_enabled).toBe(false);
+    expect(result.changed).toBe(true);
+    // Cache was stamped BEFORE the failed refresh — suppression sees OFF.
+    expect(client.cachedTelemetryEnabled()).toBe(false);
+  });
+
   it("enable — currently OFF → POSTs telemetry_enabled:true, changed:true", async () => {
     mockHttp([
       meWith(false),

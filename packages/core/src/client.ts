@@ -787,6 +787,21 @@ export class LeadbayClient {
     return this.mePayload?.telemetry_enabled;
   }
 
+  // Deterministically stamp the cached telemetry preference to a known value,
+  // WITHOUT a fetch. leadbay_set_telemetry calls this right after a successful
+  // POST /users/telemetry so the suppression predicate reflects the new state
+  // even if the follow-up refresh fails (product#3879) — a disable must never
+  // fail open and let the opt-out request emit error telemetry. Creates a
+  // minimal cache entry if /users/me was never resolved.
+  setCachedTelemetryEnabled(enabled: boolean): void {
+    if (this.mePayload) {
+      this.mePayload = { ...this.mePayload, telemetry_enabled: enabled };
+    } else {
+      this.mePayload = { id: "unknown", telemetry_enabled: enabled } as UserMePayload;
+      this.mePayloadCachedAt = Date.now();
+    }
+  }
+
   async resolveDefaultLens(): Promise<number> {
     const now = Date.now();
     if (
