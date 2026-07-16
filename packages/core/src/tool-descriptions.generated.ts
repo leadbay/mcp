@@ -1739,10 +1739,12 @@ The response carries either a completed result or an async handle. Render a brie
 
 **Dry run first:** if the result has \`dry_run:true\` (or ANY \`not_imported\` row has \`reason: "dry_run"\`), this was a VALIDATION pass — nothing was committed. Render \`"🔎 Dry run — V rows validated OK, nothing imported yet. Re-run without dry_run to commit."\` where V = the count of \`dry_run\` rows. If malformed rows are ALSO present (\`reason: "malformed"\`), list those separately as \`"⚠ M rows can't be imported as-is: <row · malformed>"\` so the validation count is never swallowed. Do NOT use the pending-crawl/need-attention bucket header below for a dry run (those buckets are for a real committed import).
 
-Otherwise, partition \`not_imported\` by \`reason\` into TWO buckets before you write the header:
+Otherwise, partition \`not_imported\` by \`reason\` into these buckets before you write the header:
 
-- **Pending crawl** — \`reason: "uncrawled"\`: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously. These are NOT failures. (The label doesn't verify the URL resolves — don't claim the site is bad, but don't certify it's valid either. See the note below.)
-- **Need attention** — \`reason\` ∈ \`malformed\` / \`internal_error\` / \`no_match\` / \`ambiguous\`: genuinely un-actionable or needs a follow-up call.
+- **Pending crawl** — \`reason: "uncrawled"\` **AND the row has a \`domain\`**: Leadbay just hasn't crawled that domain yet and will add the lead asynchronously. These are NOT failures. (The label doesn't verify the URL resolves — don't claim the site is bad, but don't certify it's valid either. See the note below.)
+- **Need attention** — everything else that didn't import:
+  - \`reason: "uncrawled"\` but the row has **no \`domain\`** (name/CRM-id-only row): there is nothing for Leadbay to crawl, so it will NOT self-resolve — count these under need-attention, not pending crawl, and tell the user to supply a company website/identity and re-import.
+  - \`reason\` ∈ \`malformed\` / \`internal_error\` / \`no_match\` / \`ambiguous\`: genuinely un-actionable or needs a follow-up call.
 
 **Header — single line, choose by status:**
 
@@ -1832,10 +1834,12 @@ The response carries either a completed result or an async handle. Render a brie
 
 **Dry run first:** if the result has \`dry_run:true\` (or ANY \`not_imported\` row has \`reason: "dry_run"\`), this was a VALIDATION pass — nothing was committed. Render \`"🔎 Dry run — V rows validated OK, nothing imported yet. Re-run without dry_run to commit."\` where V = the count of \`dry_run\` rows. If malformed rows are ALSO present (\`reason: "malformed"\`), list those separately as \`"⚠ M rows can't be imported as-is: <row · malformed>"\` so the validation count is never swallowed. Do NOT use the pending-crawl/need-attention bucket header below for a dry run (those buckets are for a real committed import).
 
-Otherwise, partition \`not_imported\` by \`reason\` into TWO buckets before you write the header:
+Otherwise, partition \`not_imported\` by \`reason\` into these buckets before you write the header:
 
-- **Pending crawl** — \`reason: "uncrawled"\`: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously. These are NOT failures. (The label doesn't verify the URL resolves — don't claim the site is bad, but don't certify it's valid either. See the note below.)
-- **Need attention** — \`reason\` ∈ \`malformed\` / \`internal_error\` / \`no_match\` / \`ambiguous\`: genuinely un-actionable or needs a follow-up call.
+- **Pending crawl** — \`reason: "uncrawled"\` **AND the row has a \`domain\`**: Leadbay just hasn't crawled that domain yet and will add the lead asynchronously. These are NOT failures. (The label doesn't verify the URL resolves — don't claim the site is bad, but don't certify it's valid either. See the note below.)
+- **Need attention** — everything else that didn't import:
+  - \`reason: "uncrawled"\` but the row has **no \`domain\`** (name/CRM-id-only row): there is nothing for Leadbay to crawl, so it will NOT self-resolve — count these under need-attention, not pending crawl, and tell the user to supply a company website/identity and re-import.
+  - \`reason\` ∈ \`malformed\` / \`internal_error\` / \`no_match\` / \`ambiguous\`: genuinely un-actionable or needs a follow-up call.
 
 **Header — single line, choose by status:**
 
@@ -1930,7 +1934,8 @@ Caveat on \`progress\`: \`records_processed\` counts only the rows that MATCHED 
 
 - Running → \`"⏳ Import still running — phase <phase>; check back in ~M minutes."\` (use the phase; don't turn the matched-count into an "X/Y processed" progress bar).
 - Complete, **no \`result\`** (the usual \`importIds\` status check) → \`"✓ Import complete."\` Do NOT append a \`records_processed/records_total\` fraction (it undercounts pending-crawl rows and looks stuck) and do NOT report pending-crawl / need-attention bucket counts — the row-level \`not_imported\` breakdown isn't in this response.
-- Complete, **\`result\` present** (async handle resolved) → then, and only then, partition \`result.not_imported\` into \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` using the render block below (\`uncrawled\` = **pending crawl**, not failures; drop any zero segment).
+- Complete, **\`result\` present AND it was a dry run** (\`result.dry_run:true\`, or every \`result.not_imported\` row has \`reason:"dry_run"\`) → this resolved handle was a VALIDATION pass, nothing committed. Render \`"🔎 Dry run complete — V rows validated, nothing imported. Re-run without dry_run to commit."\` — do NOT render it as a real import completion or use the pending/attention buckets.
+- Complete, **\`result\` present** (async handle resolved, real import) → then, and only then, partition \`result.not_imported\` as in the shared import-result render block below — \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` where **pending crawl** is \`uncrawled\` rows that HAVE a \`domain\` (not failures) and no-\`domain\` \`uncrawled\` rows fall under need-attention. Drop any zero segment.
 - Error / failed → \`"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."\` — reserve this ONLY for a true transport/backend error on the import itself, never for \`uncrawled\` rows.
 
 **\`uncrawled\` is NOT a failed import — it means "pending a crawl".** A row lands \`uncrawled\` when Leadbay hasn't matched or crawled that domain **yet** — the row simply didn't match an existing lead at import time and isn't a public-mailbox domain. It does NOT mean the import failed, and it is NOT a verdict that the website is broken (the tool doesn't check whether the URL resolves — so don't claim the site is bad, but don't guarantee it's valid either).

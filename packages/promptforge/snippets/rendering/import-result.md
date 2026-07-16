@@ -4,10 +4,12 @@ The response carries either a completed result or an async handle. Render a brie
 
 **Dry run first:** if the result has `dry_run:true` (or ANY `not_imported` row has `reason: "dry_run"`), this was a VALIDATION pass — nothing was committed. Render `"🔎 Dry run — V rows validated OK, nothing imported yet. Re-run without dry_run to commit."` where V = the count of `dry_run` rows. If malformed rows are ALSO present (`reason: "malformed"`), list those separately as `"⚠ M rows can't be imported as-is: <row · malformed>"` so the validation count is never swallowed. Do NOT use the pending-crawl/need-attention bucket header below for a dry run (those buckets are for a real committed import).
 
-Otherwise, partition `not_imported` by `reason` into TWO buckets before you write the header:
+Otherwise, partition `not_imported` by `reason` into these buckets before you write the header:
 
-- **Pending crawl** — `reason: "uncrawled"`: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously. These are NOT failures. (The label doesn't verify the URL resolves — don't claim the site is bad, but don't certify it's valid either. See the note below.)
-- **Need attention** — `reason` ∈ `malformed` / `internal_error` / `no_match` / `ambiguous`: genuinely un-actionable or needs a follow-up call.
+- **Pending crawl** — `reason: "uncrawled"` **AND the row has a `domain`**: Leadbay just hasn't crawled that domain yet and will add the lead asynchronously. These are NOT failures. (The label doesn't verify the URL resolves — don't claim the site is bad, but don't certify it's valid either. See the note below.)
+- **Need attention** — everything else that didn't import:
+  - `reason: "uncrawled"` but the row has **no `domain`** (name/CRM-id-only row): there is nothing for Leadbay to crawl, so it will NOT self-resolve — count these under need-attention, not pending crawl, and tell the user to supply a company website/identity and re-import.
+  - `reason` ∈ `malformed` / `internal_error` / `no_match` / `ambiguous`: genuinely un-actionable or needs a follow-up call.
 
 **Header — single line, choose by status:**
 
