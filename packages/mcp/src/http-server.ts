@@ -211,10 +211,15 @@ interface SseSession {
   createdAt: number;
   client: LeadbayClient;
   // Live opt-out for this session (product#3879). The bound telemetry handle
-  // reads this on every capture; POST /messages refreshes it before dispatch,
-  // so a mid-session leadbay_set_telemetry disable takes effect on the next
-  // message instead of only after reconnect.
+  // reads this (OR the client cache) on every capture. Same-session disables
+  // are caught via the client cache the tool stamps; POST /messages ALSO kicks
+  // a fire-and-forget refresh to catch cross-session disables, updating this
+  // flag out-of-band (never blocking dispatch).
   suppressed: boolean;
+  // Guards the fire-and-forget cross-session refresh so slow /users/me reads
+  // don't stack up orphaned across messages and starve the session client's
+  // API-semaphore slots ahead of tool work (Codex P2).
+  refreshing?: boolean;
 }
 const sseSessions = new Map<string, SseSession>();
 
@@ -551,28 +556,25 @@ app.post("/messages", async (c) => {
   if (!session) {
     return c.json({ error: "unknown sessionId" }, 404);
   }
-  // Refresh the session's opt-out BEFORE dispatching (product#3879), reading
-  // FRESH /users/me — resolveMe(true) bypasses the 60s cache. A cached read
-  // would miss a disable made from ANOTHER connector/session (that only
-  // invalidateMe()s ITS client, not this session's), leaving telemetry_enabled
-  // stale-true and leaking this user's events until the TTL expired (Codex P1).
-  // Bounded so it never blocks the tool.
+  // Opt-out enforcement for THIS message comes from the bound handle's live
+  // predicate (session.suppressed OR client.cachedTelemetryEnabled()===false),
+  // NOT from a blocking pre-dispatch fetch. A same-session leadbay_set_telemetry
+  // disable stamps the client cache inside execute(), so the predicate already
+  // catches it without any refresh here.
   //
-  // FAIL CLOSED on an unknown preference (Codex P1): a timed-out/errored refresh
-  // suppresses this message's telemetry rather than keeping the last known value.
-  // Otherwise a disable followed by a transient read failure would keep leaking
-  // an opted-out user's events. A dropped data point for an enabled user is the
-  // acceptable cost; it self-corrects on the next successful refresh.
-  try {
-    const me = await Promise.race([
-      session.client.resolveMe(true),
-      new Promise<null>((resolve) =>
-        setTimeout(() => resolve(null), IDENTITY_RESOLVE_TIMEOUT_MS)
-      ),
-    ]);
-    session.suppressed = me ? me.telemetry_enabled === false : true;
-  } catch {
-    session.suppressed = true;
+  // The ONLY thing a refresh adds is catching a disable made from ANOTHER
+  // connector/session. So we kick it off FIRE-AND-FORGET (never awaited) and
+  // never block dispatch on it (Codex P2): a slow /users/me must not occupy the
+  // session client's API-semaphore slots ahead of the actual tool work, nor
+  // stack up orphaned across messages. One in-flight refresh per session at a
+  // time (guarded), best-effort, fail-closed on error.
+  if (!session.refreshing) {
+    session.refreshing = true;
+    void session.client
+      .resolveMe(true)
+      .then((me) => { session.suppressed = me.telemetry_enabled === false; })
+      .catch(() => { session.suppressed = true; }) // fail closed on refresh error
+      .finally(() => { session.refreshing = false; });
   }
   const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
   const body = await c.req.json().catch(() => undefined);

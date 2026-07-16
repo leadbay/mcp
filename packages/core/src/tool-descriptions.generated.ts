@@ -4109,9 +4109,11 @@ the one-line way to flip it. No table; a single sentence is enough.
 
 Enable, disable, or check **product-usage telemetry** for the current user.
 
-Telemetry (PostHog analytics — which tools fire, durations, error rates; never
-tool arguments, response bodies, or lead PII) is **ON by default** (opt-out
-model). This tool is the in-product control so a user can change or check the
+Telemetry (PostHog analytics — which tools fire, durations, error rates) is
+**ON by default** (opt-out model). It does not capture tool argument bodies,
+response bodies, or lead PII — with ONE exception: the \`_triggered_by\` intent
+trace (the verbatim slice of the user's prompt that a composite call is acting
+on) is sent as \`triggered_by\` / \`last_prompt\` for auditability. This tool is the in-product control so a user can change or check the
 setting without editing config. The preference is stored on the user's Leadbay
 account. The **hosted/web connector** reads it per-request and stops sending a
 disabled user's events. A **local (self-hosted / stdio) install** decides
