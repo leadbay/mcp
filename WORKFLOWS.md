@@ -128,18 +128,18 @@ prompt: "Tell me about jaxpartycompany.com"
 workflow_name: CSV import + qualify
 prompt_name: leadbay_import_file
 required_calls:
-  - leadbay_import_leads
-  - leadbay_bulk_qualify_leads
+  - leadbay_import_and_qualify
 forbidden_calls:
   - leadbay_report_outreach
 success_criteria:
-  - "called leadbay_import_leads at least once"
-  - "called leadbay_bulk_qualify_leads at least once"
+  - "launched an import covering the provided companies via leadbay_import_and_qualify (the prompt's preferred single-verb path; the older leadbay_import_leads + leadbay_bulk_qualify_leads chain is also valid in production but this contract pins the preferred path for a deterministic guard)"
+  - "initiated qualification of the imported leads as part of that call"
   - "did NOT call leadbay_report_outreach"
+  - "if any rows come back uncrawled, framed them as PENDING a background crawl (not failed / rejected / a backend problem / bad websites)"
 ```
 
 ```yaml scenario
-prompt: "I have some leads to import"
+prompt: "I have some leads to import and qualify: Stripe (stripe.com), Figma (figma.com), Notion (notion.so), Ramp (ramp.com), Linear (linear.app). Import them into Leadbay and qualify them, then tell me what happened."
 ```
 
 ```yaml expected

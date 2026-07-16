@@ -1724,6 +1724,8 @@ WHEN NOT TO USE: discovery (use leadbay_pull_leads); single-lead deep dive (use 
 
 Budgets: \`total_budget_ms\` caps wall-clock; \`per_lead_budget_ms\` caps each lead's poll. For short transport timeouts, pass \`wait_for_completion:false\` and poll \`leadbay_import_status\`. Outputs \`qualified[]\`, \`still_running[]\`, \`not_imported[]\`, \`qualify_id\` (resumable handle). Idempotent within a 5-min window. \`dry_run:'preview'\` returns mapping hints + custom-field candidates without importing.
 
+\`not_imported\` rows with \`reason:"uncrawled"\` are **pending a background crawl**, NOT failures: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously (the label doesn't verify the URL resolves — don't call the site bad, but don't certify it valid either). Surface them as pending; the leads populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — \`leadbay_import_status\` returns status/progress only, and \`leadbay_pull_leads\` reads the active lens's wishlist so an imported lead outside that lens may not appear). To pull those specific companies back through the MCP, re-run the import later. A large \`uncrawled\` share on a fresh list is normal.
+
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
 
@@ -1735,17 +1737,41 @@ Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role; 
 
 The response carries either a completed result or an async handle. Render a brief summary; do NOT enumerate every imported lead.
 
+**Dry run first:** if the result has \`dry_run:true\` (or ANY \`not_imported\` row has \`reason: "dry_run"\`), this was a VALIDATION pass — nothing was committed. Render \`"🔎 Dry run — V rows validated OK, nothing imported yet. Re-run without dry_run to commit."\` where V = the count of \`dry_run\` rows. If malformed rows are ALSO present (\`reason: "malformed"\`), list those separately as \`"⚠ M rows can't be imported as-is: <row · malformed>"\` so the validation count is never swallowed. Do NOT use the pending-crawl/need-attention bucket header below for a dry run (those buckets are for a real committed import).
+
+Otherwise, partition \`not_imported\` by \`reason\` into these buckets before you write the header:
+
+- **Pending crawl** — \`reason: "uncrawled"\` **AND the row has a \`domain\`**: Leadbay just hasn't crawled that domain yet and will add the lead asynchronously. These are NOT failures. (The label doesn't verify the URL resolves — don't claim the site is bad, but don't certify it's valid either. See the note below.)
+- **Need attention** — everything else that didn't import:
+  - \`reason: "uncrawled"\` but the row has **no \`domain\`** (name/CRM-id-only row): there is nothing for Leadbay to crawl, so it will NOT self-resolve — count these under need-attention, not pending crawl, and tell the user to supply a company website/identity and re-import.
+  - \`reason\` ∈ \`malformed\` / \`internal_error\` / \`no_match\` / \`ambiguous\`: genuinely un-actionable or needs a follow-up call.
+
 **Header — single line, choose by status:**
 
-- Completed: \`"✓ Import complete — N leads imported · M failed · P resolved-with-ambiguity"\`
+- Completed: \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` (drop any segment whose count is 0)
 - Running: \`"⏳ Import running — handle_id <id>; poll leadbay_import_status"\`
 - Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — qualify_id <id>"\`
 
-**When failures or ambiguous rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): \`<row identifier or domain> · <reason>\`. Then \`"*+N more — leadbay_import_status for full detail*"\`.
+Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
+
+**When the "need attention" or pending-crawl rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): \`<row identifier or domain> · <reason>\`. Label each row by its real reason — "pending crawl" for \`uncrawled\`, and the specific reason otherwise. Frame pending rows reassuringly (Leadbay is crawling them; the leads it adds will populate in the user's Leadbay account as the crawl completes — see the semantics note below for where they show up), not as errors. The full \`not_imported\` breakdown is already in THIS response — list from it directly; then \`"*+N more (see the full not_imported list in the response)*"\`.
 
 **When the user's request implied a downstream use** ("import then prep outreach for them"), emit \`Imported leadIds: <up to 5 ids, then '+N more'>\` — just the ids. Let the next composite render the leads.
 
 Defer the full list of imported leads to \`leadbay_pull_leads\` or \`leadbay_research_lead_by_id\` in NEXT STEPS.
+
+**\`uncrawled\` is NOT a failed import — it means "pending a crawl".** A row lands \`uncrawled\` when Leadbay hasn't matched or crawled that domain **yet** — the row simply didn't match an existing lead at import time and isn't a public-mailbox domain. It does NOT mean the import failed, and it is NOT a verdict that the website is broken (the tool doesn't check whether the URL resolves — so don't claim the site is bad, but don't guarantee it's valid either).
+
+**One caveat — \`uncrawled\` only means "pending" when the row actually had a website.** A row imported by name / CRM id / registry number only (no \`LEAD_WEBSITE\` mapped) that finds no existing match ALSO lands \`uncrawled\`, but there's no domain for Leadbay to crawl — so it will NOT self-resolve via a late crawl. For those name-only rows, don't give the "Leadbay is crawling it" reassurance; tell the user to supply a company website (or another resolvable identity) and re-import. So: \`uncrawled\` + a website → genuinely pending a background crawl; \`uncrawled\` + no website → the user needs to add an identity, it won't crawl on its own. The import itself completed successfully; Leadbay then crawls the domain in the background and adds the lead asynchronously (a *late import*), so most of these rows resolve on their own within minutes to hours. Where do those late-added leads show up? **In the user's Leadbay account as the crawl completes.** \`leadbay_import_status\` does NOT return them — it only refreshes status/progress. There's no bulk "list the leads this import just added" call: \`leadbay_pull_leads\` reads the active lens's wishlist, so an imported lead not admitted to that lens won't appear there. For **one specific company by name**, \`leadbay_research_lead_by_name_fuzzy\` searches across the visible Leadbay corpus (not lens-scoped) and can surface it once crawled — a reasonable check for a named company. Otherwise tell the user the leads will populate in Leadbay over the next minutes–hours; to pull those specific companies back through the MCP in bulk, **re-run the same import later** (the now-crawled domains match). Do NOT promise \`leadbay_pull_leads\` or \`import_status\` will list the late additions.
+
+So when reporting an import: count \`uncrawled\` rows as **pending**, never as failures. Do NOT tell the user these rows "failed", were "rejected", had "bad/unreachable websites", or point to a backend problem — that is wrong and needlessly erodes trust in the whole lead set. A high \`uncrawled\` share on a fresh list is normal and expected, not a red flag.
+
+How the OTHER reasons map to the "Need attention" bucket (see the render block above) — none of these should be lumped in with \`uncrawled\`/pending, but each is still surfaced to the user, not suppressed:
+
+- \`malformed\` (row couldn't be parsed) and \`internal_error\` (a real backend error) are genuine failures — flag them plainly.
+- \`no_match\` on a public-mailbox domain (gmail.com, outlook.com, …) means no company domain was resolvable from that row — surface it so the user can supply a real company domain. Not a crawler failure.
+- \`ambiguous\` rows matched several candidates — surface them as needing disambiguation via \`leadbay_resolve_import_rows\`. Not a failure, but the user still needs to act.
+
 
 
 ---
@@ -1774,8 +1800,9 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 |------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
 | Status: running                                | "Check progress"                                              | leadbay_import_status(handle_id)                       |
 | Status: complete, imports succeeded            | "Run AI qualification on the imported leads"                  | leadbay_bulk_qualify_leads([leadIds]) — or use leadbay_import_and_qualify next time |
+| Pending-crawl (\`uncrawled\`) rows present       | "Re-run the import for those domains later, once Leadbay has crawled them" | leadbay_import_leads (re-run with just the uncrawled domains, later — they re-reconcile once crawled). NOTE: not a live-fetch of the added leads; those populate in the user's Leadbay account as the crawl completes |
 | Ambiguous / unresolved rows present            | "Resolve the ambiguous rows"                                  | leadbay_resolve_import_rows(records, identity_mappings)|
-| Failed rows from bad mappings                  | "Check the org's mappable fields and remap"                   | leadbay_list_mappable_fields                           |
+| \`malformed\` / bad-mapping rows present         | "Check the org's mappable fields and remap the bad rows"      | leadbay_list_mappable_fields                           |
 | User wants to see the imported leads           | "See the imported leads in your view"                         | leadbay_pull_leads                                     |
 | User had follow-up intent for the imports      | "Prep outreach for [a specific imported lead]"                | leadbay_prepare_outreach(leadId)                       |
 `;
@@ -1785,6 +1812,8 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 export const leadbay_import_leads: string = `Import leads into Leadbay's CRM via the file-import wizard. Returns stable Leadbay leadIds for downstream chaining into leadbay_bulk_qualify_leads / leadbay_research_lead_by_id. For MCP clients with short transport timeouts, pass \`wait_for_completion:false\` to return quickly with \`{status:'running', handle_id}\`; poll leadbay_import_status with that handle. For end-to-end import+qualify in one call, prefer leadbay_import_and_qualify. For messy files, prefer the \`leadbay_import_file\` prompt which walks an agent through scan → resolve → preserve → commit phases.
 
 TWO MODES: (A) Domain-list shortcut — pass \`domains: [{domain, name?}]\`. The tool builds a 2-column CSV (LEAD_NAME, LEAD_WEBSITE) and imports with the default mapping. (B) Custom records + mapping — pass \`records: [{Col1, Col2, ...}]\` plus \`mappings.fields: {Col1: 'LEAD_NAME', ...}\`. \`mappings.fields\` must include LEADBAY_ID, CRM_ID, SIREN, LEAD_NAME, or LEAD_WEBSITE (resolver needs at least one identity key). Pass exactly one of \`domains\` / \`records\`. Reserved column \`MCP_ROW_ID\` cannot appear in records/mappings — the tool injects it for stable reconciliation.
+
+\`not_imported\` rows with \`reason:"uncrawled"\` are **pending a background crawl**, NOT failures: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously (the label doesn't verify the URL resolves — don't call the site bad, but don't certify it valid either). Surface them as pending; the leads populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — \`leadbay_import_status\` returns status/progress only, and \`leadbay_pull_leads\` reads the active lens's wishlist so an imported lead outside that lens may not appear). To pull those specific companies back through the MCP, re-run the import later. A large \`uncrawled\` share on a fresh list is normal.
 
 MUTATES USER STATE: each call creates a row in the user's CRM-imports list (visible in the web UI) and touches onboarding state. Suitable for occasional automation, NOT for high-cadence (>5 calls/day). Imported leads are NOT auto-promoted to the user's Monitor view; lens-scoring threshold decides. For messy files call leadbay_resolve_import_rows first, then pass \`records_for_import\`/\`mappings_for_import\` here. Agents should inspect every column, build a preservation plan, and pass an explicit final mapping. For each meaningful column decide standard field, CONTACT_* field, Leadbay note, custom field, derived helper, or skip with a reason. For contact-only exports, derive a company-domain column from CONTACT_EMAIL only when it's a real business domain. Multiple rows can share the same LEADBAY_ID and import as separate contacts on that lead. Custom fields use \`CUSTOM.<id>\` in \`mappings.fields\` or the \`mappings.custom_fields\` shorthand. For source-system deep links create a custom field via leadbay_create_custom_field first (prefer EXTERNAL_ID + url_template). Preserve meaningful per-lead notes by calling leadbay_add_note after import returns lead IDs.
 
@@ -1803,17 +1832,41 @@ Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role o
 
 The response carries either a completed result or an async handle. Render a brief summary; do NOT enumerate every imported lead.
 
+**Dry run first:** if the result has \`dry_run:true\` (or ANY \`not_imported\` row has \`reason: "dry_run"\`), this was a VALIDATION pass — nothing was committed. Render \`"🔎 Dry run — V rows validated OK, nothing imported yet. Re-run without dry_run to commit."\` where V = the count of \`dry_run\` rows. If malformed rows are ALSO present (\`reason: "malformed"\`), list those separately as \`"⚠ M rows can't be imported as-is: <row · malformed>"\` so the validation count is never swallowed. Do NOT use the pending-crawl/need-attention bucket header below for a dry run (those buckets are for a real committed import).
+
+Otherwise, partition \`not_imported\` by \`reason\` into these buckets before you write the header:
+
+- **Pending crawl** — \`reason: "uncrawled"\` **AND the row has a \`domain\`**: Leadbay just hasn't crawled that domain yet and will add the lead asynchronously. These are NOT failures. (The label doesn't verify the URL resolves — don't claim the site is bad, but don't certify it's valid either. See the note below.)
+- **Need attention** — everything else that didn't import:
+  - \`reason: "uncrawled"\` but the row has **no \`domain\`** (name/CRM-id-only row): there is nothing for Leadbay to crawl, so it will NOT self-resolve — count these under need-attention, not pending crawl, and tell the user to supply a company website/identity and re-import.
+  - \`reason\` ∈ \`malformed\` / \`internal_error\` / \`no_match\` / \`ambiguous\`: genuinely un-actionable or needs a follow-up call.
+
 **Header — single line, choose by status:**
 
-- Completed: \`"✓ Import complete — N leads imported · M failed · P resolved-with-ambiguity"\`
+- Completed: \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` (drop any segment whose count is 0)
 - Running: \`"⏳ Import running — handle_id <id>; poll leadbay_import_status"\`
 - Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — qualify_id <id>"\`
 
-**When failures or ambiguous rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): \`<row identifier or domain> · <reason>\`. Then \`"*+N more — leadbay_import_status for full detail*"\`.
+Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
+
+**When the "need attention" or pending-crawl rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): \`<row identifier or domain> · <reason>\`. Label each row by its real reason — "pending crawl" for \`uncrawled\`, and the specific reason otherwise. Frame pending rows reassuringly (Leadbay is crawling them; the leads it adds will populate in the user's Leadbay account as the crawl completes — see the semantics note below for where they show up), not as errors. The full \`not_imported\` breakdown is already in THIS response — list from it directly; then \`"*+N more (see the full not_imported list in the response)*"\`.
 
 **When the user's request implied a downstream use** ("import then prep outreach for them"), emit \`Imported leadIds: <up to 5 ids, then '+N more'>\` — just the ids. Let the next composite render the leads.
 
 Defer the full list of imported leads to \`leadbay_pull_leads\` or \`leadbay_research_lead_by_id\` in NEXT STEPS.
+
+**\`uncrawled\` is NOT a failed import — it means "pending a crawl".** A row lands \`uncrawled\` when Leadbay hasn't matched or crawled that domain **yet** — the row simply didn't match an existing lead at import time and isn't a public-mailbox domain. It does NOT mean the import failed, and it is NOT a verdict that the website is broken (the tool doesn't check whether the URL resolves — so don't claim the site is bad, but don't guarantee it's valid either).
+
+**One caveat — \`uncrawled\` only means "pending" when the row actually had a website.** A row imported by name / CRM id / registry number only (no \`LEAD_WEBSITE\` mapped) that finds no existing match ALSO lands \`uncrawled\`, but there's no domain for Leadbay to crawl — so it will NOT self-resolve via a late crawl. For those name-only rows, don't give the "Leadbay is crawling it" reassurance; tell the user to supply a company website (or another resolvable identity) and re-import. So: \`uncrawled\` + a website → genuinely pending a background crawl; \`uncrawled\` + no website → the user needs to add an identity, it won't crawl on its own. The import itself completed successfully; Leadbay then crawls the domain in the background and adds the lead asynchronously (a *late import*), so most of these rows resolve on their own within minutes to hours. Where do those late-added leads show up? **In the user's Leadbay account as the crawl completes.** \`leadbay_import_status\` does NOT return them — it only refreshes status/progress. There's no bulk "list the leads this import just added" call: \`leadbay_pull_leads\` reads the active lens's wishlist, so an imported lead not admitted to that lens won't appear there. For **one specific company by name**, \`leadbay_research_lead_by_name_fuzzy\` searches across the visible Leadbay corpus (not lens-scoped) and can surface it once crawled — a reasonable check for a named company. Otherwise tell the user the leads will populate in Leadbay over the next minutes–hours; to pull those specific companies back through the MCP in bulk, **re-run the same import later** (the now-crawled domains match). Do NOT promise \`leadbay_pull_leads\` or \`import_status\` will list the late additions.
+
+So when reporting an import: count \`uncrawled\` rows as **pending**, never as failures. Do NOT tell the user these rows "failed", were "rejected", had "bad/unreachable websites", or point to a backend problem — that is wrong and needlessly erodes trust in the whole lead set. A high \`uncrawled\` share on a fresh list is normal and expected, not a red flag.
+
+How the OTHER reasons map to the "Need attention" bucket (see the render block above) — none of these should be lumped in with \`uncrawled\`/pending, but each is still surfaced to the user, not suppressed:
+
+- \`malformed\` (row couldn't be parsed) and \`internal_error\` (a real backend error) are genuine failures — flag them plainly.
+- \`no_match\` on a public-mailbox domain (gmail.com, outlook.com, …) means no company domain was resolvable from that row — surface it so the user can supply a real company domain. Not a crawler failure.
+- \`ambiguous\` rows matched several candidates — surface them as needing disambiguation via \`leadbay_resolve_import_rows\`. Not a failure, but the user still needs to act.
+
 
 
 ---
@@ -1842,17 +1895,18 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 |------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
 | Status: running                                | "Check progress"                                              | leadbay_import_status(handle_id)                       |
 | Status: complete, imports succeeded            | "Run AI qualification on the imported leads"                  | leadbay_bulk_qualify_leads([leadIds]) — or use leadbay_import_and_qualify next time |
+| Pending-crawl (\`uncrawled\`) rows present       | "Re-run the import for those domains later, once Leadbay has crawled them" | leadbay_import_leads (re-run with just the uncrawled domains, later — they re-reconcile once crawled). NOTE: not a live-fetch of the added leads; those populate in the user's Leadbay account as the crawl completes |
 | Ambiguous / unresolved rows present            | "Resolve the ambiguous rows"                                  | leadbay_resolve_import_rows(records, identity_mappings)|
-| Failed rows from bad mappings                  | "Check the org's mappable fields and remap"                   | leadbay_list_mappable_fields                           |
+| \`malformed\` / bad-mapping rows present         | "Check the org's mappable fields and remap the bad rows"      | leadbay_list_mappable_fields                           |
 | User wants to see the imported leads           | "See the imported leads in your view"                         | leadbay_pull_leads                                     |
 | User had follow-up intent for the imports      | "Prep outreach for [a specific imported lead]"                | leadbay_prepare_outreach(leadId)                       |
 `;
 // endregion: leadbay_import_leads
 
 // region: leadbay_import_status
-export const leadbay_import_status: string = `Retrieve the current state of an async lead import. Pass \`handle_id\` returned by \`leadbay_import_leads({wait_for_completion:false})\`, or pass legacy \`importIds[]\` to inspect backend wizard rows. This status call performs a single refresh pass and never polls in a loop.
+export const leadbay_import_status: string = `Retrieve the current **status/progress** of a lead import. Pass \`handle_id\` — returned by either \`leadbay_import_leads\` OR \`leadbay_import_and_qualify\` when called with \`wait_for_completion:false\` — to resolve the stored result (leads + not_imported) once that async run has completed in this MCP instance. **If you were given a \`handle_id\`, poll with it, not with \`importIds[]\`** — only the \`handle_id\` path returns the stored result/not_imported breakdown. Pass \`importIds[]\` (a completed import returns \`importIds\`; \`leadbay_import_and_qualify\` returns \`import_ids\`) only when you don't have a handle, to refresh the backend wizard rows' phase + record counts. Note: the \`importIds[]\` path returns status/progress only — it does NOT re-reconcile records or return refreshed leads/not_imported. This status call performs a single refresh pass and never polls in a loop.
 
-WHEN TO USE: after leadbay_import_leads or leadbay_import_and_qualify returns \`{status:'running', handle_id}\` for the import phase, call this tool later to retrieve progress or the final import result without re-running the import.
+WHEN TO USE: after an async import (\`leadbay_import_leads\` OR \`leadbay_import_and_qualify\` with \`wait_for_completion:false\`) returns \`{status:'running', handle_id}\`, poll with that \`handle_id\`; OR to check whether a finished import is still processing. This tool does NOT surface the leads Leadbay adds later for pending-crawl (\`uncrawled\`) rows — those populate in the user's Leadbay account as the crawl completes; no tool here fetches them on demand (re-run the import to pull them back through the MCP).
 
 WHEN NOT TO USE: for qualification handles returned as \`qualify_id\` — use leadbay_qualify_status for those; or when you still want the legacy blocking behavior from leadbay_import_leads with \`wait_for_completion=true\`.
 
@@ -1874,19 +1928,39 @@ After the status line, propose the obvious refresh / progress-check / recovery a
 
 Specifically for import status:
 
-- Running → \`"⏳ Import still running — N% complete; check back in ~M minutes."\`
-- Complete → \`"✓ Import complete — N leads imported, M failed."\`
-- Error / failed → \`"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."\`
+This tool returns \`status\`, \`importIds\`, and \`progress\` ({phase, records_processed, records_total}). It carries a \`result\` object (with \`leads\` + \`not_imported\`) ONLY when resolving an async \`handle_id\` whose run completed in this MCP instance — the \`importIds[]\` status-check path does NOT return \`result\`. **Render only from the fields actually present; never invent counts.**
+
+Caveat on \`progress\`: \`records_processed\` counts only the rows that MATCHED an existing lead (backend \`imported_records\`), not every row that finished processing — so for a complete import whose rows are mostly/all \`uncrawled\` (pending crawl), \`records_processed\` is legitimately low or 0. Never read a low \`records_processed\` on a \`complete\` import as "stuck" or "failed": once \`status:"complete"\`, processing is done; the pending-crawl rows just matched no existing lead yet.
+
+- Running → \`"⏳ Import still running — phase <phase>; check back in ~M minutes."\` (use the phase; don't turn the matched-count into an "X/Y processed" progress bar).
+- Complete, **no \`result\`** (the usual \`importIds\` status check) → \`"✓ Import complete."\` Do NOT append a \`records_processed/records_total\` fraction (it undercounts pending-crawl rows and looks stuck) and do NOT report pending-crawl / need-attention bucket counts — the row-level \`not_imported\` breakdown isn't in this response.
+- Complete, **\`result\` present AND it was a dry run** (\`result.dry_run:true\`, or every \`result.not_imported\` row has \`reason:"dry_run"\`) → this resolved handle was a VALIDATION pass, nothing committed. Render \`"🔎 Dry run complete — V rows validated, nothing imported. Re-run without dry_run to commit."\` — do NOT render it as a real import completion or use the pending/attention buckets.
+- Complete, **\`result\` present** (async handle resolved, real import) → then, and only then, partition \`result.not_imported\` as in the shared import-result render block below — \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` where **pending crawl** is \`uncrawled\` rows that HAVE a \`domain\` (not failures) and no-\`domain\` \`uncrawled\` rows fall under need-attention. Drop any zero segment.
+- Error / failed → \`"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."\` — reserve this ONLY for a true transport/backend error on the import itself, never for \`uncrawled\` rows.
+
+**\`uncrawled\` is NOT a failed import — it means "pending a crawl".** A row lands \`uncrawled\` when Leadbay hasn't matched or crawled that domain **yet** — the row simply didn't match an existing lead at import time and isn't a public-mailbox domain. It does NOT mean the import failed, and it is NOT a verdict that the website is broken (the tool doesn't check whether the URL resolves — so don't claim the site is bad, but don't guarantee it's valid either).
+
+**One caveat — \`uncrawled\` only means "pending" when the row actually had a website.** A row imported by name / CRM id / registry number only (no \`LEAD_WEBSITE\` mapped) that finds no existing match ALSO lands \`uncrawled\`, but there's no domain for Leadbay to crawl — so it will NOT self-resolve via a late crawl. For those name-only rows, don't give the "Leadbay is crawling it" reassurance; tell the user to supply a company website (or another resolvable identity) and re-import. So: \`uncrawled\` + a website → genuinely pending a background crawl; \`uncrawled\` + no website → the user needs to add an identity, it won't crawl on its own. The import itself completed successfully; Leadbay then crawls the domain in the background and adds the lead asynchronously (a *late import*), so most of these rows resolve on their own within minutes to hours. Where do those late-added leads show up? **In the user's Leadbay account as the crawl completes.** \`leadbay_import_status\` does NOT return them — it only refreshes status/progress. There's no bulk "list the leads this import just added" call: \`leadbay_pull_leads\` reads the active lens's wishlist, so an imported lead not admitted to that lens won't appear there. For **one specific company by name**, \`leadbay_research_lead_by_name_fuzzy\` searches across the visible Leadbay corpus (not lens-scoped) and can surface it once crawled — a reasonable check for a named company. Otherwise tell the user the leads will populate in Leadbay over the next minutes–hours; to pull those specific companies back through the MCP in bulk, **re-run the same import later** (the now-crawled domains match). Do NOT promise \`leadbay_pull_leads\` or \`import_status\` will list the late additions.
+
+So when reporting an import: count \`uncrawled\` rows as **pending**, never as failures. Do NOT tell the user these rows "failed", were "rejected", had "bad/unreachable websites", or point to a backend problem — that is wrong and needlessly erodes trust in the whole lead set. A high \`uncrawled\` share on a fresh list is normal and expected, not a red flag.
+
+How the OTHER reasons map to the "Need attention" bucket (see the render block above) — none of these should be lumped in with \`uncrawled\`/pending, but each is still surfaced to the user, not suppressed:
+
+- \`malformed\` (row couldn't be parsed) and \`internal_error\` (a real backend error) are genuine failures — flag them plainly.
+- \`no_match\` on a public-mailbox domain (gmail.com, outlook.com, …) means no company domain was resolvable from that row — surface it so the user can supply a real company domain. Not a crawler failure.
+- \`ambiguous\` rows matched several candidates — surface them as needing disambiguation via \`leadbay_resolve_import_rows\`. Not a failure, but the user still needs to act.
+
 
 ---
 
 ## NEXT STEPS
 
-| Observation             | Suggest                                | Calls                          |
-|-------------------------|----------------------------------------|--------------------------------|
-| Status: complete        | "See the imported leads"               | leadbay_pull_leads             |
-| Status: running         | "Check again in N minutes"             | leadbay_import_status — re-call|
-| Status: error / failed  | "Diagnose the failure"                 | leadbay_resolve_import_rows    |
+| Observation                          | Suggest                                              | Calls                          |
+|--------------------------------------|------------------------------------------------------|--------------------------------|
+| Status: complete                     | "See the imported (matched) leads"                   | leadbay_pull_leads             |
+| Pending-crawl (\`uncrawled\`) rows     | "Re-run the import for those domains later, once Leadbay has crawled them" | leadbay_import_leads (re-run with just the uncrawled domains, later — they re-reconcile once crawled). The added leads otherwise populate in the user's Leadbay account as the crawl completes; no live-fetch here |
+| Status: running                      | "Check again in N minutes"                           | leadbay_import_status — re-call|
+| Status: error / failed (true error)  | "Diagnose the failure"                               | leadbay_resolve_import_rows    |
 `;
 // endregion: leadbay_import_status
 
@@ -3580,7 +3654,7 @@ When \`_meta.match_candidates\` is non-empty, prepend one extra NEXT STEPS row:
 // region: leadbay_resolve_import_rows
 export const leadbay_resolve_import_rows: string = `Resolve messy CSV-shaped lead rows against Leadbay before file import. The tool sends each row's available identity signals to \`POST /leads/resolve\`, returns matched lead IDs or ambiguous candidate IDs, and produces \`records_for_import\` plus a SAFE identity-only \`mappings_for_import\` starting point for leadbay_import_leads / leadbay_import_and_qualify. This tool deliberately does not try to understand every CSV dialect; the agent should inspect the file, derive clean helper columns when useful, pass explicit \`identity_mappings\`, and build the final CRM mapping from \`mapping_guidance\`.
 
-WHEN TO USE: before importing user-supplied files when domains, names, CRM IDs, registry numbers, or Leadbay IDs may be inconsistently formatted; when the agent needs to pre-resolve messy rows, inspect ambiguous candidates, or prepare LEADBAY_ID values for the import composites. For contact-only files, first derive company website/domain from business contact emails where possible, while ignoring consumer mailbox domains. Deterministic matches get a LEADBAY_ID column inserted so the standard import commits immediately. Ambiguous rows are deliberately left without LEADBAY_ID; inspect candidates and choose one only when the evidence is good. Rows with websites but no match can still be imported; Leadbay may crawl and match them later, and leadbay_import_status can surface late matches.
+WHEN TO USE: before importing user-supplied files when domains, names, CRM IDs, registry numbers, or Leadbay IDs may be inconsistently formatted; when the agent needs to pre-resolve messy rows, inspect ambiguous candidates, or prepare LEADBAY_ID values for the import composites. For contact-only files, first derive company website/domain from business contact emails where possible, while ignoring consumer mailbox domains. Deterministic matches get a LEADBAY_ID column inserted so the standard import commits immediately. Ambiguous rows are deliberately left without LEADBAY_ID; inspect candidates and choose one only when the evidence is good. Rows with websites but no match can still be imported; Leadbay may crawl and match them later (a late import), and those leads then populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — re-run the import later to pull them back through the MCP).
 
 WHEN NOT TO USE: for prospect discovery from scratch (use leadbay_pull_leads); for one known company profile (use leadbay_research_lead_by_name_fuzzy / leadbay_research_lead_by_id); or when the file already has clean, final LEADBAY_ID/CRM_ID/SIREN mappings and no row-level identity disambiguation is needed.
 
@@ -3613,7 +3687,7 @@ Below the table, a one-liner: \`"Ready: K rows · Ambiguous: A rows · Unmatched
 |----------------------------------------|-------------------------------------------------------------|--------------------------------------------------------|
 | All rows resolved cleanly              | "Import these rows now"                                     | leadbay_import_leads(records_for_import, mappings_for_import) |
 | Ambiguous rows present                 | "Inspect candidates for each ambiguous row"                 | (re-call with include_candidate_profiles=true)         |
-| Unmatched rows but websites present    | "Import anyway — Leadbay will crawl and match later"        | leadbay_import_leads (status check after)              |
+| Unmatched rows but websites present    | "Import anyway — Leadbay crawls & adds them to your account later" | leadbay_import_leads (the late-added leads populate in Leadbay; re-run the import to pull them back through the MCP) |
 | User wants to skip rows they can't ID  | "Drop unmatched rows and import the rest"                   | leadbay_import_leads (with filtered records)           |
 `;
 // endregion: leadbay_resolve_import_rows
