@@ -6,8 +6,24 @@ they run as soon as the scenario-execution glue (`helpers/run-eval.ts`,
 `setupScenarioFixtures`, `runScenarioEval`, `vitest.eval.config.ts`) lands, or
 via the `/eval` skill runner. That vitest glue does not exist on this branch,
 so there is intentionally **no `prompts/*.eval.ts` wiring file** — adding one
-would import a module that doesn't exist and break the build. Wire them up like
-this once the runner is in:
+would import a module that doesn't exist and break the build.
+
+**Fixture scope — the direct `leadbay_import_leads` sequence.** The
+`backendFixtures` cover exactly the calls `leadbay_import_leads` makes:
+`users/me` → `POST /imports` → `GET /imports/:id` → `POST
+/imports/:id/update_mappings` → `GET /imports/:id` → `GET /imports/:id/records`
+(declared **twice** — `pollRecordsToTerminal` needs `STABILIZATION_POLLS = 2`
+identical terminal snapshots and `mockHttp` consumes each script once). They do
+NOT fixture the earlier `leadbay_import_file` prompt phases (`POST
+/leads/resolve` for `leadbay_resolve_import_rows`, `list_mappable_fields`,
+`add_note`). So when wiring these up, run them either as **direct
+`leadbay_import_leads` tool scenarios** (recommended — deterministic; the
+uncrawled labeling is a tool-result concern, not a prompt-flow concern), OR keep
+the `leadbay_import_file` prompt and ADD the resolve/mappable/note fixtures the
+prompt's phases will call. `required_calls: ["leadbay_import_leads"]` guards
+against an agent that parrots the pending-crawl wording without importing.
+
+Wire them up like this once the runner is in:
 
 ```ts
 // prompts/leadbay_import_file.eval.ts

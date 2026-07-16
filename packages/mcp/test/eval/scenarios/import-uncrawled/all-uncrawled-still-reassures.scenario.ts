@@ -81,6 +81,9 @@ export const SCENARIO = {
     { method: "GET", path: /\/1\.6\/imports\/[^/?]+$/, status: 200, body: importPayload({ procFinished: true }) },
     { method: "POST", path: /\/1\.6\/imports\/[^/]+\/update_mappings/, status: 200, body: { notification_id: "notif-1" } },
     { method: "GET", path: /\/1\.6\/imports\/[^/?]+$/, status: 200, body: importPayload({ procFinished: true }) },
+    // Declared twice — pollRecordsToTerminal needs STABILIZATION_POLLS (2)
+    // identical terminal snapshots and mockHttp consumes each script once.
+    { method: "GET", path: /\/1\.6\/imports\/[^/]+\/records\?/, status: 200, body: RECORDS_PAGE },
     { method: "GET", path: /\/1\.6\/imports\/[^/]+\/records\?/, status: 200, body: RECORDS_PAGE },
   ],
   mission: {
@@ -93,7 +96,7 @@ export const SCENARIO = {
       "did NOT say the import failed, was rejected, hit a backend problem, or that the websites are bad/unreachable/invalid",
       "did NOT tell the user to distrust or discard the batch",
     ],
-    required_calls: [],
+    required_calls: ["leadbay_import_leads"],
     required_byproducts: [],
     forbidden_calls: ["leadbay_report_outreach"],
   },

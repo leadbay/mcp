@@ -129,7 +129,10 @@ export const SCENARIO = {
     // Commit the mapping, then poll to processing-done.
     { method: "POST", path: /\/1\.6\/imports\/[^/]+\/update_mappings/, status: 200, body: { notification_id: "notif-1" } },
     { method: "GET", path: /\/1\.6\/imports\/[^/?]+$/, status: 200, body: importPayload({ procFinished: true }) },
-    // Reconcile the rows → 2 matched, 3 uncrawled.
+    // Reconcile the rows → 2 matched, 3 uncrawled. pollRecordsToTerminal needs
+    // STABILIZATION_POLLS (2) identical terminal snapshots, and mockHttp consumes
+    // each script once — so declare the /records page twice.
+    { method: "GET", path: /\/1\.6\/imports\/[^/]+\/records\?/, status: 200, body: RECORDS_PAGE },
     { method: "GET", path: /\/1\.6\/imports\/[^/]+\/records\?/, status: 200, body: RECORDS_PAGE },
   ],
   mission: {
@@ -142,7 +145,7 @@ export const SCENARIO = {
       "explained the uncrawled rows will be crawled in the background and that the leads populate in the user's Leadbay account as the crawl completes — did NOT claim leadbay_import_status returns the added leads",
       "did NOT frame a 3-of-5 uncrawled outcome as the import failing or as a reason to distrust the lead set",
     ],
-    required_calls: [],
+    required_calls: ["leadbay_import_leads"],
     required_byproducts: [],
     forbidden_calls: ["leadbay_report_outreach", "leadbay_report_friction"],
   },

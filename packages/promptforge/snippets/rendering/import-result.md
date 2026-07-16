@@ -2,7 +2,7 @@
 
 The response carries either a completed result or an async handle. Render a brief summary; do NOT enumerate every imported lead.
 
-**Dry run first:** if every `not_imported` row has `reason: "dry_run"` (i.e. `dry_run:true` — nothing was actually imported), this was a VALIDATION pass. Render `"🔎 Dry run — N rows validated, nothing imported yet. Re-run without dry_run to commit."` and stop; do NOT use the bucket header below (there are no real outcomes to bucket).
+**Dry run first:** if the result has `dry_run:true` (or ANY `not_imported` row has `reason: "dry_run"`), this was a VALIDATION pass — nothing was committed. Render `"🔎 Dry run — V rows validated OK, nothing imported yet. Re-run without dry_run to commit."` where V = the count of `dry_run` rows. If malformed rows are ALSO present (`reason: "malformed"`), list those separately as `"⚠ M rows can't be imported as-is: <row · malformed>"` so the validation count is never swallowed. Do NOT use the pending-crawl/need-attention bucket header below for a dry run (those buckets are for a real committed import).
 
 Otherwise, partition `not_imported` by `reason` into TWO buckets before you write the header:
 
