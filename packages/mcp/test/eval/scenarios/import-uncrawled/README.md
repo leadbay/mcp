@@ -8,22 +8,29 @@ via the `/eval` skill runner. That vitest glue does not exist on this branch,
 so there is intentionally **no `prompts/*.eval.ts` wiring file** — adding one
 would import a module that doesn't exist and break the build.
 
-**Fixture scope — the direct `leadbay_import_leads` sequence.** The
-`backendFixtures` cover exactly the calls `leadbay_import_leads` makes:
+**Fixture scope + a wiring gap to close first.** The `backendFixtures` cover
+exactly the calls `leadbay_import_leads` makes once it runs:
 `users/me` → `POST /imports` → `GET /imports/:id` → `POST
 /imports/:id/update_mappings` → `GET /imports/:id` → `GET /imports/:id/records`
-(declared **twice** — `pollRecordsToTerminal` needs `STABILIZATION_POLLS = 2`
-identical terminal snapshots and `mockHttp` consumes each script once). They do
-NOT fixture the earlier `leadbay_import_file` prompt phases (`POST
-/leads/resolve` for `leadbay_resolve_import_rows`, `list_mappable_fields`,
-`add_note`). So when wiring these up, run them either as **direct
-`leadbay_import_leads` tool scenarios** (recommended — deterministic; the
-uncrawled labeling is a tool-result concern, not a prompt-flow concern), OR keep
-the `leadbay_import_file` prompt and ADD the resolve/mappable/note fixtures the
-prompt's phases will call. `required_calls: ["leadbay_import_leads"]` guards
-against an agent that parrots the pending-crawl wording without importing.
+(the `/records` page is declared **twice** — `pollRecordsToTerminal` needs
+`STABILIZATION_POLLS = 2` identical terminal snapshots and `mockHttp` consumes
+each script once). `required_calls: ["leadbay_import_leads"]` guards against an
+agent that parrots the pending-crawl wording without actually importing.
 
-Wire them up like this once the runner is in:
+They do NOT yet fixture the earlier `leadbay_import_file` prompt phases (`POST
+/leads/resolve` for `leadbay_resolve_import_rows`, plus `list_mappable_fields` /
+`add_note` if the agent uses them). Because the judge resolves its rubric from
+`prompts/<prompt>.md.tmpl`, `prompt` must name a real prompt template —
+`leadbay_import_file` here — so there is **no "direct tool" shortcut** in this
+harness. Therefore, before wiring these up, whoever lands the runner must **add
+the prompt-phase fixtures** (a `POST /leads/resolve` response at minimum, and
+whatever mappable/note calls the phases make) so the run reaches the
+`leadbay_import_leads` sequence above. Until those are added, the sample below
+will fail at the first undeclared `/leads/resolve` call — this is a known,
+documented gap, not a hidden one.
+
+Wire them up like this once the runner lands AND the resolve-phase fixtures are
+added:
 
 ```ts
 // prompts/leadbay_import_file.eval.ts
@@ -33,7 +40,7 @@ import { SCENARIO as ALL_UNCRAWLED } from "../scenarios/import-uncrawled/all-unc
 
 for (const s of [PENDING, ALL_UNCRAWLED]) {
   describe(`eval: ${s.prompt} — ${s.name}`, () => {
-    setupScenarioFixtures(s);
+    setupScenarioFixtures(s);       // extend s.backendFixtures with the resolve-phase calls first
     it(s.name, async () => { await runScenarioEval({ scenario: s }); });
   });
 }

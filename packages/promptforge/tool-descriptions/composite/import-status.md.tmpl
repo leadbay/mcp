@@ -40,6 +40,6 @@ Caveat on `progress`: `records_processed` counts only the rows that MATCHED an e
 | Observation                          | Suggest                                              | Calls                          |
 |--------------------------------------|------------------------------------------------------|--------------------------------|
 | Status: complete                     | "See the imported (matched) leads"                   | leadbay_pull_leads             |
-| Pending-crawl (`uncrawled`) rows     | "Leadbay is crawling them — they'll appear in your Leadbay account as it completes" | No on-demand fetch; re-run the import later to pull them back through the MCP |
+| Pending-crawl (`uncrawled`) rows     | "Re-run the import for those domains later, once Leadbay has crawled them" | leadbay_import_leads (re-run with just the uncrawled domains, later — they re-reconcile once crawled). The added leads otherwise populate in the user's Leadbay account as the crawl completes; no live-fetch here |
 | Status: running                      | "Check again in N minutes"                           | leadbay_import_status — re-call|
 | Status: error / failed (true error)  | "Diagnose the failure"                               | leadbay_resolve_import_rows    |
