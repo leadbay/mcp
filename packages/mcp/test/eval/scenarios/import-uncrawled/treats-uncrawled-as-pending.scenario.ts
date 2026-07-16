@@ -11,9 +11,9 @@
 //
 // This scenario plants an import where SOME rows match immediately and SOME
 // come back NO_MATCH (→ uncrawled) with real corporate domains, and asserts
-// the agent frames uncrawled rows as pending/late-crawl (re-check via
-// leadbay_import_status) and NEVER calls them failed / rejected / a backend
-// problem / bad websites.
+// the agent frames uncrawled rows as pending/late-crawl (the added leads show
+// up later via leadbay_pull_leads; leadbay_import_status only reports progress)
+// and NEVER calls them failed / rejected / a backend problem / bad websites.
 //
 // Authored to the sibling scenario shape (scan-portfolio-signals/*.scenario.ts).
 
@@ -134,7 +134,7 @@ export const SCENARIO = {
       "imported the two matched companies (Stripe, Figma) and reported them as imported",
       "reported Linear, Vanta, and Ramp as PENDING a crawl / late-import — NOT as failed, rejected, errored, or a backend problem",
       "did NOT tell the user the uncrawled websites are bad, unreachable, invalid, or the reason for a failure",
-      "explained the uncrawled rows will be crawled in the background and can be re-checked with leadbay_import_status",
+      "explained the uncrawled rows will be crawled in the background, and that the leads Leadbay adds for them can be seen by re-checking leadbay_pull_leads later (NOT that leadbay_import_status returns the added leads)",
       "did NOT frame a 3-of-5 uncrawled outcome as the import failing or as a reason to distrust the lead set",
     ],
     required_calls: [],

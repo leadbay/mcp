@@ -19,7 +19,7 @@ Import + qualify leads in one call. Pass either `domains: [{domain, name?}]` (Mo
 
 Budgets: `total_budget_ms` caps wall-clock; `per_lead_budget_ms` caps each lead's poll. For short transport timeouts, pass `wait_for_completion:false` and poll `leadbay_import_status`. Outputs `qualified[]`, `still_running[]`, `not_imported[]`, `qualify_id` (resumable handle). Idempotent within a 5-min window. `dry_run:'preview'` returns mapping hints + custom-field candidates without importing.
 
-`not_imported` rows with `reason:"uncrawled"` are **pending a background crawl**, NOT failures: the website is fine, Leadbay just hasn't indexed that domain yet and will add the lead asynchronously — surface them as pending and re-check via `leadbay_import_status`. A large `uncrawled` share on a fresh list is normal.
+`not_imported` rows with `reason:"uncrawled"` are **pending a background crawl**, NOT failures: the website is fine, Leadbay just hasn't indexed that domain yet and will add the lead asynchronously — surface them as pending. To SEE the leads Leadbay adds for them, re-check `leadbay_pull_leads` a bit later (`leadbay_import_status` only reports status/progress, not the added leads). A large `uncrawled` share on a fresh list is normal.
 
 {{include:headers/verification-required-if-write}}
 

@@ -4,8 +4,9 @@
 // matches, every row NO_MATCH on a real corporate domain). This is exactly the
 // case that spooked the reporter into abandoning the lead set. The agent must
 // stay reassuring and actionable — frame the whole batch as pending a
-// background crawl and point at leadbay_import_status — and must NOT declare
-// the import a failure or blame the websites / the backend.
+// background crawl and tell the user the added leads will show up via
+// leadbay_pull_leads shortly — and must NOT declare the import a failure or
+// blame the websites / the backend.
 //
 // Authored to the sibling scenario shape (scan-portfolio-signals/*.scenario.ts).
 
@@ -83,7 +84,7 @@ export const SCENARIO = {
     success_criteria: [
       "reported all four rows as PENDING a crawl / late-import, not as a failed import",
       "reassured the user the domains are fine and Leadbay will crawl them in the background and add the leads later",
-      "pointed the user to re-check with leadbay_import_status rather than treating the run as a dead end",
+      "pointed the user to re-check leadbay_pull_leads later to see the leads Leadbay adds (NOT leadbay_import_status, which only reports progress) rather than treating the run as a dead end",
       "did NOT say the import failed, was rejected, hit a backend problem, or that the websites are bad/unreachable/invalid",
       "did NOT tell the user to distrust or discard the batch",
     ],
