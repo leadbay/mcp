@@ -98,6 +98,9 @@ export const SCENARIO = {
     ],
     required_calls: ["leadbay_import_leads"],
     required_byproducts: [],
-    forbidden_calls: ["leadbay_report_outreach"],
+    // Forbid report_friction too: an all-uncrawled batch is by-design, not a
+    // tool failure — an agent that silently logs friction on "0 imports" is
+    // exactly the regression this boundary case guards against.
+    forbidden_calls: ["leadbay_report_outreach", "leadbay_report_friction"],
   },
 };

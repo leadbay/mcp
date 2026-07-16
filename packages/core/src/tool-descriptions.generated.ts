@@ -1762,7 +1762,11 @@ Defer the full list of imported leads to \`leadbay_pull_leads\` or \`leadbay_res
 
 So when reporting an import: count \`uncrawled\` rows as **pending**, never as failures. Do NOT tell the user these rows "failed", were "rejected", had "bad/unreachable websites", or point to a backend problem — that is wrong and needlessly erodes trust in the whole lead set. A high \`uncrawled\` share on a fresh list is normal and expected, not a red flag.
 
-Only these reasons are genuinely un-actionable and worth flagging: \`malformed\` (row couldn't be parsed) and \`internal_error\` (a real backend error). \`no_match\` on a public mailbox domain (gmail.com, outlook.com, …) means no company domain was resolvable from that row. \`ambiguous\` rows aren't failures either — they matched several candidates and can be disambiguated with \`leadbay_resolve_import_rows\`.
+How the OTHER reasons map to the "Need attention" bucket (see the render block above) — none of these should be lumped in with \`uncrawled\`/pending, but each is still surfaced to the user, not suppressed:
+
+- \`malformed\` (row couldn't be parsed) and \`internal_error\` (a real backend error) are genuine failures — flag them plainly.
+- \`no_match\` on a public-mailbox domain (gmail.com, outlook.com, …) means no company domain was resolvable from that row — surface it so the user can supply a real company domain. Not a crawler failure.
+- \`ambiguous\` rows matched several candidates — surface them as needing disambiguation via \`leadbay_resolve_import_rows\`. Not a failure, but the user still needs to act.
 
 
 
@@ -1849,7 +1853,11 @@ Defer the full list of imported leads to \`leadbay_pull_leads\` or \`leadbay_res
 
 So when reporting an import: count \`uncrawled\` rows as **pending**, never as failures. Do NOT tell the user these rows "failed", were "rejected", had "bad/unreachable websites", or point to a backend problem — that is wrong and needlessly erodes trust in the whole lead set. A high \`uncrawled\` share on a fresh list is normal and expected, not a red flag.
 
-Only these reasons are genuinely un-actionable and worth flagging: \`malformed\` (row couldn't be parsed) and \`internal_error\` (a real backend error). \`no_match\` on a public mailbox domain (gmail.com, outlook.com, …) means no company domain was resolvable from that row. \`ambiguous\` rows aren't failures either — they matched several candidates and can be disambiguated with \`leadbay_resolve_import_rows\`.
+How the OTHER reasons map to the "Need attention" bucket (see the render block above) — none of these should be lumped in with \`uncrawled\`/pending, but each is still surfaced to the user, not suppressed:
+
+- \`malformed\` (row couldn't be parsed) and \`internal_error\` (a real backend error) are genuine failures — flag them plainly.
+- \`no_match\` on a public-mailbox domain (gmail.com, outlook.com, …) means no company domain was resolvable from that row — surface it so the user can supply a real company domain. Not a crawler failure.
+- \`ambiguous\` rows matched several candidates — surface them as needing disambiguation via \`leadbay_resolve_import_rows\`. Not a failure, but the user still needs to act.
 
 
 
@@ -1925,7 +1933,11 @@ Caveat on \`progress\`: \`records_processed\` counts only the rows that MATCHED 
 
 So when reporting an import: count \`uncrawled\` rows as **pending**, never as failures. Do NOT tell the user these rows "failed", were "rejected", had "bad/unreachable websites", or point to a backend problem — that is wrong and needlessly erodes trust in the whole lead set. A high \`uncrawled\` share on a fresh list is normal and expected, not a red flag.
 
-Only these reasons are genuinely un-actionable and worth flagging: \`malformed\` (row couldn't be parsed) and \`internal_error\` (a real backend error). \`no_match\` on a public mailbox domain (gmail.com, outlook.com, …) means no company domain was resolvable from that row. \`ambiguous\` rows aren't failures either — they matched several candidates and can be disambiguated with \`leadbay_resolve_import_rows\`.
+How the OTHER reasons map to the "Need attention" bucket (see the render block above) — none of these should be lumped in with \`uncrawled\`/pending, but each is still surfaced to the user, not suppressed:
+
+- \`malformed\` (row couldn't be parsed) and \`internal_error\` (a real backend error) are genuine failures — flag them plainly.
+- \`no_match\` on a public-mailbox domain (gmail.com, outlook.com, …) means no company domain was resolvable from that row — surface it so the user can supply a real company domain. Not a crawler failure.
+- \`ambiguous\` rows matched several candidates — surface them as needing disambiguation via \`leadbay_resolve_import_rows\`. Not a failure, but the user still needs to act.
 
 
 ---
