@@ -89,4 +89,40 @@ describe("leadbay_set_telemetry", () => {
     expect(result.changed).toBe(false);
     expect(getHttpRequests().filter((r) => r.method === "POST")).toHaveLength(0);
   });
+
+  it("unknown action → rejected as BAD_ACTION, no read, no write (never silently disables) [Codex P2]", async () => {
+    // The SDK doesn't validate the enum pre-dispatch, so a stray "check" must NOT
+    // fall through to the disable path. It's rejected before touching the backend.
+    mockHttp([]); // no scripts — any HTTP call would throw "no script matched"
+    const result: any = await setTelemetry.execute(newClient(), { action: "check" });
+    expect(result.error).toBe(true);
+    expect(result.code).toBe("BAD_ACTION");
+    expect(getHttpRequests()).toHaveLength(0); // no /users/me, no POST
+  });
+
+  it("reads FRESH /users/me via resolveMe(true) — a warmed cache does NOT serve the read [Codex P2]", async () => {
+    // Prime the client cache with an ENABLED /users/me, then have the tool run
+    // against a mock that now returns DISABLED. Because the tool force-refreshes,
+    // it must hit the backend again and see the fresh (disabled) value — not the
+    // cached enabled one. (Only one script here: a cached read would make zero
+    // requests and return stale; a forced read consumes this script.)
+    const client = newClient();
+    mockHttp([meWith(true)]);
+    await client.resolveMe(); // warm the 60s cache = enabled
+    mockHttp([meWith(false)]); // backend now says disabled (e.g. flipped elsewhere)
+    const result: any = await setTelemetry.execute(client, { action: "status" });
+    expect(result.telemetry_enabled).toBe(false); // saw fresh value, not cached true
+    // The forced read consumed the /users/me script (cache was bypassed).
+    expect(getHttpRequests().filter((r) => r.path === "/1.6/users/me")).toHaveLength(1);
+  });
+
+  it("OFF hints carry the local-env caveat (no false 'events stopped' promise for stdio) [Codex P2]", async () => {
+    mockHttp([meWith(false)]);
+    const status: any = await setTelemetry.execute(newClient(), { action: "status" });
+    expect(status.hint).toContain("LEADBAY_TELEMETRY_ENABLED=false");
+    mockHttp([meWith(false)]);
+    const noop: any = await setTelemetry.execute(newClient(), { action: "disable" });
+    expect(noop.changed).toBe(false);
+    expect(noop.hint).toContain("LEADBAY_TELEMETRY_ENABLED=false");
+  });
 });

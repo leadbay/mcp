@@ -1002,6 +1002,24 @@ success_criteria:
 
 A `turns:` contract has no separate `yaml scenario` block.
 
+```yaml expected
+workflow_name: Telemetry enable/disable/status
+prompt_name: leadbay_set_telemetry
+required_calls:
+  - leadbay_set_telemetry
+forbidden_calls:
+  - leadbay_send_feedback
+  - leadbay_report_friction
+success_criteria:
+  - "called leadbay_set_telemetry with action:'disable'"
+  - "did NOT misroute to leadbay_send_feedback or leadbay_report_friction"
+  - "reported the resulting telemetry state to the user"
+```
+
+```yaml scenario
+prompt: "Turn off telemetry — I don't want my usage tracked"
+```
+
 ## How this stays normative
 
 `packages/mcp/test/audit/workflows.test.ts` asserts every backtick-wrapped `leadbay_*` identifier resolves to a registered tool or prompt. Proposed names for not-yet-shipped tools go in italics, not backticks.

@@ -24,6 +24,7 @@ import { BUILTIN_WIDGETS_PARAGRAPH } from "./host-widgets.js";
 import {
   compositeReadTools,
   compositeWriteTools,
+  setTelemetry,
   agentMemoryTools,
   granularReadTools,
   granularWriteTools,
@@ -548,6 +549,14 @@ export function buildServer(
   // Write composites — gated by includeWrite (LEADBAY_MCP_WRITE=1, default ON in 0.3.0).
   if (opts.includeWrite) {
     exposedTools.push(...compositeWriteTools);
+  } else {
+    // Privacy exception (Codex P2): leadbay_set_telemetry is the ONLY in-product
+    // telemetry opt-out/status control, and a hosted user has no local env var to
+    // edit. So expose it even in read-only mode (LEADBAY_MCP_WRITE=0) — a user
+    // must always be able to turn telemetry OFF. It's still a write tool (it
+    // mutates the account preference); this is a deliberate special-case, not a
+    // reclassification. Dedup below keeps it single if includeWrite ever re-adds it.
+    exposedTools.push(setTelemetry);
   }
   // Granular tools — gated by includeAdvanced (LEADBAY_MCP_ADVANCED=1).
   // Within advanced, write granulars are further gated by includeWrite.
