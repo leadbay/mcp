@@ -250,6 +250,22 @@ describe("hosted HTTP per-user telemetry opt-out (product#3879)", () => {
     handle.captureToolCall({ tool: "leadbay_pull_leads", ok: true, duration_ms: 5, format: "json", bytes: 10 });
     expect(posthogState.captures).toHaveLength(1);
   });
+
+  it("streamable /mcp: resolve ERROR fails closed HARD — a later cache populate can't reopen the request (Codex P1 #426)", async () => {
+    // resolveTelemetryContext errors (500) → forceClosed=true, and the handle's
+    // predicate is built with that hard flag. Even if the losing/background read
+    // later populates cachedTelemetryEnabled()=true, forceClosed keeps the
+    // request suppressed (it explicitly failed closed). Same guarantee the
+    // timeout path relies on; error is the synchronous stand-in for the 1500ms
+    // timeout so the test stays fast.
+    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 500, body: { error: true, code: "SERVER_ERROR", message: "oops" } }]);
+    const client = new LeadbayClient("https://api-us.leadbay.app", "u.tok", "us");
+    const handle = await telemetryHandleForRequest(client); // forceClosed=true
+    // Simulate the orphaned read landing AFTER the fail-closed decision:
+    client.setCachedTelemetryEnabled(true);
+    handle.captureToolCall({ tool: "leadbay_pull_leads", ok: true, duration_ms: 5, format: "json", bytes: 10 });
+    expect(posthogState.captures).toHaveLength(0); // forceClosed beats the late cached true
+  });
 });
 
 // The process-level real handle (mocked PostHog) that bindTelemetryIdentity wraps.

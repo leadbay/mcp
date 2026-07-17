@@ -90,7 +90,7 @@ export async function resolveIdentity(client: LeadbayClient): Promise<CaptureIde
 // (older backend / opt-out default) — that's a known preference, not an unknown one.
 async function resolveTelemetryContext(
   client: LeadbayClient
-): Promise<{ identity: CaptureIdentity; enabled: boolean }> {
+): Promise<{ identity: CaptureIdentity; enabled: boolean; forceClosed: boolean }> {
   const region = client.region;
   try {
     const me = await Promise.race([
@@ -99,8 +99,11 @@ async function resolveTelemetryContext(
         setTimeout(() => resolve(null), IDENTITY_RESOLVE_TIMEOUT_MS)
       ),
     ]);
-    // Unknown preference (timeout) → fail closed.
-    if (!me) return { identity: { distinctId: "mcp:unknown", region }, enabled: false };
+    // Unknown preference (TIMEOUT) → fail closed HARD. The losing resolveMe()
+    // keeps running in the background and can populate the cache with a `true`
+    // AFTER this returns; forceClosed must override that so a request the
+    // timeout decided to suppress cannot reopen itself later (Codex P1).
+    if (!me) return { identity: { distinctId: "mcp:unknown", region }, enabled: false, forceClosed: true };
     const distinctId = me.email ?? (me.id ? `mcp:user-${me.id}` : "mcp:unknown");
     return {
       identity: {
@@ -113,13 +116,14 @@ async function resolveTelemetryContext(
         ...(me.email ? { email: me.email } : {}),
       },
       // Known preference: honor the per-user opt-out. Absent field → enabled
-      // (older backend / opt-out default).
+      // (older backend / opt-out default). A clean read is NOT force-closed.
       enabled: me.telemetry_enabled !== false,
+      forceClosed: false,
     };
   } catch (err: any) {
-    // Unknown preference (error) → fail closed.
+    // Unknown preference (ERROR) → fail closed hard, same reasoning as timeout.
     logger.warn?.(`telemetry identity resolve failed: ${err?.message ?? err}`);
-    return { identity: { distinctId: "mcp:unknown", region }, enabled: false };
+    return { identity: { distinctId: "mcp:unknown", region }, enabled: false, forceClosed: true };
   }
 }
 
@@ -163,14 +167,15 @@ export function suppressTelemetry(
 }
 
 export async function telemetryHandleForRequest(client: LeadbayClient): Promise<TelemetryHandle> {
-  const { identity, enabled } = await resolveTelemetryContext(client);
-  // Streamable path re-resolves per request, so `enabled` is the fallback used
-  // only when the cache is undefined (absent-field read → enabled; timeout/error
-  // → disabled). A mid-request opt-IN stamps the cache to `true` and step 2 lets
-  // it emit; a mid-request opt-OUT stamps `false` and step 2 suppresses (Codex
-  // P2). No separate forceClosed here — each request's `enabled` already carries
-  // the fail-closed verdict.
-  const isSuppressed = () => suppressTelemetry(client.cachedTelemetryEnabled(), false, enabled);
+  const { identity, enabled, forceClosed } = await resolveTelemetryContext(client);
+  // Streamable path re-resolves per request. `enabled` is the fallback used when
+  // the cache is undefined (absent-field read → enabled). `forceClosed` is set
+  // when the resolve TIMED OUT or ERRORED: the losing resolveMe() may later
+  // populate the cache with a `true`, and forceClosed overrides that so a
+  // request the timeout failed closed cannot reopen itself (Codex P1). A clean
+  // read is not force-closed, so a mid-request opt-IN stamp (cache=true) still
+  // takes effect and a mid-request opt-OUT stamp (cache=false) suppresses.
+  const isSuppressed = () => suppressTelemetry(client.cachedTelemetryEnabled(), forceClosed, enabled);
   return bindTelemetryIdentity(telemetry, identity, isSuppressed);
 }
 
@@ -538,17 +543,17 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
   // on every capture, and POST /messages refreshes it before each dispatch. So
   // a mid-session leadbay_set_telemetry disable takes effect on the next
   // message, not only after reconnect (product#3879).
-  const { identity, enabled } = await resolveTelemetryContext(resolved.client);
+  const { identity, enabled, forceClosed } = await resolveTelemetryContext(resolved.client);
   const session: SseSession = {
     transport: undefined as unknown as SSEServerTransport, // set below
     server: undefined as unknown as Server, // set below
     createdAt: Date.now(),
     client: resolved.client,
     suppressed: !enabled,
-    // At open: fail closed only if the initial resolve could not read a
-    // preference (enabled=false with no cached value). A clean enabled/disabled
-    // read populates the cache, which then governs via suppressTelemetry.
-    forceClosed: !enabled && resolved.client.cachedTelemetryEnabled() === undefined,
+    // Carry the resolve verdict's hard fail-closed (timeout/error at open). It
+    // overrides even a cached `true` a late/orphaned resolveMe might populate,
+    // and is cleared on the next SUCCESSFUL /messages refresh.
+    forceClosed,
   };
   const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
   const transport = new SSEServerTransport("/messages", env.outgoing);
@@ -621,14 +626,18 @@ app.post("/messages", async (c) => {
   // stack up orphaned across messages. One in-flight refresh per session at a
   // time (guarded), best-effort, fail-closed on error.
   //
-  // CRITICAL (Codex P1): the refresh's resolveMe(true) OVERWRITES the client's
-  // mePayload. If THIS message is itself a leadbay_set_telemetry call, execute()
-  // stamps the cache to the user's chosen value — and a concurrent refresh that
-  // read the STALE pre-toggle value would clobber that stamp when it resolves,
-  // re-emitting an opt-out request or dropping an opt-in. There is no reliable
-  // post-hoc compare (resolveMe's write races execute's stamp), so we simply
-  // SKIP the cross-session refresh for set-telemetry messages: the tool's own
-  // stamp is authoritative and strictly fresher than any backend read here.
+  // CLOBBER SAFETY (Codex P1): a refresh's resolveMe(true) overwrites the
+  // client's mePayload, so a stale in-flight read — whether started by THIS
+  // message or an EARLIER one — could otherwise overwrite a leadbay_set_telemetry
+  // stamp that lands during the read. That race is now closed AT THE SOURCE by
+  // the client's telemetry-stamp generation guard: resolveMe preserves the
+  // stamped telemetry_enabled when a stamp occurred mid-flight, so `me` below
+  // already reflects the freshest toggle. Reading session.suppressed off `me`
+  // is therefore correct even for a refresh that started before the toggle.
+  //
+  // We ALSO skip STARTING a refresh for a set-telemetry message: the tool's own
+  // stamp is authoritative, so the read would be pure waste (and the guard would
+  // just discard its telemetry_enabled anyway).
   const isTelemetryToggle =
     body != null &&
     (body as any).method === "tools/call" &&
@@ -638,6 +647,9 @@ app.post("/messages", async (c) => {
     void session.client
       .resolveMe(true)
       .then((me) => {
+        // `me.telemetry_enabled` is the generation-guarded value: if a toggle
+        // landed while this read was in flight, it reflects the toggle, not the
+        // stale backend read (Codex P1).
         session.suppressed = me.telemetry_enabled === false;
         session.forceClosed = false; // read succeeded — clear any hard fail-closed
       })
