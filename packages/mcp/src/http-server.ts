@@ -513,15 +513,22 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
   const transport = new SSEServerTransport("/messages", env.outgoing);
   const server = buildServerFromClient(
     resolved.client,
-    // Suppress if the per-session flag (refreshed each /messages) OR the client
-    // cache (flipped by leadbay_set_telemetry inside execute()) says disabled.
-    // The cache check is what makes a mid-session `disable` suppress its OWN
-    // request's post-execute capture — session.suppressed only updates on the
-    // NEXT message, so without it the opt-out call would track itself (Codex P2).
+    // Suppression precedence (Codex P2): the client cache — stamped synchronously
+    // by leadbay_set_telemetry inside execute() — is the FRESHEST per-session
+    // signal, so when it is DEFINED it wins outright. This makes a mid-session
+    // `disable` suppress its own request's post-execute capture (cache=false),
+    // AND a mid-session `enable` UN-suppress immediately (cache=true) even though
+    // session.suppressed is still stale-true from session open until the next
+    // /messages refresh clears it. Only when the cache is undefined (no
+    // set-telemetry call this session) do we fall back to session.suppressed,
+    // which POST /messages refreshes to catch disables made from ANOTHER session.
     bindTelemetryIdentity(
       telemetry,
       identity,
-      () => session.suppressed || resolved.client.cachedTelemetryEnabled() === false
+      () => {
+        const cached = resolved.client.cachedTelemetryEnabled();
+        return cached === undefined ? session.suppressed : cached === false;
+      }
     )
   );
   await server.connect(transport);

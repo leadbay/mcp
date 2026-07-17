@@ -216,15 +216,14 @@ describe("hosted HTTP MCP — telemetry wiring (product#3876)", () => {
     expect(afterIdentity).toBe(afterProbe); // no additional fetch
   });
 
-  it("resolveIdentity falls back to mcp:unknown when /users/me fails", async () => {
+  it("resolveIdentity falls back to mcp:unknown when /users/me fails (event still lands)", async () => {
     mockHttp([
       { method: "GET", path: "/1.6/users/me", status: 500, body: { error: true, code: "SERVER_ERROR", message: "oops" } },
     ]);
     const client = new LeadbayClient(BASE, "u.tok", "fr");
     const identity = await resolveIdentity(client);
-    // resolveIdentity itself always returns a stable sentinel identity + region.
-    // (Whether the event is actually emitted is decided by telemetryHandleForRequest,
-    // which FAILS CLOSED on this same unknown-preference case — see the optout suite.)
+    // distinctId is a stable sentinel (never undefined → the event is still
+    // emitted, just unattributed) and the region tag survives.
     expect(identity.distinctId).toBe("mcp:unknown");
     expect(identity.region).toBe("fr");
   });
