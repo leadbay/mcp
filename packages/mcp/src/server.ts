@@ -1282,35 +1282,45 @@ export function buildServer(
         const envText = formatErrorForLLM(result);
         const envDur = Date.now() - callStart;
         const envCode = (result as any).code ?? "Error";
-        if (envCode === "QUOTA_EXCEEDED") {
-          telemetry.captureQuotaHit({
+        // Privacy control (Codex P2): a FAILED leadbay_set_telemetry call — e.g.
+        // BAD_ACTION from a near-miss action like "off" — is a malformed opt-out
+        // attempt that carries the user's opt-out prompt in `triggered_by`.
+        // Tracking it (PostHog + Sentry) would record exactly the user trying to
+        // opt out, same reasoning as the missing-_triggered_by guard above. Skip
+        // all capture for this tool's error envelopes; the agent still gets the
+        // error text and can re-call correctly. Every other tool tracks normally.
+        const isPrivacyControl = name === "leadbay_set_telemetry";
+        if (!isPrivacyControl) {
+          if (envCode === "QUOTA_EXCEEDED") {
+            telemetry.captureQuotaHit({
+              tool: name,
+              retry_after_s: (result as any)._meta?.retry_after,
+              endpoint: (result as any)._meta?.endpoint,
+            });
+          }
+          telemetry.captureToolCall({
             tool: name,
-            retry_after_s: (result as any)._meta?.retry_after,
-            endpoint: (result as any)._meta?.endpoint,
-          });
-        }
-        telemetry.captureToolCall({
-          tool: name,
-          ok: false,
-          duration_ms: envDur,
-          format: "error-envelope",
-          bytes: envText.length,
-          error_code: envCode,
-          triggered_by,
-        });
-        if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
-          telemetry.captureCompositeCall({
-            tool: name,
-            last_prompt: triggered_by ?? "",
             ok: false,
             duration_ms: envDur,
+            format: "error-envelope",
+            bytes: envText.length,
             error_code: envCode,
+            triggered_by,
           });
+          if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
+            telemetry.captureCompositeCall({
+              tool: name,
+              last_prompt: triggered_by ?? "",
+              ok: false,
+              duration_ms: envDur,
+              error_code: envCode,
+            });
+          }
+          telemetry.captureException(
+            result,
+            buildBusinessCtx(name, result as any, triggered_by)
+          );
         }
-        telemetry.captureException(
-          result,
-          buildBusinessCtx(name, result as any, triggered_by)
-        );
         if (DEBUG_ON) {
           process.stderr.write(
             `[leadbay-mcp debug] tool=${name} dur=${envDur}ms ok=false code=${envCode}\n`

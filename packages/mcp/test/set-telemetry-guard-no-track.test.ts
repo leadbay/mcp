@@ -87,4 +87,25 @@ describe("leadbay_set_telemetry — missing _triggered_by rejects WITHOUT tracki
     expect(telemetry.captureCompositeCall).toHaveBeenCalledTimes(1);
     expect(telemetry.captureException).not.toHaveBeenCalled();
   });
+
+  it("BAD_ACTION opt-out attempt (malformed action, _triggered_by present) is NOT tracked (Codex P2)", async () => {
+    // A near-miss like action:"off" dispatches (triggered_by present) but
+    // execute() returns BAD_ACTION before posting/stamping — a malformed opt-out
+    // whose triggered_by holds the user's opt-out prompt. The post-execute
+    // error-envelope path must skip analytics + Sentry for this privacy control.
+    mockHttp([]); // BAD_ACTION returns before any HTTP
+    const telemetry = spyTelemetry();
+    const { mcpClient } = await connect(telemetry);
+
+    const res: any = await mcpClient.callTool({
+      name: "leadbay_set_telemetry",
+      arguments: { action: "off", _triggered_by: "turn off telemetry please" },
+    });
+
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain('Unknown action "off"'); // BAD_ACTION envelope
+    expect(telemetry.captureToolCall).not.toHaveBeenCalled();
+    expect(telemetry.captureCompositeCall).not.toHaveBeenCalled();
+    expect(telemetry.captureException).not.toHaveBeenCalled();
+  });
 });

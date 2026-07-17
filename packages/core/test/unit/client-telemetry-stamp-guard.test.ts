@@ -9,11 +9,11 @@ const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
 
 beforeEach(() => resetHttpMock());
 
-const meBody = (telemetry_enabled: boolean) => ({
+const meBody = (telemetry_enabled: boolean | undefined) => ({
   id: "u-1",
   email: "rep@acme.com",
   organization: { id: "org-1", name: "Acme" },
-  telemetry_enabled,
+  ...(telemetry_enabled === undefined ? {} : { telemetry_enabled }),
 });
 
 // The telemetry-stamp generation guard (product#3879, Codex P1): a
@@ -48,23 +48,35 @@ describe("LeadbayClient — telemetry stamp survives an in-flight /users/me read
     expect(client.cachedTelemetryEnabled()).toBe(true);
   });
 
-  it("exposes lastTelemetryReadSuperseded when a stamp beat the read", async () => {
-    // The SSE cross-session refresh consults this to know its read did not win
-    // and so must fail closed rather than trust a possibly-stale cache (Codex P1).
-    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: meBody(true) }]);
+  it("fetchTelemetryEnabled reads the preference without touching the /me cache (Codex P2)", async () => {
+    // The SSE refresh uses this dedicated path so a background read can't clobber
+    // mePayload (e.g. a stale last_requested_lens). It returns the observed value
+    // and updates only the telemetry cache.
+    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: { ...meBody(false), last_requested_lens: 7 } }]);
     const client = newClient();
-    const inFlight = client.resolveMe(true);
-    client.setCachedTelemetryEnabled(false); // supersede the in-flight read
-    await inFlight;
-    expect(client.lastTelemetryReadSuperseded).toBe(true);
+    const observed = await client.fetchTelemetryEnabled();
+    expect(observed).toBe(false);
+    expect(client.cachedTelemetryEnabled()).toBe(false);
+    // mePayload was NOT populated by the lightweight fetch.
+    expect((client as any).mePayload).toBeNull();
   });
 
-  it("lastTelemetryReadSuperseded is false for an uncontested read", async () => {
-    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: meBody(false) }]);
+  it("fetchTelemetryEnabled: a stamp beating it wins (in-flight guard)", async () => {
+    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: meBody(true) }]);
     const client = newClient();
-    await client.resolveMe(true);
-    expect(client.lastTelemetryReadSuperseded).toBe(false);
-    expect(client.cachedTelemetryEnabled()).toBe(false);
+    const inFlight = client.fetchTelemetryEnabled();
+    client.setCachedTelemetryEnabled(false); // supersede the in-flight read
+    const observed = await inFlight;
+    expect(observed).toBe(true); // it still returns what it saw…
+    expect(client.cachedTelemetryEnabled()).toBe(false); // …but the stamp wins the cache
+  });
+
+  it("fetchTelemetryEnabled: absent field → undefined, cache untouched (older backend)", async () => {
+    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: meBody(undefined) }]);
+    const client = newClient();
+    const observed = await client.fetchTelemetryEnabled();
+    expect(observed).toBeUndefined();
+    expect(client.cachedTelemetryEnabled()).toBeUndefined();
   });
 
   it("the stamped preference SURVIVES invalidateMe() — an opt-out isn't forgotten on /me churn (Codex P1)", async () => {

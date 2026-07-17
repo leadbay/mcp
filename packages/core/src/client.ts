@@ -266,16 +266,13 @@ export class LeadbayClient {
   private defaultLensCachedAt: number | null = null;
   private mePayload: UserMePayload | null = null;
   private mePayloadCachedAt: number | null = null;
-  // Monotonic sequence bumped on every operation that can decide the telemetry
-  // preference: an explicit stamp (setCachedTelemetryEnabled) AND the START of
-  // each /users/me read. resolveMe() snapshots it before the fetch and only
-  // writes telemetryEnabledCache from the fetched value if the sequence is
-  // UNCHANGED when it completes — i.e. nothing newer happened. This single guard
-  // handles BOTH races (Codex P1): (a) a stamp landing mid-read must win over
-  // the stale read, and (b) with overlapping reads (the SSE timeout path lets a
-  // newer refresh start before an older one finishes), an OLDER read that
-  // resolves last must not overwrite the cache the NEWER read already set. A
-  // read that carries no telemetry_enabled (older backend) never writes.
+  // Monotonic sequence bumped whenever the telemetry preference is decided by a
+  // fresher signal — an explicit stamp (setCachedTelemetryEnabled) or the START
+  // of a telemetry read (resolveMe / fetchTelemetryEnabled). A read snapshots it
+  // and only writes telemetryEnabledCache if the sequence is UNCHANGED when it
+  // completes, so (a) a stamp landing mid-read wins over the stale read and (b)
+  // an older overlapping read that resolves last can't clobber a newer read's
+  // value (product#3879, Codex P1).
   private telemetryStateSeq = 0;
   // The telemetry preference lives in its OWN field, separate from mePayload,
   // so it survives invalidateMe() (Codex P1). Otherwise a leadbay_set_telemetry
@@ -782,34 +779,39 @@ export class LeadbayClient {
     ) {
       return this.mePayload;
     }
-    // Claim a sequence number for THIS read (bumping marks any older in-flight
-    // read as superseded). We only write the telemetry cache from this read's
-    // result if the sequence is still ours when it completes — no stamp and no
-    // newer read happened meanwhile (Codex P1: mid-read stamp AND out-of-order
-    // overlapping reads).
+    // Claim a sequence for THIS read; only write the telemetry cache from its
+    // result if nothing fresher (a stamp or a newer read) moved the sequence
+    // meanwhile (Codex P1). An absent telemetry_enabled (older backend) never
+    // writes — cachedTelemetryEnabled() stays undefined and the caller's
+    // fallback (resolve verdict / session flag) governs.
     const seqAtStart = ++this.telemetryStateSeq;
     const me = await this.request<UserMePayload>("GET", "/users/me");
     this.mePayload = me;
     this.mePayloadCachedAt = now;
     if (this.telemetryStateSeq === seqAtStart && me.telemetry_enabled !== undefined) {
       this.telemetryEnabledCache = me.telemetry_enabled;
-      this.lastTelemetryReadSuperseded = false;
-    } else {
-      // Our telemetry read did NOT win: a stamp or a newer read moved the
-      // sequence while we were in flight, so telemetryEnabledCache reflects
-      // something fresher than this `me`. Callers that reconcile session state
-      // from a read (the SSE cross-session refresh) use this to avoid deriving
-      // suppression from a value we couldn't authoritatively apply (Codex P1).
-      this.lastTelemetryReadSuperseded = true;
     }
     return me;
   }
 
-  // True iff the MOST RECENT resolveMe() could not apply its telemetry read to
-  // the cache because a stamp/newer read superseded it mid-flight. Read
-  // immediately after awaiting resolveMe(true). Not concurrency-safe across
-  // truly parallel awaits — only the SSE single-in-flight refresh consults it.
-  lastTelemetryReadSuperseded = false;
+  // Lightweight cross-session telemetry-preference read for the hosted SSE
+  // per-message refresh (product#3879, Codex P2). UNLIKE resolveMe() this does
+  // NOT touch mePayload / the general /me cache — so a slow background refresh
+  // can never repopulate a stale last_requested_lens over a tool's mutation, and
+  // it never serves the 60s /me cache (always a fresh read). It reads the SAME
+  // /users/me endpoint (telemetry_enabled lives there) but only reconciles the
+  // dedicated telemetry field, under the same sequence guard as resolveMe.
+  // Returns the observed preference: true/false, or undefined when the backend
+  // omitted the field (older backend → caller treats as enabled default).
+  async fetchTelemetryEnabled(): Promise<boolean | undefined> {
+    const seqAtStart = ++this.telemetryStateSeq;
+    const me = await this.request<UserMePayload>("GET", "/users/me");
+    const observed = me.telemetry_enabled;
+    if (this.telemetryStateSeq === seqAtStart && observed !== undefined) {
+      this.telemetryEnabledCache = observed;
+    }
+    return observed;
+  }
 
   // Force re-fetch on next resolveMe(). Call from any tool that mutates a
   // /me-cached field (last_requested_lens, billing, etc.). Deliberately does

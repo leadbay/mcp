@@ -632,31 +632,28 @@ app.post("/messages", async (c) => {
   // session client's API-semaphore slots ahead of the actual tool work.
   //
   // We run the refresh for EVERY message, including leadbay_set_telemetry ones
-  // (Codex P2): the client's telemetry state-sequence guard + dedicated durable
-  // preference field mean a concurrent read can no longer clobber the tool's
-  // stamp, so there's nothing to protect by skipping — and skipping by-name
-  // previously let a stale-enabled session skip the re-read on a BAD_ACTION call
-  // that never did its own read. Reading the preference back via
-  // cachedTelemetryEnabled() (the guarded, invalidateMe-surviving field), NOT
-  // the raw resolveMe payload, keeps a mid-flight toggle authoritative.
+  // (Codex P2): the client's telemetry state-sequence guard keeps a concurrent
+  // stamp authoritative, so there's nothing to protect by skipping.
   //
-  // BOUNDED (Codex P1): resolveMe has no timeout/abort, so a hung /users/me must
-  // not wedge session.refreshing forever (which would make every later message
-  // skip the refresh until reconnect/TTL). We race it against a timeout that
-  // fails closed and releases the guard so a subsequent message can retry. A
-  // per-refresh epoch (retired the instant EITHER branch of the race settles)
-  // guarantees only the first settle mutates session state — so a slow read that
-  // finishes AFTER its own timeout is discarded and cannot reopen the
-  // fail-closed verdict (Codex P1). The orphaned read still finishes in the
-  // background but the client's read-sequence guard stops it mutating the cache.
+  // The refresh uses client.fetchTelemetryEnabled() — a DEDICATED lightweight
+  // read that only reconciles the telemetry preference and does NOT touch the
+  // general /me cache (mePayload). That isolation removes a whole class of
+  // cross-contamination the old resolveMe(true) refresh caused (Codex P2): it
+  // can't repopulate a stale last_requested_lens over a tool's mutation, can't
+  // serve/pollute the 60s /me cache, and its result is a plain observed value we
+  // reconcile directly (no shared-cache-vs-payload ambiguity, no superseded
+  // dance). It returns undefined when the backend omits the field (older backend
+  // → enabled default → not suppressed).
+  //
+  // BOUNDED (Codex P1): the read has no abort, so a hung /users/me must not wedge
+  // session.refreshing forever. We race it against a timeout that fails closed
+  // and releases the guard so a later message can retry. A per-refresh epoch
+  // (retired the instant EITHER branch settles) guarantees only the first settle
+  // mutates session state, so a read finishing AFTER its own timeout is
+  // discarded and can't reopen the fail-closed verdict.
   if (!session.refreshing) {
     session.refreshing = true;
-    const epoch = ++session.refreshEpoch; // this refresh's identity
-    // Only THIS refresh's completion may mutate session state — and only while
-    // it is still the current epoch. Both the timeout branch and any later
-    // refresh bump refreshEpoch, so an abandoned read that resolves afterward is
-    // discarded (Codex P1). `settle()` also releases the guard exactly once, and
-    // never re-opens the guard for a stale winner.
+    const epoch = ++session.refreshEpoch;
     const settle = (apply: () => void) => {
       if (session.refreshEpoch !== epoch) return;
       session.refreshEpoch++; // retire this epoch so nothing else mutates for it
@@ -664,25 +661,11 @@ app.post("/messages", async (c) => {
       session.refreshing = false;
     };
     void Promise.race([
-      session.client.resolveMe(true).then(
-        (me) => () => {
-          if (session.client.lastTelemetryReadSuperseded) {
-            // A concurrent stamp or newer read moved the client's telemetry
-            // sequence, so our read was NOT applied to the shared cache and `me`
-            // may be stale relative to it (Codex P1). We cannot authoritatively
-            // reconcile session.suppressed from either source here: deriving from
-            // the shared cache could keep a stale `true` (leaking an opt-out this
-            // read actually observed), and deriving from `me` could be stale too.
-            // Fail closed for this cycle; the next message re-reads. If the
-            // superseding event was a real stamp, the predicate honors it live
-            // via cachedTelemetryEnabled() regardless.
-            session.suppressed = true;
-            session.forceClosed = true;
-            return;
-          }
-          // Our read won and wrote the cache — honor its observation.
-          session.suppressed = me.telemetry_enabled === false;
-          session.forceClosed = false; // read succeeded — clear any hard fail-closed
+      session.client.fetchTelemetryEnabled().then(
+        (enabled) => () => {
+          // Observed the preference (undefined = older backend → enabled).
+          session.suppressed = enabled === false;
+          session.forceClosed = false;
         },
         () => () => {
           // Unreadable preference → fail closed HARD, overriding a stale cached
@@ -695,9 +678,7 @@ app.post("/messages", async (c) => {
         setTimeout(
           () =>
             resolve(() => {
-              // Timed out — fail closed HARD and let the next message retry. The
-              // retired epoch + client's read-sequence guard mean the orphaned
-              // resolveMe cannot later clear this forceClosed or clobber the cache.
+              // Timed out — fail closed and let the next message retry.
               session.suppressed = true;
               session.forceClosed = true;
             }),
