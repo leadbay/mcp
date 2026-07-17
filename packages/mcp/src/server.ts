@@ -1201,22 +1201,33 @@ export function buildServer(
         };
         const guardText = formatErrorForLLM(envelope);
         const guardDur = Date.now() - callStart;
-        telemetry.captureToolCall({
-          tool: name,
-          ok: false,
-          duration_ms: guardDur,
-          format: "error-envelope",
-          bytes: guardText.length,
-          error_code: envelope.code,
-          triggered_by,
-        });
-        telemetry.captureCompositeCall({
-          tool: name,
-          last_prompt: triggered_by ?? "",
-          ok: false,
-          duration_ms: guardDur,
-          error_code: envelope.code,
-        });
+        // Do NOT emit telemetry about a rejected leadbay_set_telemetry call
+        // (Codex P2). This is the privacy control itself: a user asking to
+        // DISABLE telemetry whose first attempt the model sent without
+        // `_triggered_by` must not have that failed opt-out attempt tracked —
+        // it never stamped/posted the preference, and capturing it would track
+        // exactly the user who is trying to opt out. The mandate still rejects
+        // (agent re-calls with the field); we just skip the analytics pair for
+        // this one tool. Every other composite still reports the miss so the
+        // mandate-violation rate stays visible.
+        if (name !== "leadbay_set_telemetry") {
+          telemetry.captureToolCall({
+            tool: name,
+            ok: false,
+            duration_ms: guardDur,
+            format: "error-envelope",
+            bytes: guardText.length,
+            error_code: envelope.code,
+            triggered_by,
+          });
+          telemetry.captureCompositeCall({
+            tool: name,
+            last_prompt: triggered_by ?? "",
+            ok: false,
+            duration_ms: guardDur,
+            error_code: envelope.code,
+          });
+        }
         if (DEBUG_ON) {
           process.stderr.write(
             `[leadbay-mcp debug] tool=${name} dur=${guardDur}ms ok=false code=${envelope.code} (no-sentry)\n`

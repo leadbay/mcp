@@ -632,55 +632,64 @@ app.post("/messages", async (c) => {
   // session client's API-semaphore slots ahead of the actual tool work.
   //
   // We run the refresh for EVERY message, including leadbay_set_telemetry ones
-  // (Codex P2): the client's telemetry-stamp generation guard + dedicated
-  // durable preference field mean a concurrent read can no longer clobber the
-  // tool's stamp, so there's nothing to protect by skipping — and skipping
-  // by-name previously let a stale-enabled session skip the re-read on a
-  // BAD_ACTION call that never did its own read. Reading the preference back via
+  // (Codex P2): the client's telemetry state-sequence guard + dedicated durable
+  // preference field mean a concurrent read can no longer clobber the tool's
+  // stamp, so there's nothing to protect by skipping — and skipping by-name
+  // previously let a stale-enabled session skip the re-read on a BAD_ACTION call
+  // that never did its own read. Reading the preference back via
   // cachedTelemetryEnabled() (the guarded, invalidateMe-surviving field), NOT
   // the raw resolveMe payload, keeps a mid-flight toggle authoritative.
   //
   // BOUNDED (Codex P1): resolveMe has no timeout/abort, so a hung /users/me must
   // not wedge session.refreshing forever (which would make every later message
   // skip the refresh until reconnect/TTL). We race it against a timeout that
-  // clears the guard and fails closed, so a subsequent message can retry.
+  // fails closed and releases the guard so a subsequent message can retry. A
+  // per-refresh epoch (retired the instant EITHER branch of the race settles)
+  // guarantees only the first settle mutates session state — so a slow read that
+  // finishes AFTER its own timeout is discarded and cannot reopen the
+  // fail-closed verdict (Codex P1). The orphaned read still finishes in the
+  // background but the client's read-sequence guard stops it mutating the cache.
   if (!session.refreshing) {
     session.refreshing = true;
     const epoch = ++session.refreshEpoch; // this refresh's identity
+    // Only THIS refresh's completion may mutate session state — and only while
+    // it is still the current epoch. Both the timeout branch and any later
+    // refresh bump refreshEpoch, so an abandoned read that resolves afterward is
+    // discarded (Codex P1). `settle()` also releases the guard exactly once, and
+    // never re-opens the guard for a stale winner.
+    const settle = (apply: () => void) => {
+      if (session.refreshEpoch !== epoch) return;
+      session.refreshEpoch++; // retire this epoch so nothing else mutates for it
+      apply();
+      session.refreshing = false;
+    };
     void Promise.race([
-      session.client.resolveMe(true).then(() => {
-        // Ignore a completion whose refresh was already abandoned on timeout —
-        // its epoch is stale (Codex P1). Otherwise a late success would clear a
-        // forceClosed a subsequent refresh/timeout set.
-        if (session.refreshEpoch !== epoch) return true as const;
-        session.suppressed = session.client.cachedTelemetryEnabled() === false;
-        session.forceClosed = false; // read succeeded — clear any hard fail-closed
-        return true as const;
-      }),
-      new Promise<false>((resolve) => setTimeout(() => resolve(false), IDENTITY_RESOLVE_TIMEOUT_MS)),
-    ])
-      .then((ok) => {
-        if (!ok) {
-          // Timed out — fail closed HARD and let the next message retry. The
-          // losing resolveMe keeps running but the generation guard stops it
-          // clobbering any stamp, forceClosed overrides a late cached true, and
-          // the epoch check discards its late .then().
+      session.client.resolveMe(true).then(
+        () => () => {
+          session.suppressed = session.client.cachedTelemetryEnabled() === false;
+          session.forceClosed = false; // read succeeded — clear any hard fail-closed
+        },
+        () => () => {
+          // Unreadable preference → fail closed HARD, overriding a stale cached
+          // `true` from session open (Codex P1).
           session.suppressed = true;
           session.forceClosed = true;
         }
-      })
-      .catch(() => {
-        if (session.refreshEpoch !== epoch) return;
-        // Unreadable preference → fail closed HARD, overriding a stale cached
-        // `true` from session open (Codex P1). Cleared on the next good read.
-        session.suppressed = true;
-        session.forceClosed = true;
-      })
-      .finally(() => {
-        // Only the CURRENT refresh releases the guard; a stale one that finished
-        // after a retry already started must not.
-        if (session.refreshEpoch === epoch) session.refreshing = false;
-      });
+      ),
+      new Promise<() => void>((resolve) =>
+        setTimeout(
+          () =>
+            resolve(() => {
+              // Timed out — fail closed HARD and let the next message retry. The
+              // retired epoch + client's read-sequence guard mean the orphaned
+              // resolveMe cannot later clear this forceClosed or clobber the cache.
+              session.suppressed = true;
+              session.forceClosed = true;
+            }),
+          IDENTITY_RESOLVE_TIMEOUT_MS
+        )
+      ),
+    ]).then(settle);
   }
   await session.transport.handlePostMessage(env.incoming, env.outgoing, body);
   // handlePostMessage has already written the response to env.outgoing.

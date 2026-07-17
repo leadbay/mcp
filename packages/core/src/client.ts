@@ -266,15 +266,17 @@ export class LeadbayClient {
   private defaultLensCachedAt: number | null = null;
   private mePayload: UserMePayload | null = null;
   private mePayloadCachedAt: number | null = null;
-  // Monotonic counter bumped on every explicit telemetry stamp
-  // (setCachedTelemetryEnabled). resolveMe() snapshots it before its fetch and,
-  // if it changed while the fetch was in flight, refuses to overwrite the
-  // stamped telemetry_enabled with the (now stale) fetched value. This is the
-  // single source-of-truth guard that stops an in-flight /users/me read — a
-  // fire-and-forget SSE refresh, or a timed-out streamable resolveMe still
-  // running in the background — from clobbering a leadbay_set_telemetry toggle
-  // that landed during the read (product#3879, Codex P1).
-  private telemetryStampGeneration = 0;
+  // Monotonic sequence bumped on every operation that can decide the telemetry
+  // preference: an explicit stamp (setCachedTelemetryEnabled) AND the START of
+  // each /users/me read. resolveMe() snapshots it before the fetch and only
+  // writes telemetryEnabledCache from the fetched value if the sequence is
+  // UNCHANGED when it completes — i.e. nothing newer happened. This single guard
+  // handles BOTH races (Codex P1): (a) a stamp landing mid-read must win over
+  // the stale read, and (b) with overlapping reads (the SSE timeout path lets a
+  // newer refresh start before an older one finishes), an OLDER read that
+  // resolves last must not overwrite the cache the NEWER read already set. A
+  // read that carries no telemetry_enabled (older backend) never writes.
+  private telemetryStateSeq = 0;
   // The telemetry preference lives in its OWN field, separate from mePayload,
   // so it survives invalidateMe() (Codex P1). Otherwise a leadbay_set_telemetry
   // disable would be forgotten the moment the very next same-session tool
@@ -780,19 +782,16 @@ export class LeadbayClient {
     ) {
       return this.mePayload;
     }
-    // Snapshot the telemetry stamp generation BEFORE the fetch. If a
-    // leadbay_set_telemetry toggle stamps the cache while this read is in
-    // flight, the generation changes and we must NOT let the stale fetched
-    // telemetry_enabled overwrite the user's fresh explicit choice (Codex P1).
-    const genAtStart = this.telemetryStampGeneration;
+    // Claim a sequence number for THIS read (bumping marks any older in-flight
+    // read as superseded). We only write the telemetry cache from this read's
+    // result if the sequence is still ours when it completes — no stamp and no
+    // newer read happened meanwhile (Codex P1: mid-read stamp AND out-of-order
+    // overlapping reads).
+    const seqAtStart = ++this.telemetryStateSeq;
     const me = await this.request<UserMePayload>("GET", "/users/me");
     this.mePayload = me;
     this.mePayloadCachedAt = now;
-    // Record the telemetry preference into its own durable field UNLESS a stamp
-    // landed while this read was in flight — then the stamp (newer intent) wins
-    // and the stale read must not overwrite it (Codex P1). A read that carries
-    // no telemetry_enabled (older backend) leaves the field untouched.
-    if (this.telemetryStampGeneration === genAtStart && me.telemetry_enabled !== undefined) {
+    if (this.telemetryStateSeq === seqAtStart && me.telemetry_enabled !== undefined) {
       this.telemetryEnabledCache = me.telemetry_enabled;
     }
     return me;
@@ -825,9 +824,9 @@ export class LeadbayClient {
   // fail open and let the opt-out request emit error telemetry. Creates a
   // minimal cache entry if /users/me was never resolved.
   setCachedTelemetryEnabled(enabled: boolean): void {
-    // Bump the generation so any /users/me read currently in flight will refuse
+    // Bump the sequence so any /users/me read currently in flight will refuse
     // to overwrite this stamp when it resolves (Codex P1).
-    this.telemetryStampGeneration++;
+    this.telemetryStateSeq++;
     // The durable field is the source of truth cachedTelemetryEnabled() reads;
     // it survives invalidateMe() so the opt-out isn't forgotten when the next
     // tool churns the /me cache (Codex P1).
