@@ -48,6 +48,25 @@ describe("LeadbayClient — telemetry stamp survives an in-flight /users/me read
     expect(client.cachedTelemetryEnabled()).toBe(true);
   });
 
+  it("exposes lastTelemetryReadSuperseded when a stamp beat the read", async () => {
+    // The SSE cross-session refresh consults this to know its read did not win
+    // and so must fail closed rather than trust a possibly-stale cache (Codex P1).
+    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: meBody(true) }]);
+    const client = newClient();
+    const inFlight = client.resolveMe(true);
+    client.setCachedTelemetryEnabled(false); // supersede the in-flight read
+    await inFlight;
+    expect(client.lastTelemetryReadSuperseded).toBe(true);
+  });
+
+  it("lastTelemetryReadSuperseded is false for an uncontested read", async () => {
+    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: meBody(false) }]);
+    const client = newClient();
+    await client.resolveMe(true);
+    expect(client.lastTelemetryReadSuperseded).toBe(false);
+    expect(client.cachedTelemetryEnabled()).toBe(false);
+  });
+
   it("the stamped preference SURVIVES invalidateMe() — an opt-out isn't forgotten on /me churn (Codex P1)", async () => {
     // disable stamps the preference; a later tool invalidates the /me cache
     // (refine_prompt / my_lenses / set_active_lens all do). The telemetry

@@ -793,9 +793,23 @@ export class LeadbayClient {
     this.mePayloadCachedAt = now;
     if (this.telemetryStateSeq === seqAtStart && me.telemetry_enabled !== undefined) {
       this.telemetryEnabledCache = me.telemetry_enabled;
+      this.lastTelemetryReadSuperseded = false;
+    } else {
+      // Our telemetry read did NOT win: a stamp or a newer read moved the
+      // sequence while we were in flight, so telemetryEnabledCache reflects
+      // something fresher than this `me`. Callers that reconcile session state
+      // from a read (the SSE cross-session refresh) use this to avoid deriving
+      // suppression from a value we couldn't authoritatively apply (Codex P1).
+      this.lastTelemetryReadSuperseded = true;
     }
     return me;
   }
+
+  // True iff the MOST RECENT resolveMe() could not apply its telemetry read to
+  // the cache because a stamp/newer read superseded it mid-flight. Read
+  // immediately after awaiting resolveMe(true). Not concurrency-safe across
+  // truly parallel awaits — only the SSE single-in-flight refresh consults it.
+  lastTelemetryReadSuperseded = false;
 
   // Force re-fetch on next resolveMe(). Call from any tool that mutates a
   // /me-cached field (last_requested_lens, billing, etc.). Deliberately does

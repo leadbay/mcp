@@ -665,8 +665,23 @@ app.post("/messages", async (c) => {
     };
     void Promise.race([
       session.client.resolveMe(true).then(
-        () => () => {
-          session.suppressed = session.client.cachedTelemetryEnabled() === false;
+        (me) => () => {
+          if (session.client.lastTelemetryReadSuperseded) {
+            // A concurrent stamp or newer read moved the client's telemetry
+            // sequence, so our read was NOT applied to the shared cache and `me`
+            // may be stale relative to it (Codex P1). We cannot authoritatively
+            // reconcile session.suppressed from either source here: deriving from
+            // the shared cache could keep a stale `true` (leaking an opt-out this
+            // read actually observed), and deriving from `me` could be stale too.
+            // Fail closed for this cycle; the next message re-reads. If the
+            // superseding event was a real stamp, the predicate honors it live
+            // via cachedTelemetryEnabled() regardless.
+            session.suppressed = true;
+            session.forceClosed = true;
+            return;
+          }
+          // Our read won and wrote the cache — honor its observation.
+          session.suppressed = me.telemetry_enabled === false;
           session.forceClosed = false; // read succeeded — clear any hard fail-closed
         },
         () => () => {
