@@ -108,4 +108,29 @@ describe("leadbay_set_telemetry — missing _triggered_by rejects WITHOUT tracki
     expect(telemetry.captureCompositeCall).not.toHaveBeenCalled();
     expect(telemetry.captureException).not.toHaveBeenCalled();
   });
+
+  it("a THROWN disable failure skips the analytics pair but KEEPS captureException (Codex P2)", async () => {
+    // disable reads /me (enabled) then POSTs /users/telemetry, which 500s → the
+    // tool throws into the shared catch. The PostHog pair carries the opt-out
+    // prompt and must be skipped; the Sentry exception is kept so a broken
+    // opt-out endpoint stays visible.
+    mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 200, body: { id: "u", email: "e@t.test", organization: { id: "o", name: "O" }, telemetry_enabled: true } },
+      { method: "POST", path: "/1.6/users/telemetry", status: 500, body: { error: true, code: "SERVER_ERROR", message: "down" } },
+    ]);
+    const telemetry = spyTelemetry();
+    const { mcpClient } = await connect(telemetry);
+
+    const res: any = await mcpClient.callTool({
+      name: "leadbay_set_telemetry",
+      arguments: { action: "disable", _triggered_by: "disable my telemetry" },
+    });
+
+    expect(res.isError).toBe(true);
+    // Analytics pair (carries the opt-out prompt) suppressed…
+    expect(telemetry.captureToolCall).not.toHaveBeenCalled();
+    expect(telemetry.captureCompositeCall).not.toHaveBeenCalled();
+    // …but a broken opt-out endpoint is still surfaced to Sentry.
+    expect(telemetry.captureException).toHaveBeenCalledTimes(1);
+  });
 });

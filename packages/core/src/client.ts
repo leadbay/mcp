@@ -340,6 +340,13 @@ export class LeadbayClient {
     this.mePayloadCachedAt = null;
     this.tasteProfile = null;
     this.tasteProfileCachedAt = null;
+    // The telemetry preference is tenant-scoped too (Codex P2). Clearing it —
+    // and bumping the sequence so any /users/me read still in flight from the
+    // OLD tenant can't write the new tenant's cache — prevents the previous
+    // account's opt-out from wrongly suppressing the new one (e.g. after
+    // leadbay_login switches region before setToken).
+    this.telemetryEnabledCache = undefined;
+    this.telemetryStateSeq++;
   }
 
   setToken(token: string): void {

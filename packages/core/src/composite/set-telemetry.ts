@@ -119,19 +119,16 @@ export const setTelemetry: Tool<SetTelemetryParams> = {
     await client.requestVoid("POST", "/users/telemetry", {
       telemetry_enabled: target,
     });
-    // Stamp the cache to the new value FIRST, synchronously (Codex P2 — fail
-    // closed). The hosted suppression predicate reads client.cachedTelemetryEnabled()
-    // at capture time; stamping before the refresh means a `disable` reflects
-    // `false` even if the follow-up /users/me refresh throws — so the opt-out
-    // request never fails open and emits (error) telemetry for itself.
+    // Stamp the cache to the new value synchronously (Codex P2 — fail closed).
+    // The hosted suppression predicate reads client.cachedTelemetryEnabled() at
+    // capture time; stamping here means a `disable` reflects `false` immediately
+    // and durably (it survives invalidateMe), so the opt-out request never fails
+    // open and emits telemetry for itself. This stamp is the authoritative
+    // post-write state — no follow-up /users/me refresh is needed. We
+    // deliberately do NOT call resolveMe(true) here (Codex P2): that would
+    // repopulate the full /me cache and a slow in-flight copy could later clobber
+    // a lens mutation from the next tool with the pre-mutation last_requested_lens.
     client.setCachedTelemetryEnabled(target);
-    // Fire-and-forget the forced refresh (Codex P2 — do NOT await). It only
-    // reconciles the full /me payload with the backend; the stamp above already
-    // holds the correct telemetry_enabled, and resolveMe has no timeout/abort on
-    // this path, so awaiting it would let a slow/stalled backend make a
-    // successful opt-out appear to hang. Its failure is non-fatal and swallowed
-    // (throwing would trip the server's error-telemetry path for this request).
-    void client.resolveMe(true).catch(() => undefined);
 
     return {
       telemetry_enabled: target,

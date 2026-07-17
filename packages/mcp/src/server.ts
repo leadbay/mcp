@@ -1448,6 +1448,14 @@ export function buildServer(
       const errDur = Date.now() - callStart;
       const errText = formatErrorForLLM(err);
       const code = err?.code ?? err?.name ?? "Error";
+      // Privacy control (Codex P2): for a THROWN leadbay_set_telemetry failure
+      // (backend POST/read threw during e.g. a disable), skip the PostHog
+      // analytics pair — captureToolCall/captureCompositeCall carry the user's
+      // opt-out prompt in triggered_by/last_prompt, and tracking a failed opt-out
+      // records exactly the user trying to opt out. We STILL captureException:
+      // a broken opt-out endpoint is a real fault we must not go blind to, and
+      // the Sentry ctx carries the error, not analytics-shaped intent.
+      const skipAnalytics = name === "leadbay_set_telemetry";
       if (isLeadbayBusinessError(err)) {
         if (err.code === "QUOTA_EXCEEDED") {
           telemetry.captureQuotaHit({
@@ -1461,25 +1469,27 @@ export function buildServer(
         // so catch-all codes like API_ERROR can be disambiguated by status
         // on the dashboard. Absent for codes that never hit the HTTP layer.
         const httpStatus: number | undefined = err._meta?.http_status;
-        telemetry.captureToolCall({
-          tool: name,
-          ok: false,
-          duration_ms: errDur,
-          format: "error-envelope",
-          bytes: errText.length,
-          error_code: code,
-          ...(typeof httpStatus === "number" ? { http_status: httpStatus } : {}),
-          triggered_by,
-        });
-        if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
-          telemetry.captureCompositeCall({
+        if (!skipAnalytics) {
+          telemetry.captureToolCall({
             tool: name,
-            last_prompt: triggered_by ?? "",
             ok: false,
             duration_ms: errDur,
+            format: "error-envelope",
+            bytes: errText.length,
             error_code: code,
             ...(typeof httpStatus === "number" ? { http_status: httpStatus } : {}),
+            triggered_by,
           });
+          if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
+            telemetry.captureCompositeCall({
+              tool: name,
+              last_prompt: triggered_by ?? "",
+              ok: false,
+              duration_ms: errDur,
+              error_code: code,
+              ...(typeof httpStatus === "number" ? { http_status: httpStatus } : {}),
+            });
+          }
         }
         telemetry.captureException(err, buildBusinessCtx(name, err, triggered_by));
       } else {
@@ -1493,23 +1503,25 @@ export function buildServer(
           message: typeof err?.message === "string" ? err.message : undefined,
           triggered_by,
         });
-        telemetry.captureToolCall({
-          tool: name,
-          ok: false,
-          duration_ms: errDur,
-          format: "error-envelope",
-          bytes: errText.length,
-          error_code: code,
-          triggered_by,
-        });
-        if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
-          telemetry.captureCompositeCall({
+        if (!skipAnalytics) {
+          telemetry.captureToolCall({
             tool: name,
-            last_prompt: triggered_by ?? "",
             ok: false,
             duration_ms: errDur,
+            format: "error-envelope",
+            bytes: errText.length,
             error_code: code,
+            triggered_by,
           });
+          if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
+            telemetry.captureCompositeCall({
+              tool: name,
+              last_prompt: triggered_by ?? "",
+              ok: false,
+              duration_ms: errDur,
+              error_code: code,
+            });
+          }
         }
       }
       if (DEBUG_ON) {
