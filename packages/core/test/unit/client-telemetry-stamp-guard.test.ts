@@ -24,17 +24,17 @@ const meBody = (telemetry_enabled: boolean) => ({
 describe("LeadbayClient — telemetry stamp survives an in-flight /users/me read", () => {
   it("a disable stamp during a resolveMe(true) is preserved over the stale enabled read", async () => {
     // Backend still reports enabled (stale). We start the forced read, stamp
-    // disabled while it's in flight, then let the read resolve. The stamp wins.
+    // disabled while it's in flight, then let the read resolve. The durable
+    // preference (what the suppression predicate reads) keeps the stamp.
     mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: meBody(true) }]);
     const client = newClient();
 
     const inFlight = client.resolveMe(true); // reads stale "true"
     client.setCachedTelemetryEnabled(false); // toggle lands mid-flight
-    const resolved = await inFlight;
+    await inFlight;
 
-    // The read did NOT overwrite the stamped preference.
+    // The stale read did NOT overwrite the stamped preference.
     expect(client.cachedTelemetryEnabled()).toBe(false);
-    expect(resolved.telemetry_enabled).toBe(false);
   });
 
   it("an enable stamp during a resolveMe(true) is preserved over a stale disabled read", async () => {
@@ -43,10 +43,23 @@ describe("LeadbayClient — telemetry stamp survives an in-flight /users/me read
 
     const inFlight = client.resolveMe(true);
     client.setCachedTelemetryEnabled(true);
-    const resolved = await inFlight;
+    await inFlight;
 
     expect(client.cachedTelemetryEnabled()).toBe(true);
-    expect(resolved.telemetry_enabled).toBe(true);
+  });
+
+  it("the stamped preference SURVIVES invalidateMe() — an opt-out isn't forgotten on /me churn (Codex P1)", async () => {
+    // disable stamps the preference; a later tool invalidates the /me cache
+    // (refine_prompt / my_lenses / set_active_lens all do). The telemetry
+    // preference must persist so the hosted predicate still sees OFF.
+    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: meBody(true) }]);
+    const client = newClient();
+    await client.resolveMe(); // opened enabled
+    client.setCachedTelemetryEnabled(false); // user disables
+
+    client.invalidateMe(); // next tool churns the /me cache
+
+    expect(client.cachedTelemetryEnabled()).toBe(false); // NOT undefined — opt-out held
   });
 
   it("no stamp during the read → the fresh backend value is used normally", async () => {

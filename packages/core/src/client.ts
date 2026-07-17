@@ -275,6 +275,14 @@ export class LeadbayClient {
   // running in the background — from clobbering a leadbay_set_telemetry toggle
   // that landed during the read (product#3879, Codex P1).
   private telemetryStampGeneration = 0;
+  // The telemetry preference lives in its OWN field, separate from mePayload,
+  // so it survives invalidateMe() (Codex P1). Otherwise a leadbay_set_telemetry
+  // disable would be forgotten the moment the very next same-session tool
+  // invalidates the /me cache (refine_prompt, my_lenses, set_active_lens, …),
+  // dropping cachedTelemetryEnabled() back to undefined and letting the hosted
+  // suppression predicate fall through to a stale "enabled". undefined = never
+  // observed; the last read/stamp always wins and persists across /me churn.
+  private telemetryEnabledCache: boolean | undefined = undefined;
   private tasteProfile: TasteProfileResult | null = null;
   private tasteProfileCachedAt: number | null = null;
 
@@ -778,17 +786,22 @@ export class LeadbayClient {
     // telemetry_enabled overwrite the user's fresh explicit choice (Codex P1).
     const genAtStart = this.telemetryStampGeneration;
     const me = await this.request<UserMePayload>("GET", "/users/me");
-    if (this.telemetryStampGeneration !== genAtStart) {
-      // A stamp landed during the fetch — preserve it over the stale read.
-      me.telemetry_enabled = this.mePayload?.telemetry_enabled ?? me.telemetry_enabled;
-    }
     this.mePayload = me;
     this.mePayloadCachedAt = now;
+    // Record the telemetry preference into its own durable field UNLESS a stamp
+    // landed while this read was in flight — then the stamp (newer intent) wins
+    // and the stale read must not overwrite it (Codex P1). A read that carries
+    // no telemetry_enabled (older backend) leaves the field untouched.
+    if (this.telemetryStampGeneration === genAtStart && me.telemetry_enabled !== undefined) {
+      this.telemetryEnabledCache = me.telemetry_enabled;
+    }
     return me;
   }
 
   // Force re-fetch on next resolveMe(). Call from any tool that mutates a
-  // /me-cached field (last_requested_lens, billing, etc.).
+  // /me-cached field (last_requested_lens, billing, etc.). Deliberately does
+  // NOT clear telemetryEnabledCache — the opt-out preference is orthogonal to
+  // /me staleness and must survive invalidation (Codex P1).
   invalidateMe(): void {
     this.mePayload = null;
     this.mePayloadCachedAt = null;
@@ -802,7 +815,7 @@ export class LeadbayClient {
   // (product#3879). resolveMe() keeps mePayload populated after a write, so this
   // reflects the post-write state.
   cachedTelemetryEnabled(): boolean | undefined {
-    return this.mePayload?.telemetry_enabled;
+    return this.telemetryEnabledCache;
   }
 
   // Deterministically stamp the cached telemetry preference to a known value,
@@ -815,11 +828,14 @@ export class LeadbayClient {
     // Bump the generation so any /users/me read currently in flight will refuse
     // to overwrite this stamp when it resolves (Codex P1).
     this.telemetryStampGeneration++;
+    // The durable field is the source of truth cachedTelemetryEnabled() reads;
+    // it survives invalidateMe() so the opt-out isn't forgotten when the next
+    // tool churns the /me cache (Codex P1).
+    this.telemetryEnabledCache = enabled;
+    // Keep mePayload's copy in sync when present, for any caller reading the
+    // full payload directly (not load-bearing for suppression).
     if (this.mePayload) {
       this.mePayload = { ...this.mePayload, telemetry_enabled: enabled };
-    } else {
-      this.mePayload = { id: "unknown", telemetry_enabled: enabled } as UserMePayload;
-      this.mePayloadCachedAt = Date.now();
     }
   }
 

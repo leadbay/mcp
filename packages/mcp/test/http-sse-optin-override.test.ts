@@ -117,39 +117,30 @@ describe("SSE bound handle — stamped cache overrides stale session flags (Code
   });
 });
 
-describe("SSE /messages refresh skips leadbay_set_telemetry messages (Codex P1 #582)", () => {
-  // The /messages handler skips the cross-session refresh when the message is
-  // itself a set-telemetry call, because resolveMe(true) would overwrite the
-  // stamp execute() just wrote (a stale backend read racing the toggle). This
-  // asserts the detection predicate the handler uses.
-  const isTelemetryToggle = (body: any) =>
-    body != null && body.method === "tools/call" && body.params?.name === "leadbay_set_telemetry";
+describe("SSE opt-out survives /me invalidation between messages (Codex P1 #928)", () => {
+  beforeEach(() => resetHttpMock());
 
-  it("detects a set-telemetry tools/call (refresh would be skipped)", () => {
-    expect(isTelemetryToggle({ method: "tools/call", params: { name: "leadbay_set_telemetry", arguments: { action: "disable" } } })).toBe(true);
-  });
+  // The durable telemetry-preference field on LeadbayClient means a stamped
+  // opt-out is NOT lost when a later same-session tool calls invalidateMe()
+  // (refine_prompt, my_lenses, set_active_lens, …). The SSE predicate reads
+  // cachedTelemetryEnabled(), which stays false across the invalidation, so a
+  // post-invalidation capture is still suppressed even while session.suppressed
+  // is stale-false (the /messages refresh hadn't run yet).
+  const ssePred = (client: LeadbayClient, s: { suppressed: boolean; forceClosed: boolean }) => () =>
+    suppressTelemetry(client.cachedTelemetryEnabled(), s.forceClosed, !s.suppressed);
 
-  it("does NOT skip refresh for other tool calls / non-calls", () => {
-    expect(isTelemetryToggle({ method: "tools/call", params: { name: "leadbay_pull_leads" } })).toBe(false);
-    expect(isTelemetryToggle({ method: "tools/list" })).toBe(false);
-    expect(isTelemetryToggle(undefined)).toBe(false);
-    expect(isTelemetryToggle({ params: { name: "leadbay_set_telemetry" } })).toBe(false); // no method
-  });
-
-  it("with the refresh skipped, the tool's stamp is the authoritative signal", () => {
-    // A disable message stamps cache=false; because no refresh runs, nothing
-    // overwrites it, and the live predicate suppresses the opt-out's own capture.
+  it("disable stamp persists through invalidateMe() → later capture stays suppressed", () => {
     mockHttp([]);
     const client = new LeadbayClient(BASE, "u.tok", "us");
-    client.setCachedTelemetryEnabled(true); // opened enabled
-    const session = { suppressed: false, forceClosed: false };
+    client.setCachedTelemetryEnabled(true); // session opened enabled
+    const session = { suppressed: false, forceClosed: false }; // stale-enabled flag
 
-    client.setCachedTelemetryEnabled(false); // execute()'s stamp; no refresh clobbers it
+    client.setCachedTelemetryEnabled(false); // user disabled this session
+    client.invalidateMe();                    // next tool churns /me
 
+    expect(client.cachedTelemetryEnabled()).toBe(false); // opt-out held, not undefined
     const { telemetry, events } = captureSpy();
-    bindTelemetryIdentity(telemetry, IDENTITY, () =>
-      suppressTelemetry(client.cachedTelemetryEnabled(), session.forceClosed, !session.suppressed)
-    ).captureToolCall(TOOLCALL);
-    expect(events).toHaveLength(0);
+    bindTelemetryIdentity(telemetry, IDENTITY, ssePred(client, session)).captureToolCall(TOOLCALL);
+    expect(events).toHaveLength(0); // still suppressed despite stale session flag
   });
 });
