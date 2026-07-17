@@ -220,6 +220,36 @@ describe("hosted HTTP per-user telemetry opt-out (product#3879)", () => {
     handle.captureException(new Error("boom2"), { tool: "leadbay_pull_leads" });
     expect(exceptionCalls).toBe(1); // opted out → suppressed, not sent
   });
+
+  it("streamable /mcp opt-IN takes effect same request: resolve says OFF, execute stamps ON → capture emits (Codex P2 #141)", async () => {
+    // The /mcp handle's predicate reads the LIVE cache. A user who was opted out
+    // at resolve time calls leadbay_set_telemetry enable, whose execute() stamps
+    // client.cachedTelemetryEnabled()=true. The post-execute capture for THIS
+    // request must then go through — the stamped cache wins over the stale
+    // resolve verdict (previously `!enabled` kept it suppressed forever).
+    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: meWith(false) }]); // resolve: OFF
+    const client = new LeadbayClient("https://api-us.leadbay.app", "u.tok", "us");
+    const handle = await telemetryHandleForRequest(client); // built while OFF
+    // Suppressed before the toggle.
+    handle.captureToolCall({ tool: "leadbay_pull_leads", ok: true, duration_ms: 5, format: "json", bytes: 10 });
+    expect(posthogState.captures).toHaveLength(0);
+    // enable's synchronous stamp inside execute():
+    client.setCachedTelemetryEnabled(true);
+    handle.captureToolCall({ tool: "leadbay_set_telemetry", ok: true, duration_ms: 5, format: "json", bytes: 10 });
+    expect(posthogState.captures).toHaveLength(1); // opt-in took effect same request
+  });
+
+  it("streamable /mcp: absent telemetry_enabled (older backend) still emits despite undefined cache (regression)", async () => {
+    // /users/me with NO telemetry_enabled field → resolve verdict enabled=true,
+    // but cachedTelemetryEnabled() is undefined (no field to populate). The
+    // predicate must defer to the resolve verdict (fallbackEnabled), NOT blanket
+    // fail-closed on undefined — otherwise every older-backend user goes dark.
+    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: meWith(undefined) }]);
+    const client = new LeadbayClient("https://api-us.leadbay.app", "u.tok", "us");
+    const handle = await telemetryHandleForRequest(client);
+    handle.captureToolCall({ tool: "leadbay_pull_leads", ok: true, duration_ms: 5, format: "json", bytes: 10 });
+    expect(posthogState.captures).toHaveLength(1);
+  });
 });
 
 // The process-level real handle (mocked PostHog) that bindTelemetryIdentity wraps.
