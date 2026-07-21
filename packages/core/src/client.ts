@@ -818,17 +818,31 @@ export class LeadbayClient {
   // it never serves the 60s /me cache (always a fresh read). It reads the SAME
   // /users/me endpoint (telemetry_enabled lives there) but only reconciles the
   // dedicated telemetry field, under the same sequence guard as resolveMe.
+  //
+  // It also SNAPSHOTS and RESTORES _lastMeta around the read (Codex P2): the
+  // refresh shares the tool's client, and request() rewrites _lastMeta on every
+  // call. Without this, a refresh completing between a tool's real backend call
+  // and that tool copying client.lastMeta into its result (e.g. pull-leads'
+  // _meta.latency_ms) would make the metadata describe GET /users/me instead of
+  // the tool call. Restoring keeps this background read invisible to lastMeta.
+  //
   // Returns the observed preference: true/false, or undefined when the backend
   // omitted the field (older backend → caller treats as enabled default).
   async fetchTelemetryEnabled(): Promise<boolean | undefined> {
     const seqAtStart = ++this.telemetryStateSeq;
-    const me = await this.request<UserMePayload>("GET", "/users/me");
-    const observed = me.telemetry_enabled;
-    if (this.telemetryStateSeq === seqAtStart && observed !== undefined) {
-      this.telemetryEnabledCache = observed;
-      this.telemetryEnabledFromStamp = false; // value came from a read, not a stamp
+    const metaBefore = this._lastMeta;
+    try {
+      const me = await this.request<UserMePayload>("GET", "/users/me");
+      const observed = me.telemetry_enabled;
+      if (this.telemetryStateSeq === seqAtStart && observed !== undefined) {
+        this.telemetryEnabledCache = observed;
+        this.telemetryEnabledFromStamp = false; // value came from a read, not a stamp
+      }
+      return observed;
+    } finally {
+      // Do not let this background read leak into tool-visible request metadata.
+      this._lastMeta = metaBefore;
     }
-    return observed;
   }
 
   // Force re-fetch on next resolveMe(). Call from any tool that mutates a
@@ -858,6 +872,17 @@ export class LeadbayClient {
   // takes effect even when a refresh just timed out (product#3879, Codex P2).
   cachedTelemetryStamped(): boolean {
     return this.telemetryEnabledFromStamp && this.telemetryEnabledCache !== undefined;
+  }
+
+  // Demote the cached preference from "explicit stamp" to ordinary read-level
+  // authority WITHOUT changing its value. A stamp is scoped to the request that
+  // made it (Codex P2): once a LATER SSE message's refresh produces a
+  // fail-closed verdict (timeout/error), that earlier stamp must no longer
+  // outrank it, or a session that once enabled would keep emitting through every
+  // subsequent unreadable refresh. The value stays as a best-effort fallback;
+  // it simply no longer wins over forceClosed.
+  clearTelemetryStampOrigin(): void {
+    this.telemetryEnabledFromStamp = false;
   }
 
   // Deterministically stamp the cached telemetry preference to a known value,

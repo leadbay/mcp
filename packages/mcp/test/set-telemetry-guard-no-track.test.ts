@@ -37,11 +37,11 @@ function spyTelemetry(): TelemetryHandle & {
   } as any;
 }
 
-async function connect(telemetry: TelemetryHandle) {
+async function connect(telemetry: TelemetryHandle, bootstrapStatus?: () => { done: boolean; signInUrl?: string; failureMessage?: string; openFailed?: boolean }) {
   const lbClient = new LeadbayClient(BASE, "u.test-token");
   // set_telemetry is exposed even without write (privacy exception), so the
   // default server surfaces it.
-  const server = buildServer(lbClient, { telemetry });
+  const server = buildServer(lbClient, { telemetry, bootstrapStatus });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const mcpClient = new Client({ name: "test", version: "0.0.1" }, {});
   await Promise.all([server.connect(serverTransport), mcpClient.connect(clientTransport)]);
@@ -132,5 +132,24 @@ describe("leadbay_set_telemetry — missing _triggered_by rejects WITHOUT tracki
     expect(telemetry.captureCompositeCall).not.toHaveBeenCalled();
     // …but a broken opt-out endpoint is still surfaced to Sentry.
     expect(telemetry.captureException).toHaveBeenCalledTimes(1);
+  });
+
+  it("OAuth-bootstrap gate (fresh local/DXT install) does NOT track an opt-out attempt (Codex P2)", async () => {
+    // bootstrapStatus not done → the gate returns AUTH_PENDING before the tool
+    // can post/stamp. For a user asking to turn telemetry OFF on a fresh install,
+    // that pre-run capture would record the opt-out prompt — skip it.
+    mockHttp([]);
+    const telemetry = spyTelemetry();
+    const { mcpClient } = await connect(telemetry, () => ({ done: false }));
+
+    const res: any = await mcpClient.callTool({
+      name: "leadbay_set_telemetry",
+      arguments: { action: "disable", _triggered_by: "turn off telemetry" },
+    });
+
+    expect(res.isError).toBe(true); // AUTH_PENDING surfaced to the agent
+    expect(telemetry.captureToolCall).not.toHaveBeenCalled();
+    expect(telemetry.captureCompositeCall).not.toHaveBeenCalled();
+    expect(telemetry.captureException).not.toHaveBeenCalled();
   });
 });

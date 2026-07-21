@@ -126,6 +126,24 @@ describe("SSE bound handle — precedence end-to-end (Codex P1/P2)", () => {
     expect(events).toHaveLength(0); // sessionOptedOut beats stale cached true
   });
 
+  it("a PRIOR message's opt-in stamp does NOT survive a later fail-closed refresh (Codex P2 request-scoped)", () => {
+    // Message 1: enable stamps cache=true (stamp wins). Message 2's refresh times
+    // out → the handler demotes the stamp (clearTelemetryStampOrigin) and sets
+    // forceClosed. The stale enable must no longer force emit.
+    mockHttp([]);
+    const client = new LeadbayClient(BASE, "u.tok", "us");
+    client.setCachedTelemetryEnabled(true); // message 1 opt-in
+    expect(client.cachedTelemetryStamped()).toBe(true);
+
+    // message 2 fail-closed refresh outcome, as the handler applies it:
+    const session = { suppressed: true, forceClosed: true };
+    client.clearTelemetryStampOrigin();
+
+    const { telemetry, events } = captureSpy();
+    bindTelemetryIdentity(telemetry, IDENTITY, ssePred(client, session)).captureToolCall(TOOLCALL);
+    expect(events).toHaveLength(0); // forceClosed now governs — stamp demoted
+  });
+
   it("refresh ERROR fails closed even when cache is stale-true from session open", () => {
     mockHttp([]);
     const client = new LeadbayClient(BASE, "u.tok", "us");

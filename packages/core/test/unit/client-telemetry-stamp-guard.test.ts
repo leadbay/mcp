@@ -79,6 +79,34 @@ describe("LeadbayClient — telemetry stamp survives an in-flight /users/me read
     expect(client.cachedTelemetryEnabled()).toBeUndefined();
   });
 
+  it("fetchTelemetryEnabled restores _lastMeta — the background read is invisible to lastMeta (Codex P2)", async () => {
+    // A tool's real call sets lastMeta; a telemetry refresh must not overwrite it
+    // (else e.g. pull-leads' _meta.latency_ms would describe GET /users/me).
+    mockHttp([
+      { method: "GET", path: "/1.6/leads", status: 200, body: { items: [] } },     // tool call
+      { method: "GET", path: "/1.6/users/me", status: 200, body: meBody(true) },    // telemetry refresh
+    ]);
+    const client = newClient();
+    await (client as any).request("GET", "/leads"); // tool's backend call sets lastMeta
+    const metaAfterTool = client.lastMeta;
+    expect(metaAfterTool?.endpoint).toContain("/leads");
+
+    await client.fetchTelemetryEnabled(); // background refresh
+
+    // lastMeta still describes the tool call, not /users/me.
+    expect(client.lastMeta).toBe(metaAfterTool);
+    expect(client.lastMeta?.endpoint).toContain("/leads");
+  });
+
+  it("clearTelemetryStampOrigin demotes a stamp without changing its value (Codex P2 request-scoped)", () => {
+    const client = newClient();
+    client.setCachedTelemetryEnabled(true);
+    expect(client.cachedTelemetryStamped()).toBe(true);
+    client.clearTelemetryStampOrigin();
+    expect(client.cachedTelemetryStamped()).toBe(false);
+    expect(client.cachedTelemetryEnabled()).toBe(true); // value preserved as fallback
+  });
+
   it("the stamped preference SURVIVES invalidateMe() — an opt-out isn't forgotten on /me churn (Codex P1)", async () => {
     // disable stamps the preference; a later tool invalidates the /me cache
     // (refine_prompt / my_lenses / set_active_lens all do). The telemetry

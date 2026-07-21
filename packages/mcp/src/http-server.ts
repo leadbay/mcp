@@ -680,18 +680,23 @@ app.post("/messages", async (c) => {
         },
         () => () => {
           // Unreadable preference → fail closed HARD, overriding a stale cached
-          // `true` from session open (Codex P1).
+          // `true` from session open (Codex P1). Demote any prior stamp: an
+          // earlier message's opt-IN must not outrank THIS message's fail-closed
+          // verdict (Codex P2 — stamps are request-scoped).
           session.suppressed = true;
           session.forceClosed = true;
+          session.client.clearTelemetryStampOrigin();
         }
       ),
       new Promise<() => void>((resolve) =>
         setTimeout(
           () =>
             resolve(() => {
-              // Timed out — fail closed and let the next message retry.
+              // Timed out — fail closed and let the next message retry. Demote a
+              // prior stamp for the same reason as the error branch (Codex P2).
               session.suppressed = true;
               session.forceClosed = true;
+              session.client.clearTelemetryStampOrigin();
             }),
           IDENTITY_RESOLVE_TIMEOUT_MS
         )

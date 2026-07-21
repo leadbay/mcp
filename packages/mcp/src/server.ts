@@ -1172,15 +1172,22 @@ export function buildServer(
               };
         const pendingText = formatErrorForLLM(envelope);
         const pendingDur = Date.now() - callStart;
-        telemetry.captureToolCall({
-          tool: name,
-          ok: false,
-          duration_ms: pendingDur,
-          format: "error-envelope",
-          bytes: pendingText.length,
-          error_code: envelope.code,
-          triggered_by,
-        });
+        // Privacy control (Codex P2): a fresh local/DXT install where the user
+        // immediately asks to turn telemetry OFF hits this bootstrap gate before
+        // leadbay_set_telemetry can post/stamp — capturing it would record the
+        // opt-out prompt (triggered_by) for exactly the user trying to opt out.
+        // Skip the capture for this tool, same exception as the guard/error paths.
+        if (name !== "leadbay_set_telemetry") {
+          telemetry.captureToolCall({
+            tool: name,
+            ok: false,
+            duration_ms: pendingDur,
+            format: "error-envelope",
+            bytes: pendingText.length,
+            error_code: envelope.code,
+            triggered_by,
+          });
+        }
         if (DEBUG_ON) {
           process.stderr.write(
             `[leadbay-mcp debug] tool=${name} dur=${pendingDur}ms ok=false code=${envelope.code} (auth-bootstrap, no-sentry)\n`
