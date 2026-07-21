@@ -38,29 +38,39 @@ function captureSpy() {
   return { telemetry, events };
 }
 
+// The exact SSE predicate wiring the handler uses.
+const ssePred = (client: LeadbayClient, s: { suppressed: boolean; forceClosed: boolean }) => () =>
+  suppressTelemetry({
+    stamped: client.cachedTelemetryStamped(),
+    cached: client.cachedTelemetryEnabled(),
+    forceClosed: s.forceClosed,
+    sessionOptedOut: s.suppressed,
+    fallbackEnabled: !s.suppressed,
+  });
+
 describe("suppressTelemetry() precedence (Codex P1/P2)", () => {
-  it("forceClosed wins over everything (unreadable cross-session opt-out never emits)", () => {
-    expect(suppressTelemetry(true, true, true)).toBe(true);
-    expect(suppressTelemetry(false, true, true)).toBe(true);
-    expect(suppressTelemetry(undefined, true, true)).toBe(true);
+  const P = (o: Partial<Parameters<typeof suppressTelemetry>[0]>) =>
+    suppressTelemetry({ stamped: false, cached: undefined, forceClosed: false, sessionOptedOut: false, fallbackEnabled: true, ...o });
+
+  it("an explicit stamp wins over everything — including forceClosed (Codex P2 opt-in)", () => {
+    expect(P({ stamped: true, cached: true, forceClosed: true, sessionOptedOut: true })).toBe(false); // enable beats all
+    expect(P({ stamped: true, cached: false, forceClosed: false })).toBe(true); // disable stamp suppresses
   });
 
-  it("cache governs when defined and not force-closed", () => {
-    expect(suppressTelemetry(true, false, false)).toBe(false); // opted in → emit even if fallback says off
-    expect(suppressTelemetry(false, false, true)).toBe(true); // opted out → suppress even if fallback says on
+  it("any opt-out signal suppresses among non-stamp signals", () => {
+    expect(P({ forceClosed: true })).toBe(true);
+    expect(P({ cached: false })).toBe(true);
+    expect(P({ sessionOptedOut: true, cached: true })).toBe(true); // refresh observed off beats stale cached true
   });
 
-  it("cache undefined → defers to fallbackEnabled (absent-field read still emits)", () => {
-    expect(suppressTelemetry(undefined, false, true)).toBe(false); // older-backend absent field → enabled
-    expect(suppressTelemetry(undefined, false, false)).toBe(true); // timeout/error verdict → suppress
+  it("no opt-out signal + cache true → emit; cache undefined → fallback", () => {
+    expect(P({ cached: true })).toBe(false);
+    expect(P({ cached: undefined, fallbackEnabled: true })).toBe(false); // older-backend absent field
+    expect(P({ cached: undefined, fallbackEnabled: false })).toBe(true); // unreadable verdict
   });
 });
 
-describe("SSE bound handle — stamped cache overrides stale session flags (Codex P2)", () => {
-  // Mirror the SSE predicate: suppressTelemetry(cache, session.forceClosed, !session.suppressed)
-  const ssePred = (client: LeadbayClient, s: { suppressed: boolean; forceClosed: boolean }) => () =>
-    suppressTelemetry(client.cachedTelemetryEnabled(), s.forceClosed, !s.suppressed);
-
+describe("SSE bound handle — precedence end-to-end (Codex P1/P2)", () => {
   beforeEach(() => resetHttpMock());
 
   it("opt-IN mid-session: opened suppressed, enable stamps cache=true → NOT suppressed", () => {
@@ -77,7 +87,21 @@ describe("SSE bound handle — stamped cache overrides stale session flags (Code
     expect(events[0].identity).toEqual(IDENTITY);
   });
 
-  it("opt-OUT mid-session still fails closed: enabled open, disable stamps cache=false → suppressed", () => {
+  it("opt-IN stamp overrides a stale forceClosed (Codex P2 #6642921)", () => {
+    // A prior refresh timed out → forceClosed. Then a same-message enable stamps
+    // cache=true. The explicit opt-in must take effect despite forceClosed.
+    mockHttp([]);
+    const client = new LeadbayClient(BASE, "u.tok", "us");
+    const session = { suppressed: true, forceClosed: true };
+    const { telemetry, events } = captureSpy();
+    const handle = bindTelemetryIdentity(telemetry, IDENTITY, ssePred(client, session));
+
+    client.setCachedTelemetryEnabled(true);
+    handle.captureToolCall(TOOLCALL);
+    expect(events).toHaveLength(1); // stamp beats forceClosed
+  });
+
+  it("opt-OUT mid-session still fails closed: disable stamps cache=false → suppressed", () => {
     mockHttp([]);
     const client = new LeadbayClient(BASE, "u.tok", "us");
     const session = { suppressed: false, forceClosed: false };
@@ -86,48 +110,37 @@ describe("SSE bound handle — stamped cache overrides stale session flags (Code
 
     client.setCachedTelemetryEnabled(false);
     handle.captureToolCall(TOOLCALL);
-
     expect(events).toHaveLength(0);
   });
 
-  it("refresh ERROR fails closed even when cache is stale-true from session open (Codex P1 #530)", () => {
+  it("refresh OBSERVED off wins over a stale cached true (Codex P1 #6642926)", () => {
+    // A concurrent tool read left the shared cache at a stale `true` (a read, not
+    // a stamp), but this cycle's refresh observed the opt-out → session.suppressed.
+    // The opt-out must win.
     mockHttp([]);
     const client = new LeadbayClient(BASE, "u.tok", "us");
-    client.setCachedTelemetryEnabled(true); // session opened enabled → cache true
-    // A later /messages refresh could not read the preference → forceClosed.
-    const session = { suppressed: true, forceClosed: true };
+    (client as any).telemetryEnabledCache = true; // stale read value (not a stamp)
+    const session = { suppressed: true, forceClosed: false }; // refresh saw false
     const { telemetry, events } = captureSpy();
-    const handle = bindTelemetryIdentity(telemetry, IDENTITY, ssePred(client, session));
-
-    handle.captureToolCall(TOOLCALL);
-    expect(events).toHaveLength(0); // forceClosed beats stale cached true
+    bindTelemetryIdentity(telemetry, IDENTITY, ssePred(client, session)).captureToolCall(TOOLCALL);
+    expect(events).toHaveLength(0); // sessionOptedOut beats stale cached true
   });
 
-  it("no set-telemetry this session (cache undefined) → falls back to session.suppressed", () => {
+  it("refresh ERROR fails closed even when cache is stale-true from session open", () => {
     mockHttp([]);
-    const client = new LeadbayClient(BASE, "u.tok", "us"); // never stamped
-
-    const s1 = captureSpy();
-    bindTelemetryIdentity(s1.telemetry, IDENTITY, ssePred(client, { suppressed: true, forceClosed: false })).captureToolCall(TOOLCALL);
-    expect(s1.events).toHaveLength(0);
-
-    const s2 = captureSpy();
-    bindTelemetryIdentity(s2.telemetry, IDENTITY, ssePred(client, { suppressed: false, forceClosed: false })).captureToolCall(TOOLCALL);
-    expect(s2.events).toHaveLength(1);
+    const client = new LeadbayClient(BASE, "u.tok", "us");
+    client.setCachedTelemetryEnabled(true);
+    // But a read overwrites the stamp origin — model a stale read value:
+    (client as any).telemetryEnabledFromStamp = false;
+    const session = { suppressed: true, forceClosed: true };
+    const { telemetry, events } = captureSpy();
+    bindTelemetryIdentity(telemetry, IDENTITY, ssePred(client, session)).captureToolCall(TOOLCALL);
+    expect(events).toHaveLength(0); // forceClosed beats stale cached true
   });
 });
 
 describe("SSE opt-out survives /me invalidation between messages (Codex P1 #928)", () => {
   beforeEach(() => resetHttpMock());
-
-  // The durable telemetry-preference field on LeadbayClient means a stamped
-  // opt-out is NOT lost when a later same-session tool calls invalidateMe()
-  // (refine_prompt, my_lenses, set_active_lens, …). The SSE predicate reads
-  // cachedTelemetryEnabled(), which stays false across the invalidation, so a
-  // post-invalidation capture is still suppressed even while session.suppressed
-  // is stale-false (the /messages refresh hadn't run yet).
-  const ssePred = (client: LeadbayClient, s: { suppressed: boolean; forceClosed: boolean }) => () =>
-    suppressTelemetry(client.cachedTelemetryEnabled(), s.forceClosed, !s.suppressed);
 
   it("disable stamp persists through invalidateMe() → later capture stays suppressed", () => {
     mockHttp([]);

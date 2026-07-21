@@ -261,10 +261,13 @@ describe("hosted HTTP per-user telemetry opt-out (product#3879)", () => {
     mockHttp([{ method: "GET", path: "/1.6/users/me", status: 500, body: { error: true, code: "SERVER_ERROR", message: "oops" } }]);
     const client = new LeadbayClient("https://api-us.leadbay.app", "u.tok", "us");
     const handle = await telemetryHandleForRequest(client); // forceClosed=true
-    // Simulate the orphaned read landing AFTER the fail-closed decision:
-    client.setCachedTelemetryEnabled(true);
+    // Simulate the orphaned READ (not a stamp) landing AFTER the fail-closed
+    // decision — a stamp would be the user's explicit choice and SHOULD win, but
+    // a stale background read must not reopen a request the timeout failed closed.
+    (client as any).telemetryEnabledCache = true;
+    (client as any).telemetryEnabledFromStamp = false;
     handle.captureToolCall({ tool: "leadbay_pull_leads", ok: true, duration_ms: 5, format: "json", bytes: 10 });
-    expect(posthogState.captures).toHaveLength(0); // forceClosed beats the late cached true
+    expect(posthogState.captures).toHaveLength(0); // forceClosed beats the late cached true (read)
   });
 });
 

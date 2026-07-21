@@ -141,29 +141,31 @@ async function resolveTelemetryContext(
 // inside execute(), so server.ts's post-execute captureToolCall for THIS request
 // sees the fresh disabled state and is suppressed.
 // Shared suppression precedence for the LIVE opt-out predicate (Codex P1/P2).
-// Ordering matters and is the same on both transports:
-//   1. `forceClosed` (an error/unknown-preference fail-closed signal) ALWAYS
-//      wins — even over a cached `true` left over from session open. Otherwise
-//      a cross-session opt-out whose refresh FAILS would keep emitting because
-//      the stale cached `true` masked the fail-closed flag.
-//   2. Otherwise the client cache decides when DEFINED — it holds the freshest
-//      per-request/session value, including a synchronous stamp from
-//      leadbay_set_telemetry inside execute(). `false` → suppress, `true` →
-//      emit (this is what makes a same-request/session opt-IN take effect).
-//   3. Cache undefined (no toggle stamped AND /users/me carried no
-//      telemetry_enabled field to populate it) → defer to `fallbackEnabled`,
-//      the caller's resolve verdict. That verdict already encodes the
-//      older-backend default (absent field → enabled) and the fail-closed cases
-//      (timeout/error → disabled), so an absent-field read still EMITS while an
-//      unreadable one suppresses.
-export function suppressTelemetry(
-  cached: boolean | undefined,
-  forceClosed: boolean,
-  fallbackEnabled: boolean
-): boolean {
-  if (forceClosed) return true;
-  if (cached !== undefined) return cached === false;
-  return !fallbackEnabled;
+// Precedence, highest first:
+//   1. An EXPLICIT STAMP (stamped=true) is the user's direct choice for THIS
+//      request and outranks everything — including forceClosed. stamp `true`
+//      EMITS (a same-request opt-IN takes effect even after a background refresh
+//      failed closed), stamp `false` SUPPRESSES.
+//   2. Otherwise ANY opt-out signal suppresses: forceClosed (a read couldn't
+//      establish the preference), a cache read of `false`, OR sessionOptedOut
+//      (an SSE refresh that OBSERVED `false` this cycle, even if a concurrent
+//      tool read left the shared cache at a stale `true`). Opt-out always wins
+//      among non-stamp signals — privacy fails safe.
+//   3. No opt-out signal and cache is `true` → emit. Cache undefined → defer to
+//      `fallbackEnabled` (older-backend absent field → enabled; unreadable →
+//      disabled).
+export function suppressTelemetry(opts: {
+  stamped: boolean;
+  cached: boolean | undefined;
+  forceClosed: boolean;
+  sessionOptedOut: boolean;
+  fallbackEnabled: boolean;
+}): boolean {
+  const { stamped, cached, forceClosed, sessionOptedOut, fallbackEnabled } = opts;
+  if (stamped) return cached === false; // explicit user choice wins over all
+  if (forceClosed || cached === false || sessionOptedOut) return true; // any opt-out signal
+  if (cached === true) return false;
+  return !fallbackEnabled; // cache undefined → resolve/backend default
 }
 
 export async function telemetryHandleForRequest(client: LeadbayClient): Promise<TelemetryHandle> {
@@ -175,7 +177,14 @@ export async function telemetryHandleForRequest(client: LeadbayClient): Promise<
   // request the timeout failed closed cannot reopen itself (Codex P1). A clean
   // read is not force-closed, so a mid-request opt-IN stamp (cache=true) still
   // takes effect and a mid-request opt-OUT stamp (cache=false) suppresses.
-  const isSuppressed = () => suppressTelemetry(client.cachedTelemetryEnabled(), forceClosed, enabled);
+  const isSuppressed = () =>
+    suppressTelemetry({
+      stamped: client.cachedTelemetryStamped(),
+      cached: client.cachedTelemetryEnabled(),
+      forceClosed,
+      sessionOptedOut: false, // no session on the streamable path
+      fallbackEnabled: enabled,
+    });
   return bindTelemetryIdentity(telemetry, identity, isSuppressed);
 }
 
@@ -567,22 +576,24 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
   const server = buildServerFromClient(
     resolved.client,
     // Suppression precedence via the shared suppressTelemetry() helper (Codex
-    // P1/P2): session.forceClosed (a refresh that ERRORED — unreadable
-    // preference) wins even over a stale cached `true`, so an unreadable
-    // cross-session opt-out never keeps emitting; otherwise the client cache
-    // governs when DEFINED (a same-session `disable`→false suppresses its own
-    // capture, an `enable`→true un-suppresses immediately); cache-undefined
-    // falls back to session.suppressed (refreshed by POST /messages for
-    // cross-session changes).
+    // P1/P2). An explicit same-session stamp (leadbay_set_telemetry) wins over
+    // everything — so a mid-session opt-IN takes effect even if a background
+    // refresh just failed closed. Otherwise any opt-out signal suppresses:
+    // session.forceClosed (unreadable refresh), a cache read of `false`, OR
+    // session.suppressed (a refresh that OBSERVED `false` this cycle, even if a
+    // concurrent tool read left the shared cache at a stale `true`). Privacy
+    // fails safe; only an explicit stamp can force emit.
     bindTelemetryIdentity(
       telemetry,
       identity,
       () =>
-        suppressTelemetry(
-          resolved.client.cachedTelemetryEnabled(),
-          session.forceClosed,
-          !session.suppressed
-        )
+        suppressTelemetry({
+          stamped: resolved.client.cachedTelemetryStamped(),
+          cached: resolved.client.cachedTelemetryEnabled(),
+          forceClosed: session.forceClosed,
+          sessionOptedOut: session.suppressed,
+          fallbackEnabled: !session.suppressed,
+        })
     )
   );
   await server.connect(transport);

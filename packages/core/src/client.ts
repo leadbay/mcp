@@ -282,6 +282,14 @@ export class LeadbayClient {
   // suppression predicate fall through to a stale "enabled". undefined = never
   // observed; the last read/stamp always wins and persists across /me churn.
   private telemetryEnabledCache: boolean | undefined = undefined;
+  // True when telemetryEnabledCache came from an EXPLICIT user stamp
+  // (leadbay_set_telemetry via setCachedTelemetryEnabled), as opposed to a
+  // /users/me read. A stamp is the user's direct choice for THIS request and is
+  // the single most authoritative signal — it outranks even a fail-closed
+  // verdict from a timed-out/errored read, so a same-request opt-IN takes effect
+  // even when a background refresh just failed closed (Codex P2). Reset to false
+  // whenever a read writes the cache or the tenant switches.
+  private telemetryEnabledFromStamp = false;
   private tasteProfile: TasteProfileResult | null = null;
   private tasteProfileCachedAt: number | null = null;
 
@@ -346,6 +354,7 @@ export class LeadbayClient {
     // account's opt-out from wrongly suppressing the new one (e.g. after
     // leadbay_login switches region before setToken).
     this.telemetryEnabledCache = undefined;
+    this.telemetryEnabledFromStamp = false;
     this.telemetryStateSeq++;
   }
 
@@ -797,6 +806,7 @@ export class LeadbayClient {
     this.mePayloadCachedAt = now;
     if (this.telemetryStateSeq === seqAtStart && me.telemetry_enabled !== undefined) {
       this.telemetryEnabledCache = me.telemetry_enabled;
+      this.telemetryEnabledFromStamp = false; // value came from a read, not a stamp
     }
     return me;
   }
@@ -816,6 +826,7 @@ export class LeadbayClient {
     const observed = me.telemetry_enabled;
     if (this.telemetryStateSeq === seqAtStart && observed !== undefined) {
       this.telemetryEnabledCache = observed;
+      this.telemetryEnabledFromStamp = false; // value came from a read, not a stamp
     }
     return observed;
   }
@@ -840,6 +851,15 @@ export class LeadbayClient {
     return this.telemetryEnabledCache;
   }
 
+  // True when the cached preference came from an explicit user stamp (a
+  // leadbay_set_telemetry toggle), not a read. The hosted suppression predicate
+  // treats a stamp as the single most-authoritative signal — it outranks a
+  // fail-closed verdict from a failed background read, so a same-request opt-IN
+  // takes effect even when a refresh just timed out (product#3879, Codex P2).
+  cachedTelemetryStamped(): boolean {
+    return this.telemetryEnabledFromStamp && this.telemetryEnabledCache !== undefined;
+  }
+
   // Deterministically stamp the cached telemetry preference to a known value,
   // WITHOUT a fetch. leadbay_set_telemetry calls this right after a successful
   // POST /users/telemetry so the suppression predicate reflects the new state
@@ -852,8 +872,10 @@ export class LeadbayClient {
     this.telemetryStateSeq++;
     // The durable field is the source of truth cachedTelemetryEnabled() reads;
     // it survives invalidateMe() so the opt-out isn't forgotten when the next
-    // tool churns the /me cache (Codex P1).
+    // tool churns the /me cache (Codex P1). Mark it as stamp-sourced so the
+    // predicate lets this explicit user choice outrank a fail-closed verdict.
     this.telemetryEnabledCache = enabled;
+    this.telemetryEnabledFromStamp = true;
     // Keep mePayload's copy in sync when present, for any caller reading the
     // full payload directly (not load-bearing for suppression).
     if (this.mePayload) {
