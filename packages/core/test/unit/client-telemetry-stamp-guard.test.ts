@@ -107,6 +107,24 @@ describe("LeadbayClient — telemetry stamp survives an in-flight /users/me read
     expect(client.cachedTelemetryEnabled()).toBe(true); // value preserved as fallback
   });
 
+  it("clearTelemetryStampOrigin(seq) PRESERVES a stamp made after the reference seq (Codex P2 same-message opt-in)", () => {
+    const client = newClient();
+    const seqAtRefreshStart = client.telemetrySeq();
+    client.setCachedTelemetryEnabled(true); // same-message enable — bumps seq past the snapshot
+    // A fail-closed refresh tries to demote, but this stamp is newer → kept.
+    client.clearTelemetryStampOrigin(seqAtRefreshStart);
+    expect(client.cachedTelemetryStamped()).toBe(true); // preserved
+  });
+
+  it("clearTelemetryStampOrigin(seq) DEMOTES a stamp that predates the reference seq (earlier message)", () => {
+    const client = newClient();
+    client.setCachedTelemetryEnabled(true); // earlier-message enable
+    const seqAtRefreshStart = client.telemetrySeq(); // reference captured AFTER the old stamp
+    client.clearTelemetryStampOrigin(seqAtRefreshStart);
+    expect(client.cachedTelemetryStamped()).toBe(false); // demoted — stale
+    expect(client.cachedTelemetryEnabled()).toBe(true); // value kept as fallback
+  });
+
   it("the stamped preference SURVIVES invalidateMe() — an opt-out isn't forgotten on /me churn (Codex P1)", async () => {
     // disable stamps the preference; a later tool invalidates the /me cache
     // (refine_prompt / my_lenses / set_active_lens all do). The telemetry

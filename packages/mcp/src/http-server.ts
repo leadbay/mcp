@@ -665,6 +665,10 @@ app.post("/messages", async (c) => {
   if (!session.refreshing) {
     session.refreshing = true;
     const epoch = ++session.refreshEpoch;
+    // Sequence AFTER the refresh has kicked off (fetchTelemetryEnabled bumps it
+    // at read-start). Any stamp beyond this is a same-message opt-in made during
+    // dispatch, which a fail-closed demote must PRESERVE (Codex P2).
+    const seqAtRefreshStart = session.client.telemetrySeq();
     const settle = (apply: () => void) => {
       if (session.refreshEpoch !== epoch) return;
       session.refreshEpoch++; // retire this epoch so nothing else mutates for it
@@ -680,23 +684,24 @@ app.post("/messages", async (c) => {
         },
         () => () => {
           // Unreadable preference → fail closed HARD, overriding a stale cached
-          // `true` from session open (Codex P1). Demote any prior stamp: an
-          // earlier message's opt-IN must not outrank THIS message's fail-closed
-          // verdict (Codex P2 — stamps are request-scoped).
+          // `true` from session open (Codex P1). Demote a stamp that PREDATES
+          // this message so an earlier opt-IN can't outrank this fail-closed
+          // verdict — but keep a same-message opt-in stamp (seq bumped past
+          // kickoff) intact (Codex P2 — stamps are request-scoped).
           session.suppressed = true;
           session.forceClosed = true;
-          session.client.clearTelemetryStampOrigin();
+          session.client.clearTelemetryStampOrigin(seqAtRefreshStart);
         }
       ),
       new Promise<() => void>((resolve) =>
         setTimeout(
           () =>
             resolve(() => {
-              // Timed out — fail closed and let the next message retry. Demote a
-              // prior stamp for the same reason as the error branch (Codex P2).
+              // Timed out — fail closed and let the next message retry. Same
+              // same-message-stamp-preserving demote as the error branch (Codex P2).
               session.suppressed = true;
               session.forceClosed = true;
-              session.client.clearTelemetryStampOrigin();
+              session.client.clearTelemetryStampOrigin(seqAtRefreshStart);
             }),
           IDENTITY_RESOLVE_TIMEOUT_MS
         )

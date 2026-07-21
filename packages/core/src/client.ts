@@ -874,14 +874,29 @@ export class LeadbayClient {
     return this.telemetryEnabledFromStamp && this.telemetryEnabledCache !== undefined;
   }
 
+  // Monotonic sequence exposed so callers can tell whether a telemetry stamp
+  // happened AFTER a reference point (e.g. an SSE message start). Bumped by every
+  // stamp and every telemetry read-start; see telemetryStateSeq.
+  telemetrySeq(): number {
+    return this.telemetryStateSeq;
+  }
+
   // Demote the cached preference from "explicit stamp" to ordinary read-level
   // authority WITHOUT changing its value. A stamp is scoped to the request that
   // made it (Codex P2): once a LATER SSE message's refresh produces a
   // fail-closed verdict (timeout/error), that earlier stamp must no longer
   // outrank it, or a session that once enabled would keep emitting through every
-  // subsequent unreadable refresh. The value stays as a best-effort fallback;
-  // it simply no longer wins over forceClosed.
-  clearTelemetryStampOrigin(): void {
+  // subsequent unreadable refresh.
+  //
+  // `onlyIfSeqAtMost` guards against demoting a stamp made by the CURRENT message
+  // (Codex P2): pass the sequence captured at message start; if a stamp has
+  // bumped the sequence beyond it, that stamp is same-message (a fresh opt-in)
+  // and must be preserved, so we skip the demote. The value always stays as a
+  // best-effort fallback either way.
+  clearTelemetryStampOrigin(onlyIfSeqAtMost?: number): void {
+    if (onlyIfSeqAtMost !== undefined && this.telemetryStateSeq > onlyIfSeqAtMost) {
+      return; // a stamp landed after the reference point → same-message, keep it
+    }
     this.telemetryEnabledFromStamp = false;
   }
 
