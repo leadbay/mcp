@@ -4085,8 +4085,6 @@ Trigger phrases: "disable telemetry", "turn off telemetry", "opt out of analytic
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "I want to report a bug / send feedback" → \`leadbay_send_feedback\`; "this tool is frustrating / that didn't work" → \`leadbay_report_friction\`.
-
 Prefer when: user wants to change or read the telemetry/analytics on-off preference for their account
 
 Examples that SHOULD invoke this tool:

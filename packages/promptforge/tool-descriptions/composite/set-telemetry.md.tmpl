@@ -5,8 +5,8 @@ short_description: |
   Turn product-usage telemetry ON or OFF for the user, or report the current
   setting. Use when the user asks to opt out of / into analytics, disable or
   enable telemetry/tracking, or check whether telemetry is on. Telemetry is ON
-  by default (opt-out model). Don't use it for sending feedback or reporting a
-  bug (that's leadbay_send_feedback / leadbay_report_friction).
+  by default (opt-out model). Don't use it for sending feedback or reporting
+  bugs.
 routing:
   triggers:
     - "disable telemetry"
@@ -18,11 +18,6 @@ routing:
     - "is telemetry on"
     - "is my usage being tracked"
     - "what's my telemetry setting"
-  anti_triggers:
-    - phrase: "I want to report a bug / send feedback"
-      route_to: leadbay_send_feedback
-    - phrase: "this tool is frustrating / that didn't work"
-      route_to: leadbay_report_friction
   prefer_when: "user wants to change or read the telemetry/analytics on-off preference for their account"
   examples:
     positive:

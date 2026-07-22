@@ -267,6 +267,10 @@ interface SseSession {
   // session open, so an unreadable opt-out never keeps emitting (Codex P1).
   // Cleared on the next SUCCESSFUL refresh.
   forceClosed: boolean;
+  // True while the per-message cross-session refresh is in flight. Tool dispatch
+  // stays non-blocking, but telemetry capture fails closed until the refresh
+  // settles so a fast tool cannot emit before an out-of-band opt-out is observed.
+  refreshPending: boolean;
   // Guards the fire-and-forget cross-session refresh so slow /users/me reads
   // don't stack up orphaned across messages and starve the session client's
   // API-semaphore slots ahead of tool work (Codex P2).
@@ -569,6 +573,7 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
     // overrides even a cached `true` a late/orphaned resolveMe might populate,
     // and is cleared on the next SUCCESSFUL /messages refresh.
     forceClosed,
+    refreshPending: false,
     refreshEpoch: 0,
   };
   const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
@@ -590,7 +595,7 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
         suppressTelemetry({
           stamped: resolved.client.cachedTelemetryStamped(),
           cached: resolved.client.cachedTelemetryEnabled(),
-          forceClosed: session.forceClosed,
+          forceClosed: session.forceClosed || session.refreshPending,
           sessionOptedOut: session.suppressed,
           fallbackEnabled: !session.suppressed,
         })
@@ -664,15 +669,17 @@ app.post("/messages", async (c) => {
   // discarded and can't reopen the fail-closed verdict.
   if (!session.refreshing) {
     session.refreshing = true;
+    session.refreshPending = true;
     const epoch = ++session.refreshEpoch;
-    // Sequence AFTER the refresh has kicked off (fetchTelemetryEnabled bumps it
-    // at read-start). Any stamp beyond this is a same-message opt-in made during
-    // dispatch, which a fail-closed demote must PRESERVE (Codex P2).
-    const seqAtRefreshStart = session.client.telemetrySeq();
+    // Stamp sequence at message start. Any stamp beyond this is a same-message
+    // opt-in made during dispatch, which a fail-closed demote must preserve. This
+    // deliberately ignores telemetry read-start bumps.
+    const stampSeqAtMessageStart = session.client.telemetryStampSeq();
     const settle = (apply: () => void) => {
       if (session.refreshEpoch !== epoch) return;
       session.refreshEpoch++; // retire this epoch so nothing else mutates for it
       apply();
+      session.refreshPending = false;
       session.refreshing = false;
     };
     void Promise.race([
@@ -690,7 +697,7 @@ app.post("/messages", async (c) => {
           // kickoff) intact (Codex P2 — stamps are request-scoped).
           session.suppressed = true;
           session.forceClosed = true;
-          session.client.clearTelemetryStampOrigin(seqAtRefreshStart);
+          session.client.clearTelemetryStampOrigin(stampSeqAtMessageStart);
         }
       ),
       new Promise<() => void>((resolve) =>
@@ -701,7 +708,7 @@ app.post("/messages", async (c) => {
               // same-message-stamp-preserving demote as the error branch (Codex P2).
               session.suppressed = true;
               session.forceClosed = true;
-              session.client.clearTelemetryStampOrigin(seqAtRefreshStart);
+              session.client.clearTelemetryStampOrigin(stampSeqAtMessageStart);
             }),
           IDENTITY_RESOLVE_TIMEOUT_MS
         )

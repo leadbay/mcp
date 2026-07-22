@@ -290,6 +290,10 @@ export class LeadbayClient {
   // even when a background refresh just failed closed (Codex P2). Reset to false
   // whenever a read writes the cache or the tenant switches.
   private telemetryEnabledFromStamp = false;
+  // Counts explicit user stamps only. Unlike telemetryStateSeq, read-starts do
+  // not move it, so callers can distinguish "a same-message stamp happened" from
+  // "a background refresh merely started" when demoting stale opt-in stamps.
+  private telemetryStampStateSeq = 0;
   private tasteProfile: TasteProfileResult | null = null;
   private tasteProfileCachedAt: number | null = null;
 
@@ -356,6 +360,7 @@ export class LeadbayClient {
     this.telemetryEnabledCache = undefined;
     this.telemetryEnabledFromStamp = false;
     this.telemetryStateSeq++;
+    this.telemetryStampStateSeq++;
   }
 
   setToken(token: string): void {
@@ -819,20 +824,37 @@ export class LeadbayClient {
   // /users/me endpoint (telemetry_enabled lives there) but only reconciles the
   // dedicated telemetry field, under the same sequence guard as resolveMe.
   //
-  // It also SNAPSHOTS and RESTORES _lastMeta around the read (Codex P2): the
-  // refresh shares the tool's client, and request() rewrites _lastMeta on every
-  // call. Without this, a refresh completing between a tool's real backend call
-  // and that tool copying client.lastMeta into its result (e.g. pull-leads'
-  // _meta.latency_ms) would make the metadata describe GET /users/me instead of
-  // the tool call. Restoring keeps this background read invisible to lastMeta.
+  // It deliberately bypasses request() and therefore never writes _lastMeta
+  // (Codex P2): the refresh shares the tool's client, and request() rewrites
+  // _lastMeta on every call. Without isolation, a refresh completing between a
+  // tool's real backend call and that tool copying client.lastMeta into its
+  // result (e.g. pull-leads' _meta.latency_ms) could make the metadata describe
+  // GET /users/me instead of the tool call.
   //
   // Returns the observed preference: true/false, or undefined when the backend
   // omitted the field (older backend → caller treats as enabled default).
   async fetchTelemetryEnabled(): Promise<boolean | undefined> {
     const seqAtStart = ++this.telemetryStateSeq;
-    const metaBefore = this._lastMeta;
+    if (!this.token) {
+      throw this.makeError(
+        "NOT_AUTHENTICATED",
+        "Not logged in to Leadbay",
+        "Set LEADBAY_TOKEN in your MCP client config, or run: npx -y -p @leadbay/mcp@latest installer",
+        "/users/me"
+      );
+    }
+    await this.acquireSemaphore();
     try {
-      const me = await this.request<UserMePayload>("GET", "/users/me");
+      const res = await this.httpsRequestWithRetry(
+        "GET",
+        `${this._baseUrl}${API_PREFIX}/users/me`,
+        { Authorization: `Bearer ${this.token}` },
+        undefined
+      );
+      if (res.status < 200 || res.status >= 300) {
+        throw this.mapErrorResponse(res.status, res.body, "/users/me", res.headers);
+      }
+      const me = JSON.parse(res.body) as UserMePayload;
       const observed = me.telemetry_enabled;
       if (this.telemetryStateSeq === seqAtStart && observed !== undefined) {
         this.telemetryEnabledCache = observed;
@@ -840,8 +862,7 @@ export class LeadbayClient {
       }
       return observed;
     } finally {
-      // Do not let this background read leak into tool-visible request metadata.
-      this._lastMeta = metaBefore;
+      this.releaseSemaphore();
     }
   }
 
@@ -881,6 +902,13 @@ export class LeadbayClient {
     return this.telemetryStateSeq;
   }
 
+  // Monotonic sequence moved only by explicit user stamps. Used by the SSE
+  // refresh failure path to demote stale opt-in stamps without mistaking a
+  // read-start sequence bump for a same-message opt-in.
+  telemetryStampSeq(): number {
+    return this.telemetryStampStateSeq;
+  }
+
   // Demote the cached preference from "explicit stamp" to ordinary read-level
   // authority WITHOUT changing its value. A stamp is scoped to the request that
   // made it (Codex P2): once a LATER SSE message's refresh produces a
@@ -888,13 +916,15 @@ export class LeadbayClient {
   // outrank it, or a session that once enabled would keep emitting through every
   // subsequent unreadable refresh.
   //
-  // `onlyIfSeqAtMost` guards against demoting a stamp made by the CURRENT message
-  // (Codex P2): pass the sequence captured at message start; if a stamp has
-  // bumped the sequence beyond it, that stamp is same-message (a fresh opt-in)
-  // and must be preserved, so we skip the demote. The value always stays as a
-  // best-effort fallback either way.
-  clearTelemetryStampOrigin(onlyIfSeqAtMost?: number): void {
-    if (onlyIfSeqAtMost !== undefined && this.telemetryStateSeq > onlyIfSeqAtMost) {
+  // `onlyIfStampSeqAtMost` guards against demoting a stamp made by the CURRENT
+  // message (Codex P2): pass the STAMP sequence captured at message start; if a
+  // stamp has bumped it beyond the snapshot, that stamp is same-message (a fresh
+  // opt-in) and must be preserved. Read-starts do not affect this guard.
+  clearTelemetryStampOrigin(onlyIfStampSeqAtMost?: number): void {
+    if (
+      onlyIfStampSeqAtMost !== undefined &&
+      this.telemetryStampStateSeq > onlyIfStampSeqAtMost
+    ) {
       return; // a stamp landed after the reference point → same-message, keep it
     }
     this.telemetryEnabledFromStamp = false;
@@ -910,6 +940,7 @@ export class LeadbayClient {
     // Bump the sequence so any /users/me read currently in flight will refuse
     // to overwrite this stamp when it resolves (Codex P1).
     this.telemetryStateSeq++;
+    this.telemetryStampStateSeq++;
     // The durable field is the source of truth cachedTelemetryEnabled() reads;
     // it survives invalidateMe() so the opt-out isn't forgotten when the next
     // tool churns the /me cache (Codex P1). Mark it as stamp-sourced so the

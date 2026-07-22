@@ -104,6 +104,11 @@ export const setTelemetry: Tool<SetTelemetryParams> = {
 
     const target = action === "enable";
     if (target === currentlyEnabled) {
+      if (target) {
+        // Explicit opt-in no-op still proves telemetry is ON. Stamp it so a
+        // stale fail-closed transport predicate can reopen immediately.
+        client.setCachedTelemetryEnabled(true);
+      }
       // Idempotent no-op — don't hit the backend just to write the same value.
       return {
         telemetry_enabled: currentlyEnabled,
