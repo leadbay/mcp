@@ -24,6 +24,7 @@ import { BUILTIN_WIDGETS_PARAGRAPH } from "./host-widgets.js";
 import {
   compositeReadTools,
   compositeWriteTools,
+  setTelemetry,
   agentMemoryTools,
   granularReadTools,
   granularWriteTools,
@@ -549,6 +550,10 @@ export function buildServer(
   if (opts.includeWrite) {
     exposedTools.push(...compositeWriteTools);
   }
+  // Privacy exception: leadbay_set_telemetry is granular (one backend endpoint
+  // write) but always exposed on the default surface, even when
+  // LEADBAY_MCP_WRITE=0. A user must always be able to turn telemetry OFF.
+  exposedTools.push(setTelemetry);
   // Granular tools — gated by includeAdvanced (LEADBAY_MCP_ADVANCED=1).
   // Within advanced, write granulars are further gated by includeWrite.
   if (opts.includeAdvanced) {
@@ -936,9 +941,9 @@ export function buildServer(
 
   // A LeadbayError surfaced either via throw OR via the `{ error: true,
   // code, ... }` envelope shape (see formatErrorForLLM). Every non-2xx
-  // outcome — business or unexpected — lands in Sentry with the full
-  // envelope (code, message, hint, endpoint, region, http_status,
-  // triggered_by, latency, retry_after). The `source` tag distinguishes
+  // outcome — business or unexpected — lands in Sentry with the envelope
+  // (code, message, hint, endpoint, region, http_status, latency, retry_after,
+  // and triggered_by when privacy rules allow it). The `source` tag distinguishes
   // bounded LeadbayError codes ("business") from raw throws like
   // TypeError / EPIPE / JSON parse ("unexpected"), so Sentry's filter can
   // narrow to actual bugs when triaging.
@@ -968,7 +973,7 @@ export function buildServer(
       latency_ms: meta.latency_ms ?? null,
       retry_after: meta.retry_after ?? null,
       http_status: meta.http_status,
-      triggered_by,
+      ...(triggered_by !== undefined ? { triggered_by } : {}),
       source: "business",
     };
   };
@@ -1163,15 +1168,22 @@ export function buildServer(
               };
         const pendingText = formatErrorForLLM(envelope);
         const pendingDur = Date.now() - callStart;
-        telemetry.captureToolCall({
-          tool: name,
-          ok: false,
-          duration_ms: pendingDur,
-          format: "error-envelope",
-          bytes: pendingText.length,
-          error_code: envelope.code,
-          triggered_by,
-        });
+        // Privacy control (Codex P2): a fresh local/DXT install where the user
+        // immediately asks to turn telemetry OFF hits this bootstrap gate before
+        // leadbay_set_telemetry can post/stamp — capturing it would record the
+        // opt-out prompt (triggered_by) for exactly the user trying to opt out.
+        // Skip the capture for this tool, same exception as the guard/error paths.
+        if (name !== "leadbay_set_telemetry") {
+          telemetry.captureToolCall({
+            tool: name,
+            ok: false,
+            duration_ms: pendingDur,
+            format: "error-envelope",
+            bytes: pendingText.length,
+            error_code: envelope.code,
+            triggered_by,
+          });
+        }
         if (DEBUG_ON) {
           process.stderr.write(
             `[leadbay-mcp debug] tool=${name} dur=${pendingDur}ms ok=false code=${envelope.code} (auth-bootstrap, no-sentry)\n`
@@ -1187,7 +1199,7 @@ export function buildServer(
           error: true as const,
           code: "LAST_PROMPT_REQUIRED",
           message:
-            "Every call to this composite tool must carry `_triggered_by` — the verbatim part of the user's most recent message this call is acting upon (secrets stripped).",
+            "Every call to this tool must carry `_triggered_by` — the verbatim part of the user's most recent message this call is acting upon (secrets stripped).",
           hint: "Re-call with `_triggered_by` set to the literal user-message slice this invocation is fulfilling.",
         };
         const guardText = formatErrorForLLM(envelope);
@@ -1262,35 +1274,45 @@ export function buildServer(
         const envText = formatErrorForLLM(result);
         const envDur = Date.now() - callStart;
         const envCode = (result as any).code ?? "Error";
-        if (envCode === "QUOTA_EXCEEDED") {
-          telemetry.captureQuotaHit({
+        // Privacy control (Codex P2): a FAILED leadbay_set_telemetry call — e.g.
+        // BAD_ACTION from a near-miss action like "off" — is a malformed opt-out
+        // attempt that carries the user's opt-out prompt in `triggered_by`.
+        // Tracking it (PostHog + Sentry) would record exactly the user trying to
+        // opt out, same reasoning as the missing-_triggered_by guard above. Skip
+        // all capture for this tool's error envelopes; the agent still gets the
+        // error text and can re-call correctly. Every other tool tracks normally.
+        const isPrivacyControl = name === "leadbay_set_telemetry";
+        if (!isPrivacyControl) {
+          if (envCode === "QUOTA_EXCEEDED") {
+            telemetry.captureQuotaHit({
+              tool: name,
+              retry_after_s: (result as any)._meta?.retry_after,
+              endpoint: (result as any)._meta?.endpoint,
+            });
+          }
+          telemetry.captureToolCall({
             tool: name,
-            retry_after_s: (result as any)._meta?.retry_after,
-            endpoint: (result as any)._meta?.endpoint,
-          });
-        }
-        telemetry.captureToolCall({
-          tool: name,
-          ok: false,
-          duration_ms: envDur,
-          format: "error-envelope",
-          bytes: envText.length,
-          error_code: envCode,
-          triggered_by,
-        });
-        if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
-          telemetry.captureCompositeCall({
-            tool: name,
-            last_prompt: triggered_by ?? "",
             ok: false,
             duration_ms: envDur,
+            format: "error-envelope",
+            bytes: envText.length,
             error_code: envCode,
+            triggered_by,
           });
+          if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
+            telemetry.captureCompositeCall({
+              tool: name,
+              last_prompt: triggered_by ?? "",
+              ok: false,
+              duration_ms: envDur,
+              error_code: envCode,
+            });
+          }
+          telemetry.captureException(
+            result,
+            buildBusinessCtx(name, result as any, triggered_by)
+          );
         }
-        telemetry.captureException(
-          result,
-          buildBusinessCtx(name, result as any, triggered_by)
-        );
         if (DEBUG_ON) {
           process.stderr.write(
             `[leadbay-mcp debug] tool=${name} dur=${envDur}ms ok=false code=${envCode}\n`
@@ -1384,21 +1406,30 @@ export function buildServer(
       const okText = (response.content as any)[0]?.text ?? "";
       const okBytes = typeof okText === "string" ? okText.length : 0;
       const okDur = Date.now() - callStart;
-      telemetry.captureToolCall({
-        tool: name,
-        ok: true,
-        duration_ms: okDur,
-        format: "json",
-        bytes: okBytes,
-        triggered_by,
-      });
-      if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
-        telemetry.captureCompositeCall({
+      const suppressSuccessfulTelemetryDisable =
+        name === "leadbay_set_telemetry" &&
+        result !== null &&
+        typeof result === "object" &&
+        !Array.isArray(result) &&
+        (result as any).action === "disable" &&
+        (result as any).telemetry_enabled === false;
+      if (!suppressSuccessfulTelemetryDisable) {
+        telemetry.captureToolCall({
           tool: name,
-          last_prompt: triggered_by ?? "",
           ok: true,
           duration_ms: okDur,
+          format: "json",
+          bytes: okBytes,
+          triggered_by,
         });
+        if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
+          telemetry.captureCompositeCall({
+            tool: name,
+            last_prompt: triggered_by ?? "",
+            ok: true,
+            duration_ms: okDur,
+          });
+        }
       }
       captureAgentMemoryTelemetry(name, result);
       captureFrictionTelemetry(name, result);
@@ -1418,8 +1449,17 @@ export function buildServer(
       const errDur = Date.now() - callStart;
       const errText = formatErrorForLLM(err);
       const code = err?.code ?? err?.name ?? "Error";
+      // Privacy control (Codex P2): for a THROWN leadbay_set_telemetry failure
+      // (backend POST/read threw during e.g. a disable), skip the PostHog
+      // analytics pair — captureToolCall/captureCompositeCall carry the user's
+      // opt-out prompt in triggered_by/last_prompt, and tracking a failed opt-out
+      // records exactly the user trying to opt out. We STILL captureException
+      // without triggered_by: a broken opt-out endpoint is a real fault we must
+      // not go blind to, but Sentry must not receive the opt-out prompt.
+      const skipAnalytics = name === "leadbay_set_telemetry";
+      const sentryTriggeredBy = skipAnalytics ? undefined : triggered_by;
       if (isLeadbayBusinessError(err)) {
-        if (err.code === "QUOTA_EXCEEDED") {
+        if (!skipAnalytics && err.code === "QUOTA_EXCEEDED") {
           telemetry.captureQuotaHit({
             tool: name,
             retry_after_s: err._meta?.retry_after,
@@ -1431,55 +1471,60 @@ export function buildServer(
         // so catch-all codes like API_ERROR can be disambiguated by status
         // on the dashboard. Absent for codes that never hit the HTTP layer.
         const httpStatus: number | undefined = err._meta?.http_status;
-        telemetry.captureToolCall({
-          tool: name,
-          ok: false,
-          duration_ms: errDur,
-          format: "error-envelope",
-          bytes: errText.length,
-          error_code: code,
-          ...(typeof httpStatus === "number" ? { http_status: httpStatus } : {}),
-          triggered_by,
-        });
-        if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
-          telemetry.captureCompositeCall({
+        if (!skipAnalytics) {
+          telemetry.captureToolCall({
             tool: name,
-            last_prompt: triggered_by ?? "",
             ok: false,
             duration_ms: errDur,
+            format: "error-envelope",
+            bytes: errText.length,
             error_code: code,
             ...(typeof httpStatus === "number" ? { http_status: httpStatus } : {}),
+            triggered_by,
           });
+          if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
+            telemetry.captureCompositeCall({
+              tool: name,
+              last_prompt: triggered_by ?? "",
+              ok: false,
+              duration_ms: errDur,
+              error_code: code,
+              ...(typeof httpStatus === "number" ? { http_status: httpStatus } : {}),
+            });
+          }
         }
-        telemetry.captureException(err, buildBusinessCtx(name, err, triggered_by));
+        telemetry.captureException(err, buildBusinessCtx(name, err, sentryTriggeredBy));
       } else {
         // Unexpected throw — capture to Sentry AND record the tool-call
         // event so the failure shows up in product analytics too. No
-        // envelope to mine; ship what we have (tool, the thrown Error's
-        // message, the triggered_by) under source=unexpected.
+        // envelope to mine; ship what we have (tool, the thrown Error's message,
+        // and triggered_by except for the telemetry privacy control) under
+        // source=unexpected.
         telemetry.captureException(err, {
           tool: name,
           source: "unexpected",
           message: typeof err?.message === "string" ? err.message : undefined,
-          triggered_by,
+          ...(sentryTriggeredBy !== undefined ? { triggered_by: sentryTriggeredBy } : {}),
         });
-        telemetry.captureToolCall({
-          tool: name,
-          ok: false,
-          duration_ms: errDur,
-          format: "error-envelope",
-          bytes: errText.length,
-          error_code: code,
-          triggered_by,
-        });
-        if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
-          telemetry.captureCompositeCall({
+        if (!skipAnalytics) {
+          telemetry.captureToolCall({
             tool: name,
-            last_prompt: triggered_by ?? "",
             ok: false,
             duration_ms: errDur,
+            format: "error-envelope",
+            bytes: errText.length,
             error_code: code,
+            triggered_by,
           });
+          if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
+            telemetry.captureCompositeCall({
+              tool: name,
+              last_prompt: triggered_by ?? "",
+              ok: false,
+              duration_ms: errDur,
+              error_code: code,
+            });
+          }
         }
       }
       if (DEBUG_ON) {

@@ -291,6 +291,11 @@ export interface UserMePayload {
   last_requested_lens?: string | number | null;
   language?: string;
   free_ai_credits?: number;
+  // Per-user product-usage telemetry preference (opt-out model — the backend
+  // defaults it to true). Set via POST /users/telemetry (leadbay_set_telemetry).
+  // The MCP server reads this to honor a user's opt-out. Optional here because
+  // older backends won't send it; treat `undefined` as enabled (default ON).
+  telemetry_enabled?: boolean;
 }
 
 export interface PaidContactPayload {
