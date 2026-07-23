@@ -61,3 +61,15 @@ high-priority (P0/P1) issues:
   asking a PR author to manually bump their version to match main — the workflow
   owns that (Codex can only comment; it can't push to the branch). A stale
   version number vs. main is expected on an open PR and is not a defect.
+
+## Autofix on ready-for-review
+
+The review pass above only *comments* — the connector can't push. When a PR is
+marked **ready for review**, the `.github/workflows/codex-autofix.yml` workflow
+closes the loop: it runs the Codex CLI (`openai/codex-action`) with the prompt
+in `.github/codex/autofix-prompt.md` (which points back to the P0/P1 rubric
+above), lets Codex apply the fixes in the workspace, runs the repo gates, and
+pushes the fix to the PR head — then re-triggers CI and a fresh review. The
+workflow no-ops until `secrets.OPENAI_API_KEY` is set and skips fork PRs. So the
+"apply the fix" half of a Codex round is now automated; the rubric here is what
+both the reviewer flags and the fixer acts on.
