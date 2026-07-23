@@ -266,6 +266,34 @@ export class LeadbayClient {
   private defaultLensCachedAt: number | null = null;
   private mePayload: UserMePayload | null = null;
   private mePayloadCachedAt: number | null = null;
+  // Monotonic sequence bumped whenever the telemetry preference is decided by a
+  // fresher signal — an explicit stamp (setCachedTelemetryEnabled) or the START
+  // of a telemetry read (resolveMe / fetchTelemetryEnabled). A read snapshots it
+  // and only writes telemetryEnabledCache if the sequence is UNCHANGED when it
+  // completes, so (a) a stamp landing mid-read wins over the stale read and (b)
+  // an older overlapping read that resolves last can't clobber a newer read's
+  // value (product#3879, Codex P1).
+  private telemetryStateSeq = 0;
+  // The telemetry preference lives in its OWN field, separate from mePayload,
+  // so it survives invalidateMe() (Codex P1). Otherwise a leadbay_set_telemetry
+  // disable would be forgotten the moment the very next same-session tool
+  // invalidates the /me cache (refine_prompt, my_lenses, set_active_lens, …),
+  // dropping cachedTelemetryEnabled() back to undefined and letting the hosted
+  // suppression predicate fall through to a stale "enabled". undefined = never
+  // observed; the last read/stamp always wins and persists across /me churn.
+  private telemetryEnabledCache: boolean | undefined = undefined;
+  // True when telemetryEnabledCache came from an EXPLICIT user stamp
+  // (leadbay_set_telemetry via setCachedTelemetryEnabled), as opposed to a
+  // /users/me read. A stamp is the user's direct choice for THIS request and is
+  // the single most authoritative signal — it outranks even a fail-closed
+  // verdict from a timed-out/errored read, so a same-request opt-IN takes effect
+  // even when a background refresh just failed closed (Codex P2). Reset to false
+  // whenever a read writes the cache or the tenant switches.
+  private telemetryEnabledFromStamp = false;
+  // Counts explicit user stamps only. Unlike telemetryStateSeq, read-starts do
+  // not move it, so callers can distinguish "a same-message stamp happened" from
+  // "a background refresh merely started" when demoting stale opt-in stamps.
+  private telemetryStampStateSeq = 0;
   private tasteProfile: TasteProfileResult | null = null;
   private tasteProfileCachedAt: number | null = null;
 
@@ -309,6 +337,24 @@ export class LeadbayClient {
     return this._lastMeta;
   }
 
+  private clearTenantScopedCaches(): void {
+    this.defaultLensId = null;
+    this.defaultLensCachedAt = null;
+    this.mePayload = null;
+    this.mePayloadCachedAt = null;
+    this.tasteProfile = null;
+    this.tasteProfileCachedAt = null;
+    // The telemetry preference is tenant-scoped too (Codex P2). Clearing it —
+    // and bumping the sequence so any /users/me read still in flight from the
+    // OLD tenant can't write the new tenant's cache — prevents the previous
+    // account's opt-out from wrongly suppressing the new one (e.g. after
+    // leadbay_login switches region or replaces the token).
+    this.telemetryEnabledCache = undefined;
+    this.telemetryEnabledFromStamp = false;
+    this.telemetryStateSeq++;
+    this.telemetryStampStateSeq++;
+  }
+
   // Used by login when region auto-detect picks a different backend than the
   // one the client was constructed with.
   setBaseUrl(baseUrl: string, region?: "us" | "fr"): void {
@@ -318,16 +364,14 @@ export class LeadbayClient {
       baseUrl === REGIONS.fr ? "fr" : "custom"
     );
     // Region change invalidates everything — different tenant.
-    this.defaultLensId = null;
-    this.defaultLensCachedAt = null;
-    this.mePayload = null;
-    this.mePayloadCachedAt = null;
-    this.tasteProfile = null;
-    this.tasteProfileCachedAt = null;
+    this.clearTenantScopedCaches();
   }
 
   setToken(token: string): void {
     this.token = token;
+    // Token replacement can be a same-region account switch (leadbay_login only
+    // calls setBaseUrl when region changes). Clear tenant-scoped state here too.
+    this.clearTenantScopedCaches();
   }
 
   get isAuthenticated(): boolean {
@@ -763,17 +807,174 @@ export class LeadbayClient {
     ) {
       return this.mePayload;
     }
+    // Claim a sequence for THIS read; only write the telemetry cache from its
+    // result if nothing fresher (a stamp or a newer read) moved the sequence
+    // meanwhile (Codex P1). An absent telemetry_enabled (older backend) never
+    // writes — cachedTelemetryEnabled() stays undefined and the caller's
+    // fallback (resolve verdict / session flag) governs.
+    const seqAtStart = ++this.telemetryStateSeq;
     const me = await this.request<UserMePayload>("GET", "/users/me");
     this.mePayload = me;
     this.mePayloadCachedAt = now;
+    if (this.telemetryStateSeq === seqAtStart && me.telemetry_enabled !== undefined) {
+      this.telemetryEnabledCache = me.telemetry_enabled;
+      this.telemetryEnabledFromStamp = false; // value came from a read, not a stamp
+    }
     return me;
   }
 
+  // Lightweight cross-session telemetry-preference read for the hosted SSE
+  // per-message refresh (product#3879, Codex P2). UNLIKE resolveMe() this does
+  // NOT touch mePayload / the general /me cache — so a slow background refresh
+  // can never repopulate a stale last_requested_lens over a tool's mutation, and
+  // it never serves the 60s /me cache (always a fresh read). It reads the SAME
+  // /users/me endpoint (telemetry_enabled lives there) but only reconciles the
+  // dedicated telemetry field, under the same sequence guard as resolveMe.
+  //
+  // It deliberately bypasses request() and therefore never writes _lastMeta
+  // (Codex P2): the refresh shares the tool's client, and request() rewrites
+  // _lastMeta on every call. Without isolation, a refresh completing between a
+  // tool's real backend call and that tool copying client.lastMeta into its
+  // result (e.g. pull-leads' _meta.latency_ms) could make the metadata describe
+  // GET /users/me instead of the tool call.
+  //
+  // Returns the observed preference: true/false, or undefined when the backend
+  // omitted the field (older backend → caller treats as enabled default).
+  async fetchTelemetryEnabled(): Promise<boolean | undefined> {
+    const seqAtStart = ++this.telemetryStateSeq;
+    if (process.env.LEADBAY_MOCK === "1") {
+      const metaBefore = this._lastMeta;
+      try {
+        const me = this.mockRequest<UserMePayload>("GET", "/users/me");
+        const observed = me.telemetry_enabled;
+        if (this.telemetryStateSeq === seqAtStart && observed !== undefined) {
+          this.telemetryEnabledCache = observed;
+          this.telemetryEnabledFromStamp = false;
+        }
+        return observed;
+      } finally {
+        // Keep the telemetry-only refresh invisible to tool-visible metadata,
+        // matching the live path that bypasses request().
+        this._lastMeta = metaBefore;
+      }
+    }
+    if (!this.token) {
+      throw this.makeError(
+        "NOT_AUTHENTICATED",
+        "Not logged in to Leadbay",
+        "Set LEADBAY_TOKEN in your MCP client config, or run: npx -y -p @leadbay/mcp@latest installer",
+        "/users/me"
+      );
+    }
+    await this.acquireSemaphore();
+    try {
+      const res = await this.httpsRequestWithRetry(
+        "GET",
+        `${this._baseUrl}${API_PREFIX}/users/me`,
+        { Authorization: `Bearer ${this.token}` },
+        undefined
+      );
+      if (res.status < 200 || res.status >= 300) {
+        throw this.mapErrorResponse(res.status, res.body, "/users/me", res.headers);
+      }
+      const me = JSON.parse(res.body) as UserMePayload;
+      const observed = me.telemetry_enabled;
+      if (this.telemetryStateSeq === seqAtStart && observed !== undefined) {
+        this.telemetryEnabledCache = observed;
+        this.telemetryEnabledFromStamp = false; // value came from a read, not a stamp
+      }
+      return observed;
+    } finally {
+      this.releaseSemaphore();
+    }
+  }
+
   // Force re-fetch on next resolveMe(). Call from any tool that mutates a
-  // /me-cached field (last_requested_lens, billing, etc.).
+  // /me-cached field (last_requested_lens, billing, etc.). Deliberately does
+  // NOT clear telemetryEnabledCache — the opt-out preference is orthogonal to
+  // /me staleness and must survive invalidation (Codex P1).
   invalidateMe(): void {
     this.mePayload = null;
     this.mePayloadCachedAt = null;
+  }
+
+  // Synchronous read of the last-cached telemetry preference, without a fetch.
+  // Returns undefined when /users/me hasn't been resolved (or was invalidated).
+  // The hosted telemetry suppression predicate reads this AT CAPTURE TIME so a
+  // leadbay_set_telemetry disable within the same request suppresses that very
+  // request's tracking — the opt-out action isn't itself the last tracked event
+  // (product#3879). resolveMe() keeps mePayload populated after a write, so this
+  // reflects the post-write state.
+  cachedTelemetryEnabled(): boolean | undefined {
+    return this.telemetryEnabledCache;
+  }
+
+  // True when the cached preference came from an explicit user stamp (a
+  // leadbay_set_telemetry toggle), not a read. The hosted suppression predicate
+  // treats a stamp as the single most-authoritative signal — it outranks a
+  // fail-closed verdict from a failed background read, so a same-request opt-IN
+  // takes effect even when a refresh just timed out (product#3879, Codex P2).
+  cachedTelemetryStamped(): boolean {
+    return this.telemetryEnabledFromStamp && this.telemetryEnabledCache !== undefined;
+  }
+
+  // Monotonic sequence exposed so callers can tell whether a telemetry stamp
+  // happened AFTER a reference point (e.g. an SSE message start). Bumped by every
+  // stamp and every telemetry read-start; see telemetryStateSeq.
+  telemetrySeq(): number {
+    return this.telemetryStateSeq;
+  }
+
+  // Monotonic sequence moved only by explicit user stamps. Used by the SSE
+  // refresh failure path to demote stale opt-in stamps without mistaking a
+  // read-start sequence bump for a same-message opt-in.
+  telemetryStampSeq(): number {
+    return this.telemetryStampStateSeq;
+  }
+
+  // Demote the cached preference from "explicit stamp" to ordinary read-level
+  // authority WITHOUT changing its value. A stamp is scoped to the request that
+  // made it (Codex P2): once a LATER SSE message's refresh produces a
+  // fail-closed verdict (timeout/error), that earlier stamp must no longer
+  // outrank it, or a session that once enabled would keep emitting through every
+  // subsequent unreadable refresh.
+  //
+  // `onlyIfStampSeqAtMost` guards against demoting a stamp made by the CURRENT
+  // message (Codex P2): pass the STAMP sequence captured at message start; if a
+  // stamp has bumped it beyond the snapshot, that stamp is same-message (a fresh
+  // opt-in) and must be preserved. Read-starts do not affect this guard.
+  clearTelemetryStampOrigin(onlyIfStampSeqAtMost?: number): void {
+    if (
+      onlyIfStampSeqAtMost !== undefined &&
+      this.telemetryStampStateSeq > onlyIfStampSeqAtMost
+    ) {
+      return; // a stamp landed after the reference point → same-message, keep it
+    }
+    this.telemetryEnabledFromStamp = false;
+  }
+
+  // Deterministically stamp the cached telemetry preference to a known value,
+  // WITHOUT a fetch. leadbay_set_telemetry calls this right after a successful
+  // POST /users/telemetry so the suppression predicate reflects the new state
+  // even if the follow-up refresh fails (product#3879) — a disable must never
+  // fail open and let the opt-out request emit error telemetry. Creates a
+  // minimal cache entry if /users/me was never resolved.
+  setCachedTelemetryEnabled(enabled: boolean): void {
+    // Bump the sequence so any /users/me read currently in flight will refuse
+    // to overwrite this stamp when it resolves (Codex P1).
+    this.telemetryStateSeq++;
+    this.telemetryStampStateSeq++;
+    // The durable field is the source of truth cachedTelemetryEnabled() reads;
+    // it survives invalidateMe() so the opt-out isn't forgotten when the next
+    // tool churns the /me cache (Codex P1). Mark it as stamp-sourced so the
+    // predicate lets this explicit user choice outrank a fail-closed verdict.
+    this.telemetryEnabledCache = enabled;
+    this.telemetryEnabledFromStamp = true;
+    // Keep mePayload's copy in sync when present, for any caller reading the
+    // full payload directly (not load-bearing for suppression).
+    if (this.mePayload) {
+      this.mePayload = { ...this.mePayload, telemetry_enabled: enabled };
+    }
   }
 
   async resolveDefaultLens(): Promise<number> {

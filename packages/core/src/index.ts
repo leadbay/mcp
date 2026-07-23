@@ -104,6 +104,7 @@ import { researchLeadById } from "./composite/research-lead-by-id.js";
 import { researchLeadByNameFuzzy } from "./composite/research-lead-by-name-fuzzy.js";
 import { getQualificationQuestions } from "./composite/get-qualification-questions.js";
 import { setQualificationQuestions } from "./composite/set-qualification-questions.js";
+import { setTelemetry } from "./composite/set-telemetry.js";
 import { getLeadCustomFields } from "./composite/get-lead-custom-fields.js";
 import { accountHistory } from "./composite/account-history.js";
 import { scanPortfolioSignals } from "./composite/scan-portfolio-signals.js";
@@ -174,7 +175,7 @@ export {
   pullLeads, pullFollowups, followupsMap, tourPlan, listCampaigns,
   campaignProgression, campaignCallSheet, researchLeadById, researchLeadByNameFuzzy,
   getQualificationQuestions, getLeadCustomFields,
-  setQualificationQuestions,
+  setQualificationQuestions, setTelemetry,
   accountHistory,
   recallOrderedTitles, accountStatus, scanPortfolioSignals, teamActivity,
   bulkEnrichStatus, qualifyStatus, importStatus, resolveImportRows,
@@ -386,6 +387,12 @@ export const compositeWriteTools: Tool[] = [
   // endpoint (POST /organizations/{orgId} {ai_agent_lead_questions:[...]}); the
   // tool reads current + applies add/remove/set. Shrinking requires confirm.
   setQualificationQuestions,
+  // Per-user telemetry on/off/status (POST /users/telemetry + GET /users/me).
+  // Deliberately composite even though the write is one endpoint call: this is
+  // a user-facing privacy control on the default surface, and composite-file
+  // tools carry the mandatory _triggered_by/privacy guards. Granular tools are
+  // the advanced 1:1 API surface.
+  setTelemetry,
   // addNote is granular-shaped but file-import prompts depend on it to preserve
   // meaningful source-file notes after imports return lead ids.
   addNote,
