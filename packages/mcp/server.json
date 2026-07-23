@@ -3,7 +3,7 @@
   "name": "io.github.leadbay/leadbay-mcp",
   "title": "Leadbay",
   "description": "AI lead discovery, qualification, and outreach prep on your Leadbay account.",
-  "version": "0.24.2",
+  "version": "0.25.0",
   "repository": {
     "url": "https://github.com/leadbay/mcp",
     "source": "github",
@@ -15,7 +15,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@leadbay/mcp",
-      "version": "0.24.2",
+      "version": "0.25.0",
       "transport": {
         "type": "stdio"
       },
@@ -27,7 +27,7 @@
         },
         {
           "type": "positional",
-          "value": "@leadbay/mcp@0.24"
+          "value": "@leadbay/mcp@0.25"
         }
       ],
       "environmentVariables": [
@@ -59,6 +59,12 @@
           "description": "Set to 1 to expose granular API tools.",
           "isRequired": false,
           "default": "0"
+        },
+        {
+          "name": "LEADBAY_TELEMETRY_ENABLED",
+          "description": "Product-usage telemetry (PostHog/Sentry). Set to false to opt out. On a local/stdio install this env var is the ONLY way to stop telemetry — the account-level toggle (leadbay_set_telemetry) governs the hosted connector, not a local process (default: true).",
+          "isRequired": false,
+          "default": "true"
         }
       ]
     }

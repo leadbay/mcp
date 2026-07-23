@@ -76,6 +76,7 @@ import { updateCustomField } from "./composite/update-custom-field.js";
 import { deleteCustomField } from "./composite/delete-custom-field.js";
 import { likeLead } from "./tools/like-lead.js";
 import { dislikeLead } from "./tools/dislike-lead.js";
+import { setTelemetry } from "./tools/set-telemetry.js";
 // Contact management — single-call relay tools (granular-shaped); registered
 // in compositeWriteTools below so they stay on the default surface.
 import { addContact } from "./tools/add-contact.js";
@@ -166,7 +167,7 @@ export {
   updateLens, updateLensFilter, createLensDraft, promoteLens, setUserPrompt,
   clearUserPrompt, pickClarification, dismissClarification, setEpilogueStatus,
   removeEpilogue, setPushback, removePushback, previewBulkEnrichment,
-  launchBulkEnrichment, likeLead, dislikeLead,
+  launchBulkEnrichment, likeLead, dislikeLead, setTelemetry,
   createCustomField, updateCustomField, deleteCustomField,
   // existing composite
   prepareOutreach,
@@ -246,6 +247,7 @@ export const granularWriteTools: Tool[] = [
   removePushback,
   previewBulkEnrichment,
   launchBulkEnrichment,
+  setTelemetry,
   createCustomField,
 ];
 

@@ -4078,6 +4078,70 @@ After a change, confirm in one line — e.g. **"Added 1 question — you now sco
 `;
 // endregion: leadbay_set_qualification_questions
 
+// region: leadbay_set_telemetry
+export const leadbay_set_telemetry: string = `## WHEN TO USE
+
+Trigger phrases: "disable telemetry", "turn off telemetry", "opt out of analytics", "stop sending usage data", "enable telemetry", "turn analytics back on", "is telemetry on", "is my usage being tracked", "what's my telemetry setting".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Prefer when: user wants to change or read the telemetry/analytics on-off preference for their account
+
+Examples that SHOULD invoke this tool:
+- "Turn off telemetry, I don't want my usage tracked."
+- "Re-enable analytics for my account."
+- "Is telemetry currently on for me?"
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "I want to report a bug in the pull-leads tool."
+- "Send feedback to the Leadbay team."
+- "Why isn't my event showing up in PostHog?"
+
+## RENDER (quick)
+
+One short confirmation line reflecting the result: state whether telemetry is
+now ON or OFF (or, for \`status\`, what it currently is) and — from \`hint\` —
+the one-line way to flip it. No table; a single sentence is enough.
+
+---
+
+Enable, disable, or check **product-usage telemetry** for the current user.
+
+Telemetry (PostHog analytics — which tools fire, durations, error rates) is
+**ON by default** (opt-out model). It does not capture tool argument bodies,
+response bodies, or lead PII. This is a granular endpoint tool, so
+\`_triggered_by\` is optional like other granular tools; when it is present on an
+opt-out attempt, the MCP server suppresses/sanitizes the privacy-control
+telemetry paths so the opt-out prompt is not recorded. This tool is the
+in-product control so a user can change or check the setting without editing
+config. The preference is stored on the user's Leadbay
+account. The **hosted/web connector** reads it per-request and stops sending a
+disabled user's events. A **local (self-hosted / stdio) install** decides
+telemetry at process start from the \`LEADBAY_TELEMETRY_ENABLED\` env var and does
+NOT consult this account flag — so a local user who wants to opt out should also
+set \`LEADBAY_TELEMETRY_ENABLED=false\`. Do NOT tell a local user that disabling
+here alone stops their events.
+
+Parameter:
+
+- **\`action\`** — \`"enable"\` | \`"disable"\` | \`"status"\`. Defaults to \`"status"\`
+  (a bare call safely reports the setting without changing it).
+
+Returns:
+
+- **\`telemetry_enabled\`** — the setting AFTER this call.
+- **\`changed\`** — whether this call actually flipped it (\`false\` for \`status\`
+  and for a no-op set, e.g. disabling when already off).
+- **\`action\`**, **\`region\`**, and a one-line **\`hint\`** describing how to flip it.
+
+Setting the preference takes effect going forward on the **hosted connector**,
+which reads the flag per-request and stops emitting analytics for an opted-out
+user. On a local install the account flag is not consulted (see above).
+\`enable\`/\`disable\` are idempotent — setting the value it already has is a no-op
+that reports \`changed: false\`.
+`;
+// endregion: leadbay_set_telemetry
+
 // region: leadbay_set_user_prompt
 export const leadbay_set_user_prompt: string = `Set the org's intelligence-refinement prompt — free-text instruction that steers Leadbay's lead recommendations beyond firmographics. Admin-only. Setting this clears any pending clarification and triggers a full intelligence regeneration (web search + high-reasoning). \`dry_run:true\` returns the call shape without contacting the backend.
 
@@ -4471,6 +4535,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_set_epilogue_status,
   leadbay_set_pushback,
   leadbay_set_qualification_questions,
+  leadbay_set_telemetry,
   leadbay_set_user_prompt,
   leadbay_team_activity,
   leadbay_tour_plan,

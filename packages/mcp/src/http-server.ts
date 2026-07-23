@@ -72,6 +72,25 @@ const IDENTITY_RESOLVE_TIMEOUT_MS = 1500;
 // client (so a multi-call SSE session pays once), and never blocks the tool: on
 // timeout or error we attribute to "mcp:unknown" so the event STILL lands.
 export async function resolveIdentity(client: LeadbayClient): Promise<CaptureIdentity> {
+  return (await resolveTelemetryContext(client)).identity;
+}
+
+// Resolve BOTH the per-request PostHog identity AND whether the user has opted
+// out of telemetry (telemetry_enabled — product#3879), from a single bounded
+// /users/me.
+//
+// FAIL CLOSED on an unknown preference (Codex P1): when /users/me times out or
+// errors we cannot see the user's telemetry_enabled, so we return enabled:false
+// and emit NOTHING for that request. Rationale: this is the enforcement point
+// for a privacy opt-out — leaking an opted-out user's telemetry on transient API
+// slowness is a consent violation and is NOT recoverable (the event is already
+// sent), whereas the cost of failing closed is only a dropped data point for an
+// enabled user on that one request (self-corrects on the next successful read).
+// Note: an absent telemetry_enabled on a SUCCESSFUL read still means enabled
+// (older backend / opt-out default) — that's a known preference, not an unknown one.
+async function resolveTelemetryContext(
+  client: LeadbayClient
+): Promise<{ identity: CaptureIdentity; enabled: boolean; forceClosed: boolean }> {
   const region = client.region;
   try {
     const me = await Promise.race([
@@ -80,21 +99,93 @@ export async function resolveIdentity(client: LeadbayClient): Promise<CaptureIde
         setTimeout(() => resolve(null), IDENTITY_RESOLVE_TIMEOUT_MS)
       ),
     ]);
-    if (!me) return { distinctId: "mcp:unknown", region };
+    // Unknown preference (TIMEOUT) → fail closed HARD. The losing resolveMe()
+    // keeps running in the background and can populate the cache with a `true`
+    // AFTER this returns; forceClosed must override that so a request the
+    // timeout decided to suppress cannot reopen itself later (Codex P1).
+    if (!me) return { identity: { distinctId: "mcp:unknown", region }, enabled: false, forceClosed: true };
     const distinctId = me.email ?? (me.id ? `mcp:user-${me.id}` : "mcp:unknown");
     return {
-      distinctId,
-      groups: me.organization?.id ? { organization: me.organization.id } : undefined,
-      region,
-      // name/email so leadbay_send_feedback attributes correctly on HTTP — the
-      // module-scoped `me` is never populated here (Codex P2).
-      ...(me.name ? { name: me.name } : {}),
-      ...(me.email ? { email: me.email } : {}),
+      identity: {
+        distinctId,
+        groups: me.organization?.id ? { organization: me.organization.id } : undefined,
+        region,
+        // name/email so leadbay_send_feedback attributes correctly on HTTP — the
+        // module-scoped `me` is never populated here (Codex P2).
+        ...(me.name ? { name: me.name } : {}),
+        ...(me.email ? { email: me.email } : {}),
+      },
+      // Known preference: honor the per-user opt-out. Absent field → enabled
+      // (older backend / opt-out default). A clean read is NOT force-closed.
+      enabled: me.telemetry_enabled !== false,
+      forceClosed: false,
     };
   } catch (err: any) {
+    // Unknown preference (ERROR) → fail closed hard, same reasoning as timeout.
     logger.warn?.(`telemetry identity resolve failed: ${err?.message ?? err}`);
-    return { distinctId: "mcp:unknown", region };
+    return { identity: { distinctId: "mcp:unknown", region }, enabled: false, forceClosed: true };
   }
+}
+
+// The telemetry handle to use for a request. Always the shared handle bound to
+// this request's identity; the isSuppressed predicate drops analytics + error
+// telemetry when the user is opted out — but keeps captureFeedback LIVE, because
+// leadbay_send_feedback is an explicit user-initiated action, not passive
+// telemetry (Codex P2). Web-safe: on the multi-tenant hosted server a disabled
+// user's tool calls emit no analytics, per-request, without affecting others.
+//
+// The predicate is LIVE (read at capture time), not a fixed pre-execute
+// decision: it suppresses if EITHER the initial /users/me said disabled, OR the
+// client's cache now says disabled. This closes the "opt-out request tracks
+// itself" gap (Codex P2) — a `leadbay_set_telemetry disable` flips the cache
+// inside execute(), so server.ts's post-execute captureToolCall for THIS request
+// sees the fresh disabled state and is suppressed.
+// Shared suppression precedence for the LIVE opt-out predicate (Codex P1/P2).
+// Precedence, highest first:
+//   1. An EXPLICIT STAMP (stamped=true) is the user's direct choice for THIS
+//      request and outranks everything — including forceClosed. stamp `true`
+//      EMITS (a same-request opt-IN takes effect even after a background refresh
+//      failed closed), stamp `false` SUPPRESSES.
+//   2. Otherwise ANY opt-out signal suppresses: forceClosed (a read couldn't
+//      establish the preference), a cache read of `false`, OR sessionOptedOut
+//      (an SSE refresh that OBSERVED `false` this cycle, even if a concurrent
+//      tool read left the shared cache at a stale `true`). Opt-out always wins
+//      among non-stamp signals — privacy fails safe.
+//   3. No opt-out signal and cache is `true` → emit. Cache undefined → defer to
+//      `fallbackEnabled` (older-backend absent field → enabled; unreadable →
+//      disabled).
+export function suppressTelemetry(opts: {
+  stamped: boolean;
+  cached: boolean | undefined;
+  forceClosed: boolean;
+  sessionOptedOut: boolean;
+  fallbackEnabled: boolean;
+}): boolean {
+  const { stamped, cached, forceClosed, sessionOptedOut, fallbackEnabled } = opts;
+  if (stamped) return cached === false; // explicit user choice wins over all
+  if (forceClosed || cached === false || sessionOptedOut) return true; // any opt-out signal
+  if (cached === true) return false;
+  return !fallbackEnabled; // cache undefined → resolve/backend default
+}
+
+export async function telemetryHandleForRequest(client: LeadbayClient): Promise<TelemetryHandle> {
+  const { identity, enabled, forceClosed } = await resolveTelemetryContext(client);
+  // Streamable path re-resolves per request. `enabled` is the fallback used when
+  // the cache is undefined (absent-field read → enabled). `forceClosed` is set
+  // when the resolve TIMED OUT or ERRORED: the losing resolveMe() may later
+  // populate the cache with a `true`, and forceClosed overrides that so a
+  // request the timeout failed closed cannot reopen itself (Codex P1). A clean
+  // read is not force-closed, so a mid-request opt-IN stamp (cache=true) still
+  // takes effect and a mid-request opt-OUT stamp (cache=false) suppresses.
+  const isSuppressed = () =>
+    suppressTelemetry({
+      stamped: client.cachedTelemetryStamped(),
+      cached: client.cachedTelemetryEnabled(),
+      forceClosed,
+      sessionOptedOut: false, // no session on the streamable path
+      fallbackEnabled: enabled,
+    });
+  return bindTelemetryIdentity(telemetry, identity, isSuppressed);
 }
 
 // Wrap the shared handle so every capture in THIS request/session carries the
@@ -108,23 +199,48 @@ export async function resolveIdentity(client: LeadbayClient): Promise<CaptureIde
 // is never populated on HTTP, so they'd buffer until shutdown and flush
 // anonymous. captureFeedback must forward it too: it fills the Sentry feedback
 // name/email from identity (Codex P2 — hosted feedback was landing anonymous).
-// captureException stays on the base: its ctx already carries region/org and it
-// goes to Sentry, not the PostHog pending buffer.
+//
+// `isSuppressed` is an OPTIONAL live opt-out predicate, consulted synchronously
+// on every capture. It exists for long-lived SSE sessions (product#3879): the
+// server + bound handle are built ONCE at GET /sse, but a user can call
+// leadbay_set_telemetry with disable mid-session — so a fixed NOOP-vs-real
+// decision at connect would keep emitting until reconnect. Backed by the
+// session client's cached telemetry_enabled (refreshed in POST /messages after
+// the tool's invalidateMe()), the predicate flips the same session live. Omitted
+// on the streamable path (each request re-resolves), where the decision is fixed.
+//
+// captureException is gated by isSuppressed TOO: server.ts fires it on tool
+// errors (Sentry), so an opted-out user would otherwise still leak Sentry error
+// telemetry (Codex P1). When NOT suppressed it passes through to base unchanged
+// (its ctx already carries region/org). captureFeedback is the ONE method left
+// live even when suppressed — see below.
 export function bindTelemetryIdentity(
   base: TelemetryHandle,
-  identity: CaptureIdentity
+  identity: CaptureIdentity,
+  isSuppressed?: () => boolean
 ): TelemetryHandle {
+  const on = <A extends unknown[]>(fn: (...a: A) => void) =>
+    (...a: A) => {
+      if (isSuppressed?.()) return;
+      fn(...a);
+    };
   return {
     ...base,
-    captureToolCall: (p) => base.captureToolCall(p, identity),
-    captureCompositeCall: (p) => base.captureCompositeCall(p, identity),
-    captureQuotaHit: (p) => base.captureQuotaHit(p, identity),
-    captureTopupLink: (p) => base.captureTopupLink(p, identity),
-    captureStartup: (p) => base.captureStartup(p, identity),
-    captureAgentMemoryCaptured: (p) => base.captureAgentMemoryCaptured(p, identity),
-    captureAgentMemoryRecalled: (p) => base.captureAgentMemoryRecalled(p, identity),
-    captureAgentMemoryPruned: (p) => base.captureAgentMemoryPruned(p, identity),
-    captureFrictionReported: (p) => base.captureFrictionReported(p, identity),
+    captureToolCall: on((p) => base.captureToolCall(p, identity)),
+    captureCompositeCall: on((p) => base.captureCompositeCall(p, identity)),
+    captureQuotaHit: on((p) => base.captureQuotaHit(p, identity)),
+    captureTopupLink: on((p) => base.captureTopupLink(p, identity)),
+    captureStartup: on((p) => base.captureStartup(p, identity)),
+    captureAgentMemoryCaptured: on((p) => base.captureAgentMemoryCaptured(p, identity)),
+    captureAgentMemoryRecalled: on((p) => base.captureAgentMemoryRecalled(p, identity)),
+    captureAgentMemoryPruned: on((p) => base.captureAgentMemoryPruned(p, identity)),
+    captureFrictionReported: on((p) => base.captureFrictionReported(p, identity)),
+    captureException: on((err, ctx) => base.captureException(err, ctx)),
+    // captureFeedback is NOT gated by isSuppressed (Codex P2): leadbay_send_feedback
+    // is an explicit user-initiated "deliver my message to the team" action, not
+    // passive telemetry. Opting out of analytics must not silently drop the user's
+    // own feedback (it would return sent:false). Identity still rides along so the
+    // Sentry feedback is attributed.
     captureFeedback: (message, opts) => base.captureFeedback(message, opts, identity),
     identify: async () => {},
     shutdown: async () => {},
@@ -139,6 +255,32 @@ interface SseSession {
   transport: SSEServerTransport;
   server: Server;
   createdAt: number;
+  client: LeadbayClient;
+  // Live opt-out for this session (product#3879). The bound telemetry handle
+  // reads this (via suppressTelemetry) on every capture. Same-session toggles
+  // are caught via the client cache the tool stamps (which wins when defined);
+  // POST /messages ALSO kicks a fire-and-forget refresh to catch cross-session
+  // changes, updating `suppressed` out-of-band (never blocking dispatch).
+  suppressed: boolean;
+  // Hard fail-closed signal: set when a cross-session refresh ERRORS (we could
+  // not read the preference). This overrides even a stale cached `true` from
+  // session open, so an unreadable opt-out never keeps emitting (Codex P1).
+  // Cleared on the next SUCCESSFUL refresh.
+  forceClosed: boolean;
+  // True while the per-message cross-session refresh is in flight. Tool dispatch
+  // stays non-blocking, but telemetry capture fails closed until the refresh
+  // settles so a fast tool cannot emit before an out-of-band opt-out is observed.
+  refreshPending: boolean;
+  // Guards the fire-and-forget cross-session refresh so slow /users/me reads
+  // don't stack up orphaned across messages and starve the session client's
+  // API-semaphore slots ahead of tool work (Codex P2).
+  refreshing?: boolean;
+  // Monotonic epoch bumped each time a refresh STARTS. A refresh that times out
+  // fails closed and retires its epoch, but keeps the in-flight guard until the
+  // original /users/me read settles; that result is then IGNORED — otherwise a
+  // late success would clear the forceClosed we set on timeout and reopen the
+  // session (Codex P1).
+  refreshEpoch: number;
 }
 const sseSessions = new Map<string, SseSession>();
 
@@ -340,13 +482,13 @@ async function handleStreamable(
   }
 
   // Resolve identity for THIS request and bind it onto the shared telemetry
-  // handle so every tool-call event carries the caller's distinctId. Without
-  // this the hosted server emitted nothing (buildServer defaulted to NOOP) —
-  // product#3876.
-  const identity = await resolveIdentity(resolved.client);
+  // handle so every tool-call event carries the caller's distinctId (without
+  // this the hosted server emitted nothing — product#3876). If the user has
+  // opted out (telemetry_enabled=false), this returns NOOP so a disabled user's
+  // events are suppressed per-request — product#3879.
   const server = buildServerFromClient(
     resolved.client,
-    bindTelemetryIdentity(telemetry, identity)
+    await telemetryHandleForRequest(resolved.client)
   );
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
@@ -415,19 +557,56 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
     return sendChallenge(c, resourcePath, resolved.authState);
   }
 
-  // Resolve identity ONCE per SSE session; the bound handle rides in this
-  // session's server, so every later POST /messages call attributes correctly.
-  const identity = await resolveIdentity(resolved.client);
+  // Resolve identity ONCE per SSE session for attribution, but the opt-out is
+  // LIVE: the session holds a mutable `suppressed` flag the bound handle reads
+  // on every capture, and POST /messages refreshes it before each dispatch. So
+  // a mid-session leadbay_set_telemetry disable takes effect on the next
+  // message, not only after reconnect (product#3879).
+  const { identity, enabled, forceClosed } = await resolveTelemetryContext(resolved.client);
+  const session: SseSession = {
+    transport: undefined as unknown as SSEServerTransport, // set below
+    server: undefined as unknown as Server, // set below
+    createdAt: Date.now(),
+    client: resolved.client,
+    suppressed: !enabled,
+    // Carry the resolve verdict's hard fail-closed (timeout/error at open). It
+    // overrides even a cached `true` a late/orphaned resolveMe might populate,
+    // and is cleared on the next SUCCESSFUL /messages refresh.
+    forceClosed,
+    refreshPending: false,
+    refreshEpoch: 0,
+  };
   const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
   const transport = new SSEServerTransport("/messages", env.outgoing);
   const server = buildServerFromClient(
     resolved.client,
-    bindTelemetryIdentity(telemetry, identity)
+    // Suppression precedence via the shared suppressTelemetry() helper (Codex
+    // P1/P2). An explicit same-session stamp (leadbay_set_telemetry) wins over
+    // everything — so a mid-session opt-IN takes effect even if a background
+    // refresh just failed closed. Otherwise any opt-out signal suppresses:
+    // session.forceClosed (unreadable refresh), a cache read of `false`, OR
+    // session.suppressed (a refresh that OBSERVED `false` this cycle, even if a
+    // concurrent tool read left the shared cache at a stale `true`). Privacy
+    // fails safe; only an explicit stamp can force emit.
+    bindTelemetryIdentity(
+      telemetry,
+      identity,
+      () =>
+        suppressTelemetry({
+          stamped: resolved.client.cachedTelemetryStamped(),
+          cached: resolved.client.cachedTelemetryEnabled(),
+          forceClosed: session.forceClosed || session.refreshPending,
+          sessionOptedOut: session.suppressed,
+          fallbackEnabled: !session.suppressed,
+        })
+    )
   );
   await server.connect(transport);
 
   const sessionId = transport.sessionId;
-  sseSessions.set(sessionId, { transport, server, createdAt: Date.now() });
+  session.transport = transport;
+  session.server = server;
+  sseSessions.set(sessionId, session);
   transport.onclose = () => {
     sseSessions.delete(sessionId);
     server.close().catch(() => {});
@@ -441,6 +620,82 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
 
 app.get("/sse", (c) => handleSse(c, "/sse"));
 app.get("/fr/sse", (c) => handleSse(c, "/fr/sse"));
+
+type SseTelemetryRefreshSession = Pick<
+  SseSession,
+  "client" | "suppressed" | "forceClosed" | "refreshPending" | "refreshing" | "refreshEpoch"
+>;
+
+export function scheduleSseTelemetryRefresh(
+  session: SseTelemetryRefreshSession,
+  stampSeqAtMessageStart: number,
+  timeoutMs = IDENTITY_RESOLVE_TIMEOUT_MS
+): void {
+  if (session.refreshing) return;
+
+  session.refreshing = true;
+  session.refreshPending = true;
+  const epoch = ++session.refreshEpoch;
+  let readSettled = false;
+  let timedOut = false;
+
+  const applyIfCurrent = (apply: () => void, releaseGuard: boolean) => {
+    if (session.refreshEpoch !== epoch) return false;
+    session.refreshEpoch++; // retire this epoch so nothing else mutates for it
+    apply();
+    session.refreshPending = false;
+    if (releaseGuard) session.refreshing = false;
+    return true;
+  };
+
+  const failClosed = () => {
+    // Unreadable preference → fail closed HARD, overriding a stale cached `true`
+    // from session open. Demote a prior-message opt-in stamp, while preserving a
+    // same-message explicit enable stamp (seq bumped past kickoff).
+    session.suppressed = true;
+    session.forceClosed = true;
+    session.client.clearTelemetryStampOrigin(stampSeqAtMessageStart);
+  };
+
+  const timeout = setTimeout(() => {
+    if (readSettled) return;
+    timedOut = true;
+    // Fail closed for captures now, but keep `refreshing` true until the
+    // underlying read releases its LeadbayClient semaphore slot.
+    applyIfCurrent(failClosed, false);
+  }, timeoutMs);
+
+  void session.client.fetchTelemetryEnabled().then(
+    (enabled) => {
+      readSettled = true;
+      clearTimeout(timeout);
+      if (timedOut) {
+        session.refreshing = false;
+        return;
+      }
+      applyIfCurrent(() => {
+        // Observed the preference (undefined = older backend → enabled).
+        if (enabled === false) {
+          // A refresh that observes a cross-session opt-out must outrank an
+          // opt-in stamp from an earlier SSE message. Preserve only a stamp
+          // made after this message started (same-message explicit enable).
+          session.client.clearTelemetryStampOrigin(stampSeqAtMessageStart);
+        }
+        session.suppressed = enabled === false;
+        session.forceClosed = false;
+      }, true);
+    },
+    () => {
+      readSettled = true;
+      clearTimeout(timeout);
+      if (timedOut) {
+        session.refreshing = false;
+        return;
+      }
+      applyIfCurrent(failClosed, true);
+    }
+  );
+}
 
 app.post("/messages", async (c) => {
   const foreign = rejectForeignOrigin(c);
@@ -456,6 +711,47 @@ app.post("/messages", async (c) => {
   }
   const env = c.env as { incoming: IncomingMessage; outgoing: ServerResponse };
   const body = await c.req.json().catch(() => undefined);
+
+  // Opt-out enforcement for THIS message comes from the bound handle's live
+  // predicate (suppressTelemetry over the client cache + session flags), NOT
+  // from a blocking pre-dispatch fetch. A same-session leadbay_set_telemetry
+  // toggle stamps the client cache inside execute(), so the predicate already
+  // catches it without any refresh here.
+  //
+  // The ONLY thing a refresh adds is catching a toggle made from ANOTHER
+  // connector/session. So we kick it off FIRE-AND-FORGET (never awaited) and
+  // never block dispatch on it (Codex P2): a slow /users/me must not occupy the
+  // session client's API-semaphore slots ahead of the actual tool work.
+  //
+  // We run the refresh for EVERY message, including leadbay_set_telemetry ones
+  // (Codex P2): the client's telemetry state-sequence guard keeps a concurrent
+  // stamp authoritative, so there's nothing to protect by skipping.
+  //
+  // The refresh uses client.fetchTelemetryEnabled() — a DEDICATED lightweight
+  // read that only reconciles the telemetry preference and does NOT touch the
+  // general /me cache (mePayload). That isolation removes a whole class of
+  // cross-contamination the old resolveMe(true) refresh caused (Codex P2): it
+  // can't repopulate a stale last_requested_lens over a tool's mutation, can't
+  // serve/pollute the 60s /me cache, and its result is a plain observed value we
+  // reconcile directly (no shared-cache-vs-payload ambiguity, no superseded
+  // dance). It returns undefined when the backend omits the field (older backend
+  // → enabled default → not suppressed).
+  //
+  // BOUNDED (Codex P1): the read has no abort, so a hung /users/me must fail
+  // closed after a timeout. The in-flight guard stays up until the underlying
+  // read settles so later messages cannot stack orphan refreshes behind the
+  // session client's API semaphore. A per-refresh epoch (retired the instant the
+  // timeout branch applies) guarantees a read finishing AFTER its own timeout is
+  // discarded and can't reopen the fail-closed verdict.
+  // Stamp sequence at message start. Any stamp beyond this is a same-message
+  // opt-in made during dispatch, which a fail-closed demote must preserve. This
+  // deliberately ignores telemetry read-start bumps.
+  const stampSeqAtMessageStart = session.client.telemetryStampSeq();
+  // Stamps are request-scoped. Demote an opt-in stamp from any PRIOR SSE message
+  // before the pending-refresh fail-closed predicate can run for this one; a
+  // same-message explicit enable will stamp after this snapshot and still win.
+  session.client.clearTelemetryStampOrigin(stampSeqAtMessageStart);
+  scheduleSseTelemetryRefresh(session, stampSeqAtMessageStart);
   await session.transport.handlePostMessage(env.incoming, env.outgoing, body);
   // handlePostMessage has already written the response to env.outgoing.
   return new Response(null, { headers: { "x-hono-already-sent": "1" } });
