@@ -388,7 +388,10 @@ export const compositeWriteTools: Tool[] = [
   // tool reads current + applies add/remove/set. Shrinking requires confirm.
   setQualificationQuestions,
   // Per-user telemetry on/off/status (POST /users/telemetry + GET /users/me).
-  // A write tool (it mutates the account preference) even though `status` reads.
+  // Deliberately composite even though the write is one endpoint call: this is
+  // a user-facing privacy control on the default surface, and composite-file
+  // tools carry the mandatory _triggered_by/privacy guards. Granular tools are
+  // the advanced 1:1 API surface.
   setTelemetry,
   // addNote is granular-shaped but file-import prompts depend on it to preserve
   // meaningful source-file notes after imports return lead ids.
