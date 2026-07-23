@@ -56,6 +56,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 42 | **Enrichment consent — no silent paid email reveal** — the core of product#3848: a request to "add title and LinkedIn" (both already FREE on the contact record) must NOT silently launch a paid email enrichment. `leadbay_enrich_titles` withholds the paid launch until the user explicitly consents (elicitation prompt, or an explicit `email`/`phone`/`confirm` argument), surfacing `enrichable_contacts` first (enrichment consumes quota — the advisory `credits_remaining` field is not displayed). Explicit "go ahead and spend, enrich their emails" still launches. | `leadbay_enrich_titles` | "Add title and LinkedIn to these contacts" |
 | 43 | **Enrichment stays active until done (no reprompt)** — the core of product#3866: after the user authorizes a paid enrichment, the agent launches via `leadbay_enrich_titles` (which returns `mode:"launched"` immediately — the job runs async), then STAYS ACTIVE in the same turn: it polls `leadbay_bulk_enrich_status` in a loop until done (`all_done`, or the resolvable set plateaus), and reports the completed enrichment (which contacts got emails/phones, counts, refreshed quota via `leadbay_account_status`) on its own — WITHOUT the user having to ask "is it done yet?". Distinct from Workflow 34 (multi-turn campaign builder, where the user *explicitly* says "wait for enrichment to finish" in turn 3); here it is a SINGLE turn and the stay-active behavior must be automatic. | `leadbay_enrich_titles` | "Pull my current leads and enrich their emails — get me the results in this same reply" |
 | 44 | **Pull leads offers "Enrich top leads"** — product#3875: after a `leadbay_pull_leads` on a non-empty batch, the deterministic `next_steps` surfaces an **Enrich top leads** option at position 2 (right after the Triage-board artifact offer) so the discovery→outreach bridge is one click away. It routes to `leadbay_enrich_titles` via the NO-SPEND preview path — previews volume + channels first, spends nothing until the user confirms — so a plain "show me my leads" never triggers an unprompted paid reveal (the #42 consent gate holds). | `leadbay_pull_leads`, `leadbay_enrich_titles` | "Show me my top leads for today" |
+| 45 | **Telemetry enable/disable/status** — product#3879: an in-product control to opt out of / into product-usage telemetry, or check the current setting. `leadbay_set_telemetry` (its `action` argument is `enable`, `disable`, or `status`; default `status`) reads/writes a per-user preference stored on the Leadbay account (`GET /users/me` → `telemetry_enabled`; `POST /users/telemetry`). Telemetry stays ON by default (opt-out). The hosted/web connector honors the flag per-request (a disabled user's events are suppressed). A local/stdio install decides telemetry at startup from `LEADBAY_TELEMETRY_ENABLED` and does not read the account flag, so local opt-out also needs that env var — the tool's copy says so rather than promising local opt-out. | `leadbay_set_telemetry` | "Turn off telemetry — I don't want my usage tracked" |
 
 ---
 
@@ -128,18 +129,18 @@ prompt: "Tell me about jaxpartycompany.com"
 workflow_name: CSV import + qualify
 prompt_name: leadbay_import_file
 required_calls:
-  - leadbay_import_leads
-  - leadbay_bulk_qualify_leads
+  - leadbay_import_and_qualify
 forbidden_calls:
   - leadbay_report_outreach
 success_criteria:
-  - "called leadbay_import_leads at least once"
-  - "called leadbay_bulk_qualify_leads at least once"
+  - "launched an import covering the provided companies via leadbay_import_and_qualify (the prompt's preferred single-verb path; the older leadbay_import_leads + leadbay_bulk_qualify_leads chain is also valid in production but this contract pins the preferred path for a deterministic guard)"
+  - "initiated qualification of the imported leads as part of that call"
   - "did NOT call leadbay_report_outreach"
+  - "if any rows come back uncrawled, framed them as PENDING a background crawl (not failed / rejected / a backend problem / bad websites)"
 ```
 
 ```yaml scenario
-prompt: "I have some leads to import"
+prompt: "I have some leads to import and qualify: Stripe (stripe.com), Figma (figma.com), Notion (notion.so), Ramp (ramp.com), Linear (linear.app). Import them into Leadbay and qualify them, then tell me what happened."
 ```
 
 ```yaml expected
@@ -1000,6 +1001,24 @@ success_criteria:
 ```
 
 A `turns:` contract has no separate `yaml scenario` block.
+
+```yaml expected
+workflow_name: Telemetry enable/disable/status
+prompt_name: ~
+required_calls:
+  - leadbay_set_telemetry
+forbidden_calls:
+  - leadbay_send_feedback
+  - leadbay_report_friction
+success_criteria:
+  - "called leadbay_set_telemetry with action:'disable'"
+  - "did NOT misroute to leadbay_send_feedback or leadbay_report_friction"
+  - "reported the resulting telemetry state to the user"
+```
+
+```yaml scenario
+prompt: "Turn off telemetry — I don't want my usage tracked"
+```
 
 ## How this stays normative
 

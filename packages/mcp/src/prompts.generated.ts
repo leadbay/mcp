@@ -798,7 +798,7 @@ Build the final mappings yourself. Start from \`leadbay_resolve_import_rows.mapp
 
 # PHASE 5 — QUALIFY (optional) + REPORT
 
-Prefer \`leadbay_import_and_qualify\` when the user asks to qualify/research after import; otherwise use \`leadbay_import_leads\`. For large files or short client timeouts, pass \`wait_for_completion=false\` and poll \`leadbay_import_status\`. After import, qualify only lead IDs returned by the import; late website matches may appear later via \`import_status\`.
+Prefer \`leadbay_import_and_qualify\` when the user asks to qualify/research after import; otherwise use \`leadbay_import_leads\`. For large files or short client timeouts, pass \`wait_for_completion=false\` and poll \`leadbay_import_status\`. After import, qualify only lead IDs returned by the import. Rows that came back \`uncrawled\` are pending a background crawl (not failures); the leads Leadbay adds for them populate in the user's Leadbay account as the crawl completes — tell the user that, not that a tool call will fetch them (\`import_status\` refreshes status/progress only; \`pull_leads\` reads the active lens, so an imported lead outside it may not appear; re-running the import later re-reconciles those companies).
 
 **Deliver the augmented file back to the user**: the original file plus a new \`LEADBAY_ID\` column populated from the resolution step. This is the second deliverable of a job well done.
 
