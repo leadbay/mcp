@@ -337,15 +337,7 @@ export class LeadbayClient {
     return this._lastMeta;
   }
 
-  // Used by login when region auto-detect picks a different backend than the
-  // one the client was constructed with.
-  setBaseUrl(baseUrl: string, region?: "us" | "fr"): void {
-    this._baseUrl = baseUrl.replace(/\/+$/, "");
-    this._region = region ?? (
-      baseUrl === REGIONS.us ? "us" :
-      baseUrl === REGIONS.fr ? "fr" : "custom"
-    );
-    // Region change invalidates everything — different tenant.
+  private clearTenantScopedCaches(): void {
     this.defaultLensId = null;
     this.defaultLensCachedAt = null;
     this.mePayload = null;
@@ -356,15 +348,30 @@ export class LeadbayClient {
     // and bumping the sequence so any /users/me read still in flight from the
     // OLD tenant can't write the new tenant's cache — prevents the previous
     // account's opt-out from wrongly suppressing the new one (e.g. after
-    // leadbay_login switches region before setToken).
+    // leadbay_login switches region or replaces the token).
     this.telemetryEnabledCache = undefined;
     this.telemetryEnabledFromStamp = false;
     this.telemetryStateSeq++;
     this.telemetryStampStateSeq++;
   }
 
+  // Used by login when region auto-detect picks a different backend than the
+  // one the client was constructed with.
+  setBaseUrl(baseUrl: string, region?: "us" | "fr"): void {
+    this._baseUrl = baseUrl.replace(/\/+$/, "");
+    this._region = region ?? (
+      baseUrl === REGIONS.us ? "us" :
+      baseUrl === REGIONS.fr ? "fr" : "custom"
+    );
+    // Region change invalidates everything — different tenant.
+    this.clearTenantScopedCaches();
+  }
+
   setToken(token: string): void {
     this.token = token;
+    // Token replacement can be a same-region account switch (leadbay_login only
+    // calls setBaseUrl when region changes). Clear tenant-scoped state here too.
+    this.clearTenantScopedCaches();
   }
 
   get isAuthenticated(): boolean {
@@ -835,6 +842,22 @@ export class LeadbayClient {
   // omitted the field (older backend → caller treats as enabled default).
   async fetchTelemetryEnabled(): Promise<boolean | undefined> {
     const seqAtStart = ++this.telemetryStateSeq;
+    if (process.env.LEADBAY_MOCK === "1") {
+      const metaBefore = this._lastMeta;
+      try {
+        const me = this.mockRequest<UserMePayload>("GET", "/users/me");
+        const observed = me.telemetry_enabled;
+        if (this.telemetryStateSeq === seqAtStart && observed !== undefined) {
+          this.telemetryEnabledCache = observed;
+          this.telemetryEnabledFromStamp = false;
+        }
+        return observed;
+      } finally {
+        // Keep the telemetry-only refresh invisible to tool-visible metadata,
+        // matching the live path that bypasses request().
+        this._lastMeta = metaBefore;
+      }
+    }
     if (!this.token) {
       throw this.makeError(
         "NOT_AUTHENTICATED",

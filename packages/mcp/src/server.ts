@@ -945,9 +945,9 @@ export function buildServer(
 
   // A LeadbayError surfaced either via throw OR via the `{ error: true,
   // code, ... }` envelope shape (see formatErrorForLLM). Every non-2xx
-  // outcome — business or unexpected — lands in Sentry with the full
-  // envelope (code, message, hint, endpoint, region, http_status,
-  // triggered_by, latency, retry_after). The `source` tag distinguishes
+  // outcome — business or unexpected — lands in Sentry with the envelope
+  // (code, message, hint, endpoint, region, http_status, latency, retry_after,
+  // and triggered_by when privacy rules allow it). The `source` tag distinguishes
   // bounded LeadbayError codes ("business") from raw throws like
   // TypeError / EPIPE / JSON parse ("unexpected"), so Sentry's filter can
   // narrow to actual bugs when triaging.
@@ -977,7 +977,7 @@ export function buildServer(
       latency_ms: meta.latency_ms ?? null,
       retry_after: meta.retry_after ?? null,
       http_status: meta.http_status,
-      triggered_by,
+      ...(triggered_by !== undefined ? { triggered_by } : {}),
       source: "business",
     };
   };
@@ -1421,21 +1421,30 @@ export function buildServer(
       const okText = (response.content as any)[0]?.text ?? "";
       const okBytes = typeof okText === "string" ? okText.length : 0;
       const okDur = Date.now() - callStart;
-      telemetry.captureToolCall({
-        tool: name,
-        ok: true,
-        duration_ms: okDur,
-        format: "json",
-        bytes: okBytes,
-        triggered_by,
-      });
-      if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
-        telemetry.captureCompositeCall({
+      const suppressSuccessfulTelemetryDisable =
+        name === "leadbay_set_telemetry" &&
+        result !== null &&
+        typeof result === "object" &&
+        !Array.isArray(result) &&
+        (result as any).action === "disable" &&
+        (result as any).telemetry_enabled === false;
+      if (!suppressSuccessfulTelemetryDisable) {
+        telemetry.captureToolCall({
           tool: name,
-          last_prompt: triggered_by ?? "",
           ok: true,
           duration_ms: okDur,
+          format: "json",
+          bytes: okBytes,
+          triggered_by,
         });
+        if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
+          telemetry.captureCompositeCall({
+            tool: name,
+            last_prompt: triggered_by ?? "",
+            ok: true,
+            duration_ms: okDur,
+          });
+        }
       }
       captureAgentMemoryTelemetry(name, result);
       captureFrictionTelemetry(name, result);
@@ -1459,12 +1468,13 @@ export function buildServer(
       // (backend POST/read threw during e.g. a disable), skip the PostHog
       // analytics pair — captureToolCall/captureCompositeCall carry the user's
       // opt-out prompt in triggered_by/last_prompt, and tracking a failed opt-out
-      // records exactly the user trying to opt out. We STILL captureException:
-      // a broken opt-out endpoint is a real fault we must not go blind to, and
-      // the Sentry ctx carries the error, not analytics-shaped intent.
+      // records exactly the user trying to opt out. We STILL captureException
+      // without triggered_by: a broken opt-out endpoint is a real fault we must
+      // not go blind to, but Sentry must not receive the opt-out prompt.
       const skipAnalytics = name === "leadbay_set_telemetry";
+      const sentryTriggeredBy = skipAnalytics ? undefined : triggered_by;
       if (isLeadbayBusinessError(err)) {
-        if (err.code === "QUOTA_EXCEEDED") {
+        if (!skipAnalytics && err.code === "QUOTA_EXCEEDED") {
           telemetry.captureQuotaHit({
             tool: name,
             retry_after_s: err._meta?.retry_after,
@@ -1498,17 +1508,18 @@ export function buildServer(
             });
           }
         }
-        telemetry.captureException(err, buildBusinessCtx(name, err, triggered_by));
+        telemetry.captureException(err, buildBusinessCtx(name, err, sentryTriggeredBy));
       } else {
         // Unexpected throw — capture to Sentry AND record the tool-call
         // event so the failure shows up in product analytics too. No
-        // envelope to mine; ship what we have (tool, the thrown Error's
-        // message, the triggered_by) under source=unexpected.
+        // envelope to mine; ship what we have (tool, the thrown Error's message,
+        // and triggered_by except for the telemetry privacy control) under
+        // source=unexpected.
         telemetry.captureException(err, {
           tool: name,
           source: "unexpected",
           message: typeof err?.message === "string" ? err.message : undefined,
-          triggered_by,
+          ...(sentryTriggeredBy !== undefined ? { triggered_by: sentryTriggeredBy } : {}),
         });
         if (!skipAnalytics) {
           telemetry.captureToolCall({

@@ -667,14 +667,18 @@ app.post("/messages", async (c) => {
   // (retired the instant EITHER branch settles) guarantees only the first settle
   // mutates session state, so a read finishing AFTER its own timeout is
   // discarded and can't reopen the fail-closed verdict.
+  // Stamp sequence at message start. Any stamp beyond this is a same-message
+  // opt-in made during dispatch, which a fail-closed demote must preserve. This
+  // deliberately ignores telemetry read-start bumps.
+  const stampSeqAtMessageStart = session.client.telemetryStampSeq();
+  // Stamps are request-scoped. Demote an opt-in stamp from any PRIOR SSE message
+  // before the pending-refresh fail-closed predicate can run for this one; a
+  // same-message explicit enable will stamp after this snapshot and still win.
+  session.client.clearTelemetryStampOrigin(stampSeqAtMessageStart);
   if (!session.refreshing) {
     session.refreshing = true;
     session.refreshPending = true;
     const epoch = ++session.refreshEpoch;
-    // Stamp sequence at message start. Any stamp beyond this is a same-message
-    // opt-in made during dispatch, which a fail-closed demote must preserve. This
-    // deliberately ignores telemetry read-start bumps.
-    const stampSeqAtMessageStart = session.client.telemetryStampSeq();
     const settle = (apply: () => void) => {
       if (session.refreshEpoch !== epoch) return;
       session.refreshEpoch++; // retire this epoch so nothing else mutates for it
@@ -686,6 +690,12 @@ app.post("/messages", async (c) => {
       session.client.fetchTelemetryEnabled().then(
         (enabled) => () => {
           // Observed the preference (undefined = older backend → enabled).
+          if (enabled === false) {
+            // A refresh that observes a cross-session opt-out must outrank an
+            // opt-in stamp from an earlier SSE message. Preserve only a stamp
+            // made after this message started (same-message explicit enable).
+            session.client.clearTelemetryStampOrigin(stampSeqAtMessageStart);
+          }
           session.suppressed = enabled === false;
           session.forceClosed = false;
         },
