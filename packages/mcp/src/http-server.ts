@@ -276,10 +276,10 @@ interface SseSession {
   // API-semaphore slots ahead of tool work (Codex P2).
   refreshing?: boolean;
   // Monotonic epoch bumped each time a refresh STARTS. A refresh that times out
-  // releases the guard so the next message can retry; if the original (now
-  // orphaned) resolveMe later completes, its epoch no longer matches and its
-  // result is IGNORED — otherwise a late success would clear the forceClosed we
-  // set on timeout and reopen the session (Codex P1).
+  // fails closed and retires its epoch, but keeps the in-flight guard until the
+  // original /users/me read settles; that result is then IGNORED — otherwise a
+  // late success would clear the forceClosed we set on timeout and reopen the
+  // session (Codex P1).
   refreshEpoch: number;
 }
 const sseSessions = new Map<string, SseSession>();
@@ -621,6 +621,82 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
 app.get("/sse", (c) => handleSse(c, "/sse"));
 app.get("/fr/sse", (c) => handleSse(c, "/fr/sse"));
 
+type SseTelemetryRefreshSession = Pick<
+  SseSession,
+  "client" | "suppressed" | "forceClosed" | "refreshPending" | "refreshing" | "refreshEpoch"
+>;
+
+export function scheduleSseTelemetryRefresh(
+  session: SseTelemetryRefreshSession,
+  stampSeqAtMessageStart: number,
+  timeoutMs = IDENTITY_RESOLVE_TIMEOUT_MS
+): void {
+  if (session.refreshing) return;
+
+  session.refreshing = true;
+  session.refreshPending = true;
+  const epoch = ++session.refreshEpoch;
+  let readSettled = false;
+  let timedOut = false;
+
+  const applyIfCurrent = (apply: () => void, releaseGuard: boolean) => {
+    if (session.refreshEpoch !== epoch) return false;
+    session.refreshEpoch++; // retire this epoch so nothing else mutates for it
+    apply();
+    session.refreshPending = false;
+    if (releaseGuard) session.refreshing = false;
+    return true;
+  };
+
+  const failClosed = () => {
+    // Unreadable preference → fail closed HARD, overriding a stale cached `true`
+    // from session open. Demote a prior-message opt-in stamp, while preserving a
+    // same-message explicit enable stamp (seq bumped past kickoff).
+    session.suppressed = true;
+    session.forceClosed = true;
+    session.client.clearTelemetryStampOrigin(stampSeqAtMessageStart);
+  };
+
+  const timeout = setTimeout(() => {
+    if (readSettled) return;
+    timedOut = true;
+    // Fail closed for captures now, but keep `refreshing` true until the
+    // underlying read releases its LeadbayClient semaphore slot.
+    applyIfCurrent(failClosed, false);
+  }, timeoutMs);
+
+  void session.client.fetchTelemetryEnabled().then(
+    (enabled) => {
+      readSettled = true;
+      clearTimeout(timeout);
+      if (timedOut) {
+        session.refreshing = false;
+        return;
+      }
+      applyIfCurrent(() => {
+        // Observed the preference (undefined = older backend → enabled).
+        if (enabled === false) {
+          // A refresh that observes a cross-session opt-out must outrank an
+          // opt-in stamp from an earlier SSE message. Preserve only a stamp
+          // made after this message started (same-message explicit enable).
+          session.client.clearTelemetryStampOrigin(stampSeqAtMessageStart);
+        }
+        session.suppressed = enabled === false;
+        session.forceClosed = false;
+      }, true);
+    },
+    () => {
+      readSettled = true;
+      clearTimeout(timeout);
+      if (timedOut) {
+        session.refreshing = false;
+        return;
+      }
+      applyIfCurrent(failClosed, true);
+    }
+  );
+}
+
 app.post("/messages", async (c) => {
   const foreign = rejectForeignOrigin(c);
   if (foreign) return foreign;
@@ -661,11 +737,11 @@ app.post("/messages", async (c) => {
   // dance). It returns undefined when the backend omits the field (older backend
   // → enabled default → not suppressed).
   //
-  // BOUNDED (Codex P1): the read has no abort, so a hung /users/me must not wedge
-  // session.refreshing forever. We race it against a timeout that fails closed
-  // and releases the guard so a later message can retry. A per-refresh epoch
-  // (retired the instant EITHER branch settles) guarantees only the first settle
-  // mutates session state, so a read finishing AFTER its own timeout is
+  // BOUNDED (Codex P1): the read has no abort, so a hung /users/me must fail
+  // closed after a timeout. The in-flight guard stays up until the underlying
+  // read settles so later messages cannot stack orphan refreshes behind the
+  // session client's API semaphore. A per-refresh epoch (retired the instant the
+  // timeout branch applies) guarantees a read finishing AFTER its own timeout is
   // discarded and can't reopen the fail-closed verdict.
   // Stamp sequence at message start. Any stamp beyond this is a same-message
   // opt-in made during dispatch, which a fail-closed demote must preserve. This
@@ -675,56 +751,7 @@ app.post("/messages", async (c) => {
   // before the pending-refresh fail-closed predicate can run for this one; a
   // same-message explicit enable will stamp after this snapshot and still win.
   session.client.clearTelemetryStampOrigin(stampSeqAtMessageStart);
-  if (!session.refreshing) {
-    session.refreshing = true;
-    session.refreshPending = true;
-    const epoch = ++session.refreshEpoch;
-    const settle = (apply: () => void) => {
-      if (session.refreshEpoch !== epoch) return;
-      session.refreshEpoch++; // retire this epoch so nothing else mutates for it
-      apply();
-      session.refreshPending = false;
-      session.refreshing = false;
-    };
-    void Promise.race([
-      session.client.fetchTelemetryEnabled().then(
-        (enabled) => () => {
-          // Observed the preference (undefined = older backend → enabled).
-          if (enabled === false) {
-            // A refresh that observes a cross-session opt-out must outrank an
-            // opt-in stamp from an earlier SSE message. Preserve only a stamp
-            // made after this message started (same-message explicit enable).
-            session.client.clearTelemetryStampOrigin(stampSeqAtMessageStart);
-          }
-          session.suppressed = enabled === false;
-          session.forceClosed = false;
-        },
-        () => () => {
-          // Unreadable preference → fail closed HARD, overriding a stale cached
-          // `true` from session open (Codex P1). Demote a stamp that PREDATES
-          // this message so an earlier opt-IN can't outrank this fail-closed
-          // verdict — but keep a same-message opt-in stamp (seq bumped past
-          // kickoff) intact (Codex P2 — stamps are request-scoped).
-          session.suppressed = true;
-          session.forceClosed = true;
-          session.client.clearTelemetryStampOrigin(stampSeqAtMessageStart);
-        }
-      ),
-      new Promise<() => void>((resolve) =>
-        setTimeout(
-          () =>
-            resolve(() => {
-              // Timed out — fail closed and let the next message retry. Same
-              // same-message-stamp-preserving demote as the error branch (Codex P2).
-              session.suppressed = true;
-              session.forceClosed = true;
-              session.client.clearTelemetryStampOrigin(stampSeqAtMessageStart);
-            }),
-          IDENTITY_RESOLVE_TIMEOUT_MS
-        )
-      ),
-    ]).then(settle);
-  }
+  scheduleSseTelemetryRefresh(session, stampSeqAtMessageStart);
   await session.transport.handlePostMessage(env.incoming, env.outgoing, body);
   // handlePostMessage has already written the response to env.outgoing.
   return new Response(null, { headers: { "x-hono-already-sent": "1" } });
