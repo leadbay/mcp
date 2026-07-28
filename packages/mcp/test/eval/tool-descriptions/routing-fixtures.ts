@@ -155,4 +155,46 @@ export const ROUTING_FIXTURES: RoutingFixture[] = [
   { intent: "Remove the epilogue entry for this lead.", expected_tool: "leadbay_remove_epilogue" },
   { intent: "Preview the cost of bulk enrichment before launching.", expected_tool: "leadbay_preview_bulk_enrichment" },
   { intent: "Launch the bulk enrichment job.", expected_tool: "leadbay_launch_bulk_enrichment" },
+
+  // MCP-first lead delivery (net-new search / batch qualify / job poll)
+  {
+    intent: "Find me 10 gyms around Dallas that would buy our flooring, with someone I can call.",
+    expected_tool: "leadbay_find_new_leads",
+    forbidden_tools: ["leadbay_pull_leads", "leadbay_extend_lens"],
+  },
+  {
+    intent: "Get me 20 brand-new prospects that look like our best customer, with the VP People's email.",
+    expected_tool: "leadbay_find_new_leads",
+    forbidden_tools: ["leadbay_pull_leads", "leadbay_enrich_titles"],
+  },
+  {
+    intent: "We're entering the Lyon market — find 15 hotels that fit our ICP.",
+    expected_tool: "leadbay_find_new_leads",
+    forbidden_tools: ["leadbay_new_lens"],
+  },
+  {
+    intent: "Here are 60 restaurant websites from my Austin sweep — which fit our profile, and who's the owner at each?",
+    expected_tool: "leadbay_qualify_leads",
+    forbidden_tools: ["leadbay_find_new_leads", "leadbay_bulk_qualify_leads", "leadbay_import_leads"],
+  },
+  {
+    intent: "Re-qualify everything you delivered last week and get phone numbers for the good ones.",
+    expected_tool: "leadbay_qualify_leads",
+    forbidden_tools: ["leadbay_bulk_qualify_leads"],
+  },
+  {
+    intent: "Vet these 12 accounts from my spreadsheet against our qualification criteria.",
+    expected_tool: "leadbay_qualify_leads",
+    forbidden_tools: ["leadbay_import_leads", "leadbay_bulk_qualify_leads"],
+  },
+  {
+    intent: "Any results yet from that lead search job you started?",
+    expected_tool: "leadbay_lead_job_status",
+    forbidden_tools: ["leadbay_bulk_enrich_status", "leadbay_import_status", "leadbay_qualify_status"],
+  },
+  {
+    intent: "Wait for the lead delivery job to finish and show me everything it found.",
+    expected_tool: "leadbay_lead_job_status",
+    forbidden_tools: ["leadbay_bulk_enrich_status"],
+  },
 ];
