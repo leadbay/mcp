@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Autonomous, target-sized `leadbay_build_campaign`
+## 0.26.0 — 2026-07-29 — Autonomous, target-sized `leadbay_build_campaign`
 
 - `leadbay_build_campaign` now runs **end-to-end without pausing** and builds to
   a caller-specified size. Two new optional arguments:
