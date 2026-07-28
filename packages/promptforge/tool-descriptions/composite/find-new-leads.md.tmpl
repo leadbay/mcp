@@ -92,7 +92,8 @@ budget on candidates qualification will reject.
 - Unresolvable `filters` values 400 naming them — fix the label (see
   `leadbay_list_sectors` / `leadbay_list_locations`) and resubmit.
 - `min_ai_score` gates the [-30,+30] qualification DELTA, not the 0-100 fit
-  score; set -30 to keep every evaluated lead with its evidence.
+  score. Lower it only to STUDY evidence — never combine a lowered floor
+  with `channels` (that buys emails for leads the AI just scored as junk).
 - `count` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After
   beyond — wait, don't hammer).
 
