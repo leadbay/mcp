@@ -23,6 +23,7 @@ import {
   leadbay_daily_check_in,
   leadbay_import_file,
   leadbay_log_outreach,
+  leadbay_new_leads,
   leadbay_plan_tour_in_city,
   leadbay_prospecting_overview,
   leadbay_qualify_top_n,
@@ -77,6 +78,25 @@ const CATALOG: CatalogEntry[] = [
     description: PROMPT_META.leadbay_prospecting_overview.short_description,
     arguments: [],
     render: () => [userMessage(leadbay_prospecting_overview)],
+  },
+  {
+    name: "leadbay_new_leads",
+    description: PROMPT_META.leadbay_new_leads.short_description,
+    arguments: [
+      {
+        name: "need",
+        description:
+          "What you're looking for, in your own words (e.g. '10 gyms around Dallas that would buy modular flooring, with phone numbers'). Optional — the session starts by asking when absent.",
+        required: false,
+      },
+    ],
+    render: (args) => [
+      userMessage(
+        substitutePlaceholders(leadbay_new_leads, {
+          need: args.need ?? "(not provided — ask me first)",
+        }),
+      ),
+    ],
   },
   {
     name: "leadbay_research_a_domain",

@@ -1,0 +1,97 @@
+---
+name: leadbay_new_leads
+kind: prompt
+short_description: |
+  Guided net-new lead delivery — turn a natural-language need ("gyms around
+  Dallas that would buy our flooring") into ICP-perfect NEW companies with
+  qualification evidence and the right contact, via leadbay_find_new_leads.
+  Trigger on "find me new leads", "get me N companies that <profile>",
+  "we're entering <market>". Do NOT trigger on "today's leads"
+  (leadbay_daily_check_in) or "qualify these companies I have"
+  (leadbay_qualify_leads).
+arguments:
+  - name: need
+    description: "What the user is looking for, in their own words (e.g. '10 gyms around Dallas that would buy modular flooring, with phone numbers'). Optional — the session starts by asking when absent."
+    required: false
+expected_calls:
+  - leadbay_find_new_leads
+  - leadbay_lead_job_status
+  - leadbay_qualify_leads
+failure_modes:
+  - Passes the user's raw sentence as `query` instead of crafting an example_lead description (vendor-vocabulary trap — measured 0 delivered from a raw query vs on-profile results from a crafted example)
+  - Invents a distinctive brand name in example_lead.name (pulls matching toward name-lookalikes)
+  - Puts event language ("hiring", "expanding", "just raised") into the seed description
+  - Launches qualify:true or channels without a dry_run quote and the user's explicit go-ahead
+  - Retries a failed/timed-out submit with a NEW request_id (double-spend) — the same ask must reuse the same request_id
+  - Reports "no results" without narrating the funnel + scope_notes and proposing a concrete fix
+  - Renders delivered leads as freeform prose instead of the canonical lead-delivery table
+  - Blends two distinct buyer archetypes into one seed description instead of running one search per archetype
+---
+
+{{include:headers/agent-memory-preamble}}
+
+{{include:iron-laws/no-fabrication}}
+
+{{include:gates/defer-to-tool-rendering}}
+
+Find net-new leads for me. My need, in my words:
+
+> {{arg:need}}
+
+If the need above is empty or too vague to name (a) who I sell to and (b)
+roughly how many leads I want, ask me ONCE — one short question — then
+proceed. Default count when unstated: 10.
+
+# PHASE 1 — UNDERSTAND THE BUYER (no tool calls yet)
+
+From my words, work out:
+- What I SELL and therefore WHO WRITES ME CHECKS — the buyer category, never
+  the buyer's customers, never my competitors. If my product helps companies
+  of type X serve audience Y, my buyer is X.
+- Hard constraints: geography, size band, sector, exclusions ("no
+  franchises", "pas de grands groupes" — negatives BIND).
+- Contact needs: do I want a person? Which titles? Email, phone, both?
+- Buyer archetypes: if my need genuinely spans two different kinds of buyer,
+  plan one search per archetype — never one blended seed.
+
+# PHASE 2 — CRAFT THE SEED
+
+Compose the `example_lead` for each archetype following the craft rules in
+the leadbay_find_new_leads description (registry-style description of a
+FICTIONAL typical buyer; no invented brand name; no event language; hard
+constraints go in `filters`, not prose). Show me the seed description(s) in
+one line each — I should recognize my ideal customer in them.
+
+# PHASE 3 — FREE PREVIEW
+
+Call `leadbay_find_new_leads` with the seed, `filters`, `count`,
+`qualify: false`, no channels — this is FREE — and a `request_id` derived
+from the ask + today's date. Render the delivery table and judge fit
+honestly: are these the kind of companies I asked for?
+
+- **On-profile** → offer Phase 4.
+- **Off-profile or empty** → read `funnel` + `explain.scope_notes`, tell me
+  what went wrong in one line (wrong archetype? too narrow a filter? thin
+  universe?), reshape the seed or filters, and retry under a NEW request_id.
+  Reshaping is free; do not pay to explore a bad seed.
+
+# PHASE 4 — PAID DEPTH (only with my explicit go-ahead)
+
+When I want qualification evidence and/or reachable contacts:
+1. Quote first: `dry_run: true` with the exact flags I asked for
+   (`qualify: true`, `min_ai_score`, `contact_titles`, `title_gate`,
+   `channels`, `max_cost`) and tell me the worst-case cost in plain money.
+2. On my go-ahead, prefer feeding the free preview's deliveries to
+   `leadbay_qualify_leads` (`prior_deliveries: {job_id}`) — it only spends on
+   companies already known to match. Run a fresh `qualify: true` search
+   instead when I asked for more than the preview delivered.
+3. While the job runs, poll with `leadbay_lead_job_status`
+   (`wait_seconds: 60`); report progress, not silence.
+
+# PHASE 5 — DELIVER
+
+Render per the lead-delivery table, then ALWAYS the funnel line: matched /
+examined / qualified / disqualified / delivered / stop reason / spend. Zero
+delivered gets a diagnosis and a concrete next move, never a shrug. Close
+with NEXT STEPS from the tool description — and STOP; take no further action
+without my say-so.

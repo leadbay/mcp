@@ -21,6 +21,10 @@ routing:
   # intercepting legitimate discovery intent. E.g. "reach out to new leads" should
   # still fire pull_leads; only "leads I should reach out to" (existing pipeline) → pull_followups.
   anti_triggers:
+    - phrase: "find me N companies that <specific profile>"
+      route_to: leadbay_find_new_leads
+    - phrase: "new prospects like <company> with their emails"
+      route_to: leadbay_find_new_leads
     - phrase: "leads I should follow up with"
       route_to: leadbay_pull_followups
     - phrase: "I'm going to <city>"
@@ -49,6 +53,7 @@ routing:
       - "Show me today's leads."
       - "Pull my best new prospects."
     negative:
+      - "Find me 10 gyms around Dallas that would buy our flooring."   # → leadbay_find_new_leads (custom net-new ask, not the lens batch)
       - "Which leads should I follow up with this week?"
       - "I'm flying to Berlin Thursday — who should I meet?"   # → leadbay_tour_plan (geographic visit, wants a map)
       - "I'm in San Francisco next Tuesday — who's worth meeting?"   # → leadbay_tour_plan

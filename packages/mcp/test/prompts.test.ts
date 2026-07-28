@@ -35,6 +35,7 @@ describe("prompts/* capability (P2 prompts)", () => {
     expect(names).toEqual([
       "leadbay_daily_check_in",
       "leadbay_prospecting_overview",
+      "leadbay_new_leads",
       "leadbay_research_a_domain",
       "leadbay_import_file",
       "leadbay_refine_audience",

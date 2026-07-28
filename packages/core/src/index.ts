@@ -121,6 +121,9 @@ import { bulkEnrichStatus } from "./composite/bulk-enrich-status.js";
 import { adjustAudience } from "./composite/adjust-audience.js";
 import { refinePrompt } from "./composite/refine-prompt.js";
 import { seedCandidates } from "./composite/seed-candidates.js";
+import { findNewLeads } from "./composite/find-new-leads.js";
+import { qualifyLeads } from "./composite/qualify-leads.js";
+import { leadJobStatus } from "./composite/lead-job-status.js";
 import { extendLens } from "./composite/extend-lens.js";
 import { myLenses } from "./composite/my-lenses.js";
 import { newLens } from "./composite/new-lens.js";
@@ -304,6 +307,11 @@ export const compositeReadTools: Tool[] = [
   bulkEnrichStatus,
   qualifyStatus,
   importStatus,
+  // Poll surface for the MCP-first lead-delivery jobs (find_new_leads /
+  // qualify_leads). Read-only snapshot of a backend-owned job — always
+  // exposed so a job started in a write-enabled session stays readable
+  // even if the deployment later runs read-only.
+  leadJobStatus,
   resolveImportRows,
   // seed-candidates is a read-only discovery surface for the extend flow.
   // Always exposed so the agent can show candidates even in read-only deployments.
@@ -349,6 +357,14 @@ export const compositeReadTools: Tool[] = [
 // Composite write tools — always-exposed in OpenClaw, gated in MCP behind
 // LEADBAY_MCP_WRITE=1 (the MCP server filters them out by default).
 export const compositeWriteTools: Tool[] = [
+  // MCP-first lead delivery (backend /mcp/search + /mcp/qualify jobs).
+  // Write-tier: submits create server-side jobs that can spend money
+  // (qualification research, channel purchase) and claim novelty in the
+  // org's delivery ledger — same posture as the other spending composites.
+  // The FREE tier (qualify:false, channels:[]) is the default ask; the
+  // descriptions carry the no-silent-spend consent gate.
+  findNewLeads,
+  qualifyLeads,
   bulkQualifyLeads,
   enrichTitles,
   adjustAudience,

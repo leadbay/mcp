@@ -597,7 +597,7 @@ Context: Leadbay auto-qualifies roughly the top 10 of each daily batch. Leads be
 
 WHEN TO USE: when the user wants more qualified leads than what's currently shown, or when a lead looks promising in leadbay_pull_leads but has an empty \`qualification_summary\`.
 
-WHEN NOT TO USE: to qualify a single specific lead — that's leadbay_qualify_lead (granular, advanced).
+WHEN NOT TO USE: to qualify a single specific lead — that's leadbay_qualify_lead (granular, advanced). And NOT for companies the user names or lists themselves (CRM rows, websites, prior deliveries) — that's leadbay_qualify_leads (server-side batch with per-item verdicts and contact matching); this tool only walks the ACTIVE LENS top-down.
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
@@ -1187,7 +1187,7 @@ Trigger phrases: "I want more leads on this lens", "extend the lens", "I need a 
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me X" → \`leadbay_refine_prompt\`.
+Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "find me companies that <different profile than the lens>" → \`leadbay_find_new_leads\`; "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me X" → \`leadbay_refine_prompt\`.
 
 Prefer when: user has bigger appetite than the daily lens fill delivers — additive refill on same criteria
 
@@ -1270,6 +1270,253 @@ Pick the row matching the response \`status\`. Seed-picking is internal; do NOT 
 If nothing matches cleanly, default to "pull leads now to see what's queued" — never invent a tool that doesn't exist.
 `;
 // endregion: leadbay_extend_lens
+
+// region: leadbay_find_new_leads
+export const leadbay_find_new_leads: string = `## WHEN TO USE
+
+Trigger phrases: "find me new leads", "find me N companies that <profile>", "get me new prospects like <company>", "I need leads in <place> that <do X>", "search for companies that would buy <product>", "net-new leads outside my current pipeline", "we're entering <market> — who should we target".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "show me today's leads / what's new today" → \`leadbay_pull_leads\`; "more leads like the ones in my lens" → \`leadbay_extend_lens\`; "qualify / vet these companies I have" → \`leadbay_qualify_leads\`; "qualify the top N of my batch" → \`leadbay_bulk_qualify_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "tell me about <one company>" → \`leadbay_research_lead_by_name_fuzzy\`.
+
+Prefer when: the user describes a target profile or names a count of NEW companies — craft the example_lead per the seed rules below BEFORE calling; never pass the user's raw sentence as query.
+
+Examples that SHOULD invoke this tool:
+- "Find me 10 gyms around Dallas that would buy our flooring, with someone I can call."
+- "Get me 20 new US SaaS companies, 50-2000 employees, with the VP People's email."
+- "We're launching in Lyon — find 15 hotels that fit our ICP."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Show me today's leads."
+- "Which leads should I follow up with this week?"
+- "Qualify these 40 websites from my spreadsheet."
+
+## RENDER (quick)
+
+3-col table of delivered leads in returned order: col 1 = 10-segment fit
+bar + linked company · location · size; col 2 = why-fits ≤20 words; col 3
+= contact + purchased channels. ALWAYS close with the honest funnel line
+(matched/examined/delivered/stop reason/spend) — especially on 0
+delivered. Full algorithm below.
+
+---
+
+Submit a net-new lead search: the backend matches an ICP seed against the full
+company universe (millions of registry+web profiles), applies hard filters,
+skips everything the org already knows (\`novelty: org\`), optionally qualifies
+each candidate against the org's own intelligence (qualification questions,
+tags, ideal buyer profile — frozen at submit), and optionally purchases
+contact channels. Submit answers in <1s (input errors are synchronous 400s
+naming the field); the tool polls up to \`wait_seconds\` (default 45) and, when
+the job needs longer, returns \`still_running\` + \`next_poll\` — hand off to
+\`leadbay_lead_job_status\`. Jobs run ≤30 min; results are kept 30 days.
+
+**Free vs paid — never spend silently.** The default ask (\`qualify: false\`,
+\`channels: []\`) is FREE: company profile + fit score + cached web research +
+contact identity. Paid flags: \`qualify: true\` (~94 cost_cents per candidate
+EXAMINED, survivor or not, capped by \`exploration_cap\`/\`max_cost\`) and
+\`channels\` (email 25c / phone 250c, success-only). Before the FIRST paid run
+of a session: \`dry_run: true\`, tell the user the worst-case estimate, get
+their explicit go-ahead (an explicit "spend / get their emails" in the user's
+message counts). The free tier needs no consent.
+
+**The two-step pattern that wins**: run FREE first and eyeball whether the
+delivered companies are on-profile. If yes, feed that job's deliveries to
+\`leadbay_qualify_leads\` via \`prior_deliveries\` (spends only on companies
+already known to match), or re-run with \`qualify: true\` under a NEW
+request_id when more than the preview is wanted. If off-profile, fix the seed
+first — reshaping is free; exploring a bad seed with \`qualify: true\` burns
+budget on candidates qualification will reject.
+
+### Crafting the \`example_lead\` seed — the input that decides result quality
+
+The \`example_lead\` is a FICTIONAL typical ideal customer. Its text is embedded
+and matched against millions of real company descriptions sourced from business
+registries and company websites. Those descriptions state what a company **IS**
+(stable business profile) — never what is happening. Write the seed the same
+way, or the matcher drifts to the wrong companies. Each rule below is
+load-bearing (validated live against staging, 2026-07-28):
+
+1. **Describe the BUYER, never the seller.** Before writing, answer: "would
+   this company write a check to my user?" A seed that describes what the user
+   sells surfaces the user's *competitors and vendors*, not their customers.
+   Classic trap: if the user's product helps companies of type X serve their
+   customers of type Y, the seed describes X — never Y.
+2. **Put everything in \`description\`; leave \`name\` unset.** A distinctive
+   invented brand name pulls matching toward name-lookalikes: a seed named
+   "Meridian Analytics" returned five unrelated companies all named
+   "Meridian". No name beats any name.
+3. **Registry style, one sentence to ~250 chars.** State the business profile:
+   industry niche, business model, what they sell or operate, who they serve,
+   observable scale (sites, membership, fleet). Write it like the first
+   paragraph of the company's About-Us page.
+   - STRONG: "Operator of full-service fitness centers offering strength
+     training areas, group classes and personal training to individual members
+     across multiple club locations."
+   - WEAK (generic): "A gym in Texas."
+   - WRONG (seller-side): "Supplier of durable modular flooring for gyms."
+4. **No event language.** "hiring", "expanding", "just raised", "opening a new
+   site" are not filters — real registry descriptions never contain them, so
+   they dilute the profile and attract event-flavored noise. Temporal criteria
+   in a \`query\` become best-effort ranking annotations at most (the response
+   \`explain.scope_notes\` says so). Put purchase-trigger criteria in the org's
+   qualification questions instead, where the paid qualification stage scores
+   them from fresh research.
+5. **No meta-markers.** Never "(example)", "(fictional)", "(placeholder)" —
+   real descriptions don't carry them.
+6. **Hard constraints go in \`filters\`, not prose.** Geography, sector, size
+   bounds written into the description only *tint* the ranking; \`filters\` are
+   enforced. Seed describes the archetype; filters draw the fence.
+7. **Prefer \`example_lead\` over \`query\`.** Query text matches topic
+   *vocabulary* — "gyms that need durable flooring" surfaces flooring VENDORS
+   as strongly as gym BUYERS (measured: the same ICP delivered 0 leads from a
+   query and on-profile leads from an example_lead). Use \`query\` only when the
+   user's own wording carries signal an example can't express.
+8. **One seed per buyer archetype.** If the ask spans two distinct segments
+   (e.g. "gyms and logistics warehouses"), run one search per segment with its
+   own description — a blended seed lands between the two clusters and matches
+   neither. Distinct asks need distinct \`request_id\`s.
+
+
+**Parameter notes**
+- \`request_id\` (REQUIRED) is the retry contract: reuse the SAME value when
+  retrying the same ask (returns the same live job, no double spend); NEW
+  value for a changed ask. Derive from the ask + date: \`gyms-dallas-2026-07-28\`.
+- Unresolvable \`filters\` values 400 naming them — fix the label (see
+  \`leadbay_list_sectors\` / \`leadbay_list_locations\`) and resubmit.
+- \`min_ai_score\` gates the [-30,+30] qualification DELTA, not the 0-100 fit
+  score; set -30 to keep every evaluated lead with its evidence.
+- \`count\` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After
+  beyond — wait, don't hammer).
+
+**Read the result honestly.** \`funnel\` + \`explain.scope_notes\` tell what
+happened: matched, pre-screen rejections, examined (billed), qualified,
+disqualified, and why the job stopped. Zero delivered is a real outcome that
+must be narrated with its cause and a concrete next move — never a bare "no
+results".
+
+---
+
+## RENDERING — delivery table + honest funnel line
+
+Render delivered leads (\`leads[]\`, i.e. items with status \`delivered\` or
+\`degraded\`) as a markdown table **in the order returned**. Exactly three
+columns. Then ALWAYS close with the funnel line (below) — even, especially,
+when nothing was delivered.
+
+**Column 1 — Company**
+
+- Line 1: 10-segment fit bar in inline-code backticks from \`lead.fit.score\`
+  (0-100): \`filled = round(score/10)\`, glyphs \`▰\` filled / \`▱\` empty. When
+  \`lead.fit.components.qualification.available\` is true AND \`ai_score > 0\`,
+  replace the LAST filled segment with \`❖\` (AI-confirmed cap). When
+  \`fit.available\` is false, render \`▱▱▱▱▱▱▱▱▱▱\` and say "unscored" in col 2.
+  Never print the numeric score.
+- Insert \`<br>\`, then: linked company name (target \`company.website\`, bare
+  hostnames get \`https://\`; unlinked plain text when absent) + \` · \` + short
+  location (City, ST / City, Country) + \` · \` + employees as \`min–max\` (omit
+  when \`employees.known\` is false).
+
+**Column 2 — Why it fits**
+
+- One sentence ≤ 20 words. Priority: \`fit.reasoning\` → gist of
+  \`company.description\` → top \`fit.components.qualification.matched_tags\`.
+- If the item status is \`degraded\` or a requested channel failed, append the
+  honest flag in italics, e.g. *(email could not be sourced)*.
+
+**Column 3 — Contact**
+
+- \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
+  exists; plain name otherwise). Below it, the PURCHASED channels only:
+  \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
+- Channel status semantics from \`contact.channels.{email,phone}.status\`:
+  \`delivered\` → show value; \`already_owned\` → show value + *(already yours)*;
+  \`masked\` → "on file — reveal via channels"; \`not_requested\` → omit;
+  \`failed_previously\`/\`failed_now\` → *(no verified email/phone)*.
+- No contact on the item (\`contact\` null): render \`—\` (title_gate \`prefer\`
+  delivers such rows flagged; say so in col 2 only when contact_titles were
+  requested).
+
+**The funnel line (mandatory, after the table):**
+
+One short line narrating the delivery honestly, built from \`funnel\` + \`cost\` +
+\`explain.scope_notes\`:
+
+> Matched N · examined E · qualified Q · disqualified D → **delivered X of
+> the Y asked** · stopped: <stop_reason in plain words> · spent €C.CC.
+
+Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
+"ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
+"hit an org quota", \`time_budget\` → "hit the 30-min time budget".
+
+**When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
+the funnel line plus the relevant \`explain.scope_notes\` (they carry the
+backend's own diagnosis, e.g. vendor-vocabulary queries or pre-screen
+rejections), then propose the concrete fix (reshape the seed per the
+example_lead craft rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a
+filter) as NEXT STEPS options.
+
+**Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
+table \`Ref → Outcome\` translating \`status_reason\` to plain words:
+\`not_in_universe\` → "not in the Leadbay universe (import it first)",
+\`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
+\`no_matching_contact\` → "no contact with the requested title",
+\`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
+\`enrichment_failed\` → "channel could not be sourced (not billed)".
+
+**Hide from the user:** UUIDs (\`lead_id\`, \`contact_id\` — keep them for tool
+calls, never render), \`next_since\` cursors, \`explain.model\`,
+\`explain.intelligence_snapshot\`, raw \`distance\`/\`calibration\`, per-item
+\`seq\`/\`from_cache\`, empty arrays, \`estimated_cost\` when equal to spent.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+
+
+---
+
+## NEXT STEPS — after a find_new_leads delivery
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Pick the 2-3 options that match what actually happened — never all six:
+
+| Observation | Suggest | Calls |
+|---|---|---|
+| Job still running (\`still_running: true\`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
+| Free run delivered on-profile leads | "Qualify these N against your criteria (paid — quote \`dry_run\` estimate first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
+| Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
+| Delivered 0 or off-profile | "Reshape the example and retry" (state the specific fix from the funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
+| Stopped at cost cap / quota | "Raise the cap to €X and continue" | leadbay_find_new_leads (SAME request_id re-submits are dedup-safe only for live jobs — use a new request_id with higher max_cost) |
+| User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |
+`;
+// endregion: leadbay_find_new_leads
 
 // region: leadbay_followups_map
 export const leadbay_followups_map: string = `## WHEN TO USE
@@ -1974,6 +2221,166 @@ WHEN NOT TO USE: from agent flow — leadbay_enrich_titles handles selection lif
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_launch_bulk_enrichment
+
+// region: leadbay_lead_job_status
+export const leadbay_lead_job_status: string = `## WHEN TO USE
+
+Trigger phrases: "is the lead search done", "any results yet on that job", "check on the delivery".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "is the enrichment done" → \`leadbay_bulk_enrich_status\`; "is my import done" → \`leadbay_import_status\`; "is the top-N qualification done" → \`leadbay_qualify_status\`.
+
+Prefer when: a find_new_leads / qualify_leads result carried next_poll — pass its job_id; use wait_seconds ~60 when the user asked to wait for results.
+
+Examples that SHOULD invoke this tool:
+- "Any leads yet from that search you started?"
+- "Wait for the qualification job to finish and show me everything."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Is the email enrichment finished?"
+- "Is my CSV import done?"
+
+## RENDER (quick)
+
+Terminal job -> render the full delivery per the lead-delivery table +
+honest funnel line. Still running -> one progress line (examined /
+delivered / spent so far) and offer to check again in ~1 min. Never
+render UUIDs or cursors.
+
+---
+
+Cumulative snapshot of a lead-delivery job: state, funnel counters, every
+item emitted so far (full lead payloads for delivered/degraded, honest
+status_reason for skipped), spend + breakdown, and the \`explain\` block
+(basis, seed strategy, scope notes). Items are immutable once emitted —
+polling never re-reads live data, so numbers only ever grow.
+
+\`wait_seconds: 0\` (default) answers instantly; set ~60 to block-wait for
+completion when the user asked for results "in this reply". \`since\` (from a
+prior poll's \`next_since\`) pages only the new items. Jobs terminalize
+server-side: past the 30-min wall clock a job reads \`completed_partial\`
+(time budget), past 30 days \`expired\` (items no longer listed — re-read
+billed leads via leadbay_qualify_leads \`prior_deliveries\`). A 404 means
+unknown job or another org's job.
+
+---
+
+## RENDERING — delivery table + honest funnel line
+
+Render delivered leads (\`leads[]\`, i.e. items with status \`delivered\` or
+\`degraded\`) as a markdown table **in the order returned**. Exactly three
+columns. Then ALWAYS close with the funnel line (below) — even, especially,
+when nothing was delivered.
+
+**Column 1 — Company**
+
+- Line 1: 10-segment fit bar in inline-code backticks from \`lead.fit.score\`
+  (0-100): \`filled = round(score/10)\`, glyphs \`▰\` filled / \`▱\` empty. When
+  \`lead.fit.components.qualification.available\` is true AND \`ai_score > 0\`,
+  replace the LAST filled segment with \`❖\` (AI-confirmed cap). When
+  \`fit.available\` is false, render \`▱▱▱▱▱▱▱▱▱▱\` and say "unscored" in col 2.
+  Never print the numeric score.
+- Insert \`<br>\`, then: linked company name (target \`company.website\`, bare
+  hostnames get \`https://\`; unlinked plain text when absent) + \` · \` + short
+  location (City, ST / City, Country) + \` · \` + employees as \`min–max\` (omit
+  when \`employees.known\` is false).
+
+**Column 2 — Why it fits**
+
+- One sentence ≤ 20 words. Priority: \`fit.reasoning\` → gist of
+  \`company.description\` → top \`fit.components.qualification.matched_tags\`.
+- If the item status is \`degraded\` or a requested channel failed, append the
+  honest flag in italics, e.g. *(email could not be sourced)*.
+
+**Column 3 — Contact**
+
+- \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
+  exists; plain name otherwise). Below it, the PURCHASED channels only:
+  \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
+- Channel status semantics from \`contact.channels.{email,phone}.status\`:
+  \`delivered\` → show value; \`already_owned\` → show value + *(already yours)*;
+  \`masked\` → "on file — reveal via channels"; \`not_requested\` → omit;
+  \`failed_previously\`/\`failed_now\` → *(no verified email/phone)*.
+- No contact on the item (\`contact\` null): render \`—\` (title_gate \`prefer\`
+  delivers such rows flagged; say so in col 2 only when contact_titles were
+  requested).
+
+**The funnel line (mandatory, after the table):**
+
+One short line narrating the delivery honestly, built from \`funnel\` + \`cost\` +
+\`explain.scope_notes\`:
+
+> Matched N · examined E · qualified Q · disqualified D → **delivered X of
+> the Y asked** · stopped: <stop_reason in plain words> · spent €C.CC.
+
+Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
+"ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
+"hit an org quota", \`time_budget\` → "hit the 30-min time budget".
+
+**When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
+the funnel line plus the relevant \`explain.scope_notes\` (they carry the
+backend's own diagnosis, e.g. vendor-vocabulary queries or pre-screen
+rejections), then propose the concrete fix (reshape the seed per the
+example_lead craft rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a
+filter) as NEXT STEPS options.
+
+**Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
+table \`Ref → Outcome\` translating \`status_reason\` to plain words:
+\`not_in_universe\` → "not in the Leadbay universe (import it first)",
+\`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
+\`no_matching_contact\` → "no contact with the requested title",
+\`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
+\`enrichment_failed\` → "channel could not be sourced (not billed)".
+
+**Hide from the user:** UUIDs (\`lead_id\`, \`contact_id\` — keep them for tool
+calls, never render), \`next_since\` cursors, \`explain.model\`,
+\`explain.intelligence_snapshot\`, raw \`distance\`/\`calibration\`, per-item
+\`seq\`/\`from_cache\`, empty arrays, \`estimated_cost\` when equal to spent.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+
+
+---
+
+## NEXT STEPS — after a job status poll
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Exactly two offers — this is a status tool, keep it terse:
+
+| Observation | Suggest | Calls |
+|---|---|---|
+| Still running | "Keep waiting (~1 min) or leave it — results are kept 30 days" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
+| Terminal (completed / partial / failed) | Render the delivery per the RENDERING block, then offer the matching find_new_leads / qualify_leads NEXT STEPS | — |
+`;
+// endregion: leadbay_lead_job_status
 
 // region: leadbay_like_lead
 export const leadbay_like_lead: string = `## WHEN TO USE
@@ -2862,7 +3269,7 @@ Trigger phrases: "show me leads", "show me new leads", "show me today's leads", 
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "leads I should follow up with" → \`leadbay_pull_followups\`; "I'm going to <city>" → \`leadbay_tour_plan\`; "I'm in <city> next week — who's worth meeting" → \`leadbay_tour_plan\`; "who should I meet in <city>" → \`leadbay_tour_plan\`; "visiting <city> — who's worth meeting / seeing" → \`leadbay_tour_plan\`; "leads I should reach out to" → \`leadbay_pull_followups\`; "leads to get back to" → \`leadbay_pull_followups\`; "leads to contact today" → \`leadbay_pull_followups\`; "should I contact" → \`leadbay_pull_followups\`; "reconnect with" → \`leadbay_pull_followups\`; "re-engage" → \`leadbay_pull_followups\`.
+Do NOT use for: "find me N companies that <specific profile>" → \`leadbay_find_new_leads\`; "new prospects like <company> with their emails" → \`leadbay_find_new_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "I'm going to <city>" → \`leadbay_tour_plan\`; "I'm in <city> next week — who's worth meeting" → \`leadbay_tour_plan\`; "who should I meet in <city>" → \`leadbay_tour_plan\`; "visiting <city> — who's worth meeting / seeing" → \`leadbay_tour_plan\`; "leads I should reach out to" → \`leadbay_pull_followups\`; "leads to get back to" → \`leadbay_pull_followups\`; "leads to contact today" → \`leadbay_pull_followups\`; "should I contact" → \`leadbay_pull_followups\`; "reconnect with" → \`leadbay_pull_followups\`; "re-engage" → \`leadbay_pull_followups\`.
 
 Prefer when: fresh Discover leads; if a lens is named, pass \`lensId\` and pin it
 
@@ -2871,6 +3278,7 @@ Examples that SHOULD invoke this tool:
 - "Pull my best new prospects."
 
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Find me 10 gyms around Dallas that would buy our flooring."
 - "Which leads should I follow up with this week?"
 - "I'm flying to Berlin Thursday — who should I meet?"
 - "I'm in San Francisco next Tuesday — who's worth meeting?"
@@ -3032,6 +3440,193 @@ WHEN NOT TO USE: as the agent's bulk-qualify path — use leadbay_bulk_qualify_l
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_qualify_lead
+
+// region: leadbay_qualify_leads
+export const leadbay_qualify_leads: string = `## WHEN TO USE
+
+Trigger phrases: "qualify these companies", "vet this list", "which of these fit our ICP", "score these websites / accounts", "get me the right contact at these companies", "re-qualify what you delivered last week".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "find me new leads / companies that <profile>" → \`leadbay_find_new_leads\`; "qualify the top N of my lens batch" → \`leadbay_bulk_qualify_leads\`; "import this CSV file" → \`leadbay_import_leads\`; "tell me about <one company> in depth" → \`leadbay_research_lead_by_name_fuzzy\`; "add emails to the contacts I selected" → \`leadbay_enrich_titles\`.
+
+Prefer when: the user points at SPECIFIC companies (ids, websites, names, a pasted list, "what you found yesterday") and wants fit verdicts and/or the right person to talk to.
+
+Examples that SHOULD invoke this tool:
+- "Here are 60 restaurant websites from my Austin sweep — which fit, and who's the owner?"
+- "Re-qualify last week's delivery and get phone numbers for the good ones."
+- "Vet these 12 accounts from my spreadsheet against our criteria."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Find me 10 new gyms in Texas."
+- "Qualify the top 10 leads in my batch."
+- "I have a CSV of 400 attendees to import."
+
+## RENDER (quick)
+
+3-col table for delivered items (fit bar + company / why-fits ≤20 words /
+contact + channels) in returned order, then a compact Ref → Outcome table
+for skipped refs (not_in_universe, low_confidence_identity, ... in plain
+words), then the honest funnel + cost line. Full algorithm below.
+
+---
+
+Submit a qualify batch over companies the org already has (or that exist in
+the Leadbay universe): each ref is resolved to a known company, freshly
+researched + AI-qualified against the org's questions / tags / ideal buyer
+profile (frozen at submit), matched to the requested contact titles, and —
+when asked — enriched with verified channels. Answers arrive per-item from a
+job; this tool polls up to \`wait_seconds\` (default 45) and hands off to
+\`leadbay_lead_job_status\` when the batch needs longer.
+
+**Refs are flexible; outcomes are per-item.** \`lead_refs\` accepts any mix of
+\`lead_id\`, \`website\`, \`name\`(+\`location\`), or a stable \`contact_id\` from a
+prior result (enrichment then targets exactly that person, never a re-match).
+\`prior_deliveries\` expands past MCP deliveries into refs — billed leads stay
+re-readable this way even after the 30-day result window. Duplicates collapse.
+A ref that can't be served comes back \`skipped\` with an honest
+\`status_reason\` (\`not_in_universe\`, \`low_confidence_identity\` with the
+\`resolution.alternatives\` to choose from, \`no_matching_contact\`, ...) — that
+is an ANSWER about the ref, not an error, and it costs nothing.
+
+**Disqualified ≠ dropped.** Companies the org owns that fail qualification
+are DELIVERED with their negative evidence (question verdicts, tag misses,
+IBP reasoning) — "here's why to skip this account" is a deliverable.
+
+**Cost — never spend silently.** Resolution and identity are free.
+\`qualify: true\` (the default) costs ~94 cost_cents per lead needing FRESH
+research+scoring — but repeat calls reuse every fresh cached stage
+(\`from_cache\` flags on the items) and converge to near-zero cost. \`channels\`
+purchase verified email (25c) / phone (250c) on success only;
+\`already_owned\` values cost nothing. Before a first paid run on a large
+batch: \`dry_run: true\`, quote the worst case, get the explicit go-ahead
+(an explicit "spend / get their emails" in the user's message counts).
+Set \`request_id\` and reuse it on retries of the same batch.
+
+**Limits**: 500 refs/job, 3 active jobs/org, 10 submits/hour (429 +
+Retry-After beyond — wait, don't hammer), 30-min job wall clock.
+
+---
+
+## RENDERING — delivery table + honest funnel line
+
+Render delivered leads (\`leads[]\`, i.e. items with status \`delivered\` or
+\`degraded\`) as a markdown table **in the order returned**. Exactly three
+columns. Then ALWAYS close with the funnel line (below) — even, especially,
+when nothing was delivered.
+
+**Column 1 — Company**
+
+- Line 1: 10-segment fit bar in inline-code backticks from \`lead.fit.score\`
+  (0-100): \`filled = round(score/10)\`, glyphs \`▰\` filled / \`▱\` empty. When
+  \`lead.fit.components.qualification.available\` is true AND \`ai_score > 0\`,
+  replace the LAST filled segment with \`❖\` (AI-confirmed cap). When
+  \`fit.available\` is false, render \`▱▱▱▱▱▱▱▱▱▱\` and say "unscored" in col 2.
+  Never print the numeric score.
+- Insert \`<br>\`, then: linked company name (target \`company.website\`, bare
+  hostnames get \`https://\`; unlinked plain text when absent) + \` · \` + short
+  location (City, ST / City, Country) + \` · \` + employees as \`min–max\` (omit
+  when \`employees.known\` is false).
+
+**Column 2 — Why it fits**
+
+- One sentence ≤ 20 words. Priority: \`fit.reasoning\` → gist of
+  \`company.description\` → top \`fit.components.qualification.matched_tags\`.
+- If the item status is \`degraded\` or a requested channel failed, append the
+  honest flag in italics, e.g. *(email could not be sourced)*.
+
+**Column 3 — Contact**
+
+- \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
+  exists; plain name otherwise). Below it, the PURCHASED channels only:
+  \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
+- Channel status semantics from \`contact.channels.{email,phone}.status\`:
+  \`delivered\` → show value; \`already_owned\` → show value + *(already yours)*;
+  \`masked\` → "on file — reveal via channels"; \`not_requested\` → omit;
+  \`failed_previously\`/\`failed_now\` → *(no verified email/phone)*.
+- No contact on the item (\`contact\` null): render \`—\` (title_gate \`prefer\`
+  delivers such rows flagged; say so in col 2 only when contact_titles were
+  requested).
+
+**The funnel line (mandatory, after the table):**
+
+One short line narrating the delivery honestly, built from \`funnel\` + \`cost\` +
+\`explain.scope_notes\`:
+
+> Matched N · examined E · qualified Q · disqualified D → **delivered X of
+> the Y asked** · stopped: <stop_reason in plain words> · spent €C.CC.
+
+Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
+"ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
+"hit an org quota", \`time_budget\` → "hit the 30-min time budget".
+
+**When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
+the funnel line plus the relevant \`explain.scope_notes\` (they carry the
+backend's own diagnosis, e.g. vendor-vocabulary queries or pre-screen
+rejections), then propose the concrete fix (reshape the seed per the
+example_lead craft rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a
+filter) as NEXT STEPS options.
+
+**Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
+table \`Ref → Outcome\` translating \`status_reason\` to plain words:
+\`not_in_universe\` → "not in the Leadbay universe (import it first)",
+\`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
+\`no_matching_contact\` → "no contact with the requested title",
+\`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
+\`enrichment_failed\` → "channel could not be sourced (not billed)".
+
+**Hide from the user:** UUIDs (\`lead_id\`, \`contact_id\` — keep them for tool
+calls, never render), \`next_since\` cursors, \`explain.model\`,
+\`explain.intelligence_snapshot\`, raw \`distance\`/\`calibration\`, per-item
+\`seq\`/\`from_cache\`, empty arrays, \`estimated_cost\` when equal to spent.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+
+
+---
+
+## NEXT STEPS — after a qualify_leads delivery
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Pick the 2-3 options that match what actually happened:
+
+| Observation | Suggest | Calls |
+|---|---|---|
+| Job still running | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
+| Fit leads with contacts delivered | "Draft outreach for the qualified ones" | leadbay_prepare_outreach |
+| Items skipped \`not_in_universe\` | "Import those companies first, then re-qualify" | leadbay_import_leads → leadbay_qualify_leads |
+| Items skipped \`low_confidence_identity\` | "Pick the right match" (show \`resolution.alternatives\`) | leadbay_qualify_leads with the chosen lead_id |
+| Contacts delivered without channels | "Purchase verified emails/phones for the keepers (state cost first)" | leadbay_qualify_leads(lead_refs with contact_id, channels) |
+| Disqualified with evidence | "Review why — adjust qualification questions if the criteria are off" | leadbay_get_qualification_questions |
+`;
+// endregion: leadbay_qualify_leads
 
 // region: leadbay_qualify_status
 export const leadbay_qualify_status: string = `Retrieve the current state of an import_and_qualify (or bulk_qualify_leads) launch by \`qualify_id\`. Returns the same \`qualified[]\` / \`still_running[]\` shape as the original composite, refreshed against the backend at call time. The handle is persisted to \`~/.leadbay/bulks.json\` with a 30-day TTL and survives MCP restart.
@@ -4475,6 +5070,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_enrich_contacts,
   leadbay_enrich_titles,
   leadbay_extend_lens,
+  leadbay_find_new_leads,
   leadbay_followups_map,
   leadbay_get_clarification,
   leadbay_get_contacts,
@@ -4497,6 +5093,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_import_leads,
   leadbay_import_status,
   leadbay_launch_bulk_enrichment,
+  leadbay_lead_job_status,
   leadbay_like_lead,
   leadbay_list_campaigns,
   leadbay_list_lenses,
@@ -4515,6 +5112,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_pull_followups,
   leadbay_pull_leads,
   leadbay_qualify_lead,
+  leadbay_qualify_leads,
   leadbay_qualify_status,
   leadbay_recall_ordered_titles,
   leadbay_refine_prompt,

@@ -1,0 +1,111 @@
+---
+name: leadbay_find_new_leads
+kind: tool-description
+short_description: |
+  One ask -> n NET-NEW companies matching an ICP the user describes, scored
+  for fit, optionally AI-qualified with evidence, optionally with the right
+  contact + verified email/phone. Use when the user describes WHO they want
+  ("find me 10 gyms around Dallas that would buy X"). Don't use it for
+  today's lens batch (leadbay_pull_leads) or for vetting companies the user
+  already has (leadbay_qualify_leads).
+routing:
+  triggers:
+    - "find me new leads"
+    - "find me N companies that <profile>"
+    - "get me new prospects like <company>"
+    - "I need leads in <place> that <do X>"
+    - "search for companies that would buy <product>"
+    - "net-new leads outside my current pipeline"
+    - "we're entering <market> — who should we target"
+  anti_triggers:
+    - phrase: "show me today's leads / what's new today"
+      route_to: leadbay_pull_leads
+    - phrase: "more leads like the ones in my lens"
+      route_to: leadbay_extend_lens
+    - phrase: "qualify / vet these companies I have"
+      route_to: leadbay_qualify_leads
+    - phrase: "qualify the top N of my batch"
+      route_to: leadbay_bulk_qualify_leads
+    - phrase: "leads I should follow up with"
+      route_to: leadbay_pull_followups
+    - phrase: "tell me about <one company>"
+      route_to: leadbay_research_lead_by_name_fuzzy
+  prefer_when: >-
+    the user describes a target profile or names a count of NEW companies —
+    craft the example_lead per the seed rules below BEFORE calling; never
+    pass the user's raw sentence as query.
+  examples:
+    positive:
+      - "Find me 10 gyms around Dallas that would buy our flooring, with someone I can call."
+      - "Get me 20 new US SaaS companies, 50-2000 employees, with the VP People's email."
+      - "We're launching in Lyon — find 15 hotels that fit our ICP."
+    negative:
+      - "Show me today's leads."
+      - "Which leads should I follow up with this week?"
+      - "Qualify these 40 websites from my spreadsheet."
+rendering_hint: |
+  3-col table of delivered leads in returned order: col 1 = 10-segment fit
+  bar + linked company · location · size; col 2 = why-fits ≤20 words; col 3
+  = contact + purchased channels. ALWAYS close with the honest funnel line
+  (matched/examined/delivered/stop reason/spend) — especially on 0
+  delivered. Full algorithm below.
+next_steps: find-new-leads
+annotations:
+  readOnlyHint: false
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Submit a net-new lead search: the backend matches an ICP seed against the full
+company universe (millions of registry+web profiles), applies hard filters,
+skips everything the org already knows (`novelty: org`), optionally qualifies
+each candidate against the org's own intelligence (qualification questions,
+tags, ideal buyer profile — frozen at submit), and optionally purchases
+contact channels. Submit answers in <1s (input errors are synchronous 400s
+naming the field); the tool polls up to `wait_seconds` (default 45) and, when
+the job needs longer, returns `still_running` + `next_poll` — hand off to
+`leadbay_lead_job_status`. Jobs run ≤30 min; results are kept 30 days.
+
+**Free vs paid — never spend silently.** The default ask (`qualify: false`,
+`channels: []`) is FREE: company profile + fit score + cached web research +
+contact identity. Paid flags: `qualify: true` (~94 cost_cents per candidate
+EXAMINED, survivor or not, capped by `exploration_cap`/`max_cost`) and
+`channels` (email 25c / phone 250c, success-only). Before the FIRST paid run
+of a session: `dry_run: true`, tell the user the worst-case estimate, get
+their explicit go-ahead (an explicit "spend / get their emails" in the user's
+message counts). The free tier needs no consent.
+
+**The two-step pattern that wins**: run FREE first and eyeball whether the
+delivered companies are on-profile. If yes, feed that job's deliveries to
+`leadbay_qualify_leads` via `prior_deliveries` (spends only on companies
+already known to match), or re-run with `qualify: true` under a NEW
+request_id when more than the preview is wanted. If off-profile, fix the seed
+first — reshaping is free; exploring a bad seed with `qualify: true` burns
+budget on candidates qualification will reject.
+
+{{include:heuristics/example-lead-craft}}
+
+**Parameter notes**
+- `request_id` (REQUIRED) is the retry contract: reuse the SAME value when
+  retrying the same ask (returns the same live job, no double spend); NEW
+  value for a changed ask. Derive from the ask + date: `gyms-dallas-2026-07-28`.
+- Unresolvable `filters` values 400 naming them — fix the label (see
+  `leadbay_list_sectors` / `leadbay_list_locations`) and resubmit.
+- `min_ai_score` gates the [-30,+30] qualification DELTA, not the 0-100 fit
+  score; set -30 to keep every evaluated lead with its evidence.
+- `count` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After
+  beyond — wait, don't hammer).
+
+**Read the result honestly.** `funnel` + `explain.scope_notes` tell what
+happened: matched, pre-screen rejections, examined (billed), qualified,
+disqualified, and why the job stopped. Zero delivered is a real outcome that
+must be narrated with its cause and a concrete next move — never a bare "no
+results".
+
+---
+
+{{include:rendering/lead-delivery-table}}
+
+---
+
+{{include:next-steps/find-new-leads}}
