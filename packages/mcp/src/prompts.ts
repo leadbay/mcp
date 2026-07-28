@@ -213,19 +213,38 @@ const CATALOG: CatalogEntry[] = [
           "Optional: a name for the campaign. Omit and one is derived from the lens/audience + date (or the backend AI-names it).",
         required: false,
       },
+      {
+        name: "count",
+        description:
+          "Optional: how many fully-actionable leads to build (default 20). The loop keeps discovering, qualifying and enriching until this many in-ICP leads each have a reachable target-title contact — or the lens is exhausted. Higher counts take longer and consume more quota.",
+        required: false,
+      },
+      {
+        name: "job_titles",
+        description:
+          "Optional: the exact buyer job titles to enrich, comma-separated (e.g. 'VP Sales, Head of Growth, Director of Business Development'). Omit and the buyer persona is derived from what you sell. A lead only counts toward the target when it has a reachable contact matching one of these titles.",
+        required: false,
+      },
     ],
-    render: (args) => [
-      userMessage(
-        substitutePlaceholders(leadbay_build_campaign, {
-          audience_block: args.audience
-            ? `Target audience: **${args.audience}** — if my active lens doesn't already cover it, set it up first (confirm before switching lenses).`
-            : "Use my active Leadbay lens as the audience.",
-          campaign_name_paren: args.campaign_name
-            ? ` named **${args.campaign_name}**`
-            : "",
-        }),
-      ),
-    ],
+    render: (args) => {
+      const n = args.count ?? "20";
+      return [
+        userMessage(
+          substitutePlaceholders(leadbay_build_campaign, {
+            audience_block: args.audience
+              ? `Target audience: **${args.audience}** — if my active lens doesn't already cover it, set it up first and continue on it (no need to ask me).`
+              : "Use my active Leadbay lens as the audience.",
+            campaign_name_paren: args.campaign_name
+              ? ` named **${args.campaign_name}**`
+              : "",
+            count_or_default: n,
+            job_titles_block: args.job_titles
+              ? `Enrich exactly these buyer titles: **${args.job_titles}**. A lead only counts toward the ${n} when it has a reachable contact matching one of these titles.`
+              : `No titles given — derive my buyer persona from what I sell (Phase 3 Step A) and enrich those titles.`,
+          }),
+        ),
+      ];
+    },
   },
   {
     name: "leadbay_setup_team_prospecting",

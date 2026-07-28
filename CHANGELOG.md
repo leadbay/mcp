@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — Autonomous, target-sized `leadbay_build_campaign`
+
+- `leadbay_build_campaign` now runs **end-to-end without pausing** and builds to
+  a caller-specified size. Two new optional arguments:
+  - `count` — how many fully-actionable leads to build (default 20). The prompt
+    keeps discovering, qualifying, enriching, and swapping until that many in-ICP
+    leads each have a reachable target-title contact — or the lens is exhausted.
+  - `job_titles` — the exact buyer titles to enrich (comma-separated, e.g.
+    "VP Sales, Head of Growth, Director of Business Development"). Omit and the
+    buyer persona is derived from what the user sells, as before.
+- Removed the mandatory enrichment confirm gate and the lens-switch / handoff
+  pauses: asking for the campaign IS the authorization. The only early stops are
+  lens exhaustion or a backend 429 (quota). Enrichment is still quota-gated and is
+  never refused on a "credits" balance.
+- A lead counts toward the target only once its target-title contact actually
+  landed (email/phone present); empty enrichments are swapped out and refilled.
+
 ## 0.23.0 — 2026-06-21 — Build-a-campaign guided flow
 
 - Added the `leadbay_build_campaign` prompt (and auto-generated Claude skill):
