@@ -109,7 +109,17 @@ Call `leadbay_account_status` for my quota and active lens. Then settle **which 
 - **FULL MODE** — I supplied a revenue extract (or its figures are already on my leads as custom fields). The plan ranks by cash-to-capture and can carry all five motifs.
 - **DEGRADED MODE** — no revenue extract. The plan is an honest **conquest plan**: real accounts, real qualification, real signals, real contacts, ranked by the best Leadbay signal you have. Revenue-realized, per-family revenue and cash-to-capture are OMITTED, not estimated.
 
-Never silently assume. If you can't tell whether the extract exists, ask once, in one line, and say what each mode would deliver.
+Never silently assume. If you can't tell whether the extract exists, state which mode you're proceeding in and why, in one line — then **keep going**.
+
+**DELIVER FIRST, ASK ALONGSIDE — never gate the plan on a missing input.** Only ONE thing can stop you before you have shipped a ranked list of real accounts: not knowing **whose** plan this is (a company-identity mismatch you genuinely cannot resolve). Everything else is a question you carry *next to* the delivered plan, not a reason to withhold it:
+
+- **No benchmark?** Not a blocker. It only affects the money column — which in DEGRADED MODE is OMITTED anyway. Pull, qualify, rank and deliver; ask for the median €/employee/year underneath the plan.
+- **No Tier-1 threshold?** Not a blocker. Deliver, and ask alongside.
+- **No territory?** Not a blocker. Default to national, say so in one line, and offer to re-scope.
+- **No active lens (`last_requested_lens: null`)?** Not a blocker — that's the normal cold-start state. Create or resolve one and continue.
+- **Only 3 qualification questions instead of 5?** Not a blocker. Use the org's real questions, note the gap, recommend the additions — do not wait for permission before pulling.
+
+Bundling a non-blocking question in with a blocking one turns a justified pause into an over-wide gate, and the user gets a plan-of-a-plan instead of a plan. If you catch yourself about to end a turn without having called `leadbay_pull_leads`, you are almost certainly doing this — pull first, then ask.
 
 If I gave a `territory`, scope discovery to it now — pass it as `locations` to `leadbay_new_lens` (or `leadbay_adjust_audience` on the active lens). A place name goes to `locations`, never to `sectors` or a refine prompt.
 
@@ -372,6 +382,7 @@ On acceptance, call `leadbay_artifact_kit`, read its `usage_guide` before writin
 - **Never invent a number.** No revenue figure, registry count, signal or lead id that didn't come from my extract, a Leadbay response, or a real registry query. A modelled figure is fine — tagged `[HYP]` and named as an assumption. An untagged one is not.
 - **The ledger ships before the deliverable**, with un-sourceable fields shown as OMITTED rather than dropped.
 - **Degraded mode is a real deliverable, not an error.** Missing revenue data means change the ranking, title it honestly, and name the exact columns needed to upgrade — never refuse, and never fill the gap with a guess.
+- **Deliver first, ask alongside.** Do not end a turn without a ranked list of real accounts. The benchmark, the Tier-1 threshold, the territory, a missing lens and a short question set are all NON-blocking — carry them next to the plan. Only an unresolvable identity mismatch (whose plan is this?) may stop delivery.
 - **One motif per account, from the closed set of five**, with its deciding evidence stated.
 - **The org's real qualification questions**, read from Leadbay — never invented.
 - **Consent before any paid enrichment**, and never re-launch a bulk that already exists.
