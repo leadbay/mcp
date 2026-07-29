@@ -1,0 +1,150 @@
+---
+name: leadbay_top_accounts_to_activate
+kind: prompt
+short_description: |
+  Build a ranked account-activation plan — the accounts with the most money
+  still on the table, each with a strategic motif, a phone pitch and a
+  checklist. Ranks by cash-to-capture when the client's revenue extract is
+  available; delivers an honest Leadbay-only conquest plan when it isn't.
+  Every figure carries its source. Trigger on "top 50 accounts to activate",
+  "where's the cash in my base", "account activation plan".
+arguments:
+  - name: count
+    description: "Optional: how many accounts the plan should hold (default 50)."
+    required: false
+  - name: erp_extract
+    description: "Optional: the client's invoicing / management extract (a file with an account identifier plus 12-month revenue, ideally split by product family). Supply it for the full plan; omit it for the Leadbay-only conquest plan."
+    required: false
+  - name: benchmark
+    description: "Optional: the client's measured €/employee/year across their existing customers — the input to the addressable-spend estimate. Omit and you'll be asked for it rather than have one invented."
+    required: false
+  - name: territory
+    description: "Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire', 'Région Ouest'). Sets geography on the Discover lens."
+    required: false
+expected_calls:
+  - leadbay_account_status
+  - leadbay_get_qualification_questions
+  - leadbay_pull_leads
+  - leadbay_pull_followups
+  - leadbay_bulk_qualify_leads
+  - leadbay_qualify_status
+  - leadbay_scan_portfolio_signals
+  - leadbay_enrich_titles
+  - leadbay_bulk_enrich_status
+  - leadbay_account_history
+  - leadbay_artifact_kit
+  - leadbay_new_lens
+  - leadbay_adjust_audience
+  - leadbay_import_leads
+  - leadbay_resolve_import_rows
+  - leadbay_create_custom_field
+  - leadbay_get_lead_custom_fields
+failure_modes:
+  - "Invents, estimates or proxies a revenue-realized figure when no ERP extract was supplied — the single worst failure. Headcount, sector and lead score are NOT proxies for what an account actually buys."
+  - "Sorts by cash-to-capture with no revenue data, synthesizing a revenue figure per account purely to make the ranking work. Change the sort and say so; never invent the key."
+  - "Emits € figures with no provenance class, so modelled numbers read as measured fact in front of a paying client."
+  - "Skips the PROVENANCE LEDGER, or drops un-sourceable fields from it instead of rendering them as OMITTED — which hides the gap."
+  - "Fabricates registry/TAM counts (France or regional company counts) instead of querying the registry or marking the figure NOT COMPUTED. Leadbay does not proxy SIRENE."
+  - "Invents the five qualification questions from this prompt's own recommendations instead of reading the org's actual questions via leadbay_get_qualification_questions."
+  - "Leaves the deck's live layer dead — qualification and enrichment handles never wired in, so the pills and contacts stay empty while the deck still looks finished."
+  - "Invents lead ids to make the qualification pills appear populated."
+  - "Fabricates a plausible-sounding signal ('just won a public tender') for an account whose signals were never read. No signal read means an explicit dash."
+  - "Assigns a motif outside the closed set of five, or assigns SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL from a lead score or sector when order history was never available."
+  - "Labels Monitor membership as 'is a client' — imported leads are NOT auto-promoted to Monitor (lens scoring decides), so that mislabels every imported account."
+  - "Launches paid enrichment on the whole plan without consent. Asking for a plan is not authorization to spend on 50 accounts."
+  - "Re-launches enrichment from inside the built deck when a bulk handle already exists this session — double-spends the user's quota."
+  - "Forces the interactive deck without offering it first, or ships the deck INSTEAD of a chat answer that stands on its own."
+  - "Refuses the whole task because the ERP extract is missing, instead of delivering the degraded conquest plan and naming the columns needed to upgrade."
+  - "Carries a €/employee benchmark or Tier-1 threshold over from another client as if it were a product constant."
+rendering_hint: |
+  Chat table first (top 10 by the ranking key, motif + class-tagged cash +
+  why-now), then the PROVENANCE LEDGER. Offer the interactive deck via the
+  choice widget; build one card per account only on acceptance.
+---
+
+{{include:headers/agent-memory-preamble}}
+
+Build me a **top-{{arg:count_or_default}} account-activation plan** — the accounts with the most money still on the table, ranked, each one carrying a strategic motif, a phone pitch and a three-step checklist. {{arg:erp_extract_block}} {{arg:benchmark_block}} {{arg:territory_block}}
+
+This deliverable goes in front of a paying client, so **the honesty of the numbers matters more than their completeness**. Deliver the strongest plan the available data actually supports, and be explicit about what it doesn't.
+
+{{include:gates/data-provenance}}
+
+{{include:gates/defer-to-tool-rendering}}
+
+{{include:heuristics/long-running-tools}}
+
+# PHASE 0 — MODE + STATE
+
+Call `leadbay_account_status` for my quota and active lens. Then settle **which mode you are in** and say so in one line before doing anything else:
+
+- **FULL MODE** — I supplied a revenue extract (or its figures are already on my leads as custom fields). The plan ranks by cash-to-capture and can carry all five motifs.
+- **DEGRADED MODE** — no revenue extract. The plan is an honest **conquest plan**: real accounts, real qualification, real signals, real contacts, ranked by the best Leadbay signal you have. Revenue-realized, per-family revenue and cash-to-capture are OMITTED, not estimated.
+
+Never silently assume. If you can't tell whether the extract exists, ask once, in one line, and say what each mode would deliver.
+
+If I gave a `territory`, scope discovery to it now — pass it as `locations` to `leadbay_new_lens` (or `leadbay_adjust_audience` on the active lens). A place name goes to `locations`, never to `sectors` or a refine prompt.
+
+# PHASE 1 — THE FIVE QUALIFICATION QUESTIONS
+
+Call `leadbay_get_qualification_questions` and use the org's **actual** questions — they become the qualification row on every card. Do NOT invent them.
+
+If the org has none set, or they don't discriminate for this exercise, recommend this shape and offer to set it via `leadbay_set_qualification_questions` (max 5, and ask before replacing anything): **Q1** exercises a core-target trade · **Q2** big enough to matter · **Q3** operates in the covered territory · **Q4** recent activity signals · **Q5** likely need in the next quarter. Q4 and Q5 are the load-bearing pair — they separate "fits the profile" from "worth calling this week". Recommend; don't overwrite without my say-so.
+
+# PHASE 2 — THE ACCOUNT UNIVERSE
+
+**FULL MODE — ingest the extract.** Don't reinvent the import flow: run the standard file-import path. `leadbay_resolve_import_rows` to match my rows against Leadbay, `leadbay_create_custom_field` for each numeric column I want preserved (`{type:"PRICE", config:{currency:"EUR"}}` for revenue figures, one per product family), then `leadbay_import_leads` with an explicit mapping. Build and show the column-preservation plan before committing:
+
+{{include:gates/column-preservation-plan}}
+
+The import's `LEADBAY_ID` write-back gives you the `lead_id` join key every card needs. Read the numbers back per account with `leadbay_get_lead_custom_fields` — note this is **one call per lead**, so at fifty accounts it is fifty calls; batch your way through it and don't re-read what you already have.
+
+⚠ **Imported leads are NOT auto-promoted to my Monitor view** — lens scoring decides. So Monitor membership tells you what Leadbay is watching, **not** who is a client. When you label an account's pane (identified vs not), call it "Leadbay view membership" or derive client status from the extract — never equate the two.
+
+**BOTH MODES — get the accounts.** `leadbay_pull_followups` for the known/identified side, `leadbay_pull_leads` on the scoped lens for the not-yet-identified side. Capture `response.lens.id` and pass it as an explicit `lensId` on every later call — a mid-session lens shift discards the cohort. Keep pulling until you have a pool comfortably deeper than {{arg:count_or_default}}, topping up with `leadbay_bulk_qualify_leads` → `leadbay_qualify_status` → re-pull as needed.
+
+# PHASE 3 — QUALIFY, SIGNAL, MOTIF
+
+**Qualify.** `leadbay_bulk_qualify_leads({lensId, count, wait_for_completion:false})`, then poll `leadbay_qualify_status` until done. **Keep every returned `qualify_id`** — the deck's live qualification layer is wired from those handles, and a deck with none is a dead deck that still looks finished.
+
+**Signals.** Use `leadbay_scan_portfolio_signals` to read signals across the whole portfolio in ONE call — do not loop per-lead research. For the identified side, `leadbay_account_history` gives interaction recency.
+
+{{include:gates/signal-honesty}}
+
+**Assign the motif.**
+
+{{include:heuristics/account-activation-motifs}}
+
+# PHASE 4 — POTENTIAL AND RANKING
+
+{{include:heuristics/potential-math}}
+
+Rank by `cash` descending in full mode. In degraded mode, rank by `ai_agent_lead_score` then headcount, **state the substitute ranking in the plan's own header**, and title the deliverable for what it is (a conquest plan), not for what it isn't.
+
+# PHASE 5 — CONTACTS (consent-gated)
+
+Each card needs a reachable decision-maker. `leadbay_enrich_titles({leadIds, lensId})` in discovery mode first — that reveals what's enrichable and spends nothing. Then **stop and get my consent before any paid reveal**: tell me how many contacts and which channels, and wait. Asking for a plan is NOT authorization to spend enrichment quota on {{arg:count_or_default}} accounts. On my yes, launch, then poll `leadbay_bulk_enrich_status` until done and **keep the `bulk_id` handles** for the deck.
+
+# PHASE 6 — DELIVER
+
+Render the chat answer, then the ledger:
+
+{{include:rendering/activation-card}}
+
+Then **offer** the interactive deck — don't force it:
+
+{{include:gates/builtin-widgets}}
+
+On acceptance, call `leadbay_artifact_kit`, read its `usage_guide` before writing any code, and build a single-file deck. Wire the live layer from the handles you kept: a poll-until-done resource per `qualify_id` for the qualification pills, and one over `leadbay_bulk_enrich_status` for the contacts. ⚠ **If enrichment already ran this session, bind the existing `bulk_id` — re-launching enrichment from the deck double-spends my quota.** Per-card notes and outcomes go through the pre-wired note/outreach view-models (they carry the required verification and `_triggered_by` fields; hand-rolling those is where it breaks). Keep the checklists in local storage, and always wire a Refresh — auto-poll is host-dependent. List every tool the deck calls in its `mcp_tools`, and render the bridge-unavailable branch, or the pills silently show empty.
+
+# Iron laws
+
+- **Never invent a number.** No revenue figure, registry count, signal or lead id that didn't come from my extract, a Leadbay response, or a real registry query. A modelled figure is fine — tagged `[HYP]` and named as an assumption. An untagged one is not.
+- **The ledger ships before the deliverable**, with un-sourceable fields shown as OMITTED rather than dropped.
+- **Degraded mode is a real deliverable, not an error.** Missing revenue data means change the ranking, title it honestly, and name the exact columns needed to upgrade — never refuse, and never fill the gap with a guess.
+- **One motif per account, from the closed set of five**, with its deciding evidence stated.
+- **The org's real qualification questions**, read from Leadbay — never invented.
+- **Consent before any paid enrichment**, and never re-launch a bulk that already exists.
+- **Offer the deck; don't force it.** The chat answer must stand alone as useful.
+- Carry the captured `lensId` on every call.
+- Building a plan is not outreaching — do not send anything and do not call `leadbay_report_outreach`.

@@ -29,6 +29,7 @@ import {
   leadbay_refine_audience,
   leadbay_research_a_domain,
   leadbay_setup_team_prospecting,
+  leadbay_top_accounts_to_activate,
   leadbay_work_campaign,
   PROMPT_META,
 } from "./prompts.generated.js";
@@ -317,6 +318,55 @@ const CATALOG: CatalogEntry[] = [
         userMessage(
           substitutePlaceholders(leadbay_qualify_top_n, {
             count_or_default: n,
+          }),
+        ),
+      ];
+    },
+  },
+  {
+    name: "leadbay_top_accounts_to_activate",
+    description: PROMPT_META.leadbay_top_accounts_to_activate.short_description,
+    arguments: [
+      {
+        name: "count",
+        description:
+          "Optional: how many accounts the plan should hold (default 50).",
+        required: false,
+      },
+      {
+        name: "erp_extract",
+        description:
+          "Optional: the client's invoicing / management extract (an account identifier plus 12-month revenue, ideally split by product family). Supply it for the full cash-ranked plan; omit it for the Leadbay-only conquest plan.",
+        required: false,
+      },
+      {
+        name: "benchmark",
+        description:
+          "Optional: the client's measured €/employee/year across their existing customers — the input to the addressable-spend estimate. Omit and you'll be asked for it rather than have one invented.",
+        required: false,
+      },
+      {
+        name: "territory",
+        description:
+          "Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire'). Sets geography on the Discover lens via `locations`.",
+        required: false,
+      },
+    ],
+    render: (args) => {
+      const n = args.count ?? "50";
+      return [
+        userMessage(
+          substitutePlaceholders(leadbay_top_accounts_to_activate, {
+            count_or_default: n,
+            erp_extract_block: args.erp_extract
+              ? `My revenue extract: **${args.erp_extract}** — ingest it first (Phase 2, FULL MODE) so the ranking is real cash-to-capture, not an estimate.`
+              : "I have NOT given you a revenue extract in this request — establish in Phase 0 whether one exists, and if not, deliver the DEGRADED-MODE conquest plan honestly rather than estimating what my accounts already buy.",
+            benchmark_block: args.benchmark
+              ? `Use **${args.benchmark}** as the €/employee/year benchmark, and show that figure on the deliverable.`
+              : "No benchmark given — ask me for the median €/employee/year across my existing customers rather than inventing one.",
+            territory_block: args.territory
+              ? `Scope the plan to **${args.territory}** — pass it as \`locations\` on the lens, never as a sector.`
+              : "",
           }),
         ),
       ];
