@@ -109,6 +109,8 @@ Call `leadbay_account_status` for my quota and active lens. Then settle **which 
 - **FULL MODE** — I supplied a revenue extract (or its figures are already on my leads as custom fields). The plan ranks by cash-to-capture and can carry all five motifs.
 - **DEGRADED MODE** — no revenue extract. The plan is an honest **conquest plan**: real accounts, real qualification, real signals, real contacts, ranked by the best Leadbay signal you have. Revenue-realized, per-family revenue and cash-to-capture are OMITTED, not estimated.
 
+**Before you settle on DEGRADED, check whether the revenue is already here.** A returning user who imported an extract in a previous session has the figures sitting on their leads as custom fields, and falling back to a conquest plan would throw away data they already gave us. So when no extract is attached to *this* request, call `leadbay_list_mappable_fields` and look for revenue-shaped custom fields (12-month revenue, per-family revenue, last order date, order count). If they exist, read them back with `leadbay_get_lead_custom_fields` and proceed in **FULL MODE** — say in one line that you're using previously-imported figures and when they were imported, since stale revenue ranks accounts wrongly. Only declare DEGRADED once you've checked and found nothing.
+
 Never silently assume. If you can't tell whether the extract exists, state which mode you're proceeding in and why, in one line — then **keep going**.
 
 **DELIVER FIRST, ASK ALONGSIDE — never gate the plan on a missing input.** Only ONE thing can stop you before you have shipped a ranked list of real accounts: not knowing **whose** plan this is (a company-identity mismatch you genuinely cannot resolve). Everything else is a question you carry *next to* the delivered plan, not a reason to withhold it:
@@ -157,7 +159,9 @@ The import's `LEADBAY_ID` write-back gives you the `lead_id` join key every card
 
 ⚠ **Imported leads are NOT auto-promoted to my Monitor view** — lens scoring decides. So Monitor membership tells you what Leadbay is watching, **not** who is a client. When you label an account's pane (identified vs not), call it "Leadbay view membership" or derive client status from the extract — never equate the two.
 
-**BOTH MODES — get the accounts.** `leadbay_pull_followups` for the known/identified side, `leadbay_pull_leads` for the not-yet-identified side. Unless I named a `territory`, call `leadbay_pull_leads` with **no `lensId`** so it resolves my active lens — do not create a lens just because `account_status` showed a null. Capture `response.lens.id` from the first pull and pass it as an explicit `lensId` on every later call — a mid-session lens shift discards the cohort. Keep pulling until you have a pool comfortably deeper than <the count_or_default (as extracted above)>, topping up with `leadbay_bulk_qualify_leads` → `leadbay_qualify_status` → re-pull as needed.
+**FULL MODE — the cohort IS the imported extract.** Build the ranked universe from the `leadIds` that `leadbay_resolve_import_rows` / `leadbay_import_leads` returned, joined to the revenue you read back — **not** from a fresh `pull_followups` / `pull_leads` sweep. Imported leads are not auto-promoted to Monitor and need not sit in the active Discover lens, so re-deriving the universe from those views silently drops the very accounts whose revenue I just gave you. Add Discover leads *afterwards* if you want net-new CONQUÊTE rows alongside the extract, and say which rows came from where.
+
+**DEGRADED MODE — get the accounts.** `leadbay_pull_followups` for the known/identified side, `leadbay_pull_leads` for the not-yet-identified side. Unless I named a `territory`, call `leadbay_pull_leads` with **no `lensId`** so it resolves my active lens — do not create a lens just because `account_status` showed a null. Capture `response.lens.id` from the first pull and pass it as an explicit `lensId` on every later call — a mid-session lens shift discards the cohort. Keep pulling until you have a pool comfortably deeper than <the count_or_default (as extracted above)>, topping up with `leadbay_bulk_qualify_leads` → `leadbay_qualify_status` → re-pull as needed.
 
 # PHASE 3 — QUALIFY, SIGNAL, MOTIF
 
@@ -291,7 +295,7 @@ Each card needs a reachable decision-maker. `leadbay_enrich_titles({leadIds, len
 
 # PHASE 6 — DELIVER
 
-Render the chat answer, then the ledger:
+Render the PROVENANCE LEDGER and its legend FIRST, then the chat answer beneath it — never the other way round. A ranked money column read before its sourcing has already misled the reader:
 
 ## RENDERING — account activation plan
 
@@ -340,8 +344,13 @@ Sort strictly by the ranking key named in the ledger (which was printed above).
 
 One card per account, ordered by the same key. Per card:
 
-- **Header** — rank badge, company name, city · trade · headcount, and the cash
-  figure right-aligned with its class tag and a one-word label.
+- **Header** — rank badge, company name, city · trade · headcount. Then, **only
+  when the money inputs were actually supplied**, the cash figure right-aligned
+  with its class tag and a one-word label. When they were not, the deck omits
+  cash exactly as the chat table does — show the ranking signal used instead
+  (e.g. `AI 30 [LB]`). The deck and the chat answer must never disagree about
+  which fields exist: a card carrying a euro figure the table omitted means one
+  of the two was modelled.
 - **Motif badge** — the motif, visually distinct per motif so the deck can be
   scanned by strategy.
 - **Family bars** — one row per product family: a filled bar for revenue already

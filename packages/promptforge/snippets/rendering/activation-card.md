@@ -45,8 +45,13 @@ Sort strictly by the ranking key named in the ledger (which was printed above).
 
 One card per account, ordered by the same key. Per card:
 
-- **Header** — rank badge, company name, city · trade · headcount, and the cash
-  figure right-aligned with its class tag and a one-word label.
+- **Header** — rank badge, company name, city · trade · headcount. Then, **only
+  when the money inputs were actually supplied**, the cash figure right-aligned
+  with its class tag and a one-word label. When they were not, the deck omits
+  cash exactly as the chat table does — show the ranking signal used instead
+  (e.g. `AI 30 [LB]`). The deck and the chat answer must never disagree about
+  which fields exist: a card carrying a euro figure the table omitted means one
+  of the two was modelled.
 - **Motif badge** — the motif, visually distinct per motif so the deck can be
   scanned by strategy.
 - **Family bars** — one row per product family: a filled bar for revenue already
