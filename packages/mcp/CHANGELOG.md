@@ -1,5 +1,48 @@
 # Changelog — @leadbay/mcp
 
+## 0.27.0 — 2026-07-30
+
+Add **`leadbay_top_accounts_to_activate`** — a prompt that builds a ranked
+account-activation plan: the accounts with the most money still on the table,
+each carrying one of five strategic motifs (SAUVETAGE / PLAN DE COMPTE / MONTÉE
+EN GAMME / RÉVEIL / CONQUÊTE) that drives its phone pitch and three-step
+checklist (product#3863). Renders via `leadbay_artifact_kit` when the user
+accepts the offered deck; the chat table stands alone otherwise.
+
+**Dual-mode.** With the client's revenue extract (ingested through the existing
+file-import path, revenue preserved as `PRICE`/`NUMBER` custom fields) the plan
+ranks by cash-to-capture and all five motifs are assignable. Without it, the
+prompt delivers an honest Leadbay-only conquest plan — revenue-realized,
+per-family revenue and cash-to-capture render as OMITTED rather than being
+estimated, and the exact extract columns needed to upgrade are named.
+
+**New `gates/data-provenance` snippet.** The deliverable mixes client ERP
+figures, Leadbay responses, public-registry counts and modelled assumptions in
+front of a paying client, so every emitted number carries a provenance class
+(`[ERP]` / `[LB]` / `[SIRENE]` / `[HYP]`), taint propagates through derived
+figures, and a PROVENANCE LEDGER prints **before** the plan with un-sourceable
+fields shown as OMITTED instead of quietly filled. The existing
+`iron-laws/no-fabrication` covers identifiers only, so a derived quantity such
+as a revenue figure could previously be invented without violating it.
+
+Also adds `heuristics/account-activation-motifs`, `heuristics/potential-math`
+(incl. the single-Tier-1-definition rule) and `rendering/activation-card`, plus
+WORKFLOWS entries 46–48 with live eval coverage for full mode, the degraded
+(underdeliver) path and the fabrication guard.
+
+Fixes a stale `server.json` npx pin that tracked the `0.25` line while the
+package was on `0.26`, and bumps the `.claude-plugin` bundle off `@leadbay/mcp@0.13`,
+which predated `leadbay_get_qualification_questions`,
+`leadbay_scan_portfolio_signals` and `leadbay_artifact_kit`.
+
+## 0.26.0 — 2026-07-27 (tagged, never published)
+
+Makes **`leadbay_build_campaign`** autonomous: runs to a target `count` with no
+confirm gates, and accepts explicit `job_titles` for buyer enrichment (#169).
+The version was bumped and `mcp-v0.26.0` tagged, but the npm publish did not
+complete — npm's latest remained `0.25.0`. Documented here retroactively;
+`0.27.0` supersedes it and carries these changes forward.
+
 ## 0.25.0 — 2026-07-13
 
 Add `leadbay_set_telemetry` — an in-product control to enable, disable, or check
