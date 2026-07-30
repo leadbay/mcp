@@ -84,6 +84,15 @@ batch: `dry_run: true`, quote the worst case, get the explicit go-ahead
 (an explicit "spend / get their emails" in the user's message counts).
 Set `request_id` and reuse it on retries of the same batch.
 
+**Two-pass spending pattern — the default for channel purchases.** A single
+qualify+channels pass buys emails even for leads the SAME job disqualifies
+(measured on staging: a third of enrichment spend landed on ai-negative
+leads). Instead: pass 1 with `qualify: true` and NO channels → read the
+verdicts; pass 2 with `channels` and `lead_refs` restricted to the
+positively-qualified leads (their `lead_id`s, or `contact_id` to pin the
+matched person). The cache makes pass 2 cost only the channels. Collapse to
+one pass only when the user explicitly wants channels regardless of verdict.
+
 **Limits**: 500 refs/job, 3 active jobs/org, 10 submits/hour (429 +
 Retry-After beyond — wait, don't hammer), 30-min job wall clock.
 
