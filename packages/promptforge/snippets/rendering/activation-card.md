@@ -4,10 +4,18 @@ Two surfaces. The **chat table** is the default answer and must stand alone as
 useful. The **interactive deck** is offered, not forced (see the widget gate) —
 build it only once the user accepts.
 
-### The chat table (always render this first)
+### Order on the page — ledger FIRST, then the plan
 
-Show the top 10 accounts by `cash` descending, then state how many more the full
-plan holds. Four columns:
+Print the PROVENANCE LEDGER (and the one-line provenance legend) **before** the
+chat table, the deck, or any other part of the deliverable. The reader must know
+which figures are measured and which are modelled *before* they read a ranking
+built on them — a cash column read first and sourced second has already done its
+damage. This ordering is the workflow contract, not a stylistic preference.
+
+### The chat table (render immediately after the ledger)
+
+Show the top 10 accounts by the ranking key, descending, then state how many more
+the full plan holds. Four columns:
 
 ```
 | # · Account | Motif | Cash to get | Why now |
@@ -19,15 +27,19 @@ plan holds. Four columns:
 - **Col 2** — the motif, exactly one of SAUVETAGE / PLAN DE COMPTE / MONTÉE EN
   GAMME / RÉVEIL / CONQUÊTE. Never invent a sixth.
 - **Col 3** — the cash figure with its provenance class, e.g. `20 800 € [HYP]`.
-  Tagging is not optional; an untagged € figure reads as measured fact. In
-  degraded mode this column becomes the addressable-spend estimate and the
-  header must say so.
+  Tagging is not optional; an untagged € figure reads as measured fact.
+  **When the inputs for a money figure were not supplied, drop the money column
+  entirely** — do not substitute an addressable-spend estimate, and do not stop
+  to ask for the benchmark. Addressable spend needs a €/employee benchmark, so
+  without one there is nothing to compute: the column becomes the ranking signal
+  actually used (e.g. `AI 30 [LB]`), the header says so, and the money fields
+  stay OMITTED in the ledger. A column of modelled euros next to a client's name
+  is the exact failure this deliverable must not ship.
 - **Col 4** — the one-line reason to act now: the signal when there is one,
   otherwise the motif's deciding evidence. Never fill this with a
   plausible-sounding invented event; an account with nothing read shows `—`.
 
-Sort strictly by the ranking key named in the ledger. Print the provenance
-legend once below the table, and immediately after it the PROVENANCE LEDGER.
+Sort strictly by the ranking key named in the ledger (which was printed above).
 
 ### The interactive deck (only after the user accepts)
 

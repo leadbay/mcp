@@ -1,6 +1,6 @@
 ---
 name: leadbay_top_accounts_to_activate
-description: "Build a ranked account-activation plan — the accounts with the most money still on the table, each with a strategic motif, a phone pitch and a checklist. Ranks by cash-to-capture when the client's revenue extract is available; delivers an honest Leadbay-only conquest plan when it isn't. Every figure carries its source. Trigger on \"top 50 accounts to activate\", \"where's the cash in my base\", \"account activation plan\"."
+description: "Build a ranked account-activation plan — the accounts with the most money still on the table, each with a motif, a pitch and a checklist. Ranks by cash-to-capture with the client's revenue extract; delivers an honest Leadbay-only conquest plan without it. Every figure carries its source. Uses `leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, `leadbay_import_leads`. Trigger on \"top 50 accounts to activate\", \"where's the cash in my base\"."
 ---
 
 
@@ -116,7 +116,7 @@ Never silently assume. If you can't tell whether the extract exists, state which
 - **No benchmark?** Not a blocker. It only affects the money column — which in DEGRADED MODE is OMITTED anyway. Pull, qualify, rank and deliver; ask for the median €/employee/year underneath the plan.
 - **No Tier-1 threshold?** Not a blocker. Deliver, and ask alongside.
 - **No territory?** Not a blocker. Default to national, say so in one line, and offer to re-scope.
-- **No active lens (`last_requested_lens: null`)?** Not a blocker — that's the normal cold-start state. Create or resolve one and continue.
+- **`last_requested_lens: null`?** Not a blocker — and **do NOT read it as "no lens exists".** `leadbay_account_status` deliberately WITHHOLDS the lens id unless the request mentioned the lens/audience, so a plain "top 50 accounts to activate" returns null even when I have a perfectly good active lens. Default to calling `leadbay_pull_leads` with **no** `lensId` and let it resolve my active lens; capture `response.lens.id` from that result and pin it thereafter. Only create or switch a lens when I explicitly asked to scope or change the audience (e.g. a `territory` argument) — inventing a new lens silently changes what I see in the product.
 - **Only 3 qualification questions instead of 5?** Not a blocker. Use the org's real questions, note the gap, recommend the additions — do not wait for permission before pulling.
 
 Bundling a non-blocking question in with a blocking one turns a justified pause into an over-wide gate, and the user gets a plan-of-a-plan instead of a plan. If you catch yourself about to end a turn without having called `leadbay_pull_leads`, you are almost certainly doing this — pull first, then ask.
@@ -131,7 +131,7 @@ If the org has none set, or they don't discriminate for this exercise, recommend
 
 # PHASE 2 — THE ACCOUNT UNIVERSE
 
-**FULL MODE — ingest the extract.** Don't reinvent the import flow: run the standard file-import path. `leadbay_resolve_import_rows` to match my rows against Leadbay, `leadbay_create_custom_field` for each numeric column I want preserved (`{type:"PRICE", config:{currency:"EUR"}}` for revenue figures, one per product family), then `leadbay_import_leads` with an explicit mapping. Build and show the column-preservation plan before committing:
+**FULL MODE — ingest the extract.** Don't reinvent the import flow: run the standard file-import path. `leadbay_resolve_import_rows` to match my rows against Leadbay, then **`leadbay_list_mappable_fields` FIRST to see which custom fields already exist** — reuse a matching field's `CUSTOM.<id>` mapping rather than creating a duplicate. Only call `leadbay_create_custom_field` for columns with no existing field (`{type:"PRICE", config:{currency:"EUR"}}` for revenue figures, one per product family). Re-running this workflow on an org that already has revenue fields must NOT fork the same metric across two fields. Then `leadbay_import_leads` with an explicit mapping. Build and show the column-preservation plan before committing:
 
 Render this block VERBATIM as your byproduct:
 
@@ -157,13 +157,13 @@ The import's `LEADBAY_ID` write-back gives you the `lead_id` join key every card
 
 ⚠ **Imported leads are NOT auto-promoted to my Monitor view** — lens scoring decides. So Monitor membership tells you what Leadbay is watching, **not** who is a client. When you label an account's pane (identified vs not), call it "Leadbay view membership" or derive client status from the extract — never equate the two.
 
-**BOTH MODES — get the accounts.** `leadbay_pull_followups` for the known/identified side, `leadbay_pull_leads` on the scoped lens for the not-yet-identified side. Capture `response.lens.id` and pass it as an explicit `lensId` on every later call — a mid-session lens shift discards the cohort. Keep pulling until you have a pool comfortably deeper than <the count_or_default (as extracted above)>, topping up with `leadbay_bulk_qualify_leads` → `leadbay_qualify_status` → re-pull as needed.
+**BOTH MODES — get the accounts.** `leadbay_pull_followups` for the known/identified side, `leadbay_pull_leads` for the not-yet-identified side. Unless I named a `territory`, call `leadbay_pull_leads` with **no `lensId`** so it resolves my active lens — do not create a lens just because `account_status` showed a null. Capture `response.lens.id` from the first pull and pass it as an explicit `lensId` on every later call — a mid-session lens shift discards the cohort. Keep pulling until you have a pool comfortably deeper than <the count_or_default (as extracted above)>, topping up with `leadbay_bulk_qualify_leads` → `leadbay_qualify_status` → re-pull as needed.
 
 # PHASE 3 — QUALIFY, SIGNAL, MOTIF
 
-**Qualify.** `leadbay_bulk_qualify_leads({lensId, count, wait_for_completion:false})`, then poll `leadbay_qualify_status` until done. **Keep every returned `qualify_id`** — the deck's live qualification layer is wired from those handles, and a deck with none is a dead deck that still looks finished.
+**Qualify — in chunks of 25.** `leadbay_bulk_qualify_leads` caps `count` at **25**, so a single call cannot cover a 50-account plan. Loop: call `leadbay_bulk_qualify_leads({lensId, count:<≤25>, wait_for_completion:false})` (or pass explicit `leadIds`), poll `leadbay_qualify_status` until that batch is done, then fire the next chunk until the **whole** selected cohort is qualified. **Keep every returned `qualify_id`** — the deck's live qualification layer is wired from those handles, and a deck with none is a dead deck that still looks finished. Never ship a plan whose lower ranks have empty qualification pills because only the first 25 were ever qualified.
 
-**Signals.** Use `leadbay_scan_portfolio_signals` to read signals across the whole portfolio in ONE call — do not loop per-lead research. For the identified side, `leadbay_account_history` gives interaction recency.
+**Signals.** `leadbay_scan_portfolio_signals` is a **filtered** read: it requires a concrete `query` and returns only the accounts whose cached signals match it. It is not a generic "read every signal" call. So run it **once per why-now theme you care about** — e.g. expansion / new site, contract or tender won, funding, hiring, acquisition, new venue — and union the results, rather than firing one vague query and treating the misses as "no signal". An account that matched no query has **not** been shown to be signal-free; render it with an explicit `—`, never an invented event. For the identified side, `leadbay_account_history` gives interaction recency.
 
 **SIGNAL HONESTY — never infer signals from freshness.** `stale_at`,
 `web_fetch_in_progress`, `fetch_at` are freshness markers, not signal
@@ -299,10 +299,18 @@ Two surfaces. The **chat table** is the default answer and must stand alone as
 useful. The **interactive deck** is offered, not forced (see the widget gate) —
 build it only once the user accepts.
 
-### The chat table (always render this first)
+### Order on the page — ledger FIRST, then the plan
 
-Show the top 10 accounts by `cash` descending, then state how many more the full
-plan holds. Four columns:
+Print the PROVENANCE LEDGER (and the one-line provenance legend) **before** the
+chat table, the deck, or any other part of the deliverable. The reader must know
+which figures are measured and which are modelled *before* they read a ranking
+built on them — a cash column read first and sourced second has already done its
+damage. This ordering is the workflow contract, not a stylistic preference.
+
+### The chat table (render immediately after the ledger)
+
+Show the top 10 accounts by the ranking key, descending, then state how many more
+the full plan holds. Four columns:
 
 ```
 | # · Account | Motif | Cash to get | Why now |
@@ -314,15 +322,19 @@ plan holds. Four columns:
 - **Col 2** — the motif, exactly one of SAUVETAGE / PLAN DE COMPTE / MONTÉE EN
   GAMME / RÉVEIL / CONQUÊTE. Never invent a sixth.
 - **Col 3** — the cash figure with its provenance class, e.g. `20 800 € [HYP]`.
-  Tagging is not optional; an untagged € figure reads as measured fact. In
-  degraded mode this column becomes the addressable-spend estimate and the
-  header must say so.
+  Tagging is not optional; an untagged € figure reads as measured fact.
+  **When the inputs for a money figure were not supplied, drop the money column
+  entirely** — do not substitute an addressable-spend estimate, and do not stop
+  to ask for the benchmark. Addressable spend needs a €/employee benchmark, so
+  without one there is nothing to compute: the column becomes the ranking signal
+  actually used (e.g. `AI 30 [LB]`), the header says so, and the money fields
+  stay OMITTED in the ledger. A column of modelled euros next to a client's name
+  is the exact failure this deliverable must not ship.
 - **Col 4** — the one-line reason to act now: the signal when there is one,
   otherwise the motif's deciding evidence. Never fill this with a
   plausible-sounding invented event; an account with nothing read shows `—`.
 
-Sort strictly by the ranking key named in the ledger. Print the provenance
-legend once below the table, and immediately after it the PROVENANCE LEDGER.
+Sort strictly by the ranking key named in the ledger (which was printed above).
 
 ### The interactive deck (only after the user accepts)
 

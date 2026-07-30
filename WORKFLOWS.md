@@ -854,6 +854,10 @@ prompt_name: leadbay_top_accounts_to_activate
 required_calls:
   - leadbay_account_status
   - leadbay_get_qualification_questions
+  - leadbay_resolve_import_rows
+  - leadbay_import_leads
+  - leadbay_get_lead_custom_fields
+  - leadbay_pull_leads
   - leadbay_bulk_qualify_leads
   - leadbay_qualify_status
 forbidden_calls:
@@ -862,6 +866,9 @@ required_byproducts:
   - "PROVENANCE LEDGER"
 success_criteria:
   - "printed the PROVENANCE LEDGER before rendering the plan or building any artifact, with one row per emitted field"
+  - "actually ingested the extract — resolved the rows, imported them, and read the revenue values back — rather than describing the import it would do"
+  - "reused an existing custom field where one already matched (leadbay_list_mappable_fields) instead of creating a duplicate for the same metric"
+  - "pulled the account universe and delivered a ranked list of real accounts, not a plan-of-a-plan"
   - "tagged every euro figure with its provenance class ([ERP] / [LB] / [SIRENE] / [HYP]) — no untagged euro figure appears"
   - "marked the addressable-spend, year-1-objective and cash-to-capture figures as [HYP] (modelled) and stated the benchmark value used"
   - "read the org's actual qualification questions via leadbay_get_qualification_questions rather than inventing the five from the prompt's own recommendation"
