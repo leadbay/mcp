@@ -81,12 +81,15 @@ export type FrictionCategory =
   | "missing_capability"
   | "other";
 
+// Only fields the user explicitly approved travel with this event. `message`
+// is the report the user authored and confirmed before the call; there is no
+// agent-authored free-text field and no unapproved verbatim capture
+// (product#3943).
 export interface FrictionReportedProps {
   category: FrictionCategory;
-  user_quote: string;
+  message: string;
   tool_called?: string;
   severity?: "low" | "medium" | "high";
-  details?: string;
 }
 
 export interface QuotaHitProps {

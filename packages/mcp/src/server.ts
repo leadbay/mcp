@@ -327,9 +327,10 @@ export function buildServerInstructions(exposed: Set<string>): string {
   if (has("leadbay_report_outreach")) {
     parts.push(VERIFICATION);
   }
-  // Friction mandate follows verification — both are hard "you MUST call X"
-  // rules with verbatim trigger phrases; they belong adjacent and near the
-  // top so context-truncating hosts keep both in scope.
+  // Problem-report guidance follows verification. Consent-gated, not a
+  // mandate: the agent reports only when the user asks or accepts an offer,
+  // and always shows the confirmation (product#3943). Kept near the top so
+  // context-truncating hosts retain the "never call it unprompted" rule.
   if (has("leadbay_report_friction")) {
     parts.push(FRICTION);
   }
@@ -983,15 +984,14 @@ export function buildServer(
     if (!result || typeof result !== "object") return;
     const fr = result._friction;
     if (!fr || typeof fr !== "object") return;
-    if (typeof fr.category !== "string" || typeof fr.user_quote !== "string") {
+    if (typeof fr.category !== "string" || typeof fr.message !== "string") {
       return;
     }
     telemetry.captureFrictionReported({
       category: fr.category,
-      user_quote: fr.user_quote,
+      message: fr.message,
       ...(typeof fr.tool_called === "string" ? { tool_called: fr.tool_called } : {}),
       ...(typeof fr.severity === "string" ? { severity: fr.severity } : {}),
-      ...(typeof fr.details === "string" ? { details: fr.details } : {}),
     });
   };
 
