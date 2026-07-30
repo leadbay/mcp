@@ -27,7 +27,7 @@
         },
         {
           "type": "positional",
-          "value": "@leadbay/mcp@0.25"
+          "value": "@leadbay/mcp@0.26"
         }
       ],
       "environmentVariables": [
