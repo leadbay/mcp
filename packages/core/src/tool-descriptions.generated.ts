@@ -3220,10 +3220,11 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-Ask the user before calling — never fire this on your own. After it
-succeeds, show the one-line confirmation from the result's \`message\`
-(e.g. "✓ Shared with the Leadbay team"). If the user declines, don't
-call the tool at all.
+Ask the user before calling — never fire this on your own. Show the
+one-line confirmation from the result's \`message\` (e.g. "✓ Shared with
+the Leadbay team"). If \`reported\` is false the report was NOT delivered
+— tell the user that plainly, never imply it was sent. If the user
+declines, don't call the tool at all.
 
 ---
 
@@ -3248,6 +3249,13 @@ don't call the tool.
 
 After a successful call, show the one-line confirmation. The user should always
 know a report was sent and what it said. Never send silently.
+
+## Result
+
+- \`reported: true\` → it reached the Leadbay team. Show the confirmation from \`message\`.
+- \`reported: false\` → delivery wasn't possible on this client (problem reporting
+  is unavailable — e.g. the user turned telemetry off). Tell the user it was NOT
+  sent. Do not claim success, and do not retry in a loop.
 
 ## Categories
 
@@ -3969,11 +3977,11 @@ Prefer when: the user explicitly wants the Leadbay TEAM to receive a message the
 
 Examples that SHOULD invoke this tool:
 - "Send feedback to the team: the lead scores feel off this week."
-- "Can you report a bug? Pulling leads in Lyon returns nothing."
+- "Can you tell Leadbay the onboarding was confusing?"
 - "Tell Leadbay I'd love a way to schedule my morning check-in."
 
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
-- "No, I meant Wisconsin not Wyoming."
+- "Pulling leads in Lyon returns nothing — report that."
 - "I emailed Acme — log that outreach."
 - "Thumbs down on this lead."
 

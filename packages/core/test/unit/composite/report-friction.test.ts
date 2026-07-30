@@ -13,7 +13,23 @@ import { reportFriction } from "../../../src/composite/report-friction.js";
 const BASE = "https://api-us.leadbay.app";
 const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
 
-beforeEach(() => resetHttpMock());
+// The MCP server wires a `reportFriction` transport into ToolContext. A context
+// WITHOUT one models a deployment where delivery is impossible (telemetry off,
+// no keys, tests) — the tool must then report honestly instead of confirming.
+const deliveredReports: any[] = [];
+const ctxWithTransport = () =>
+  ({
+    reportFriction: (report: any) => {
+      deliveredReports.push(report);
+      return true;
+    },
+  }) as any;
+const ctxTransportDown = () => ({ reportFriction: () => false }) as any;
+
+beforeEach(() => {
+  resetHttpMock();
+  deliveredReports.length = 0;
+});
 
 // leadbay_report_friction is consent-gated and user-visible (product#3943).
 // The Anthropic MCP-directory review rejected the previous silent design, so
@@ -23,14 +39,26 @@ beforeEach(() => resetHttpMock());
 describe("leadbay_report_friction", () => {
   it("happy path — reports and returns a visible confirmation", async () => {
     mockHttp([]);
-    const result: any = await reportFriction.execute(newClient(), {
+    const result: any = await reportFriction.execute(
+      newClient(),
+      {
+        category: "silent_failure",
+        message: "Searching Wisconsin returns nothing.",
+        tool_called: "leadbay_pull_leads",
+        severity: "medium",
+      },
+      ctxWithTransport()
+    );
+
+    expect(result.reported).toBe(true);
+    // The transport received exactly the approved fields.
+    expect(deliveredReports).toHaveLength(1);
+    expect(deliveredReports[0]).toEqual({
       category: "silent_failure",
       message: "Searching Wisconsin returns nothing.",
       tool_called: "leadbay_pull_leads",
       severity: "medium",
     });
-
-    expect(result.reported).toBe(true);
     // The confirmation must be non-empty — the agent shows this back so the
     // user always knows a report was sent. An empty string here would be the
     // old silent behaviour.
@@ -49,19 +77,27 @@ describe("leadbay_report_friction", () => {
 
   it("telemetry-only — never touches the Leadbay backend", async () => {
     mockHttp([]);
-    await reportFriction.execute(newClient(), {
-      category: "wrong_result",
-      message: "I asked for Wisconsin and got Wyoming.",
-    });
+    await reportFriction.execute(
+      newClient(),
+      {
+        category: "wrong_result",
+        message: "I asked for Wisconsin and got Wyoming.",
+      },
+      ctxWithTransport()
+    );
     expect(getHttpRequests()).toHaveLength(0);
   });
 
   it("omits optional fields that were not supplied", async () => {
     mockHttp([]);
-    const result: any = await reportFriction.execute(newClient(), {
-      category: "missing_capability",
-      message: "I wish I could export to HubSpot.",
-    });
+    const result: any = await reportFriction.execute(
+      newClient(),
+      {
+        category: "missing_capability",
+        message: "I wish I could export to HubSpot.",
+      },
+      ctxWithTransport()
+    );
     expect(result._friction).toEqual({
       category: "missing_capability",
       message: "I wish I could export to HubSpot.",
@@ -73,10 +109,14 @@ describe("leadbay_report_friction", () => {
   it("caps the message at 500 chars", async () => {
     mockHttp([]);
     const long = "x".repeat(600);
-    const result: any = await reportFriction.execute(newClient(), {
-      category: "other",
-      message: long,
-    });
+    const result: any = await reportFriction.execute(
+      newClient(),
+      {
+        category: "other",
+        message: long,
+      },
+      ctxWithTransport()
+    );
     expect(result._friction.message).toBe(`${"x".repeat(500)}…`);
   });
 
@@ -84,11 +124,15 @@ describe("leadbay_report_friction", () => {
     // `details` was the agent-written field the user never saw or approved.
     // It is gone from the schema; passing it must not leak into the payload.
     mockHttp([]);
-    const result: any = await reportFriction.execute(newClient(), {
-      category: "other",
-      message: "Approved wording only.",
-      details: "agent-authored context the user never approved",
-    } as any);
+    const result: any = await reportFriction.execute(
+      newClient(),
+      {
+        category: "other",
+        message: "Approved wording only.",
+        details: "agent-authored context the user never approved",
+      } as any,
+      ctxWithTransport()
+    );
     expect(result._friction).not.toHaveProperty("details");
     expect(JSON.stringify(result._friction)).not.toContain("never approved");
 
@@ -136,6 +180,37 @@ describe("leadbay_report_friction", () => {
     expect(result.error).toBe(true);
     expect(result.code).toBe("BAD_INPUT");
     expect(result.message).toMatch(/severity/i);
+  });
+
+  it("does NOT claim success when no transport is wired", async () => {
+    // Codex P2: the report is user-visible now, so a `reported: true` for a
+    // report that never left the machine is a false confirmation to the user.
+    mockHttp([]);
+    const result: any = await reportFriction.execute(newClient(), {
+      category: "silent_failure",
+      message: "Searching Wisconsin returns nothing.",
+    });
+    expect(result.reported).toBe(false);
+    expect(result.message).toMatch(/could NOT be sent/i);
+    expect(result.message).toMatch(/not delivered/i);
+    expect(result.message).not.toMatch(/shared with the leadbay team/i);
+  });
+
+  it("does NOT claim success when the transport reports failure", async () => {
+    // NOOP telemetry (opted out / no keys) returns false from the transport.
+    mockHttp([]);
+    const result: any = await reportFriction.execute(
+      newClient(),
+      {
+        category: "dissatisfaction",
+        message: "The scores feel wrong.",
+      },
+      ctxTransportDown()
+    );
+    expect(result.reported).toBe(false);
+    expect(result.message).toMatch(/could NOT be sent/i);
+    // The payload is still echoed so the agent can show what would have gone.
+    expect(result._friction.message).toBe("The scores feel wrong.");
   });
 
   it("stays callable on read-only deployments", async () => {

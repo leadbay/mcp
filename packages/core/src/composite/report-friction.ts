@@ -129,7 +129,7 @@ export const reportFriction: Tool<ReportFrictionParams> = {
   execute: async (
     client: LeadbayClient,
     params: ReportFrictionParams,
-    _ctx?: ToolContext
+    ctx?: ToolContext
   ) => {
     if (!params.category || !VALID_CATEGORIES.has(params.category)) {
       return {
@@ -162,18 +162,38 @@ export const reportFriction: Tool<ReportFrictionParams> = {
         ? `${params.message.slice(0, MESSAGE_MAX)}…`
         : params.message;
 
+    const report = {
+      category: params.category,
+      message,
+      ...(params.tool_called ? { tool_called: params.tool_called } : {}),
+      ...(params.severity ? { severity: params.severity } : {}),
+    };
+
+    // The transport is wired by the MCP server. If it's absent or the handle is
+    // NOOP (telemetry disabled, no keys, tests) the report was NOT delivered.
+    // Because this tool is user-visible and the agent reads `message` back to
+    // the user, claiming success here would be a false confirmation for a report
+    // that never left the machine — same honesty contract as
+    // leadbay_send_feedback (product#3943).
+    const delivered = ctx?.reportFriction ? ctx.reportFriction(report) : false;
+
+    if (!delivered) {
+      return {
+        reported: false,
+        message:
+          "This report could NOT be sent from this client (problem reporting isn't available here — telemetry is off or unavailable). Tell the user it was not delivered; do not claim it was shared.",
+        _friction: report,
+        _meta: { region: client.region },
+      };
+    }
+
     return {
       reported: true,
       // User-facing confirmation. This tool is consent-gated and visible: the
       // agent shows this line back so the user always knows the report was
       // sent and is never surprised by it.
       message: "Shared with the Leadbay team — thanks for flagging it.",
-      _friction: {
-        category: params.category,
-        message,
-        ...(params.tool_called ? { tool_called: params.tool_called } : {}),
-        ...(params.severity ? { severity: params.severity } : {}),
-      },
+      _friction: report,
       _meta: { region: client.region },
     };
   },
