@@ -1545,7 +1545,7 @@ Call \`leadbay_account_status\` for my quota and active lens. Then settle **whic
 - **FULL MODE** — I supplied a revenue extract (or its figures are already on my leads as custom fields). The plan ranks by cash-to-capture and can carry all five motifs.
 - **DEGRADED MODE** — no revenue extract. The plan is an honest **conquest plan**: real accounts, real qualification, real signals, real contacts, ranked by the best Leadbay signal you have. Revenue-realized, per-family revenue and cash-to-capture are OMITTED, not estimated.
 
-**Before you settle on DEGRADED, check whether the revenue is already here.** A returning user who imported an extract in a previous session has the figures sitting on their leads as custom fields, and falling back to a conquest plan would throw away data they already gave us. So when no extract is attached to *this* request, call \`leadbay_list_mappable_fields\` and look for revenue-shaped custom fields (12-month revenue, per-family revenue, last order date, order count). If they exist, read them back with \`leadbay_get_lead_custom_fields\` and proceed in **FULL MODE** — say in one line that you're using previously-imported figures and when they were imported, since stale revenue ranks accounts wrongly. Only declare DEGRADED once you've checked and found nothing.
+**Before you settle on DEGRADED, check whether the revenue is already here.** A returning user who imported an extract in a previous session has the figures sitting on their leads as custom fields, and falling back to a conquest plan would throw away data they already gave us. So when no extract is attached to *this* request, call \`leadbay_list_mappable_fields\` and look for revenue-shaped custom fields (12-month revenue, per-family revenue, last order date, order count). If revenue-shaped fields exist, proceed in **FULL MODE** — but note \`leadbay_get_lead_custom_fields\` needs a concrete \`leadId\` per call, and at this point you have none. So enumerate the cohort first (\`leadbay_pull_followups\` for the known base, plus \`leadbay_pull_leads\` if you want net-new rows), then read the values back per lead over that cohort. Say in one line that you're using previously-imported figures and when they were imported, since stale revenue ranks accounts wrongly. Only declare DEGRADED once you've checked and found nothing.
 
 Never silently assume. If you can't tell whether the extract exists, state which mode you're proceeding in and why, in one line — then **keep going**.
 
@@ -1601,9 +1601,13 @@ The import's \`LEADBAY_ID\` write-back gives you the \`lead_id\` join key every 
 
 # PHASE 3 — QUALIFY, SIGNAL, MOTIF
 
-**Qualify — in chunks of 25.** \`leadbay_bulk_qualify_leads\` caps \`count\` at **25**, so a single call cannot cover a 50-account plan. Loop: call \`leadbay_bulk_qualify_leads({lensId, count:<≤25>, wait_for_completion:false})\` (or pass explicit \`leadIds\`), poll \`leadbay_qualify_status\` until that batch is done, then fire the next chunk until the **whole** selected cohort is qualified. **Keep every returned \`qualify_id\`** — the deck's live qualification layer is wired from those handles, and a deck with none is a dead deck that still looks finished. Never ship a plan whose lower ranks have empty qualification pills because only the first 25 were ever qualified.
+**Qualify — the SELECTED cohort, in chunks of 25.** \`leadbay_bulk_qualify_leads\` caps \`count\` at **25**, so a single call cannot cover a 50-account plan. Loop until the whole cohort is qualified, polling \`leadbay_qualify_status\` between chunks.
 
-**Signals.** \`leadbay_scan_portfolio_signals\` is a **filtered** read: it requires a concrete \`query\` and returns only the accounts whose cached signals match it. It is not a generic "read every signal" call. So run it **once per why-now theme you care about** — e.g. expansion / new site, contract or tender won, funding, hiring, acquisition, new venue — and union the results, rather than firing one vague query and treating the misses as "no signal". An account that matched no query has **not** been shown to be signal-free; render it with an explicit \`—\`, never an invented event. For the identified side, \`leadbay_account_history\` gives interaction recency.
+⚠ **Pass explicit \`leadIds\` whenever the cohort isn't simply "the next N on the lens"** — and in FULL MODE it never is. The \`count\`-based path selects the next *unqualified leads from the lens wishlist*, so on an imported cohort it would qualify unrelated Discover leads and hand you handles whose pills belong to different companies. Use \`leadbay_bulk_qualify_leads({leadIds:[…≤25 of the cohort], wait_for_completion:false})\` and chunk through the cohort's own ids. The \`{lensId, count}\` form is only appropriate in degraded mode when the cohort *is* the lens's top N. **Keep every returned \`qualify_id\`** — the deck's live qualification layer is wired from those handles, and a deck with none is a dead deck that still looks finished. Never ship a plan whose lower ranks have empty qualification pills because only the first 25 were ever qualified.
+
+**Signals — scoped to the cohort.** ⚠ **Always pass the selected \`leadIds\`.** With \`leadIds\` omitted, \`leadbay_scan_portfolio_signals\` builds its own portfolio by paging \`/monitor\` — so on an imported cohort or a freshly-pulled Discover set it would scan a *different population* and you'd render dashes for accounts whose signals were never read.
+
+\`leadbay_scan_portfolio_signals\` is also a **filtered** read: it requires a concrete \`query\` and returns only the accounts whose cached signals match it. It is not a generic "read every signal" call. So run it **once per why-now theme you care about** — e.g. expansion / new site, contract or tender won, funding, hiring, acquisition, new venue — and union the results, rather than firing one vague query and treating the misses as "no signal". An account that matched no query has **not** been shown to be signal-free; render it with an explicit \`—\`, never an invented event. For the identified side, \`leadbay_account_history\` gives interaction recency.
 
 **SIGNAL HONESTY — never infer signals from freshness.** \`stale_at\`,
 \`web_fetch_in_progress\`, \`fetch_at\` are freshness markers, not signal
@@ -1789,7 +1793,11 @@ One card per account, ordered by the same key. Per card:
   of the two was modelled.
 - **Motif badge** — the motif, visually distinct per motif so the deck can be
   scanned by strategy.
-- **Family bars** — one row per product family: a filled bar for revenue already
+- **Family bars** — every € value on a bar carries its class tag, same rule as
+  the table: realized revenue is \`[ERP]\`, additional potential is \`[HYP]\`
+  (it is modelled from the benchmark). An untagged upside figure sitting beside
+  a measured one is exactly how modelled money starts reading as invoiced money.
+  One row per product family: a filled bar for revenue already
   realized and a visually distinct (hatched or outlined) extension for the
   additional potential, plus the € values. These are **static markup** built
   from the imported data — there is no live tool behind them. Omit this block

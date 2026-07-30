@@ -15,7 +15,7 @@
   "mcpServers": {
     "leadbay": {
       "command": "npx",
-      "args": ["-y", "@leadbay/mcp@0.27"],
+      "args": ["-y", "--package=@leadbay/mcp@0.27", "leadbay-mcp"],
       "env": {
         "LEADBAY_TOKEN": "${user_config.leadbay_token}",
         "LEADBAY_REGION": "${user_config.leadbay_region}",

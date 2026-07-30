@@ -54,7 +54,11 @@ One card per account, ordered by the same key. Per card:
   of the two was modelled.
 - **Motif badge** — the motif, visually distinct per motif so the deck can be
   scanned by strategy.
-- **Family bars** — one row per product family: a filled bar for revenue already
+- **Family bars** — every € value on a bar carries its class tag, same rule as
+  the table: realized revenue is `[ERP]`, additional potential is `[HYP]`
+  (it is modelled from the benchmark). An untagged upside figure sitting beside
+  a measured one is exactly how modelled money starts reading as invoiced money.
+  One row per product family: a filled bar for revenue already
   realized and a visually distinct (hatched or outlined) extension for the
   additional potential, plus the € values. These are **static markup** built
   from the imported data — there is no live tool behind them. Omit this block
