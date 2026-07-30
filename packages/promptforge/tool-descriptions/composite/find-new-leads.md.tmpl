@@ -56,52 +56,48 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Submit a net-new lead search: the backend matches an ICP seed against the full
-company universe (millions of registry+web profiles), applies hard filters,
-skips everything the org already knows (`novelty: org`), optionally qualifies
-each candidate against the org's own intelligence (qualification questions,
-tags, ideal buyer profile — frozen at submit), and optionally purchases
-contact channels. Submit answers in <1s (input errors are synchronous 400s
-naming the field); the tool polls up to `wait_seconds` (default 45) and, when
-the job needs longer, returns `still_running` + `next_poll` — hand off to
-`leadbay_lead_job_status`. Jobs run ≤30 min; results are kept 30 days.
+Submit a net-new lead search: the backend matches an ICP seed against the
+full company universe, applies hard filters, skips everything the org already
+knows (`novelty: org`), optionally qualifies candidates against the org's own
+intelligence (questions, tags, ideal buyer profile — frozen at submit), and
+optionally purchases contact channels. Submit answers in <1s; the tool polls
+up to `wait_seconds` (default 45) and, when the job needs longer, returns
+`still_running` + `next_poll` — hand off to `leadbay_lead_job_status`. Jobs
+run ≤30 min; results are kept 30 days.
 
 **Free vs paid — never spend silently.** The default ask (`qualify: false`,
-`channels: []`) is FREE: company profile + fit score + cached web research +
-contact identity. Paid flags: `qualify: true` (~94 cost_cents per candidate
-EXAMINED, survivor or not, capped by `exploration_cap`/`max_cost`) and
-`channels` (email 25c / phone 250c, success-only). Before the FIRST paid run
-of a session: `dry_run: true`, tell the user the worst-case estimate, get
-their explicit go-ahead (an explicit "spend / get their emails" in the user's
-message counts). The free tier needs no consent.
+`channels: []`) is FREE: company profile + fit score + cached research +
+contact identity. Paid: `qualify: true` (~94 cost_cents per candidate
+EXAMINED, capped by `exploration_cap`/`max_cost`) and `channels` (email 25c /
+phone 250c, success-only). Before the first paid run: `dry_run: true`, quote
+the worst case, get the explicit go-ahead ("spend / get their emails" in the
+user's message counts). Free needs no consent.
 
-**The two-step pattern that wins**: run FREE first and eyeball whether the
-delivered companies are on-profile. If yes, feed that job's deliveries to
-`leadbay_qualify_leads` via `prior_deliveries` (spends only on companies
-already known to match), or re-run with `qualify: true` under a NEW
-request_id when more than the preview is wanted. If off-profile, fix the seed
-first — reshaping is free; exploring a bad seed with `qualify: true` burns
-budget on candidates qualification will reject.
+**Free preview first**: run FREE, eyeball fit, THEN pay. Off-profile preview
+→ reshape the seed (free) instead of exploring it with `qualify: true`.
+
+**Exclusions ("no chains", "no agencies") are enforced by QUALIFICATION, not
+the free match.** Positive inverse in the seed, then `qualify: true`: the
+org's ideal-buyer-profile anti-patterns and questions score violators
+negative and `min_ai_score: 0` drops them. Durable exclusion → suggest
+`leadbay_refine_prompt` so it enters the org intelligence. In a FREE preview,
+drop visibly violating rows and say the free tier doesn't enforce.
 
 {{include:heuristics/example-lead-craft}}
 
 **Parameter notes**
-- `request_id` (REQUIRED) is the retry contract: reuse the SAME value when
-  retrying the same ask (returns the same live job, no double spend); NEW
-  value for a changed ask. Derive from the ask + date: `gyms-dallas-2026-07-28`.
-- Unresolvable `filters` values 400 naming them — fix the label (see
-  `leadbay_list_sectors` / `leadbay_list_locations`) and resubmit.
+- `request_id` (REQUIRED) is the retry contract: SAME value when retrying
+  the same ask (returns the same live job, no double spend); NEW value for a
+  changed ask. Derive from ask + date: `gyms-dallas-2026-07-28`.
 - `min_ai_score` gates the [-30,+30] qualification DELTA, not the 0-100 fit
-  score. Lower it only to STUDY evidence — never combine a lowered floor
-  with `channels` (that buys emails for leads the AI just scored as junk).
-- `count` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After
-  beyond — wait, don't hammer).
+  score. Lower it only to STUDY evidence — never with `channels` (that buys
+  emails for leads the AI just scored as junk).
+- `count` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After —
+  wait, don't hammer).
 
-**Read the result honestly.** `funnel` + `explain.scope_notes` tell what
-happened: matched, pre-screen rejections, examined (billed), qualified,
-disqualified, and why the job stopped. Zero delivered is a real outcome that
-must be narrated with its cause and a concrete next move — never a bare "no
-results".
+**Read the result honestly.** `funnel` + `explain.scope_notes` tell the
+story; zero delivered gets a cause + a concrete next move, never a bare "no
+results" (rules in RENDERING).
 
 ---
 

@@ -210,6 +210,34 @@ describe("leadbay_find_new_leads", () => {
     }
   });
 
+  it("normalizes an agent-invented nested filters.employees onto the flat wire keys", async () => {
+    // Live eval 2026-07-30: 2/2 cold agents passed employees:{min,max}
+    // (the RESULT shape) and the backend 400'd the whole ask. The composite
+    // maps it instead of failing.
+    mockHttp([
+      { method: "POST", path: "/1.6/mcp/search", status: 202, body: SUBMIT_202 },
+      {
+        method: "GET",
+        path: `/1.6/mcp/jobs/${JOB_ID}?limit=100`,
+        status: 200,
+        body: snapshot("completed", [DELIVERED_ITEM], "target_reached"),
+      },
+    ]);
+    await findNewLeads.execute(newClient(), {
+      example_lead: { description: "B2B SaaS with in-house sales teams." },
+      filters: { locations: ["Texas"], employees: { min: 100, max: 1000 } } as any,
+      count: 3,
+      request_id: "probe-nested-emp",
+      wait_seconds: 0,
+    });
+    const body = JSON.parse(getHttpRequests().find((r) => r.method === "POST")!.body!);
+    expect(body.filters).toEqual({
+      locations: ["Texas"],
+      employees_min: 100,
+      employees_max: 1000,
+    });
+  });
+
   it("429 refusal (rate cap) — propagates as a quota error", async () => {
     mockHttp([
       {

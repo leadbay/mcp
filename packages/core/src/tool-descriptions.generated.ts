@@ -1302,41 +1302,39 @@ delivered. Full algorithm below.
 
 ---
 
-Submit a net-new lead search: the backend matches an ICP seed against the full
-company universe (millions of registry+web profiles), applies hard filters,
-skips everything the org already knows (\`novelty: org\`), optionally qualifies
-each candidate against the org's own intelligence (qualification questions,
-tags, ideal buyer profile — frozen at submit), and optionally purchases
-contact channels. Submit answers in <1s (input errors are synchronous 400s
-naming the field); the tool polls up to \`wait_seconds\` (default 45) and, when
-the job needs longer, returns \`still_running\` + \`next_poll\` — hand off to
-\`leadbay_lead_job_status\`. Jobs run ≤30 min; results are kept 30 days.
+Submit a net-new lead search: the backend matches an ICP seed against the
+full company universe, applies hard filters, skips everything the org already
+knows (\`novelty: org\`), optionally qualifies candidates against the org's own
+intelligence (questions, tags, ideal buyer profile — frozen at submit), and
+optionally purchases contact channels. Submit answers in <1s; the tool polls
+up to \`wait_seconds\` (default 45) and, when the job needs longer, returns
+\`still_running\` + \`next_poll\` — hand off to \`leadbay_lead_job_status\`. Jobs
+run ≤30 min; results are kept 30 days.
 
 **Free vs paid — never spend silently.** The default ask (\`qualify: false\`,
-\`channels: []\`) is FREE: company profile + fit score + cached web research +
-contact identity. Paid flags: \`qualify: true\` (~94 cost_cents per candidate
-EXAMINED, survivor or not, capped by \`exploration_cap\`/\`max_cost\`) and
-\`channels\` (email 25c / phone 250c, success-only). Before the FIRST paid run
-of a session: \`dry_run: true\`, tell the user the worst-case estimate, get
-their explicit go-ahead (an explicit "spend / get their emails" in the user's
-message counts). The free tier needs no consent.
+\`channels: []\`) is FREE: company profile + fit score + cached research +
+contact identity. Paid: \`qualify: true\` (~94 cost_cents per candidate
+EXAMINED, capped by \`exploration_cap\`/\`max_cost\`) and \`channels\` (email 25c /
+phone 250c, success-only). Before the first paid run: \`dry_run: true\`, quote
+the worst case, get the explicit go-ahead ("spend / get their emails" in the
+user's message counts). Free needs no consent.
 
-**The two-step pattern that wins**: run FREE first and eyeball whether the
-delivered companies are on-profile. If yes, feed that job's deliveries to
-\`leadbay_qualify_leads\` via \`prior_deliveries\` (spends only on companies
-already known to match), or re-run with \`qualify: true\` under a NEW
-request_id when more than the preview is wanted. If off-profile, fix the seed
-first — reshaping is free; exploring a bad seed with \`qualify: true\` burns
-budget on candidates qualification will reject.
+**Free preview first**: run FREE, eyeball fit, THEN pay. Off-profile preview
+→ reshape the seed (free) instead of exploring it with \`qualify: true\`.
+
+**Exclusions ("no chains", "no agencies") are enforced by QUALIFICATION, not
+the free match.** Positive inverse in the seed, then \`qualify: true\`: the
+org's ideal-buyer-profile anti-patterns and questions score violators
+negative and \`min_ai_score: 0\` drops them. Durable exclusion → suggest
+\`leadbay_refine_prompt\` so it enters the org intelligence. In a FREE preview,
+drop visibly violating rows and say the free tier doesn't enforce.
 
 ### Crafting the \`example_lead\` seed — the input that decides result quality
 
 The \`example_lead\` is a FICTIONAL typical ideal customer. Its text is embedded
-and matched against millions of real company descriptions sourced from business
-registries and company websites. Those descriptions state what a company **IS**
-(stable business profile) — never what is happening. Write the seed the same
-way, or the matcher drifts to the wrong companies. Each rule below is
-load-bearing (validated live against staging, 2026-07-28):
+and matched against millions of real registry/website company descriptions,
+which state what a company **IS** — never what is happening. Write the seed
+the same way or the matcher drifts. Every rule below is measured:
 
 1. **Describe the BUYER, never the seller.** Before writing, answer: "would
    this company write a check to my user?" A seed that describes what the user
@@ -1356,23 +1354,26 @@ load-bearing (validated live against staging, 2026-07-28):
      across multiple club locations."
    - WEAK (generic): "A gym in Texas."
    - WRONG (seller-side): "Supplier of durable modular flooring for gyms."
-4. **No event language.** "hiring", "expanding", "just raised", "opening a new
-   site" are not filters — real registry descriptions never contain them, so
-   they dilute the profile and attract event-flavored noise. Temporal criteria
-   in a \`query\` become best-effort ranking annotations at most (the response
-   \`explain.scope_notes\` says so). Put purchase-trigger criteria in the org's
-   qualification questions instead, where the paid qualification stage scores
-   them from fresh research.
+4. **No event language.** "hiring", "expanding", "just raised" are not
+   filters — registry descriptions never contain them, so they dilute the
+   profile. Purchase-trigger criteria belong in the org's qualification
+   questions, where the paid stage scores them from fresh research.
 5. **No meta-markers.** Never "(example)", "(fictional)", "(placeholder)" —
    real descriptions don't carry them.
-6. **Hard constraints go in \`filters\`, not prose.** Geography, sector, size
-   bounds written into the description only *tint* the ranking; \`filters\` are
-   enforced. Seed describes the archetype; filters draw the fence.
+6. **Hard constraints go in \`filters\`, not prose — exact keys:**
+   \`sectors: string[]\`, \`locations: string[]\`, \`employees_min: number\`,
+   \`employees_max: number\`. FLAT numbers — a nested \`employees: {min, max}\`
+   object exists only in RESULT payloads, never on input. \`locations\` take
+   city/state/region names ("Dallas, TX", "Texas", "Île-de-France"); NEVER
+   a country — each universe is single-country, so whole-country intent =
+   omit \`locations\` (a country name silently matches a same-named town:
+   measured, "France" → the village of Francs). \`example_lead.employees\`
+   does not filter; only \`filters.employees_min/max\` do.
 7. **Prefer \`example_lead\` over \`query\`.** Query text matches topic
    *vocabulary* — "gyms that need durable flooring" surfaces flooring VENDORS
-   as strongly as gym BUYERS (measured: the same ICP delivered 0 leads from a
-   query and on-profile leads from an example_lead). Use \`query\` only when the
-   user's own wording carries signal an example can't express.
+   as strongly as gym BUYERS (measured: 0 delivered from the query, on-profile
+   from the example). \`query\` only when the user's wording carries signal an
+   example can't express.
 8. **One seed per buyer archetype.** If the ask spans two distinct segments
    (e.g. "gyms and logistics warehouses"), run one search per segment with its
    own description — a blended seed lands between the two clusters and matches
@@ -1380,22 +1381,18 @@ load-bearing (validated live against staging, 2026-07-28):
 
 
 **Parameter notes**
-- \`request_id\` (REQUIRED) is the retry contract: reuse the SAME value when
-  retrying the same ask (returns the same live job, no double spend); NEW
-  value for a changed ask. Derive from the ask + date: \`gyms-dallas-2026-07-28\`.
-- Unresolvable \`filters\` values 400 naming them — fix the label (see
-  \`leadbay_list_sectors\` / \`leadbay_list_locations\`) and resubmit.
+- \`request_id\` (REQUIRED) is the retry contract: SAME value when retrying
+  the same ask (returns the same live job, no double spend); NEW value for a
+  changed ask. Derive from ask + date: \`gyms-dallas-2026-07-28\`.
 - \`min_ai_score\` gates the [-30,+30] qualification DELTA, not the 0-100 fit
-  score. Lower it only to STUDY evidence — never combine a lowered floor
-  with \`channels\` (that buys emails for leads the AI just scored as junk).
-- \`count\` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After
-  beyond — wait, don't hammer).
+  score. Lower it only to STUDY evidence — never with \`channels\` (that buys
+  emails for leads the AI just scored as junk).
+- \`count\` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After —
+  wait, don't hammer).
 
-**Read the result honestly.** \`funnel\` + \`explain.scope_notes\` tell what
-happened: matched, pre-screen rejections, examined (billed), qualified,
-disqualified, and why the job stopped. Zero delivered is a real outcome that
-must be narrated with its cause and a concrete next move — never a bare "no
-results".
+**Read the result honestly.** \`funnel\` + \`explain.scope_notes\` tell the
+story; zero delivered gets a cause + a concrete next move, never a bare "no
+results" (rules in RENDERING).
 
 ---
 
@@ -1431,10 +1428,9 @@ when nothing was delivered.
 - \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
   exists; plain name otherwise). Below it, the PURCHASED channels only:
   \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
-- Channel status semantics from \`contact.channels.{email,phone}.status\`:
-  \`delivered\` → show value; \`already_owned\` → show value + *(already yours)*;
-  \`masked\` → "on file — reveal via channels"; \`not_requested\` → omit;
-  \`failed_previously\`/\`failed_now\` → *(no verified email/phone)*.
+- Channel statuses: \`delivered\` → show value; \`already_owned\` → value +
+  *(already yours)*; \`masked\` → "on file — reveal via channels";
+  \`not_requested\` → omit; \`failed_*\` → *(no verified email/phone)*.
 - No contact on the item (\`contact\` null): render \`—\` (title_gate \`prefer\`
   delivers such rows flagged; say so in col 2 only when contact_titles were
   requested).
@@ -1458,6 +1454,18 @@ rejections), then propose the concrete fix (reshape the seed per the
 example_lead craft rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a
 filter) as NEXT STEPS options.
 
+**Weak batch**: when the BEST delivered \`fit.score\` is under 30, do not
+present the table as an answer — open with "weak matches only", show at most
+the top 3, and propose reshaping the seed/filters first. The count was
+filled with barely-better-than-random candidates, not good ones.
+
+**Sanity-check every row before rendering**: (a) geo — \`city\`/\`region\` must
+sit inside any requested fence; drop and call out leaks (a same-named city
+in another state slips through). (b) When \`explain.seed_strategy\` is
+\`text_match_exemplars\` (the standard FR path), fit is calibrated for
+lead-to-lead distances, not exemplar centroids — treat high scores
+skeptically and verify each row's \`description\` actually matches the ask.
+
 **Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
 table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`not_in_universe\` → "not in the Leadbay universe (import it first)",
@@ -1466,10 +1474,9 @@ table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
 \`enrichment_failed\` → "channel could not be sourced (not billed)".
 
-**Hide from the user:** UUIDs (\`lead_id\`, \`contact_id\` — keep them for tool
-calls, never render), \`next_since\` cursors, \`explain.model\`,
-\`explain.intelligence_snapshot\`, raw \`distance\`/\`calibration\`, per-item
-\`seq\`/\`from_cache\`, empty arrays, \`estimated_cost\` when equal to spent.
+**Hide from the user:** UUIDs (keep for tool calls, never render), cursors,
+\`explain.model\`/\`intelligence_snapshot\`, raw \`distance\`/\`calibration\`,
+\`seq\`/\`from_cache\`, empty arrays.
 
 ## Linking a contact's name
 
@@ -2299,10 +2306,9 @@ when nothing was delivered.
 - \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
   exists; plain name otherwise). Below it, the PURCHASED channels only:
   \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
-- Channel status semantics from \`contact.channels.{email,phone}.status\`:
-  \`delivered\` → show value; \`already_owned\` → show value + *(already yours)*;
-  \`masked\` → "on file — reveal via channels"; \`not_requested\` → omit;
-  \`failed_previously\`/\`failed_now\` → *(no verified email/phone)*.
+- Channel statuses: \`delivered\` → show value; \`already_owned\` → value +
+  *(already yours)*; \`masked\` → "on file — reveal via channels";
+  \`not_requested\` → omit; \`failed_*\` → *(no verified email/phone)*.
 - No contact on the item (\`contact\` null): render \`—\` (title_gate \`prefer\`
   delivers such rows flagged; say so in col 2 only when contact_titles were
   requested).
@@ -2326,6 +2332,18 @@ rejections), then propose the concrete fix (reshape the seed per the
 example_lead craft rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a
 filter) as NEXT STEPS options.
 
+**Weak batch**: when the BEST delivered \`fit.score\` is under 30, do not
+present the table as an answer — open with "weak matches only", show at most
+the top 3, and propose reshaping the seed/filters first. The count was
+filled with barely-better-than-random candidates, not good ones.
+
+**Sanity-check every row before rendering**: (a) geo — \`city\`/\`region\` must
+sit inside any requested fence; drop and call out leaks (a same-named city
+in another state slips through). (b) When \`explain.seed_strategy\` is
+\`text_match_exemplars\` (the standard FR path), fit is calibrated for
+lead-to-lead distances, not exemplar centroids — treat high scores
+skeptically and verify each row's \`description\` actually matches the ask.
+
 **Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
 table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`not_in_universe\` → "not in the Leadbay universe (import it first)",
@@ -2334,10 +2352,9 @@ table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
 \`enrichment_failed\` → "channel could not be sourced (not billed)".
 
-**Hide from the user:** UUIDs (\`lead_id\`, \`contact_id\` — keep them for tool
-calls, never render), \`next_since\` cursors, \`explain.model\`,
-\`explain.intelligence_snapshot\`, raw \`distance\`/\`calibration\`, per-item
-\`seq\`/\`from_cache\`, empty arrays, \`estimated_cost\` when equal to spent.
+**Hide from the user:** UUIDs (keep for tool calls, never render), cursors,
+\`explain.model\`/\`intelligence_snapshot\`, raw \`distance\`/\`calibration\`,
+\`seq\`/\`from_cache\`, empty arrays.
 
 ## Linking a contact's name
 
@@ -3541,10 +3558,9 @@ when nothing was delivered.
 - \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
   exists; plain name otherwise). Below it, the PURCHASED channels only:
   \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
-- Channel status semantics from \`contact.channels.{email,phone}.status\`:
-  \`delivered\` → show value; \`already_owned\` → show value + *(already yours)*;
-  \`masked\` → "on file — reveal via channels"; \`not_requested\` → omit;
-  \`failed_previously\`/\`failed_now\` → *(no verified email/phone)*.
+- Channel statuses: \`delivered\` → show value; \`already_owned\` → value +
+  *(already yours)*; \`masked\` → "on file — reveal via channels";
+  \`not_requested\` → omit; \`failed_*\` → *(no verified email/phone)*.
 - No contact on the item (\`contact\` null): render \`—\` (title_gate \`prefer\`
   delivers such rows flagged; say so in col 2 only when contact_titles were
   requested).
@@ -3568,6 +3584,18 @@ rejections), then propose the concrete fix (reshape the seed per the
 example_lead craft rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a
 filter) as NEXT STEPS options.
 
+**Weak batch**: when the BEST delivered \`fit.score\` is under 30, do not
+present the table as an answer — open with "weak matches only", show at most
+the top 3, and propose reshaping the seed/filters first. The count was
+filled with barely-better-than-random candidates, not good ones.
+
+**Sanity-check every row before rendering**: (a) geo — \`city\`/\`region\` must
+sit inside any requested fence; drop and call out leaks (a same-named city
+in another state slips through). (b) When \`explain.seed_strategy\` is
+\`text_match_exemplars\` (the standard FR path), fit is calibrated for
+lead-to-lead distances, not exemplar centroids — treat high scores
+skeptically and verify each row's \`description\` actually matches the ask.
+
 **Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
 table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`not_in_universe\` → "not in the Leadbay universe (import it first)",
@@ -3576,10 +3604,9 @@ table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
 \`enrichment_failed\` → "channel could not be sourced (not billed)".
 
-**Hide from the user:** UUIDs (\`lead_id\`, \`contact_id\` — keep them for tool
-calls, never render), \`next_since\` cursors, \`explain.model\`,
-\`explain.intelligence_snapshot\`, raw \`distance\`/\`calibration\`, per-item
-\`seq\`/\`from_cache\`, empty arrays, \`estimated_cost\` when equal to spent.
+**Hide from the user:** UUIDs (keep for tool calls, never render), cursors,
+\`explain.model\`/\`intelligence_snapshot\`, raw \`distance\`/\`calibration\`,
+\`seq\`/\`from_cache\`, empty arrays.
 
 ## Linking a contact's name
 

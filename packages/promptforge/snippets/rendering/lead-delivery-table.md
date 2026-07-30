@@ -30,10 +30,9 @@ when nothing was delivered.
 - `[Name](linkedin) · role` (linked name mandatory when a LinkedIn URL
   exists; plain name otherwise). Below it, the PURCHASED channels only:
   `✉ value` / `☎ value` inline as plain text (they auto-linkify).
-- Channel status semantics from `contact.channels.{email,phone}.status`:
-  `delivered` → show value; `already_owned` → show value + *(already yours)*;
-  `masked` → "on file — reveal via channels"; `not_requested` → omit;
-  `failed_previously`/`failed_now` → *(no verified email/phone)*.
+- Channel statuses: `delivered` → show value; `already_owned` → value +
+  *(already yours)*; `masked` → "on file — reveal via channels";
+  `not_requested` → omit; `failed_*` → *(no verified email/phone)*.
 - No contact on the item (`contact` null): render `—` (title_gate `prefer`
   delivers such rows flagged; say so in col 2 only when contact_titles were
   requested).
@@ -57,6 +56,18 @@ rejections), then propose the concrete fix (reshape the seed per the
 example_lead craft rules, lower `min_ai_score`, raise `max_cost`, drop a
 filter) as NEXT STEPS options.
 
+**Weak batch**: when the BEST delivered `fit.score` is under 30, do not
+present the table as an answer — open with "weak matches only", show at most
+the top 3, and propose reshaping the seed/filters first. The count was
+filled with barely-better-than-random candidates, not good ones.
+
+**Sanity-check every row before rendering**: (a) geo — `city`/`region` must
+sit inside any requested fence; drop and call out leaks (a same-named city
+in another state slips through). (b) When `explain.seed_strategy` is
+`text_match_exemplars` (the standard FR path), fit is calibrated for
+lead-to-lead distances, not exemplar centroids — treat high scores
+skeptically and verify each row's `description` actually matches the ask.
+
 **Skipped items** (`skipped[]`, qualify jobs mostly): render a compact second
 table `Ref → Outcome` translating `status_reason` to plain words:
 `not_in_universe` → "not in the Leadbay universe (import it first)",
@@ -65,9 +76,8 @@ table `Ref → Outcome` translating `status_reason` to plain words:
 `disqualified` → "evaluated: does not fit" (evidence is in the item when owned),
 `enrichment_failed` → "channel could not be sourced (not billed)".
 
-**Hide from the user:** UUIDs (`lead_id`, `contact_id` — keep them for tool
-calls, never render), `next_since` cursors, `explain.model`,
-`explain.intelligence_snapshot`, raw `distance`/`calibration`, per-item
-`seq`/`from_cache`, empty arrays, `estimated_cost` when equal to spent.
+**Hide from the user:** UUIDs (keep for tool calls, never render), cursors,
+`explain.model`/`intelligence_snapshot`, raw `distance`/`calibration`,
+`seq`/`from_cache`, empty arrays.
 
 {{include:linking/contact-linkedin}}

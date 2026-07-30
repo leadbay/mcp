@@ -212,6 +212,29 @@ export function compactBody(
   );
 }
 
+/** Tolerant reader for the search `filters` object. The RESULT payload's
+ *  company shape (`employees: {min, max, known}`) teaches agents a nested
+ *  employees object, and in live evals 2/2 cold agents passed exactly that
+ *  on input — which the backend rejects with an unhelpful deserialization
+ *  400. Map it (and the camelCase spellings) onto the flat wire keys
+ *  instead of failing the whole ask. */
+export function normalizeSearchFilters(
+  filters: Record<string, any> | undefined
+): Record<string, unknown> | undefined {
+  if (filters == null) return undefined;
+  const { employees, employeesMin, employeesMax, ...rest } = filters;
+  const out: Record<string, unknown> = { ...rest };
+  if (out.employees_min == null) {
+    out.employees_min = employees?.min ?? employees?.employees_min ?? employeesMin;
+  }
+  if (out.employees_max == null) {
+    out.employees_max = employees?.max ?? employees?.employees_max ?? employeesMax;
+  }
+  if (out.employees_min == null) delete out.employees_min;
+  if (out.employees_max == null) delete out.employees_max;
+  return out;
+}
+
 export function clampWaitSeconds(
   requested: number | undefined,
   fallback: number

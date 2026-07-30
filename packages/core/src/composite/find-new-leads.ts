@@ -13,6 +13,7 @@ import {
   clampWaitSeconds,
   collectJobSnapshot,
   compactBody,
+  normalizeSearchFilters,
   splitItems,
   TERMINAL_JOB_STATES,
   waitForJob,
@@ -180,7 +181,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     const body = compactBody({
       query: params.query,
       example_lead: params.example_lead,
-      filters: params.filters,
+      filters: normalizeSearchFilters(params.filters),
       count: params.count,
       qualify: params.qualify,
       min_ai_score: params.min_ai_score,

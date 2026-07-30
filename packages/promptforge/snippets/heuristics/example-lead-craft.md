@@ -1,11 +1,9 @@
 ### Crafting the `example_lead` seed — the input that decides result quality
 
 The `example_lead` is a FICTIONAL typical ideal customer. Its text is embedded
-and matched against millions of real company descriptions sourced from business
-registries and company websites. Those descriptions state what a company **IS**
-(stable business profile) — never what is happening. Write the seed the same
-way, or the matcher drifts to the wrong companies. Each rule below is
-load-bearing (validated live against staging, 2026-07-28):
+and matched against millions of real registry/website company descriptions,
+which state what a company **IS** — never what is happening. Write the seed
+the same way or the matcher drifts. Every rule below is measured:
 
 1. **Describe the BUYER, never the seller.** Before writing, answer: "would
    this company write a check to my user?" A seed that describes what the user
@@ -25,23 +23,26 @@ load-bearing (validated live against staging, 2026-07-28):
      across multiple club locations."
    - WEAK (generic): "A gym in Texas."
    - WRONG (seller-side): "Supplier of durable modular flooring for gyms."
-4. **No event language.** "hiring", "expanding", "just raised", "opening a new
-   site" are not filters — real registry descriptions never contain them, so
-   they dilute the profile and attract event-flavored noise. Temporal criteria
-   in a `query` become best-effort ranking annotations at most (the response
-   `explain.scope_notes` says so). Put purchase-trigger criteria in the org's
-   qualification questions instead, where the paid qualification stage scores
-   them from fresh research.
+4. **No event language.** "hiring", "expanding", "just raised" are not
+   filters — registry descriptions never contain them, so they dilute the
+   profile. Purchase-trigger criteria belong in the org's qualification
+   questions, where the paid stage scores them from fresh research.
 5. **No meta-markers.** Never "(example)", "(fictional)", "(placeholder)" —
    real descriptions don't carry them.
-6. **Hard constraints go in `filters`, not prose.** Geography, sector, size
-   bounds written into the description only *tint* the ranking; `filters` are
-   enforced. Seed describes the archetype; filters draw the fence.
+6. **Hard constraints go in `filters`, not prose — exact keys:**
+   `sectors: string[]`, `locations: string[]`, `employees_min: number`,
+   `employees_max: number`. FLAT numbers — a nested `employees: {min, max}`
+   object exists only in RESULT payloads, never on input. `locations` take
+   city/state/region names ("Dallas, TX", "Texas", "Île-de-France"); NEVER
+   a country — each universe is single-country, so whole-country intent =
+   omit `locations` (a country name silently matches a same-named town:
+   measured, "France" → the village of Francs). `example_lead.employees`
+   does not filter; only `filters.employees_min/max` do.
 7. **Prefer `example_lead` over `query`.** Query text matches topic
    *vocabulary* — "gyms that need durable flooring" surfaces flooring VENDORS
-   as strongly as gym BUYERS (measured: the same ICP delivered 0 leads from a
-   query and on-profile leads from an example_lead). Use `query` only when the
-   user's own wording carries signal an example can't express.
+   as strongly as gym BUYERS (measured: 0 delivered from the query, on-profile
+   from the example). `query` only when the user's wording carries signal an
+   example can't express.
 8. **One seed per buyer archetype.** If the ask spans two distinct segments
    (e.g. "gyms and logistics warehouses"), run one search per segment with its
    own description — a blended seed lands between the two clusters and matches

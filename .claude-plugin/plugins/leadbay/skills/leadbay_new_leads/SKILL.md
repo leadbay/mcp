@@ -42,8 +42,10 @@ From my words, work out:
 Compose the `example_lead` for each archetype following the craft rules in
 the leadbay_find_new_leads description (registry-style description of a
 FICTIONAL typical buyer; no invented brand name; no event language; hard
-constraints go in `filters`, not prose). Show me the seed description(s) in
-one line each — I should recognize my ideal customer in them.
+constraints go in `filters` with the FLAT keys `employees_min`/`employees_max`
+and city/state/region `locations` — never a country name). Show me the seed
+description(s) in one line each — I should recognize my ideal customer in
+them.
 
 # PHASE 3 — FREE PREVIEW
 
@@ -72,6 +74,13 @@ When I want qualification evidence and/or reachable contacts:
    (`wait_seconds: 60`); report progress, not silence.
 
 # PHASE 5 — DELIVER
+
+Before rendering, sanity-check every row: geography inside my fence (drop
+and call out same-named-city leaks), descriptions actually matching my ask
+(especially when `explain.seed_strategy` is `text_match_exemplars` — fit
+scores run hot there), visible violations of my exclusions dropped. If the
+best fit is under 30, say "weak matches only" and propose reshaping before
+showing more than 3.
 
 Render per the lead-delivery table, then ALWAYS the funnel line: matched /
 examined / qualified / disqualified / delivered / stop reason / spend. Zero
