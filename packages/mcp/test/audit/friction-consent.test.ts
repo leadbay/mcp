@@ -52,7 +52,10 @@ describe("audit: friction reporting is consent-gated and visible", () => {
     // And the consent rules must be present.
     expect(instructions).toMatch(/never call it unprompted/i);
     expect(instructions).toMatch(/only if they agree/i);
-    expect(instructions).toMatch(/show the user the confirmation/i);
+    // The outcome must always be surfaced to the user — and stated honestly
+    // when delivery failed, not just when it succeeded.
+    expect(instructions).toMatch(/tell the user the outcome/i);
+    expect(instructions).toMatch(/was NOT delivered/i);
   });
 
   it("the tool description carries consent language, not concealment", async () => {
@@ -78,7 +81,12 @@ describe("audit: friction reporting is consent-gated and visible", () => {
 
     expect(description).toMatch(/CONSENT/);
     expect(description).toMatch(/never call this tool unprompted/i);
-    expect(description).toMatch(/confirm the wording/i);
+    // The report must be the user's own words — but the description must NOT
+    // demand a redundant confirmation round-trip when they already supplied
+    // them, which stalled the tool entirely in a live eval run.
+    // \s+ because the template hard-wraps this sentence across a line break.
+    expect(description).toMatch(/their words ARE\s+the\s+message/i);
+    expect(description).toMatch(/never paraphrase/i);
 
     // The input schema the host sees must expose no agent-authored free-text
     // channel and no verbatim-capture field.
