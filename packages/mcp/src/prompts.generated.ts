@@ -1575,6 +1575,8 @@ If the org has none set, or they don't discriminate for this exercise, recommend
 
 **Get the accounts.** \`leadbay_pull_followups\` for the known/identified side, \`leadbay_pull_leads\` for the not-yet-identified side.
 
+⚠ **Unscoped means unscoped — pass \`filtered:false\`.** \`leadbay_pull_followups\` defaults to applying whatever Monitor filter is persisted server-side from a previous session, so a rep who once filtered Monitor to a city or sector would silently get a plan missing most of their known accounts. When no territory was given, call it with \`filtered:false\` so the known side really is the whole known side. (If you deliberately keep the persisted filter, say so in the plan's header — never leave it implicit.)
+
 ⚠ **A territory must scope BOTH sides.** Adjusting or creating a lens only scopes Discover; Monitor is filtered through its own path, so pass the territory to \`leadbay_pull_followups\` as well (its \`city\` free-text shortcut resolves to a \`location_ids\` filter, same resolver as the lens). Otherwise a territory-scoped plan quietly mixes in out-of-territory known accounts — and a client reading "Région Ouest" at the top will not check every row. Unless I named a \`territory\`, call \`leadbay_pull_leads\` with **no \`lensId\`** so it resolves my active lens — do not create a lens just because \`account_status\` showed a null. Capture \`response.lens.id\` from the first pull and pass it as an explicit \`lensId\` on every later call — a mid-session lens shift discards the cohort. Keep pulling until you have a pool comfortably deeper than {{arg:count_or_default}}, topping up with \`leadbay_bulk_qualify_leads\` → \`leadbay_qualify_status\` → re-pull as needed.
 
 # PHASE 3 — QUALIFY, SIGNAL, MOTIF
@@ -1587,7 +1589,7 @@ If the org has none set, or they don't discriminate for this exercise, recommend
 
 **Signals — scoped to the cohort.** ⚠ **Always pass the selected \`leadIds\`.** With \`leadIds\` omitted, \`leadbay_scan_portfolio_signals\` builds its own portfolio by paging \`/monitor\` — so on an imported cohort or a freshly-pulled Discover set it would scan a *different population* and you'd render dashes for accounts whose signals were never read.
 
-\`leadbay_scan_portfolio_signals\` is also a **filtered** read: it requires a concrete \`query\` and returns only the accounts whose cached signals match it. It is not a generic "read every signal" call. So run it **once per why-now theme you care about** — e.g. expansion / new site, contract or tender won, funding, hiring, acquisition, new venue — and union the results, rather than firing one vague query and treating the misses as "no signal". An account that matched no query has **not** been shown to be signal-free; render it with an explicit \`—\`, never an invented event. For the identified side, \`leadbay_account_history\` gives interaction recency.
+\`leadbay_scan_portfolio_signals\` is also a **filtered** read: it requires a concrete \`query\` and returns only the accounts whose cached signals match it. It is not a generic "read every signal" call. So run it **once per why-now theme you care about** — e.g. expansion / new site, contract or tender won, funding, hiring, acquisition, new venue — and union the results, rather than firing one vague query and treating the misses as "no signal". An account that matched no query has **not** been shown to be signal-free; render it with an explicit \`—\`, never an invented event. For the identified side, take interaction recency from the fields \`leadbay_pull_followups\` already returned. ⚠ **Do NOT reach for \`leadbay_account_history\` on Monitor rows outside the active lens** — it calls \`research_lead_by_id\` first, which fetches \`/lenses/{lensId}/leads/{leadId}\` and 404s off-lens, so the very rows that need a SUIVI / RÉVEIL-LB decision are the ones it fails on. Use it only for a lead you know is in the pinned lens.
 
 **SIGNAL HONESTY — never infer signals from freshness.** \`stale_at\`,
 \`web_fetch_in_progress\`, \`fetch_at\` are freshness markers, not signal
@@ -1745,7 +1747,11 @@ since cash-to-capture cannot be computed from Leadbay data:
 
 - **Col 1** — rank number, then the company name linked to its website when one
   is known. Follow with a compact \` · \`-separated pill line: city · headcount ·
-  any account reference you were given.
+  any account reference you were given. **Every figure in that pill line carries
+  its class too** — headcount is \`[LB]\` (a Leadbay size band, so render the band
+  rather than a false-precision point value) or \`[SIRENE]\` if you read it from
+  the registry. An untagged employee count is still an untagged number in front
+  of a client; omit it rather than ship it bare.
 - **Col 2** — the motif, exactly one of SAUVETAGE / PLAN DE COMPTE / MONTÉE EN
   GAMME / RÉVEIL / CONQUÊTE / SUIVI. Never invent a seventh.
 - **Col 3** — the ranking signal with its provenance class, e.g. \`AI 30 [LB]\`.
@@ -1790,9 +1796,11 @@ One card per account, ordered by the same key. Per card:
   exist, and a card carrying a euro the table omitted means one was modelled.
 - **Motif badge** — the motif, visually distinct per motif so the deck can be
   scanned by strategy.
-- **Qualification row** — the org's five questions, each with ✓ / ✗ / pending,
-  labelled with the actual question text read from Leadbay. Never substitute
-  invented question wording.
+- **Qualification row** — the org's **actual** questions as returned by
+  \`leadbay_get_qualification_questions\` (there may be fewer than five), each with
+  ✓ / ✗ / pending and labelled with its real text. Render exactly as many rows as
+  the org has: never pad to five with invented labels or bogus pending pills, and
+  never substitute invented wording.
 - **Signal line** — the event driving urgency, or omitted.
 - **Action block** — the named contact with **only the channels enrichment
   actually returned** as one-tap \`tel:\` / \`mailto:\` links (the default reveal is
@@ -1805,8 +1813,14 @@ One card per account, ordered by the same key. Per card:
   field, never a stand-in number.
 
 Header KPIs across the top, each carrying its provenance class: accounts on the
-plan, count qualified, count with a reachable contact, count activated. **No
-euro totals** — the same rule as the table, for the same reason.
+plan, count qualified, count with a reachable contact. **No euro totals** — the
+same rule as the table, for the same reason.
+
+⚠ **No "activated" KPI at build time.** Nothing in this workflow measures
+activation — the deck is built before any outreach happens — so a count would be
+fabricated or imply outcome tracking that doesn't exist. If the deck's checklists
+persist locally, an "activated" tile may count *checked* accounts and must be
+labelled as local checklist state, not a measured outcome.
 
 
 Then **offer** the interactive deck — don't force it:
@@ -1831,6 +1845,8 @@ ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We
 - When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
 - One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
 
+
+⚠ **The deck's contact layer depends on what actually happened in Phase 5.** Bind a \`leadbay_bulk_enrich_status\` resource ONLY if a paid reveal was launched and you hold a \`bulk_id\`. If the user accepted the deck but not the reveal, render the contacts already on record and carry the paid-reveal offer inside the deck — never wire a status resource with no handle (it renders permanently empty) and never launch enrichment from the deck to manufacture one.
 
 On acceptance, call \`leadbay_artifact_kit\`, read its \`usage_guide\` before writing any code, and build a single-file deck. Wire the live layer from the handles you kept: a poll-until-done resource per \`qualify_id\` for the qualification pills, and one over \`leadbay_bulk_enrich_status\` for the contacts. ⚠ **If enrichment already ran this session, bind the existing \`bulk_id\` — re-launching enrichment from the deck double-spends my quota.** Per-card notes and outcomes go through the pre-wired note/outreach view-models (they carry the required verification and \`_triggered_by\` fields; hand-rolling those is where it breaks). Keep the checklists in local storage, and always wire a Refresh — auto-poll is host-dependent. List every tool the deck calls in its \`mcp_tools\`, and render the bridge-unavailable branch, or the pills silently show empty.
 

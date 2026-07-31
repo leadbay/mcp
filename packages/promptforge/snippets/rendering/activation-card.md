@@ -28,7 +28,11 @@ since cash-to-capture cannot be computed from Leadbay data:
 
 - **Col 1** — rank number, then the company name linked to its website when one
   is known. Follow with a compact ` · `-separated pill line: city · headcount ·
-  any account reference you were given.
+  any account reference you were given. **Every figure in that pill line carries
+  its class too** — headcount is `[LB]` (a Leadbay size band, so render the band
+  rather than a false-precision point value) or `[SIRENE]` if you read it from
+  the registry. An untagged employee count is still an untagged number in front
+  of a client; omit it rather than ship it bare.
 - **Col 2** — the motif, exactly one of SAUVETAGE / PLAN DE COMPTE / MONTÉE EN
   GAMME / RÉVEIL / CONQUÊTE / SUIVI. Never invent a seventh.
 - **Col 3** — the ranking signal with its provenance class, e.g. `AI 30 [LB]`.
@@ -73,9 +77,11 @@ One card per account, ordered by the same key. Per card:
   exist, and a card carrying a euro the table omitted means one was modelled.
 - **Motif badge** — the motif, visually distinct per motif so the deck can be
   scanned by strategy.
-- **Qualification row** — the org's five questions, each with ✓ / ✗ / pending,
-  labelled with the actual question text read from Leadbay. Never substitute
-  invented question wording.
+- **Qualification row** — the org's **actual** questions as returned by
+  `leadbay_get_qualification_questions` (there may be fewer than five), each with
+  ✓ / ✗ / pending and labelled with its real text. Render exactly as many rows as
+  the org has: never pad to five with invented labels or bogus pending pills, and
+  never substitute invented wording.
 - **Signal line** — the event driving urgency, or omitted.
 - **Action block** — the named contact with **only the channels enrichment
   actually returned** as one-tap `tel:` / `mailto:` links (the default reveal is
@@ -88,5 +94,11 @@ One card per account, ordered by the same key. Per card:
   field, never a stand-in number.
 
 Header KPIs across the top, each carrying its provenance class: accounts on the
-plan, count qualified, count with a reachable contact, count activated. **No
-euro totals** — the same rule as the table, for the same reason.
+plan, count qualified, count with a reachable contact. **No euro totals** — the
+same rule as the table, for the same reason.
+
+⚠ **No "activated" KPI at build time.** Nothing in this workflow measures
+activation — the deck is built before any outreach happens — so a count would be
+fabricated or imply outcome tracking that doesn't exist. If the deck's checklists
+persist locally, an "activated" tile may count *checked* accounts and must be
+labelled as local checklist state, not a measured outcome.
