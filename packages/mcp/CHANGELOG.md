@@ -9,15 +9,16 @@ EN GAMME / RÉVEIL / CONQUÊTE) that drives its phone pitch and three-step
 checklist (product#3863). Renders via `leadbay_artifact_kit` when the user
 accepts the offered deck; the chat table stands alone otherwise.
 
-**Dual-mode.** With the client's revenue extract (ingested through the existing
-file-import path, revenue preserved as `PRICE`/`NUMBER` custom fields) the plan
-ranks by cash-to-capture and all five motifs are assignable. Without it, the
-prompt delivers an honest Leadbay-only conquest plan — revenue-realized,
-per-family revenue and cash-to-capture render as OMITTED rather than being
-estimated, and the exact extract columns needed to upgrade are named.
+**Leadbay-only by design.** Leadbay holds no invoicing data, so the plan ranks
+by the strongest Leadbay signal and renders revenue-realized, per-family revenue
+and cash-to-capture as **OMITTED — never estimated**, naming the extract columns
+a cash-ranked version would require. An ERP-ingest mode was explored and
+deliberately cut before release: it depended on inputs the platform cannot
+supply (headcount for off-lens imported leads) and permissions it cannot assume
+(`leadbay_import_leads` is admin-only). It is tracked separately.
 
-**New `gates/data-provenance` snippet.** The deliverable mixes client ERP
-figures, Leadbay responses, public-registry counts and modelled assumptions in
+**New `gates/data-provenance` snippet.** The deliverable mixes Leadbay
+responses, public-registry counts and modelled assumptions in
 front of a paying client, so every emitted number carries a provenance class
 (`[ERP]` / `[LB]` / `[SIRENE]` / `[HYP]`), taint propagates through derived
 figures, and a PROVENANCE LEDGER prints **before** the plan with un-sourceable
