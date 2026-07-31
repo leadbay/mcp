@@ -1611,7 +1611,7 @@ from observable data and state the deciding evidence in one line per account.
 | **PLAN DE COMPTE** | large, still active, buying broadly — the risk is complacency, not loss; plan the coming half-year and lock volume terms | Pilotage |
 | **MONTÉE EN GAMME** | active but narrow — buys one product family while comparable accounts of the same size buy several; the gap is cross-sell | Pilotage |
 | **RÉVEIL** | account exists, essentially dormant — long-dead history (e.g. 12+ months at zero) but the company is demonstrably still trading | Pilotage |
-| **CONQUÊTE** | never a client — in the addressable market, absent from the base | Conquête |
+| **CONQUÊTE** | not present in the Leadbay known pipeline — in the addressable market, absent from the base. ⚠ Absence from Monitor is NOT proof they never bought (see below) | Conquête |
 
 **Decision order matters.** Test in this order and stop at the first match, or
 a big lapsed account will be labelled RÉVEIL when it is really a SAUVETAGE:
@@ -1625,9 +1625,13 @@ MONTÉE EN GAMME.
   to resume; PLAN DE COMPTE opens on the relationship and plans forward;
   MONTÉE EN GAMME opens on what comparable firms buy that this one doesn't;
   RÉVEIL asks what made them leave and offers a re-entry incentive; CONQUÊTE
-  introduces the company and asks for a short first meeting. Write the pitch in
-  the client's own commercial voice, naming the specific families and figures
-  the account's data actually supports.
+  introduces the company and asks for a short first meeting — **without
+  asserting no prior relationship**. Never write "we've never worked together"
+  or "as a new customer" on a Leadbay-only plan: absence from the known
+  pipeline is not proof they never bought, and that line told to an existing
+  customer is the one mistake a rep cannot walk back. Write the pitch in the
+  client's own commercial voice, naming the specific families and figures the
+  account's data actually supports.
 - The **checklist** — three concrete, checkable next actions matching the
   motif's shape: diagnose → schedule → send-terms for SAUVETAGE; review →
   propose → open-a-family for PLAN DE COMPTE; visit-with-full-tariff → quote →
@@ -1641,10 +1645,21 @@ client's extract, SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL cannot
 be assigned from purchase behaviour — do not guess them from a lead score, a
 sector, or a company's size. Two honest options, in order of preference:
 
-1. **CONQUÊTE is fully assignable from Leadbay alone** (never-a-client is
-   exactly what the Discover view means). A Leadbay-only plan is therefore a
-   legitimate, complete *Conquête* plan — say so in the title rather than
-   implying it covers the whole base.
+1. **CONQUÊTE is assignable from Leadbay alone — but say what it actually
+   means.** Discover membership proves a company is **not in the Leadbay known
+   pipeline**; it does NOT prove they never bought. Monitor membership is set by
+   lens scoring, not by purchase history, so an existing customer who was never
+   scored into the known view will appear in Discover. Without order history
+   there is no way to tell the two apart.
+
+   So label the motif for what the data supports — "fresh / not in the Leadbay
+   pipeline" — and **write the pitch so it survives being wrong**: an opener
+   that introduces the company works for a genuine prospect and merely sounds
+   uninformed to a customer, whereas "we've never worked together" told to a
+   current customer damages the relationship and the credibility of the whole
+   plan. Only ERP order history can upgrade this to a true never-a-client
+   claim. A Leadbay-only plan is still a legitimate *Conquête* plan — say so in
+   the title rather than implying it covers the whole base.
 2. A **Leadbay-activity** variant of RÉVEIL may be assigned from
    \`leadbay_account_history\` recency — but label it for what it measures: "no
    Leadbay-logged action in N months", never "no orders in N months". Logged
@@ -1661,7 +1676,7 @@ Cash-to-capture is not available: it needs \`ca12\` from my invoicing system, wh
 
 Each card needs a reachable decision-maker. \`leadbay_enrich_titles({leadIds, lensId})\` in discovery mode first — that reveals what's enrichable and spends nothing. Render whatever contact detail is already on the record; many accounts already carry a named contact.
 
-**Do NOT stop and wait for enrichment consent before delivering.** Asking for a plan is not authorization to spend quota on {{arg:count_or_default}} accounts — but neither is it a reason to end the turn on a spending question with no plan attached. Ship the ranked plan (Phase 6), then **offer** the paid reveal alongside it: how many contacts, which channels, what it costs. Launch only on an explicit yes; then poll \`leadbay_bulk_enrich_status\` until done and **keep the \`bulk_id\` handles** for the deck.
+**Do NOT stop and wait for enrichment consent before delivering.** Asking for a plan is not authorization to spend quota on {{arg:count_or_default}} accounts — but neither is it a reason to end the turn on a spending question with no plan attached. Ship the ranked plan (Phase 6), then **offer** the paid reveal alongside it, framed exactly as \`leadbay_enrich_titles\` requires: **how many contacts (\`enrichable_contacts\`) and which channels** — "this will enrich N contacts (email + phone reveals consume quota)". ⚠ **Do NOT quote a cost or a credits figure.** The per-reveal rate is backend-side and enrichment is gated by quota, not a credit balance; \`credits_remaining\` is advisory context only. A spend number invented to make the offer concrete is the same failure as an invented euro on a card. Launch only on an explicit yes; then poll \`leadbay_bulk_enrich_status\` until done and **keep the \`bulk_id\` handles** for the deck.
 
 ⚠ **Render only the channels that actually came back.** The default reveal is email-only unless phone was explicitly requested, so never emit a \`tel:\` link for a contact whose phone was never revealed — show the channels enrichment returned and mark the rest omitted. A fabricated phone link is the same failure as a fabricated euro.
 
