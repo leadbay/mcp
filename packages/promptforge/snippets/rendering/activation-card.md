@@ -14,8 +14,10 @@ damage. This ordering is the workflow contract, not a stylistic preference.
 
 ### The chat table (render immediately after the ledger)
 
-Show the top 10 accounts by the ranking key, descending, then state how many more
-the full plan holds. Four columns:
+Show the top **min(10, requested count)** accounts by the ranking key,
+descending. If the plan holds more than the table shows, say how many more
+follow; if the whole plan fits in the table, say nothing about "more" — a
+top-5 request gets five rows and no dangling remainder. Four columns:
 
 Col 3's header is **the ranking key you actually used** — never a cash label,
 since cash-to-capture cannot be computed from Leadbay data:

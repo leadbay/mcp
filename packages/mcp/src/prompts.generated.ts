@@ -1556,7 +1556,12 @@ Say that scope in one line up front, so nobody reads the ranking as a money sort
 
 Bundling a non-blocking question in with a blocking one turns a justified pause into an over-wide gate, and the user gets a plan-of-a-plan instead of a plan. The test is **"have I shipped a ranked list of real accounts yet?"** — if you're about to end a turn without one, you are almost certainly over-gating: deliver first, then ask.
 
-If I gave a \`territory\`, scope discovery to it now — pass it as \`locations\` to \`leadbay_new_lens\` (or \`leadbay_adjust_audience\` on the active lens). A place name goes to \`locations\`, never to \`sectors\` or a refine prompt.
+If I gave a \`territory\`, scope discovery to it now, and **make sure the scoping actually took effect before you pull** — a territory request that silently returns out-of-territory accounts is worse than none.
+
+- **Preferred: \`leadbay_adjust_audience\`** on my active lens, passing the place as \`locations\`. It applies directly, so the lens I already use is now scoped and \`leadbay_pull_leads\` needs no new id.
+- **If a new lens is genuinely warranted: \`leadbay_new_lens\` is a two-step call.** It returns \`status:"preview"\` and creates NOTHING unless you re-call the same args with \`confirm:true\`. So: preview → confirm → take \`lens.id\` from the \`created\` response → pass that id as \`lensId\` on every subsequent pull. Never continue on the previous active lens after previewing a new one; that delivers the old audience under a new heading.
+
+A place name goes to \`locations\`, never to \`sectors\` or a refine prompt.
 
 # PHASE 1 — THE FIVE QUALIFICATION QUESTIONS
 
@@ -1680,8 +1685,10 @@ damage. This ordering is the workflow contract, not a stylistic preference.
 
 ### The chat table (render immediately after the ledger)
 
-Show the top 10 accounts by the ranking key, descending, then state how many more
-the full plan holds. Four columns:
+Show the top **min(10, requested count)** accounts by the ranking key,
+descending. If the plan holds more than the table shows, say how many more
+follow; if the whole plan fits in the table, say nothing about "more" — a
+top-5 request gets five rows and no dangling remainder. Four columns:
 
 Col 3's header is **the ranking key you actually used** — never a cash label,
 since cash-to-capture cannot be computed from Leadbay data:
