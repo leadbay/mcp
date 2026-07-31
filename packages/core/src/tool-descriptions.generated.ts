@@ -3204,7 +3204,7 @@ Trigger phrases: "report this problem", "tell the Leadbay team this didn't work"
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "user sounds frustrated but has not asked to report anything" → \`leadbay_send_feedback\`; "general feedback, praise, or a feature request" → \`leadbay_send_feedback\`; "log outreach" → \`leadbay_report_outreach\`; "thumbs up / down" → \`leadbay_like_lead\`; "snooze / pushback" → \`leadbay_set_pushback\`.
+Do NOT use for: "user sounds frustrated but has not asked to report anything — keep solving their ask; do NOT route to any delivery tool" → \`leadbay_pull_leads\`; "general feedback, praise, or a feature request the user wants sent" → \`leadbay_send_feedback\`; "log outreach" → \`leadbay_report_outreach\`; "thumbs up / down" → \`leadbay_like_lead\`; "snooze / pushback" → \`leadbay_set_pushback\`.
 
 Prefer when: the user has asked for a specific Leadbay problem to be reported, or has said yes to your offer to report one. Frustration on its own is NOT a trigger — offer first, and only call this if they agree.
 
@@ -3278,7 +3278,7 @@ Pick the closest fit; \`other\` is fine when nothing matches:
 
 WHEN TO USE: the user asks you to report a Leadbay problem, or accepts your offer to report one you noticed. The user has seen and approved the message being sent.
 
-WHEN NOT TO USE: unprompted, and not for normal acknowledgement flows. Bare frustration with no request to report → keep solving their ask, or offer \`leadbay_send_feedback\`. General feedback, praise, or feature requests → \`leadbay_send_feedback\`. Thumbs-up/down on a lead → \`leadbay_like_lead\` / \`leadbay_dislike_lead\`. Logged outreach → \`leadbay_report_outreach\`. Snooze a lead → \`leadbay_set_pushback\`.
+WHEN NOT TO USE: unprompted, and not for normal acknowledgement flows. **Bare frustration with no request to report → keep solving their ask. Do NOT reach for a delivery tool at all** — not this one and not \`leadbay_send_feedback\`, which also sends to the team. Venting is not consent; you may offer to report, but send nothing unless they say yes. General feedback, praise, or feature requests the user wants delivered → \`leadbay_send_feedback\`. Thumbs-up/down on a lead → \`leadbay_like_lead\` / \`leadbay_dislike_lead\`. Logged outreach → \`leadbay_report_outreach\`. Snooze a lead → \`leadbay_set_pushback\`.
 
 After reporting, continue the user's original task — a report is a step on the way
 to actually trying again or pivoting, not the end of the conversation.
@@ -3982,8 +3982,8 @@ Examples that SHOULD invoke this tool:
 
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Pulling leads in Lyon returns nothing — report that."
+- "Ugh, this never finds what I'm looking for. Show me today's leads."
 - "I emailed Acme — log that outreach."
-- "Thumbs down on this lead."
 
 ## RENDER (quick)
 
@@ -3997,6 +3997,10 @@ the user it could NOT be delivered — never imply it was sent.
 Deliver a user-authored message to the Leadbay team's feedback inbox — the same
 destination as the web app's feedback form. **You do not write the feedback;
 the user does.** Capture their words, confirm the phrasing, then send.
+
+**Venting is not consent.** If the user is simply frustrated and has not asked
+for anything to be sent, do NOT call this tool — keep solving their actual
+request. You may offer once; send only if they say yes.
 
 ## Parameters
 - \`message\` (required) — the user's feedback, in their own words. Confirm it
