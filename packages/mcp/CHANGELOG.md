@@ -1,6 +1,6 @@
 # Changelog — @leadbay/mcp
 
-## 0.27.0 — 2026-07-30
+## 0.28.0 — 2026-07-31
 
 Add **`leadbay_top_accounts_to_activate`** — a prompt that builds a ranked
 account-activation plan: the accounts with the most money still on the table,
@@ -40,6 +40,11 @@ Fixes a stale `server.json` npx pin that tracked the `0.25` line while the
 package was on `0.26`, and bumps the `.claude-plugin` bundle off `@leadbay/mcp@0.13`,
 which predated `leadbay_get_qualification_questions`,
 `leadbay_scan_portfolio_signals` and `leadbay_artifact_kit`.
+
+## 0.27.0 — 2026-07-31
+
+Consent-gated friction reporting (#171) — see that PR for detail. Released from
+`main`; this entry is a placeholder so the version line is unbroken.
 
 ## 0.26.0 — 2026-07-27 (tagged, never published)
 

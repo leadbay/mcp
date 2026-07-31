@@ -234,7 +234,16 @@ export function bindTelemetryIdentity(
     captureAgentMemoryCaptured: on((p) => base.captureAgentMemoryCaptured(p, identity)),
     captureAgentMemoryRecalled: on((p) => base.captureAgentMemoryRecalled(p, identity)),
     captureAgentMemoryPruned: on((p) => base.captureAgentMemoryPruned(p, identity)),
-    captureFrictionReported: on((p) => base.captureFrictionReported(p, identity)),
+    // captureFrictionReported is NOT gated by isSuppressed, for the same reason
+    // as captureFeedback below: since product#3943 `leadbay_report_friction` is
+    // a consent-gated, user-initiated "deliver my problem report to the team"
+    // action the user explicitly approved and sees confirmed — not passive
+    // analytics. Suppressing it here would silently drop the user's own report
+    // while the agent tells them it was shared. (The tool returns reported:false
+    // when delivery genuinely isn't possible, so the confirmation stays honest.)
+    captureFrictionReported: (p) => base.captureFrictionReported(p, identity),
+    // ^ returns the base handle's real delivery result, so a Sentry-only or
+    //   PostHog-less process reports reported:false rather than a false confirm.
     captureException: on((err, ctx) => base.captureException(err, ctx)),
     // captureFeedback is NOT gated by isSuppressed (Codex P2): leadbay_send_feedback
     // is an explicit user-initiated "deliver my message to the team" action, not

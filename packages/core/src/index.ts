@@ -326,11 +326,12 @@ export const compositeReadTools: Tool[] = [
   createTopupLink,
   openBillingPortal,
   prepareOutreach,
-  // Friction reporting — ALWAYS exposed (must work even in read-only
-  // deployments because the most valuable signal is "the tool I tried
-  // didn't deliver"). Does not mutate Leadbay state; emits a PostHog
-  // event only. Companion to leadbay_report_outreach (which DOES write
-  // to the backend and stays gated behind LEADBAY_MCP_WRITE).
+  // Problem reporting — ALWAYS exposed so a user on a read-only deployment
+  // can still ask for a problem to be reported. Consent-gated and visible:
+  // the agent calls it only when the user asks or accepts an offer, and shows
+  // the confirmation back (product#3943). Does not mutate Leadbay state;
+  // emits a PostHog event carrying only what the user approved. Companion to
+  // leadbay_report_outreach (which DOES write and stays behind LEADBAY_MCP_WRITE).
   reportFriction,
   // Notification ack — ALWAYS exposed even though it POSTs to /seen.
   // _meta.notifications surfaces terminal bulk-progress notifications on
