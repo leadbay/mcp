@@ -1563,7 +1563,9 @@ Never silently assume. If you can't tell whether the extract exists, state which
 - **\`last_requested_lens: null\`?** Not a blocker — and **do NOT read it as "no lens exists".** \`leadbay_account_status\` deliberately WITHHOLDS the lens id unless the request mentioned the lens/audience, so a plain "top 50 accounts to activate" returns null even when I have a perfectly good active lens. Default to calling \`leadbay_pull_leads\` with **no** \`lensId\` and let it resolve my active lens; capture \`response.lens.id\` from that result and pin it thereafter. Only create or switch a lens when I explicitly asked to scope or change the audience (e.g. a \`territory\` argument) — inventing a new lens silently changes what I see in the product.
 - **Only 3 qualification questions instead of 5?** Not a blocker. Use the org's real questions, note the gap, recommend the additions — do not wait for permission before pulling.
 
-Bundling a non-blocking question in with a blocking one turns a justified pause into an over-wide gate, and the user gets a plan-of-a-plan instead of a plan. If you catch yourself about to end a turn without having called \`leadbay_pull_leads\`, you are almost certainly doing this — pull first, then ask.
+Bundling a non-blocking question in with a blocking one turns a justified pause into an over-wide gate, and the user gets a plan-of-a-plan instead of a plan. The test is **"have I shipped a ranked list of real accounts yet?"** — if you're about to end a turn without one, you are almost certainly over-gating: deliver first, then ask.
+
+How you *get* that cohort depends on the mode, and neither path is "always call \`leadbay_pull_leads\`": in FULL MODE the cohort is the imported extract (Phase 2 — a lens pull would drop imported accounts outside the active view), and in DEGRADED MODE it is \`leadbay_pull_followups\` + \`leadbay_pull_leads\`.
 
 If I gave a \`territory\`, scope discovery to it now — pass it as \`locations\` to \`leadbay_new_lens\` (or \`leadbay_adjust_audience\` on the active lens). A place name goes to \`locations\`, never to \`sectors\` or a refine prompt.
 
