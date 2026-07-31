@@ -17,8 +17,13 @@ damage. This ordering is the workflow contract, not a stylistic preference.
 Show the top 10 accounts by the ranking key, descending, then state how many more
 the full plan holds. Four columns:
 
+Col 3's header is **the ranking key you actually used** — never a cash label
+when cash was not computed:
+
 ```
-| # · Account | Motif | Cash to get | Why now |
+money inputs supplied   | # · Account | Motif | Cash to get | Why now |
+extract, no benchmark   | # · Account | Motif | Revenue 12m | Why now |
+neither                 | # · Account | Motif | Fit score   | Why now |
 ```
 
 - **Col 1** — rank number, then the company name linked to its website when one
@@ -72,7 +77,9 @@ One card per account, ordered by the same key. Per card:
   three-item checklist as checkboxes.
 - **Caveat block** — closing the deck: which classes fed it, the benchmark and
   Tier-1 threshold used, and an explicit line that `[HYP]` figures are modelled,
-  not measured. If any input was a placeholder, say so here.
+  not measured, and which fields are OMITTED because their inputs were never
+  supplied. There are no placeholder figures to disclose — a missing input
+  means an omitted field, never a stand-in number.
 
 Header KPIs across the top, each carrying its provenance class. **The money
 KPIs are conditional on the same inputs as the money column** — when those

@@ -1545,7 +1545,7 @@ Call \`leadbay_account_status\` for my quota and active lens. Then settle **whic
 - **FULL MODE** — I supplied a revenue extract (or its figures are already on my leads as custom fields). The plan ranks by cash-to-capture and can carry all five motifs.
 - **DEGRADED MODE** — no revenue extract. The plan is an honest **conquest plan**: real accounts, real qualification, real signals, real contacts, ranked by the best Leadbay signal you have. Revenue-realized, per-family revenue and cash-to-capture are OMITTED, not estimated.
 
-**Before you settle on DEGRADED, check whether the revenue is already here.** A returning user who imported an extract in a previous session has the figures sitting on their leads as custom fields, and falling back to a conquest plan would throw away data they already gave us. So when no extract is attached to *this* request, call \`leadbay_list_mappable_fields\` and look for revenue-shaped custom fields (12-month revenue, per-family revenue, last order date, order count). If revenue-shaped fields exist, **say so and ask me to re-attach the extract** (or give you a lead-id list for the earlier import) before claiming FULL MODE. You cannot reconstruct the prior cohort from \`leadbay_pull_followups\` / \`leadbay_pull_leads\`: imported leads are not auto-promoted to Monitor and need not sit in the active lens, so a view-derived cohort silently omits exactly the accounts the previous import added — and a cash ranking over a partial cohort is worse than an honest conquest plan, because it looks complete.
+**Before you settle on DEGRADED, check whether the revenue is already here.** A returning user who imported an extract in a previous session has the figures sitting on their leads as custom fields, and falling back to a conquest plan would throw away data they already gave us. So when no extract is attached to *this* request, call \`leadbay_list_mappable_fields\` and look for revenue-shaped custom fields (12-month revenue, per-family revenue, last order date, order count). If revenue-shaped fields exist, **say so and ask me to re-attach the extract** before claiming FULL MODE. A lead-id list is NOT enough: the only read path for previously-imported values is \`leadbay_get_lead_custom_fields\`, which is lens-scoped (\`GET /lenses/{lensId}/leads/{leadId}\`) and so cannot reach earlier imports sitting outside the active lens — the ids would put you on a cash-ranked path with no reliable way to fill it. Only the extract itself (or a lens-independent value source, if one ever exists) unlocks FULL MODE here. You cannot reconstruct the prior cohort from \`leadbay_pull_followups\` / \`leadbay_pull_leads\`: imported leads are not auto-promoted to Monitor and need not sit in the active lens, so a view-derived cohort silently omits exactly the accounts the previous import added — and a cash ranking over a partial cohort is worse than an honest conquest plan, because it looks complete.
 
 So: report what you found ("this org has revenue-shaped custom fields — \`<field names>\`"), offer the one-step upgrade, and **meanwhile deliver the DEGRADED plan** rather than blocking on it (deliver first, ask alongside). Only if I hand you the extract or the ids do you switch to FULL MODE.
 
@@ -1712,10 +1712,14 @@ this math goes silently wrong.
 
 **Ask for the benchmark; don't invent one.** If the client hasn't given it, ask
 for the median €/employee/year across their existing customers — they can
-usually compute it from the same extract. If they can't supply it, you may
-proceed with a clearly-labelled placeholder ONLY if you state it as an
-assumption on the artefact itself and say the ranking will shift once the real
-figure lands. Never present a placeholder-derived € figure as measured.
+usually compute it from the same extract. **If they can't supply it, do not
+substitute a placeholder.** There is no such thing as a harmless stand-in here:
+the benchmark multiplies straight into \`marché\`, \`pot12\` and \`cash\`, so a
+guessed figure silently sets the ranking order of the whole plan. Instead leave
+\`marché\` / \`pot12\` / \`cash\` as OMITTED and rank by whatever the data does
+support — measured \`ca12\` descending when you have the extract, the Leadbay
+signal otherwise. Say the cash ranking awaits the benchmark. A fully-measured
+partial plan beats a complete-looking modelled one.
 
 **TIER-1 DEFINITION — one definition, everywhere.** A Tier-1 account is one
 that buys at or above the client's own significance threshold — for example
@@ -1770,8 +1774,13 @@ damage. This ordering is the workflow contract, not a stylistic preference.
 Show the top 10 accounts by the ranking key, descending, then state how many more
 the full plan holds. Four columns:
 
+Col 3's header is **the ranking key you actually used** — never a cash label
+when cash was not computed:
+
 \`\`\`
-| # · Account | Motif | Cash to get | Why now |
+money inputs supplied   | # · Account | Motif | Cash to get | Why now |
+extract, no benchmark   | # · Account | Motif | Revenue 12m | Why now |
+neither                 | # · Account | Motif | Fit score   | Why now |
 \`\`\`
 
 - **Col 1** — rank number, then the company name linked to its website when one
@@ -1825,7 +1834,9 @@ One card per account, ordered by the same key. Per card:
   three-item checklist as checkboxes.
 - **Caveat block** — closing the deck: which classes fed it, the benchmark and
   Tier-1 threshold used, and an explicit line that \`[HYP]\` figures are modelled,
-  not measured. If any input was a placeholder, say so here.
+  not measured, and which fields are OMITTED because their inputs were never
+  supplied. There are no placeholder figures to disclose — a missing input
+  means an omitted field, never a stand-in number.
 
 Header KPIs across the top, each carrying its provenance class. **The money
 KPIs are conditional on the same inputs as the money column** — when those

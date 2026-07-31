@@ -360,7 +360,7 @@ const CATALOG: CatalogEntry[] = [
             count_or_default: n,
             erp_extract_block: args.erp_extract
               ? `My revenue extract: **${args.erp_extract}** — ingest it first (Phase 2, FULL MODE) so the ranking rests on my measured \`ca12\` \`[ERP]\` rather than a guess. Cash-to-capture itself stays \`[HYP]\`-tainted (it subtracts \`ca12\` from a modelled \`pot12\`), so keep it labelled as modelled — measured revenue in, modelled upside out.`
-              : "I have NOT given you a revenue extract in this request — establish in Phase 0 whether one exists, and if not, deliver the DEGRADED-MODE conquest plan honestly rather than estimating what my accounts already buy.",
+              : "I did not fill in the `erp_extract` argument — but that does NOT mean no extract exists. If I attached a file or referenced one in our conversation, use it and run FULL MODE. Otherwise establish in Phase 0 whether revenue data exists, and if it genuinely doesn't, deliver the DEGRADED-MODE conquest plan honestly rather than estimating what my accounts already buy.",
             benchmark_block: args.benchmark
               ? `Use **${args.benchmark}** as the €/employee/year benchmark, and show that figure on the deliverable.`
               : "No benchmark given — ask me for the median €/employee/year across my existing customers rather than inventing one.",

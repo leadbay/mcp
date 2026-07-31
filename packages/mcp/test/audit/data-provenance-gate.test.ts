@@ -108,7 +108,10 @@ describe("audit: data-provenance gate (leadbay_top_accounts_to_activate)", () =>
   it("tells the agent to establish mode when no extract is supplied", () => {
     const rendered = getPrompt("leadbay_top_accounts_to_activate", {});
     const text = JSON.stringify(rendered.messages);
-    expect(text).toContain("have NOT given you a revenue extract");
+    // An omitted `erp_extract` argument must NOT be rendered as "no extract
+    // exists" — the user may have attached one in the surrounding chat.
+    expect(text).toContain("does NOT mean no extract exists");
+    expect(text).not.toContain("I have NOT given you a revenue extract");
     expect(text).toContain("rather than inventing one");
   });
 });

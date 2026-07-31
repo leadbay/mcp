@@ -25,10 +25,14 @@ this math goes silently wrong.
 
 **Ask for the benchmark; don't invent one.** If the client hasn't given it, ask
 for the median €/employee/year across their existing customers — they can
-usually compute it from the same extract. If they can't supply it, you may
-proceed with a clearly-labelled placeholder ONLY if you state it as an
-assumption on the artefact itself and say the ranking will shift once the real
-figure lands. Never present a placeholder-derived € figure as measured.
+usually compute it from the same extract. **If they can't supply it, do not
+substitute a placeholder.** There is no such thing as a harmless stand-in here:
+the benchmark multiplies straight into `marché`, `pot12` and `cash`, so a
+guessed figure silently sets the ranking order of the whole plan. Instead leave
+`marché` / `pot12` / `cash` as OMITTED and rank by whatever the data does
+support — measured `ca12` descending when you have the extract, the Leadbay
+signal otherwise. Say the cash ranking awaits the benchmark. A fully-measured
+partial plan beats a complete-looking modelled one.
 
 **TIER-1 DEFINITION — one definition, everywhere.** A Tier-1 account is one
 that buys at or above the client's own significance threshold — for example
