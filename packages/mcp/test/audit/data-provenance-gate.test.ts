@@ -1,8 +1,8 @@
 /**
  * Audit — the account-activation plan carries its data-provenance contract.
  *
- * product#3863: the top-accounts deliverable mixes client ERP figures,
- * Leadbay responses, public-registry counts and modelled assumptions, and it
+ * product#3863: the top-accounts deliverable mixes Leadbay responses,
+ * public-registry counts and modelled assumptions, and it
  * is shown to a paying client. The load-bearing property is that every number
  * declares its source and that un-sourceable fields are visibly OMITTED rather
  * than quietly estimated. These assertions pin the gate into the generated
@@ -24,13 +24,13 @@ const MOTIFS = [
 ];
 
 describe("audit: data-provenance gate (leadbay_top_accounts_to_activate)", () => {
-  it("the prompt is registered in the catalog with its four arguments", () => {
+  it("the prompt is registered in the catalog with its two arguments", () => {
     const entry = listPrompts().find(
       (p) => p.name === "leadbay_top_accounts_to_activate",
     );
     expect(entry).toBeDefined();
     const argNames = (entry!.arguments ?? []).map((a) => a.name).sort();
-    expect(argNames).toEqual(["benchmark", "count", "erp_extract", "territory"]);
+    expect(argNames).toEqual(["count", "territory"]);
     // Every argument is optional — the prompt must be invocable bare.
     expect((entry!.arguments ?? []).every((a) => !a.required)).toBe(true);
   });
@@ -58,11 +58,11 @@ describe("audit: data-provenance gate (leadbay_top_accounts_to_activate)", () =>
     }
   });
 
-  it("pins the Monitor-membership caveat (imported leads are not clients)", () => {
-    // import-leads: imported leads are NOT auto-promoted to Monitor — lens
-    // scoring decides. Equating the two mislabels every imported account.
+  it("pins the Monitor-membership caveat (Monitor view is not client status)", () => {
+    // Monitor membership is decided by lens scoring, not by whether the
+    // company ever bought anything. Equating the two mislabels every account.
     expect(leadbay_top_accounts_to_activate).toContain(
-      "NOT auto-promoted",
+      "Monitor membership is not client status",
     );
   });
 
@@ -70,12 +70,24 @@ describe("audit: data-provenance gate (leadbay_top_accounts_to_activate)", () =>
     expect(leadbay_top_accounts_to_activate).toContain("double-spend");
   });
 
-  it("requires the degraded mode to stay a real deliverable", () => {
-    expect(leadbay_top_accounts_to_activate).toContain("DEGRADED MODE");
+  it("requires the conquest plan to ship even though revenue is unavailable", () => {
+    expect(leadbay_top_accounts_to_activate).toContain("conquest plan");
+    expect(leadbay_top_accounts_to_activate).toContain("OMITTED");
     expect(PROMPT_META.leadbay_top_accounts_to_activate.failure_modes).toEqual(
       expect.arrayContaining([
-        expect.stringContaining("Refuses the whole task"),
+        expect.stringContaining("Refuses the task because revenue data is missing"),
       ]),
+    );
+  });
+
+  it("ships the plan before asking for enrichment consent", () => {
+    // A paid-reveal question must never be the only thing a turn produces.
+    expect(leadbay_top_accounts_to_activate).toContain(
+      "Do NOT stop and wait for enrichment consent before delivering",
+    );
+    // Only channels that actually came back may be rendered.
+    expect(leadbay_top_accounts_to_activate).toContain(
+      "Render only the channels that actually came back",
     );
   });
 
@@ -105,13 +117,12 @@ describe("audit: data-provenance gate (leadbay_top_accounts_to_activate)", () =>
     expect(text).not.toMatch(/\{\{arg:/);
   });
 
-  it("tells the agent to establish mode when no extract is supplied", () => {
+  it("states the no-revenue scope rather than promising a cash ranking", () => {
     const rendered = getPrompt("leadbay_top_accounts_to_activate", {});
     const text = JSON.stringify(rendered.messages);
-    // An omitted `erp_extract` argument must NOT be rendered as "no extract
-    // exists" — the user may have attached one in the surrounding chat.
-    expect(text).toContain("does NOT mean no extract exists");
-    expect(text).not.toContain("I have NOT given you a revenue extract");
-    expect(text).toContain("rather than inventing one");
+    // Leadbay holds no invoicing data — the prompt must say so plainly rather
+    // than modelling the money columns it cannot source.
+    expect(text).toContain("does **not** know what any account buys");
+    expect(text).toContain("never proxied from headcount, sector or lead score");
   });
 });

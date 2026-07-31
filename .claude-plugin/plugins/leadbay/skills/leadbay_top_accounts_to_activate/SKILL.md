@@ -1,6 +1,6 @@
 ---
 name: leadbay_top_accounts_to_activate
-description: "Build a ranked account-activation plan — the accounts with the most money still on the table, each with a motif, a pitch and a checklist. Ranks by cash-to-capture with the client's revenue extract; delivers an honest Leadbay-only conquest plan without it. Every figure carries its source. Uses `leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, `leadbay_import_leads`. Trigger on \"top 50 accounts to activate\", \"where's the cash in my base\"."
+description: "Build a ranked account-conquest plan from Leadbay data — the accounts worth activating, each with a motif, a pitch and a checklist, ranked by the strongest Leadbay signal. Every figure carries its source, and anything Leadbay can't measure is shown as OMITTED rather than estimated. Uses `leadbay_bulk_qualify_leads` and `leadbay_enrich_titles`. Trigger on \"top 50 accounts to activate\", \"who should we go after\"."
 ---
 
 
@@ -9,7 +9,7 @@ description: "Build a ranked account-activation plan — the accounts with the m
 Before responding, glance at any `_meta.agent_memory.summary` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call `leadbay_agent_memory_capture` to persist it: `source:"user_stated"` if literal, `source:"inferred"` with confidence <=6 if inferred.
 
 
-Build me a **top-<the user-supplied value if any; otherwise a sensible default. Source: Optional: how many accounts the plan should hold (default 50).> account-activation plan** — the accounts with the most money still on the table, ranked, each one carrying a strategic motif, a phone pitch and a three-step checklist. <if the user supplied this argument, render the short block derived from it; otherwise empty. Source: Optional: the client's invoicing / management extract (a file with an account identifier plus 12-month revenue, ideally split by product family). Supply it for the full plan; omit it for the Leadbay-only conquest plan.> <if the user supplied this argument, render the short block derived from it; otherwise empty. Source: Optional: the client's measured €/employee/year across their existing customers — the input to the addressable-spend estimate. Omit and you'll be asked for it rather than have one invented.> <if the user supplied this argument, render the short block derived from it; otherwise empty. Source: Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire', 'Région Ouest'). Sets geography on the Discover lens.>
+Build me a **top-<the user-supplied value if any; otherwise a sensible default. Source: Optional: how many accounts the plan should hold (default 50).> account-conquest plan** — the accounts worth activating, ranked, each one carrying a strategic motif, a phone pitch and a three-step checklist. <if the user supplied this argument, render the short block derived from it; otherwise empty. Source: Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire', 'Région Ouest'). Sets geography on the Discover lens.>
 
 This deliverable goes in front of a paying client, so **the honesty of the numbers matters more than their completeness**. Deliver the strongest plan the available data actually supports, and be explicit about what it doesn't.
 
@@ -55,8 +55,8 @@ just because you couldn't source it — render it as `OMITTED` with the reason.
 if the client's revenue-realized figure is absent, do not estimate it, do not
 proxy it from headcount / sector / score, and **do not sort by any quantity
 derived from it.** Say plainly which fields are unavailable, name the exact
-columns you'd need, and deliver the degraded mode described in the prompt —
-ordered by the strongest `[LB]` ranking you actually have.
+columns you'd need, and deliver the plan the prompt describes — ordered by the
+strongest `[LB]` ranking you actually have.
 
 **Sorting is where fabrication hides.** Asked for a ranking "by cash to go
 get" with no revenue data, the tempting move is to invent a revenue figure per
@@ -102,34 +102,23 @@ If a Leadbay tool returns `"Request timed out"`, `"stream closed"`, or any other
 If `pull_leads` itself fails and you have no prior batch, then yes — retry it, explicitly pass the lensId you captured (if any), and continue.
 
 
-# PHASE 0 — MODE + STATE
+# PHASE 0 — SCOPE + STATE
 
-Call `leadbay_account_status` for my quota and active lens. Then settle **which mode you are in** and say so in one line before doing anything else:
+Call `leadbay_account_status` for my quota and active lens.
 
-- **FULL MODE** — I supplied a revenue extract (or its figures are already on my leads as custom fields). The plan ranks by cash-to-capture and can carry all five motifs.
-- **DEGRADED MODE** — no revenue extract. The plan is an honest **conquest plan**: real accounts, real qualification, real signals, real contacts, ranked by the best Leadbay signal you have. Revenue-realized, per-family revenue and cash-to-capture are OMITTED, not estimated.
+**What this plan is, and what it deliberately isn't.** Leadbay knows who a company is, how it scores, what signals it has and who to call there. It does **not** know what any account buys from me — invoicing lives in my ERP, and no Leadbay tool exposes it. So this is a **conquest plan**: real accounts, real qualification, real signals, real contacts, ranked by the strongest Leadbay signal available. Revenue-realized, per-family revenue, addressable spend and cash-to-capture are **OMITTED — never estimated, never proxied from headcount, sector or lead score.**
 
-**Before you settle on DEGRADED, check whether the revenue is already here.** A returning user who imported an extract in a previous session has the figures sitting on their leads as custom fields, and falling back to a conquest plan would throw away data they already gave us. So when no extract is attached to *this* request, call `leadbay_list_mappable_fields` and look for revenue-shaped custom fields (12-month revenue, per-family revenue, last order date, order count). If revenue-shaped fields exist, **say so and ask me to re-attach the extract** before claiming FULL MODE. A lead-id list is NOT enough: the only read path for previously-imported values is `leadbay_get_lead_custom_fields`, which is lens-scoped (`GET /lenses/{lensId}/leads/{leadId}`) and so cannot reach earlier imports sitting outside the active lens — the ids would put you on a cash-ranked path with no reliable way to fill it. Only the extract itself (or a lens-independent value source, if one ever exists) unlocks FULL MODE here. You cannot reconstruct the prior cohort from `leadbay_pull_followups` / `leadbay_pull_leads`: imported leads are not auto-promoted to Monitor and need not sit in the active lens, so a view-derived cohort silently omits exactly the accounts the previous import added — and a cash ranking over a partial cohort is worse than an honest conquest plan, because it looks complete.
-
-So: report what you found ("this org has revenue-shaped custom fields — `<field names>`"), offer the one-step upgrade, and **meanwhile deliver the DEGRADED plan** rather than blocking on it (deliver first, ask alongside). Only if I hand you the extract or the ids do you switch to FULL MODE.
-
-⚠ **Do not state when those figures were imported.** `leadbay_list_mappable_fields` returns field definitions (id, name, type, mapping value) and **no import timestamp**, so any date you attach would be invented provenance — the exact failure this deliverable guards against. Say the vintage is unknown, and that stale revenue ranks accounts wrongly, so I should confirm or re-attach.
-
-Never silently assume. If you can't tell whether the extract exists, state which mode you're proceeding in and why, in one line — then **keep going**.
+Say that scope in one line up front, so nobody reads the ranking as a money sort. If I ask for a cash-ranked plan, tell me plainly that it needs my invoicing extract and that the MCP has no path to it today — then deliver this plan anyway rather than stopping.
 
 **DELIVER FIRST, ASK ALONGSIDE — never gate the plan on a missing input.** Only ONE thing can stop you before you have shipped a ranked list of real accounts: not knowing **whose** plan this is (a company-identity mismatch you genuinely cannot resolve). Everything else is a question you carry *next to* the delivered plan, not a reason to withhold it:
 
-- **No benchmark?** Never a reason to stop — but what it costs depends on the mode, so be precise:
-  - **DEGRADED MODE** — costs nothing. The money column is OMITTED anyway. Pull, qualify, rank by the Leadbay signal, deliver, and ask for the median €/employee/year underneath the plan.
-  - **FULL MODE** — you have `ca12` `[ERP]` but no benchmark, so `marché` and therefore `pot12` and `cash` cannot be computed, and **cash cannot be the sort key**. Do NOT invent a benchmark to make the sort work. Rank by measured `ca12` descending instead (a real, fully-`[ERP]` ordering — biggest current accounts first), state in the plan's header that cash-to-capture awaits the benchmark, and show `cash` as OMITTED. Say plainly that the ranking will change once the benchmark lands. That ships a genuinely useful, fully-measured plan today rather than a modelled one.
+- **No benchmark?** Costs nothing here — the money column is OMITTED regardless. Pull, qualify, rank by the Leadbay signal, deliver, and mention what a cash-ranked version would need.
 - **No Tier-1 threshold?** Not a blocker. Deliver, and ask alongside.
 - **No territory?** Not a blocker. Default to national, say so in one line, and offer to re-scope.
 - **`last_requested_lens: null`?** Not a blocker — and **do NOT read it as "no lens exists".** `leadbay_account_status` deliberately WITHHOLDS the lens id unless the request mentioned the lens/audience, so a plain "top 50 accounts to activate" returns null even when I have a perfectly good active lens. Default to calling `leadbay_pull_leads` with **no** `lensId` and let it resolve my active lens; capture `response.lens.id` from that result and pin it thereafter. Only create or switch a lens when I explicitly asked to scope or change the audience (e.g. a `territory` argument) — inventing a new lens silently changes what I see in the product.
 - **Only 3 qualification questions instead of 5?** Not a blocker. Use the org's real questions, note the gap, recommend the additions — do not wait for permission before pulling.
 
 Bundling a non-blocking question in with a blocking one turns a justified pause into an over-wide gate, and the user gets a plan-of-a-plan instead of a plan. The test is **"have I shipped a ranked list of real accounts yet?"** — if you're about to end a turn without one, you are almost certainly over-gating: deliver first, then ask.
-
-How you *get* that cohort depends on the mode, and neither path is "always call `leadbay_pull_leads`": in FULL MODE the cohort is the imported extract (Phase 2 — a lens pull would drop imported accounts outside the active view), and in DEGRADED MODE it is `leadbay_pull_followups` + `leadbay_pull_leads`.
 
 If I gave a `territory`, scope discovery to it now — pass it as `locations` to `leadbay_new_lens` (or `leadbay_adjust_audience` on the active lens). A place name goes to `locations`, never to `sectors` or a refine prompt.
 
@@ -141,43 +130,17 @@ If the org has none set, or they don't discriminate for this exercise, recommend
 
 # PHASE 2 — THE ACCOUNT UNIVERSE
 
-**FULL MODE — ingest the extract.** Don't reinvent the import flow: run the standard file-import path. `leadbay_resolve_import_rows` to match my rows against Leadbay, then **`leadbay_list_mappable_fields` FIRST to see which custom fields already exist** — reuse a matching field's `CUSTOM.<id>` mapping rather than creating a duplicate. Only call `leadbay_create_custom_field` for columns with no existing field (`{type:"PRICE", config:{currency:"EUR"}}` for revenue figures, one per product family). Re-running this workflow on an org that already has revenue fields must NOT fork the same metric across two fields. Then `leadbay_import_leads` with an explicit mapping. Build and show the column-preservation plan before committing:
+⚠ **Monitor membership is not client status.** Monitor tells you what Leadbay is watching — lens scoring decides who lands there, not whether the company ever bought anything. Label that pane "Leadbay view membership", never "customer".
 
-Render this block VERBATIM as your byproduct:
-
-```
-COLUMN PRESERVATION PLAN
-========================
-| Source column      | Disposition                       | Reason                            |
-|--------------------|-----------------------------------|-----------------------------------|
-| <header from file> | standard:LEAD_NAME                | cleaned company name              |
-| <header>           | standard:LEAD_WEBSITE             | domain agrees with brand          |
-| <header>           | contact:CONTACT_EMAIL             | per-person mailbox                |
-| <header>           | custom:HubSpot record (EXTERNAL_ID)| preserve link via url_template   |
-| <header>           | note                              | meaningful per-lead context       |
-| <header>           | derived:company_domain            | extracted from biz email          |
-| <header>           | skip                              | blank placeholder / dup plumbing  |
-========================
-```
-
-One row per meaningful source column. If you have 30+ columns, group blank/duplicate-plumbing columns under a single "skip" row with the count.
-
-
-The import's `LEADBAY_ID` write-back gives you the `lead_id` join key every card needs.
-
-⚠ **The extract you gave me is the authoritative `[ERP]` source — read the revenue from it, not back out of Leadbay.** `leadbay_get_lead_custom_fields` fetches `GET /lenses/{lensId}/leads/{leadId}`, so it is **lens-scoped**: it cannot return values for imported accounts that fall outside the active lens, which is precisely the cohort you just imported. Use it only to spot-check a lead you know is in the lens, or to discover what a *previous* import left behind — never as the mandated path for the current extract's figures. It is also one call per lead, so at fifty accounts it is fifty calls; don't re-read what the file already told you.
-
-⚠ **Imported leads are NOT auto-promoted to my Monitor view** — lens scoring decides. So Monitor membership tells you what Leadbay is watching, **not** who is a client. When you label an account's pane (identified vs not), call it "Leadbay view membership" or derive client status from the extract — never equate the two.
-
-**FULL MODE — the cohort IS the imported extract.** Build the ranked universe from the `leadIds` that `leadbay_resolve_import_rows` / `leadbay_import_leads` returned, joined to the revenue you read back — **not** from a fresh `pull_followups` / `pull_leads` sweep. Imported leads are not auto-promoted to Monitor and need not sit in the active Discover lens, so re-deriving the universe from those views silently drops the very accounts whose revenue I just gave you. Add Discover leads *afterwards* if you want net-new CONQUÊTE rows alongside the extract, and say which rows came from where.
-
-**DEGRADED MODE — get the accounts.** `leadbay_pull_followups` for the known/identified side, `leadbay_pull_leads` for the not-yet-identified side. Unless I named a `territory`, call `leadbay_pull_leads` with **no `lensId`** so it resolves my active lens — do not create a lens just because `account_status` showed a null. Capture `response.lens.id` from the first pull and pass it as an explicit `lensId` on every later call — a mid-session lens shift discards the cohort. Keep pulling until you have a pool comfortably deeper than <the count_or_default (as extracted above)>, topping up with `leadbay_bulk_qualify_leads` → `leadbay_qualify_status` → re-pull as needed.
+**Get the accounts.** `leadbay_pull_followups` for the known/identified side, `leadbay_pull_leads` for the not-yet-identified side. Unless I named a `territory`, call `leadbay_pull_leads` with **no `lensId`** so it resolves my active lens — do not create a lens just because `account_status` showed a null. Capture `response.lens.id` from the first pull and pass it as an explicit `lensId` on every later call — a mid-session lens shift discards the cohort. Keep pulling until you have a pool comfortably deeper than <the count_or_default (as extracted above)>, topping up with `leadbay_bulk_qualify_leads` → `leadbay_qualify_status` → re-pull as needed.
 
 # PHASE 3 — QUALIFY, SIGNAL, MOTIF
 
 **Qualify — the SELECTED cohort, in chunks of 25.** `leadbay_bulk_qualify_leads` caps `count` at **25**, so a single call cannot cover a 50-account plan. Loop until the whole cohort is qualified, polling `leadbay_qualify_status` between chunks.
 
-⚠ **Pass explicit `leadIds` whenever the cohort isn't simply "the next N on the lens"** — and in FULL MODE it never is. The `count`-based path selects the next *unqualified leads from the lens wishlist*, so on an imported cohort it would qualify unrelated Discover leads and hand you handles whose pills belong to different companies. Use `leadbay_bulk_qualify_leads({leadIds:[…≤25 of the cohort], wait_for_completion:false})` and chunk through the cohort's own ids. The `{lensId, count}` form is only appropriate in degraded mode when the cohort *is* the lens's top N. **Keep every returned `qualify_id`** — the deck's live qualification layer is wired from those handles, and a deck with none is a dead deck that still looks finished. Never ship a plan whose lower ranks have empty qualification pills because only the first 25 were ever qualified.
+⚠ **Pass explicit `leadIds` whenever the cohort isn't simply "the next N on the lens"** — e.g. after you've selected a shortlist, or when the plan mixes Monitor and Discover rows. The `count`-based path selects the next *unqualified leads from the lens wishlist*, so on any other cohort it qualifies unrelated leads and hands you handles whose pills belong to different companies. Use `leadbay_bulk_qualify_leads({leadIds:[…≤25 of the cohort], wait_for_completion:false})` and chunk through the cohort's own ids. The `{lensId, count}` form is only right when the cohort genuinely *is* the lens's top N.
+
+**Qualify the plan cohort, not the whole base.** Select your ~<the count_or_default (as extracted above)> candidates (plus a modest buffer for drop-outs) BEFORE qualifying — qualification is async and quota-bearing, so running it across an entire portfolio to produce a top-<the count_or_default (as extracted above)> burns the user's quota for rows that will never appear. **Keep every returned `qualify_id`** — the deck's live qualification layer is wired from those handles, and a deck with none is a dead deck that still looks finished. Never ship a plan whose lower ranks have empty qualification pills because only the first 25 were ever qualified.
 
 **Signals — scoped to the cohort.** ⚠ **Always pass the selected `leadIds`.** With `leadIds` omitted, `leadbay_scan_portfolio_signals` builds its own portfolio by paging `/monitor` — so on an imported cohort or a freshly-pulled Discover set it would scan a *different population* and you'd render dashes for accounts whose signals were never read.
 
@@ -249,71 +212,17 @@ sector, or a company's size. Two honest options, in order of preference:
 
 # PHASE 4 — POTENTIAL AND RANKING
 
-**POTENTIAL MATH — what an account could be worth.** The plan ranks accounts by
-the money still on the table, not by score. Three quantities, in order:
+Rank by `ai_agent_lead_score`, then qualification boost, then headcount. **Name that key in the plan's own header** — a reader who assumes a money-sort misreads the whole order — and title the deliverable for what it is (a conquest plan), not for what it isn't.
 
-1. **Addressable spend** — `marché = headcount × benchmark`, where `benchmark`
-   is the client's own measured €/employee/year for their customer base.
-   Headcount comes from Leadbay (`size` on a lead) or the registry `[SIRENE]`.
-2. **Year-1 objective** — `pot12 = max(0.35 × marché, ca12 × 1.3)`: take about
-   a third of the addressable spend, or 30 % growth on what the account already
-   buys, whichever is higher. Never let the objective fall below current spend.
-3. **Cash to go get** — `cash = pot12 − ca12`. This is the ranking key, and the
-   headline number on every card.
-
-Per-family split: distribute `marché` across product families using the typical
-purchase mix for that trade, then per family `gap = pot − real`. The families
-with `real = 0` and a non-trivial `pot` are the cross-sell targets — they are
-what MONTÉE EN GAMME acts on.
-
-**Every one of these is `[HYP]` unless the client supplied the input.** The
-benchmark, the 0.35 objective ratio, the 1.3 growth floor and the trade mix are
-all modelling choices. `marché` and `pot12` are therefore always `[HYP]`; `cash`
-is `[HYP]`-tainted because `pot12` is. Only `ca12` and per-family `real` can
-ever be `[ERP]`. State the benchmark value you used, visibly, every time —
-a €/employee figure carried over from a different client is the most common way
-this math goes silently wrong.
-
-**Ask for the benchmark; don't invent one.** If the client hasn't given it, ask
-for the median €/employee/year across their existing customers — they can
-usually compute it from the same extract. **If they can't supply it, do not
-substitute a placeholder.** There is no such thing as a harmless stand-in here:
-the benchmark multiplies straight into `marché`, `pot12` and `cash`, so a
-guessed figure silently sets the ranking order of the whole plan. Instead leave
-`marché` / `pot12` / `cash` as OMITTED and rank by whatever the data does
-support — measured `ca12` descending when you have the extract, the Leadbay
-signal otherwise. Say the cash ranking awaits the benchmark. A fully-measured
-partial plan beats a complete-looking modelled one.
-
-**TIER-1 DEFINITION — one definition, everywhere.** A Tier-1 account is one
-that buys at or above the client's own significance threshold — for example
-`≥ 10 k€/year OR ≥ 24 orders/12 months`. Two rules:
-
-- **This is a client-specific parameter, not a Leadbay constant.** The example
-  figures come from one distributor's economics. Confirm the client's own
-  threshold and use it; mark it `[HYP]` until they confirm.
-- **Use a single definition in every section of every deliverable.** A
-  Tier-1 that means one thing in the market sizing and another in the
-  penetration table makes the whole document unusable, and it is the most
-  common defect in hand-built versions. If asked to use two different
-  thresholds, refuse and explain why one must hold throughout.
-
-**Tier-1-*capable*** is a different claim from Tier-1: it estimates which
-companies *could* reach the threshold, proxied by headcount (e.g. `≥ 6
-employees`). Capable is `[HYP]`/`[SIRENE]`-derived; actual Tier-1 status is
-`[ERP]`-measured. Never present one as the other — the gap between them is the
-entire opportunity being sold.
-
-
-Three ranking keys, by what the data actually supports. **Whichever you use, name it in the plan's own header** — a reader who assumes a money-sort misreads the whole order:
-
-1. **Full mode WITH a benchmark** — rank by `cash` descending (`[HYP]`-tainted; say so).
-2. **Full mode WITHOUT a benchmark** — rank by measured `ca12` descending, a fully-`[ERP]` ordering. `cash` shows as OMITTED and the header says the cash ranking awaits the benchmark.
-3. **Degraded mode** — rank by `ai_agent_lead_score` then headcount, and title the deliverable for what it is (a conquest plan), not for what it isn't.
+Cash-to-capture is not available: it needs `ca12` from my invoicing system, which no Leadbay tool exposes. Show it as OMITTED in the ledger and say what a cash-ranked version would require (12-month revenue per account, per-family split, last order date, order count, plus a €/employee benchmark) — do not model it.
 
 # PHASE 5 — CONTACTS (consent-gated)
 
-Each card needs a reachable decision-maker. `leadbay_enrich_titles({leadIds, lensId})` in discovery mode first — that reveals what's enrichable and spends nothing. Then **stop and get my consent before any paid reveal**: tell me how many contacts and which channels, and wait. Asking for a plan is NOT authorization to spend enrichment quota on <the count_or_default (as extracted above)> accounts. On my yes, launch, then poll `leadbay_bulk_enrich_status` until done and **keep the `bulk_id` handles** for the deck.
+Each card needs a reachable decision-maker. `leadbay_enrich_titles({leadIds, lensId})` in discovery mode first — that reveals what's enrichable and spends nothing. Render whatever contact detail is already on the record; many accounts already carry a named contact.
+
+**Do NOT stop and wait for enrichment consent before delivering.** Asking for a plan is not authorization to spend quota on <the count_or_default (as extracted above)> accounts — but neither is it a reason to end the turn on a spending question with no plan attached. Ship the ranked plan (Phase 6), then **offer** the paid reveal alongside it: how many contacts, which channels, what it costs. Launch only on an explicit yes; then poll `leadbay_bulk_enrich_status` until done and **keep the `bulk_id` handles** for the deck.
+
+⚠ **Render only the channels that actually came back.** The default reveal is email-only unless phone was explicitly requested, so never emit a `tel:` link for a contact whose phone was never revealed — show the channels enrichment returned and mark the rest omitted. A fabricated phone link is the same failure as a fabricated euro.
 
 # PHASE 6 — DELIVER
 
@@ -338,29 +247,24 @@ damage. This ordering is the workflow contract, not a stylistic preference.
 Show the top 10 accounts by the ranking key, descending, then state how many more
 the full plan holds. Four columns:
 
-Col 3's header is **the ranking key you actually used** — never a cash label
-when cash was not computed:
+Col 3's header is **the ranking key you actually used** — never a cash label,
+since cash-to-capture cannot be computed from Leadbay data:
 
 ```
-money inputs supplied   | # · Account | Motif | Cash to get | Why now |
-extract, no benchmark   | # · Account | Motif | Revenue 12m | Why now |
-neither                 | # · Account | Motif | Fit score   | Why now |
+| # · Account | Motif | Fit score | Why now |
 ```
 
 - **Col 1** — rank number, then the company name linked to its website when one
   is known. Follow with a compact ` · `-separated pill line: city · headcount ·
-  the ERP account number when it exists.
+  any account reference you were given.
 - **Col 2** — the motif, exactly one of SAUVETAGE / PLAN DE COMPTE / MONTÉE EN
   GAMME / RÉVEIL / CONQUÊTE. Never invent a sixth.
-- **Col 3** — the cash figure with its provenance class, e.g. `20 800 € [HYP]`.
-  Tagging is not optional; an untagged € figure reads as measured fact.
-  **When the inputs for a money figure were not supplied, drop the money column
-  entirely** — do not substitute an addressable-spend estimate, and do not stop
-  to ask for the benchmark. Addressable spend needs a €/employee benchmark, so
-  without one there is nothing to compute: the column becomes the ranking signal
-  actually used (e.g. `AI 30 [LB]`), the header says so, and the money fields
-  stay OMITTED in the ledger. A column of modelled euros next to a client's name
-  is the exact failure this deliverable must not ship.
+- **Col 3** — the ranking signal with its provenance class, e.g. `AI 30 [LB]`.
+  Tagging is not optional; an untagged figure reads as measured fact. **There is
+  no money column** — cash-to-capture needs invoicing data Leadbay does not
+  hold, so it stays OMITTED in the ledger rather than being modelled. A column
+  of invented euros next to a client's name is the exact failure this
+  deliverable must not ship.
 - **Col 4** — the one-line reason to act now: the signal when there is one,
   otherwise the motif's deciding evidence. Never fill this with a
   plausible-sounding invented event; an account with nothing read shows `—`.
@@ -371,47 +275,29 @@ Sort strictly by the ranking key named in the ledger (which was printed above).
 
 One card per account, ordered by the same key. Per card:
 
-- **Header** — rank badge, company name, city · trade · headcount. Then, **only
-  when the money inputs were actually supplied**, the cash figure right-aligned
-  with its class tag and a one-word label. When they were not, the deck omits
-  cash exactly as the chat table does — show the ranking signal used instead
-  (e.g. `AI 30 [LB]`). The deck and the chat answer must never disagree about
-  which fields exist: a card carrying a euro figure the table omitted means one
-  of the two was modelled.
+- **Header** — rank badge, company name, city · trade · headcount, and the
+  ranking signal right-aligned with its class tag (e.g. `AI 30 [LB]`). No cash
+  figure: the deck and the chat answer must never disagree about which fields
+  exist, and a card carrying a euro the table omitted means one was modelled.
 - **Motif badge** — the motif, visually distinct per motif so the deck can be
   scanned by strategy.
-- **Family bars** — every € value on a bar carries its class tag, same rule as
-  the table: realized revenue is `[ERP]`, additional potential is `[HYP]`
-  (it is modelled from the benchmark). An untagged upside figure sitting beside
-  a measured one is exactly how modelled money starts reading as invoiced money.
-  One row per product family: a filled bar for revenue already
-  realized and a visually distinct (hatched or outlined) extension for the
-  additional potential, plus the € values. These are **static markup** built
-  from the imported data — there is no live tool behind them. Omit this block
-  entirely in degraded mode rather than drawing a bar with no realized value.
 - **Qualification row** — the org's five questions, each with ✓ / ✗ / pending,
   labelled with the actual question text read from Leadbay. Never substitute
   invented question wording.
 - **Signal line** — the event driving urgency, or omitted.
-- **Action block** — the named contact with phone and email as one-tap
-  `tel:` / `mailto:` links, the motif's pitch as a quoted line, and the
-  three-item checklist as checkboxes.
-- **Caveat block** — closing the deck: which classes fed it, the benchmark and
-  Tier-1 threshold used, and an explicit line that `[HYP]` figures are modelled,
-  not measured, and which fields are OMITTED because their inputs were never
-  supplied. There are no placeholder figures to disclose — a missing input
-  means an omitted field, never a stand-in number.
+- **Action block** — the named contact with **only the channels enrichment
+  actually returned** as one-tap `tel:` / `mailto:` links (the default reveal is
+  email-only unless phone was requested — never emit a `tel:` for a phone that
+  was never revealed; mark it omitted instead), the motif's pitch as a quoted
+  line, and the three-item checklist as checkboxes.
+- **Caveat block** — closing the deck: which classes fed it, an explicit line
+  that `[HYP]` figures are modelled rather than measured, and which fields are
+  OMITTED because Leadbay does not hold them. A missing input means an omitted
+  field, never a stand-in number.
 
-Header KPIs across the top, each carrying its provenance class. **The money
-KPIs are conditional on the same inputs as the money column** — when those
-weren't supplied, drop total-cash and total-upsell entirely rather than
-reintroducing modelled euro totals the chat table just omitted. Deck and table
-must agree about which fields exist.
-
-- **Money inputs supplied** — total cash on the plan, total upsell potential,
-  count qualified, count activated.
-- **Money inputs absent** — accounts on the plan, count qualified, count with a
-  reachable contact, count activated. No euro totals anywhere.
+Header KPIs across the top, each carrying its provenance class: accounts on the
+plan, count qualified, count with a reachable contact, count activated. **No
+euro totals** — the same rule as the table, for the same reason.
 
 
 Then **offer** the interactive deck — don't force it:
@@ -441,10 +327,10 @@ On acceptance, call `leadbay_artifact_kit`, read its `usage_guide` before writin
 
 # Iron laws
 
-- **Never invent a number.** No revenue figure, registry count, signal or lead id that didn't come from my extract, a Leadbay response, or a real registry query. A modelled figure is fine — tagged `[HYP]` and named as an assumption. An untagged one is not.
+- **Never invent a number.** No revenue figure, registry count, signal or lead id that didn't come from a Leadbay response or a real registry query. A modelled figure is fine — tagged `[HYP]` and named as an assumption. An untagged one is not.
 - **The ledger ships before the deliverable**, with un-sourceable fields shown as OMITTED rather than dropped.
-- **Degraded mode is a real deliverable, not an error.** Missing revenue data means change the ranking, title it honestly, and name the exact columns needed to upgrade — never refuse, and never fill the gap with a guess.
-- **Deliver first, ask alongside.** Do not end a turn without a ranked list of real accounts. The benchmark, the Tier-1 threshold, the territory, a missing lens and a short question set are all NON-blocking — carry them next to the plan. Only an unresolvable identity mismatch (whose plan is this?) may stop delivery.
+- **A conquest plan is the deliverable, not a consolation prize.** Leadbay holds no invoicing data, so the money columns are OMITTED by design. Title it honestly, name what a cash-ranked version would need — never refuse, and never fill the gap with a guess.
+- **Deliver first, ask alongside.** Do not end a turn without a ranked list of real accounts. The benchmark, the Tier-1 threshold, the territory, a missing lens, a short question set and an unanswered enrichment offer are all NON-blocking — carry them next to the plan. Only an unresolvable identity mismatch (whose plan is this?) may stop delivery.
 - **One motif per account, from the closed set of five**, with its deciding evidence stated.
 - **The org's real qualification questions**, read from Leadbay — never invented.
 - **Consent before any paid enrichment**, and never re-launch a bulk that already exists.

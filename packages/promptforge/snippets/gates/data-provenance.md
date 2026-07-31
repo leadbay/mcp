@@ -40,8 +40,8 @@ just because you couldn't source it — render it as `OMITTED` with the reason.
 if the client's revenue-realized figure is absent, do not estimate it, do not
 proxy it from headcount / sector / score, and **do not sort by any quantity
 derived from it.** Say plainly which fields are unavailable, name the exact
-columns you'd need, and deliver the degraded mode described in the prompt —
-ordered by the strongest `[LB]` ranking you actually have.
+columns you'd need, and deliver the plan the prompt describes — ordered by the
+strongest `[LB]` ranking you actually have.
 
 **Sorting is where fabrication hides.** Asked for a ranking "by cash to go
 get" with no revenue data, the tempting move is to invent a revenue figure per
