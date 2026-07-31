@@ -1601,8 +1601,8 @@ never report a signal verdict for a lead you never read.
 
 **Assign the motif.**
 
-**THE FIVE ACTIVATION MOTIFS.** Every account on the plan carries exactly one
-motif from this closed set. The motif is not decoration — it decides the phone
+**THE ACTIVATION MOTIFS.** Every account on the plan carries exactly one motif
+from this closed set of six. The motif is not decoration — it decides the phone
 pitch, the checklist, and whether the account belongs to the *Pilotage* engine
 (already identified) or the *Conquête* engine (not yet identified). Assign it
 from observable data and state the deciding evidence in one line per account.
@@ -1614,12 +1614,19 @@ from observable data and state the deciding evidence in one line per account.
 | **MONTÉE EN GAMME** | active but narrow — buys one product family while comparable accounts of the same size buy several; the gap is cross-sell | Pilotage |
 | **RÉVEIL** | account exists, essentially dormant — long-dead history (e.g. 12+ months at zero) but the company is demonstrably still trading | Pilotage |
 | **CONQUÊTE** | not present in the Leadbay known pipeline — in the addressable market, absent from the base. ⚠ Absence from Monitor is NOT proof they never bought (see below) | Conquête |
+| **SUIVI** | in the known pipeline with recent activity, purchase behaviour unknown — the honest label for an active Monitor row when no order history is available | Pilotage |
 
 **Decision order matters.** Test in this order and stop at the first match, or
 a big lapsed account will be labelled RÉVEIL when it is really a SAUVETAGE:
 recent sharp break → SAUVETAGE; long-dormant → RÉVEIL; never bought →
 CONQUÊTE; buying broadly at scale → PLAN DE COMPTE; buying narrowly →
 MONTÉE EN GAMME.
+
+**Without order history the first five tests cannot run at all.** In that case
+the split is simply: in the Leadbay known pipeline → **SUIVI** (or RÉVEIL-LB
+when Leadbay activity is long dormant, labelled for what it measures); not in
+the pipeline → **CONQUÊTE**. Never reach for a Pilotage motif you cannot
+evidence.
 
 **What each motif changes in the output.**
 
@@ -1633,19 +1640,37 @@ MONTÉE EN GAMME.
   pipeline is not proof they never bought, and that line told to an existing
   customer is the one mistake a rep cannot walk back. Write the pitch in the
   client's own commercial voice, naming the specific families and figures the
-  account's data actually supports.
+  account's data actually supports. **SUIVI** picks up the existing thread —
+  a continuation, never an introduction and never a win-back.
 - The **checklist** — three concrete, checkable next actions matching the
   motif's shape: diagnose → schedule → send-terms for SAUVETAGE; review →
   propose → open-a-family for PLAN DE COMPTE; visit-with-full-tariff → quote →
   first-order-in-the-new-family for MONTÉE EN GAMME; understand-the-departure →
   send-offer → first-order-back for RÉVEIL; reach-the-decision-maker →
-  open-the-account → first-test-order for CONQUÊTE. When a signal exists,
+  open-the-account → first-test-order for CONQUÊTE; confirm-the-state →
+  identify-the-current-need → agree-a-next-step for SUIVI. When a signal exists,
   promote "exploit <the signal>" to the top of that account's checklist.
 
 **Motif assignment depends on order history, which is ERP data.** Without the
 client's extract, SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL cannot
 be assigned from purchase behaviour — do not guess them from a lead score, a
 sector, or a company's size. Two honest options, in order of preference:
+
+**The Monitor gap — read this before assigning anything.** Four of the five
+motifs (SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL) are purchase-
+behaviour reads, and CONQUÊTE means "not in the known pipeline". A Monitor row
+that is *actively* worked therefore matches none of them: it IS in the pipeline,
+and without order history you cannot tell whether it buys broadly, narrowly, or
+at all. Do NOT resolve that by guessing a purchase motif, and do NOT silently
+drop the row.
+
+Use a sixth, honestly-scoped label for those rows — **SUIVI** (in the Leadbay
+known pipeline, recent activity, purchase behaviour unknown). Its pitch angle is
+a continuation, not an introduction or a win-back: pick up the existing thread
+and ask what's moving. Its checklist is confirm-the-state → identify the current
+need → agree a next step. Say in the plan's legend that SUIVI exists precisely
+because purchase history is unavailable, and that ERP order data would split
+those rows into the four Pilotage motifs.
 
 1. **CONQUÊTE is assignable from Leadbay alone — but say what it actually
    means.** Discover membership proves a company is **not in the Leadbay known
@@ -1722,7 +1747,7 @@ since cash-to-capture cannot be computed from Leadbay data:
   is known. Follow with a compact \` · \`-separated pill line: city · headcount ·
   any account reference you were given.
 - **Col 2** — the motif, exactly one of SAUVETAGE / PLAN DE COMPTE / MONTÉE EN
-  GAMME / RÉVEIL / CONQUÊTE. Never invent a sixth.
+  GAMME / RÉVEIL / CONQUÊTE / SUIVI. Never invent a seventh.
 - **Col 3** — the ranking signal with its provenance class, e.g. \`AI 30 [LB]\`.
   Tagging is not optional; an untagged figure reads as measured fact. **There is
   no money column** — cash-to-capture needs invoicing data Leadbay does not
@@ -1734,6 +1759,26 @@ since cash-to-capture cannot be computed from Leadbay data:
   plausible-sounding invented event; an account with nothing read shows \`—\`.
 
 Sort strictly by the ranking key named in the ledger (which was printed above).
+
+### The pitch + checklist block (part of the chat answer, not the deck)
+
+The table alone is a shortlist, not a plan — the pitch and the three-step
+checklist are what make it actionable, and the deck is **optional**, so they
+cannot live only there. Under the table, render a short block per account for
+the top rows (all of them when the plan is small; the top 5–10 otherwise, then
+say the rest follow the same shape and offer them):
+
+\`\`\`
+**<rank> · <Company>** — <MOTIF>
+☎ <contact name>, <title> · <only the channels actually revealed>
+> "<the motif's pitch, in the client's commercial voice>"
+☐ <step 1>  ☐ <step 2>  ☐ <step 3>
+\`\`\`
+
+Keep each pitch to one or two sentences a rep can say out loud, and each
+checklist to three concrete, checkable actions matching that motif's shape.
+When an account has a signal, lead the pitch with it and promote
+"exploit &lt;the signal&gt;" to the top of its checklist.
 
 ### The interactive deck (only after the user accepts)
 
@@ -1795,7 +1840,7 @@ On acceptance, call \`leadbay_artifact_kit\`, read its \`usage_guide\` before wr
 - **The ledger ships before the deliverable**, with un-sourceable fields shown as OMITTED rather than dropped.
 - **A conquest plan is the deliverable, not a consolation prize.** Leadbay holds no invoicing data, so the money columns are OMITTED by design. Title it honestly, name what a cash-ranked version would need — never refuse, and never fill the gap with a guess.
 - **Deliver first, ask alongside.** Do not end a turn without a ranked list of real accounts. The benchmark, the Tier-1 threshold, the territory, a missing lens, a short question set and an unanswered enrichment offer are all NON-blocking — carry them next to the plan. Only an unresolvable identity mismatch (whose plan is this?) may stop delivery.
-- **One motif per account, from the closed set of five**, with its deciding evidence stated.
+- **One motif per account, from the closed set of six**, with its deciding evidence stated.
 - **The org's real qualification questions**, read from Leadbay — never invented.
 - **Consent before any paid enrichment**, and never re-launch a bulk that already exists.
 - **Offer the deck; don't force it.** The chat answer must stand alone as useful.
@@ -1925,7 +1970,7 @@ export const PROMPT_META = {
   leadbay_refine_audience: {"name":"leadbay_refine_audience","short_description":"Refine the kind of leads Leadbay surfaces beyond firmographics, with a\nfree-text instruction. Handles the clarification round-trip if the new\nprompt is ambiguous.\n","arguments":[{"name":"instruction","description":"The refinement (e.g. 'focus on hospitals running their own IT'). Set to plain English.","required":true}],"expected_calls":["leadbay_refine_prompt","leadbay_account_status"],"failure_modes":["Calls leadbay_answer_clarification on the user's behalf instead of surfacing the clarification verbatim","Glosses over the clarification options instead of presenting them as offered","Promises immediate effect when status='applied' actually triggers an async intelligence recompute"]},
   leadbay_research_a_domain: {"name":"leadbay_research_a_domain","short_description":"Resolve a company by name or domain across the user's visible Discover,\nMonitor, and Activate corpus, then return everything Leadbay knows about it.\n","arguments":[{"name":"domain","description":"Company name or domain (for example 'Acme Corporation' or 'acme.com'). The legacy argument key remains `domain` for client compatibility.","required":true}],"expected_calls":["leadbay_research_lead_by_name_fuzzy"],"failure_modes":["Fabricates qualification answers not present in any tool response","Calls leadbay_import_and_qualify before searching the existing visible corpus","Treats the active lens as the entire search universe when the user did not request a lens scope","Imports a missing company without the user's explicit permission","Renders the research result as a freeform narrative instead of the canonical research-company-card layout (the card with header score bar, pill row, signal sections, contacts table is the structural contract; commentary belongs ABOVE or BELOW it)"]},
   leadbay_setup_team_prospecting: {"name":"leadbay_setup_team_prospecting","short_description":"Manager-led prospecting setup: conversationally turn a natural-language\naudience ask into a Leadbay lens, validate the candidate leads, and\npersist them as one or more named campaigns the rep(s) can work\nthrough. Closes #3630 US3 end-to-end (within the current\ncreator-scoped campaign visibility model).\n","arguments":[{"name":"audience","description":"Natural-language audience description (e.g. 'plumbing companies with 10-50 employees in Seine-Maritime'). The lens-creation step (`leadbay_refine_prompt` → `leadbay_create_lens`) interprets it.","required":true},{"name":"rep_split","description":"Optional: how to split the validated leads into per-rep campaigns. Free text — e.g. 'split by city' or 'one campaign per rep: John gets Tulsa, Sarah gets OKC'.","required":false}],"expected_calls":["leadbay_refine_prompt","leadbay_create_lens","leadbay_promote_lens","leadbay_pull_leads","leadbay_research_lead_by_id","leadbay_create_campaign","leadbay_add_leads_to_campaign"],"failure_modes":["Skips the validation step — creates a campaign of unvetted leads from a freshly-created lens without giving the manager a chance to drop weak fits","Creates ONE campaign for all reps without asking about the split — the user explicitly mentioned per-rep distribution and the prompt should honor it","Pretends the backend supports cross-user assignment — campaigns are owned by the caller (creator-scoped). Surface this honestly instead of fabricating an assignment model","Asks ALL clarifying questions inline before tool calls — instead, run the lens refinement loop with `leadbay_refine_prompt` which handles the clarification protocol natively"]},
-  leadbay_top_accounts_to_activate: {"name":"leadbay_top_accounts_to_activate","short_description":"Build a ranked account-conquest plan from Leadbay data — the accounts worth\nactivating, each with a motif, a pitch and a checklist, ranked by the\nstrongest Leadbay signal. Every figure carries its source, and anything\nLeadbay can't measure is shown as OMITTED rather than estimated. Uses\n`leadbay_bulk_qualify_leads` and `leadbay_enrich_titles`. Trigger on\n\"top 50 accounts to activate\", \"who should we go after\".\n","arguments":[{"name":"count","description":"Optional: how many accounts the plan should hold (default 50).","required":false},{"name":"territory","description":"Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire', 'Région Ouest'). Sets geography on the Discover lens.","required":false}],"expected_calls":["leadbay_account_status","leadbay_get_qualification_questions","leadbay_pull_leads","leadbay_pull_followups","leadbay_bulk_qualify_leads","leadbay_qualify_status","leadbay_scan_portfolio_signals","leadbay_enrich_titles","leadbay_bulk_enrich_status","leadbay_account_history","leadbay_artifact_kit","leadbay_new_lens","leadbay_adjust_audience"],"failure_modes":["Invents, estimates or proxies a revenue-realized figure — the single worst failure. Leadbay does not hold what an account buys, and headcount, sector and lead score are NOT proxies for it.","Sorts by cash-to-capture, synthesizing a revenue figure per account purely to make that ranking work. Leadbay has no revenue data: rank by the Leadbay signal, say so in the header, and never invent the key.","Emits € figures with no provenance class, so modelled numbers read as measured fact in front of a paying client.","Skips the PROVENANCE LEDGER, or drops un-sourceable fields from it instead of rendering them as OMITTED — which hides the gap.","Fabricates registry/TAM counts (France or regional company counts) instead of querying the registry or marking the figure NOT COMPUTED. Leadbay does not proxy SIRENE.","Invents the five qualification questions from this prompt's own recommendations instead of reading the org's actual questions via leadbay_get_qualification_questions.","Leaves the deck's live layer dead — qualification and enrichment handles never wired in, so the pills and contacts stay empty while the deck still looks finished.","Invents lead ids to make the qualification pills appear populated.","Fabricates a plausible-sounding signal ('just won a public tender') for an account whose signals were never read. No signal read means an explicit dash.","Assigns a motif outside the closed set of five, or assigns SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL from a lead score or sector when order history was never available.","Labels Monitor membership as 'is a client' — Monitor is a Leadbay view whose membership is decided by lens scoring, not by whether the company ever bought anything.","Launches paid enrichment on the whole plan without consent. Asking for a plan is not authorization to spend on 50 accounts.","Re-launches enrichment from inside the built deck when a bulk handle already exists this session — double-spends the user's quota.","Forces the interactive deck without offering it first, or ships the deck INSTEAD of a chat answer that stands on its own.","Refuses the task because revenue data is missing, instead of delivering the conquest plan and naming what a cash-ranked version would need.","Ends the turn without a ranked list of real accounts — gating the whole plan on a NON-blocking question (the territory, a missing lens, or a 3-vs-5 qualification-question gap) so the user gets a plan-of-a-plan. Only an unresolvable company-identity mismatch may stop delivery; every other open question rides alongside the delivered plan.","Stops after the discovery contact preview to wait for enrichment consent, delivering no plan that turn — the ranked plan ships first; the paid reveal is offered alongside it.","Renders a contact channel enrichment never returned (e.g. a phone link when only email was approved and revealed) instead of showing the returned channels and marking the rest omitted."]},
+  leadbay_top_accounts_to_activate: {"name":"leadbay_top_accounts_to_activate","short_description":"Build a ranked account-conquest plan from Leadbay data — the accounts worth\nactivating, each with a motif, a pitch and a checklist, ranked by the\nstrongest Leadbay signal. Every figure carries its source, and anything\nLeadbay can't measure is shown as OMITTED rather than estimated. Uses\n`leadbay_bulk_qualify_leads` and `leadbay_enrich_titles`. Trigger on\n\"top 50 accounts to activate\", \"who should we go after\".\n","arguments":[{"name":"count","description":"Optional: how many accounts the plan should hold (default 50).","required":false},{"name":"territory","description":"Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire', 'Région Ouest'). Sets geography on the Discover lens.","required":false}],"expected_calls":["leadbay_account_status","leadbay_get_qualification_questions","leadbay_pull_leads","leadbay_pull_followups","leadbay_bulk_qualify_leads","leadbay_qualify_status","leadbay_scan_portfolio_signals","leadbay_enrich_titles","leadbay_bulk_enrich_status","leadbay_account_history","leadbay_artifact_kit","leadbay_new_lens","leadbay_adjust_audience"],"failure_modes":["Invents, estimates or proxies a revenue-realized figure — the single worst failure. Leadbay does not hold what an account buys, and headcount, sector and lead score are NOT proxies for it.","Sorts by cash-to-capture, synthesizing a revenue figure per account purely to make that ranking work. Leadbay has no revenue data: rank by the Leadbay signal, say so in the header, and never invent the key.","Emits € figures with no provenance class, so modelled numbers read as measured fact in front of a paying client.","Skips the PROVENANCE LEDGER, or drops un-sourceable fields from it instead of rendering them as OMITTED — which hides the gap.","Fabricates registry/TAM counts (France or regional company counts) instead of querying the registry or marking the figure NOT COMPUTED. Leadbay does not proxy SIRENE.","Invents the five qualification questions from this prompt's own recommendations instead of reading the org's actual questions via leadbay_get_qualification_questions.","Leaves the deck's live layer dead — qualification and enrichment handles never wired in, so the pills and contacts stay empty while the deck still looks finished.","Invents lead ids to make the qualification pills appear populated.","Fabricates a plausible-sounding signal ('just won a public tender') for an account whose signals were never read. No signal read means an explicit dash.","Assigns a motif outside the closed set of six, or assigns SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL from a lead score or sector when order history was never available.","Labels Monitor membership as 'is a client' — Monitor is a Leadbay view whose membership is decided by lens scoring, not by whether the company ever bought anything.","Launches paid enrichment on the whole plan without consent. Asking for a plan is not authorization to spend on 50 accounts.","Re-launches enrichment from inside the built deck when a bulk handle already exists this session — double-spends the user's quota.","Forces the interactive deck without offering it first, or ships the deck INSTEAD of a chat answer that stands on its own.","Refuses the task because revenue data is missing, instead of delivering the conquest plan and naming what a cash-ranked version would need.","Ends the turn without a ranked list of real accounts — gating the whole plan on a NON-blocking question (the territory, a missing lens, or a 3-vs-5 qualification-question gap) so the user gets a plan-of-a-plan. Only an unresolvable company-identity mismatch may stop delivery; every other open question rides alongside the delivered plan.","Stops after the discovery contact preview to wait for enrichment consent, delivering no plan that turn — the ranked plan ships first; the paid reveal is offered alongside it.","Renders a contact channel enrichment never returned (e.g. a phone link when only email was approved and revealed) instead of showing the returned channels and marking the rest omitted."]},
   leadbay_work_campaign: {"name":"leadbay_work_campaign","short_description":"Work a campaign as a real outreach session: pick the campaign,\nassess what the user has (phones / emails / coords), then PROPOSE\nthe right session mode (call sheet, email sheet, enrich titles\nfirst, map). After they pick, render — and as they dictate\noutcomes per lead, record both note + epilogue via\n`leadbay_report_outreach` in one round trip.\n","arguments":[{"name":"campaign","description":"Campaign name (fuzzy match against your own campaigns) or campaign UUID. Omit to list and pick interactively.","required":false},{"name":"mode","description":"Optional: skip the readiness-assessment proposal and jump directly into 'call_sheet' / 'email_sheet' / 'map' / 'enrich_first'. Omit (recommended) and let the prompt propose based on the data.","required":false}],"expected_calls":["leadbay_list_campaigns","leadbay_campaign_call_sheet","leadbay_enrich_titles","leadbay_report_outreach"],"failure_modes":["Renders the call sheet immediately without proposing the right mode — if 60% of leads have no contacts, calling is futile; enrich first. Always assess `readiness` first.","Auto-renders the map widget without asking — maps are intrusive when the user just wants to scroll a list. Map mode is a proposed option, not a default.","Proposes map mode after the user has previously said they don't like maps — check conversation memory before adding 'View on a map' to the options list.","Calls `leadbay_campaign_progression` instead of `leadbay_campaign_call_sheet` — progression has counts but no phones / LinkedIn / call-ready data; the user can't actually dial from progression rows.","Renders contacts WITHOUT making the phone number a `[bare](tel:URL)` link — on mobile that breaks one-tap calling, which is the whole point of the cheat sheet.","Records outreach WITHOUT epilogue_status — leaves the lead's pipeline state unchanged; the rep then sees the same lead surfaced again next session.","Records outreach WITHOUT verification — verification.source/ref is REQUIRED. For calls, pass `{source: 'user_confirmed', ref: <user's exact words>}`.","Loops through ALL leads in a 50-lead campaign before recording any outreach — the call-then-record loop must be per-lead, not batched."]},
 } as const;
 

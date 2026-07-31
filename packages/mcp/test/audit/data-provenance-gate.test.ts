@@ -21,6 +21,11 @@ const MOTIFS = [
   "MONTÉE EN GAMME",
   "RÉVEIL",
   "CONQUÊTE",
+  // The four Pilotage motifs are purchase-behaviour reads and CONQUÊTE means
+  // "not in the pipeline", so an ACTIVE known-pipeline account matches none of
+  // them without order history. SUIVI is the honest label for those rows —
+  // dropping it would force the agent to guess a purchase motif.
+  "SUIVI",
 ];
 
 describe("audit: data-provenance gate (leadbay_top_accounts_to_activate)", () => {

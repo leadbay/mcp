@@ -1,5 +1,5 @@
-**THE FIVE ACTIVATION MOTIFS.** Every account on the plan carries exactly one
-motif from this closed set. The motif is not decoration — it decides the phone
+**THE ACTIVATION MOTIFS.** Every account on the plan carries exactly one motif
+from this closed set of six. The motif is not decoration — it decides the phone
 pitch, the checklist, and whether the account belongs to the *Pilotage* engine
 (already identified) or the *Conquête* engine (not yet identified). Assign it
 from observable data and state the deciding evidence in one line per account.
@@ -11,12 +11,19 @@ from observable data and state the deciding evidence in one line per account.
 | **MONTÉE EN GAMME** | active but narrow — buys one product family while comparable accounts of the same size buy several; the gap is cross-sell | Pilotage |
 | **RÉVEIL** | account exists, essentially dormant — long-dead history (e.g. 12+ months at zero) but the company is demonstrably still trading | Pilotage |
 | **CONQUÊTE** | not present in the Leadbay known pipeline — in the addressable market, absent from the base. ⚠ Absence from Monitor is NOT proof they never bought (see below) | Conquête |
+| **SUIVI** | in the known pipeline with recent activity, purchase behaviour unknown — the honest label for an active Monitor row when no order history is available | Pilotage |
 
 **Decision order matters.** Test in this order and stop at the first match, or
 a big lapsed account will be labelled RÉVEIL when it is really a SAUVETAGE:
 recent sharp break → SAUVETAGE; long-dormant → RÉVEIL; never bought →
 CONQUÊTE; buying broadly at scale → PLAN DE COMPTE; buying narrowly →
 MONTÉE EN GAMME.
+
+**Without order history the first five tests cannot run at all.** In that case
+the split is simply: in the Leadbay known pipeline → **SUIVI** (or RÉVEIL-LB
+when Leadbay activity is long dormant, labelled for what it measures); not in
+the pipeline → **CONQUÊTE**. Never reach for a Pilotage motif you cannot
+evidence.
 
 **What each motif changes in the output.**
 
@@ -30,19 +37,37 @@ MONTÉE EN GAMME.
   pipeline is not proof they never bought, and that line told to an existing
   customer is the one mistake a rep cannot walk back. Write the pitch in the
   client's own commercial voice, naming the specific families and figures the
-  account's data actually supports.
+  account's data actually supports. **SUIVI** picks up the existing thread —
+  a continuation, never an introduction and never a win-back.
 - The **checklist** — three concrete, checkable next actions matching the
   motif's shape: diagnose → schedule → send-terms for SAUVETAGE; review →
   propose → open-a-family for PLAN DE COMPTE; visit-with-full-tariff → quote →
   first-order-in-the-new-family for MONTÉE EN GAMME; understand-the-departure →
   send-offer → first-order-back for RÉVEIL; reach-the-decision-maker →
-  open-the-account → first-test-order for CONQUÊTE. When a signal exists,
+  open-the-account → first-test-order for CONQUÊTE; confirm-the-state →
+  identify-the-current-need → agree-a-next-step for SUIVI. When a signal exists,
   promote "exploit <the signal>" to the top of that account's checklist.
 
 **Motif assignment depends on order history, which is ERP data.** Without the
 client's extract, SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL cannot
 be assigned from purchase behaviour — do not guess them from a lead score, a
 sector, or a company's size. Two honest options, in order of preference:
+
+**The Monitor gap — read this before assigning anything.** Four of the five
+motifs (SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL) are purchase-
+behaviour reads, and CONQUÊTE means "not in the known pipeline". A Monitor row
+that is *actively* worked therefore matches none of them: it IS in the pipeline,
+and without order history you cannot tell whether it buys broadly, narrowly, or
+at all. Do NOT resolve that by guessing a purchase motif, and do NOT silently
+drop the row.
+
+Use a sixth, honestly-scoped label for those rows — **SUIVI** (in the Leadbay
+known pipeline, recent activity, purchase behaviour unknown). Its pitch angle is
+a continuation, not an introduction or a win-back: pick up the existing thread
+and ask what's moving. Its checklist is confirm-the-state → identify the current
+need → agree a next step. Say in the plan's legend that SUIVI exists precisely
+because purchase history is unavailable, and that ERP order data would split
+those rows into the four Pilotage motifs.
 
 1. **CONQUÊTE is assignable from Leadbay alone — but say what it actually
    means.** Discover membership proves a company is **not in the Leadbay known

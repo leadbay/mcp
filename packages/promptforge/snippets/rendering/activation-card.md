@@ -30,7 +30,7 @@ since cash-to-capture cannot be computed from Leadbay data:
   is known. Follow with a compact ` · `-separated pill line: city · headcount ·
   any account reference you were given.
 - **Col 2** — the motif, exactly one of SAUVETAGE / PLAN DE COMPTE / MONTÉE EN
-  GAMME / RÉVEIL / CONQUÊTE. Never invent a sixth.
+  GAMME / RÉVEIL / CONQUÊTE / SUIVI. Never invent a seventh.
 - **Col 3** — the ranking signal with its provenance class, e.g. `AI 30 [LB]`.
   Tagging is not optional; an untagged figure reads as measured fact. **There is
   no money column** — cash-to-capture needs invoicing data Leadbay does not
@@ -42,6 +42,26 @@ since cash-to-capture cannot be computed from Leadbay data:
   plausible-sounding invented event; an account with nothing read shows `—`.
 
 Sort strictly by the ranking key named in the ledger (which was printed above).
+
+### The pitch + checklist block (part of the chat answer, not the deck)
+
+The table alone is a shortlist, not a plan — the pitch and the three-step
+checklist are what make it actionable, and the deck is **optional**, so they
+cannot live only there. Under the table, render a short block per account for
+the top rows (all of them when the plan is small; the top 5–10 otherwise, then
+say the rest follow the same shape and offer them):
+
+```
+**<rank> · <Company>** — <MOTIF>
+☎ <contact name>, <title> · <only the channels actually revealed>
+> "<the motif's pitch, in the client's commercial voice>"
+☐ <step 1>  ☐ <step 2>  ☐ <step 3>
+```
+
+Keep each pitch to one or two sentences a rep can say out loud, and each
+checklist to three concrete, checkable actions matching that motif's shape.
+When an account has a signal, lead the pitch with it and promote
+"exploit &lt;the signal&gt;" to the top of its checklist.
 
 ### The interactive deck (only after the user accepts)
 

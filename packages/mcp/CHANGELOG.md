@@ -26,10 +26,15 @@ fields shown as OMITTED instead of quietly filled. The existing
 `iron-laws/no-fabrication` covers identifiers only, so a derived quantity such
 as a revenue figure could previously be invented without violating it.
 
-Also adds `heuristics/account-activation-motifs`, `heuristics/potential-math`
-(incl. the single-Tier-1-definition rule) and `rendering/activation-card`, plus
-WORKFLOWS entries 46–48 with live eval coverage for full mode, the degraded
-(underdeliver) path and the fabrication guard.
+Also adds `heuristics/account-activation-motifs` and `rendering/activation-card`,
+plus WORKFLOWS entries 46–47 — the conquest plan and its fabrication guard.
+
+The six motifs are SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL /
+CONQUÊTE / **SUIVI**. The last is the honest label for an active known-pipeline
+account when no order history is available: the four Pilotage motifs are
+purchase-behaviour reads and CONQUÊTE means "not in the pipeline", so without
+invoicing data an active Monitor row matches none of them. ERP order data would
+split those rows into the Pilotage four.
 
 Fixes a stale `server.json` npx pin that tracked the `0.25` line while the
 package was on `0.26`, and bumps the `.claude-plugin` bundle off `@leadbay/mcp@0.13`,
