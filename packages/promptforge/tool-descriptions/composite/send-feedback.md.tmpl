@@ -7,8 +7,8 @@ short_description: |
   user wants to tell the team something (a bug, a request, praise, "let
   Leadbay know…"), OR when a tool errored and the user accepts your offer
   to report it. The user writes the message; you confirm the wording,
-  then send. Distinct from leadbay_report_friction (which is silent
-  telemetry you fire yourself — this one is explicit and user-authored).
+  then send. Use leadbay_report_friction instead when the user is
+  reporting one specific tool result that disappointed them.
 annotations:
   title: Send feedback to the Leadbay team
   readOnlyHint: false
@@ -23,20 +23,20 @@ routing:
     - "report this to support"
     - "I have a feature request"
   anti_triggers:
-    - phrase: "no, I meant / still nothing / ugh"
+    - phrase: "report this specific empty/wrong result to the team"
       route_to: leadbay_report_friction
     - phrase: "log the email I sent"
       route_to: leadbay_report_outreach
-  prefer_when: "the user explicitly wants the Leadbay TEAM to receive a message they authored — or accepts your offer to report an error. For silent, agent-detected friction signals use leadbay_report_friction instead."
+  prefer_when: "the user explicitly wants the Leadbay TEAM to receive a message they authored — or accepts your offer to report an error. When the report is about one specific tool result that disappointed them, use leadbay_report_friction instead."
   examples:
     positive:
       - "Send feedback to the team: the lead scores feel off this week."
-      - "Can you report a bug? Pulling leads in Lyon returns nothing."
+      - "Can you tell Leadbay the onboarding was confusing?"
       - "Tell Leadbay I'd love a way to schedule my morning check-in."
     negative:
-      - "No, I meant Wisconsin not Wyoming."
+      - "Pulling leads in Lyon returns nothing — report that."
+      - "Ugh, this never finds what I'm looking for. Show me today's leads."
       - "I emailed Acme — log that outreach."
-      - "Thumbs down on this lead."
 rendering_hint: |
   Confirm the exact wording with the user BEFORE calling (this is sent to
   the team). After sending, show a one-line confirmation from the result's
@@ -48,6 +48,10 @@ next_steps: send-feedback
 Deliver a user-authored message to the Leadbay team's feedback inbox — the same
 destination as the web app's feedback form. **You do not write the feedback;
 the user does.** Capture their words, confirm the phrasing, then send.
+
+**Venting is not consent.** If the user is simply frustrated and has not asked
+for anything to be sent, do NOT call this tool — keep solving their actual
+request. You may offer once; send only if they say yes.
 
 ## Parameters
 - `message` (required) — the user's feedback, in their own words. Confirm it
@@ -68,8 +72,8 @@ you may OFFER: *"Want me to send feedback about this to the Leadbay team?"*
 - `sent: false` → delivery wasn't possible (feedback not available on this
   client). Tell the user it was NOT sent. Do not claim success.
 
-This is the only "talk to the Leadbay team" tool. It does not mutate any
-Leadbay data. For silent friction signals you detect yourself, use
-`leadbay_report_friction` instead.
+This is the general "talk to the Leadbay team" tool. It does not mutate any
+Leadbay data. To report one specific tool result that disappointed the user —
+with their agreement — use `leadbay_report_friction` instead.
 
 {{include:next-steps/send-feedback}}

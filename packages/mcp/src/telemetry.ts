@@ -100,7 +100,16 @@ export interface TelemetryHandle {
   captureAgentMemoryCaptured(props: AgentMemoryCapturedProps, identity?: CaptureIdentity): void;
   captureAgentMemoryRecalled(props: AgentMemoryRecalledProps, identity?: CaptureIdentity): void;
   captureAgentMemoryPruned(props: AgentMemoryPrunedProps, identity?: CaptureIdentity): void;
-  captureFrictionReported(props: FrictionReportedProps, identity?: CaptureIdentity): void;
+  // Returns whether the report was actually accepted for delivery (sent to
+  // PostHog, or buffered pending identity resolution). Returns FALSE when there
+  // is no PostHog sink at all — e.g. a Sentry-only handle, a failed PostHog
+  // init, or NOOP. leadbay_report_friction is consent-gated and user-visible,
+  // so the tool must report honestly rather than infer delivery from the handle
+  // it was given (product#3943).
+  captureFrictionReported(
+    props: FrictionReportedProps,
+    identity?: CaptureIdentity
+  ): boolean;
   captureException(err: unknown, ctx: ExceptionCtx): void;
   // User-authored feedback → Sentry's feedback inbox, the SAME place the
   // web app's feedback form lands (Sentry.captureFeedback). name/email are
@@ -130,7 +139,8 @@ export const NOOP_TELEMETRY: TelemetryHandle = {
   captureAgentMemoryCaptured: () => {},
   captureAgentMemoryRecalled: () => {},
   captureAgentMemoryPruned: () => {},
-  captureFrictionReported: () => {},
+  // NOOP delivers nothing — say so, so the tool never claims a false send.
+  captureFrictionReported: () => false,
   captureException: () => {},
   captureFeedback: async () => false,
   captureUpdateCheck: () => {},
@@ -415,7 +425,12 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
       emit(EV_AGENT_MEMORY_PRUNED, { ...props }, identity);
     },
     captureFrictionReported(props, identity) {
+      // `emit` silently no-ops without a PostHog sink, which for this event
+      // would mean telling the user their report was shared when it went
+      // nowhere. Report the sink's real availability instead.
+      if (!posthog) return false;
       emit(EV_FRICTION_REPORTED, { ...props }, identity);
+      return true;
     },
     captureUpdateCheck(props) {
       emit(EV_MCP_UPDATE_CHECK, { ...props });

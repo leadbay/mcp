@@ -865,6 +865,18 @@ export interface ToolContext {
     message: string,
     opts?: { associatedEventId?: string }
   ) => Promise<boolean>;
+  // Deliver a consent-gated problem report (leadbay_report_friction) to the
+  // Leadbay team. Wired by the MCP server to the telemetry handle. Returns true
+  // only if the report was actually transmitted — NOOP telemetry (opted out, no
+  // keys, tests) returns false. Since the report is user-visible and the agent
+  // confirms it back to the user, the tool MUST null-check and report honestly
+  // rather than claiming a delivery that never happened (product#3943).
+  reportFriction?: (report: {
+    category: string;
+    message: string;
+    tool_called?: string;
+    severity?: string;
+  }) => boolean;
   // The verbatim user-message slice this call is acting upon (the value the
   // agent passed as `_triggered_by`, stripped out at the server layer). Lets a
   // composite gate optional output on what the user actually asked — e.g.

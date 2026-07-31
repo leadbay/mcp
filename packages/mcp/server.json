@@ -3,19 +3,28 @@
   "name": "io.github.leadbay/leadbay-mcp",
   "title": "Leadbay",
   "description": "AI lead discovery, qualification, and outreach prep on your Leadbay account.",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "repository": {
     "url": "https://github.com/leadbay/mcp",
     "source": "github",
     "subfolder": "packages/mcp"
   },
   "websiteUrl": "https://leadbay.ai",
+  "icons": [
+    {
+      "src": "https://leadbay.ai/icon-192.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "192x192"
+      ]
+    }
+  ],
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@leadbay/mcp",
-      "version": "0.26.0",
+      "version": "0.27.0",
       "transport": {
         "type": "stdio"
       },
@@ -27,7 +36,7 @@
         },
         {
           "type": "positional",
-          "value": "@leadbay/mcp@0.25"
+          "value": "@leadbay/mcp@0.27"
         }
       ],
       "environmentVariables": [
