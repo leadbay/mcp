@@ -74,5 +74,13 @@ One card per account, ordered by the same key. Per card:
   Tier-1 threshold used, and an explicit line that `[HYP]` figures are modelled,
   not measured. If any input was a placeholder, say so here.
 
-Header KPIs across the top: total cash on the plan, total upsell potential,
-count qualified, count activated. Each carries its provenance class.
+Header KPIs across the top, each carrying its provenance class. **The money
+KPIs are conditional on the same inputs as the money column** — when those
+weren't supplied, drop total-cash and total-upsell entirely rather than
+reintroducing modelled euro totals the chat table just omitted. Deck and table
+must agree about which fields exist.
+
+- **Money inputs supplied** — total cash on the plan, total upsell potential,
+  count qualified, count activated.
+- **Money inputs absent** — accounts on the plan, count qualified, count with a
+  reachable contact, count activated. No euro totals anywhere.

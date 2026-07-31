@@ -856,7 +856,6 @@ required_calls:
   - leadbay_get_qualification_questions
   - leadbay_resolve_import_rows
   - leadbay_import_leads
-  - leadbay_get_lead_custom_fields
   - leadbay_bulk_qualify_leads
   - leadbay_qualify_status
   - leadbay_scan_portfolio_signals
@@ -867,7 +866,9 @@ required_byproducts:
   - "PROVENANCE LEDGER"
 success_criteria:
   - "printed the PROVENANCE LEDGER before rendering the plan or building any artifact, with one row per emitted field"
-  - "actually ingested the extract — resolved the rows, imported them, and read the revenue values back — rather than describing the import it would do"
+  - "actually ingested the extract — resolved the rows and imported them — rather than describing the import it would do"
+  - "took the revenue figures from the supplied extract itself (the authoritative [ERP] source) rather than trying to read them back via the lens-scoped leadbay_get_lead_custom_fields, which cannot reach imported accounts outside the active lens"
+  - "used a ranking key the data supports: cash when a benchmark was supplied, otherwise measured ca12 descending with cash shown OMITTED — never a benchmark invented to make the cash sort work"
   - "reused an existing custom field where one already matched (leadbay_list_mappable_fields) instead of creating a duplicate for the same metric"
   - "built the ranked cohort from the IMPORTED lead ids joined to the custom-field readback — did NOT re-derive the universe from a fresh pull_followups/pull_leads sweep, which drops imported accounts that aren't in Monitor or the active lens"
   - "qualified the imported cohort by explicit leadIds (not the count-based lens path, which would qualify unrelated wishlist leads)"

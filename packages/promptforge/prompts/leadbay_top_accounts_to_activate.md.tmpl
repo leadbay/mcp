@@ -84,13 +84,17 @@ Call `leadbay_account_status` for my quota and active lens. Then settle **which 
 
 **Before you settle on DEGRADED, check whether the revenue is already here.** A returning user who imported an extract in a previous session has the figures sitting on their leads as custom fields, and falling back to a conquest plan would throw away data they already gave us. So when no extract is attached to *this* request, call `leadbay_list_mappable_fields` and look for revenue-shaped custom fields (12-month revenue, per-family revenue, last order date, order count). If revenue-shaped fields exist, **say so and ask me to re-attach the extract** (or give you a lead-id list for the earlier import) before claiming FULL MODE. You cannot reconstruct the prior cohort from `leadbay_pull_followups` / `leadbay_pull_leads`: imported leads are not auto-promoted to Monitor and need not sit in the active lens, so a view-derived cohort silently omits exactly the accounts the previous import added — and a cash ranking over a partial cohort is worse than an honest conquest plan, because it looks complete.
 
-So: report what you found ("revenue fields exist on this org, last imported <date>"), offer the one-step upgrade, and **meanwhile deliver the DEGRADED plan** rather than blocking on it (deliver first, ask alongside). Only if I hand you the extract or the ids do you switch to FULL MODE — and note stale revenue ranks accounts wrongly, so say when the figures were imported.
+So: report what you found ("this org has revenue-shaped custom fields — `<field names>`"), offer the one-step upgrade, and **meanwhile deliver the DEGRADED plan** rather than blocking on it (deliver first, ask alongside). Only if I hand you the extract or the ids do you switch to FULL MODE.
+
+⚠ **Do not state when those figures were imported.** `leadbay_list_mappable_fields` returns field definitions (id, name, type, mapping value) and **no import timestamp**, so any date you attach would be invented provenance — the exact failure this deliverable guards against. Say the vintage is unknown, and that stale revenue ranks accounts wrongly, so I should confirm or re-attach.
 
 Never silently assume. If you can't tell whether the extract exists, state which mode you're proceeding in and why, in one line — then **keep going**.
 
 **DELIVER FIRST, ASK ALONGSIDE — never gate the plan on a missing input.** Only ONE thing can stop you before you have shipped a ranked list of real accounts: not knowing **whose** plan this is (a company-identity mismatch you genuinely cannot resolve). Everything else is a question you carry *next to* the delivered plan, not a reason to withhold it:
 
-- **No benchmark?** Not a blocker. It only affects the money column — which in DEGRADED MODE is OMITTED anyway. Pull, qualify, rank and deliver; ask for the median €/employee/year underneath the plan.
+- **No benchmark?** Never a reason to stop — but what it costs depends on the mode, so be precise:
+  - **DEGRADED MODE** — costs nothing. The money column is OMITTED anyway. Pull, qualify, rank by the Leadbay signal, deliver, and ask for the median €/employee/year underneath the plan.
+  - **FULL MODE** — you have `ca12` `[ERP]` but no benchmark, so `marché` and therefore `pot12` and `cash` cannot be computed, and **cash cannot be the sort key**. Do NOT invent a benchmark to make the sort work. Rank by measured `ca12` descending instead (a real, fully-`[ERP]` ordering — biggest current accounts first), state in the plan's header that cash-to-capture awaits the benchmark, and show `cash` as OMITTED. Say plainly that the ranking will change once the benchmark lands. That ships a genuinely useful, fully-measured plan today rather than a modelled one.
 - **No Tier-1 threshold?** Not a blocker. Deliver, and ask alongside.
 - **No territory?** Not a blocker. Default to national, say so in one line, and offer to re-scope.
 - **`last_requested_lens: null`?** Not a blocker — and **do NOT read it as "no lens exists".** `leadbay_account_status` deliberately WITHHOLDS the lens id unless the request mentioned the lens/audience, so a plain "top 50 accounts to activate" returns null even when I have a perfectly good active lens. Default to calling `leadbay_pull_leads` with **no** `lensId` and let it resolve my active lens; capture `response.lens.id` from that result and pin it thereafter. Only create or switch a lens when I explicitly asked to scope or change the audience (e.g. a `territory` argument) — inventing a new lens silently changes what I see in the product.
@@ -112,7 +116,9 @@ If the org has none set, or they don't discriminate for this exercise, recommend
 
 {{include:gates/column-preservation-plan}}
 
-The import's `LEADBAY_ID` write-back gives you the `lead_id` join key every card needs. Read the numbers back per account with `leadbay_get_lead_custom_fields` — note this is **one call per lead**, so at fifty accounts it is fifty calls; batch your way through it and don't re-read what you already have.
+The import's `LEADBAY_ID` write-back gives you the `lead_id` join key every card needs.
+
+⚠ **The extract you gave me is the authoritative `[ERP]` source — read the revenue from it, not back out of Leadbay.** `leadbay_get_lead_custom_fields` fetches `GET /lenses/{lensId}/leads/{leadId}`, so it is **lens-scoped**: it cannot return values for imported accounts that fall outside the active lens, which is precisely the cohort you just imported. Use it only to spot-check a lead you know is in the lens, or to discover what a *previous* import left behind — never as the mandated path for the current extract's figures. It is also one call per lead, so at fifty accounts it is fifty calls; don't re-read what the file already told you.
 
 ⚠ **Imported leads are NOT auto-promoted to my Monitor view** — lens scoring decides. So Monitor membership tells you what Leadbay is watching, **not** who is a client. When you label an account's pane (identified vs not), call it "Leadbay view membership" or derive client status from the extract — never equate the two.
 
@@ -140,7 +146,11 @@ The import's `LEADBAY_ID` write-back gives you the `lead_id` join key every card
 
 {{include:heuristics/potential-math}}
 
-Rank by `cash` descending in full mode. In degraded mode, rank by `ai_agent_lead_score` then headcount, **state the substitute ranking in the plan's own header**, and title the deliverable for what it is (a conquest plan), not for what it isn't.
+Three ranking keys, by what the data actually supports. **Whichever you use, name it in the plan's own header** — a reader who assumes a money-sort misreads the whole order:
+
+1. **Full mode WITH a benchmark** — rank by `cash` descending (`[HYP]`-tainted; say so).
+2. **Full mode WITHOUT a benchmark** — rank by measured `ca12` descending, a fully-`[ERP]` ordering. `cash` shows as OMITTED and the header says the cash ranking awaits the benchmark.
+3. **Degraded mode** — rank by `ai_agent_lead_score` then headcount, and title the deliverable for what it is (a conquest plan), not for what it isn't.
 
 # PHASE 5 — CONTACTS (consent-gated)
 
