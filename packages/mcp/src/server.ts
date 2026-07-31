@@ -1262,8 +1262,12 @@ export function buildServer(
         // whether delivery actually happened and can confirm honestly to the
         // user instead of always claiming success. Returns false under NOOP
         // telemetry (opted out / no keys / tests), mirroring sendFeedback.
-        reportFriction: (report) => {
-          if (telemetry === NOOP_TELEMETRY) return false;
+        // Delivery is REPORTED by the handle, not inferred from its identity:
+        // a non-NOOP handle can still have no PostHog sink (Sentry-only config,
+        // failed init), and the hosted wrapper is a fresh object that never
+        // equals NOOP_TELEMETRY. Both cases previously produced a false
+        // "shared with the team" confirmation (product#3943).
+        reportFriction: (report) =>
           telemetry.captureFrictionReported({
             category:
               report.category as import("./telemetry-events.js").FrictionCategory,
@@ -1272,9 +1276,7 @@ export function buildServer(
             ...(report.severity
               ? { severity: report.severity as "low" | "medium" | "high" }
               : {}),
-          });
-          return true;
-        },
+          }) === true,
       });
       // Inject `update_available` into account_status returns when an
       // upgrade is cached. Other tools pass through untouched. Done

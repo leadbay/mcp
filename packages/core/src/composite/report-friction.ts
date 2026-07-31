@@ -47,6 +47,14 @@ const VALID_CATEGORIES = new Set<FrictionCategory>([
 
 const VALID_SEVERITIES = new Set(["low", "medium", "high"]);
 
+// `tool_called` is agent-authored and rides along to analytics, but the user
+// only ever approves `message`. The MCP SDK does not validate inputSchema before
+// dispatch (enforcement is ours — see server.ts), so an unchecked string here
+// would be a second unapproved free-text channel — exactly what deleting
+// `details` was meant to close (product#3943). Constrain it to the shape of a
+// real tool name and drop anything else rather than forwarding it.
+const TOOL_NAME_RE = /^leadbay_[a-z0-9_]{1,60}$/;
+
 // Report-message cap. Identical bound to the `_triggered_by` meta-param in
 // packages/mcp/src/server.ts — PostHog property strings balloon quickly, and a
 // report longer than this is almost certainly the agent padding the user's words.
@@ -91,8 +99,9 @@ export const reportFriction: Tool<ReportFrictionParams> = {
       },
       tool_called: {
         type: "string",
+        pattern: "^leadbay_[a-z0-9_]{1,60}$",
         description:
-          "Optional: the tool name that disappointed (if any). E.g. 'leadbay_pull_leads' if pull_leads returned empty when the user expected hits.",
+          "Optional: the bare tool name that disappointed, e.g. 'leadbay_pull_leads'. MUST be a registered leadbay_* tool name and nothing else — this is not a free-text field, and any other value is dropped. Put context in the user-approved `message` instead.",
       },
       severity: {
         type: "string",
@@ -162,10 +171,18 @@ export const reportFriction: Tool<ReportFrictionParams> = {
         ? `${params.message.slice(0, MESSAGE_MAX)}…`
         : params.message;
 
+    // Drop a malformed tool_called rather than rejecting the call: the user's
+    // approved message is the payload that matters, and failing their report
+    // over an agent-side slip would be worse than reporting without the hint.
+    const toolCalled =
+      typeof params.tool_called === "string" && TOOL_NAME_RE.test(params.tool_called)
+        ? params.tool_called
+        : undefined;
+
     const report = {
       category: params.category,
       message,
-      ...(params.tool_called ? { tool_called: params.tool_called } : {}),
+      ...(toolCalled ? { tool_called: toolCalled } : {}),
       ...(params.severity ? { severity: params.severity } : {}),
     };
 

@@ -146,6 +146,51 @@ describe("leadbay_report_friction", () => {
     ]);
   });
 
+  it("drops a tool_called that is not a bare leadbay_* tool name", async () => {
+    // Codex P1: the MCP SDK does not validate inputSchema before dispatch, so
+    // an unconstrained tool_called would be a second agent-authored free-text
+    // channel — the thing deleting `details` was meant to close.
+    mockHttp([]);
+    const junk = [
+      "leadbay_pull_leads — and the user's card number is 4111 1111 1111 1111",
+      "the pull leads tool, which returned nothing for Wisconsin",
+      "LEADBAY_PULL_LEADS",
+      "pull_leads",
+      "leadbay_pull_leads; DROP TABLE leads",
+      "",
+      "   ",
+    ];
+    for (const tool_called of junk) {
+      const result: any = await reportFriction.execute(
+        newClient(),
+        {
+          category: "silent_failure",
+          message: "Nothing came back.",
+          tool_called,
+        } as any,
+        ctxWithTransport()
+      );
+      expect(result.reported).toBe(true);
+      expect(result._friction).not.toHaveProperty("tool_called");
+      expect(JSON.stringify(result._friction)).not.toContain("4111");
+      expect(JSON.stringify(result._friction)).not.toContain("DROP TABLE");
+    }
+  });
+
+  it("keeps a well-formed tool_called", async () => {
+    mockHttp([]);
+    const result: any = await reportFriction.execute(
+      newClient(),
+      {
+        category: "silent_failure",
+        message: "Nothing came back.",
+        tool_called: "leadbay_pull_leads",
+      },
+      ctxWithTransport()
+    );
+    expect(result._friction.tool_called).toBe("leadbay_pull_leads");
+  });
+
   it("rejects an invalid category", async () => {
     mockHttp([]);
     const result: any = await reportFriction.execute(newClient(), {

@@ -242,6 +242,8 @@ export function bindTelemetryIdentity(
     // while the agent tells them it was shared. (The tool returns reported:false
     // when delivery genuinely isn't possible, so the confirmation stays honest.)
     captureFrictionReported: (p) => base.captureFrictionReported(p, identity),
+    // ^ returns the base handle's real delivery result, so a Sentry-only or
+    //   PostHog-less process reports reported:false rather than a false confirm.
     captureException: on((err, ctx) => base.captureException(err, ctx)),
     // captureFeedback is NOT gated by isSuppressed (Codex P2): leadbay_send_feedback
     // is an explicit user-initiated "deliver my message to the team" action, not
