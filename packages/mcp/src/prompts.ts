@@ -359,7 +359,7 @@ const CATALOG: CatalogEntry[] = [
           substitutePlaceholders(leadbay_top_accounts_to_activate, {
             count_or_default: n,
             erp_extract_block: args.erp_extract
-              ? `My revenue extract: **${args.erp_extract}** — ingest it first (Phase 2, FULL MODE) so the ranking is real cash-to-capture, not an estimate.`
+              ? `My revenue extract: **${args.erp_extract}** — ingest it first (Phase 2, FULL MODE) so the ranking rests on my measured \`ca12\` \`[ERP]\` rather than a guess. Cash-to-capture itself stays \`[HYP]\`-tainted (it subtracts \`ca12\` from a modelled \`pot12\`), so keep it labelled as modelled — measured revenue in, modelled upside out.`
               : "I have NOT given you a revenue extract in this request — establish in Phase 0 whether one exists, and if not, deliver the DEGRADED-MODE conquest plan honestly rather than estimating what my accounts already buy.",
             benchmark_block: args.benchmark
               ? `Use **${args.benchmark}** as the €/employee/year benchmark, and show that figure on the deliverable.`

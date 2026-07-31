@@ -859,6 +859,8 @@ required_calls:
   - leadbay_get_lead_custom_fields
   - leadbay_bulk_qualify_leads
   - leadbay_qualify_status
+  - leadbay_scan_portfolio_signals
+  - leadbay_enrich_titles
 forbidden_calls:
   - leadbay_report_outreach
 required_byproducts:
@@ -869,6 +871,8 @@ success_criteria:
   - "reused an existing custom field where one already matched (leadbay_list_mappable_fields) instead of creating a duplicate for the same metric"
   - "built the ranked cohort from the IMPORTED lead ids joined to the custom-field readback — did NOT re-derive the universe from a fresh pull_followups/pull_leads sweep, which drops imported accounts that aren't in Monitor or the active lens"
   - "qualified the imported cohort by explicit leadIds (not the count-based lens path, which would qualify unrelated wishlist leads)"
+  - "scanned why-now signals over the SELECTED cohort (passed its leadIds), so the plan's why-now column reflects accounts actually read rather than a different Monitor population"
+  - "ran the no-spend contact preview (leadbay_enrich_titles discovery mode) so each card has a reachable decision-maker path — without launching a paid reveal unprompted"
   - "delivered a ranked list of real accounts, not a plan-of-a-plan"
   - "tagged every euro figure with its provenance class ([ERP] / [LB] / [SIRENE] / [HYP]) — no untagged euro figure appears"
   - "marked the addressable-spend, year-1-objective and cash-to-capture figures as [HYP] (modelled) and stated the benchmark value used"
