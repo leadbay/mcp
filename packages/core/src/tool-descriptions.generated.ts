@@ -3204,7 +3204,7 @@ Trigger phrases: "report this problem", "tell the Leadbay team this didn't work"
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "user sounds frustrated but has not asked to report anything — keep solving their ask; do NOT route to any delivery tool" → \`leadbay_pull_leads\`; "general feedback, praise, or a feature request the user wants sent" → \`leadbay_send_feedback\`; "log outreach" → \`leadbay_report_outreach\`; "thumbs up / down" → \`leadbay_like_lead\`; "snooze / pushback" → \`leadbay_set_pushback\`.
+Do NOT use for: "user vents about follow-ups but has not asked to report anything — keep solving the ask they actually made" → \`leadbay_pull_followups\`; "user vents about a company or result but has not asked to report anything — answer the underlying question" → \`leadbay_research_lead_by_name_fuzzy\`; "general feedback, praise, or a feature request the user wants sent" → \`leadbay_send_feedback\`; "log outreach" → \`leadbay_report_outreach\`; "thumbs up / down" → \`leadbay_like_lead\`; "snooze / pushback" → \`leadbay_set_pushback\`.
 
 Prefer when: the user has asked for a specific Leadbay problem to be reported, or has said yes to your offer to report one. Frustration on its own is NOT a trigger — offer first, and only call this if they agree.
 
@@ -3284,7 +3284,7 @@ Pick the closest fit; \`other\` is fine when nothing matches:
 
 WHEN TO USE: the user asks you to report a Leadbay problem, or accepts your offer to report one you noticed. The user has seen and approved the message being sent.
 
-WHEN NOT TO USE: unprompted, and not for normal acknowledgement flows. **Bare frustration with no request to report → keep solving their ask. Do NOT reach for a delivery tool at all** — not this one and not \`leadbay_send_feedback\`, which also sends to the team. Venting is not consent; you may offer to report, but send nothing unless they say yes. General feedback, praise, or feature requests the user wants delivered → \`leadbay_send_feedback\`. Thumbs-up/down on a lead → \`leadbay_like_lead\` / \`leadbay_dislike_lead\`. Logged outreach → \`leadbay_report_outreach\`. Snooze a lead → \`leadbay_set_pushback\`.
+WHEN NOT TO USE: unprompted, and not for normal acknowledgement flows. **Bare frustration with no request to report → keep solving the ask they actually made. Do NOT reach for a delivery tool at all** — not this one and not \`leadbay_send_feedback\`, which also sends to the team. Route to whatever their real request was: follow-ups → \`leadbay_pull_followups\`, a named company → research, today's batch → \`leadbay_pull_leads\`. Venting is not consent; you may offer to report, but send nothing unless they say yes. General feedback, praise, or feature requests the user wants delivered → \`leadbay_send_feedback\`. Thumbs-up/down on a lead → \`leadbay_like_lead\` / \`leadbay_dislike_lead\`. Logged outreach → \`leadbay_report_outreach\`. Snooze a lead → \`leadbay_set_pushback\`.
 
 After reporting, continue the user's original task — a report is a step on the way
 to actually trying again or pivoting, not the end of the conversation.

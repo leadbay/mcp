@@ -2,6 +2,7 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 
 import { leadbay_report_friction as REPORT_FRICTION_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { COMPOSITE_FILE_TOOL_NAMES } from "./_composite-file-names.js";
 
 // Friction reporting lets a user tell the Leadbay team that a specific tool
 // result let them down — an empty lead list where hits were expected, a wrong
@@ -51,9 +52,14 @@ const VALID_SEVERITIES = new Set(["low", "medium", "high"]);
 // only ever approves `message`. The MCP SDK does not validate inputSchema before
 // dispatch (enforcement is ours — see server.ts), so an unchecked string here
 // would be a second unapproved free-text channel — exactly what deleting
-// `details` was meant to close (product#3943). Constrain it to the shape of a
-// real tool name and drop anything else rather than forwarding it.
-const TOOL_NAME_RE = /^leadbay_[a-z0-9_]{1,60}$/;
+// `details` was meant to close (product#3943).
+//
+// Shape-matching alone is NOT enough: `leadbay_card_4111111111111111` satisfies
+// any `leadbay_[a-z0-9_]+` pattern, so a malformed agent could still smuggle
+// secrets/PII encoded as a fake tool name. Allowlist against the real composite
+// registry instead — it is a dependency-free leaf module (no circular import
+// back through index.ts) and is already audited for drift.
+const KNOWN_TOOL_NAMES: ReadonlySet<string> = COMPOSITE_FILE_TOOL_NAMES;
 
 // Report-message cap. Identical bound to the `_triggered_by` meta-param in
 // packages/mcp/src/server.ts — PostHog property strings balloon quickly, and a
@@ -95,13 +101,13 @@ export const reportFriction: Tool<ReportFrictionParams> = {
       message: {
         type: "string",
         description:
-          "What the user wants to report, in their own words (cap 500 chars). Required. Confirm the wording with the user BEFORE calling — this is sent to the Leadbay team and the user must have agreed to it. Never call this tool unprompted.",
+          "What the user wants to report, in their own words (cap 500 chars). Required. If the user already stated the problem when asking you to report it, those words ARE the message — send them in the same turn; do NOT ask them to re-confirm wording they just gave you. Only go back to them when you would otherwise have to invent the wording. Never call this tool unprompted.",
       },
       tool_called: {
         type: "string",
         pattern: "^leadbay_[a-z0-9_]{1,60}$",
         description:
-          "Optional: the bare tool name that disappointed, e.g. 'leadbay_pull_leads'. MUST be a registered leadbay_* tool name and nothing else — this is not a free-text field, and any other value is dropped. Put context in the user-approved `message` instead.",
+          "Optional: the bare name of the registered Leadbay tool that disappointed, e.g. 'leadbay_pull_leads'. This is NOT a free-text field — any value that is not an actual registered tool name is dropped, so never encode context, detail, or user data here. Put context in the user-approved `message` instead.",
       },
       severity: {
         type: "string",
@@ -175,7 +181,8 @@ export const reportFriction: Tool<ReportFrictionParams> = {
     // approved message is the payload that matters, and failing their report
     // over an agent-side slip would be worse than reporting without the hint.
     const toolCalled =
-      typeof params.tool_called === "string" && TOOL_NAME_RE.test(params.tool_called)
+      typeof params.tool_called === "string" &&
+      KNOWN_TOOL_NAMES.has(params.tool_called)
         ? params.tool_called
         : undefined;
 

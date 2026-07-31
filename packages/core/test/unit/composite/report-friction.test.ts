@@ -159,6 +159,12 @@ describe("leadbay_report_friction", () => {
       "leadbay_pull_leads; DROP TABLE leads",
       "",
       "   ",
+      // Shape-valid but NOT a registered tool: a lower-case leadbay_* string is
+      // a viable smuggling channel for secrets/PII if only the pattern is
+      // checked, so the allowlist must reject it too.
+      "leadbay_card_4111111111111111",
+      "leadbay_user_said_his_password_is_hunter2",
+      "leadbay_not_a_real_tool",
     ];
     for (const tool_called of junk) {
       const result: any = await reportFriction.execute(

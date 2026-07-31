@@ -44,16 +44,22 @@ describe("audit: venting never routes to a delivery tool", () => {
     const { friction } = await descriptions();
     expect(friction.length).toBeGreaterThan(0);
 
-    // The anti-trigger for un-asked-for frustration must NOT point at the other
-    // delivery tool. Scoped to that one entry: the anti-trigger list is rendered
-    // on a single line, so match only up to the entry's own `→ tool` arrow
-    // rather than letting it run into the next entry's route.
-    const ventEntry = friction.match(
-      /frustrated but has not asked to report anything[^→]*→\s*`?([a-z_]+)`?/
-    );
-    expect(ventEntry).not.toBeNull();
-    expect(ventEntry![1]).not.toBe("leadbay_send_feedback");
-    expect(ventEntry![1]).not.toBe("leadbay_report_friction");
+    // EVERY "user vents but hasn't asked to report" anti-trigger must route to
+    // a task tool, never to a delivery tool. Scoped per entry: the list renders
+    // on one line, so match only up to each entry's own `→ tool` arrow rather
+    // than letting it run into the next entry's route.
+    const ventEntries = [
+      ...friction.matchAll(/vents[^→]*has not asked to report anything[^→]*→\s*`?([a-z_]+)`?/g),
+    ];
+    expect(ventEntries.length).toBeGreaterThan(0);
+    const DELIVERY_TOOLS = ["leadbay_send_feedback", "leadbay_report_friction"];
+    for (const [, route] of ventEntries) {
+      expect(DELIVERY_TOOLS).not.toContain(route);
+    }
+    // And the routes must be task-specific rather than one hard-coded default,
+    // so a vent about follow-ups isn't steered into daily discovery.
+    const routes = new Set(ventEntries.map(([, r]) => r));
+    expect(routes.size).toBeGreaterThan(1);
     // And it must state the rule positively.
     expect(friction).toMatch(/[Vv]enting is not consent/);
     expect(friction).toMatch(/do NOT reach for a delivery tool/i);
