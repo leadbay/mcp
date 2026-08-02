@@ -212,6 +212,33 @@ export function compactBody(
   );
 }
 
+/** Country-level location values are silently useless: the backend excludes
+ *  countries from admin-area search (product#3885), so the trigram resolver
+ *  falls through to an arbitrary same-named town ("France" → the commune of
+ *  Francs; "United States" → Statesboro) and the whole job is fenced to one
+ *  village. In live E2E evals 4/4 agents passed a country label despite the
+ *  description saying not to — prose does not prevent this, so the tool
+ *  rejects it with a named, actionable error (tracked backend-side in
+ *  product#3939). */
+const COUNTRY_LOCATION_VALUES = new Set([
+  "united states", "united states of america", "usa", "u.s.", "u.s.a.", "us",
+  "america", "etats-unis", "états-unis", "france", "fr",
+]);
+
+export function rejectCountryLocations(locations: unknown): void {
+  if (!Array.isArray(locations)) return;
+  for (const loc of locations) {
+    if (typeof loc === "string" && COUNTRY_LOCATION_VALUES.has(loc.trim().toLowerCase())) {
+      throw {
+        error: true,
+        code: "COUNTRY_LEVEL_LOCATION",
+        message: `filters.locations value "${loc}" is country-level — it would silently fence the search to a same-named town, not the whole country.`,
+        hint: "Whole-country intent = OMIT filters.locations entirely (each universe is single-country). Use city/state/region names for narrower fences.",
+      };
+    }
+  }
+}
+
 /** Tolerant reader for the search `filters` object. The RESULT payload's
  *  company shape (`employees: {min, max, known}`) teaches agents a nested
  *  employees object, and in live evals 2/2 cold agents passed exactly that

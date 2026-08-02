@@ -238,6 +238,21 @@ describe("leadbay_find_new_leads", () => {
     });
   });
 
+  it("rejects country-level locations with a named, actionable error before any spend", async () => {
+    // 4/4 live E2E agents passed a country label; the backend silently
+    // fences it to a same-named town (product#3939).
+    mockHttp([]);
+    await expect(
+      findNewLeads.execute(newClient(), {
+        example_lead: { description: "College with employer-facing B2B programs." },
+        filters: { locations: ["United States"] },
+        count: 5,
+        request_id: "probe-country",
+      })
+    ).rejects.toMatchObject({ code: "COUNTRY_LEVEL_LOCATION" });
+    expect(getHttpRequests()).toHaveLength(0);
+  });
+
   it("429 refusal (rate cap) — propagates as a quota error", async () => {
     mockHttp([
       {

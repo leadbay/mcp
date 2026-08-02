@@ -14,6 +14,7 @@ import {
   collectJobSnapshot,
   compactBody,
   normalizeSearchFilters,
+  rejectCountryLocations,
   splitItems,
   TERMINAL_JOB_STATES,
   waitForJob,
@@ -178,6 +179,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     params: FindNewLeadsParams,
     ctx?: ToolContext
   ) => {
+    rejectCountryLocations(params.filters?.locations);
     const body = compactBody({
       query: params.query,
       example_lead: params.example_lead,
