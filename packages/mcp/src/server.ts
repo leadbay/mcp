@@ -327,9 +327,10 @@ export function buildServerInstructions(exposed: Set<string>): string {
   if (has("leadbay_report_outreach")) {
     parts.push(VERIFICATION);
   }
-  // Friction mandate follows verification — both are hard "you MUST call X"
-  // rules with verbatim trigger phrases; they belong adjacent and near the
-  // top so context-truncating hosts keep both in scope.
+  // Problem-report guidance follows verification. Consent-gated, not a
+  // mandate: the agent reports only when the user asks or accepts an offer,
+  // and always shows the confirmation (product#3943). Kept near the top so
+  // context-truncating hosts retain the "never call it unprompted" rule.
   if (has("leadbay_report_friction")) {
     parts.push(FRICTION);
   }
@@ -978,22 +979,10 @@ export function buildServer(
     };
   };
 
-  const captureFrictionTelemetry = (toolName: string, result: any) => {
-    if (toolName !== "leadbay_report_friction") return;
-    if (!result || typeof result !== "object") return;
-    const fr = result._friction;
-    if (!fr || typeof fr !== "object") return;
-    if (typeof fr.category !== "string" || typeof fr.user_quote !== "string") {
-      return;
-    }
-    telemetry.captureFrictionReported({
-      category: fr.category,
-      user_quote: fr.user_quote,
-      ...(typeof fr.tool_called === "string" ? { tool_called: fr.tool_called } : {}),
-      ...(typeof fr.severity === "string" ? { severity: fr.severity } : {}),
-      ...(typeof fr.details === "string" ? { details: fr.details } : {}),
-    });
-  };
+  // NOTE: friction reporting is no longer captured post-hoc from the tool
+  // result. It is threaded into ToolContext as a `reportFriction` transport
+  // (see the ctx construction below) so the tool learns whether delivery
+  // actually succeeded and can confirm honestly to the user (product#3943).
 
   const captureAgentMemoryTelemetry = (toolName: string, result: any) => {
     if (!result || typeof result !== "object") return;
@@ -1050,7 +1039,19 @@ export function buildServer(
     }
 
     const rawArgs = (req.params.arguments ?? {}) as Record<string, unknown>;
-    const { triggered_by, cleaned: args } = extractTriggeredBy(rawArgs);
+    const { triggered_by: rawTriggeredBy, cleaned: args } = extractTriggeredBy(rawArgs);
+    // Privacy control (product#3943): `leadbay_report_friction` is the one tool
+    // whose entire purpose is sending user words to the team, and the user has
+    // approved EXACTLY the `message` argument — nothing else. `_triggered_by` is
+    // a separate verbatim slice of their prompt they never confirmed, so
+    // forwarding it would re-introduce the unapproved conversation capture the
+    // MCP-directory review rejected. The field is still REQUIRED on the call
+    // (the mandate below is unchanged, so the agent's provenance discipline and
+    // the LAST_PROMPT_REQUIRED guard stay intact) — it is simply never emitted
+    // to telemetry for this tool. Same shape as the `leadbay_set_telemetry`
+    // exemption above: drop the capture, keep the contract.
+    const triggered_by =
+      name === "leadbay_report_friction" ? undefined : rawTriggeredBy;
     // MCP 2025-11-25 §Progress: when the client passes a progressToken
     // in _meta, capable composites can stream notifications/progress
     // updates back. Cheap default: progress is undefined when the client
@@ -1194,7 +1195,10 @@ export function buildServer(
           isError: true,
         };
       }
-      if (COMPOSITE_FILE_TOOL_NAMES.has(name) && !triggered_by) {
+      // Guard reads the RAW value: the mandate itself is unchanged for every
+      // composite tool. Only the telemetry emission is redacted (see above), so
+      // a friction call still must carry `_triggered_by` to get past this gate.
+      if (COMPOSITE_FILE_TOOL_NAMES.has(name) && !rawTriggeredBy) {
         const envelope = {
           error: true as const,
           code: "LAST_PROMPT_REQUIRED",
@@ -1244,13 +1248,35 @@ export function buildServer(
         elicit,
         // Verbatim user-message slice (stripped from args above). Lets a
         // composite gate optional output on what the user asked — account_status
-        // uses it to surface the lens only when asked (product#3761).
-        triggered_by,
+        // uses it to surface the lens only when asked (product#3761). Uses the
+        // RAW value: the friction redaction above is an ANALYTICS control, and
+        // must not change in-process tool behaviour.
+        triggered_by: rawTriggeredBy,
         // Route leadbay_send_feedback to Sentry's feedback inbox (same place
         // the web app's form lands). NOOP_TELEMETRY returns false, so the
         // tool reports honestly when telemetry is off.
         sendFeedback: (message, fbOpts) =>
           telemetry.captureFeedback(message, fbOpts),
+        // Consent-gated problem report (product#3943). Threaded as a transport
+        // — rather than captured post-hoc from the result — so the tool knows
+        // whether delivery actually happened and can confirm honestly to the
+        // user instead of always claiming success. Returns false under NOOP
+        // telemetry (opted out / no keys / tests), mirroring sendFeedback.
+        // Delivery is REPORTED by the handle, not inferred from its identity:
+        // a non-NOOP handle can still have no PostHog sink (Sentry-only config,
+        // failed init), and the hosted wrapper is a fresh object that never
+        // equals NOOP_TELEMETRY. Both cases previously produced a false
+        // "shared with the team" confirmation (product#3943).
+        reportFriction: (report) =>
+          telemetry.captureFrictionReported({
+            category:
+              report.category as import("./telemetry-events.js").FrictionCategory,
+            message: report.message,
+            ...(report.tool_called ? { tool_called: report.tool_called } : {}),
+            ...(report.severity
+              ? { severity: report.severity as "low" | "medium" | "high" }
+              : {}),
+          }) === true,
       });
       // Inject `update_available` into account_status returns when an
       // upgrade is cached. Other tools pass through untouched. Done
@@ -1370,7 +1396,6 @@ export function buildServer(
           });
         }
         captureAgentMemoryTelemetry(name, env.structured);
-        captureFrictionTelemetry(name, env.structured);
         if (
           name === "leadbay_create_topup_link" &&
           typeof (env.structured as any)?.url === "string"
@@ -1432,7 +1457,6 @@ export function buildServer(
         }
       }
       captureAgentMemoryTelemetry(name, result);
-      captureFrictionTelemetry(name, result);
       if (
         name === "leadbay_create_topup_link" &&
         typeof (result as any)?.url === "string"

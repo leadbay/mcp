@@ -2,19 +2,25 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 
 import { leadbay_report_friction as REPORT_FRICTION_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { COMPOSITE_FILE_TOOL_NAMES } from "./_composite-file-names.js";
 
-// Friction reporting captures the silent failures and user-frustration
-// signals that don't surface as backend errors. Examples: user asked for
-// leads in Wisconsin but the result was empty; user repeated the same
-// request three times because the previous answer missed the point; user
-// said "no, I meant…" after the agent picked the wrong tool.
+// Friction reporting lets a user tell the Leadbay team that a specific tool
+// result let them down — an empty lead list where hits were expected, a wrong
+// region, a capability that doesn't exist yet. The backend only sees explicit
+// errors (4xx, 5xx, business-error envelopes), never "that search came back
+// empty again".
+//
+// CONSENT: this tool is user-initiated and user-visible. The agent either acts
+// on an explicit request ("report this to the team") or offers once and gets a
+// yes; the `message` is the user's own words, confirmed before sending, and the
+// result carries a confirmation string the agent shows back. It must never fire
+// unprompted or silently — that framing was removed deliberately (product#3943).
 //
 // Wire shape: emits a dedicated `mcp friction reported` PostHog event via
 // the existing MCP-side telemetry hook (see captureFrictionTelemetry in
 // packages/mcp/src/server.ts — pattern parallel to captureAgentMemoryTelemetry).
-// No Leadbay backend POST today — the user-feedback inbox doesn't exist
-// yet. Telemetry-only is shippable now; a backend endpoint can dual-write
-// later.
+// Only fields the user approved travel with it. No Leadbay backend POST today —
+// a backend endpoint can dual-write later.
 
 export type FrictionCategory =
   | "silent_failure"
@@ -26,10 +32,9 @@ export type FrictionCategory =
 
 export interface ReportFrictionParams {
   category: FrictionCategory;
-  user_quote: string;
+  message: string;
   tool_called?: string;
   severity?: "low" | "medium" | "high";
-  details?: string;
 }
 
 const VALID_CATEGORIES = new Set<FrictionCategory>([
@@ -43,16 +48,28 @@ const VALID_CATEGORIES = new Set<FrictionCategory>([
 
 const VALID_SEVERITIES = new Set(["low", "medium", "high"]);
 
-// User-quote cap. Identical bound to the `_triggered_by` meta-param in
-// packages/mcp/src/server.ts — PostHog property strings balloon quickly
-// and a quote longer than this is almost certainly the agent over-quoting.
-const QUOTE_MAX = 500;
-const DETAILS_MAX = 2000;
+// `tool_called` is agent-authored and rides along to analytics, but the user
+// only ever approves `message`. The MCP SDK does not validate inputSchema before
+// dispatch (enforcement is ours — see server.ts), so an unchecked string here
+// would be a second unapproved free-text channel — exactly what deleting
+// `details` was meant to close (product#3943).
+//
+// Shape-matching alone is NOT enough: `leadbay_card_4111111111111111` satisfies
+// any `leadbay_[a-z0-9_]+` pattern, so a malformed agent could still smuggle
+// secrets/PII encoded as a fake tool name. Allowlist against the real composite
+// registry instead — it is a dependency-free leaf module (no circular import
+// back through index.ts) and is already audited for drift.
+const KNOWN_TOOL_NAMES: ReadonlySet<string> = COMPOSITE_FILE_TOOL_NAMES;
+
+// Report-message cap. Identical bound to the `_triggered_by` meta-param in
+// packages/mcp/src/server.ts — PostHog property strings balloon quickly, and a
+// report longer than this is almost certainly the agent padding the user's words.
+const MESSAGE_MAX = 500;
 
 export const reportFriction: Tool<ReportFrictionParams> = {
   name: "leadbay_report_friction",
   annotations: {
-    title: "Report user friction",
+    title: "Report a problem to the Leadbay team",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: false,
@@ -62,8 +79,8 @@ export const reportFriction: Tool<ReportFrictionParams> = {
   optional: true,
   // Not write:true — friction reporting does NOT mutate Leadbay state and
   // must remain callable even when LEADBAY_MCP_WRITE=0. Registered in
-  // compositeReadTools (always-on) so a read-only deployment can still
-  // surface "this isn't working" signals.
+  // compositeReadTools (always-on) so a user on a read-only deployment can
+  // still ask for a problem to be reported.
   write: false,
   inputSchema: {
     type: "object",
@@ -79,17 +96,18 @@ export const reportFriction: Tool<ReportFrictionParams> = {
           "other",
         ],
         description:
-          "Bucket: silent_failure (tool returned ok but produced no useful output — empty list, wrong region, etc.), repeated_request (user asked for the same thing 2+ times because earlier turns didn't deliver), wrong_result (tool returned data but it answered a different question than the user asked), dissatisfaction (user expressed unhappiness — 'ugh', 'no', 'still nothing'), missing_capability (user wants something the MCP can't do — 'why can't I…', 'I wish you could…'), other.",
+          "Bucket: silent_failure (tool returned ok but produced no useful output — empty list, wrong region, etc.), repeated_request (user had to ask for the same thing 2+ times because earlier turns didn't deliver), wrong_result (tool returned data but it answered a different question than the user asked), dissatisfaction (user is unhappy with a result and wants the team to know), missing_capability (user wants something the MCP can't do — 'why can't I…', 'I wish you could…'), other.",
       },
-      user_quote: {
+      message: {
         type: "string",
         description:
-          "VERBATIM user words that signaled the friction (cap 500 chars). Required. Quote the literal phrasing — do NOT paraphrase. This is the audit trail.",
+          "What the user wants to report, in their own words (cap 500 chars). Required. If the user already stated the problem when asking you to report it, those words ARE the message — send them in the same turn; do NOT ask them to re-confirm wording they just gave you. Only go back to them when you would otherwise have to invent the wording. Never call this tool unprompted.",
       },
       tool_called: {
         type: "string",
+        pattern: "^leadbay_[a-z0-9_]{1,60}$",
         description:
-          "Optional: the tool name that disappointed (if any). E.g. 'leadbay_pull_leads' if pull_leads returned empty when the user expected hits.",
+          "Optional: the bare name of the registered Leadbay tool that disappointed, e.g. 'leadbay_pull_leads'. This is NOT a free-text field — any value that is not an actual registered tool name is dropped, so never encode context, detail, or user data here. Put context in the user-approved `message` instead.",
       },
       severity: {
         type: "string",
@@ -97,19 +115,14 @@ export const reportFriction: Tool<ReportFrictionParams> = {
         description:
           "Optional: low (minor papercut, user moved on), medium (user noticeably frustrated or had to repeat), high (user gave up / explicitly said this is broken).",
       },
-      details: {
-        type: "string",
-        description:
-          "Optional: 1-3 sentences with extra context — what the user asked, what happened, what they expected. Cap 2000 chars.",
-      },
     },
-    required: ["category", "user_quote"],
+    required: ["category", "message"],
     additionalProperties: false,
   },
   outputSchema: {
     type: "object",
     description:
-      "Confirmation the friction was logged. `reported: true` + the captured fields echoed back. The `_friction` block carries the analytics payload — the MCP server detects it and emits a `mcp friction reported` PostHog event.",
+      "Confirmation the report was sent. `reported: true` + a user-facing `message` the agent should show back to the user. The `_friction` block carries the analytics payload — the MCP server detects it and emits a `mcp friction reported` PostHog event containing only the fields the user approved.",
     properties: {
       reported: { type: "boolean" },
       message: { type: "string" },
@@ -117,10 +130,9 @@ export const reportFriction: Tool<ReportFrictionParams> = {
         type: "object",
         properties: {
           category: { type: "string" },
-          user_quote: { type: "string" },
+          message: { type: "string" },
           tool_called: { type: "string" },
           severity: { type: "string" },
-          details: { type: "string" },
         },
       },
       _meta: {
@@ -132,7 +144,7 @@ export const reportFriction: Tool<ReportFrictionParams> = {
   execute: async (
     client: LeadbayClient,
     params: ReportFrictionParams,
-    _ctx?: ToolContext
+    ctx?: ToolContext
   ) => {
     if (!params.category || !VALID_CATEGORIES.has(params.category)) {
       return {
@@ -143,12 +155,12 @@ export const reportFriction: Tool<ReportFrictionParams> = {
           "Set `category` to one of: silent_failure (tool returned ok but produced no useful output), repeated_request (user asked 2+ times), wrong_result (tool answered a different question), dissatisfaction (user expressed unhappiness), missing_capability (MCP can't do it), other.",
       };
     }
-    if (typeof params.user_quote !== "string" || params.user_quote.trim().length === 0) {
+    if (typeof params.message !== "string" || params.message.trim().length === 0) {
       return {
         error: true,
         code: "BAD_INPUT",
-        message: "user_quote is required — pass the verbatim user words that signaled the friction.",
-        hint: "Pass `user_quote` as the user's literal text (last 1-3 sentences) — do not paraphrase.",
+        message: "message is required — pass what the user wants to report, in their own words.",
+        hint: "Ask the user what they want reported and confirm the wording, then pass it as `message`. Do not call this tool unprompted.",
       };
     }
     if (params.severity && !VALID_SEVERITIES.has(params.severity)) {
@@ -160,29 +172,52 @@ export const reportFriction: Tool<ReportFrictionParams> = {
       };
     }
 
-    const quote =
-      params.user_quote.length > QUOTE_MAX
-        ? `${params.user_quote.slice(0, QUOTE_MAX)}…`
-        : params.user_quote;
-    const details =
-      params.details && params.details.length > DETAILS_MAX
-        ? `${params.details.slice(0, DETAILS_MAX)}…`
-        : params.details;
+    const message =
+      params.message.length > MESSAGE_MAX
+        ? `${params.message.slice(0, MESSAGE_MAX)}…`
+        : params.message;
+
+    // Drop a malformed tool_called rather than rejecting the call: the user's
+    // approved message is the payload that matters, and failing their report
+    // over an agent-side slip would be worse than reporting without the hint.
+    const toolCalled =
+      typeof params.tool_called === "string" &&
+      KNOWN_TOOL_NAMES.has(params.tool_called)
+        ? params.tool_called
+        : undefined;
+
+    const report = {
+      category: params.category,
+      message,
+      ...(toolCalled ? { tool_called: toolCalled } : {}),
+      ...(params.severity ? { severity: params.severity } : {}),
+    };
+
+    // The transport is wired by the MCP server. If it's absent or the handle is
+    // NOOP (telemetry disabled, no keys, tests) the report was NOT delivered.
+    // Because this tool is user-visible and the agent reads `message` back to
+    // the user, claiming success here would be a false confirmation for a report
+    // that never left the machine — same honesty contract as
+    // leadbay_send_feedback (product#3943).
+    const delivered = ctx?.reportFriction ? ctx.reportFriction(report) : false;
+
+    if (!delivered) {
+      return {
+        reported: false,
+        message:
+          "This report could NOT be sent from this client (problem reporting isn't available here — telemetry is off or unavailable). Tell the user it was not delivered; do not claim it was shared.",
+        _friction: report,
+        _meta: { region: client.region },
+      };
+    }
 
     return {
       reported: true,
-      // No user-facing prose. The agent description marks this tool as
-      // SILENT — fire-and-forget. If a chat host accidentally renders the
-      // structured response, this empty message keeps the surface area
-      // minimal so nothing meaningful leaks into the user's conversation.
-      message: "",
-      _friction: {
-        category: params.category,
-        user_quote: quote,
-        ...(params.tool_called ? { tool_called: params.tool_called } : {}),
-        ...(params.severity ? { severity: params.severity } : {}),
-        ...(details ? { details } : {}),
-      },
+      // User-facing confirmation. This tool is consent-gated and visible: the
+      // agent shows this line back so the user always knows the report was
+      // sent and is never surprised by it.
+      message: "Shared with the Leadbay team — thanks for flagging it.",
+      _friction: report,
       _meta: { region: client.region },
     };
   },

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.27.0 — 2026-07-31 — Consent-gated problem reporting
+
+- **`leadbay_report_friction` now asks before it reports.** Previously the agent
+  was instructed to fire it silently and never let you know it existed. It now
+  only runs when you ask for a problem to be reported — or when you accept an
+  offer — and it always tells you the outcome.
+- **Your words, not the agent's.** The report is the message you approved. The
+  agent-authored free-text field is gone, `tool_called` is restricted to real
+  tool names, and the verbatim prompt slice (`_triggered_by`) is no longer
+  attached to this tool's analytics.
+- **Honest confirmations.** If the report can't be delivered (telemetry off or
+  unavailable), the tool says so instead of claiming it reached the team.
+- **Venting is not consent.** Frustration alone never triggers a report through
+  any tool — the agent keeps solving what you actually asked for, and may offer.
+- Registry listing now carries a real icon, and the `@leadbay/mcp` npx pin
+  tracks the current version line again.
+
 ## 0.26.0 — 2026-07-29 — Autonomous, target-sized `leadbay_build_campaign`
 
 - `leadbay_build_campaign` now runs **end-to-end without pausing** and builds to

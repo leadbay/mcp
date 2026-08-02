@@ -57,9 +57,14 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 43 | **Enrichment stays active until done (no reprompt)** — the core of product#3866: after the user authorizes a paid enrichment, the agent launches via `leadbay_enrich_titles` (which returns `mode:"launched"` immediately — the job runs async), then STAYS ACTIVE in the same turn: it polls `leadbay_bulk_enrich_status` in a loop until done (`all_done`, or the resolvable set plateaus), and reports the completed enrichment (which contacts got emails/phones, counts, refreshed quota via `leadbay_account_status`) on its own — WITHOUT the user having to ask "is it done yet?". Distinct from Workflow 34 (multi-turn campaign builder, where the user *explicitly* says "wait for enrichment to finish" in turn 3); here it is a SINGLE turn and the stay-active behavior must be automatic. | `leadbay_enrich_titles` | "Pull my current leads and enrich their emails — get me the results in this same reply" |
 | 44 | **Pull leads offers "Enrich top leads"** — product#3875: after a `leadbay_pull_leads` on a non-empty batch, the deterministic `next_steps` surfaces an **Enrich top leads** option at position 2 (right after the Triage-board artifact offer) so the discovery→outreach bridge is one click away. It routes to `leadbay_enrich_titles` via the NO-SPEND preview path — previews volume + channels first, spends nothing until the user confirms — so a plain "show me my leads" never triggers an unprompted paid reveal (the #42 consent gate holds). | `leadbay_pull_leads`, `leadbay_enrich_titles` | "Show me my top leads for today" |
 | 45 | **Telemetry enable/disable/status** — product#3879: an in-product control to opt out of / into product-usage telemetry, or check the current setting. `leadbay_set_telemetry` (its `action` argument is `enable`, `disable`, or `status`; default `status`) reads/writes a per-user preference stored on the Leadbay account (`GET /users/me` → `telemetry_enabled`; `POST /users/telemetry`). Telemetry stays ON by default (opt-out). The hosted/web connector honors the flag per-request (a disabled user's events are suppressed). A local/stdio install decides telemetry at startup from `LEADBAY_TELEMETRY_ENABLED` and does not read the account flag, so local opt-out also needs that env var — the tool's copy says so rather than promising local opt-out. | `leadbay_set_telemetry` | "Turn off telemetry — I don't want my usage tracked" |
+<<<<<<< HEAD
 | 46 | **Net-new lead delivery (one ask → qualified, contactable leads)** — "find me 10 gyms around Dallas that would buy our flooring, with someone I can call". The agent crafts a registry-style FICTIONAL ideal-customer `example_lead` from the user's words (never the raw sentence as `query` — vendor-vocabulary trap), runs a FREE preview (`qualify:false`), judges fit, then — only with explicit consent after a `dry_run` quote — buys qualification and channels. Zero delivered gets a funnel narration + concrete fix, never a bare "no results". Backend: `POST /1.6/mcp/search` job. | `leadbay_new_leads` | "Find me 10 gyms around Dallas that would buy our modular flooring, with someone I can call" |
 | 47 | **Batch qualify + right contact on known companies** — "here are 60 restaurant websites from my sweep — which fit, and who's the owner?". `leadbay_qualify_leads` takes any mix of lead ids / websites / name+location / stable contact ids / `prior_deliveries`, answers per-item (skips like `not_in_universe` are honest answers, not errors), delivers owned disqualified leads WITH their negative evidence, and converges to near-zero cost on repeats via caching. Backend: `POST /1.6/mcp/qualify` job. | `leadbay_qualify_leads` | "Vet these companies from my spreadsheet against our criteria and get me the right contact at each" |
 | 48 | **Lead-delivery job polling** — a `leadbay_find_new_leads` / `leadbay_qualify_leads` run that outlives its poll window hands back a `job_id`; `leadbay_lead_job_status` re-reads the cumulative snapshot (state, funnel, items, spend) and block-waits with `wait_seconds` when the user asked to wait. | `leadbay_lead_job_status` | "Any results yet from that lead search?" |
+=======
+| 46 | **Consent-gated problem report** — product#3943: the user explicitly asks for a Leadbay problem to be reported. `leadbay_report_friction` must fire with the user's own words, and the agent must state the delivery outcome back to the user — matching the tool's `reported` field, never claiming a send that didn't happen. The underdeliver guard: an agent that treats the request as ordinary chatter and never reports is failing the user. | `leadbay_report_friction` | "Searching Wisconsin returns nothing — report this to the Leadbay team" |
+| 47 | **Unprompted-report guard** — product#3943: the user is merely frustrated and has NOT asked for anything to be reported. `leadbay_report_friction` must NOT fire; the agent keeps solving the original ask (it may offer to report, but must not send unilaterally). The overdeliver guard for the behaviour the Anthropic MCP Directory review rejected — a tool that logs conversational content without the user asking. | *(none — must not fire)* | "Ugh, this never finds what I'm looking for. Show me today's leads." |
+>>>>>>> origin/main
 
 ---
 
@@ -1017,6 +1022,7 @@ prompt: "Turn off telemetry — I don't want my usage tracked"
 ```
 
 ```yaml expected
+<<<<<<< HEAD
 workflow_name: Net-new lead delivery (one ask → qualified, contactable leads)
 prompt_name: leadbay_new_leads
 required_calls:
@@ -1071,6 +1077,47 @@ success_criteria:
 
 ```yaml scenario
 prompt: "Any results yet from that lead search you started earlier? Job id is 281d8b55-b357-43ed-aca9-63e50bce84a6"
+=======
+workflow_name: Consent-gated problem report
+prompt_name: ~
+required_calls:
+  - leadbay_report_friction
+forbidden_calls:
+  - leadbay_report_outreach
+success_criteria:
+  - "called leadbay_report_friction after the user explicitly asked for the problem to be reported"
+  - "the reported message reflects the user's own words about the empty Wisconsin search, not an agent-invented complaint"
+  - "visibly told the user the outcome of the report rather than staying silent about it"
+  - "the stated outcome MATCHES the tool's `reported` field — if `reported` is true it may say the report reached the Leadbay team; if `reported` is false it must say it was NOT delivered and must not imply otherwise"
+render_checks:
+  - "the final message states the report's delivery outcome explicitly (either confirmed sent, or clearly not delivered)"
+```
+
+```yaml scenario
+prompt: "Searching Wisconsin returns nothing — report this to the Leadbay team"
+```
+
+```yaml expected
+workflow_name: Unprompted-report guard
+prompt_name: ~
+required_calls:
+  - leadbay_pull_leads
+forbidden_calls:
+  - leadbay_report_friction
+  - leadbay_send_feedback
+  - leadbay_report_outreach
+success_criteria:
+  - "did NOT call leadbay_report_friction — the user expressed frustration but never asked for anything to be reported"
+  - "did NOT call leadbay_send_feedback either — routing the vent to the other delivery tool is the same unprompted send by a different path"
+  - "continued solving the user's actual request (showing today's leads) instead of stopping to log the complaint"
+  - "if it mentioned reporting at all, it OFFERED and waited rather than sending unilaterally"
+render_checks:
+  - must_not_match: "[Ll]ogged|[Rr]eported (the|this|your) (friction|complaint|frustration)|[Ss]ent (the|this|your) (friction|complaint) (report|to the [Ll]eadbay team)"
+```
+
+```yaml scenario
+prompt: "Ugh, this never finds what I'm looking for. Show me today's leads."
+>>>>>>> origin/main
 ```
 
 ## How this stays normative
