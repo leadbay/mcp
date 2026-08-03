@@ -327,6 +327,11 @@ export const compositeReadTools: Tool[] = [
   // leadbay_new_lens / leadbay_adjust_audience). Without it the agent can only
   // probe sectors by trial-and-error or ask the user to read the web UI.
   listSectors,
+  // listLocations, same rationale on the geography axis. The delivery tools
+  // reject an unresolvable filters.locations with a 400 naming the value and
+  // send the agent here to look up the real admin area — a recovery path that
+  // only works if the lookup is reachable without LEADBAY_MCP_ADVANCED=1.
+  listLocations,
   // Billing / top-up tools — granular-shaped but ALWAYS exposed because
   // they're the canonical recovery path from a QUOTA_EXCEEDED wall. If
   // they were gated behind LEADBAY_MCP_ADVANCED=1 the agent would

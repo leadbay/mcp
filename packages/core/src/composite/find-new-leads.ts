@@ -12,6 +12,7 @@ import type { Tool, ToolContext } from "../types.js";
 import {
   clampWaitSeconds,
   collectJobSnapshot,
+  mockedSubmitPreview,
   compactBody,
   normalizeSearchFilters,
   rejectCountryLocations,
@@ -217,6 +218,12 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       "/mcp/search",
       body
     );
+    const mocked = mockedSubmitPreview(
+      submit,
+      "leadbay_find_new_leads",
+      client.region
+    );
+    if (mocked) return mocked;
     const waitSeconds = clampWaitSeconds(
       params.wait_seconds,
       DEFAULT_WAIT_SECONDS

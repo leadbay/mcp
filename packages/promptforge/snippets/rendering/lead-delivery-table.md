@@ -45,6 +45,11 @@ One short line narrating the delivery honestly, built from `funnel` + `cost` +
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
 > the Y asked** · stopped: <stop_reason in plain words> · spent $C.CC.
 
+"of the Y asked" needs `summary.items_requested`, which submit results carry
+but a later `leadbay_lead_job_status` snapshot does not. Without it write
+**delivered X** and stop — never back-fill Y from `matched`/`examined` (those
+count candidates, not the target) and never guess it.
+
 Plain-word stop reasons: `target_reached` → omit (success), `pool_exhausted` →
 "ran out of matching candidates", `max_cost` → "hit the cost cap", `quota` →
 "hit an org quota", `time_budget` → "hit the 30-min time budget".

@@ -40,9 +40,11 @@ Find net-new leads for me. My need, in my words:
 
 > {{arg:need}}
 
-If the need above is empty or too vague to name (a) who I sell to and (b)
-roughly how many leads I want, ask me ONCE — one short question — then
-proceed. Default count when unstated: 10.
+If that need was not supplied to you directly, take it from the message that
+started this — the request in my own words is the need, and I should never be
+asked to repeat something I already said. Only when BOTH are missing or too
+vague to name (a) who I sell to and (b) roughly how many leads I want, ask me
+ONCE — one short question — then proceed. Default count when unstated: 10.
 
 # PHASE 1 — UNDERSTAND THE BUYER (no tool calls yet)
 
@@ -66,18 +68,40 @@ and city/state/region `locations` — never a country name). Show me the seed
 description(s) in one line each — I should recognize my ideal customer in
 them.
 
+`filters` only encodes sectors, locations and employee bounds. Any constraint
+that does not fit those keys — above all EXCLUSIONS like "no franchises" or
+"pas de grands groupes" — has nowhere to live in the filter schema, so it must
+not be dropped on the floor: express it positively in the seed `description`
+(an independent single-site operator rather than "no franchises"), and carry
+the exclusion forward yourself to Phase 5, where you drop violating rows and
+say you dropped them. Tell me plainly if a constraint can only be enforced
+that way — after the fact, not by the search.
+
+Composing this fictional seed from my words is expected and permitted: it is
+the tool's designed input, not fabricated data. What must never be invented is
+a RESULT — company names, contacts, scores, or anything presented as coming
+back from Leadbay.
+
 # PHASE 3 — FREE PREVIEW
 
 Call `leadbay_find_new_leads` with the seed, `filters`, `count`,
 `qualify: false`, no channels — this is FREE — and a `request_id` derived
-from the ask + today's date. Render the delivery table and judge fit
-honestly: are these the kind of companies I asked for?
+from the ask + the ARCHETYPE + today's date. The archetype component is not
+optional: `request_id` is the idempotency key, so two archetype searches
+sharing one id dedupe to the same job and the second archetype is never
+searched. Render the delivery table and judge fit honestly: are these the
+kind of companies I asked for?
 
-- **On-profile** → offer Phase 4.
-- **Off-profile or empty** → read `funnel` + `explain.scope_notes`, tell me
-  what went wrong in one line (wrong archetype? too narrow a filter? thin
-  universe?), reshape the seed or filters, and retry under a NEW request_id.
-  Reshaping is free; do not pay to explore a bad seed.
+- **`still_running: true`** → the job is ALIVE. Do not judge the seed and do
+  not relaunch — poll `leadbay_lead_job_status` (`wait_seconds: 60`) until
+  it goes terminal, reporting progress. Relaunching now burns an active-job
+  slot and rate-limit budget on a search that may be about to deliver.
+- **On-profile** (terminal) → offer Phase 4.
+- **Off-profile or empty** (terminal) → read `funnel` +
+  `explain.scope_notes`, tell me what went wrong in one line (wrong
+  archetype? too narrow a filter? thin universe?), reshape the seed or
+  filters, and retry under a NEW request_id. Reshaping is free; do not pay
+  to explore a bad seed.
 
 # PHASE 4 — PAID DEPTH (only with my explicit go-ahead)
 

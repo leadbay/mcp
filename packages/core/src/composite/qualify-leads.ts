@@ -12,6 +12,7 @@ import type { Tool, ToolContext } from "../types.js";
 import {
   clampWaitSeconds,
   collectJobSnapshot,
+  mockedSubmitPreview,
   compactBody,
   splitItems,
   TERMINAL_JOB_STATES,
@@ -225,6 +226,12 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
       "/mcp/qualify",
       body
     );
+    const mocked = mockedSubmitPreview(
+      submit,
+      "leadbay_qualify_leads",
+      client.region
+    );
+    if (mocked) return mocked;
     const waitSeconds = clampWaitSeconds(
       params.wait_seconds,
       DEFAULT_WAIT_SECONDS

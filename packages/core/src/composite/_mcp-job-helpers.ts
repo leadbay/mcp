@@ -116,7 +116,16 @@ export const TERMINAL_JOB_STATES: ReadonlySet<string> = new Set([
 export const MCP_JOB_POLL = { intervalMs: 4000 };
 
 const PAGE_LIMIT = 100;
-const MAX_PAGES = 20; // 500-ref qualify worst case is 5 pages; 20 is a hard stop.
+// A qualify job carries at most 500 refs, so the drain is bounded by the page
+// SIZE, not by a flat page count: at limit=5 the worst case is 100 pages, and a
+// flat 20 would silently return the first 100 items while reporting done:true.
+// Derive the bound instead, with a floor so a large page size still gets a few
+// follow-ups and a ceiling that stays a runaway backstop.
+const MAX_JOB_ITEMS = 500;
+const MIN_PAGES = 20;
+const PAGE_CAP = 120;
+const maxPagesFor = (pageLimit: number) =>
+  Math.min(PAGE_CAP, Math.max(MIN_PAGES, Math.ceil(MAX_JOB_ITEMS / pageLimit) + 1));
 
 /** One cumulative snapshot of the job, paging the item cursor dry. Job/funnel/
  *  cost/explain come from the LAST page fetched (the freshest projection). */
@@ -130,14 +139,16 @@ export async function collectJobSnapshot(
   const qs = (cursor?: string) =>
     `/mcp/jobs/${jobId}?limit=${pageLimit}` +
     (cursor ? `&since=${encodeURIComponent(cursor)}` : "");
+  const maxPages = maxPagesFor(pageLimit);
   let page = await client.request<McpJobSnapshot>("GET", qs(since));
   const items = [...page.items];
+  // The resumption cursor must survive an empty drain page. Following
+  // next_since into a page with no items used to overwrite the cursor with that
+  // empty page's (often null) next_since, so a caller that had just received a
+  // full page lost its place and had to re-read everything it had already seen.
+  let cursor = page.next_since ?? null;
   let pages = 1;
-  while (
-    page.items.length >= pageLimit &&
-    page.next_since &&
-    pages < MAX_PAGES
-  ) {
+  while (page.items.length >= pageLimit && page.next_since && pages < maxPages) {
     const next = await client.request<McpJobSnapshot>(
       "GET",
       qs(page.next_since)
@@ -148,10 +159,12 @@ export async function collectJobSnapshot(
     // freshest even when it carried no new items.
     page = next;
     if (next.items.length === 0) {
+      // Keep the cursor from the last page that actually carried items.
       break;
     }
+    cursor = next.next_since ?? cursor;
   }
-  return { ...page, items };
+  return { ...page, items, next_since: cursor };
 }
 
 /** Poll until the job is terminal or `waitSeconds` elapse (0 = single poll).
@@ -197,6 +210,28 @@ export async function waitForJob(
   return snap;
 }
 
+/** LEADBAY_MOCK=1 journals writes and answers the generic
+ *  `{mocked, would_call}` envelope instead of a real `{job_id}`. Without a
+ *  guard the submit falls through to polling `/mcp/jobs/undefined`, which has
+ *  no fixture — so the repo's offline dry-run mode died on any non-dry_run
+ *  call. Return the write preview instead. */
+export function mockedSubmitPreview(
+  submit: unknown,
+  tool: string,
+  region: string
+): Record<string, unknown> | null {
+  const s = (submit ?? {}) as Record<string, unknown>;
+  if (typeof s.job_id === "string" && s.job_id) return null;
+  return {
+    mocked: true,
+    tool,
+    submitted: false,
+    would_call: s.would_call ?? null,
+    note: "LEADBAY_MOCK=1 — the job was not submitted, so there is no job to poll.",
+    region,
+  };
+}
+
 /** Sort a snapshot's items into the envelope every delivery tool returns:
  *  full leads for delivered/degraded, compact skip records for the rest. */
 export function splitItems(snapshot: McpJobSnapshot): {
@@ -231,14 +266,36 @@ export function compactBody(
  *  rejects it with a named, actionable error (tracked backend-side in
  *  product#3939). */
 const COUNTRY_LOCATION_VALUES = new Set([
-  "united states", "united states of america", "usa", "u.s.", "u.s.a.", "us",
-  "america", "etats-unis", "états-unis", "france", "fr",
+  "united states", "united states of america", "usa", "us", "america",
+  "etats unis", "etats unis d amerique", "france", "fr", "french republic",
+  "republique francaise",
 ]);
+
+/** Fold a location label to a comparison key so spelling variants collapse:
+ *  strips accents, punctuation (so `U.S.` and `U.S` both become `us`), a
+ *  leading article (`the United States`, `la France`, `les États-Unis`), and
+ *  collapses whitespace. Exact-matching the raw string let every one of those
+ *  through to the silent same-named-town fencing this guard exists to stop. */
+function countryKey(raw: string): string {
+  return raw
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    // Hyphens/underscores separate words; dots and apostrophes do not (so
+    // "U.S" folds to "us", while "etats-unis" stays two words).
+    .replace(/[-_,]/g, " ")
+    .replace(/['’.]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    // Longest article first, so "les" is never matched as "le" + leftover.
+    .replace(/^(les|the|la|le|l)\s+/, "")
+    .trim();
+}
 
 export function rejectCountryLocations(locations: unknown): void {
   if (!Array.isArray(locations)) return;
   for (const loc of locations) {
-    if (typeof loc === "string" && COUNTRY_LOCATION_VALUES.has(loc.trim().toLowerCase())) {
+    if (typeof loc === "string" && COUNTRY_LOCATION_VALUES.has(countryKey(loc))) {
       throw {
         error: true,
         code: "COUNTRY_LEVEL_LOCATION",

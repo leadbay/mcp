@@ -1319,15 +1319,15 @@ phone 250c, success-only). Before the first paid run: \`dry_run: true\`, quote
 the worst case, get the explicit go-ahead ("spend / get their emails" in the
 user's message counts). Free needs no consent.
 
-**Free preview first**: run FREE, eyeball fit, THEN pay. Off-profile preview
-→ reshape the seed (free) instead of exploring it with \`qualify: true\`.
+**Free preview first**: run FREE, eyeball fit, THEN pay — reshaping an
+off-profile seed is free, exploring it with \`qualify: true\` is not.
 
 **Exclusions ("no chains", "no agencies") are enforced by QUALIFICATION, not
-the free match.** Positive inverse in the seed, then \`qualify: true\`: the
-org's ideal-buyer-profile anti-patterns and questions score violators
-negative and \`min_ai_score: 0\` drops them. Durable exclusion → suggest
-\`leadbay_refine_prompt\` so it enters the org intelligence. In a FREE preview,
-drop visibly violating rows and say the free tier doesn't enforce.
+the free match** — \`filters\` has no exclusion key. Put the positive inverse in
+the seed, then \`qualify: true\`: IBP anti-patterns and questions score
+violators negative and \`min_ai_score: 0\` drops them. Durable exclusion →
+suggest \`leadbay_refine_prompt\`. In a FREE preview, drop violating rows and
+say the free tier doesn't enforce.
 
 ### Crafting the \`example_lead\` seed — the input that decides result quality
 
@@ -1442,6 +1442,11 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
 > the Y asked** · stopped: <stop_reason in plain words> · spent $C.CC.
+
+"of the Y asked" needs \`summary.items_requested\`, which submit results carry
+but a later \`leadbay_lead_job_status\` snapshot does not. Without it write
+**delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (those
+count candidates, not the target) and never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
@@ -2320,6 +2325,11 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
 > the Y asked** · stopped: <stop_reason in plain words> · spent $C.CC.
+
+"of the Y asked" needs \`summary.items_requested\`, which submit results carry
+but a later \`leadbay_lead_job_status\` snapshot does not. Without it write
+**delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (those
+count candidates, not the target) and never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
@@ -3579,6 +3589,11 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
 > the Y asked** · stopped: <stop_reason in plain words> · spent $C.CC.
+
+"of the Y asked" needs \`summary.items_requested\`, which submit results carry
+but a later \`leadbay_lead_job_status\` snapshot does not. Without it write
+**delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (those
+count candidates, not the target) and never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
