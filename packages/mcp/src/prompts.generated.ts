@@ -1467,9 +1467,13 @@ inputs. \`cash = pot12 − ca12\` where \`pot12\` is \`[HYP]\` makes **\`cash\` 
 client who mistakes a modelled \`cash\` figure for an audited one will build a
 sales plan on it.
 
-**Print the PROVENANCE LEDGER before you build anything.** Render this block
-verbatim, one row per field you will emit, BEFORE writing artifact code or the
-final table:
+**Print the PROVENANCE LEDGER before you build anything**, BEFORE writing
+artifact code or the final table. The block below is a **shape, not a literal**:
+keep the header, the \`field / class / source\` columns and the closing rule, but
+**replace every \`<...>\` placeholder with the real field name, class and source**
+— one row per field you actually emit. A ledger still showing \`<field name>\` has
+passed the ordering check while telling the reader nothing, which defeats its
+entire purpose.
 
 \`\`\`
 PROVENANCE LEDGER
@@ -1638,10 +1642,15 @@ CONQUÊTE; buying broadly at scale → PLAN DE COMPTE; buying narrowly →
 MONTÉE EN GAMME.
 
 **Without order history the first five tests cannot run at all.** In that case
-the split is simply: in the Leadbay known pipeline → **SUIVI** (or RÉVEIL-LB
-when Leadbay activity is long dormant, labelled for what it measures); not in
-the pipeline → **CONQUÊTE**. Never reach for a Pilotage motif you cannot
-evidence.
+the split is simply: in the Leadbay known pipeline → **SUIVI**; not in the
+pipeline → **CONQUÊTE**. Never reach for a Pilotage motif you cannot evidence,
+and never invent a seventh label — the set is closed at six.
+
+When a known-pipeline row has long-dormant *Leadbay* activity, it stays
+**SUIVI** and you say what the dormancy measures in its why-now cell: "no
+Leadbay-logged action in N months". That is a qualifier on the evidence, not a
+new motif. It is NOT RÉVEIL — RÉVEIL means dormant *purchasing*, which needs
+order history you do not have.
 
 **What each motif changes in the output.**
 
@@ -1671,7 +1680,7 @@ client's extract, SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL cannot
 be assigned from purchase behaviour — do not guess them from a lead score, a
 sector, or a company's size. Two honest options, in order of preference:
 
-**The Monitor gap — read this before assigning anything.** Four of the five
+**The Monitor gap — read this before assigning anything.** Four of the six
 motifs (SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL) are purchase-
 behaviour reads, and CONQUÊTE means "not in the known pipeline". A Monitor row
 that is *actively* worked therefore matches none of them: it IS in the pipeline,
@@ -1679,13 +1688,9 @@ and without order history you cannot tell whether it buys broadly, narrowly, or
 at all. Do NOT resolve that by guessing a purchase motif, and do NOT silently
 drop the row.
 
-Use a sixth, honestly-scoped label for those rows — **SUIVI** (in the Leadbay
-known pipeline, recent activity, purchase behaviour unknown). Its pitch angle is
-a continuation, not an introduction or a win-back: pick up the existing thread
-and ask what's moving. Its checklist is confirm-the-state → identify the current
-need → agree a next step. Say in the plan's legend that SUIVI exists precisely
-because purchase history is unavailable, and that ERP order data would split
-those rows into the four Pilotage motifs.
+Those rows take **SUIVI** (row 6 of the table above). Say in the plan's legend
+that SUIVI exists precisely because purchase history is unavailable, and that
+ERP order data would split those rows into the four Pilotage motifs.
 
 1. **CONQUÊTE is assignable from Leadbay alone — but say what it actually
    means.** Discover membership proves a company is **not in the Leadbay known
@@ -1702,10 +1707,10 @@ those rows into the four Pilotage motifs.
    plan. Only ERP order history can upgrade this to a true never-a-client
    claim. A Leadbay-only plan is still a legitimate *Conquête* plan — say so in
    the title rather than implying it covers the whole base.
-2. A **Leadbay-activity** variant of RÉVEIL may be assigned from
-   \`leadbay_account_history\` recency — but label it for what it measures: "no
-   Leadbay-logged action in N months", never "no orders in N months". Logged
-   activity is not invoicing.
+2. **Leadbay-activity recency is a qualifier, never a motif.** A long-dormant
+   known row stays **SUIVI** with "no Leadbay-logged action in N months" in its
+   why-now cell — never "no orders in N months", and never a seventh label.
+   Logged activity is not invoicing.
 
 
 # PHASE 4 — POTENTIAL AND RANKING
@@ -1746,10 +1751,15 @@ damage. This ordering is the workflow contract, not a stylistic preference.
 
 ### The chat table (render immediately after the ledger)
 
-Show the top **min(10, requested count)** accounts by the ranking key,
-descending. If the plan holds more than the table shows, say how many more
-follow; if the whole plan fits in the table, say nothing about "more" — a
-top-5 request gets five rows and no dangling remainder. Four columns:
+**The chat answer must be the whole deliverable the user asked for** — the deck
+is optional, so a top-50 request whose chat half stops at 10 rows has delivered
+a fifth of the plan. Render the **requested count**, with its pitch + checklist
+block per row (see below).
+
+If that is genuinely too long for one message, do NOT silently truncate: state
+the delivered count plainly ("here are 20 of the 50 — say the word for the
+rest"), so the user knows what they have. Never present a partial list as
+though it were the plan. Four columns:
 
 Col 3's header is **the ranking key you actually used** — never a cash label,
 since cash-to-capture cannot be computed from Leadbay data:

@@ -14,10 +14,15 @@ damage. This ordering is the workflow contract, not a stylistic preference.
 
 ### The chat table (render immediately after the ledger)
 
-Show the top **min(10, requested count)** accounts by the ranking key,
-descending. If the plan holds more than the table shows, say how many more
-follow; if the whole plan fits in the table, say nothing about "more" — a
-top-5 request gets five rows and no dangling remainder. Four columns:
+**The chat answer must be the whole deliverable the user asked for** — the deck
+is optional, so a top-50 request whose chat half stops at 10 rows has delivered
+a fifth of the plan. Render the **requested count**, with its pitch + checklist
+block per row (see below).
+
+If that is genuinely too long for one message, do NOT silently truncate: state
+the delivered count plainly ("here are 20 of the 50 — say the word for the
+rest"), so the user knows what they have. Never present a partial list as
+though it were the plan. Four columns:
 
 Col 3's header is **the ranking key you actually used** — never a cash label,
 since cash-to-capture cannot be computed from Leadbay data:

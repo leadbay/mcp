@@ -16,9 +16,13 @@ inputs. `cash = pot12 − ca12` where `pot12` is `[HYP]` makes **`cash` itself
 client who mistakes a modelled `cash` figure for an audited one will build a
 sales plan on it.
 
-**Print the PROVENANCE LEDGER before you build anything.** Render this block
-verbatim, one row per field you will emit, BEFORE writing artifact code or the
-final table:
+**Print the PROVENANCE LEDGER before you build anything**, BEFORE writing
+artifact code or the final table. The block below is a **shape, not a literal**:
+keep the header, the `field / class / source` columns and the closing rule, but
+**replace every `<...>` placeholder with the real field name, class and source**
+— one row per field you actually emit. A ledger still showing `<field name>` has
+passed the ordering check while telling the reader nothing, which defeats its
+entire purpose.
 
 ```
 PROVENANCE LEDGER
