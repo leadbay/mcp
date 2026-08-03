@@ -64,7 +64,17 @@ function derivedRequestId(params: QualifyLeadsParams): string {
     .join("|");
   const shape = [
     refs,
-    params.prior_deliveries?.job_id ?? "",
+    // The WHOLE selector, not just the job id: qualifying the first 50 of a
+    // delivery job and then the next 50 are different batches, and collapsing
+    // them to one key would make the second submit look like a duplicate and
+    // leave those refs unqualified.
+    [
+      params.prior_deliveries?.job_id,
+      params.prior_deliveries?.since,
+      params.prior_deliveries?.limit,
+    ]
+      .map((v) => v ?? "")
+      .join("~"),
     params.qualify === false ? "free" : "qualify",
     (params.channels ?? []).slice().sort().join(","),
     (params.contact_titles ?? []).slice().sort().join(","),

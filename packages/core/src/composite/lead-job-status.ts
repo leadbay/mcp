@@ -101,6 +101,9 @@ export const leadJobStatus: Tool<LeadJobStatusParams, any> = {
         : {
             tool: "leadbay_lead_job_status",
             job_id: params.job_id,
+            // Same incremental handoff as the submit tools — following
+            // next_poll without the cursor re-reads the rows just returned.
+            since: snapshot.next_since ?? null,
             suggested_wait_seconds: 60,
           },
       region: client.region,

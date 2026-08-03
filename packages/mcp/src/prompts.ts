@@ -376,12 +376,29 @@ const CATALOG: CatalogEntry[] = [
   },
 ];
 
-export function listPrompts(): Prompt[] {
+/** Prompts whose whole workflow drives tools that are themselves gated off
+ *  until the backend routes ship. Exposing the prompt without the tools would
+ *  let a user start a guided flow whose every call is missing from tools/list. */
+const GATED_PROMPTS: Record<string, () => boolean> = {
+  leadbay_new_leads: () => process.env.LEADBAY_MCP_LEAD_DELIVERY === "1",
+};
+
+/** The full catalogue, gates ignored — contract audits assert every prompt
+ *  named in WORKFLOWS.md resolves, and a rollout flag must not read as
+ *  "this prompt does not exist". */
+export function listAllPrompts(): Prompt[] {
   return CATALOG.map((c) => ({
     name: c.name,
     description: c.description,
     arguments: c.arguments,
   }));
+}
+
+export function listPrompts(): Prompt[] {
+  return listAllPrompts().filter((p) => {
+    const gate = GATED_PROMPTS[p.name];
+    return gate ? gate() : true;
+  });
 }
 
 export function getPrompt(

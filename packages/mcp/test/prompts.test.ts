@@ -3,10 +3,22 @@
  * commands.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { httpsMockFactory } from "./harness.js";
 
 vi.mock("node:https", () => httpsMockFactory());
+
+// leadbay_new_leads is release-gated off by default until the /1.6/mcp/*
+// backend routes ship. This suite asserts the FULL catalogue, so enable it.
+const PREVIOUS_DELIVERY_FLAG = process.env.LEADBAY_MCP_LEAD_DELIVERY;
+beforeAll(() => {
+  process.env.LEADBAY_MCP_LEAD_DELIVERY = "1";
+});
+afterAll(() => {
+  if (PREVIOUS_DELIVERY_FLAG === undefined)
+    delete process.env.LEADBAY_MCP_LEAD_DELIVERY;
+  else process.env.LEADBAY_MCP_LEAD_DELIVERY = PREVIOUS_DELIVERY_FLAG;
+});
 
 import { LeadbayClient } from "@leadbay/core";
 import { buildServer } from "../src/server.js";

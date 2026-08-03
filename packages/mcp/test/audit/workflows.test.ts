@@ -22,7 +22,7 @@ import {
   granularWriteTools,
   mcpFirstDeliveryAllTools,
 } from "@leadbay/core";
-import { listPrompts } from "../../src/prompts.js";
+import { listAllPrompts } from "../../src/prompts.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -39,7 +39,9 @@ const KNOWN_TOOLS = new Set(
     ...mcpFirstDeliveryAllTools,
   ].map((t) => t.name),
 );
-const KNOWN_PROMPTS = new Set(listPrompts().map((p) => p.name));
+// listAllPrompts: release-gated prompts are still registered, and a rollout
+// flag must not make WORKFLOWS.md look like it names a nonexistent prompt.
+const KNOWN_PROMPTS = new Set(listAllPrompts().map((p) => p.name));
 
 // Skills shipped via the Claude Code plugin marketplace. Each is a
 // directory under .claude-plugin/plugins/leadbay/skills/<name>/SKILL.md;
