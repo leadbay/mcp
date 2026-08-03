@@ -30,6 +30,7 @@ import {
   leadbay_refine_audience,
   leadbay_research_a_domain,
   leadbay_setup_team_prospecting,
+  leadbay_top_accounts_to_activate,
   leadbay_work_campaign,
   PROMPT_META,
 } from "./prompts.generated.js";
@@ -337,6 +338,37 @@ const CATALOG: CatalogEntry[] = [
         userMessage(
           substitutePlaceholders(leadbay_qualify_top_n, {
             count_or_default: n,
+          }),
+        ),
+      ];
+    },
+  },
+  {
+    name: "leadbay_top_accounts_to_activate",
+    description: PROMPT_META.leadbay_top_accounts_to_activate.short_description,
+    arguments: [
+      {
+        name: "count",
+        description:
+          "Optional: how many accounts the plan should hold (default 50).",
+        required: false,
+      },
+      {
+        name: "territory",
+        description:
+          "Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire'). Sets geography on the Discover lens via `locations`.",
+        required: false,
+      },
+    ],
+    render: (args) => {
+      const n = args.count ?? "50";
+      return [
+        userMessage(
+          substitutePlaceholders(leadbay_top_accounts_to_activate, {
+            count_or_default: n,
+            territory_block: args.territory
+              ? `Scope the plan to **${args.territory}** — pass it as \`locations\` on the lens, never as a sector.`
+              : "",
           }),
         ),
       ];

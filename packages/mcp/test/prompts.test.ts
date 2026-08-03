@@ -45,6 +45,7 @@ describe("prompts/* capability (P2 prompts)", () => {
       "leadbay_setup_team_prospecting",
       "leadbay_work_campaign",
       "leadbay_qualify_top_n",
+      "leadbay_top_accounts_to_activate",
     ]);
     // Each prompt has a description.
     for (const p of listed.prompts) {
