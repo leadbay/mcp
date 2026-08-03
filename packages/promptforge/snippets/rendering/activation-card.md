@@ -51,9 +51,13 @@ Sort strictly by the ranking key named in the ledger (which was printed above).
 
 The table alone is a shortlist, not a plan — the pitch and the three-step
 checklist are what make it actionable, and the deck is **optional**, so they
-cannot live only there. Under the table, render a short block per account for
-the top rows (all of them when the plan is small; the top 5–10 otherwise, then
-say the rest follow the same shape and offer them):
+cannot live only there. Under the table, render a block for **every account you
+put in the table** — if a row is good enough to rank, it is good enough to carry
+its pitch. Do NOT ship the top 5 or 10 and offer the rest "on request": that
+puts the actionable half of the deliverable behind another user turn, and the
+rows you defer are the ones a rep is least likely to chase. If the full plan is
+genuinely long, shrink the TABLE (fewer rows, stated plainly) rather than
+shipping ranked rows with no pitch:
 
 ```
 **<rank> · <Company>** — <MOTIF>

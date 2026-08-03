@@ -160,7 +160,9 @@ So: **read the persisted filter first** (the response reports `active_filters`),
 
 **Signals — scoped to the cohort.** ⚠ **Always pass the selected `leadIds`.** With `leadIds` omitted, `leadbay_scan_portfolio_signals` builds its own portfolio by paging `/monitor` — so on an imported cohort or a freshly-pulled Discover set it would scan a *different population* and you'd render dashes for accounts whose signals were never read.
 
-`leadbay_scan_portfolio_signals` is also a **filtered** read: it requires a concrete `query` and returns only the accounts whose cached signals match it. It is not a generic "read every signal" call. So run it **once per why-now theme you care about** — e.g. expansion / new site, contract or tender won, funding, hiring, acquisition, new venue — and union the results, rather than firing one vague query and treating the misses as "no signal". An account that matched no query has **not** been shown to be signal-free; render it with an explicit `—`, never an invented event. For the identified side, take interaction recency from the fields `leadbay_pull_followups` already returned. ⚠ **Do NOT reach for `leadbay_account_history` on Monitor rows outside the active lens** — it calls `research_lead_by_id` first, which fetches `/lenses/{lensId}/leads/{leadId}` and 404s off-lens, so the very rows that need a SUIVI / RÉVEIL-LB decision are the ones it fails on. Use it only for a lead you know is in the pinned lens.
+`leadbay_scan_portfolio_signals` is also a **filtered** read: it requires a concrete `query` and returns only the accounts whose cached signals match it. It is not a generic "read every signal" call. So run it **once per why-now theme, as SEPARATE calls** — expansion/new site · contract or tender won · funding · hiring · acquisition · new venue — and union the results.
+
+⚠ **One comma-joined omnibus query is NOT six themed scans.** Cramming every keyword into a single string is one match attempt whose recall you cannot inspect: a lead that would have matched "hiring" alone can be missed, and you have no way to tell which themes actually returned anything. Six calls, six result sets, one union. If a theme returns nothing, that is information — record it rather than hiding it inside a broad string. An account that matched no query has **not** been shown to be signal-free; render it with an explicit `—`, never an invented event. For the identified side, take interaction recency from the fields `leadbay_pull_followups` already returned. ⚠ **Do NOT reach for `leadbay_account_history` on Monitor rows outside the active lens** — it calls `research_lead_by_id` first, which fetches `/lenses/{lensId}/leads/{leadId}` and 404s off-lens, so the very rows that need a SUIVI / RÉVEIL-LB decision are the ones it fails on. Use it only for a lead you know is in the pinned lens.
 
 **SIGNAL HONESTY — never infer signals from freshness.** `stale_at`,
 `web_fetch_in_progress`, `fetch_at` are freshness markers, not signal
@@ -341,9 +343,13 @@ Sort strictly by the ranking key named in the ledger (which was printed above).
 
 The table alone is a shortlist, not a plan — the pitch and the three-step
 checklist are what make it actionable, and the deck is **optional**, so they
-cannot live only there. Under the table, render a short block per account for
-the top rows (all of them when the plan is small; the top 5–10 otherwise, then
-say the rest follow the same shape and offer them):
+cannot live only there. Under the table, render a block for **every account you
+put in the table** — if a row is good enough to rank, it is good enough to carry
+its pitch. Do NOT ship the top 5 or 10 and offer the rest "on request": that
+puts the actionable half of the deliverable behind another user turn, and the
+rows you defer are the ones a rep is least likely to chase. If the full plan is
+genuinely long, shrink the TABLE (fewer rows, stated plainly) rather than
+shipping ranked rows with no pitch:
 
 ```
 **<rank> · <Company>** — <MOTIF>
