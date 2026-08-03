@@ -50,6 +50,7 @@ interface FindNewLeadsParams {
   exploration_cap?: number;
   request_id: string;
   lang?: string;
+  confirm?: boolean;
   dry_run?: boolean;
   wait_seconds?: number;
 }
@@ -61,6 +62,11 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
   annotations: {
     title: "Find new leads (net-new ICP search)",
     readOnlyHint: false,
+    // Unlike qualify_leads (paid by default), the default search here is FREE
+    // — qualify defaults to false and channels are empty — so the tool is not
+    // inherently destructive. A paid variant (qualify:true / channels) is
+    // withheld in execute() until `confirm: true`, which is where the spend
+    // decision is surfaced.
     destructiveHint: false,
     // The mandatory request_id dedups: re-submitting the same request returns
     // the SAME live job instead of double-spending.
@@ -161,6 +167,11 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
           "REQUIRED idempotency key. Derive it from the ask (e.g. 'gyms-texas-2026-07-28'); REUSE the exact same value when retrying the same ask — a duplicate returns the SAME job instead of double-spending. Use a NEW value only for a genuinely new ask.",
       },
       lang: { type: "string", description: "Output language (default: user's language)." },
+      confirm: {
+        type: "boolean",
+        description:
+          "Explicit spend decision, required only for a PAID search (qualify:true and/or channels). true = the user approved the quote, go ahead. false = a veto (returns mode:'needs_confirmation', spends nothing). Omitted on a paid call → the tool withholds the submit and returns a free quote to show the user first. The default FREE search (no qualify, no channels) needs no confirm.",
+      },
       dry_run: {
         type: "boolean",
         description:
@@ -181,6 +192,18 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     ctx?: ToolContext
   ) => {
     rejectCountryLocations(params.filters?.locations);
+
+    // Same spend gate as leadbay_qualify_leads. The trigger differs: `qualify`
+    // defaults to FALSE here, so the default ask really is free and only an
+    // explicit qualify:true and/or requested channels costs money. When it
+    // does, the submit is withheld pending `confirm: true` and a real
+    // dry-run quote is returned instead.
+    const buysChannels = (params.channels?.length ?? 0) > 0;
+    const buysQualification = params.qualify === true;
+    const isPaid = buysQualification || buysChannels;
+    const vetoed = params.confirm === false;
+    const consented = !vetoed && params.confirm === true;
+
     const body = compactBody({
       query: params.query,
       example_lead: params.example_lead,
@@ -209,6 +232,33 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       return {
         dry_run: true,
         ...forecast,
+        region: client.region,
+      };
+    }
+
+    if (isPaid && !consented) {
+      const forecast = vetoed
+        ? null
+        : await client.request<McpDryRunResponse>("POST", "/mcp/search", {
+            ...body,
+            dry_run: true,
+          });
+      return {
+        mode: "needs_confirmation",
+        submitted: false,
+        vetoed,
+        paid_because: [
+          buysQualification
+            ? "qualify: true (~94 cost_cents per candidate EXAMINED)"
+            : null,
+          buysChannels ? `channels requested: ${params.channels!.join(", ")}` : null,
+        ].filter(Boolean),
+        quote: forecast,
+        estimated_cost: forecast?.estimated_cost ?? null,
+        items_requested: forecast?.items_requested ?? null,
+        hint: vetoed
+          ? "confirm:false vetoed the spend — nothing was submitted. Re-call with confirm:true to proceed, or drop qualify/channels for a free search."
+          : "Show the user this worst-case quote and get an explicit go-ahead, then re-call with confirm:true. For a free search instead: omit qualify and channels.",
         region: client.region,
       };
     }

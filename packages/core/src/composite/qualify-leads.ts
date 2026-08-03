@@ -54,7 +54,11 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
   annotations: {
     title: "Qualify + get the right contact on known leads",
     readOnlyHint: false,
-    destructiveHint: false,
+    // Spends real money (fresh qualification, and email/phone reveals when
+    // channels are requested), same as bulk_qualify_leads / enrich-titles.
+    // Hosts and approval layers key their prompts off this flag, so a paid
+    // job submitter must not advertise itself as harmless.
+    destructiveHint: true,
     idempotentHint: false,
     openWorldHint: true,
   },

@@ -96,10 +96,18 @@ When I want qualification evidence and/or reachable contacts:
    - `leadbay_find_new_leads`: the same, PLUS `min_ai_score` and `count`.
 2. On my go-ahead, prefer feeding the free preview's deliveries to
    `leadbay_qualify_leads` (`prior_deliveries: {job_id}`) — it only spends on
-   companies already known to match. Run a fresh `qualify: true` search
-   instead when I asked for more than the preview delivered. Paid
-   `leadbay_qualify_leads` calls need `confirm: true` — without it the tool
-   withholds the submit and hands back a quote instead of spending.
+   companies already known to match. Paid calls need `confirm: true`; without
+   it the tool withholds the submit and hands back a quote instead of
+   spending. That applies to `leadbay_find_new_leads` too whenever you set
+   `qualify: true` or ask for channels.
+
+   If the preview delivered FEWER than I asked for, do both halves and do not
+   conflate them: qualify what the preview already found, and run the fresh
+   search only for the SHORTFALL — `count` = what is still missing, never the
+   original number, under a NEW `request_id`. Reusing the preview's id dedupes
+   the paid submit back into the free job; keeping the original count buys a
+   whole second batch, because `novelty: org` already excludes everything the
+   preview delivered.
 3. While the job runs, poll with `leadbay_lead_job_status`
    (`wait_seconds: 60`); report progress, not silence.
 

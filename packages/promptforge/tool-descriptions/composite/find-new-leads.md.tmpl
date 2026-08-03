@@ -60,38 +60,38 @@ Submit a net-new lead search: the backend matches an ICP seed against the
 full company universe, applies hard filters, skips everything the org already
 knows (`novelty: org`), optionally qualifies candidates against the org's own
 intelligence (questions, tags, ideal buyer profile — frozen at submit), and
-optionally purchases contact channels. Submit answers in <1s; the tool polls
-up to `wait_seconds` (default 45) and, when the job needs longer, returns
-`still_running` + `next_poll` — hand off to `leadbay_lead_job_status`. Jobs
-run ≤30 min; results are kept 30 days.
+optionally purchases contact channels. The tool polls up to `wait_seconds`
+(default 45); a longer job returns `still_running` + `next_poll` — hand off
+to `leadbay_lead_job_status`. Jobs run ≤30 min, results kept 30 days.
 
 **Free vs paid — never spend silently.** The default ask (`qualify: false`,
 `channels: []`) is FREE: company profile + fit score + cached research +
 contact identity. Paid: `qualify: true` (~94 cost_cents per candidate
 EXAMINED, capped by `exploration_cap`/`max_cost`) and `channels` (email 25c /
-phone 250c, success-only). Before the first paid run: `dry_run: true`, quote
-the worst case, get the explicit go-ahead ("spend / get their emails" in the
-user's message counts). Free needs no consent.
+phone 250c, success-only). The gate is enforced in code: a paid call
+(`qualify: true` and/or `channels`) is WITHHELD unless it carries
+`confirm: true` — otherwise nothing is submitted and you get
+`mode: "needs_confirmation"` with a real quote to show the user. Re-call with
+`confirm: true` on their go-ahead ("spend / get their emails" counts).
+`confirm: false` vetoes. Free needs no consent.
 
 **Free preview first**: run FREE, eyeball fit, THEN pay — reshaping an
 off-profile seed is free, exploring it with `qualify: true` is not.
 
-**Exclusions ("no chains", "no agencies") are enforced by QUALIFICATION, not
-the free match** — `filters` has no exclusion key. Put the positive inverse in
-the seed, then `qualify: true`: IBP anti-patterns and questions score
-violators negative and `min_ai_score: 0` drops them. Durable exclusion →
-suggest `leadbay_refine_prompt`. In a FREE preview, drop violating rows and
-say the free tier doesn't enforce.
+**Exclusions ("no chains") are enforced by QUALIFICATION, not the free
+match** — `filters` has no exclusion key. Put the positive inverse in the
+seed, then `qualify: true`: IBP anti-patterns score violators negative and
+`min_ai_score: 0` drops them. Durable exclusion → `leadbay_refine_prompt`.
+In a FREE preview, drop violating rows and say the tier doesn't enforce.
 
 {{include:heuristics/example-lead-craft}}
 
 **Parameter notes**
-- `request_id` (REQUIRED) is the retry contract: SAME value when retrying
-  the same ask (returns the same live job, no double spend); NEW value for a
-  changed ask. Derive from ask + date: `gyms-dallas-2026-07-28`.
-- `min_ai_score` gates the [-30,+30] qualification DELTA, not the 0-100 fit
-  score. Lower it only to STUDY evidence — never with `channels` (that buys
-  emails for leads the AI just scored as junk).
+- `request_id` (REQUIRED) is the retry contract: SAME value retrying the same
+  ask (same live job, no double spend); NEW value for a changed ask. Derive
+  from ask + archetype + date: `gyms-dallas-2026-07-28`.
+- Never lower `min_ai_score` together with `channels` — that buys emails for
+  leads the AI just scored as junk.
 - `count` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After —
   wait, don't hammer).
 
