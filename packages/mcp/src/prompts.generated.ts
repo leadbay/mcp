@@ -914,13 +914,19 @@ honestly: are these the kind of companies I asked for?
 # PHASE 4 — PAID DEPTH (only with my explicit go-ahead)
 
 When I want qualification evidence and/or reachable contacts:
-1. Quote first: \`dry_run: true\` with the exact flags I asked for
-   (\`qualify: true\`, \`min_ai_score\`, \`contact_titles\`, \`title_gate\`,
-   \`channels\`, \`max_cost\`) and tell me the worst-case cost in plain money.
+1. Quote first: \`dry_run: true\` on the tool you will actually run, with the
+   exact flags I asked for, and tell me the worst-case cost in plain money.
+   The two tools take DIFFERENT flags — passing the wrong one is rejected
+   outright (\`additionalProperties: false\`):
+   - \`leadbay_qualify_leads\`: \`qualify: true\`, \`contact_titles\`,
+     \`title_gate\`, \`channels\`, \`max_cost\`. **No \`min_ai_score\`.**
+   - \`leadbay_find_new_leads\`: the same, PLUS \`min_ai_score\` and \`count\`.
 2. On my go-ahead, prefer feeding the free preview's deliveries to
    \`leadbay_qualify_leads\` (\`prior_deliveries: {job_id}\`) — it only spends on
    companies already known to match. Run a fresh \`qualify: true\` search
-   instead when I asked for more than the preview delivered.
+   instead when I asked for more than the preview delivered. Paid
+   \`leadbay_qualify_leads\` calls need \`confirm: true\` — without it the tool
+   withholds the submit and hands back a quote instead of spending.
 3. While the job runs, poll with \`leadbay_lead_job_status\`
    (\`wait_seconds: 60\`); report progress, not silence.
 

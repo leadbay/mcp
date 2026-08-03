@@ -155,26 +155,36 @@ export async function collectJobSnapshot(
 }
 
 /** Poll until the job is terminal or `waitSeconds` elapse (0 = single poll).
- *  Fires ctx.progress per poll and respects ctx.signal cancellation. */
+ *  Fires ctx.progress per poll and respects ctx.signal cancellation.
+ *  `since`/`limit` are forwarded to every snapshot so a caller that block-waits
+ *  WITH a cursor still gets incremental pages — dropping them silently turned
+ *  an incremental poll into a full re-read of already-seen items. */
 export async function waitForJob(
   client: LeadbayClient,
   jobId: string,
   waitSeconds: number,
   ctx?: ToolContext,
-  itemsRequested?: number
+  itemsRequested?: number,
+  since?: string,
+  limit?: number
 ): Promise<McpJobSnapshot> {
   const startedAt = Date.now();
-  let snap = await collectJobSnapshot(client, jobId);
+  let snap = await collectJobSnapshot(client, jobId, since, limit);
   while (
     !TERMINAL_JOB_STATES.has(snap.job.state) &&
     (Date.now() - startedAt) / 1000 < waitSeconds &&
     !ctx?.signal?.aborted
   ) {
+    // Never sleep past the caller's deadline: a wait_seconds:1 request must not
+    // block for a full 4s interval, and no request should overrun its advertised
+    // bound by most of an interval (MCP clients time calls out).
+    const remainingMs = waitSeconds * 1000 - (Date.now() - startedAt);
+    if (remainingMs <= 0) break;
     await new Promise((resolve) =>
-      setTimeout(resolve, MCP_JOB_POLL.intervalMs)
+      setTimeout(resolve, Math.min(MCP_JOB_POLL.intervalMs, remainingMs))
     );
     if (ctx?.signal?.aborted) break;
-    snap = await collectJobSnapshot(client, jobId);
+    snap = await collectJobSnapshot(client, jobId, since, limit);
     const f = snap.funnel;
     ctx?.progress?.({
       progress: f.delivered ?? 0,

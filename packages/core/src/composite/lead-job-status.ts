@@ -67,7 +67,15 @@ export const leadJobStatus: Tool<LeadJobStatusParams, any> = {
     const waitSeconds = clampWaitSeconds(params.wait_seconds, 0);
     const snapshot =
       waitSeconds > 0
-        ? await waitForJob(client, params.job_id, waitSeconds, ctx)
+        ? await waitForJob(
+            client,
+            params.job_id,
+            waitSeconds,
+            ctx,
+            undefined,
+            params.since,
+            params.limit
+          )
         : await collectJobSnapshot(
             client,
             params.job_id,

@@ -1441,7 +1441,7 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent €C.CC.
+> the Y asked** · stopped: <stop_reason in plain words> · spent $C.CC.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
@@ -1521,7 +1521,7 @@ Pick the 2-3 options that match what actually happened — never all six:
 | Free run delivered on-profile leads | "Qualify these N against your criteria (paid — quote \`dry_run\` estimate first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (state the specific fix from the funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
-| Stopped at cost cap / quota | "Raise the cap to €X and continue" | leadbay_find_new_leads (SAME request_id re-submits are dedup-safe only for live jobs — use a new request_id with higher max_cost) |
+| Stopped at cost cap / quota | "Raise the cap to $X and continue" | leadbay_find_new_leads (SAME request_id re-submits are dedup-safe only for live jobs — use a new request_id with higher max_cost) |
 | User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |
 `;
 // endregion: leadbay_find_new_leads
@@ -2319,7 +2319,7 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent €C.CC.
+> the Y asked** · stopped: <stop_reason in plain words> · spent $C.CC.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
@@ -3516,10 +3516,17 @@ IBP reasoning) — "here's why to skip this account" is a deliverable.
 research+scoring — but repeat calls reuse every fresh cached stage
 (\`from_cache\` flags on the items) and converge to near-zero cost. \`channels\`
 purchase verified email (25c) / phone (250c) on success only;
-\`already_owned\` values cost nothing. Before a first paid run on a large
-batch: \`dry_run: true\`, quote the worst case, get the explicit go-ahead
-(an explicit "spend / get their emails" in the user's message counts).
-Set \`request_id\` and reuse it on retries of the same batch.
+\`already_owned\` values cost nothing.
+
+The gate is enforced in code, not just here: a PAID call (\`qualify\` left at
+its default or set true, and/or any \`channels\`) is WITHHELD unless it carries
+\`confirm: true\`. Without it the tool submits nothing and returns
+\`mode: "needs_confirmation"\` with a real backend quote — show that quote to
+the user, get the go-ahead (an explicit "spend / get their emails" in their
+message counts), then re-call with \`confirm: true\`. \`confirm: false\` is a
+veto: nothing is submitted and no quote round-trip is made. A fully FREE
+call (\`qualify: false\`, no \`channels\`) needs no \`confirm\` and passes straight
+through. Set \`request_id\` and reuse it on retries of the same batch.
 
 **Limits**: 500 refs/job, 3 active jobs/org, 10 submits/hour (429 +
 Retry-After beyond — wait, don't hammer), 30-min job wall clock.
@@ -3571,7 +3578,7 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent €C.CC.
+> the Y asked** · stopped: <stop_reason in plain words> · spent $C.CC.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →

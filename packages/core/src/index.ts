@@ -187,6 +187,8 @@ export {
   answerClarification, reportOutreach, reportFriction, sendFeedback, importLeads, importAndQualify,
   createCampaign, addLeadsToCampaign, removeLeadsFromCampaign,
   seedCandidates, extendLens,
+  // MCP-first lead delivery
+  findNewLeads, qualifyLeads, leadJobStatus,
   artifactKit,
 };
 

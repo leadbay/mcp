@@ -43,7 +43,7 @@ One short line narrating the delivery honestly, built from `funnel` + `cost` +
 `explain.scope_notes`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent €C.CC.
+> the Y asked** · stopped: <stop_reason in plain words> · spent $C.CC.
 
 Plain-word stop reasons: `target_reached` → omit (success), `pool_exhausted` →
 "ran out of matching candidates", `max_cost` → "hit the cost cap", `quota` →
