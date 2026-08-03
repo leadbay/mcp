@@ -20,6 +20,7 @@ import {
   compositeWriteTools,
   granularReadTools,
   granularWriteTools,
+  mcpFirstDeliveryAllTools,
 } from "@leadbay/core";
 import { listPrompts } from "../../src/prompts.js";
 
@@ -34,6 +35,8 @@ const KNOWN_TOOLS = new Set(
     ...compositeWriteTools,
     ...granularReadTools,
     ...granularWriteTools,
+    // Gated off by default until the backend routes ship; still registered.
+    ...mcpFirstDeliveryAllTools,
   ].map((t) => t.name),
 );
 const KNOWN_PROMPTS = new Set(listPrompts().map((p) => p.name));

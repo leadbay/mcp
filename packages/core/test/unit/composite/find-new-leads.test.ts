@@ -169,7 +169,10 @@ describe("leadbay_find_new_leads", () => {
     });
     expect(result.done).toBe(false);
     expect(result.still_running).toBe(true);
-    expect(result.next_poll).toEqual({
+    // toMatchObject, not toEqual: the handoff also carries a `since` cursor so
+    // the follow-up poll is incremental, and pinning the exact shape here just
+    // breaks on every future field.
+    expect(result.next_poll).toMatchObject({
       tool: "leadbay_lead_job_status",
       job_id: JOB_ID,
       suggested_wait_seconds: 60,

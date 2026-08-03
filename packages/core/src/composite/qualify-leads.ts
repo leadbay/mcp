@@ -49,6 +49,38 @@ interface QualifyLeadsParams {
 
 const DEFAULT_WAIT_SECONDS = 45;
 
+/** Stable idempotency key for a paid batch the caller didn't key itself.
+ *  Deterministic over the refs + the paid flags + the UTC day, so an identical
+ *  retry dedupes to the same backend job instead of re-charging, while a
+ *  genuinely different batch (or the next day) gets a different key. */
+function derivedRequestId(params: QualifyLeadsParams): string {
+  const refs = (params.lead_refs ?? [])
+    .map((r) =>
+      [r.lead_id, r.contact_id, r.website, r.name, r.location]
+        .filter(Boolean)
+        .join("~")
+    )
+    .sort()
+    .join("|");
+  const shape = [
+    refs,
+    params.prior_deliveries?.job_id ?? "",
+    params.qualify === false ? "free" : "qualify",
+    (params.channels ?? []).slice().sort().join(","),
+    (params.contact_titles ?? []).slice().sort().join(","),
+    params.title_gate ?? "",
+    new Date().toISOString().slice(0, 10),
+  ].join("#");
+  // FNV-1a — short, dependency-free, and only needs to be collision-resistant
+  // across one org's batches, not cryptographically strong.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < shape.length; i++) {
+    h ^= shape.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `qualify-auto-${h.toString(16).padStart(8, "0")}`;
+}
+
 export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
   name: "leadbay_qualify_leads",
   annotations: {
@@ -173,6 +205,15 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     const vetoed = params.confirm === false;
     const consented = !vetoed && params.confirm === true;
 
+    // A paid submit without an idempotency key can be re-run by any timeout or
+    // agent retry, re-charging fresh qualification and channel purchases for
+    // the same refs. `request_id` is optional on this tool (unlike the search),
+    // so derive a stable one from the batch when the caller omits it: same refs
+    // + same paid flags on the same day = same key = backend dedupe.
+    const requestId =
+      params.request_id ??
+      (isPaid ? derivedRequestId(params) : undefined);
+
     const body = compactBody({
       lead_refs: params.lead_refs,
       prior_deliveries: params.prior_deliveries,
@@ -181,7 +222,7 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
       title_gate: params.title_gate,
       channels: params.channels,
       max_cost: params.max_cost,
-      request_id: params.request_id,
+      request_id: requestId,
       lang: params.lang,
       dry_run: params.dry_run,
     });
@@ -254,7 +295,8 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     const done = TERMINAL_JOB_STATES.has(snapshot.job.state);
     return {
       job_id: submit.job_id,
-      request_id: params.request_id ?? null,
+      // Echo the key actually sent, so a retry can reuse it verbatim.
+      request_id: requestId ?? null,
       duplicate_submit: submit.duplicate ?? false,
       state: snapshot.job.state,
       done,
@@ -291,6 +333,10 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
         : {
             tool: "leadbay_lead_job_status",
             job_id: submit.job_id,
+            // Hand the cursor forward so the follow-up poll continues
+            // INCREMENTALLY instead of re-reading (and re-rendering) the
+            // rows already delivered in this response.
+            since: snapshot.next_since ?? null,
             suggested_wait_seconds: 60,
           },
       region: client.region,

@@ -269,7 +269,20 @@ granularTools.forEach((t) => {
 });
 
 // Composite read tools — always exposed (default agent surface).
+// The MCP-first delivery tools depend on backend routes (`POST /1.6/mcp/search`,
+// `POST /1.6/mcp/qualify`, `GET /1.6/mcp/jobs/{id}`) that are live on STAGING
+// only — production returns 404. Shipping them unconditionally would hand every
+// user tools that fail on their first call, so they stay behind an opt-in flag
+// until the backend rollout lands. Remove this gate (and the flag) in the
+// release that follows the backend deploy.
+const MCP_FIRST_DELIVERY_ENABLED =
+  process.env.LEADBAY_MCP_LEAD_DELIVERY === "1";
+
 export const compositeReadTools: Tool[] = [
+  // Poll surface for the MCP-first lead-delivery jobs (find_new_leads /
+  // qualify_leads). Read-only snapshot of a backend-owned job, gated with
+  // them since it is useless without a job to poll.
+  ...(MCP_FIRST_DELIVERY_ENABLED ? [leadJobStatus] : []),
   pullLeads,
   pullFollowups,
   followupsMap,
@@ -309,11 +322,6 @@ export const compositeReadTools: Tool[] = [
   bulkEnrichStatus,
   qualifyStatus,
   importStatus,
-  // Poll surface for the MCP-first lead-delivery jobs (find_new_leads /
-  // qualify_leads). Read-only snapshot of a backend-owned job — always
-  // exposed so a job started in a write-enabled session stays readable
-  // even if the deployment later runs read-only.
-  leadJobStatus,
   resolveImportRows,
   // seed-candidates is a read-only discovery surface for the extend flow.
   // Always exposed so the agent can show candidates even in read-only deployments.
@@ -362,17 +370,31 @@ export const compositeReadTools: Tool[] = [
   artifactKit,
 ];
 
-// Composite write tools — always-exposed in OpenClaw, gated in MCP behind
-// LEADBAY_MCP_WRITE=1 (the MCP server filters them out by default).
-export const compositeWriteTools: Tool[] = [
-  // MCP-first lead delivery (backend /mcp/search + /mcp/qualify jobs).
+/** Every MCP-first delivery tool, regardless of the deployment gate above.
+ *  The gate controls what a RUNNING server exposes; contract audits
+ *  (WORKFLOWS.md, routing anti-triggers) must still see these as registered
+ *  tools, or a temporary rollout flag would read as "this tool doesn't exist". */
+export const mcpFirstDeliveryTools: Tool[] = [
   // Write-tier: submits create server-side jobs that can spend money
   // (qualification research, channel purchase) and claim novelty in the
   // org's delivery ledger — same posture as the other spending composites.
-  // The FREE tier (qualify:false, channels:[]) is the default ask; the
-  // descriptions carry the no-silent-spend consent gate.
+  // The FREE tier (qualify:false, channels:[]) is the default ask, and a paid
+  // call is withheld in code until `confirm: true`.
   findNewLeads,
   qualifyLeads,
+];
+
+/** All three delivery tools including the read-side poller — the ungated
+ *  registry the contract audits read. */
+export const mcpFirstDeliveryAllTools: Tool[] = [
+  ...mcpFirstDeliveryTools,
+  leadJobStatus,
+];
+
+// Composite write tools — always-exposed in OpenClaw, gated in MCP behind
+// LEADBAY_MCP_WRITE=1 (the MCP server filters them out by default).
+export const compositeWriteTools: Tool[] = [
+  ...(MCP_FIRST_DELIVERY_ENABLED ? mcpFirstDeliveryTools : []),
   bulkQualifyLeads,
   enrichTitles,
   adjustAudience,

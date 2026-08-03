@@ -18,6 +18,7 @@ import {
   compositeWriteTools,
   granularReadTools,
   granularWriteTools,
+  mcpFirstDeliveryAllTools,
   type Tool,
 } from "@leadbay/core";
 
@@ -77,6 +78,8 @@ const ALL_TOOLS: Tool[] = [
   ...compositeWriteTools,
   ...granularReadTools,
   ...granularWriteTools,
+  // Gated off by default until the backend routes ship; still registered.
+  ...mcpFirstDeliveryAllTools,
 ];
 
 const ALL_TOOL_NAMES = new Set(ALL_TOOLS.map((t) => t.name));

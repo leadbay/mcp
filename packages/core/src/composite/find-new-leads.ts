@@ -62,12 +62,12 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
   annotations: {
     title: "Find new leads (net-new ICP search)",
     readOnlyHint: false,
-    // Unlike qualify_leads (paid by default), the default search here is FREE
-    // — qualify defaults to false and channels are empty — so the tool is not
-    // inherently destructive. A paid variant (qualify:true / channels) is
-    // withheld in execute() until `confirm: true`, which is where the spend
-    // decision is surfaced.
-    destructiveHint: false,
+    // The tool CAN bill (qualify:true and/or channels) and records deliveries
+    // in the org novelty ledger, so it advertises destructive like the other
+    // paid composites — annotations are static and must describe the worst
+    // case, not the default. The free path is protected in execute() instead:
+    // a paid call is withheld until `confirm: true`.
+    destructiveHint: true,
     // The mandatory request_id dedups: re-submitting the same request returns
     // the SAME live job instead of double-spending.
     idempotentHint: true,
@@ -292,7 +292,10 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       state: snapshot.job.state,
       done,
       summary: {
-        requested: params.count,
+        // Named items_requested (not `requested`) to match qualify_leads and
+        // the shared renderer, which reads summary.items_requested for the
+        // "delivered X of the Y asked" clause.
+        items_requested: submit.items_requested ?? params.count,
         delivered: snapshot.funnel.delivered ?? 0,
         delivered_callable: snapshot.funnel.delivered_callable ?? 0,
         delivered_title_only: snapshot.funnel.delivered_title_only ?? 0,
@@ -311,6 +314,10 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
         : {
             tool: "leadbay_lead_job_status",
             job_id: submit.job_id,
+            // Hand the cursor forward so the follow-up poll continues
+            // INCREMENTALLY instead of re-reading (and re-rendering) the
+            // rows already delivered in this response.
+            since: snapshot.next_since ?? null,
             suggested_wait_seconds: 60,
           },
       region: client.region,
