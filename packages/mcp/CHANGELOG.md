@@ -3,10 +3,11 @@
 ## 0.28.0 — 2026-07-31
 
 Add **`leadbay_top_accounts_to_activate`** — a prompt that builds a ranked
-account-activation plan: the accounts with the most money still on the table,
-each carrying one of five strategic motifs (SAUVETAGE / PLAN DE COMPTE / MONTÉE
-EN GAMME / RÉVEIL / CONQUÊTE) that drives its phone pitch and three-step
-checklist (product#3863). Renders via `leadbay_artifact_kit` when the user
+account-**conquest** plan from Leadbay data: the accounts worth activating,
+ranked by the strongest Leadbay signal (not by money — Leadbay holds no
+invoicing data), each carrying one of six strategic motifs (SAUVETAGE / PLAN DE
+COMPTE / MONTÉE EN GAMME / RÉVEIL / CONQUÊTE / SUIVI) that drives its phone
+pitch and three-step checklist (product#3863). Renders via `leadbay_artifact_kit` when the user
 accepts the offered deck; the chat table stands alone otherwise.
 
 **Leadbay-only by design.** Leadbay holds no invoicing data, so the plan ranks

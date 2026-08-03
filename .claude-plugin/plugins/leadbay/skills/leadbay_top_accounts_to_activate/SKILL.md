@@ -123,6 +123,8 @@ Bundling a non-blocking question in with a blocking one turns a justified pause 
 If I gave a `territory`, scope discovery to it now, and **make sure the scoping actually took effect before you pull** — a territory request that silently returns out-of-territory accounts is worse than none.
 
 - **Preferred: `leadbay_adjust_audience`** on my active lens, passing the place as `locations`. It applies directly, so the lens I already use is now scoped and `leadbay_pull_leads` needs no new id.
+
+  ⚠ **Location criteria MERGE — they do not replace.** `adjust_audience` unions the new `location_ids` into any existing include-location criterion (and `pull_followups` merges its `city` shortcut the same way). So asking for "Région Ouest" on a lens already scoped to Paris yields **Paris OR Région Ouest** while your header claims Région Ouest. Before adding a territory, check the current filter: if it already carries locations you were not asked to keep, clear or replace them (or build a fresh territory-only lens for this one-off plan) rather than stacking a union.
 - **If a new lens is genuinely warranted: `leadbay_new_lens` is a two-step call.** It returns `status:"preview"` and creates NOTHING unless you re-call the same args with `confirm:true`. So: preview → confirm → take `lens.id` from the `created` response → pass that id as `lensId` on every subsequent pull. Never continue on the previous active lens after previewing a new one; that delivers the old audience under a new heading.
 
 A place name goes to `locations`, never to `sectors` or a refine prompt.
@@ -139,7 +141,12 @@ If the org has none set, or they don't discriminate for this exercise, recommend
 
 **Get the accounts.** `leadbay_pull_followups` for the known/identified side, `leadbay_pull_leads` for the not-yet-identified side.
 
-⚠ **Unscoped means unscoped — pass `filtered:false`.** `leadbay_pull_followups` defaults to applying whatever Monitor filter is persisted server-side from a previous session, so a rep who once filtered Monitor to a city or sector would silently get a plan missing most of their known accounts. When no territory was given, call it with `filtered:false` so the known side really is the whole known side. (If you deliberately keep the persisted filter, say so in the plan's header — never leave it implicit.)
+⚠ **Monitor's scope must match the scope you put in the header — never leave it accidental.** `leadbay_pull_followups` defaults to applying whatever Monitor filter is persisted server-side from a previous session, and that filter has nothing to do with the lens Discover is using. Two stale-state traps, one rule:
+
+- **A persisted filter you didn't ask for** silently shrinks the known side, so a rep who once filtered Monitor to a city gets a "whole base" plan missing most of it.
+- **Blindly passing `filtered:false`** does the opposite: Monitor goes org-wide while Discover stays on a scoped lens, so out-of-scope known accounts land in a plan headed with the lens's name.
+
+So: **read the persisted filter first** (the response reports `active_filters`), then make it match the plan's declared scope. If the plan is scoped (a `territory`, or an active lens with its own geography), apply that same geography to Monitor. If the plan is genuinely org-wide, pass `filtered:false`. Either way, state the known side's scope in the header in the same breath as the Discover side — a plan whose two halves are scoped differently is misleading even when both halves are individually correct.
 
 ⚠ **A territory must scope BOTH sides.** Adjusting or creating a lens only scopes Discover; Monitor is filtered through its own path, so pass the territory to `leadbay_pull_followups` as well (its `city` free-text shortcut resolves to a `location_ids` filter, same resolver as the lens). Otherwise a territory-scoped plan quietly mixes in out-of-territory known accounts — and a client reading "Région Ouest" at the top will not check every row. Unless I named a `territory`, call `leadbay_pull_leads` with **no `lensId`** so it resolves my active lens — do not create a lens just because `account_status` showed a null. Capture `response.lens.id` from the first pull and pass it as an explicit `lensId` on every later call — a mid-session lens shift discards the cohort. Keep pulling until you have a pool comfortably deeper than <the count_or_default (as extracted above)>, topping up with `leadbay_bulk_qualify_leads` → `leadbay_qualify_status` → re-pull as needed.
 
