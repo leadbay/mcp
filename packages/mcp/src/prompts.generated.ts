@@ -918,7 +918,10 @@ back from Leadbay.
 
 Call \`leadbay_find_new_leads\` with the seed, \`filters\`, \`count\`,
 \`qualify: false\`, no channels — this is FREE — and a \`request_id\` derived
-from the ask + the ARCHETYPE + today's date. The archetype component is not
+from the ask + the ARCHETYPE + today's date. \`count\` is the TOTAL I asked
+for, not a per-search number: with two archetypes and a request for 10,
+split it (5 + 5, or whatever weighting fits my ask) rather than sending 10
+to each — otherwise I get 20 leads and, on the paid pass, pay for 20. The archetype component is not
 optional: \`request_id\` is the idempotency key, so two archetype searches
 sharing one id dedupe to the same job and the second archetype is never
 searched. Render the delivery table and judge fit honestly: are these the

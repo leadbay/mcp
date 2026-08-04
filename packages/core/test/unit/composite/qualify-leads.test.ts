@@ -112,8 +112,6 @@ describe("leadbay_qualify_leads", () => {
       contact_titles: ["Owner"],
       channels: ["email"],
       request_id: "vet-austin-1",
-      // Paid call (channels purchase email) — the spend gate withholds the
-      // submit without explicit consent. See qualify-leads-spend-gate.test.ts.
       confirm: true,
       wait_seconds: 0,
     });

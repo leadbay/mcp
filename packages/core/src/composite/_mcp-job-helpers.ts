@@ -123,9 +123,12 @@ const PAGE_LIMIT = 100;
 // follow-ups and a ceiling that stays a runaway backstop.
 const MAX_JOB_ITEMS = 500;
 const MIN_PAGES = 20;
-const PAGE_CAP = 120;
+// The bound must let EVERY allowed page size reach MAX_JOB_ITEMS — at limit=1
+// that is 500 pages, and a lower flat cap would return a partial batch while
+// still reporting done:true, with no cursor on a terminal submit response to
+// fetch the rest. Capping below the drain would hide items, not just slow them.
 const maxPagesFor = (pageLimit: number) =>
-  Math.min(PAGE_CAP, Math.max(MIN_PAGES, Math.ceil(MAX_JOB_ITEMS / pageLimit) + 1));
+  Math.max(MIN_PAGES, Math.ceil(MAX_JOB_ITEMS / pageLimit) + 1);
 
 /** One cumulative snapshot of the job, paging the item cursor dry. Job/funnel/
  *  cost/explain come from the LAST page fetched (the freshest projection). */

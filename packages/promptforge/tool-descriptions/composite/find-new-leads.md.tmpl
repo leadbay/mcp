@@ -56,13 +56,13 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Submit a net-new lead search: the backend matches an ICP seed against the
-full company universe, applies hard filters, skips everything the org already
-knows (`novelty: org`), optionally qualifies candidates against the org's own
+Submit a net-new lead search: the backend matches an ICP seed against the full
+company universe, applies hard filters, skips what the org already knows
+(`novelty: org`), optionally qualifies candidates against the org's own
 intelligence (questions, tags, ideal buyer profile — frozen at submit), and
 optionally purchases contact channels. The tool polls up to `wait_seconds`
-(default 45); a longer job returns `still_running` + `next_poll` — hand off
-to `leadbay_lead_job_status`. Jobs run ≤30 min, results kept 30 days.
+(default 45); a longer job returns `still_running` + `next_poll` — hand off to
+`leadbay_lead_job_status`. Jobs run ≤30 min, results kept 30 days.
 
 **Free vs paid — never spend silently.** The default ask (`qualify: false`,
 `channels: []`) is FREE: company profile + fit score + cached research +
@@ -95,9 +95,8 @@ In a FREE preview, drop violating rows and say the tier doesn't enforce.
 - `count` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After —
   wait, don't hammer).
 
-**Read the result honestly.** `funnel` + `explain.scope_notes` tell the
-story; zero delivered gets a cause + a concrete next move, never a bare "no
-results" (rules in RENDERING).
+**Read the result honestly** — `funnel` + `explain.scope_notes` tell the
+story; zero delivered gets a cause and a next move (rules in RENDERING).
 
 ---
 

@@ -409,6 +409,15 @@ export function getPrompt(
   if (!entry) {
     throw new Error(`Unknown prompt: ${name}`);
   }
+  // Filtering prompts/list is not enough: a cached slash command or a direct
+  // prompts/get by name would still hand back a workflow whose every tool call
+  // is missing from tools/list. A gated prompt is unavailable, not just unlisted.
+  const gate = GATED_PROMPTS[name];
+  if (gate && !gate()) {
+    throw new Error(
+      `Prompt ${name} is not enabled in this deployment (requires LEADBAY_MCP_LEAD_DELIVERY=1).`
+    );
+  }
   // Validate required arguments. Per spec, missing required args should
   // surface as a JSON-RPC error so the client can re-prompt the user.
   const missing = entry.arguments

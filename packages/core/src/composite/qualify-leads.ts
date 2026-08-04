@@ -50,9 +50,13 @@ interface QualifyLeadsParams {
 const DEFAULT_WAIT_SECONDS = 45;
 
 /** Stable idempotency key for a paid batch the caller didn't key itself.
- *  Deterministic over the refs + the paid flags + the UTC day, so an identical
- *  retry dedupes to the same backend job instead of re-charging, while a
- *  genuinely different batch (or the next day) gets a different key. */
+ *  Deterministic over the APPROVED BATCH ITSELF — refs, selector, paid flags,
+ *  spend cap — and nothing time-based: a retry of the same approval must
+ *  dedupe even if it lands after midnight or hours later. A genuinely
+ *  different batch (different refs, channels, titles, or a raised max_cost
+ *  after a stop_reason: max_cost) hashes differently and runs as a new job.
+ *  A caller who wants a deliberate re-run of an identical batch passes an
+ *  explicit request_id. */
 function derivedRequestId(params: QualifyLeadsParams): string {
   const refs = (params.lead_refs ?? [])
     .map((r) =>
@@ -79,7 +83,9 @@ function derivedRequestId(params: QualifyLeadsParams): string {
     (params.channels ?? []).slice().sort().join(","),
     (params.contact_titles ?? []).slice().sort().join(","),
     params.title_gate ?? "",
-    new Date().toISOString().slice(0, 10),
+    // The cap is part of the approval: raising it after a stop_reason:max_cost
+    // is a NEW approved run, and must not dedupe onto the capped job.
+    params.max_cost ?? "",
   ].join("#");
   // FNV-1a — short, dependency-free, and only needs to be collision-resistant
   // across one org's batches, not cryptographically strong.
