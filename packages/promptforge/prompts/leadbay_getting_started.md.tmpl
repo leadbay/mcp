@@ -1,0 +1,147 @@
+---
+name: leadbay_getting_started
+kind: prompt
+short_description: |
+  Guided first-run walkthrough — three clicks that actually use Leadbay: pull
+  today's leads, preview who to contact, then set it to run every morning. Use
+  when the user is new or asks to be SHOWN how Leadbay works ("walk me through
+  Leadbay", "I'm new", "how do I use this", "getting started", "give me a
+  tour"). Don't use it for orientation prose with no clicking — that's
+  leadbay_prospecting_overview.
+arguments: []
+expected_calls:
+  - leadbay_pull_leads
+  - leadbay_enrich_titles
+failure_modes:
+  - Presents a gate as prose ("let me know if you want me to pull your leads") instead of CALLING the host choice widget — the click IS the lesson, and prose turns the walkthrough into a lecture
+  - Fires more than one option per gate, or adds a "Skip" / "No thanks" / "Maybe later" option — each gate carries exactly ONE option by design
+  - Calls `leadbay_enrich_titles` with `titles`, `confirm=true`, `email=true` or `phone=true` — that launches a PAID reveal and spends a brand-new user's quota without consent; gate 2 is the free `mode:"discover"` preview ONLY
+  - Reports "no leads" on an empty batch while `computing_wishlist` / `computing_scores` is true — the lens is still building; render the tool's own two-option warm-up widget verbatim and pause
+  - Rewords, reorders or prose-ifies the `next_steps` payload from `leadbay_pull_leads` instead of mapping `options[]` into the widget verbatim
+  - Runs all three steps in one turn without waiting for the user's click between gates — the walkthrough is a sequence of gates, not a script to recite
+  - Claims to have created a scheduled task itself — Leadbay exposes no scheduling tool; gate 3 hands control to the HOST's scheduling flow
+  - Re-implements the host's frequency / time sub-questions inside the walkthrough, producing two competing scheduling flows in one conversation
+  - Skips `leadbay_pull_leads` and jumps straight to enrichment, leaving gate 2 with no `leadIds` to scope
+  - Drops the pinned `lens.id` between gates, so gate 2 enriches against a different lens than the one the user just saw
+---
+
+{{include:headers/agent-memory-preamble}}
+
+Walk me through Leadbay. Treat these the same way: "I'm new here", "how do I
+use this?", "getting started", "show me how Leadbay works", "give me a tour",
+"I just installed this".
+
+This is a GUIDED WALKTHROUGH, not an explainer. The user learns by clicking,
+and every click runs a real Leadbay call against their own account. By the end
+they will have actually pulled leads, seen who to contact, and set the whole
+thing up to run every morning.
+
+If the user wants orientation PROSE without doing anything — "explain how
+Leadbay works", "what's the difference between discovery and follow-up" —
+this is the wrong prompt. Use `leadbay_prospecting_overview` instead.
+
+{{include:gates/defer-to-tool-rendering}}
+
+{{include:heuristics/long-running-tools}}
+
+# THE ONE-OPTION RULE — the structural contract of this walkthrough
+
+Every gate below presents **exactly ONE option**. Not one plus "Skip". Not one
+plus "No thanks". One.
+
+This is deliberate. A first-run user does not yet know enough to choose between
+options — a menu makes them stall. One option makes the next move obvious, and
+the click is what teaches them the tool.
+
+**The gate IS the widget.** Call your host's choice widget with a single-option
+`options` array. Never render a gate as a prose question.
+
+The user's escape hatch is **typing**, and it needs no button. If they type
+something off-script ("actually just show me my lenses"), abandon the
+walkthrough and serve what they asked. Never re-fire a gate the user has
+already declined in prose.
+
+{{include:next-steps/ask-user-input-routing}}
+
+# STEP 0 — WHAT LEADBAY IS  (prose only — no tool call, no widget)
+
+Open with 2–3 sentences in plain salesperson language, no jargon: Leadbay keeps
+a **lens** (your target audience) and delivers fresh matching companies every
+day. Then say what the next three clicks will do. Then fire GATE 1.
+
+Do not call any tool in this step. Do not fire a widget for it.
+
+# GATE 1 — "Pull today's leads"
+
+Fire the widget with the single option — label `Pull today's leads`,
+description `Pull today's leads from your lens.`
+
+On click: call `leadbay_pull_leads` with **no arguments** (it resolves the
+user's default lens itself).
+
+Capture `lens.id` from the response and pass it as an explicit `lensId` on
+every later call in this walkthrough, so gate 2 enriches the same lens the
+user just looked at.
+
+Render the batch with the canonical layout:
+
+{{include:rendering/pull-leads-table}}
+
+## Branch — the batch came back empty
+
+A brand-new account often reads empty for the first minute while the backend
+computes the lens wishlist. Check `computing_wishlist` / `computing_scores`:
+
+- **Either is true** → the lens is still building. Say exactly that, in the
+  user's terms: "your lens is still building your first batch — that's normal
+  on a new account, it takes about a minute." The tool's `next_steps` payload
+  carries a **two-option** warm-up widget ("Re-pull in ~30s" / "Refine
+  audience") — render it VERBATIM. This is the ONE place a gate carries two
+  options, because the server built the payload and a re-pull genuinely has a
+  real alternative. On "Re-pull in ~30s", wait ~30s and return to GATE 1.
+  **NEVER say "no leads found."**
+- **Both false** → the lens is genuinely empty or too narrow, and `next_steps`
+  is `null`. Say so honestly, offer to widen the audience, and end the
+  walkthrough here. There is nothing to enrich.
+
+# GATE 2 — "Enrich top leads"
+
+Fire the widget with the single option — label `Enrich top leads`,
+description `See who to contact at the top leads.`
+
+On click: call `leadbay_enrich_titles` with `leadIds` = the lead ids from
+GATE 1 and `lensId` = the pinned lens id.
+
+**IRON LAW — THIS CALL SPENDS NOTHING.** Omit `titles` entirely: that returns
+`mode:"discover"`, the free preview of which job titles are available. Do NOT
+pass `titles`. Do NOT pass `confirm=true`. Do NOT pass `email=true` or
+`phone=true`. Any one of those launches a PAID reveal. This user has been using
+Leadbay for ninety seconds — never spend their quota to demonstrate a feature.
+
+Present the discovered titles, then say plainly: "nothing was spent here —
+revealing emails and phone numbers is a separate, paid step you confirm."
+
+# GATE 3 — "Run this every morning"
+
+Fire the widget with the single option — label `Run this every morning`,
+description `Set this up to run automatically every morning.`
+
+**Call no Leadbay tool for this step.** Leadbay has no scheduling API, and
+there is no `leadbay_*` tool that creates a scheduled task. What this gate does
+is hand control to YOUR host's own scheduling flow.
+
+When the user selects this option, follow your host's scheduled-task flow from
+the server instructions (it asks frequency, then time, then confirms). Do NOT
+re-ask those questions yourself — that would put two competing scheduling flows
+in one conversation. Name the task concretely, e.g. "Daily prospecting
+check-in".
+
+If your host exposes no scheduler at all, say so honestly in one line. Either
+way: **never claim a scheduled task was created.** Only the host can create one.
+
+# STOP
+
+IRON LAW — the walkthrough never takes outbound action. Do not draft or send
+outreach. Do not call `leadbay_report_outreach`.
+
+{{include:gates/stop-and-wait}}

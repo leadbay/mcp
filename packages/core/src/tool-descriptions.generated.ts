@@ -1715,6 +1715,100 @@ WHEN NOT TO USE: as the first read on a lead — the leadbay_research_lead_by_id
 `;
 // endregion: leadbay_get_web_fetch
 
+// region: leadbay_getting_started
+export const leadbay_getting_started: string = `## WHEN TO USE
+
+Trigger phrases: "walk me through leadbay", "I'm new", "how do I use this", "getting started", "show me how this works", "give me a tour", "help me get started", "I just installed this".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "which audiences do I have" → \`leadbay_my_lenses\`; "where am I / what's my plan and quota" → \`leadbay_account_status\`.
+
+Prefer when: the user has never used Leadbay, or asks to be SHOWN rather than told — the walkthrough runs real calls on their own account
+
+Examples that SHOULD invoke this tool:
+- "Walk me through Leadbay."
+- "I'm new here — how do I use this?"
+- "Can you show me how this works?"
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Show me today's leads."
+- "Explain the difference between discovery and follow-up."
+- "Which of my lenses is active right now?"
+
+## RENDER (quick)
+
+Not a data table. Run the walkthrough ONE gate at a time: fire your host's
+choice widget with that step's SINGLE option, wait for the click, make that
+step's tool call, then advance. Never dump all three steps at once, and never
+render a gate as a prose question.
+
+---
+
+Returns the **guided first-run walkthrough** — a short script the agent drives so a brand-new user learns Leadbay by *doing*, not by reading. Makes no backend call and mutates nothing; the content is static and version-locked.
+
+Every click in the walkthrough runs a real Leadbay call against the user's own account. By the end they have pulled today's leads, seen who to contact at the top ones, and set the whole thing up to run every morning.
+
+For orientation **prose** with no clicking — "explain how Leadbay works", "what's the difference between discovery and follow-up" — this tool is the wrong answer; that's the \`leadbay_prospecting_overview\` prompt.
+
+## THE ONE-OPTION RULE
+
+Every gate carries **exactly ONE option**. Not one plus "Skip". Not one plus "No thanks". One.
+
+A first-run user doesn't yet know enough to choose between options — a menu makes them stall. One option makes the next move obvious, and the click is what teaches the tool. The user's escape hatch is **typing**, which needs no button: if they type something off-script, abandon the walkthrough and serve what they asked.
+
+## What it returns
+
+\`\`\`
+{
+  version, intro, one_option_rule,
+  steps: [ { n, gate_label, gate_description, calls, args, ... } ],
+  stop
+}
+\`\`\`
+
+Per step: \`gate_label\` / \`gate_description\` are the widget's single option, \`calls\` is the tool to invoke on click (or \`null\`), and \`args\` is the literal argument shape. Render each \`gate_label\` verbatim — don't reword them.
+
+| Step | Gate | Calls |
+|---|---|---|
+| 1 | Pull today's leads | \`leadbay_pull_leads\` (no args) |
+| 2 | Enrich top leads | \`leadbay_enrich_titles\` (\`leadIds\` + \`lensId\`, **no \`titles\`**) |
+| 3 | Run this every morning | *nothing* — hands off to the host's scheduler |
+
+Step 1 also carries \`branches[]\` for the empty-batch cases, and step 2 carries \`forbidden_args\`.
+
+## Two hard rules the manifest encodes
+
+**Step 2 spends nothing.** Omitting \`titles\` returns \`mode:"discover"\` — the free preview of available job titles. Never pass \`titles\`, \`confirm=true\`, \`email=true\` or \`phone=true\`; each one launches a **paid** reveal. This user has been using Leadbay for ninety seconds; never spend their quota to demo a feature.
+
+**Step 3 has \`calls: null\` because Leadbay has no scheduling API.** No \`leadbay_*\` tool creates a scheduled task. The gate's option text is literal recurring language ("Run this every morning"), which is what lets the host's own scheduled-task flow take over. Follow that flow rather than re-asking frequency/time yourself, and never claim a scheduled task was created — only the host can create one.
+
+## Empty first batch is normal, not an error
+
+A brand-new lens reads empty for the first minute while the backend computes its wishlist. When \`leadbay_pull_leads\` returns no leads but \`computing_wishlist\` / \`computing_scores\` is true, the lens is warming up: render that tool's own two-option warm-up payload verbatim and pause. **Never report "no leads found"** in that state.
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+`;
+// endregion: leadbay_getting_started
+
 // region: leadbay_import_and_qualify
 export const leadbay_import_and_qualify: string = `Import + qualify leads in one call. Pass either \`domains: [{domain, name?}]\` (Mode A) OR \`records[]\` with \`mappings\` (Mode B). At least one mapped field must be LEADBAY_ID, CRM_ID, SIREN, LEAD_NAME, or LEAD_WEBSITE. Discover the org's mappable surface via \`leadbay_list_mappable_fields\`. For messy files, prefer the \`leadbay_import_file\` prompt which walks an agent through scan → resolve → preserve → commit phases.
 
@@ -4536,6 +4630,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_get_taste_profile,
   leadbay_get_user_prompt,
   leadbay_get_web_fetch,
+  leadbay_getting_started,
   leadbay_import_and_qualify,
   leadbay_import_leads,
   leadbay_import_status,

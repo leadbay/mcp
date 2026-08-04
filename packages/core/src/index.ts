@@ -104,6 +104,7 @@ import { campaignCallSheet } from "./composite/campaign-call-sheet.js";
 import { researchLeadById } from "./composite/research-lead-by-id.js";
 import { researchLeadByNameFuzzy } from "./composite/research-lead-by-name-fuzzy.js";
 import { getQualificationQuestions } from "./composite/get-qualification-questions.js";
+import { gettingStarted } from "./composite/getting-started.js";
 import { setQualificationQuestions } from "./composite/set-qualification-questions.js";
 import { getLeadCustomFields } from "./composite/get-lead-custom-fields.js";
 import { accountHistory } from "./composite/account-history.js";
@@ -149,6 +150,14 @@ export type {
   CreateDefaultBulkStoreOpts,
 } from "./jobs/bulk-store.js";
 
+// Guided first-run walkthrough manifest (issue #3952) — exported so the MCP
+// audit can cross-check the prompt template against the tool's gate labels.
+export { GETTING_STARTED_MANIFEST } from "./composite/getting-started.js";
+export type {
+  GettingStartedManifest,
+  WalkthroughStep,
+} from "./composite/getting-started.js";
+
 // Re-export individual tools for granular consumers
 export {
   // existing granular
@@ -175,6 +184,7 @@ export {
   pullLeads, pullFollowups, followupsMap, tourPlan, listCampaigns,
   campaignProgression, campaignCallSheet, researchLeadById, researchLeadByNameFuzzy,
   getQualificationQuestions, getLeadCustomFields,
+  gettingStarted,
   setQualificationQuestions,
   accountHistory,
   recallOrderedTitles, accountStatus, scanPortfolioSignals, teamActivity,
@@ -279,6 +289,12 @@ export const compositeReadTools: Tool[] = [
   // is a first-session question, and the underlying get_taste_profile is
   // ADVANCED-gated. Read-only; no MCP edit endpoint exists (issue #3768).
   getQualificationQuestions,
+  // Guided first-run walkthrough (issue #3952). ALWAYS exposed, read-only:
+  // returns the three-gate script a brand-new user clicks through to learn
+  // Leadbay by doing (pull leads → preview who to contact → schedule it).
+  // Makes no backend call. In compositeReadTools so the walkthrough still
+  // works on a read-only (LEADBAY_MCP_WRITE=0) deployment.
+  gettingStarted,
   // Per-lead custom-field VALUES. ALWAYS exposed: complements the always-on
   // list_mappable_fields (which returns DEFINITIONS only). The lead payload
   // embeds each field's definition, so no catalog join is needed (issue #3768).
