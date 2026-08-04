@@ -139,8 +139,13 @@ export async function collectJobSnapshot(
   limit?: number
 ): Promise<McpJobSnapshot> {
   const pageLimit = Math.min(Math.max(limit ?? PAGE_LIMIT, 1), PAGE_LIMIT);
+  // Escape the handle: job_id comes straight from user/agent input and the
+  // server does not validate schemas before dispatch, so an unescaped value
+  // containing path separators (`../../users/me`) would normalize out of
+  // /mcp/jobs and fire an AUTHENTICATED GET at an unintended endpoint.
+  const safeJobId = encodeURIComponent(jobId);
   const qs = (cursor?: string) =>
-    `/mcp/jobs/${jobId}?limit=${pageLimit}` +
+    `/mcp/jobs/${safeJobId}?limit=${pageLimit}` +
     (cursor ? `&since=${encodeURIComponent(cursor)}` : "");
   const maxPages = maxPagesFor(pageLimit);
   let page = await client.request<McpJobSnapshot>("GET", qs(since));

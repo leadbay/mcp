@@ -629,11 +629,19 @@ export function buildServer(
 
   // Prompts: pull-based slash commands the user can invoke directly.
   // See packages/mcp/src/prompts.ts for the catalog.
+  // Pass includeWrite through: a prompt whose workflow needs write-tier tools
+  // must not be offered on a read-only server, or the user gets a slash
+  // command whose every call is missing from tools/list.
+  const promptGate = { includeWrite: opts.includeWrite };
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({
-    prompts: listPrompts(),
+    prompts: listPrompts(promptGate),
   }));
   server.setRequestHandler(GetPromptRequestSchema, async (req) => {
-    return getPrompt(req.params.name, (req.params.arguments ?? {}) as Record<string, string | undefined>);
+    return getPrompt(
+      req.params.name,
+      (req.params.arguments ?? {}) as Record<string, string | undefined>,
+      promptGate
+    );
   });
 
   // Resources: URI-addressable read-only payloads (lead://, lens://, org://).

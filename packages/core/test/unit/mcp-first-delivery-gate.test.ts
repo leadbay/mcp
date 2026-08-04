@@ -39,7 +39,10 @@ async function loadCatalogues(flag: string | undefined) {
 
 beforeEach(() => vi.resetModules());
 
-describe("MCP-first delivery release gate", () => {
+// Each case resets the module registry and re-imports the full core index, a
+// large graph that can take >1s to re-evaluate — well past vitest's 5s default
+// once a case does it twice.
+describe("MCP-first delivery release gate", { timeout: 30_000 }, () => {
   it("hides all three tools by default", async () => {
     const names = await loadCatalogues(undefined);
     for (const tool of DELIVERY_TOOLS) {

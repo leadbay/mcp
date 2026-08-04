@@ -379,9 +379,19 @@ const CATALOG: CatalogEntry[] = [
 /** Prompts whose whole workflow drives tools that are themselves gated off
  *  until the backend routes ship. Exposing the prompt without the tools would
  *  let a user start a guided flow whose every call is missing from tools/list. */
-const GATED_PROMPTS: Record<string, () => boolean> = {
-  leadbay_new_leads: () => process.env.LEADBAY_MCP_LEAD_DELIVERY === "1",
+const GATED_PROMPTS: Record<string, (opts: PromptGateOptions) => boolean> = {
+  // Needs the rollout flag AND the write surface: every phase calls
+  // leadbay_find_new_leads / leadbay_qualify_leads, which are write-tier, so a
+  // read-only server (LEADBAY_MCP_WRITE=0) would offer a workflow whose tools
+  // are absent from tools/list even with the flag on.
+  leadbay_new_leads: (opts) =>
+    process.env.LEADBAY_MCP_LEAD_DELIVERY === "1" && opts.includeWrite !== false,
 };
+
+export interface PromptGateOptions {
+  /** Mirrors buildServer's includeWrite. Defaults to true (write enabled). */
+  includeWrite?: boolean;
+}
 
 /** The full catalogue, gates ignored — contract audits assert every prompt
  *  named in WORKFLOWS.md resolves, and a rollout flag must not read as
@@ -394,16 +404,17 @@ export function listAllPrompts(): Prompt[] {
   }));
 }
 
-export function listPrompts(): Prompt[] {
+export function listPrompts(opts: PromptGateOptions = {}): Prompt[] {
   return listAllPrompts().filter((p) => {
     const gate = GATED_PROMPTS[p.name];
-    return gate ? gate() : true;
+    return gate ? gate(opts) : true;
   });
 }
 
 export function getPrompt(
   name: string,
-  args: Record<string, string | undefined> = {}
+  args: Record<string, string | undefined> = {},
+  opts: PromptGateOptions = {}
 ): GetPromptResult {
   const entry = CATALOG.find((c) => c.name === name);
   if (!entry) {
@@ -413,9 +424,9 @@ export function getPrompt(
   // prompts/get by name would still hand back a workflow whose every tool call
   // is missing from tools/list. A gated prompt is unavailable, not just unlisted.
   const gate = GATED_PROMPTS[name];
-  if (gate && !gate()) {
+  if (gate && !gate(opts)) {
     throw new Error(
-      `Prompt ${name} is not enabled in this deployment (requires LEADBAY_MCP_LEAD_DELIVERY=1).`
+      `Prompt ${name} is not enabled in this deployment (requires LEADBAY_MCP_LEAD_DELIVERY=1 and the write surface).`
     );
   }
   // Validate required arguments. Per spec, missing required args should
