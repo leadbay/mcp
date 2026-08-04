@@ -95,7 +95,13 @@ Call `leadbay_find_new_leads` with the seed, `filters`, `count`,
 from the ask + the ARCHETYPE + today's date. `count` is the TOTAL I asked
 for, not a per-search number: with two archetypes and a request for 10,
 split it (5 + 5, or whatever weighting fits my ask) rather than sending 10
-to each — otherwise I get 20 leads and, on the paid pass, pay for 20. The archetype component is not
+to each — otherwise I get 20 leads and, on the paid pass, pay for 20.
+
+When you RETRY a search — it timed out, or the job is still live — reuse the
+`request_id` you already sent, verbatim. Do not recompute it: rederiving from
+"today's date" after midnight yields a new key, the backend cannot dedupe, and
+a second paid, novelty-claiming search launches. Roll the date only when I am
+genuinely asking for a new batch. The archetype component is not
 optional: `request_id` is the idempotency key, so two archetype searches
 sharing one id dedupe to the same job and the second archetype is never
 searched. Render the delivery table and judge fit honestly: are these the
@@ -136,6 +142,14 @@ When I want qualification evidence and/or reachable contacts:
    the paid submit back into the free job; keeping the original count buys a
    whole second batch, because `novelty: org` already excludes everything the
    preview delivered.
+
+   The same arithmetic applies AFTER the paid pass. A full-count preview can
+   still end short once qualification disqualifies rows or a strict title /
+   channel match misses: what I asked for is n QUALIFIED, CONTACTABLE leads,
+   not n examined. Count the delivered-and-callable rows; if they fall short,
+   tell me the gap in one line and offer to top it up — another shortfall-sized
+   search under a NEW `request_id`, quoted first like any paid run. Never
+   silently hand back fewer than I asked for and paid toward.
 3. While the job runs, poll with `leadbay_lead_job_status`
    (`wait_seconds: 60`); report progress, not silence.
 

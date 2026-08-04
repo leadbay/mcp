@@ -58,10 +58,14 @@ const DEFAULT_WAIT_SECONDS = 45;
  *  A caller who wants a deliberate re-run of an identical batch passes an
  *  explicit request_id. */
 function derivedRequestId(params: QualifyLeadsParams): string {
+  // Keep the FIELD NAMES in the shape. Concatenating truthy values alone let
+  // distinct selectors collapse onto one key — {website:"acme.com"} and
+  // {name:"acme.com"} resolve differently backend-side but hashed identically,
+  // so the second approval could be deduped onto the first job.
   const refs = (params.lead_refs ?? [])
     .map((r) =>
-      [r.lead_id, r.contact_id, r.website, r.name, r.location]
-        .filter(Boolean)
+      (["lead_id", "contact_id", "website", "name", "location"] as const)
+        .map((k) => `${k}=${r[k] ?? ""}`)
         .join("~")
     )
     .sort()
@@ -86,6 +90,9 @@ function derivedRequestId(params: QualifyLeadsParams): string {
     // The cap is part of the approval: raising it after a stop_reason:max_cost
     // is a NEW approved run, and must not dedupe onto the capped job.
     params.max_cost ?? "",
+    // Same for the output language — re-running the batch in another language
+    // must not return the earlier job with evidence in the previous one.
+    params.lang ?? "",
   ].join("#");
   // FNV-1a — short, dependency-free, and only needs to be collision-resistant
   // across one org's batches, not cryptographically strong.

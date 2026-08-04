@@ -131,6 +131,22 @@ describe("qualify_leads — derived idempotency key", () => {
     expect(next).not.toBe(first);
   });
 
+  it("a different output language keys differently", async () => {
+    const en = await submittedRequestId({ lead_refs: REFS, lang: "en" });
+    const fr = await submittedRequestId({ lead_refs: REFS, lang: "fr" });
+    expect(fr).not.toBe(en);
+  });
+
+  it("the same value under a different ref field keys differently", async () => {
+    // {website:"acme.com"} and {name:"acme.com"} resolve differently backend
+    // side, so they must not collapse onto one key.
+    const byWebsite = await submittedRequestId({
+      lead_refs: [{ website: "acme.com" }],
+    });
+    const byName = await submittedRequestId({ lead_refs: [{ name: "acme.com" }] });
+    expect(byName).not.toBe(byWebsite);
+  });
+
   it("an explicit request_id always wins", async () => {
     const id = await submittedRequestId({ lead_refs: REFS, request_id: "mine-1" });
     expect(id).toBe("mine-1");

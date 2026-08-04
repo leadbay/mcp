@@ -632,7 +632,10 @@ export function buildServer(
   // Pass includeWrite through: a prompt whose workflow needs write-tier tools
   // must not be offered on a read-only server, or the user gets a slash
   // command whose every call is missing from tools/list.
-  const promptGate = { includeWrite: opts.includeWrite };
+  // Normalize to the SAME truthiness the tool list uses above (`if
+  // (opts.includeWrite)`), so an omitted flag means "no write tools" for the
+  // prompt gate too rather than being read as write-enabled.
+  const promptGate = { includeWrite: Boolean(opts.includeWrite) };
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({
     prompts: listPrompts(promptGate),
   }));
