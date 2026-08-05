@@ -160,6 +160,11 @@ export async function collectJobSnapshot(
   // to null there would make the next poll a full re-read.
   let cursor = page.next_since ?? since ?? null;
   let pages = 1;
+  // A FULL page is the drain signal, not the cursor alone. `next_since` is a
+  // resumption handle the backend returns on every snapshot — including a
+  // completed job with a short page — so following it whenever it is set adds
+  // a wasted round-trip to every terminal poll. A short page means the cursor
+  // is caught up; the caller keeps next_since for the next incremental poll.
   while (page.items.length >= pageLimit && page.next_since && pages < maxPages) {
     const next = await client.request<McpJobSnapshot>(
       "GET",
@@ -228,21 +233,65 @@ export async function waitForJob(
  *  alone leaves `["Dallas","Dallas"]` and `["Dallas"]` hashing differently
  *  even though they request identical work, so a retry that happens to dedupe
  *  presents a new key and re-launches a paid job. */
-export function canonicalSet(values: readonly unknown[] | undefined): unknown[] {
-  return [...new Set((values ?? []).map((v) => JSON.stringify(v)))]
+export function canonicalSet(values: unknown): unknown[] {
+  // The server does not validate inputSchema before dispatch, so a set-shaped
+  // field can arrive as a bare scalar (`channels: "email"`). Wrap it instead
+  // of calling .map on a string — that threw a TypeError while DERIVING the
+  // key, i.e. before the caller even saw a quote.
+  const list =
+    values === undefined || values === null
+      ? []
+      : Array.isArray(values)
+        ? values
+        : [values];
+  return [...new Set(list.map((v) => JSON.stringify(v)))]
     .sort()
     .map((v) => JSON.parse(v));
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Lower-case a UUID-shaped id so casing alone never forks an idempotency
+ *  key — the backend resolves `A1B2…` and `a1b2…` to the same record. A value
+ *  that is not UUID-shaped is only trimmed, since we cannot assume the backend
+ *  folds case for arbitrary identifiers. */
+export function normalizeUuid(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const v = value.trim();
+  if (!v) return null;
+  return UUID_RE.test(v) ? v.toLowerCase() : v;
+}
+
+/** Canonicalize a set of ids: UUID-folded, then sorted + deduped. */
+export function canonicalIdSet(values: unknown): string[] {
+  const list =
+    values === undefined || values === null
+      ? []
+      : Array.isArray(values)
+        ? values
+        : [values];
+  return canonicalSet(
+    list.map(normalizeUuid).filter((v): v is string => !!v)
+  ) as string[];
 }
 
 /** Canonicalize a set of free-text labels (contact titles, sectors): trimmed
  *  and lower-cased before dedupe, because the backend matches them
  *  semantically. `["Owner"]` and `["owner "]` request identical work, so a
  *  retry that re-cased them must not derive a new key and re-spend. */
-export function canonicalLabelSet(
-  values: readonly string[] | undefined
-): string[] {
+export function canonicalLabelSet(values: unknown): string[] {
+  const list =
+    values === undefined || values === null
+      ? []
+      : Array.isArray(values)
+        ? values
+        : [values];
   return canonicalSet(
-    (values ?? []).map((v) => v.trim().toLowerCase()).filter(Boolean)
+    list
+      .filter((v): v is string => typeof v === "string")
+      .map((v) => v.trim().toLowerCase())
+      .filter(Boolean)
   ) as string[];
 }
 

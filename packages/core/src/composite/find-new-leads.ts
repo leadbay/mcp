@@ -13,6 +13,7 @@ import {
   clampWaitSeconds,
   collectJobSnapshot,
   canonicalSet,
+  canonicalIdSet,
   canonicalLabelSet,
   canonicalOptionalObject,
   derivedKey,
@@ -260,7 +261,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
           // top-up differing only by exclude_lead_ids is a different approved
           // search, and hashing it the same would return the first job as a
           // duplicate with the exclusions never applied.
-          exclude_lead_ids: canonicalSet(params.exclude_lead_ids),
+          exclude_lead_ids: canonicalIdSet(params.exclude_lead_ids),
           novelty: params.novelty ?? "org",
           max_cost: params.max_cost ?? null,
           exploration_cap: params.exploration_cap ?? null,

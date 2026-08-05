@@ -13,6 +13,7 @@ import {
   clampWaitSeconds,
   collectJobSnapshot,
   canonicalSet,
+  normalizeUuid,
   canonicalLabelSet,
   derivedKey,
   mockedSubmitPreview,
@@ -52,19 +53,6 @@ interface QualifyLeadsParams {
 }
 
 const DEFAULT_WAIT_SECONDS = 45;
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Lower-case a UUID-shaped id so casing alone never forks an idempotency
- *  key — the backend resolves `A1B2…` and `a1b2…` to the same record. A value
- *  that is not UUID-shaped is only trimmed, since we cannot assume the
- *  backend treats it case-insensitively. */
-function normalizeUuid(value: string | undefined): string | null {
-  const v = value?.trim();
-  if (!v) return null;
-  return UUID_RE.test(v) ? v.toLowerCase() : v;
-}
 
 /** Stable idempotency key for a paid batch the caller didn't key itself.
  *  Deterministic over the APPROVED BATCH ITSELF — refs, selector, paid flags,

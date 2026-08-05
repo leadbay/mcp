@@ -24,6 +24,10 @@ import {
   rejectCountryLocations,
   mockedSubmitPreview,
   normalizeSearchFilters,
+  canonicalSet,
+  canonicalLabelSet,
+  canonicalIdSet,
+  normalizeUuid,
 } from "../../../src/composite/_mcp-job-helpers.js";
 
 const BASE = "https://api-us.leadbay.app";
@@ -240,5 +244,24 @@ describe("normalizeSearchFilters — scalar tolerance", () => {
 
   it("drops a blank scalar rather than sending an empty string", () => {
     expect(normalizeSearchFilters({ locations: "   " })!.locations).toBeUndefined();
+  });
+});
+
+describe("set canonicalizers — scalar tolerance", () => {
+  it("does not throw on a scalar set field", () => {
+    // A bare `channels: "email"` used to TypeError while DERIVING the key,
+    // i.e. before the caller ever saw a quote.
+    expect(canonicalSet("email")).toEqual(["email"]);
+    expect(canonicalLabelSet("Owner ")).toEqual(["owner"]);
+    expect(canonicalIdSet("AAAA1111-2222-3333-4444-555566667777")).toEqual([
+      "aaaa1111-2222-3333-4444-555566667777",
+    ]);
+  });
+
+  it("folds UUID casing but leaves other ids alone", () => {
+    expect(canonicalIdSet(["AAAA1111-2222-3333-4444-555566667777"])).toEqual(
+      canonicalIdSet(["aaaa1111-2222-3333-4444-555566667777"])
+    );
+    expect(normalizeUuid("Ref-ABC")).toBe("Ref-ABC");
   });
 });
