@@ -5,7 +5,8 @@ import { leadbay_getting_started as GETTING_STARTED_DESCRIPTION } from "../tool-
 
 // leadbay_getting_started returns the guided first-run walkthrough (issue
 // leadbay/product#3952): a short script the agent drives so a brand-new user
-// learns Leadbay by DOING. Five gates, each carrying exactly ONE option. Makes
+// learns Leadbay by DOING. Five gates, each carrying ONE forward action plus an
+// exit (two options — a lone option degrades to prose on real hosts). Makes
 // no backend call and mutates nothing — the manifest is static, version-locked
 // content.
 //
@@ -51,7 +52,7 @@ import { leadbay_getting_started as GETTING_STARTED_DESCRIPTION } from "../tool-
 export interface GateNextSteps {
   /** The widget's question line. */
   question: string;
-  /** Exactly ONE option — the walkthrough's structural contract. */
+  /** Exactly TWO: the action, then the exit. See ONE_OPTION_RULE. */
   options: Array<{ label: string; description: string; kind: string }>;
 }
 
@@ -59,9 +60,9 @@ export interface GateNextSteps {
 export interface WalkthroughStep {
   /** 1-indexed step number. */
   n: number;
-  /** The widget's single option label — render verbatim. */
+  /** The forward action's label — render verbatim. */
   gate_label: string;
-  /** The widget's single option description. */
+  /** The forward action's description. */
   gate_description: string;
   /** What to TELL the user about this step before firing the widget. */
   explain: string;
@@ -108,24 +109,38 @@ export interface GettingStartedManifest {
 }
 
 const ONE_OPTION_RULE =
-  "Every gate presents exactly ONE option. Not one plus 'Skip'. Not one plus " +
-  "'No thanks'. One. A first-run user does not yet know enough to choose " +
-  "between options — a menu makes them stall, and one option makes the next " +
-  "move obvious. The gate IS the widget: call your host's choice widget with a " +
-  "single-option options array, never a prose question. The user's escape " +
-  "hatch is TYPING and needs no button — if they type something off-script, " +
-  "abandon the walkthrough and serve what they asked.";
+  "Every gate presents exactly ONE way forward, plus a way out — two options, " +
+  "never more: the action, and 'I'm done for now'. A first-run user does not " +
+  "yet know enough to choose between PATHS; one forward move makes the next " +
+  "step obvious, and the click is what teaches them the tool. The exit keeps " +
+  "the tour from being a trap, and satisfies the host widget's 2-4 option " +
+  "requirement — a lone option is rejected or silently degrades to prose, " +
+  "which kills the feature. Never add a third option, and never turn the exit " +
+  "into an alternative route ('show me my lenses instead'), which reintroduces " +
+  "the choice this rule removes. The gate IS the widget: never render it as a " +
+  "prose question — 'say the word and I'll check it' is a defect, not a gate. " +
+  "Typing also works: if the user types something off-script, abandon the " +
+  "walkthrough and serve what they asked.";
+
+/** The exit option every gate carries, so the widget has a valid 2-option shape. */
+const EXIT_OPTION = {
+  label: "I'm done for now",
+  description: "Stop the walkthrough here.",
+  kind: "walkthrough_exit",
+};
 
 const INTRO =
   "Keep the opening TINY — two lines, then the widget, all in your first " +
-  "message. (1) One sentence on what Leadbay is, e.g. 'Leadbay finds you new " +
-  "companies to sell to every day, based on who you tell it you're after.' " +
-  "(2) One short line naming the first step, e.g. 'Let's start with your " +
-  "account status.' (3) Fire gate 1's widget immediately, then stop. Do NOT " +
-  "preview all five steps, do NOT explain what a lens is yet, do NOT list " +
-  "what's coming — each gate explains itself when its turn arrives, and " +
-  "front-loading it buries the first button under text nobody reads. Call no " +
-  "tool in the opening.";
+  "message. (1) One sentence on what Leadbay does FOR THEM, in their language: " +
+  "'Leadbay brings you a fresh batch of companies worth selling to every day — " +
+  "you tell it who you're after, it goes and finds them.' (2) One short line " +
+  "that sets up the tour and says it's hands-on, e.g. 'I'll walk you through " +
+  "it — five quick steps, and you'll have real leads by the end. First, let's " +
+  "see which account you're on.' (3) Fire gate 1's widget immediately, then " +
+  "stop. Do NOT preview all five steps one by one, do NOT explain what a lens " +
+  "is yet, do NOT list what's coming — each gate explains itself when its turn " +
+  "arrives, and front-loading it buries the first button under text nobody " +
+  "reads. Call no tool in the opening.";
 
 // Every `say` below is verbatim from that tool's own routing.triggers, so the
 // phrase the tutorial teaches is one the agent actually routes on. If a tool's
@@ -164,6 +179,7 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
             description: "Check my Leadbay account status.",
             kind: "walkthrough_account_status",
           },
+          EXIT_OPTION,
         ],
       },
       calls: "leadbay_account_status",
@@ -202,6 +218,7 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
             description: "Pull today's leads from your lens.",
             kind: "walkthrough_pull_leads",
           },
+          EXIT_OPTION,
         ],
       },
       calls: "leadbay_pull_leads",
@@ -241,6 +258,7 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
             description: "See who to contact at the top leads. Free — no contact details revealed.",
             kind: "walkthrough_enrich_titles",
           },
+          EXIT_OPTION,
         ],
       },
       calls: "leadbay_enrich_titles",
@@ -274,6 +292,7 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
             description: "Put these leads into your CRM, if a connector is available here.",
             kind: "walkthrough_crm_push",
           },
+          EXIT_OPTION,
         ],
       },
       calls: null,
@@ -311,6 +330,7 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
             description: "Set this up to run automatically every morning.",
             kind: "walkthrough_schedule",
           },
+          EXIT_OPTION,
         ],
       },
       calls: null,

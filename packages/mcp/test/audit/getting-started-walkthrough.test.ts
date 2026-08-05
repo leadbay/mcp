@@ -6,8 +6,8 @@
  * gate label in the template and the tool keeps returning the old one.
  *
  * This audit pins the pieces that must agree, plus the two product decisions
- * that a later well-meaning edit would erode: exactly one option per gate, and
- * gate 2 never spending the new user's quota.
+ * that a later well-meaning edit would erode: one forward option + an exit per
+ * gate, and gate 3 never spending the new user's quota.
  */
 
 import { describe, it, expect } from "vitest";
@@ -58,7 +58,7 @@ describe("audit: getting-started walkthrough", () => {
     expect(modes.length).toBeGreaterThanOrEqual(3);
     const joined = modes.join("\n");
     expect(joined).toMatch(/PAID reveal/);
-    expect(joined).toMatch(/ONE option/);
+    expect(joined).toMatch(/forward action plus the/);
   });
 
   it("the prompt's gate labels match the tool manifest exactly", () => {
@@ -99,7 +99,7 @@ describe("audit: getting-started walkthrough", () => {
     // assembling a widget call from prose.
     expect(BODY).toMatch(/next_steps/);
     expect(BODY).toMatch(/VERBATIM/);
-    expect(BODY).toMatch(/do not add a second option/i);
+    expect(BODY).toMatch(/do\s*\n?\s*not add a third option/i);
   });
 
   it("the prompt's gate widget text matches the manifest payload", () => {
@@ -126,9 +126,13 @@ describe("audit: getting-started walkthrough", () => {
     expect(BODY).toMatch(/VERBATIM/);
   });
 
-  it("the prompt body carries the one-option rule", () => {
-    expect(BODY).toMatch(/\*\*exactly ONE option\*\*/);
-    expect(BODY).toMatch(/Not one plus "Skip"/);
+  it("the prompt body carries the one-forward-option rule", () => {
+    expect(BODY).toMatch(/\*\*exactly ONE way forward, plus a way out\*\*/);
+    // The live defect: a lone option degraded to prose ("say the word and
+    // I'll check it"), so the reason for the second option is spelled out.
+    expect(BODY).toMatch(/requires 2–4\s*\n?\s*options/);
+    expect(BODY).toMatch(/I'm done for now/);
+    expect(BODY).toMatch(/Never add a third option/);
     // The escape hatch is typing, not a "Skip" button.
     expect(BODY).toMatch(/typing/i);
   });

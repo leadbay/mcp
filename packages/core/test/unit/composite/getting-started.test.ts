@@ -17,7 +17,7 @@ beforeEach(() => resetHttpMock());
 
 // leadbay_getting_started returns a static walkthrough manifest (issue #3952).
 // These tests lock the two product decisions that are easy to erode by a later
-// well-meaning edit: exactly ONE option per gate, and gate 3 never spends.
+// well-meaning edit: one forward option + an exit per gate, and gate 3 never spends.
 
 describe("leadbay_getting_started", () => {
   it("happy path — returns the 5-step manifest with no HTTP call", async () => {
@@ -41,7 +41,10 @@ describe("leadbay_getting_started", () => {
       const ns = step.next_steps;
       expect(ns, `step ${step.n} must carry next_steps`).toBeDefined();
       expect(ns.question.length, `step ${step.n} question`).toBeGreaterThan(0);
-      expect(ns.options, `step ${step.n} options`).toHaveLength(1);
+      // Two options — action + exit. A LONE option is rejected by the host
+      // widget (it requires 2-4) and silently degrades to prose, which is the
+      // live defect this shape exists to prevent.
+      expect(ns.options, `step ${step.n} options`).toHaveLength(2);
       const [opt] = ns.options;
       // The payload must agree with the gate it belongs to, or the widget shows
       // one thing while the manifest documents another.
@@ -63,26 +66,39 @@ describe("leadbay_getting_started", () => {
     expect(GETTING_STARTED_MANIFEST.steps[2].explain).toMatch(/free/i);
   });
 
-  it("every gate carries exactly ONE option", () => {
-    // THE one-option rule (Arty's explicit product decision). A gate is one
-    // label + one description — never a menu, never a "Skip" sibling. If a
-    // future edit adds a second option to a gate, this fails.
+  it("every gate carries exactly ONE way forward, plus an exit", () => {
+    // The structural contract: one forward action so a first-run user never has
+    // to choose between PATHS, plus an exit so the tour isn't a trap — and so
+    // the payload satisfies the host widget's 2-4 option requirement.
     for (const step of GETTING_STARTED_MANIFEST.steps) {
       expect(step.gate_label, `step ${step.n} label`).toBeTypeOf("string");
       expect(step.gate_label.length, `step ${step.n} label non-empty`).toBeGreaterThan(0);
       expect(step.gate_description, `step ${step.n} description`).toBeTypeOf("string");
-      // The widget payload carries exactly one option — never a menu, never a
-      // "Skip" sibling. This is the assertion that fails if someone later
-      // "helpfully" adds a second choice to a gate.
-      expect(step.next_steps.options, `step ${step.n} option count`).toHaveLength(1);
+
+      const opts = step.next_steps.options;
+      expect(opts, `step ${step.n} option count`).toHaveLength(2);
+
+      // Exactly one option moves the tour forward; the other is the exit.
+      const exits = opts.filter((o) => o.kind === "walkthrough_exit");
+      expect(exits, `step ${step.n} must carry exactly one exit`).toHaveLength(1);
+      expect(exits[0].label).toBe("I'm done for now");
+      // The exit must END the tour, never route somewhere else — an
+      // alternative route would reintroduce the choice this rule removes.
+      expect(exits[0].description).toMatch(/stop/i);
+
+      // The forward option comes FIRST, so the obvious move is the top one.
+      expect(opts[0].kind, `step ${step.n} forward option must be first`).not.toBe(
+        "walkthrough_exit",
+      );
+
       // And no stray top-level options container competing with next_steps.
       expect(step, `step ${step.n} must not carry a bare options array`).not.toHaveProperty(
         "options",
       );
     }
-    expect(GETTING_STARTED_MANIFEST.one_option_rule).toMatch(/exactly ONE option/);
-    // The escape hatch is typing, not a button.
-    expect(GETTING_STARTED_MANIFEST.one_option_rule).toMatch(/TYPING/);
+    expect(GETTING_STARTED_MANIFEST.one_option_rule).toMatch(/exactly ONE way forward/);
+    // Never a third option, and the exit must not become an alternative route.
+    expect(GETTING_STARTED_MANIFEST.one_option_rule).toMatch(/Never add a third option/);
   });
 
   it("gate labels are the specified sequence, in order", () => {
