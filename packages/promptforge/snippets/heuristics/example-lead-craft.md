@@ -5,15 +5,13 @@ and matched against millions of real registry/website company descriptions,
 which state what a company **IS** — never what is happening. Write the seed
 the same way or the matcher drifts. Every rule below is measured:
 
-1. **Describe the BUYER, never the seller.** Before writing, answer: "would
-   this company write a check to my user?" A seed that describes what the user
-   sells surfaces the user's *competitors and vendors*, not their customers.
-   Classic trap: if the user's product helps companies of type X serve their
-   customers of type Y, the seed describes X — never Y.
-2. **Put everything in `description`; leave `name` unset.** A distinctive
-   invented brand name pulls matching toward name-lookalikes: a seed named
-   "Meridian Analytics" returned five unrelated companies all named
-   "Meridian". No name beats any name.
+1. **Describe the BUYER, never the seller.** Ask: "would this company write a
+   check to my user?" A seed describing what the user SELLS surfaces their
+   *competitors and vendors*. Classic trap: if the product helps companies of
+   type X serve customers of type Y, the seed describes X — never Y.
+2. **Put everything in `description`; leave `name` unset.** An invented brand
+   name pulls matching toward name-lookalikes — a seed named "Meridian
+   Analytics" returned five unrelated "Meridian" companies.
 3. **Registry style, one sentence to ~250 chars.** State the business profile:
    industry niche, business model, what they sell or operate, who they serve,
    observable scale (sites, membership, fleet). Write it like the first
@@ -38,12 +36,11 @@ the same way or the matcher drifts. Every rule below is measured:
    omit `locations` (a country name silently matches a same-named town:
    measured, "France" → the village of Francs). `example_lead.employees`
    does not filter; only `filters.employees_min/max` do.
-7. **Prefer `example_lead` over `query`.** Query text matches topic
-   *vocabulary* — "gyms that need durable flooring" surfaces flooring VENDORS
-   as strongly as gym BUYERS (measured: 0 delivered from the query, on-profile
-   from the example). `query` only when the user's wording carries signal an
-   example can't express.
-8. **One seed per buyer archetype.** If the ask spans two distinct segments
-   (e.g. "gyms and logistics warehouses"), run one search per segment with its
-   own description — a blended seed lands between the two clusters and matches
-   neither. Distinct asks need distinct `request_id`s.
+7. **Prefer `example_lead` over `query`.** Query matches topic *vocabulary* —
+   "gyms that need durable flooring" surfaces flooring VENDORS as strongly as
+   gym BUYERS (measured: 0 delivered vs on-profile from the example). Use
+   `query` only for signal an example can't express.
+8. **One seed per buyer archetype.** An ask spanning two segments ("gyms and
+   warehouses") needs one search each with its own description and
+   `request_id` — a blended seed lands between the clusters and matches
+   neither.
