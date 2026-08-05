@@ -39,6 +39,22 @@ import { leadbay_getting_started as GETTING_STARTED_DESCRIPTION } from "../tool-
 // so the walkthrough still works on a read-only (LEADBAY_MCP_WRITE=0)
 // deployment.
 
+/**
+ * The gate's widget payload — the SAME shape leadbay_pull_leads returns as
+ * `next_steps`, so the agent maps it verbatim into its host widget instead of
+ * assembling the call from prose. This is what makes the gate render as a
+ * button rather than the model deciding to run the tool straight through.
+ *
+ * `explain` is the short plain-language sentence the agent says BEFORE firing
+ * the widget: a tutorial has to teach what the step does, not just offer it.
+ */
+export interface GateNextSteps {
+  /** The widget's question line. */
+  question: string;
+  /** Exactly ONE option — the walkthrough's structural contract. */
+  options: Array<{ label: string; description: string; kind: string }>;
+}
+
 /** One step of the walkthrough. */
 export interface WalkthroughStep {
   /** 1-indexed step number. */
@@ -47,6 +63,10 @@ export interface WalkthroughStep {
   gate_label: string;
   /** The widget's single option description. */
   gate_description: string;
+  /** What to TELL the user about this step before firing the widget. */
+  explain: string;
+  /** Widget payload — map into ask_user_input_v0 / AskUserQuestion VERBATIM. */
+  next_steps: GateNextSteps;
   /** Tool to call on click, or null when no Leadbay tool applies. */
   calls: string | null;
   /** Literal argument shape to pass to `calls`. */
@@ -99,6 +119,20 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       n: 1,
       gate_label: "Check my account",
       gate_description: "See which Leadbay account you're connected to.",
+      explain:
+        "Tell the user what this step does before firing the widget: Leadbay is " +
+        "connected to their account, and this first click confirms which one — " +
+        "who they're signed in as and which organization they belong to.",
+      next_steps: {
+        question: "Let's start by confirming your account. Ready?",
+        options: [
+          {
+            label: "Check my account",
+            description: "See which Leadbay account you're connected to.",
+            kind: "walkthrough_account_status",
+          },
+        ],
+      },
       calls: "leadbay_account_status",
       args: {},
       branches: [
@@ -123,6 +157,20 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       n: 2,
       gate_label: "Pull today's leads",
       gate_description: "Pull today's leads from your lens.",
+      explain:
+        "Explain the LENS before firing: Leadbay keeps a lens — the description " +
+        "of who they sell to — and every day it finds fresh companies matching " +
+        "it. This click pulls today's batch.",
+      next_steps: {
+        question: "Now let's see today's leads. Ready?",
+        options: [
+          {
+            label: "Pull today's leads",
+            description: "Pull today's leads from your lens.",
+            kind: "walkthrough_pull_leads",
+          },
+        ],
+      },
       calls: "leadbay_pull_leads",
       args: {},
       pin: "lens.id — pass as an explicit lensId on every later step, so step 3 enriches the same lens the user just saw",
@@ -147,6 +195,21 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       n: 3,
       gate_label: "Enrich top leads",
       gate_description: "See who to contact at the top leads.",
+      explain:
+        "Explain what enrichment IS before firing: a company is not a person, so " +
+        "Leadbay can find WHICH ROLES to approach at these companies. Say plainly " +
+        "that this preview is free and reveals no emails or phone numbers — that " +
+        "is a separate paid step they confirm later.",
+      next_steps: {
+        question: "Want to see who to contact at these companies?",
+        options: [
+          {
+            label: "Enrich top leads",
+            description: "See who to contact at the top leads. Free — no contact details revealed.",
+            kind: "walkthrough_enrich_titles",
+          },
+        ],
+      },
       calls: "leadbay_enrich_titles",
       args: {
         leadIds: "<the lead ids from step 2>",
@@ -165,6 +228,21 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       n: 4,
       gate_label: "Add these to my CRM",
       gate_description: "Put these leads into your CRM.",
+      explain:
+        "Explain the split before firing: Leadbay finds the leads, but their CRM " +
+        "is where they'll actually work them — and if a CRM connector is available " +
+        "in this chat, these companies can go straight in. Do not promise it works " +
+        "until you have checked your own tool set.",
+      next_steps: {
+        question: "Want these leads in your CRM?",
+        options: [
+          {
+            label: "Add these to my CRM",
+            description: "Put these leads into your CRM, if a connector is available here.",
+            kind: "walkthrough_crm_push",
+          },
+        ],
+      },
       calls: null,
       args: null,
       handoff:
@@ -188,6 +266,20 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       n: 5,
       gate_label: "Run this every morning",
       gate_description: "Set this up to run automatically every morning.",
+      explain:
+        "Close the loop before firing: prospecting works when it's a habit, not a " +
+        "one-off — and the whole sequence they just did can run on its own every " +
+        "morning, so fresh leads are waiting instead of being something to remember.",
+      next_steps: {
+        question: "Want this to run on its own every morning?",
+        options: [
+          {
+            label: "Run this every morning",
+            description: "Set this up to run automatically every morning.",
+            kind: "walkthrough_schedule",
+          },
+        ],
+      },
       calls: null,
       args: null,
       handoff:

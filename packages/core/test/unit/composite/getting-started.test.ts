@@ -30,6 +30,39 @@ describe("leadbay_getting_started", () => {
     expect(getHttpRequests()).toHaveLength(0);
   });
 
+  it("every gate ships a ready-made widget payload, not just loose strings", () => {
+    // The reason a gate renders as a BUTTON instead of the model running the
+    // tool straight through: each step carries `next_steps` in the same
+    // {question, options[]} shape leadbay_pull_leads returns, which the shared
+    // routing snippet says to map into the host widget VERBATIM. Without it the
+    // agent has to assemble the widget call from prose — the weak path that let
+    // it skip the widget entirely.
+    for (const step of GETTING_STARTED_MANIFEST.steps) {
+      const ns = step.next_steps;
+      expect(ns, `step ${step.n} must carry next_steps`).toBeDefined();
+      expect(ns.question.length, `step ${step.n} question`).toBeGreaterThan(0);
+      expect(ns.options, `step ${step.n} options`).toHaveLength(1);
+      const [opt] = ns.options;
+      // The payload must agree with the gate it belongs to, or the widget shows
+      // one thing while the manifest documents another.
+      expect(opt.label).toBe(step.gate_label);
+      expect(opt.kind).toMatch(/^walkthrough_/);
+      // AskUserQuestion caps labels at ~5 words; the sentence lives in description.
+      expect(opt.label.split(/\s+/).length).toBeLessThanOrEqual(5);
+      expect(opt.description.length).toBeGreaterThan(opt.label.length);
+    }
+  });
+
+  it("every gate explains itself before asking — it's a tutorial, not a button rack", () => {
+    for (const step of GETTING_STARTED_MANIFEST.steps) {
+      expect(step.explain, `step ${step.n} must carry an explain beat`).toBeTypeOf("string");
+      expect(step.explain.length, `step ${step.n} explain non-trivial`).toBeGreaterThan(40);
+    }
+    // The two concepts a first-run user genuinely does not know yet.
+    expect(GETTING_STARTED_MANIFEST.steps[1].explain).toMatch(/lens/i);
+    expect(GETTING_STARTED_MANIFEST.steps[2].explain).toMatch(/free/i);
+  });
+
   it("every gate carries exactly ONE option", () => {
     // THE one-option rule (Arty's explicit product decision). A gate is one
     // label + one description — never a menu, never a "Skip" sibling. If a
@@ -38,8 +71,14 @@ describe("leadbay_getting_started", () => {
       expect(step.gate_label, `step ${step.n} label`).toBeTypeOf("string");
       expect(step.gate_label.length, `step ${step.n} label non-empty`).toBeGreaterThan(0);
       expect(step.gate_description, `step ${step.n} description`).toBeTypeOf("string");
-      // No plural option container anywhere on a step.
-      expect(step, `step ${step.n} must not carry an options array`).not.toHaveProperty("options");
+      // The widget payload carries exactly one option — never a menu, never a
+      // "Skip" sibling. This is the assertion that fails if someone later
+      // "helpfully" adds a second choice to a gate.
+      expect(step.next_steps.options, `step ${step.n} option count`).toHaveLength(1);
+      // And no stray top-level options container competing with next_steps.
+      expect(step, `step ${step.n} must not carry a bare options array`).not.toHaveProperty(
+        "options",
+      );
     }
     expect(GETTING_STARTED_MANIFEST.one_option_rule).toMatch(/exactly ONE option/);
     // The escape hatch is typing, not a button.

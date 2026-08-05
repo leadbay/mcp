@@ -69,6 +69,40 @@ describe("audit: getting-started walkthrough", () => {
     }
   });
 
+  it("the prompt forbids running a step's tool without the click", () => {
+    // The observed failure: the agent ran the tools straight through and never
+    // fired a widget, so the user watched a demo instead of taking a tutorial.
+    expect(BODY).toMatch(/NEVER run a step's tool without firing its widget first/);
+    expect(BODY).toMatch(/Wait for the click/);
+  });
+
+  it("the prompt makes every gate explain before it asks", () => {
+    // A tutorial has to teach, not just present buttons.
+    expect(BODY).toMatch(/EVERY GATE IS TWO BEATS — EXPLAIN, THEN ASK/);
+    expect(BODY).toMatch(/\*\*Explain first/);
+  });
+
+  it("the prompt tells the agent to map each gate's next_steps verbatim", () => {
+    // Each step ships a {question, options[]} payload — the same shape
+    // leadbay_pull_leads returns — so the agent renders it instead of
+    // assembling a widget call from prose.
+    expect(BODY).toMatch(/next_steps/);
+    expect(BODY).toMatch(/VERBATIM/);
+    expect(BODY).toMatch(/do not add a second option/i);
+  });
+
+  it("the prompt's gate widget text matches the manifest payload", () => {
+    // Prompt and manifest are two renderings of one widget. If a later edit
+    // reworded one side, the user would see different text depending on which
+    // surface drove the tour.
+    for (const step of GETTING_STARTED_MANIFEST.steps) {
+      expect(BODY, `gate ${step.n} question missing`).toContain(step.next_steps.question);
+      expect(BODY, `gate ${step.n} description missing`).toContain(
+        step.next_steps.options[0].description,
+      );
+    }
+  });
+
   it("the prompt body carries the one-option rule", () => {
     expect(BODY).toMatch(/\*\*exactly ONE option\*\*/);
     expect(BODY).toMatch(/Not one plus "Skip"/);

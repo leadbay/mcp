@@ -17,6 +17,9 @@ expected_calls:
   - leadbay_report_friction
 failure_modes:
   - Presents a gate as prose ("let me know if you want me to pull your leads") instead of CALLING the host choice widget — the click IS the lesson, and prose turns the walkthrough into a lecture
+  - Runs a step's tool WITHOUT firing that step's widget first and waiting for the click — the walkthrough becomes an automated demo the user only watches, which is the exact opposite of learning by doing
+  - Fires the widget without the EXPLAIN beat, so the user gets an unexplained button and learns nothing about what a lens or an enrichment actually is
+  - Rewrites the gate's own `next_steps` payload (its `question`, `label` or `description`) instead of mapping it into the widget verbatim, or merges two gates into a single multi-option widget
   - Fires more than one option per gate, or adds a "Skip" / "No thanks" / "Maybe later" option — each gate carries exactly ONE option by design
   - Calls `leadbay_enrich_titles` with `titles`, `confirm=true`, `email=true` or `phone=true` — that launches a PAID reveal and spends a brand-new user's quota without consent; gate 3 is the free `mode:"discover"` preview ONLY
   - Reports "no leads" on an empty batch while `computing_wishlist` / `computing_scores` is true — the lens is still building; render the tool's own two-option warm-up widget verbatim and pause
@@ -62,6 +65,27 @@ the click is what teaches them the tool.
 **The gate IS the widget.** Call your host's choice widget with a single-option
 `options` array. Never render a gate as a prose question.
 
+**EVERY GATE IS TWO BEATS — EXPLAIN, THEN ASK.** This is a tutorial, so the
+user must understand what they're about to do *before* they click:
+
+1. **Explain** — one or two plain sentences saying what this step does and why
+   it matters. Never jargon. This is the teaching half; skipping it turns the
+   walkthrough into a series of unexplained buttons.
+2. **Ask** — fire the widget. **Then STOP and wait for the click.**
+
+**NEVER run a step's tool without firing its widget first and receiving the
+user's click.** Calling `leadbay_pull_leads` because the walkthrough "obviously
+goes there next" defeats the entire feature — the click IS the lesson. The one
+exception is when the user's own message already told you to do it (e.g. "walk
+me through it and just run everything"); then follow what they asked.
+
+**Each gate ships its own widget payload — use it, don't rewrite it.** Every
+step in the manifest carries `explain` (what to say) and `next_steps`
+(`{question, options[]}`, already the widget's shape). Map `next_steps` into
+your host's widget VERBATIM — same question, same single option, same label
+and description. Do not reword them, do not merge two gates into one widget,
+and do not add a second option.
+
 The user's escape hatch is **typing**, and it needs no button. If they type
 something off-script ("actually just show me my lenses"), abandon the
 walkthrough and serve what they asked. Never re-fire a gate the user has
@@ -79,8 +103,10 @@ Do not call any tool in this step. Do not fire a widget for it.
 
 # GATE 1 — "Check my account"
 
-Fire the widget with the single option — label `Check my account`,
-description `See which Leadbay account you're connected to.`
+**Explain first:** Leadbay is connected to their account — this first click
+confirms which one, and who they're signed in as.
+
+**Then fire the widget** — question `Let's start by confirming your account. Ready?`, single option labelled `Check my account`, description `See which Leadbay account you're connected to.` **Wait for the click.**
 
 On click: call `leadbay_account_status` (it takes no arguments).
 
@@ -101,8 +127,11 @@ beat — it proves the connection works before anything else is attempted.
 
 # GATE 2 — "Pull today's leads"
 
-Fire the widget with the single option — label `Pull today's leads`,
-description `Pull today's leads from your lens.`
+**Explain first — this is where you teach the LENS.** Leadbay keeps a *lens*:
+their description of who they sell to. Every day it goes and finds fresh
+companies matching it. This click pulls today's batch.
+
+**Then fire the widget** — question `Now let's see today's leads. Ready?`, single option labelled `Pull today's leads`, description `Pull today's leads from your lens.` **Wait for the click.**
 
 On click: call `leadbay_pull_leads` with **no arguments** (it resolves the
 user's default lens itself).
@@ -134,8 +163,14 @@ computes the lens wishlist. Check `computing_wishlist` / `computing_scores`:
 
 # GATE 3 — "Enrich top leads"
 
-Fire the widget with the single option — label `Enrich top leads`,
-description `See who to contact at the top leads.`
+**Explain first — teach what enrichment IS.** A company isn't a person: to
+actually reach out they need a human. Leadbay can find *which roles* to
+approach at these companies. Say plainly that this preview is **free** and
+reveals no emails or phone numbers — that's a separate, paid step they confirm
+later.
+
+**Then fire the widget** — question `Want to see who to contact at these companies?`, single option labelled `Enrich top leads`, description `See who to contact at the top leads. Free — no contact details revealed.` **Wait for the
+click.**
 
 On click: call `leadbay_enrich_titles` with `leadIds` = the lead ids from
 GATE 2 and `lensId` = the pinned lens id.
@@ -151,8 +186,13 @@ revealing emails and phone numbers is a separate, paid step you confirm."
 
 # GATE 4 — "Add these to my CRM"
 
-Fire the widget with the single option — label `Add these to my CRM`,
-description `Put these leads into your CRM.`
+**Explain first — teach the split.** Leadbay finds the leads; their CRM is
+where they'll actually work them. If a CRM connector is available in this chat,
+these companies can go straight in. Don't promise it works until you've checked
+your own tool set.
+
+**Then fire the widget** — question `Want these leads in your CRM?`, single
+option labelled `Add these to my CRM`, description `Put these leads into your CRM, if a connector is available here.` **Wait for the click.**
 
 **Call no Leadbay tool for this step.** Leadbay has no CRM integration — it
 cannot push, export, or sync a lead anywhere. But YOU may be able to: many
@@ -185,8 +225,11 @@ description of the intent.
 
 # GATE 5 — "Run this every morning"
 
-Fire the widget with the single option — label `Run this every morning`,
-description `Set this up to run automatically every morning.`
+**Explain first — close the loop.** Prospecting works when it's a habit, not a
+one-off. The whole sequence they just ran can happen on its own every morning,
+so fresh leads are waiting for them instead of being one more thing to remember.
+
+**Then fire the widget** — question `Want this to run on its own every morning?`, single option labelled `Run this every morning`, description `Set this up to run automatically every morning.` **Wait for the click.**
 
 **Call no Leadbay tool for this step.** Leadbay has no scheduling API, and
 there is no `leadbay_*` tool that creates a scheduled task. What this gate does
