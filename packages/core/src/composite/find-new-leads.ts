@@ -225,6 +225,11 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
           (params.contact_titles ?? []).slice().sort().join(","),
           params.title_gate ?? "",
           (params.channels ?? []).slice().sort().join(","),
+          // Canonicalized (sorted) so ordering alone never forks the key, but
+          // PRESENT — a top-up that differs only by exclude_lead_ids is a
+          // different approved search, and hashing it the same would return
+          // the first job as a duplicate with the exclusions never applied.
+          (params.exclude_lead_ids ?? []).slice().sort().join(","),
           params.novelty ?? "",
           params.max_cost ?? "",
           params.exploration_cap ?? "",
