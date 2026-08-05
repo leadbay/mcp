@@ -76,6 +76,17 @@ describe("audit: getting-started walkthrough", () => {
     expect(BODY).toMatch(/Wait for the click/);
   });
 
+  it("the opening is two lines then the widget — not a syllabus", () => {
+    // Observed: the tour opened with paragraphs (what Leadbay is + a preview of
+    // all five steps + gate 1's own explain beat) before the first button. A
+    // first-run user wants to see it work, not read what's coming.
+    expect(BODY).toMatch(/Keep the opening tiny/i);
+    expect(BODY).toMatch(/Fire GATE 1's widget immediately, in the same message/);
+    expect(BODY).toMatch(/Do NOT\*\* preview all five steps/);
+    // Gate 1 must not stack a second explanation on top of the opening lines.
+    expect(BODY).toMatch(/opening lines above ARE this gate's explanation/);
+  });
+
   it("the prompt makes every gate explain before it asks", () => {
     // A tutorial has to teach, not just present buttons.
     expect(BODY).toMatch(/EVERY GATE IS TWO BEATS — EXPLAIN, THEN ASK/);

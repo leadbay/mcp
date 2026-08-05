@@ -117,10 +117,15 @@ const ONE_OPTION_RULE =
   "abandon the walkthrough and serve what they asked.";
 
 const INTRO =
-  "Open with 2-3 sentences in plain salesperson language, no jargon: Leadbay " +
-  "keeps a LENS (your target audience) and delivers fresh matching companies " +
-  "every day. Then say what the next five clicks will do, then fire gate 1. " +
-  "No tool call and no widget in this step.";
+  "Keep the opening TINY — two lines, then the widget, all in your first " +
+  "message. (1) One sentence on what Leadbay is, e.g. 'Leadbay finds you new " +
+  "companies to sell to every day, based on who you tell it you're after.' " +
+  "(2) One short line naming the first step, e.g. 'Let's start with your " +
+  "account status.' (3) Fire gate 1's widget immediately, then stop. Do NOT " +
+  "preview all five steps, do NOT explain what a lens is yet, do NOT list " +
+  "what's coming — each gate explains itself when its turn arrives, and " +
+  "front-loading it buries the first button under text nobody reads. Call no " +
+  "tool in the opening.";
 
 // Every `say` below is verbatim from that tool's own routing.triggers, so the
 // phrase the tutorial teaches is one the agent actually routes on. If a tool's
@@ -146,17 +151,17 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
     {
       n: 1,
       gate_label: "Check my account",
-      gate_description: "See which Leadbay account you're connected to.",
+      gate_description: "Check my Leadbay account status.",
       explain:
-        "Tell the user what this step does before firing the widget: Leadbay is " +
-        "connected to their account, and this first click confirms which one — " +
-        "who they're signed in as and which organization they belong to.",
+        "The opening two lines ARE this gate's explanation — do not add another " +
+        "paragraph. One sentence on what Leadbay is, one line naming this step, " +
+        "then fire the widget in the SAME message.",
       next_steps: {
-        question: "Let's start by confirming your account. Ready?",
+        question: "Let's start with your account status.",
         options: [
           {
             label: "Check my account",
-            description: "See which Leadbay account you're connected to.",
+            description: "Check my Leadbay account status.",
             kind: "walkthrough_account_status",
           },
         ],
