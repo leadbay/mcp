@@ -23,6 +23,7 @@ import {
   collectJobSnapshot,
   rejectCountryLocations,
   mockedSubmitPreview,
+  normalizeSearchFilters,
 } from "../../../src/composite/_mcp-job-helpers.js";
 
 const BASE = "https://api-us.leadbay.app";
@@ -220,5 +221,24 @@ describe("mockedSubmitPreview — only in mock mode", () => {
       if (previous === undefined) delete process.env.LEADBAY_MOCK;
       else process.env.LEADBAY_MOCK = previous;
     }
+  });
+});
+
+describe("normalizeSearchFilters — scalar tolerance", () => {
+  // The server does not validate inputSchema before dispatch, so a bare string
+  // reaches the tool and would otherwise be POSTed where an array is expected.
+  it("wraps a scalar sector/location in a one-item array", () => {
+    const out = normalizeSearchFilters({ locations: "Dallas", sectors: "fitness" })!;
+    expect(out.locations).toEqual(["Dallas"]);
+    expect(out.sectors).toEqual(["fitness"]);
+  });
+
+  it("leaves arrays untouched", () => {
+    const out = normalizeSearchFilters({ locations: ["Dallas", "Austin"] })!;
+    expect(out.locations).toEqual(["Dallas", "Austin"]);
+  });
+
+  it("drops a blank scalar rather than sending an empty string", () => {
+    expect(normalizeSearchFilters({ locations: "   " })!.locations).toBeUndefined();
   });
 });

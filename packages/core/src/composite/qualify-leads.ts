@@ -53,6 +53,19 @@ interface QualifyLeadsParams {
 
 const DEFAULT_WAIT_SECONDS = 45;
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Lower-case a UUID-shaped id so casing alone never forks an idempotency
+ *  key — the backend resolves `A1B2…` and `a1b2…` to the same record. A value
+ *  that is not UUID-shaped is only trimmed, since we cannot assume the
+ *  backend treats it case-insensitively. */
+function normalizeUuid(value: string | undefined): string | null {
+  const v = value?.trim();
+  if (!v) return null;
+  return UUID_RE.test(v) ? v.toLowerCase() : v;
+}
+
 /** Stable idempotency key for a paid batch the caller didn't key itself.
  *  Deterministic over the APPROVED BATCH ITSELF — refs, selector, paid flags,
  *  spend cap — and nothing time-based: a retry of the same approval must
@@ -73,8 +86,10 @@ function derivedRequestId(params: QualifyLeadsParams): string {
   // a retry that happened to dedupe would then re-run the whole paid job.
   const refs = canonicalSet(
     (params.lead_refs ?? []).map((r) => [
-      r.lead_id?.trim() ?? null,
-      r.contact_id?.trim() ?? null,
+      // UUIDs are case-insensitive to the backend, so an uppercase id and its
+      // lowercase form are the same lead and must share a key.
+      normalizeUuid(r.lead_id),
+      normalizeUuid(r.contact_id),
       // Normalize the website the SAME way the resolver does, so a pasted
       // "https://Acme.com/" and a retry's "acme.com" resolve to one company
       // AND to one key. Fall back to the trimmed/lowercased raw value when it

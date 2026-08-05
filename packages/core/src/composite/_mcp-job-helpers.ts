@@ -429,6 +429,16 @@ export function normalizeSearchFilters(
   }
   if (out.employees_min == null) delete out.employees_min;
   if (out.employees_max == null) delete out.employees_max;
+  // The server does not validate inputSchema before dispatch, so an agent can
+  // send `locations: "Dallas"` where the backend expects an array. Wrap a bare
+  // string in a one-item list — the same tolerance rejectCountryLocations
+  // already applies — instead of forwarding a scalar that 400s on
+  // deserialization.
+  for (const key of ["sectors", "locations"]) {
+    const v = out[key];
+    if (typeof v === "string") out[key] = v.trim() ? [v] : undefined;
+    if (out[key] === undefined) delete out[key];
+  }
   return out;
 }
 

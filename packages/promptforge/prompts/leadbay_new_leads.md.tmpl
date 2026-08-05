@@ -154,6 +154,12 @@ When I want qualification evidence and/or reachable contacts:
    tell me the gap in one line and offer to top it up — another shortfall-sized
    search under a NEW `request_id`, quoted first like any paid run. Never
    silently hand back fewer than I asked for and paid toward.
+
+   Pass every lead already SEEN into that top-up's `exclude_lead_ids` —
+   delivered, disqualified and skipped alike, from both the preview and the
+   paid pass. `novelty: org` only excludes prior DELIVERIES, so a candidate
+   that was examined and rejected is still eligible; without the exclusion
+   list the top-up re-picks the same misses and charges again to close no gap.
 3. While the job runs, poll with `leadbay_lead_job_status`
    (`wait_seconds: 60`); report progress, not silence.
 

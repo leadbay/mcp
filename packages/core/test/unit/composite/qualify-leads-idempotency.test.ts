@@ -252,3 +252,21 @@ describe("qualify_leads — label normalization", () => {
     expect(cto).not.toBe(owner);
   });
 });
+
+describe("qualify_leads — UUID casing", () => {
+  it("an uppercase lead_id shares a key with its lowercase form", async () => {
+    const upper = await submittedRequestId({
+      lead_refs: [{ lead_id: "AAAA1111-2222-3333-4444-555566667777" }],
+    });
+    const lower = await submittedRequestId({
+      lead_refs: [{ lead_id: "aaaa1111-2222-3333-4444-555566667777" }],
+    });
+    expect(lower).toBe(upper);
+  });
+
+  it("a non-UUID id keeps its casing (backend may be case-sensitive)", async () => {
+    const a = await submittedRequestId({ lead_refs: [{ lead_id: "Ref-ABC" }] });
+    const b = await submittedRequestId({ lead_refs: [{ lead_id: "ref-abc" }] });
+    expect(b).not.toBe(a);
+  });
+});
