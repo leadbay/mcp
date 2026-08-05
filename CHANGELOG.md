@@ -3,9 +3,14 @@
 ## 0.28.0 — Guided first-run walkthrough
 
 - **New: "Walk me through Leadbay."** A brand-new user now learns Leadbay by
-  doing it, not by reading about it. Three steps, one button each: pull today's
-  leads, see who to contact at the top ones, then set the whole thing to run
-  every morning. Every click makes a real call on your own account.
+  doing it, not by reading about it. Four steps, one button each: pull today's
+  leads, see who to contact at the top ones, put them in your CRM, then set the
+  whole thing to run every morning.
+- **Your CRM, via the connector you already have.** Leadbay doesn't integrate
+  with CRMs — but if you run a HubSpot, Salesforce, Pipedrive or Attio connector
+  alongside it, the assistant can use *that* to create the company and contact
+  for you. If you don't have one, it says so plainly and offers to pass the
+  request to the Leadbay team instead of pretending.
 - **One option per step, on purpose.** A first-run user doesn't yet know enough
   to pick from a menu, so each step offers exactly one next move. You can always
   type instead — say anything off-script and the walkthrough steps aside.

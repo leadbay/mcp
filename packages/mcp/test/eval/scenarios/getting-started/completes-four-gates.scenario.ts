@@ -2,11 +2,13 @@
 // (issue leadbay/product#3952, "Tool to help people getting started").
 //
 // The change: a new `leadbay_getting_started` prompt + composite tool ship a
-// three-gate walkthrough. Each gate presents EXACTLY ONE option and each click
-// runs a real Leadbay call, so a brand-new user learns by doing:
+// four-gate walkthrough. Each gate presents EXACTLY ONE option, so a brand-new
+// user learns by doing:
 //   gate 1  "Pull today's leads"       → leadbay_pull_leads (no args)
 //   gate 2  "Enrich top leads"         → leadbay_enrich_titles (NO titles = free)
-//   gate 3  "Run this every morning"   → no Leadbay tool; the host's scheduler
+//   gate 3  "Add these to my CRM"      → no Leadbay tool; the AGENT's own CRM
+//                                        connector (Leadbay has no CRM integration)
+//   gate 4  "Run this every morning"   → no Leadbay tool; the host's scheduler
 //
 // UNDERDELIVER is the failure this scenario guards: the agent EXPLAINS Leadbay
 // in prose — a tidy paragraph about lenses and daily batches — and never runs a
@@ -77,7 +79,7 @@ const aiResponses = (leadId: string) => ({
 });
 
 export const SCENARIO = {
-  name: "getting-started-completes-three-gates",
+  name: "getting-started-completes-four-gates",
   prompt: "leadbay_getting_started",
   tier: "gate",
   args: {},
@@ -145,8 +147,10 @@ export const SCENARIO = {
       "called leadbay_pull_leads exactly once for gate 1 and rendered the batch",
       "called leadbay_enrich_titles exactly once for gate 2, scoped to the leads JUST shown and OMITTING titles so it ran the no-spend discovery preview",
       "presented each gate as a choice-widget call carrying EXACTLY ONE option (no 'Skip' / 'No thanks' sibling, and not as a prose question) — falling back to prose only if no widget tool exists",
-      "waited for the user between gates — did NOT run all three steps in a single uninterrupted turn",
-      "reached gate 3 and offered to make this recurring using the words 'every morning', handing off to the host's scheduling flow",
+      "waited for the user between gates — did NOT run all four steps in a single uninterrupted turn",
+      "at gate 3 checked its OWN tool set for a CRM connector rather than looking for a leadbay_* CRM tool (none exists) — and, having no CRM connector in this harness, said so honestly instead of describing how to use one",
+      "did NOT claim a CRM record was created — no connector was available to create one",
+      "reached gate 4 and offered to make this recurring using the words 'every morning', handing off to the host's scheduling flow",
       "stated plainly that gate 2 spent nothing and that revealing emails/phones is a separate paid step the user confirms",
       "did NOT claim a scheduled task was created",
     ],

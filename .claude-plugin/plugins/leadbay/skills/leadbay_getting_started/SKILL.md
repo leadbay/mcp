@@ -1,6 +1,6 @@
 ---
 name: leadbay_getting_started
-description: "Guided first-run walkthrough — three clicks that actually use Leadbay: pull today's leads, preview who to contact, then set it to run every morning. Use when the user is new or asks to be SHOWN how Leadbay works (\"walk me through Leadbay\", \"I'm new\", \"how do I use this\", \"getting started\", \"give me a tour\"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview."
+description: "Guided first-run walkthrough — four clicks that actually use Leadbay: pull today's leads, preview who to contact, push them to the CRM connector the host already has, then set it to run every morning. Use when the user is new or asks to be SHOWN how Leadbay works (\"walk me through Leadbay\", \"I'm new\", \"how do I use this\", \"getting started\", \"give me a tour\"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview."
 ---
 
 
@@ -93,7 +93,7 @@ User picks → call the matching `Calls` tool. Constraints: 2–4 mutually-exclu
 
 Open with 2–3 sentences in plain salesperson language, no jargon: Leadbay keeps
 a **lens** (your target audience) and delivers fresh matching companies every
-day. Then say what the next three clicks will do. Then fire GATE 1.
+day. Then say what the next four clicks will do. Then fire GATE 1.
 
 Do not call any tool in this step. Do not fire a widget for it.
 
@@ -217,7 +217,41 @@ Leadbay for ninety seconds — never spend their quota to demonstrate a feature.
 Present the discovered titles, then say plainly: "nothing was spent here —
 revealing emails and phone numbers is a separate, paid step you confirm."
 
-# GATE 3 — "Run this every morning"
+# GATE 3 — "Add these to my CRM"
+
+Fire the widget with the single option — label `Add these to my CRM`,
+description `Put these leads into your CRM.`
+
+**Call no Leadbay tool for this step.** Leadbay has no CRM integration — it
+cannot push, export, or sync a lead anywhere. But YOU may be able to: many
+users run a CRM connector alongside Leadbay in the same host, and that
+connector is yours to call.
+
+So: **check your own tool set for a CRM capability** — HubSpot, Salesforce,
+Pipedrive, Attio, Close, or any similar CRM server. This is the same detection
+you already do for outreach tooling: read the host's installed-connector /
+installed-MCP inventory when it's available, otherwise infer from the
+conversation, otherwise ask the user which CRM they use.
+
+**If you have one**, use it to create or update the company and its contact
+from the lead data already in hand. Pass what Leadbay gave you and nothing
+invented: company name, website, city/region, the contact's name and job
+title. You do NOT have their email or phone — gate 2 was the free preview, so
+never write a contact detail you did not receive. Report back what the
+connector actually returned, per CRM record.
+
+**If you have no CRM connector**, say so in one honest line, name which CRM
+the user mentioned so the answer is theirs and not generic, and offer to pass
+the request to the Leadbay team via `leadbay_report_friction` with
+`category: "missing_capability"` — that is the real route for "I want my leads
+in <CRM>". Do not describe a connector the user does not have as though they
+could use it right now.
+
+**Never claim a CRM record was created** unless the connector confirmed it.
+Only the connector can create one — Leadbay cannot, and neither can a
+description of the intent.
+
+# GATE 4 — "Run this every morning"
 
 Fire the widget with the single option — label `Run this every morning`,
 description `Set this up to run automatically every morning.`

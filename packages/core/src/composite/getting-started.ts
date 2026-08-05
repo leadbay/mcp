@@ -5,9 +5,16 @@ import { leadbay_getting_started as GETTING_STARTED_DESCRIPTION } from "../tool-
 
 // leadbay_getting_started returns the guided first-run walkthrough (issue
 // leadbay/product#3952): a short script the agent drives so a brand-new user
-// learns Leadbay by DOING. Three gates, each carrying exactly ONE option, each
-// click running a real Leadbay call. Makes no backend call and mutates nothing
-// — the manifest is static, version-locked content.
+// learns Leadbay by DOING. Four gates, each carrying exactly ONE option. Makes
+// no backend call and mutates nothing — the manifest is static, version-locked
+// content.
+//
+// Two of the four gates delegate to a capability Leadbay does NOT have and the
+// HOST usually does (`calls: null`): the CRM push (gate 3) and the recurring
+// schedule (gate 4). Leadbay has no CRM integration and no scheduling API, so
+// the manifest names the CAPABILITY rather than a third-party tool name and
+// lets the agent find its own connector — the same detection the
+// connected-outreach-tool table in leadbay_prospecting_overview already uses.
 //
 // STATELESS BY DESIGN — there is no `step` argument. The agent fetches the
 // whole manifest once and drives the gates from the conversation it already
@@ -71,7 +78,7 @@ const ONE_OPTION_RULE =
 const INTRO =
   "Open with 2-3 sentences in plain salesperson language, no jargon: Leadbay " +
   "keeps a LENS (your target audience) and delivers fresh matching companies " +
-  "every day. Then say what the next three clicks will do, then fire gate 1. " +
+  "every day. Then say what the next four clicks will do, then fire gate 1. " +
   "No tool call and no widget in this step.";
 
 const STOP =
@@ -127,6 +134,29 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
     },
     {
       n: 3,
+      gate_label: "Add these to my CRM",
+      gate_description: "Put these leads into your CRM.",
+      calls: null,
+      args: null,
+      handoff:
+        "Leadbay has NO CRM integration — it cannot push, export or sync a lead " +
+        "anywhere, which is why `calls` is null. But the AGENT often can: many " +
+        "users run a CRM connector alongside Leadbay in the same host. Check your " +
+        "own tool set for a CRM capability (HubSpot, Salesforce, Pipedrive, Attio, " +
+        "Close, or similar) the same way you detect outreach tooling — the host's " +
+        "installed-connector / installed-MCP inventory when available, otherwise " +
+        "the conversation, otherwise ask which CRM they use. If you have one, use " +
+        "it to create or update the company + its contact from the lead data " +
+        "already in hand: company name, website, city/region, contact name and job " +
+        "title. You do NOT have the contact's email or phone — gate 2 was the free " +
+        "preview — so never write a contact detail you did not receive. If you have " +
+        "no CRM connector, say so in one honest line, name the CRM the user " +
+        "mentioned, and offer leadbay_report_friction with " +
+        "category:'missing_capability'. NEVER claim a CRM record was created unless " +
+        "the connector confirmed it — only the connector can create one.",
+    },
+    {
+      n: 4,
       gate_label: "Run this every morning",
       gate_description: "Set this up to run automatically every morning.",
       calls: null,

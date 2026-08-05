@@ -1740,7 +1740,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 Not a data table. Run the walkthrough ONE gate at a time: fire your host's
 choice widget with that step's SINGLE option, wait for the click, make that
-step's tool call, then advance. Never dump all three steps at once, and never
+step's tool call, then advance. Never dump all four steps at once, and never
 render a gate as a prose question.
 
 ---
@@ -1773,15 +1773,18 @@ Per step: \`gate_label\` / \`gate_description\` are the widget's single option, 
 |---|---|---|
 | 1 | Pull today's leads | \`leadbay_pull_leads\` (no args) |
 | 2 | Enrich top leads | \`leadbay_enrich_titles\` (\`leadIds\` + \`lensId\`, **no \`titles\`**) |
-| 3 | Run this every morning | *nothing* — hands off to the host's scheduler |
+| 3 | Add these to my CRM | *nothing* — **your own** CRM connector |
+| 4 | Run this every morning | *nothing* — hands off to the host's scheduler |
 
-Step 1 also carries \`branches[]\` for the empty-batch cases, and step 2 carries \`forbidden_args\`.
+Step 1 also carries \`branches[]\` for the empty-batch cases, and step 2 carries \`forbidden_args\`. Steps 3 and 4 carry \`handoff\` prose instead of \`args\`.
 
-## Two hard rules the manifest encodes
+## Three hard rules the manifest encodes
 
 **Step 2 spends nothing.** Omitting \`titles\` returns \`mode:"discover"\` — the free preview of available job titles. Never pass \`titles\`, \`confirm=true\`, \`email=true\` or \`phone=true\`; each one launches a **paid** reveal. This user has been using Leadbay for ninety seconds; never spend their quota to demo a feature.
 
-**Step 3 has \`calls: null\` because Leadbay has no scheduling API.** No \`leadbay_*\` tool creates a scheduled task. The gate's option text is literal recurring language ("Run this every morning"), which is what lets the host's own scheduled-task flow take over. Follow that flow rather than re-asking frequency/time yourself, and never claim a scheduled task was created — only the host can create one.
+**Step 3 delegates to a connector Leadbay does not own.** Leadbay has **no** CRM integration — it cannot push, export or sync a lead anywhere, which is why \`calls\` is \`null\`. But the agent often can: many users run a CRM connector in the same host. Check **your own tool set** for a CRM capability (HubSpot, Salesforce, Pipedrive, Attio, Close, …) exactly the way you detect outreach tooling — the host's installed-connector inventory when available, else the conversation, else ask. With one, create/update the company + contact from the data in hand (name, website, city, contact name + title). **You do not have the contact's email or phone** — step 2 was the free preview — so never write a detail you did not receive. With no connector, say so honestly and offer \`leadbay_report_friction\` with \`category: "missing_capability"\`. **Never claim a CRM record was created unless the connector confirmed it.**
+
+**Step 4 has \`calls: null\` because Leadbay has no scheduling API.** No \`leadbay_*\` tool creates a scheduled task. The gate's option text is literal recurring language ("Run this every morning"), which is what lets the host's own scheduled-task flow take over. Follow that flow rather than re-asking frequency/time yourself, and never claim a scheduled task was created — only the host can create one.
 
 ## Empty first batch is normal, not an error
 

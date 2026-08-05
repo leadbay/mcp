@@ -20,11 +20,11 @@ beforeEach(() => resetHttpMock());
 // well-meaning edit: exactly ONE option per gate, and gate 2 never spends.
 
 describe("leadbay_getting_started", () => {
-  it("happy path — returns the 3-step manifest with no HTTP call", async () => {
+  it("happy path — returns the 4-step manifest with no HTTP call", async () => {
     mockHttp([]);
     const result = await gettingStarted.execute(newClient(), {});
     expect(result.version).toBe(1);
-    expect(result.steps).toHaveLength(3);
+    expect(result.steps).toHaveLength(4);
     // Static content: the tour must not touch the backend at all. This is the
     // whole basis for readOnlyHint + openWorldHint:false in the annotations.
     expect(getHttpRequests()).toHaveLength(0);
@@ -46,10 +46,11 @@ describe("leadbay_getting_started", () => {
     expect(GETTING_STARTED_MANIFEST.one_option_rule).toMatch(/TYPING/);
   });
 
-  it("gate labels are the sequence Arty specified, in order", () => {
+  it("gate labels are the specified sequence, in order", () => {
     expect(GETTING_STARTED_MANIFEST.steps.map((s) => s.gate_label)).toEqual([
       "Pull today's leads",
       "Enrich top leads",
+      "Add these to my CRM",
       "Run this every morning",
     ]);
   });
@@ -85,10 +86,29 @@ describe("leadbay_getting_started", () => {
     expect(Object.keys(step.args ?? {}).sort()).toEqual(["leadIds", "lensId"]);
   });
 
-  it("step 3 calls no Leadbay tool — scheduling is the host's", () => {
+  it("step 3 calls no Leadbay tool — the CRM connector is the host's", () => {
     const step = GETTING_STARTED_MANIFEST.steps[2];
-    // calls:null is load-bearing. Leadbay has no scheduling API, so an agent
-    // reading the manifest must not be able to infer a tool that would do it.
+    // calls:null is load-bearing. Leadbay has NO CRM integration, so an agent
+    // reading the manifest must not be able to infer a leadbay_* tool that
+    // would push, export or sync a lead.
+    expect(step.calls).toBeNull();
+    expect(step.args).toBeNull();
+    expect(step.handoff).toMatch(/NO CRM integration/);
+    // Delegation: the agent checks ITS OWN tool set, the same way it detects
+    // outreach tooling. Capability named, not a third-party tool name.
+    expect(step.handoff).toMatch(/your\s+own tool set/);
+    expect(step.handoff).toMatch(/installed-connector/);
+    // Honesty guards — the two ways this gate could lie to a new user.
+    expect(step.handoff).toMatch(/NEVER claim a CRM record was created/);
+    expect(step.handoff).toMatch(/never write a contact detail you did not receive/);
+    // The no-connector path must route to the real escape hatch, not a dead end.
+    expect(step.handoff).toMatch(/leadbay_report_friction/);
+    expect(step.handoff).toMatch(/missing_capability/);
+  });
+
+  it("step 4 calls no Leadbay tool — scheduling is the host's", () => {
+    const step = GETTING_STARTED_MANIFEST.steps[3];
+    // Same delegation shape as step 3: Leadbay has no scheduling API either.
     expect(step.calls).toBeNull();
     expect(step.args).toBeNull();
     expect(step.handoff).toMatch(/no scheduling API/);
@@ -96,6 +116,13 @@ describe("leadbay_getting_started", () => {
     // The option text carries the literal recurring language the host's
     // scheduled-task flow gates on.
     expect(step.gate_label.toLowerCase()).toContain("every morning");
+  });
+
+  it("step 3 does not invent contact details it never received", () => {
+    // Gate 2 is the FREE title preview — no email/phone is ever revealed. A CRM
+    // push that writes them would be fabricating PII into the user's CRM.
+    const step = GETTING_STARTED_MANIFEST.steps[2];
+    expect(step.handoff).toMatch(/do NOT have the contact's email or phone/i);
   });
 
   it("no step invents a leadbay_* tool that does not exist", () => {
@@ -122,7 +149,7 @@ describe("leadbay_getting_started", () => {
     expect(gettingStarted.inputSchema.additionalProperties).toBe(false);
     // Extra params are ignored rather than throwing: the manifest is invariant.
     const result = await gettingStarted.execute(newClient(), {} as never);
-    expect(result.steps).toHaveLength(3);
+    expect(result.steps).toHaveLength(4);
     expect(getHttpRequests()).toHaveLength(0);
   });
 

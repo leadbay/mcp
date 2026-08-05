@@ -88,6 +88,40 @@ describe("audit: getting-started walkthrough", () => {
     expect(BODY).toMatch(/every morning/);
   });
 
+  it("the prompt delegates the CRM push to the agent's OWN connector", () => {
+    // Leadbay has NO CRM integration — no push, export or sync exists. The
+    // whole point of this gate is that the HOST often has a connector even
+    // though Leadbay doesn't.
+    expect(BODY).toMatch(/no CRM integration/i);
+    expect(BODY).toMatch(/check your own tool set/i);
+    // Detection reuses the existing outreach-tool mechanism rather than
+    // inventing a second one.
+    expect(BODY).toMatch(/installed-connector/);
+  });
+
+  it("the prompt names CRM capability, not third-party tool names", () => {
+    // Repo style: name the product/capability and let the agent find its own
+    // tool. A backticked `hubspot_*` tool name would be the first in the repo
+    // and would silently rot when the connector renames its tools.
+    expect(BODY).toMatch(/HubSpot/);
+    expect(BODY).not.toMatch(/`hubspot_[a-z_]+`/i);
+    expect(BODY).not.toMatch(/`salesforce_[a-z_]+`/i);
+  });
+
+  it("the CRM gate cannot claim a record was created, or invent contact details", () => {
+    expect(BODY).toMatch(/Never claim a CRM record was created/i);
+    // Gate 2 was the FREE title preview: no email/phone was ever revealed, so
+    // writing one into the user's CRM would be fabricated PII.
+    expect(BODY).toMatch(/never write a contact detail you did not receive/i);
+  });
+
+  it("the no-connector path routes to the real escape hatch", () => {
+    // A user with no CRM connector must get an honest line + the friction
+    // route, not instructions for a connector they don't have.
+    expect(BODY).toMatch(/leadbay_report_friction/);
+    expect(BODY).toMatch(/missing_capability/);
+  });
+
   it("does NOT re-implement the host's frequency/time sub-questions", () => {
     // Two competing scheduling flows in one conversation is a defect. The tour
     // hands off; it must not ask these itself.

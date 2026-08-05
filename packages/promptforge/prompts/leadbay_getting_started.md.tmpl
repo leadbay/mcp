@@ -2,24 +2,28 @@
 name: leadbay_getting_started
 kind: prompt
 short_description: |
-  Guided first-run walkthrough — three clicks that actually use Leadbay: pull
-  today's leads, preview who to contact, then set it to run every morning. Use
-  when the user is new or asks to be SHOWN how Leadbay works ("walk me through
-  Leadbay", "I'm new", "how do I use this", "getting started", "give me a
-  tour"). Don't use it for orientation prose with no clicking — that's
-  leadbay_prospecting_overview.
+  Guided first-run walkthrough — four clicks that actually use Leadbay: pull
+  today's leads, preview who to contact, push them to the CRM connector the
+  host already has, then set it to run every morning. Use when the user is new
+  or asks to be SHOWN how Leadbay works ("walk me through Leadbay", "I'm new",
+  "how do I use this", "getting started", "give me a tour"). Don't use it for
+  orientation prose with no clicking — that's leadbay_prospecting_overview.
 arguments: []
 expected_calls:
   - leadbay_pull_leads
   - leadbay_enrich_titles
+  - leadbay_report_friction
 failure_modes:
   - Presents a gate as prose ("let me know if you want me to pull your leads") instead of CALLING the host choice widget — the click IS the lesson, and prose turns the walkthrough into a lecture
   - Fires more than one option per gate, or adds a "Skip" / "No thanks" / "Maybe later" option — each gate carries exactly ONE option by design
   - Calls `leadbay_enrich_titles` with `titles`, `confirm=true`, `email=true` or `phone=true` — that launches a PAID reveal and spends a brand-new user's quota without consent; gate 2 is the free `mode:"discover"` preview ONLY
   - Reports "no leads" on an empty batch while `computing_wishlist` / `computing_scores` is true — the lens is still building; render the tool's own two-option warm-up widget verbatim and pause
   - Rewords, reorders or prose-ifies the `next_steps` payload from `leadbay_pull_leads` instead of mapping `options[]` into the widget verbatim
-  - Runs all three steps in one turn without waiting for the user's click between gates — the walkthrough is a sequence of gates, not a script to recite
-  - Claims to have created a scheduled task itself — Leadbay exposes no scheduling tool; gate 3 hands control to the HOST's scheduling flow
+  - Runs all four steps in one turn without waiting for the user's click between gates — the walkthrough is a sequence of gates, not a script to recite
+  - Claims a CRM record was created when no CRM connector was actually called, or when the connector did not confirm it — Leadbay has no CRM integration, so only the host's own connector can create anything
+  - Writes an email address or phone number into the CRM at gate 3 — gate 2 was the FREE title preview, so no contact details were ever revealed; inventing them is fabrication
+  - Tells a user with no CRM connector how to use one anyway, instead of saying so honestly and offering `leadbay_report_friction` with `missing_capability`
+  - Claims to have created a scheduled task itself — Leadbay exposes no scheduling tool; gate 4 hands control to the HOST's scheduling flow
   - Re-implements the host's frequency / time sub-questions inside the walkthrough, producing two competing scheduling flows in one conversation
   - Skips `leadbay_pull_leads` and jumps straight to enrichment, leaving gate 2 with no `leadIds` to scope
   - Drops the pinned `lens.id` between gates, so gate 2 enriches against a different lens than the one the user just saw
@@ -67,7 +71,7 @@ already declined in prose.
 
 Open with 2–3 sentences in plain salesperson language, no jargon: Leadbay keeps
 a **lens** (your target audience) and delivers fresh matching companies every
-day. Then say what the next three clicks will do. Then fire GATE 1.
+day. Then say what the next four clicks will do. Then fire GATE 1.
 
 Do not call any tool in this step. Do not fire a widget for it.
 
@@ -121,7 +125,41 @@ Leadbay for ninety seconds — never spend their quota to demonstrate a feature.
 Present the discovered titles, then say plainly: "nothing was spent here —
 revealing emails and phone numbers is a separate, paid step you confirm."
 
-# GATE 3 — "Run this every morning"
+# GATE 3 — "Add these to my CRM"
+
+Fire the widget with the single option — label `Add these to my CRM`,
+description `Put these leads into your CRM.`
+
+**Call no Leadbay tool for this step.** Leadbay has no CRM integration — it
+cannot push, export, or sync a lead anywhere. But YOU may be able to: many
+users run a CRM connector alongside Leadbay in the same host, and that
+connector is yours to call.
+
+So: **check your own tool set for a CRM capability** — HubSpot, Salesforce,
+Pipedrive, Attio, Close, or any similar CRM server. This is the same detection
+you already do for outreach tooling: read the host's installed-connector /
+installed-MCP inventory when it's available, otherwise infer from the
+conversation, otherwise ask the user which CRM they use.
+
+**If you have one**, use it to create or update the company and its contact
+from the lead data already in hand. Pass what Leadbay gave you and nothing
+invented: company name, website, city/region, the contact's name and job
+title. You do NOT have their email or phone — gate 2 was the free preview, so
+never write a contact detail you did not receive. Report back what the
+connector actually returned, per CRM record.
+
+**If you have no CRM connector**, say so in one honest line, name which CRM
+the user mentioned so the answer is theirs and not generic, and offer to pass
+the request to the Leadbay team via `leadbay_report_friction` with
+`category: "missing_capability"` — that is the real route for "I want my leads
+in <CRM>". Do not describe a connector the user does not have as though they
+could use it right now.
+
+**Never claim a CRM record was created** unless the connector confirmed it.
+Only the connector can create one — Leadbay cannot, and neither can a
+description of the intent.
+
+# GATE 4 — "Run this every morning"
 
 Fire the widget with the single option — label `Run this every morning`,
 description `Set this up to run automatically every morning.`
