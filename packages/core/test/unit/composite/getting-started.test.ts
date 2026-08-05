@@ -151,6 +151,10 @@ describe("leadbay_getting_started", () => {
     expect(readable!.then).toMatch(/resets/);
     // The web app speaks percentages and dollars, never raw credits.
     expect(readable!.then).toMatch(/never raw 'credits'/i);
+    // Numbers alone teach nothing — a first-run user can't tell if they're
+    // good or bad, so the gate has to say what they count and why they matter.
+    expect(readable!.then).toMatch(/THEN EXPLAIN IT/);
+    expect(readable!.then).toMatch(/paces how many fresh leads arrive/);
 
     // WORKFLOWS #30 — a brand-new org has no billing plan, so quota_status
     // 401s. That must NOT become "log in again" (the 401-hallucination bug).
@@ -161,6 +165,9 @@ describe("leadbay_getting_started", () => {
     // The silence gate covers all three cases, not just the 401.
     expect(quota!.when).toMatch(/unlimited_credits/);
     expect(quota!.then).toMatch(/no 'unlimited'/);
+    // …and the EXPLANATION is skipped with it. Explaining a gauge that isn't
+    // on screen is worse than saying nothing.
+    expect(quota!.then).toMatch(/skip the quota EXPLANATION too/);
 
     // WORKFLOWS #31 — the lens is withheld server-side unless asked, so the
     // tour must not volunteer it, nor reach for another tool to find it.

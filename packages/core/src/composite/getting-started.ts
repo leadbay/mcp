@@ -195,12 +195,12 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         {
           when: "quota is readable",
           then:
-            "Show them their ACTUAL account — this is the payoff of the click. One line on who they're signed in as and their organization, then render the quota windows in full the way the web app does: Daily / Weekly / Monthly, each with a ▰▱ gauge, % used, $ spent against the cap, and when it resets, plus the per-resource breakdown underneath. Follow the canonical quota-windows rendering (never raw 'credits'). A one-line 'you're connected as X' under-delivers on a button labelled 'check my account status'.",
+            "Show them their ACTUAL account — this is the payoff of the click. One line on who they're signed in as and their organization, then render the quota windows in full the way the web app does: Daily / Weekly / Monthly, each with a ▰▱ gauge, % used, $ spent against the cap, and when it resets, plus the per-resource breakdown underneath. Follow the canonical quota-windows rendering (never raw 'credits'). A one-line 'you're connected as X' under-delivers on a button labelled 'check my account status'. THEN EXPLAIN IT in one or two plain lines — a first-run user has never seen these numbers and can't tell if they're good or bad: say what it counts (the AI work Leadbay does for them — researching companies and qualifying leads, not something they spend by clicking around) and why it matters (it paces how many fresh leads arrive; heavy use now means a bigger batch queued for next time, and it's where a smaller-than-expected batch would show its reason). Keep it to a sentence or two, don't walk through every resource row, and don't turn it into a pricing pitch.",
         },
         {
           when: "quota is null, quota_error is set, or organization.unlimited_credits is true",
           then:
-            "Say NOTHING about quota — no gauge, no 'unreadable', no 'unlimited'. A brand-new org often has no billing plan yet, so the quota read fails; that is not an error worth showing. Do not mention a 401, and above all do NOT tell the user to log in again or reconnect: their token is fine, the same response just read their account. Fall back to the short user + org line and move on. (WORKFLOWS #30.)",
+            "Say NOTHING about quota — no gauge, no 'unreadable', no 'unlimited', and skip the quota EXPLANATION too (there is nothing on screen to explain, and describing an absent gauge just confuses). A brand-new org often has no billing plan yet, so the quota read fails; that is not an error worth showing. Do not mention a 401, and above all do NOT tell the user to log in again or reconnect: their token is fine, the same response just read their account. Fall back to the short user + org line and move on. (WORKFLOWS #30.)",
         },
         {
           when: "always",

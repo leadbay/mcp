@@ -62,6 +62,13 @@ describe("audit: getting-started walkthrough", () => {
     expect(BODY).toMatch(/▰/);
     // …and the silence gate still wins when quota is unreadable/unlimited.
     expect(BODY).toMatch(/unlimited_credits/);
+
+    // Numbers with no explanation teach nothing: a first-run user has never
+    // seen these and can't tell whether they're good or bad.
+    expect(BODY).toMatch(/explain what they're looking at/i);
+    expect(BODY).toMatch(/paces how many fresh leads arrive/i);
+    // Explaining a gauge that isn't on screen is worse than saying nothing.
+    expect(BODY).toMatch(/skip this explanation too/i);
   });
 
   it("declares ≥3 failure modes and names the spend gate", () => {

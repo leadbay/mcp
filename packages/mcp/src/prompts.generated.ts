@@ -907,6 +907,25 @@ Keep it secondary — the three window gauges are the headline. Omit when null.
 **Legend** (once, below): \`\` \`▰\` used · \`▱\` remaining \`\`.
 
 
+**Then explain what they're looking at — one or two plain lines, no jargon.**
+A first-run user has never seen these numbers and won't know whether they're
+good, bad, or something to worry about. Say, in your own words:
+
+- **What it counts** — the AI work Leadbay does on their behalf: researching
+  companies on the web and qualifying leads against their criteria. Not
+  "credits", and not something they spend by clicking around.
+- **Why it matters to them** — it paces how many fresh leads arrive. Heavy use
+  now means Leadbay queues up a bigger batch for next time; and if a batch ever
+  comes back smaller than expected, this is where they'd see why. Each window
+  refills on its own at the reset time already shown.
+
+Keep it to a sentence or two, in their language. Do NOT lecture, do NOT explain
+every resource row one by one, and do NOT turn this into a pricing pitch — if a
+window is genuinely exhausted the tool's own guidance covers wait-vs-top-up.
+
+**When the silence gate above applies, skip this explanation too** — there is
+nothing on screen to explain, and describing an absent gauge just confuses.
+
 **Two things this gate must NOT do** (both are pinned regressions):
 
 - **Say nothing about quota when the silence gate above applies** — \`quota\` is
