@@ -270,3 +270,15 @@ describe("qualify_leads — UUID casing", () => {
     expect(b).not.toBe(a);
   });
 });
+
+describe("qualify_leads — prior_deliveries UUID casing", () => {
+  it("job_id casing does not fork the key", async () => {
+    const upper = await submittedRequestId({
+      prior_deliveries: { job_id: "0A2FCBF5-18E1-4967-B5DE-0C67CD823BCC" },
+    });
+    const lower = await submittedRequestId({
+      prior_deliveries: { job_id: "0a2fcbf5-18e1-4967-b5de-0c67cd823bcc" },
+    });
+    expect(lower).toBe(upper);
+  });
+});

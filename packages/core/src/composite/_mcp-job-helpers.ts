@@ -249,6 +249,33 @@ export function canonicalSet(values: unknown): unknown[] {
     .map((v) => JSON.parse(v));
 }
 
+/** Coerce the array-typed params of a job tool into arrays, ONCE, before any
+ *  other code touches them.
+ *
+ *  The MCP server does not validate `inputSchema` before dispatch, so an agent
+ *  can send any array field in its natural singular form — `channels: "email"`,
+ *  `contact_titles: "Owner"`, `lead_refs: {website: "acme.com"}`. Every site
+ *  that later does `.map` / `.join` / `.length` on those then throws a
+ *  TypeError, and on the paid path that happens BEFORE the spend gate, so the
+ *  caller gets a crash instead of the promised quote.
+ *
+ *  Normalizing at the entry point fixes the whole class at once, rather than
+ *  hardening each consumer separately. Non-array, non-null values are wrapped;
+ *  null/undefined are left alone so `?? []` defaults still apply. */
+export function coerceArrayParams<T extends Record<string, any>>(
+  params: T,
+  keys: readonly (keyof T)[]
+): T {
+  const out = { ...params };
+  for (const key of keys) {
+    const v = out[key];
+    if (v !== undefined && v !== null && !Array.isArray(v)) {
+      out[key] = [v] as T[keyof T];
+    }
+  }
+  return out;
+}
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

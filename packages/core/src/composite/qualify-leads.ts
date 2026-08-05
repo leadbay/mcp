@@ -13,6 +13,7 @@ import {
   clampWaitSeconds,
   collectJobSnapshot,
   canonicalSet,
+  coerceArrayParams,
   normalizeUuid,
   canonicalLabelSet,
   derivedKey,
@@ -99,7 +100,10 @@ function derivedRequestId(params: QualifyLeadsParams): string {
     // them to one key would make the second submit look like a duplicate and
     // leave those refs unqualified.
     prior: [
-      params.prior_deliveries?.job_id ?? null,
+      // UUID-folded like the refs above: the backend resolves the same
+      // delivery job regardless of casing, so casing alone must not fork
+      // the key and re-run a paid batch.
+      normalizeUuid(params.prior_deliveries?.job_id),
       params.prior_deliveries?.since ?? null,
       params.prior_deliveries?.limit ?? null,
     ],
@@ -227,6 +231,14 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     params: QualifyLeadsParams,
     ctx?: ToolContext
   ) => {
+    // Unvalidated MCP args can arrive singular (`channels: "email"`,
+    // `lead_refs: {website}`); coerce BEFORE the spend gate so a shape slip is
+    // never a TypeError in place of a quote.
+    params = coerceArrayParams(params, [
+      "lead_refs",
+      "contact_titles",
+      "channels",
+    ]);
     // Spend gate. `qualify` defaults to TRUE on the backend (~94 cost_cents per
     // lead needing fresh research), so a bare call carrying only lead_refs is a
     // PAID submit — up to 500 refs — that the user never approved. Prose in the

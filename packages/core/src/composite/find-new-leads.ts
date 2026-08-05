@@ -13,6 +13,7 @@ import {
   clampWaitSeconds,
   collectJobSnapshot,
   canonicalSet,
+  coerceArrayParams,
   canonicalIdSet,
   canonicalLabelSet,
   canonicalOptionalObject,
@@ -214,6 +215,13 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     params: FindNewLeadsParams,
     ctx?: ToolContext
   ) => {
+    // Unvalidated MCP args can arrive singular; coerce BEFORE the spend gate
+    // so a shape slip is never a TypeError in place of a quote.
+    params = coerceArrayParams(params, [
+      "contact_titles",
+      "channels",
+      "exclude_lead_ids",
+    ]);
     rejectCountryLocations(params.filters?.locations);
 
     // Same spend gate as leadbay_qualify_leads. The trigger differs: `qualify`

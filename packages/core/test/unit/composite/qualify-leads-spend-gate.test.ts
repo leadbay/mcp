@@ -246,3 +246,48 @@ describe("leadbay_qualify_leads — render envelope", () => {
     expect(result.items).toHaveLength(2);
   });
 });
+
+describe("leadbay_qualify_leads — unvalidated arg shapes", () => {
+  // The MCP server does not validate inputSchema before dispatch, so an agent
+  // can send the natural singular form. These used to TypeError BEFORE the
+  // spend gate, so the caller got a crash instead of the promised quote.
+  it("a single lead_refs object is treated as a one-item list", async () => {
+    mockHttp([
+      { method: "POST", path: "/1.6/mcp/qualify", status: 200, body: DRY_RUN_200 },
+    ]);
+
+    const result: any = await qualifyLeads.execute(newClient(), {
+      lead_refs: { website: "acme.com" },
+    } as any);
+
+    expect(result.mode).toBe("needs_confirmation");
+    expect(postBodies()[0].lead_refs).toEqual([{ website: "acme.com" }]);
+  });
+
+  it("a scalar channels value reaches the wire as an array", async () => {
+    mockHttp([
+      { method: "POST", path: "/1.6/mcp/qualify", status: 200, body: DRY_RUN_200 },
+    ]);
+
+    const result: any = await qualifyLeads.execute(newClient(), {
+      lead_refs: REFS,
+      channels: "email",
+    } as any);
+
+    expect(result.mode).toBe("needs_confirmation");
+    expect(postBodies()[0].channels).toEqual(["email"]);
+  });
+
+  it("a scalar contact_titles value reaches the wire as an array", async () => {
+    mockHttp([
+      { method: "POST", path: "/1.6/mcp/qualify", status: 200, body: DRY_RUN_200 },
+    ]);
+
+    await qualifyLeads.execute(newClient(), {
+      lead_refs: REFS,
+      contact_titles: "Owner",
+    } as any);
+
+    expect(postBodies()[0].contact_titles).toEqual(["Owner"]);
+  });
+});
