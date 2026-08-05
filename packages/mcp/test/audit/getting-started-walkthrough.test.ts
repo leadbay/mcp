@@ -89,15 +89,29 @@ describe("audit: getting-started walkthrough", () => {
     expect(BODY).toMatch(/Wait for the click/);
   });
 
-  it("the opening is two lines then the widget — not a syllabus", () => {
-    // Observed: the tour opened with paragraphs (what Leadbay is + a preview of
-    // all five steps + gate 1's own explain beat) before the first button. A
-    // first-run user wants to see it work, not read what's coming.
-    expect(BODY).toMatch(/Keep the opening tiny/i);
-    expect(BODY).toMatch(/Fire GATE 1's widget immediately, in the same message/);
-    expect(BODY).toMatch(/Do NOT\*\* preview all five steps/);
-    // Gate 1 must not stack a second explanation on top of the opening lines.
-    expect(BODY).toMatch(/opening lines above ARE this gate's explanation/);
+  it("the opening is a short paragraph then the widget — not a syllabus", () => {
+    // It must TEACH (what Leadbay is, what a lens is, what the tour delivers)
+    // without regressing to the earlier wall of text that walked all five steps
+    // one by one and buried the first button.
+    expect(BODY).toMatch(/A short paragraph, then the widget/i);
+    expect(BODY).toMatch(/that\s*\n?\s*description is your \*\*lens\*\*/i);
+    expect(BODY).toMatch(/fire GATE 1's widget immediately, in the same message/i);
+    expect(BODY).toMatch(/Do NOT walk through the five steps one at a time/i);
+    // Gate 1 must not stack a second explanation on top of the opening.
+    expect(BODY).toMatch(/opening paragraph above IS this gate's explanation/);
+  });
+
+  it("every gate lands a concrete 'why it's useful' payoff", () => {
+    // "What this does" alone is a feature list. Each gate has to say what it
+    // changes in the user's working life, or the tutorial teaches mechanics
+    // without ever making the case.
+    const payoffs = BODY.match(/\*\*Why it's useful/gi) ?? [];
+    expect(payoffs.length, "expected a payoff line on the teaching gates").toBeGreaterThanOrEqual(
+      4,
+    );
+    // The concrete images, not abstractions — these are what make it land.
+    expect(BODY).toMatch(/operations\s*\n?\s*director by title/i);
+    expect(BODY).toMatch(/quietly die in a chat window/i);
   });
 
   it("the prompt makes every gate explain before it asks", () => {

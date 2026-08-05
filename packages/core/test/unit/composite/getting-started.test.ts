@@ -66,6 +66,28 @@ describe("leadbay_getting_started", () => {
     expect(GETTING_STARTED_MANIFEST.steps[2].explain).toMatch(/free/i);
   });
 
+  it("every gate says WHY the step is useful, not just what it does", () => {
+    // "What this does" alone is a feature list. A first-run user is deciding
+    // whether Leadbay is worth their time, so each gate has to land a concrete
+    // payoff in their own working life.
+    for (const step of GETTING_STARTED_MANIFEST.steps) {
+      expect(
+        step.explain,
+        `step ${step.n} ("${step.gate_label}") has no WHY IT'S USEFUL payoff`,
+      ).toMatch(/WHY IT'S USEFUL/);
+    }
+  });
+
+  it("the opening teaches what Leadbay is and how the lens works", () => {
+    // A paragraph, not a two-line tease: the user should understand the model
+    // before they click, and know what they'll have at the end.
+    const intro = GETTING_STARTED_MANIFEST.intro;
+    expect(intro).toMatch(/lens/i);
+    expect(intro).toMatch(/five quick steps/i);
+    // Still bounded — the syllabus version buried the first button.
+    expect(intro).toMatch(/do NOT walk through the five steps one at a time/i);
+  });
+
   it("every gate carries exactly ONE way forward, plus an exit", () => {
     // The structural contract: one forward action so a first-run user never has
     // to choose between PATHS, plus an exit so the tour isn't a trap — and so

@@ -130,17 +130,20 @@ const EXIT_OPTION = {
 };
 
 const INTRO =
-  "Keep the opening TINY — two lines, then the widget, all in your first " +
-  "message. (1) One sentence on what Leadbay does FOR THEM, in their language: " +
-  "'Leadbay brings you a fresh batch of companies worth selling to every day — " +
-  "you tell it who you're after, it goes and finds them.' (2) One short line " +
-  "that sets up the tour and says it's hands-on, e.g. 'I'll walk you through " +
-  "it — five quick steps, and you'll have real leads by the end. First, let's " +
-  "see which account you're on.' (3) Fire gate 1's widget immediately, then " +
-  "stop. Do NOT preview all five steps one by one, do NOT explain what a lens " +
-  "is yet, do NOT list what's coming — each gate explains itself when its turn " +
-  "arrives, and front-loading it buries the first button under text nobody " +
-  "reads. Call no tool in the opening.";
+  "Open with a SHORT paragraph — 3-4 sentences, then the widget, all in your " +
+  "first message. Cover, in the user's own language and without jargon: " +
+  "(1) what Leadbay is — it brings you a fresh batch of companies worth " +
+  "selling to every day, rather than you hunting for them; (2) how it knows " +
+  "what to send — you describe who you sell to (that description is your " +
+  "LENS) and it goes and finds companies matching it, learning from what you " +
+  "engage with; (3) what this walkthrough will do — five quick steps, each one " +
+  "a real action on their own account, ending with leads in hand, contacts to " +
+  "call, and the whole thing running by itself each morning; (4) one line " +
+  "handing off to the first step, e.g. 'First, let's see which account you're " +
+  "on.' Then fire gate 1's widget immediately and stop. Keep it to a " +
+  "paragraph — do NOT walk through the five steps one at a time here (each " +
+  "gate explains itself when its turn arrives), and call no tool in the " +
+  "opening.";
 
 // Every `say` below is verbatim from that tool's own routing.triggers, so the
 // phrase the tutorial teaches is one the agent actually routes on. If a tool's
@@ -168,10 +171,13 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       gate_label: "Check my account",
       gate_description: "Check my Leadbay account status.",
       explain:
-        "The opening two lines ARE this gate's explanation — do not add another " +
-        "paragraph. One sentence on what Leadbay is, one line naming this step, " +
-        "then fire the widget in the SAME message. On click, the ANSWER is the " +
-        "account itself: user + org, then the full quota windows (see branches).",
+        "The opening paragraph IS this gate's explanation — do not add another " +
+        "one. Just hand off in a line ('First, let's see which account you're " +
+        "on') and fire the widget in the SAME message. WHY IT'S USEFUL, if you " +
+        "say anything at all: this is where they can see at a glance how much " +
+        "they've used this week and what's left, so a batch that comes back " +
+        "small later has a visible reason. On click, the ANSWER is the account " +
+        "itself: user + org, then the full quota windows (see branches).",
       next_steps: {
         question: "Let's start with your account status.",
         options: [
@@ -210,7 +216,11 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       explain:
         "Explain the LENS before firing: Leadbay keeps a lens — the description " +
         "of who they sell to — and every day it finds fresh companies matching " +
-        "it. This click pulls today's batch.",
+        "it. This click pulls today's batch. WHY IT'S USEFUL: it replaces the " +
+        "hour spent digging through directories and LinkedIn for someone worth " +
+        "calling — the list is already waiting, scored, when they sit down. And " +
+        "it gets sharper: the leads they like, contact or skip teach the lens " +
+        "what a good fit looks like, so tomorrow's batch is closer than today's.",
       next_steps: {
         question: "Now let's see today's leads. Ready?",
         options: [
@@ -248,7 +258,10 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       gate_description: "See who to contact at the top leads.",
       explain:
         "Explain what enrichment IS before firing: a company is not a person, so " +
-        "Leadbay can find WHICH ROLES to approach at these companies. Say plainly " +
+        "Leadbay can find WHICH ROLES to approach at these companies. WHY IT'S " +
+        "USEFUL: they walk into the call knowing to ask for the operations " +
+        "director by title, instead of pitching whoever answers the switchboard " +
+        "— the difference between a conversation and a dead end. Say plainly " +
         "that this preview is free and reveals no emails or phone numbers — that " +
         "is a separate paid step they confirm later.",
       next_steps: {
@@ -283,7 +296,10 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       explain:
         "Explain the split before firing: Leadbay finds the leads, but their CRM " +
         "is where they'll actually work them — and if a CRM connector is available " +
-        "in this chat, these companies can go straight in. Do not promise it works " +
+        "in this chat, these companies can go straight in. WHY IT'S USEFUL: no " +
+        "copy-pasting company names between two tabs, and the leads land where " +
+        "their pipeline, their reminders and their team already live — so a lead " +
+        "found here doesn't quietly die in a chat window. Do not promise it works " +
         "until you have checked your own tool set.",
       next_steps: {
         question: "Want these leads in your CRM?",
@@ -322,7 +338,9 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       explain:
         "Close the loop before firing: prospecting works when it's a habit, not a " +
         "one-off — and the whole sequence they just did can run on its own every " +
-        "morning, so fresh leads are waiting instead of being something to remember.",
+        "morning. WHY IT'S USEFUL: prospecting is the first thing that slips on a " +
+        "busy week, and this removes the part that requires remembering — the " +
+        "leads are simply there when they open their laptop, the way an inbox is.",
       next_steps: {
         question: "Want this to run on its own every morning?",
         options: [
