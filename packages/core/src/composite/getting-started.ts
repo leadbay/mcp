@@ -5,13 +5,18 @@ import { leadbay_getting_started as GETTING_STARTED_DESCRIPTION } from "../tool-
 
 // leadbay_getting_started returns the guided first-run walkthrough (issue
 // leadbay/product#3952): a short script the agent drives so a brand-new user
-// learns Leadbay by DOING. Four gates, each carrying exactly ONE option. Makes
+// learns Leadbay by DOING. Five gates, each carrying exactly ONE option. Makes
 // no backend call and mutates nothing — the manifest is static, version-locked
 // content.
 //
-// Two of the four gates delegate to a capability Leadbay does NOT have and the
-// HOST usually does (`calls: null`): the CRM push (gate 3) and the recurring
-// schedule (gate 4). Leadbay has no CRM integration and no scheduling API, so
+// Gate 1 (leadbay_account_status) is the tutorial's "you're connected" beat and
+// carries two PINNED regressions in its branches: stay silent when quota_error
+// is set (WORKFLOWS #30) and never volunteer the lens (WORKFLOWS #31, enforced
+// server-side — account-status.ts withholds it unless the trigger text asks).
+//
+// Two of the five gates delegate to a capability Leadbay does NOT have and the
+// HOST usually does (`calls: null`): the CRM push (gate 4) and the recurring
+// schedule (gate 5). Leadbay has no CRM integration and no scheduling API, so
 // the manifest names the CAPABILITY rather than a third-party tool name and
 // lets the agent find its own connector — the same detection the
 // connected-outreach-tool table in leadbay_prospecting_overview already uses.
@@ -78,7 +83,7 @@ const ONE_OPTION_RULE =
 const INTRO =
   "Open with 2-3 sentences in plain salesperson language, no jargon: Leadbay " +
   "keeps a LENS (your target audience) and delivers fresh matching companies " +
-  "every day. Then say what the next four clicks will do, then fire gate 1. " +
+  "every day. Then say what the next five clicks will do, then fire gate 1. " +
   "No tool call and no widget in this step.";
 
 const STOP =
@@ -92,20 +97,44 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
   steps: [
     {
       n: 1,
+      gate_label: "Check my account",
+      gate_description: "See which Leadbay account you're connected to.",
+      calls: "leadbay_account_status",
+      args: {},
+      branches: [
+        {
+          when: "always",
+          then:
+            "Report in 1-2 short lines: who they're signed in as, their organization, and their plan. This is the tutorial's 'you're connected, here's your setup' beat — it proves the connection works before anything else is attempted.",
+        },
+        {
+          when: "quota_error is set",
+          then:
+            "Say NOTHING about quota. A brand-new org often has no billing plan yet, so the quota read fails — that is not an error worth showing. Do not mention quota, do not mention a 401, and above all do NOT tell the user to log in again or reconnect: their token is fine, the same response just read their account. (WORKFLOWS #30.)",
+        },
+        {
+          when: "always",
+          then:
+            "Do NOT volunteer the lens. The response deliberately withholds it unless the user asked, so there is nothing to report, and no other tool should be called to find it. The lens appears naturally at gate 2. (WORKFLOWS #31.)",
+        },
+      ],
+    },
+    {
+      n: 2,
       gate_label: "Pull today's leads",
       gate_description: "Pull today's leads from your lens.",
       calls: "leadbay_pull_leads",
       args: {},
-      pin: "lens.id — pass as an explicit lensId on every later step, so step 2 enriches the same lens the user just saw",
+      pin: "lens.id — pass as an explicit lensId on every later step, so step 3 enriches the same lens the user just saw",
       branches: [
         {
           when: "leads.length > 0",
-          then: "Render the canonical pull_leads table, then advance to gate 2.",
+          then: "Render the canonical pull_leads table, then advance to gate 3.",
         },
         {
           when: "leads.length === 0 && (computing_wishlist || computing_scores)",
           then:
-            "The lens is still building — normal on a new account. Say so in the user's terms, then render the tool's own next_steps payload VERBATIM (it carries two options: 'Re-pull in ~30s' / 'Refine audience'). This is the ONE place a gate carries two options, because the server built the payload. On re-pull, wait ~30s and return to gate 1. NEVER say 'no leads found'.",
+            "The lens is still building — normal on a new account. Say so in the user's terms, then render the tool's own next_steps payload VERBATIM (it carries two options: 'Re-pull in ~30s' / 'Refine audience'). This is the ONE place a gate carries two options, because the server built the payload. On re-pull, wait ~30s and return to gate 2. NEVER say 'no leads found'.",
         },
         {
           when: "leads.length === 0 && !computing_wishlist && !computing_scores",
@@ -115,13 +144,13 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       ],
     },
     {
-      n: 2,
+      n: 3,
       gate_label: "Enrich top leads",
       gate_description: "See who to contact at the top leads.",
       calls: "leadbay_enrich_titles",
       args: {
-        leadIds: "<the lead ids from step 1>",
-        lensId: "<the pinned lens id from step 1>",
+        leadIds: "<the lead ids from step 2>",
+        lensId: "<the pinned lens id from step 2>",
       },
       forbidden_args: ["titles", "confirm", "email", "phone"],
       spend:
@@ -133,7 +162,7 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         "revealing emails/phones is a separate, paid step they confirm.",
     },
     {
-      n: 3,
+      n: 4,
       gate_label: "Add these to my CRM",
       gate_description: "Put these leads into your CRM.",
       calls: null,
@@ -156,7 +185,7 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         "the connector confirmed it — only the connector can create one.",
     },
     {
-      n: 4,
+      n: 5,
       gate_label: "Run this every morning",
       gate_description: "Set this up to run automatically every morning.",
       calls: null,

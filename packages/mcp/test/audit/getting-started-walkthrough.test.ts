@@ -39,6 +39,18 @@ describe("audit: getting-started walkthrough", () => {
     expect(text).not.toMatch(/\{\{arg:/);
   });
 
+  it("opens on the account check and honors both pinned regressions", () => {
+    // The tutorial's first beat is a real call, not prose. It must respect the
+    // two locked account-status behaviours (WORKFLOWS #30 / #31).
+    expect(BODY).toMatch(/leadbay_account_status/);
+    // #30 — quota_status 401s on a new org with no plan. Never surface it, and
+    // above all never turn it into "log in again" (the 401-hallucination bug).
+    expect(BODY).toMatch(/quota_error/);
+    expect(BODY).toMatch(/do NOT\s*\n?\s*tell the user to log in again or reconnect/);
+    // #31 — the lens is withheld server-side unless asked; don't volunteer it.
+    expect(BODY).toMatch(/Do not volunteer the lens/i);
+  });
+
   it("declares ≥3 failure modes and names the spend gate", () => {
     const modes = PROMPT_META.leadbay_getting_started.failure_modes ?? [];
     // assembler.ts enforces ≥3 for prompts that call mutating tools

@@ -1,6 +1,6 @@
 ---
 name: leadbay_getting_started
-description: "Guided first-run walkthrough — four clicks that actually use Leadbay: pull today's leads, preview who to contact, push them to the CRM connector the host already has, then set it to run every morning. Use when the user is new or asks to be SHOWN how Leadbay works (\"walk me through Leadbay\", \"I'm new\", \"how do I use this\", \"getting started\", \"give me a tour\"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview."
+description: "Guided first-run walkthrough — five clicks that actually use Leadbay: check the account, pull today's leads, preview who to contact, push them to the CRM connector the host already has, then set it to run every morning. Use when the user is new or asks to be SHOWN how Leadbay works (\"walk me through Leadbay\", \"I'm new\", \"how do I use this\", \"getting started\", \"give me a tour\"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview."
 ---
 
 
@@ -15,8 +15,8 @@ use this?", "getting started", "show me how Leadbay works", "give me a tour",
 
 This is a GUIDED WALKTHROUGH, not an explainer. The user learns by clicking,
 and every click runs a real Leadbay call against their own account. By the end
-they will have actually pulled leads, seen who to contact, and set the whole
-thing up to run every morning.
+they will have actually checked their account, pulled leads, seen who to
+contact, put them in their CRM, and set the whole thing up to run every morning.
 
 If the user wants orientation PROSE without doing anything — "explain how
 Leadbay works", "what's the difference between discovery and follow-up" —
@@ -93,11 +93,33 @@ User picks → call the matching `Calls` tool. Constraints: 2–4 mutually-exclu
 
 Open with 2–3 sentences in plain salesperson language, no jargon: Leadbay keeps
 a **lens** (your target audience) and delivers fresh matching companies every
-day. Then say what the next four clicks will do. Then fire GATE 1.
+day. Then say what the next five clicks will do. Then fire GATE 1.
 
 Do not call any tool in this step. Do not fire a widget for it.
 
-# GATE 1 — "Pull today's leads"
+# GATE 1 — "Check my account"
+
+Fire the widget with the single option — label `Check my account`,
+description `See which Leadbay account you're connected to.`
+
+On click: call `leadbay_account_status` (it takes no arguments).
+
+Report back in 1–2 short lines: who they're signed in as, their organization,
+and their plan. This is the tutorial's "you're connected, here's your setup"
+beat — it proves the connection works before anything else is attempted.
+
+**Two things this gate must NOT do** (both are pinned regressions):
+
+- **Say nothing about quota if `quota_error` is set.** A brand-new org often
+  has no billing plan yet, so the quota read fails. That is NOT an error worth
+  showing. Do not mention quota, do not mention a 401, and above all do NOT
+  tell the user to log in again or reconnect — their token is fine, the very
+  same response just read their account.
+- **Do not volunteer the lens.** The response deliberately withholds the lens
+  unless the user asked about it, so there is nothing to report. Don't reach
+  for another tool to find it either. The lens shows up naturally at GATE 2.
+
+# GATE 2 — "Pull today's leads"
 
 Fire the widget with the single option — label `Pull today's leads`,
 description `Pull today's leads from your lens.`
@@ -106,7 +128,7 @@ On click: call `leadbay_pull_leads` with **no arguments** (it resolves the
 user's default lens itself).
 
 Capture `lens.id` from the response and pass it as an explicit `lensId` on
-every later call in this walkthrough, so gate 2 enriches the same lens the
+every later call in this walkthrough, so gate 3 enriches the same lens the
 user just looked at.
 
 Render the batch with the canonical layout:
@@ -194,19 +216,19 @@ computes the lens wishlist. Check `computing_wishlist` / `computing_scores`:
   carries a **two-option** warm-up widget ("Re-pull in ~30s" / "Refine
   audience") — render it VERBATIM. This is the ONE place a gate carries two
   options, because the server built the payload and a re-pull genuinely has a
-  real alternative. On "Re-pull in ~30s", wait ~30s and return to GATE 1.
+  real alternative. On "Re-pull in ~30s", wait ~30s and return to GATE 2.
   **NEVER say "no leads found."**
 - **Both false** → the lens is genuinely empty or too narrow, and `next_steps`
   is `null`. Say so honestly, offer to widen the audience, and end the
   walkthrough here. There is nothing to enrich.
 
-# GATE 2 — "Enrich top leads"
+# GATE 3 — "Enrich top leads"
 
 Fire the widget with the single option — label `Enrich top leads`,
 description `See who to contact at the top leads.`
 
 On click: call `leadbay_enrich_titles` with `leadIds` = the lead ids from
-GATE 1 and `lensId` = the pinned lens id.
+GATE 2 and `lensId` = the pinned lens id.
 
 **IRON LAW — THIS CALL SPENDS NOTHING.** Omit `titles` entirely: that returns
 `mode:"discover"`, the free preview of which job titles are available. Do NOT
@@ -217,7 +239,7 @@ Leadbay for ninety seconds — never spend their quota to demonstrate a feature.
 Present the discovered titles, then say plainly: "nothing was spent here —
 revealing emails and phone numbers is a separate, paid step you confirm."
 
-# GATE 3 — "Add these to my CRM"
+# GATE 4 — "Add these to my CRM"
 
 Fire the widget with the single option — label `Add these to my CRM`,
 description `Put these leads into your CRM.`
@@ -236,7 +258,7 @@ conversation, otherwise ask the user which CRM they use.
 **If you have one**, use it to create or update the company and its contact
 from the lead data already in hand. Pass what Leadbay gave you and nothing
 invented: company name, website, city/region, the contact's name and job
-title. You do NOT have their email or phone — gate 2 was the free preview, so
+title. You do NOT have their email or phone — gate 3 was the free preview, so
 never write a contact detail you did not receive. Report back what the
 connector actually returned, per CRM record.
 
@@ -251,7 +273,7 @@ could use it right now.
 Only the connector can create one — Leadbay cannot, and neither can a
 description of the intent.
 
-# GATE 4 — "Run this every morning"
+# GATE 5 — "Run this every morning"
 
 Fire the widget with the single option — label `Run this every morning`,
 description `Set this up to run automatically every morning.`

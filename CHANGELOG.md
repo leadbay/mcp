@@ -3,9 +3,9 @@
 ## 0.28.0 — Guided first-run walkthrough
 
 - **New: "Walk me through Leadbay."** A brand-new user now learns Leadbay by
-  doing it, not by reading about it. Four steps, one button each: pull today's
-  leads, see who to contact at the top ones, put them in your CRM, then set the
-  whole thing to run every morning.
+  doing it, not by reading about it. Five steps, one button each: check which
+  account you're on, pull today's leads, see who to contact at the top ones, put
+  them in your CRM, then set the whole thing to run every morning.
 - **Your CRM, via the connector you already have.** Leadbay doesn't integrate
   with CRMs — but if you run a HubSpot, Salesforce, Pipedrive or Attio connector
   alongside it, the assistant can use *that* to create the company and contact

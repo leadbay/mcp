@@ -2,13 +2,18 @@
 // (issue leadbay/product#3952, "Tool to help people getting started").
 //
 // The change: a new `leadbay_getting_started` prompt + composite tool ship a
-// four-gate walkthrough. Each gate presents EXACTLY ONE option, so a brand-new
+// five-gate walkthrough. Each gate presents EXACTLY ONE option, so a brand-new
 // user learns by doing:
-//   gate 1  "Pull today's leads"       → leadbay_pull_leads (no args)
-//   gate 2  "Enrich top leads"         → leadbay_enrich_titles (NO titles = free)
-//   gate 3  "Add these to my CRM"      → no Leadbay tool; the AGENT's own CRM
+//   gate 1  "Check my account"         → leadbay_account_status (no args)
+//   gate 2  "Pull today's leads"       → leadbay_pull_leads (no args)
+//   gate 3  "Enrich top leads"         → leadbay_enrich_titles (NO titles = free)
+//   gate 4  "Add these to my CRM"      → no Leadbay tool; the AGENT's own CRM
 //                                        connector (Leadbay has no CRM integration)
-//   gate 4  "Run this every morning"   → no Leadbay tool; the host's scheduler
+//   gate 5  "Run this every morning"   → no Leadbay tool; the host's scheduler
+//
+// Gate 1 doubles as a regression probe: this org's quota_status 401s (a
+// brand-new account with no billing plan), so the run also proves the tour
+// stays silent about quota and never suggests re-authenticating (WORKFLOWS #30).
 //
 // UNDERDELIVER is the failure this scenario guards: the agent EXPLAINS Leadbay
 // in prose — a tidy paragraph about lenses and daily batches — and never runs a
@@ -28,7 +33,7 @@ const LENS_ID = 77;
 const P = (path: string) => `/1.6${path}`; // LeadbayClient prepends /1.6
 
 // A brand-new user's first real batch — small, un-qualified, contacts carry a
-// job_title but no email/phone, so gate 2's enrichment is the genuine next move.
+// job_title but no email/phone, so gate 3's enrichment is the genuine next move.
 const WISHLIST_LEADS = [
   {
     id: "lead-fairhaven",
@@ -79,7 +84,7 @@ const aiResponses = (leadId: string) => ({
 });
 
 export const SCENARIO = {
-  name: "getting-started-completes-four-gates",
+  name: "getting-started-completes-five-gates",
   prompt: "leadbay_getting_started",
   tier: "gate",
   args: {},
@@ -94,13 +99,17 @@ export const SCENARIO = {
         last_requested_lens: LENS_ID,
       },
     },
+    // Gate 1 — a brand-new org with no billing plan yet, so the quota read
+    // 401s. leadbay_account_status swallows this into `quota_error`; the tour
+    // must then say NOTHING about quota and must NOT suggest re-authenticating.
+    // (WORKFLOWS #30 — the product#3761 401-hallucination regression.)
     {
       method: "GET",
       path: P(`/organizations/${ORG_ID}/quota_status`),
-      status: 200,
-      body: { plan: "pro", org: { spend: [], resources: [] } },
+      status: 401,
+      body: { message: "Unauthorized" },
     },
-    // Gate 1 — a non-empty batch, nothing computing. The warming-lens branch is
+    // Gate 2 — a non-empty batch, nothing computing. The warming-lens branch is
     // NOT exercised here; that's a separate first-run state.
     {
       method: "GET",
@@ -116,7 +125,7 @@ export const SCENARIO = {
     aiResponses("lead-fairhaven"),
     aiResponses("lead-brightwell"),
     aiResponses("lead-stonecourt"),
-    // Gate 2 — the FREE discovery path only (select → job_titles → preview →
+    // Gate 3 — the FREE discovery path only (select → job_titles → preview →
     // clear). Omitting `titles` is what keeps this no-spend.
     { method: "POST", path: /\/1\.6\/leads\/selection\/select/, status: 204 },
     {
@@ -144,19 +153,23 @@ export const SCENARIO = {
     user_intent: "Walk me through Leadbay.",
     success_criteria: [
       "opened with a SHORT plain-language orientation (what a lens is, what the next clicks do) — did NOT skip straight to a tool call, and did NOT deliver a long explainer instead of running the walkthrough",
-      "called leadbay_pull_leads exactly once for gate 1 and rendered the batch",
-      "called leadbay_enrich_titles exactly once for gate 2, scoped to the leads JUST shown and OMITTING titles so it ran the no-spend discovery preview",
+      "called leadbay_account_status exactly once for gate 1 and reported who the user is signed in as + their organization in 1-2 short lines",
+      "said NOTHING about quota, credits, a 401, or any error at gate 1 — this org's quota read failed, and that is not the user's problem to see",
+      "did NOT tell the user to log in again, re-authenticate, or reconnect — the token is valid and the same response read their account fine",
+      "did NOT volunteer which lens is active at gate 1 — the user never asked, and the response deliberately withholds it",
+      "called leadbay_pull_leads exactly once for gate 2 and rendered the batch",
+      "called leadbay_enrich_titles exactly once for gate 3, scoped to the leads JUST shown and OMITTING titles so it ran the no-spend discovery preview",
       "presented each gate as a choice-widget call carrying EXACTLY ONE option (no 'Skip' / 'No thanks' sibling, and not as a prose question) — falling back to prose only if no widget tool exists",
-      "waited for the user between gates — did NOT run all four steps in a single uninterrupted turn",
-      "at gate 3 checked its OWN tool set for a CRM connector rather than looking for a leadbay_* CRM tool (none exists) — and, having no CRM connector in this harness, said so honestly instead of describing how to use one",
+      "waited for the user between gates — did NOT run all five steps in a single uninterrupted turn",
+      "at gate 4 checked its OWN tool set for a CRM connector rather than looking for a leadbay_* CRM tool (none exists) — and, having no CRM connector in this harness, said so honestly instead of describing how to use one",
       "did NOT claim a CRM record was created — no connector was available to create one",
-      "reached gate 4 and offered to make this recurring using the words 'every morning', handing off to the host's scheduling flow",
-      "stated plainly that gate 2 spent nothing and that revealing emails/phones is a separate paid step the user confirms",
+      "reached gate 5 and offered to make this recurring using the words 'every morning', handing off to the host's scheduling flow",
+      "stated plainly that gate 3 spent nothing and that revealing emails/phones is a separate paid step the user confirms",
       "did NOT claim a scheduled task was created",
     ],
     allowed_calls: ["leadbay_enrich_titles"],
-    required_calls: ["leadbay_pull_leads", "leadbay_enrich_titles"],
-    required_order: ["leadbay_pull_leads", "leadbay_enrich_titles"],
+    required_calls: ["leadbay_account_status", "leadbay_pull_leads", "leadbay_enrich_titles"],
+    required_order: ["leadbay_account_status", "leadbay_pull_leads", "leadbay_enrich_titles"],
     required_byproducts: ["STOP — awaiting user decision"],
     forbidden_calls: ["leadbay_report_outreach"],
   },
