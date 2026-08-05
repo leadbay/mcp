@@ -243,6 +243,19 @@ export function mockedSubmitPreview(
 ): Record<string, unknown> | null {
   const s = (submit ?? {}) as Record<string, unknown>;
   if (typeof s.job_id === "string" && s.job_id) return null;
+  // Only claim "mocked" when mock mode is actually on. A REAL 2xx submit that
+  // came back without a job_id (backend contract drift, a proxy eating the
+  // body) must fail loudly: reporting a successful no-submit envelope would
+  // hide a production job the client cannot poll, and would tell the user
+  // LEADBAY_MOCK=1 when it is not set.
+  if (process.env.LEADBAY_MOCK !== "1") {
+    throw {
+      error: true,
+      code: "MALFORMED_SUBMIT_RESPONSE",
+      message: `${tool}: the submit succeeded but the response carried no job_id, so the job cannot be polled.`,
+      hint: "The job may still be running server-side. Do not re-submit blindly — reuse the same request_id so a retry dedupes instead of double-spending.",
+    };
+  }
   return {
     mocked: true,
     tool,
@@ -314,8 +327,14 @@ function countryKey(raw: string): string {
 }
 
 export function rejectCountryLocations(locations: unknown): void {
-  if (!Array.isArray(locations)) return;
-  for (const loc of locations) {
+  if (locations === undefined || locations === null) return;
+  // The server does not validate the schema before dispatch, so an agent can
+  // send `filters.locations` as a bare string. Treating a non-array as "no
+  // locations" let a scalar "United States" sail past the guard and reach the
+  // backend, reintroducing exactly the silent same-named-town fencing this
+  // exists to stop. Normalize to a one-item list instead of returning.
+  const list = Array.isArray(locations) ? locations : [locations];
+  for (const loc of list) {
     if (typeof loc === "string" && COUNTRY_LOCATION_VALUES.has(countryKey(loc))) {
       throw {
         error: true,

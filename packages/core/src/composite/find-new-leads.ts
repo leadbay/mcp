@@ -215,26 +215,33 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       params.request_id ??
       derivedKey(
         "search-auto",
-        [
-          params.query ?? "",
-          JSON.stringify(params.example_lead ?? {}),
-          JSON.stringify(normalizeSearchFilters(params.filters) ?? {}),
-          params.count ?? "",
-          params.qualify === true ? "qualify" : "free",
-          params.min_ai_score ?? "",
-          (params.contact_titles ?? []).slice().sort().join(","),
-          params.title_gate ?? "",
-          (params.channels ?? []).slice().sort().join(","),
-          // Canonicalized (sorted) so ordering alone never forks the key, but
-          // PRESENT — a top-up that differs only by exclude_lead_ids is a
-          // different approved search, and hashing it the same would return
-          // the first job as a duplicate with the exclusions never applied.
-          (params.exclude_lead_ids ?? []).slice().sort().join(","),
-          params.novelty ?? "",
-          params.max_cost ?? "",
-          params.exploration_cap ?? "",
-          params.lang ?? "",
-        ].join("#")
+        // JSON, not delimiter-joined: free-text values (query, titles) must not
+        // be able to forge a field boundary. Fields with a documented backend
+        // default are canonicalized TO that default, so an approval that omits
+        // one and a retry that passes it explicitly derive the same key rather
+        // than launching a second paid, novelty-claiming job.
+        JSON.stringify({
+          query: params.query ?? null,
+          example_lead: params.example_lead ?? null,
+          filters: normalizeSearchFilters(params.filters) ?? null,
+          count: params.count ?? null,
+          qualify: params.qualify === true,
+          min_ai_score: params.min_ai_score ?? 0,
+          contact_titles: (params.contact_titles ?? []).slice().sort(),
+          title_gate:
+            params.title_gate ??
+            ((params.contact_titles?.length ?? 0) > 0 ? "prefer" : null),
+          channels: (params.channels ?? []).slice().sort(),
+          // Sorted so ordering alone never forks the key, but PRESENT — a
+          // top-up differing only by exclude_lead_ids is a different approved
+          // search, and hashing it the same would return the first job as a
+          // duplicate with the exclusions never applied.
+          exclude_lead_ids: (params.exclude_lead_ids ?? []).slice().sort(),
+          novelty: params.novelty ?? "org",
+          max_cost: params.max_cost ?? null,
+          exploration_cap: params.exploration_cap ?? null,
+          lang: params.lang ?? null,
+        })
       );
 
     const body = compactBody({

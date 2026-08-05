@@ -129,7 +129,11 @@ When I want qualification evidence and/or reachable contacts:
      `title_gate`, `channels`, `max_cost`. **No `min_ai_score`.**
    - `leadbay_find_new_leads`: the same, PLUS `min_ai_score` and `count`.
 2. On my go-ahead, prefer feeding the free preview's deliveries to
-   `leadbay_qualify_leads` (`prior_deliveries: {job_id}`) — it only spends on
+   `leadbay_qualify_leads` (`prior_deliveries: {job_id}`) — one paid pass PER
+   preview job when Phase 3 ran several archetypes, or merge their delivered
+   refs into a single `lead_refs` call. Never qualify just the first job and
+   call it done: the other archetypes are part of what I asked for. It only
+   spends on
    companies already known to match. Paid calls need `confirm: true`; without
    it the tool withholds the submit and hands back a quote instead of
    spending. That applies to `leadbay_find_new_leads` too whenever you set

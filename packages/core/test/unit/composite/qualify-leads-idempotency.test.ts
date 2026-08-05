@@ -160,6 +160,18 @@ describe("qualify_leads — derived idempotency key", () => {
     expect(a).not.toBe(b);
   });
 
+  it("a value containing the old delimiters cannot forge another ref", async () => {
+    // Under the delimiter-joined shape these serialized identically:
+    //   {website:"acme~name=Paris"}  ==  {website:"acme", name:"Paris~name="}
+    const forged = await submittedRequestId({
+      lead_refs: [{ website: "acme~name=Paris" }],
+    });
+    const genuine = await submittedRequestId({
+      lead_refs: [{ website: "acme", name: "Paris~name=" }],
+    });
+    expect(forged).not.toBe(genuine);
+  });
+
   it("an explicit request_id always wins", async () => {
     const id = await submittedRequestId({ lead_refs: REFS, request_id: "mine-1" });
     expect(id).toBe("mine-1");

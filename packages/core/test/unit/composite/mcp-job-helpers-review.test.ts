@@ -149,19 +149,76 @@ describe("rejectCountryLocations — alias normalization", () => {
 
 describe("mockedSubmitPreview", () => {
   it("returns a preview when the submit carried no job_id (LEADBAY_MOCK)", () => {
-    const out = mockedSubmitPreview(
-      { mocked: true, would_call: { method: "POST", path: "/1.6/mcp/search" } },
-      "leadbay_find_new_leads",
-      "us"
-    );
-    expect(out).not.toBeNull();
-    expect(out!.submitted).toBe(false);
-    expect(out!.tool).toBe("leadbay_find_new_leads");
+    const previous = process.env.LEADBAY_MOCK;
+    process.env.LEADBAY_MOCK = "1";
+    try {
+      const out = mockedSubmitPreview(
+        { mocked: true, would_call: { method: "POST", path: "/1.6/mcp/search" } },
+        "leadbay_find_new_leads",
+        "us"
+      );
+      expect(out).not.toBeNull();
+      expect(out!.submitted).toBe(false);
+      expect(out!.tool).toBe("leadbay_find_new_leads");
+    } finally {
+      if (previous === undefined) delete process.env.LEADBAY_MOCK;
+      else process.env.LEADBAY_MOCK = previous;
+    }
   });
 
   it("returns null for a real submit so the normal poll proceeds", () => {
     expect(
       mockedSubmitPreview({ job_id: JOB_ID }, "leadbay_find_new_leads", "us")
     ).toBeNull();
+  });
+});
+
+describe("rejectCountryLocations — scalar input", () => {
+  // The server does not validate the schema before dispatch, so a bare string
+  // reaches the tool. Treating a non-array as "nothing to check" let a scalar
+  // country label through to the silent same-named-town fencing.
+  it("rejects a bare string country label", () => {
+    expect(() => rejectCountryLocations("United States")).toThrow(
+      expect.objectContaining({ code: "COUNTRY_LEVEL_LOCATION" })
+    );
+    expect(() => rejectCountryLocations("la France")).toThrow(
+      expect.objectContaining({ code: "COUNTRY_LEVEL_LOCATION" })
+    );
+  });
+
+  it("still allows a bare string city", () => {
+    expect(() => rejectCountryLocations("Austin")).not.toThrow();
+    expect(() => rejectCountryLocations("Île-de-France")).not.toThrow();
+  });
+
+  it("ignores null/undefined", () => {
+    expect(() => rejectCountryLocations(null)).not.toThrow();
+    expect(() => rejectCountryLocations(undefined)).not.toThrow();
+  });
+});
+
+describe("mockedSubmitPreview — only in mock mode", () => {
+  it("throws on a real submit that carried no job_id", () => {
+    const previous = process.env.LEADBAY_MOCK;
+    delete process.env.LEADBAY_MOCK;
+    try {
+      expect(() => mockedSubmitPreview({}, "leadbay_find_new_leads", "us")).toThrow(
+        expect.objectContaining({ code: "MALFORMED_SUBMIT_RESPONSE" })
+      );
+    } finally {
+      if (previous !== undefined) process.env.LEADBAY_MOCK = previous;
+    }
+  });
+
+  it("returns the preview when mock mode is on", () => {
+    const previous = process.env.LEADBAY_MOCK;
+    process.env.LEADBAY_MOCK = "1";
+    try {
+      const out = mockedSubmitPreview({ mocked: true }, "leadbay_find_new_leads", "us");
+      expect(out?.submitted).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.LEADBAY_MOCK;
+      else process.env.LEADBAY_MOCK = previous;
+    }
   });
 });

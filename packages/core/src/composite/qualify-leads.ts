@@ -59,42 +59,49 @@ const DEFAULT_WAIT_SECONDS = 45;
  *  A caller who wants a deliberate re-run of an identical batch passes an
  *  explicit request_id. */
 function derivedRequestId(params: QualifyLeadsParams): string {
-  // Keep the FIELD NAMES in the shape. Concatenating truthy values alone let
-  // distinct selectors collapse onto one key — {website:"acme.com"} and
-  // {name:"acme.com"} resolve differently backend-side but hashed identically,
-  // so the second approval could be deduped onto the first job.
+  // JSON-serialize each ref rather than joining raw values with delimiters.
+  // Field names alone were not enough: a value CONTAINING the delimiters
+  // forged a different ref's serialization, so {website:"acme~name=Paris"} and
+  // {website:"acme", name:"Paris~name="} hashed identically. JSON escapes the
+  // separators, so no value can impersonate a field boundary.
   const refs = (params.lead_refs ?? [])
     .map((r) =>
-      (["lead_id", "contact_id", "website", "name", "location"] as const)
-        .map((k) => `${k}=${r[k] ?? ""}`)
-        .join("~")
+      JSON.stringify(
+        (["lead_id", "contact_id", "website", "name", "location"] as const).map(
+          (k) => r[k] ?? null
+        )
+      )
     )
     .sort()
-    .join("|");
-  const shape = [
+    .join(",");
+  // JSON the WHOLE shape for the same reason as the refs above: free-text
+  // values (contact_titles, lang) must not be able to forge a field boundary
+  // by containing a delimiter.
+  const shape = JSON.stringify({
     refs,
     // The WHOLE selector, not just the job id: qualifying the first 50 of a
     // delivery job and then the next 50 are different batches, and collapsing
     // them to one key would make the second submit look like a duplicate and
     // leave those refs unqualified.
-    [
-      params.prior_deliveries?.job_id,
-      params.prior_deliveries?.since,
-      params.prior_deliveries?.limit,
-    ]
-      .map((v) => v ?? "")
-      .join("~"),
-    params.qualify === false ? "free" : "qualify",
-    (params.channels ?? []).slice().sort().join(","),
-    (params.contact_titles ?? []).slice().sort().join(","),
-    params.title_gate ?? "",
+    prior: [
+      params.prior_deliveries?.job_id ?? null,
+      params.prior_deliveries?.since ?? null,
+      params.prior_deliveries?.limit ?? null,
+    ],
+    // Canonicalize to the value the BACKEND will apply, so an approval that
+    // omits a field and a retry that passes that field's documented default
+    // derive the same key instead of launching a second paid job.
+    qualify: params.qualify !== false,
+    channels: (params.channels ?? []).slice().sort(),
+    contact_titles: (params.contact_titles ?? []).slice().sort(),
+    title_gate: params.title_gate ?? null,
     // The cap is part of the approval: raising it after a stop_reason:max_cost
     // is a NEW approved run, and must not dedupe onto the capped job.
-    params.max_cost ?? "",
+    max_cost: params.max_cost ?? null,
     // Same for the output language — re-running the batch in another language
     // must not return the earlier job with evidence in the previous one.
-    params.lang ?? "",
-  ].join("#");
+    lang: params.lang ?? null,
+  });
   return derivedKey("qualify-auto", shape);
 }
 

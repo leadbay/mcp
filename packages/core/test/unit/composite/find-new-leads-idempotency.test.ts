@@ -95,6 +95,28 @@ describe("find_new_leads — derived search key", () => {
     expect(b).toBe(a);
   });
 
+  // Passing a documented backend default explicitly must NOT fork the key —
+  // otherwise a retry that materializes defaults launches a second paid job.
+  it("treats omitted fields and their explicit defaults as the same search", async () => {
+    const omitted = await keyFor({});
+    expect(await keyFor({ novelty: "org" })).toBe(omitted);
+    expect(await keyFor({ min_ai_score: 0 })).toBe(omitted);
+    expect(await keyFor({ channels: [] })).toBe(omitted);
+    expect(await keyFor({ exclude_lead_ids: [] })).toBe(omitted);
+
+    // title_gate defaults to "prefer" only when contact_titles is set.
+    const withTitles = await keyFor({ contact_titles: ["Owner"] });
+    expect(await keyFor({ contact_titles: ["Owner"], title_gate: "prefer" })).toBe(
+      withTitles
+    );
+  });
+
+  it("a free-text value cannot forge a field boundary", async () => {
+    const a = await keyFor({ query: 'x", "count": 99' });
+    const b = await keyFor({ query: "x" });
+    expect(a).not.toBe(b);
+  });
+
   it("an explicit request_id always wins", async () => {
     expect(await keyFor({ request_id: "gyms-dallas-2026-08-05" })).toBe(
       "gyms-dallas-2026-08-05"
