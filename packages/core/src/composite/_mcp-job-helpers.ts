@@ -222,9 +222,21 @@ export async function waitForJob(
   return snap;
 }
 
+/** Canonicalize a SET-valued list for hashing: sorted AND de-duplicated.
+ *  Every list the backend treats as a set (sectors, locations, channels,
+ *  contact_titles, exclude_lead_ids, refs) must go through this — sorting
+ *  alone leaves `["Dallas","Dallas"]` and `["Dallas"]` hashing differently
+ *  even though they request identical work, so a retry that happens to dedupe
+ *  presents a new key and re-launches a paid job. */
+export function canonicalSet(values: readonly unknown[] | undefined): unknown[] {
+  return [...new Set((values ?? []).map((v) => JSON.stringify(v)))]
+    .sort()
+    .map((v) => JSON.parse(v));
+}
+
 /** Recursively canonicalize a value for hashing: object keys sorted at every
  *  depth so property ORDER never forks a key, arrays left in place (order can
- *  be meaningful — callers sort the ones where it is not). Plain
+ *  be meaningful — callers pass set-shaped lists through canonicalSet). Plain
  *  JSON.stringify is not enough: an agent that rebuilds `example_lead` or
  *  `filters` with the properties in a different order would otherwise derive a
  *  different key for the same approved search and re-launch a paid job. */

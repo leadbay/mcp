@@ -181,3 +181,21 @@ describe("find_new_leads — canonical shape", () => {
     expect(b).not.toBe(a);
   });
 });
+
+describe("find_new_leads — set-valued fields are deduped", () => {
+  it("duplicate filter values do not fork the key", async () => {
+    const once = await keyFor({ filters: { locations: ["Dallas"] } });
+    const twice = await keyFor({ filters: { locations: ["Dallas", "Dallas"] } });
+    expect(twice).toBe(once);
+  });
+
+  it("duplicate exclusions and channels do not fork the key", async () => {
+    const a = await keyFor({ exclude_lead_ids: ["lead-1"] });
+    const b = await keyFor({ exclude_lead_ids: ["lead-1", "lead-1"] });
+    expect(b).toBe(a);
+
+    const c = await keyFor({ channels: ["email"] });
+    const d = await keyFor({ channels: ["email", "email"] });
+    expect(d).toBe(c);
+  });
+});

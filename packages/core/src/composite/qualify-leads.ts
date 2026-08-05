@@ -12,6 +12,7 @@ import type { Tool, ToolContext } from "../types.js";
 import {
   clampWaitSeconds,
   collectJobSnapshot,
+  canonicalSet,
   derivedKey,
   mockedSubmitPreview,
   compactBody,
@@ -21,6 +22,7 @@ import {
   type McpDryRunResponse,
   type McpSubmitResponse,
 } from "./_mcp-job-helpers.js";
+import { normalizeDomain } from "./import-leads.js";
 import { leadbay_qualify_leads as QUALIFY_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface QualifyLeadsParams {
@@ -68,17 +70,21 @@ function derivedRequestId(params: QualifyLeadsParams): string {
   // item, so a batch repeating a website and the same batch with it listed
   // once are the same approved work. Leaving duplicates in forked the key, and
   // a retry that happened to dedupe would then re-run the whole paid job.
-  const refs = [
-    ...new Set(
-      (params.lead_refs ?? []).map((r) =>
-        JSON.stringify(
-          (["lead_id", "contact_id", "website", "name", "location"] as const).map(
-            (k) => r[k] ?? null
-          )
-        )
-      )
-    ),
-  ].sort();
+  const refs = canonicalSet(
+    (params.lead_refs ?? []).map((r) => [
+      r.lead_id?.trim() ?? null,
+      r.contact_id?.trim() ?? null,
+      // Normalize the website the SAME way the resolver does, so a pasted
+      // "https://Acme.com/" and a retry's "acme.com" resolve to one company
+      // AND to one key. Fall back to the trimmed/lowercased raw value when it
+      // is not domain-shaped, rather than dropping the field.
+      r.website
+        ? normalizeDomain(r.website) ?? r.website.trim().toLowerCase()
+        : null,
+      r.name?.trim().toLowerCase() ?? null,
+      r.location?.trim().toLowerCase() ?? null,
+    ])
+  );
   // JSON the WHOLE shape for the same reason as the refs above: free-text
   // values (contact_titles, lang) must not be able to forge a field boundary
   // by containing a delimiter.
@@ -97,8 +103,8 @@ function derivedRequestId(params: QualifyLeadsParams): string {
     // omits a field and a retry that passes that field's documented default
     // derive the same key instead of launching a second paid job.
     qualify: params.qualify !== false,
-    channels: (params.channels ?? []).slice().sort(),
-    contact_titles: (params.contact_titles ?? []).slice().sort(),
+    channels: canonicalSet(params.channels),
+    contact_titles: canonicalSet(params.contact_titles),
     title_gate: params.title_gate ?? null,
     // The cap is part of the approval: raising it after a stop_reason:max_cost
     // is a NEW approved run, and must not dedupe onto the capped job.

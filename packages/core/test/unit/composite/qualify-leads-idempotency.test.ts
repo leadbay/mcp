@@ -188,3 +188,41 @@ describe("qualify_leads — derived idempotency key", () => {
     expect(id).toBe("mine-1");
   });
 });
+
+describe("qualify_leads — ref + set normalization", () => {
+  it("a pasted URL and its normalized domain share a key", async () => {
+    const pasted = await submittedRequestId({
+      lead_refs: [{ website: "https://Acme.com/" }],
+    });
+    const clean = await submittedRequestId({ lead_refs: [{ website: "acme.com" }] });
+    expect(clean).toBe(pasted);
+  });
+
+  it("stray whitespace and casing do not fork the key", async () => {
+    const messy = await submittedRequestId({
+      lead_refs: [{ name: "  Franklin Barbecue ", location: " Austin " }],
+    });
+    const tidy = await submittedRequestId({
+      lead_refs: [{ name: "franklin barbecue", location: "austin" }],
+    });
+    expect(tidy).toBe(messy);
+  });
+
+  it("a genuinely different domain still forks the key", async () => {
+    const a = await submittedRequestId({ lead_refs: [{ website: "acme.com" }] });
+    const b = await submittedRequestId({ lead_refs: [{ website: "other.com" }] });
+    expect(b).not.toBe(a);
+  });
+
+  it("duplicate channels do not fork the key", async () => {
+    const once = await submittedRequestId({
+      lead_refs: [{ website: "acme.com" }],
+      channels: ["email"],
+    });
+    const twice = await submittedRequestId({
+      lead_refs: [{ website: "acme.com" }],
+      channels: ["email", "email"],
+    });
+    expect(twice).toBe(once);
+  });
+});

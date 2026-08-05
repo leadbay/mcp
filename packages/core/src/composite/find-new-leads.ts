@@ -12,6 +12,7 @@ import type { Tool, ToolContext } from "../types.js";
 import {
   clampWaitSeconds,
   collectJobSnapshot,
+  canonicalSet,
   derivedKey,
   mockedSubmitPreview,
   compactBody,
@@ -69,7 +70,7 @@ function sortFilterLists(
   const out: Record<string, unknown> = { ...filters };
   for (const key of ["sectors", "locations"]) {
     if (Array.isArray(out[key])) {
-      out[key] = [...(out[key] as unknown[])].sort();
+      out[key] = canonicalSet(out[key] as unknown[]);
     }
   }
   return out;
@@ -247,16 +248,16 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
           count: params.count ?? null,
           qualify: params.qualify === true,
           min_ai_score: params.min_ai_score ?? 0,
-          contact_titles: (params.contact_titles ?? []).slice().sort(),
+          contact_titles: canonicalSet(params.contact_titles),
           title_gate:
             params.title_gate ??
             ((params.contact_titles?.length ?? 0) > 0 ? "prefer" : null),
-          channels: (params.channels ?? []).slice().sort(),
+          channels: canonicalSet(params.channels),
           // Sorted so ordering alone never forks the key, but PRESENT — a
           // top-up differing only by exclude_lead_ids is a different approved
           // search, and hashing it the same would return the first job as a
           // duplicate with the exclusions never applied.
-          exclude_lead_ids: (params.exclude_lead_ids ?? []).slice().sort(),
+          exclude_lead_ids: canonicalSet(params.exclude_lead_ids),
           novelty: params.novelty ?? "org",
           max_cost: params.max_cost ?? null,
           exploration_cap: params.exploration_cap ?? null,
