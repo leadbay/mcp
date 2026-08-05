@@ -199,3 +199,23 @@ describe("find_new_leads — set-valued fields are deduped", () => {
     expect(d).toBe(c);
   });
 });
+
+describe("find_new_leads — empty shapes collapse", () => {
+  it("omitted filters, {} and empty arrays all share a key", async () => {
+    const omitted = await keyFor({});
+    expect(await keyFor({ filters: {} })).toBe(omitted);
+    expect(await keyFor({ filters: { locations: [] } })).toBe(omitted);
+    expect(await keyFor({ filters: { sectors: [], locations: [] } })).toBe(omitted);
+  });
+
+  it("sector/location casing does not fork the key", async () => {
+    const a = await keyFor({ filters: { locations: ["Dallas"] } });
+    const b = await keyFor({ filters: { locations: ["dallas "] } });
+    expect(b).toBe(a);
+  });
+
+  it("a non-empty filter still forks the key", async () => {
+    const omitted = await keyFor({});
+    expect(await keyFor({ filters: { locations: ["Dallas"] } })).not.toBe(omitted);
+  });
+});

@@ -13,6 +13,8 @@ import {
   clampWaitSeconds,
   collectJobSnapshot,
   canonicalSet,
+  canonicalLabelSet,
+  canonicalOptionalObject,
   derivedKey,
   mockedSubmitPreview,
   compactBody,
@@ -59,10 +61,11 @@ interface FindNewLeadsParams {
 
 const DEFAULT_WAIT_SECONDS = 45;
 
-/** Sort the filter arrays that are unordered SETS to the backend, so a retry
- *  listing the same sectors/locations in another order still derives the same
- *  idempotency key. Object key order is handled by canonicalize() inside
- *  derivedKey; only array order needs a decision, and only here. */
+/** Canonicalize the filter lists that are unordered SETS of free-text labels
+ *  to the backend, so a retry listing the same sectors/locations in another
+ *  order — or with different casing — still derives the same idempotency key.
+ *  Object key order is handled by canonicalize() inside derivedKey; empty
+ *  shapes are collapsed by canonicalOptionalObject at the call site. */
 function sortFilterLists(
   filters: Record<string, unknown> | undefined
 ): Record<string, unknown> | null {
@@ -70,7 +73,7 @@ function sortFilterLists(
   const out: Record<string, unknown> = { ...filters };
   for (const key of ["sectors", "locations"]) {
     if (Array.isArray(out[key])) {
-      out[key] = canonicalSet(out[key] as unknown[]);
+      out[key] = canonicalLabelSet(out[key] as string[]);
     }
   }
   return out;
@@ -244,11 +247,11 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
           example_lead: params.example_lead ?? null,
           // Sector/location lists are unordered sets to the backend — sort
           // them so a reordered retry still dedupes.
-          filters: sortFilterLists(normalizeSearchFilters(params.filters)),
+          filters: canonicalOptionalObject(sortFilterLists(normalizeSearchFilters(params.filters))),
           count: params.count ?? null,
           qualify: params.qualify === true,
           min_ai_score: params.min_ai_score ?? 0,
-          contact_titles: canonicalSet(params.contact_titles),
+          contact_titles: canonicalLabelSet(params.contact_titles),
           title_gate:
             params.title_gate ??
             ((params.contact_titles?.length ?? 0) > 0 ? "prefer" : null),

@@ -226,3 +226,29 @@ describe("qualify_leads — ref + set normalization", () => {
     expect(twice).toBe(once);
   });
 });
+
+describe("qualify_leads — label normalization", () => {
+  it("contact_titles casing and whitespace do not fork the key", async () => {
+    const a = await submittedRequestId({
+      lead_refs: [{ website: "acme.com" }],
+      contact_titles: ["Owner"],
+    });
+    const b = await submittedRequestId({
+      lead_refs: [{ website: "acme.com" }],
+      contact_titles: ["owner "],
+    });
+    expect(b).toBe(a);
+  });
+
+  it("a genuinely different title still forks the key", async () => {
+    const owner = await submittedRequestId({
+      lead_refs: [{ website: "acme.com" }],
+      contact_titles: ["Owner"],
+    });
+    const cto = await submittedRequestId({
+      lead_refs: [{ website: "acme.com" }],
+      contact_titles: ["CTO"],
+    });
+    expect(cto).not.toBe(owner);
+  });
+});

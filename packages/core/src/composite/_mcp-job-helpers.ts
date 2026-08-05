@@ -234,6 +234,35 @@ export function canonicalSet(values: readonly unknown[] | undefined): unknown[] 
     .map((v) => JSON.parse(v));
 }
 
+/** Canonicalize a set of free-text labels (contact titles, sectors): trimmed
+ *  and lower-cased before dedupe, because the backend matches them
+ *  semantically. `["Owner"]` and `["owner "]` request identical work, so a
+ *  retry that re-cased them must not derive a new key and re-spend. */
+export function canonicalLabelSet(
+  values: readonly string[] | undefined
+): string[] {
+  return canonicalSet(
+    (values ?? []).map((v) => v.trim().toLowerCase()).filter(Boolean)
+  ) as string[];
+}
+
+/** Collapse the several shapes that all mean "nothing specified" to one.
+ *  An omitted `filters`, `{}`, and `{locations: []}` request the same search,
+ *  so they must hash identically or a retry that materializes an empty object
+ *  launches a second paid job. */
+export function canonicalOptionalObject(
+  value: Record<string, unknown> | null | undefined
+): Record<string, unknown> | null {
+  if (!value) return null;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (v === undefined || v === null) continue;
+    if (Array.isArray(v) && v.length === 0) continue;
+    out[k] = v;
+  }
+  return Object.keys(out).length === 0 ? null : out;
+}
+
 /** Recursively canonicalize a value for hashing: object keys sorted at every
  *  depth so property ORDER never forks a key, arrays left in place (order can
  *  be meaningful — callers pass set-shaped lists through canonicalSet). Plain

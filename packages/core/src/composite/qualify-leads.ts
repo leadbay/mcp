@@ -13,6 +13,7 @@ import {
   clampWaitSeconds,
   collectJobSnapshot,
   canonicalSet,
+  canonicalLabelSet,
   derivedKey,
   mockedSubmitPreview,
   compactBody,
@@ -104,7 +105,7 @@ function derivedRequestId(params: QualifyLeadsParams): string {
     // derive the same key instead of launching a second paid job.
     qualify: params.qualify !== false,
     channels: canonicalSet(params.channels),
-    contact_titles: canonicalSet(params.contact_titles),
+    contact_titles: canonicalLabelSet(params.contact_titles),
     title_gate: params.title_gate ?? null,
     // The cap is part of the approval: raising it after a stop_reason:max_cost
     // is a NEW approved run, and must not dedupe onto the capped job.
