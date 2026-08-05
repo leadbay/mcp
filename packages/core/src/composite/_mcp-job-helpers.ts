@@ -222,13 +222,35 @@ export async function waitForJob(
   return snap;
 }
 
+/** Recursively canonicalize a value for hashing: object keys sorted at every
+ *  depth so property ORDER never forks a key, arrays left in place (order can
+ *  be meaningful — callers sort the ones where it is not). Plain
+ *  JSON.stringify is not enough: an agent that rebuilds `example_lead` or
+ *  `filters` with the properties in a different order would otherwise derive a
+ *  different key for the same approved search and re-launch a paid job. */
+export function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(value as Record<string, unknown>).sort()) {
+      out[k] = canonicalize((value as Record<string, unknown>)[k]);
+    }
+    return out;
+  }
+  return value;
+}
+
 /** Stable idempotency key derived from an approved batch's own shape.
  *  SHA-256 truncated to 128 bits — a 32-bit digest collided in practice, and a
  *  collision here redirects one paid approval onto a different job. Nothing
  *  time-based goes into `shape`: a retry of the same approval must dedupe even
  *  if it lands the next day. */
-export function derivedKey(prefix: string, shape: string): string {
-  return `${prefix}-${createHash("sha256").update(shape).digest("hex").slice(0, 32)}`;
+export function derivedKey(prefix: string, shape: unknown): string {
+  // Canonicalize HERE rather than at each call site, so neither tool can
+  // regress by hashing a hand-built string again.
+  const serialized =
+    typeof shape === "string" ? shape : JSON.stringify(canonicalize(shape));
+  return `${prefix}-${createHash("sha256").update(serialized).digest("hex").slice(0, 32)}`;
 }
 
 /** LEADBAY_MOCK=1 journals writes and answers the generic

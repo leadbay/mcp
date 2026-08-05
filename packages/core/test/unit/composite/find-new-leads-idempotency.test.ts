@@ -153,3 +153,31 @@ describe("find_new_leads — derived search key", () => {
     });
   }
 });
+
+describe("find_new_leads — canonical shape", () => {
+  it("nested property ORDER does not fork the key", async () => {
+    const a = await keyFor({
+      example_lead: { description: "an independent gym", employees: 10 },
+    });
+    const b = await keyFor({
+      example_lead: { employees: 10, description: "an independent gym" },
+    });
+    expect(b).toBe(a);
+  });
+
+  it("filter list ORDER does not fork the key", async () => {
+    const a = await keyFor({ filters: { locations: ["Austin", "Dallas"] } });
+    const b = await keyFor({ filters: { locations: ["Dallas", "Austin"] } });
+    expect(b).toBe(a);
+
+    const c = await keyFor({ filters: { sectors: ["fitness", "retail"] } });
+    const d = await keyFor({ filters: { sectors: ["retail", "fitness"] } });
+    expect(d).toBe(c);
+  });
+
+  it("filter CONTENT still forks the key", async () => {
+    const a = await keyFor({ filters: { locations: ["Austin"] } });
+    const b = await keyFor({ filters: { locations: ["Dallas"] } });
+    expect(b).not.toBe(a);
+  });
+});

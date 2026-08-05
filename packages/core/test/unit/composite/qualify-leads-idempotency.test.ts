@@ -172,6 +172,17 @@ describe("qualify_leads — derived idempotency key", () => {
     expect(forged).not.toBe(genuine);
   });
 
+  it("duplicate refs do not fork the key", async () => {
+    // The backend collapses duplicate refs into one item, so these are the
+    // same approved work. A retry that happened to dedupe would otherwise
+    // present a new key and re-run the whole paid batch.
+    const once = await submittedRequestId({ lead_refs: [{ website: "acme.com" }] });
+    const twice = await submittedRequestId({
+      lead_refs: [{ website: "acme.com" }, { website: "acme.com" }],
+    });
+    expect(twice).toBe(once);
+  });
+
   it("an explicit request_id always wins", async () => {
     const id = await submittedRequestId({ lead_refs: REFS, request_id: "mine-1" });
     expect(id).toBe("mine-1");

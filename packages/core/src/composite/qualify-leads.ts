@@ -64,20 +64,25 @@ function derivedRequestId(params: QualifyLeadsParams): string {
   // forged a different ref's serialization, so {website:"acme~name=Paris"} and
   // {website:"acme", name:"Paris~name="} hashed identically. JSON escapes the
   // separators, so no value can impersonate a field boundary.
-  const refs = (params.lead_refs ?? [])
-    .map((r) =>
-      JSON.stringify(
-        (["lead_id", "contact_id", "website", "name", "location"] as const).map(
-          (k) => r[k] ?? null
+  // Sorted AND de-duplicated: the backend collapses duplicate refs into one
+  // item, so a batch repeating a website and the same batch with it listed
+  // once are the same approved work. Leaving duplicates in forked the key, and
+  // a retry that happened to dedupe would then re-run the whole paid job.
+  const refs = [
+    ...new Set(
+      (params.lead_refs ?? []).map((r) =>
+        JSON.stringify(
+          (["lead_id", "contact_id", "website", "name", "location"] as const).map(
+            (k) => r[k] ?? null
+          )
         )
       )
-    )
-    .sort()
-    .join(",");
+    ),
+  ].sort();
   // JSON the WHOLE shape for the same reason as the refs above: free-text
   // values (contact_titles, lang) must not be able to forge a field boundary
   // by containing a delimiter.
-  const shape = JSON.stringify({
+  const shape = {
     refs,
     // The WHOLE selector, not just the job id: qualifying the first 50 of a
     // delivery job and then the next 50 are different batches, and collapsing
@@ -101,7 +106,7 @@ function derivedRequestId(params: QualifyLeadsParams): string {
     // Same for the output language — re-running the batch in another language
     // must not return the earlier job with evidence in the previous one.
     lang: params.lang ?? null,
-  });
+  };
   return derivedKey("qualify-auto", shape);
 }
 

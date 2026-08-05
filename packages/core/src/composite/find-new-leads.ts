@@ -58,6 +58,23 @@ interface FindNewLeadsParams {
 
 const DEFAULT_WAIT_SECONDS = 45;
 
+/** Sort the filter arrays that are unordered SETS to the backend, so a retry
+ *  listing the same sectors/locations in another order still derives the same
+ *  idempotency key. Object key order is handled by canonicalize() inside
+ *  derivedKey; only array order needs a decision, and only here. */
+function sortFilterLists(
+  filters: Record<string, unknown> | undefined
+): Record<string, unknown> | null {
+  if (!filters) return null;
+  const out: Record<string, unknown> = { ...filters };
+  for (const key of ["sectors", "locations"]) {
+    if (Array.isArray(out[key])) {
+      out[key] = [...(out[key] as unknown[])].sort();
+    }
+  }
+  return out;
+}
+
 export const findNewLeads: Tool<FindNewLeadsParams, any> = {
   name: "leadbay_find_new_leads",
   annotations: {
@@ -215,15 +232,18 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       params.request_id ??
       derivedKey(
         "search-auto",
-        // JSON, not delimiter-joined: free-text values (query, titles) must not
-        // be able to forge a field boundary. Fields with a documented backend
-        // default are canonicalized TO that default, so an approval that omits
-        // one and a retry that passes it explicitly derive the same key rather
-        // than launching a second paid, novelty-claiming job.
-        JSON.stringify({
+        // Passed as an OBJECT: derivedKey canonicalizes recursively, so nested
+        // property order (example_lead, filters) can never fork the key. Fields
+        // with a documented backend default are canonicalized TO that default,
+        // so an approval that omits one and a retry that passes it explicitly
+        // derive the same key rather than launching a second paid,
+        // novelty-claiming job.
+        {
           query: params.query ?? null,
           example_lead: params.example_lead ?? null,
-          filters: normalizeSearchFilters(params.filters) ?? null,
+          // Sector/location lists are unordered sets to the backend — sort
+          // them so a reordered retry still dedupes.
+          filters: sortFilterLists(normalizeSearchFilters(params.filters)),
           count: params.count ?? null,
           qualify: params.qualify === true,
           min_ai_score: params.min_ai_score ?? 0,
@@ -241,7 +261,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
           max_cost: params.max_cost ?? null,
           exploration_cap: params.exploration_cap ?? null,
           lang: params.lang ?? null,
-        })
+        }
       );
 
     const body = compactBody({
