@@ -331,6 +331,35 @@ check-in".
 If your host exposes no scheduler at all, say so honestly in one line. Either
 way: **never claim a scheduled task was created.** Only the host can create one.
 
+# CLOSING — HAND THEM THE PHRASES
+
+**The buttons disappear when this walkthrough ends.** If the tour stops without
+telling the user what to *type*, they learned to click through a tutorial and
+nothing about using Leadbay tomorrow. So close every completed walkthrough with
+a short cheat-sheet: what they want → what they say.
+
+Render the manifest's `keep_going` rows as a compact two-column markdown table,
+titled something like **"Next time, just ask"**. Keep the phrases VERBATIM —
+each one is taken from that tool's own trigger list, so it's a phrase that
+genuinely routes. Do not invent extra rows, and do not reword the phrases into
+something that sounds nicer but doesn't match.
+
+| What you want | Just say |
+|---|---|
+| Today's fresh leads | "Show me today's leads" |
+| Who to follow up with | "What should I follow up on" |
+| The story on one company | "Research <Company>" |
+| An email to a contact | "Draft outreach for <Contact>" |
+| Change who you target | "Narrow the audience to <sector>" |
+| Switch target audience | "Show me my lenses" |
+
+Add one closing line in your own words: they don't need to remember exact
+wording — plain language works, and this is just a starting point.
+
+Show this cheat-sheet **once**, at the end. If the user abandons the
+walkthrough early (they typed something off-script), skip it — they're already
+off doing what they wanted, and a tutorial summary would interrupt.
+
 # STOP
 
 IRON LAW — the walkthrough never takes outbound action. Do not draft or send

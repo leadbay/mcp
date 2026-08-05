@@ -103,6 +103,18 @@ describe("audit: getting-started walkthrough", () => {
     }
   });
 
+  it("the prompt closes by teaching the phrases, and every row is in the body", () => {
+    // The buttons vanish with the tour. A walkthrough that ends without telling
+    // the user what to TYPE taught them to click a tutorial, not use Leadbay.
+    expect(BODY).toMatch(/buttons disappear when this walkthrough ends/i);
+    expect(BODY).toMatch(/keep_going/);
+    for (const row of GETTING_STARTED_MANIFEST.keep_going) {
+      expect(BODY, `cheat-sheet phrase "${row.say}" missing from prompt`).toContain(row.say);
+    }
+    // Verbatim or it stops routing.
+    expect(BODY).toMatch(/VERBATIM/);
+  });
+
   it("the prompt body carries the one-option rule", () => {
     expect(BODY).toMatch(/\*\*exactly ONE option\*\*/);
     expect(BODY).toMatch(/Not one plus "Skip"/);

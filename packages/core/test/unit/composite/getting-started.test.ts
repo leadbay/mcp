@@ -215,6 +215,39 @@ describe("leadbay_getting_started", () => {
     expect(getHttpRequests()).toHaveLength(0);
   });
 
+  it("hands the user real phrases to type once the buttons are gone", () => {
+    const rows = GETTING_STARTED_MANIFEST.keep_going;
+    expect(rows.length).toBeGreaterThanOrEqual(4);
+    for (const r of rows) {
+      expect(r.want.length, "want column").toBeGreaterThan(0);
+      expect(r.say.length, "say column").toBeGreaterThan(0);
+    }
+    // The two things the walkthrough itself demonstrated must be reachable by
+    // typing, or the tutorial taught a click the user can never repeat.
+    const said = rows.map((r) => r.say.toLowerCase());
+    expect(said.some((s) => s.includes("today's leads"))).toBe(true);
+    expect(said.some((s) => s.includes("follow up"))).toBe(true);
+  });
+
+  it("every taught phrase actually matches a shipped tool trigger", () => {
+    // The load-bearing assertion: a cheat-sheet phrase that doesn't route is
+    // worse than no cheat-sheet. Each `say` is supposed to be lifted verbatim
+    // from some tool's own routing.triggers block, so check it against the
+    // real, generated descriptions rather than trusting the comment.
+    const triggerText = [...compositeReadTools, ...compositeWriteTools]
+      .map((t) => (t.description.match(/Trigger phrases: ([^\n]+)/) ?? [])[1] ?? "")
+      .join(" ")
+      .toLowerCase();
+    for (const r of GETTING_STARTED_MANIFEST.keep_going) {
+      // Placeholders (<Company>) differ per user; compare the fixed stem.
+      const stem = r.say.toLowerCase().split("<")[0].trim();
+      expect(
+        triggerText.includes(stem),
+        `"${r.say}" is taught to users but no shipped tool lists "${stem}" as a trigger`,
+      ).toBe(true);
+    }
+  });
+
   it("the tour never takes outbound action", () => {
     expect(GETTING_STARTED_MANIFEST.stop).toMatch(/never takes outbound action/);
     expect(GETTING_STARTED_MANIFEST.stop).toMatch(/leadbay_report_outreach/);

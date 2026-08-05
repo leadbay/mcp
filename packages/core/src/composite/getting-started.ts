@@ -83,11 +83,27 @@ export interface WalkthroughStep {
   handoff?: string;
 }
 
+/** One row of the closing cheat-sheet: what the user wants → what they type. */
+export interface PhraseCard {
+  /** The outcome in the user's language. */
+  want: string;
+  /** A phrase that actually triggers it — taken from the tool's own routing block. */
+  say: string;
+}
+
 export interface GettingStartedManifest {
   version: number;
   intro: string;
   one_option_rule: string;
   steps: WalkthroughStep[];
+  /**
+   * The hand-off. The buttons disappear when the walkthrough ends, so the tour
+   * closes by telling the user what to TYPE to get each thing back. Every
+   * phrase here is lifted from the corresponding tool's own `routing.triggers`
+   * (see packages/promptforge/tool-descriptions/composite/*.md.tmpl) — never
+   * invent one, or the tutorial teaches a phrase that doesn't route.
+   */
+  keep_going: PhraseCard[];
   stop: string;
 }
 
@@ -105,6 +121,18 @@ const INTRO =
   "keeps a LENS (your target audience) and delivers fresh matching companies " +
   "every day. Then say what the next five clicks will do, then fire gate 1. " +
   "No tool call and no widget in this step.";
+
+// Every `say` below is verbatim from that tool's own routing.triggers, so the
+// phrase the tutorial teaches is one the agent actually routes on. If a tool's
+// triggers change, change these with them.
+const KEEP_GOING: PhraseCard[] = [
+  { want: "Today's fresh leads", say: "Show me today's leads" },
+  { want: "Who to follow up with", say: "What should I follow up on" },
+  { want: "The story on one company", say: "Research <Company>" },
+  { want: "An email to a contact", say: "Draft outreach for <Contact>" },
+  { want: "Change who you target", say: "Narrow the audience to <sector>" },
+  { want: "Switch target audience", say: "Show me my lenses" },
+];
 
 const STOP =
   "The walkthrough never takes outbound action. Do not draft or send outreach. " +
@@ -294,6 +322,7 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         "scheduled task was created — only the host can create one.",
     },
   ],
+  keep_going: KEEP_GOING,
   stop: STOP,
 };
 

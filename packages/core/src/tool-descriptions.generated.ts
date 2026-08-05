@@ -1777,7 +1777,9 @@ Per step: \`gate_label\` / \`gate_description\` are the widget's single option, 
 | 4 | Add these to my CRM | *nothing* — **your own** CRM connector |
 | 5 | Run this every morning | *nothing* — hands off to the host's scheduler |
 
-Steps 1 and 2 carry \`branches[]\`, step 3 carries \`forbidden_args\`, and steps 4–5 carry \`handoff\` prose instead of \`args\`.
+Steps 1 and 2 carry \`branches[]\`, step 3 carries \`forbidden_args\`, and steps 4–5 carry \`handoff\` prose instead of \`args\`. Every step also carries \`explain\` (say this BEFORE firing) and \`next_steps\` (\`{question, options[]}\` — already the widget's shape, map it verbatim).
+
+The manifest also carries **\`keep_going\`**: the closing cheat-sheet of *what you want → what you say*. The buttons vanish when the tour ends, so render these rows as a small two-column table at the finish, phrases **verbatim**. Each one is lifted from that tool's own trigger list, so it genuinely routes — inventing or prettifying a phrase teaches the user something that won't work.
 
 ## Four hard rules the manifest encodes
 
