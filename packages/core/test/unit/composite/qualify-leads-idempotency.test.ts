@@ -69,7 +69,8 @@ const REFS = [{ website: "a.com" }, { website: "b.com" }];
 describe("qualify_leads — derived idempotency key", () => {
   it("sends a derived request_id when a paid call omits one", async () => {
     const id = await submittedRequestId({ lead_refs: REFS });
-    expect(id).toMatch(/^qualify-auto-[0-9a-f]{8}$/);
+    // 128-bit digest: a 32-bit one collided in practice across distinct batches.
+    expect(id).toMatch(/^qualify-auto-[0-9a-f]{32}$/);
   });
 
   it("is stable across identical retries", async () => {
@@ -145,6 +146,18 @@ describe("qualify_leads — derived idempotency key", () => {
     });
     const byName = await submittedRequestId({ lead_refs: [{ name: "acme.com" }] });
     expect(byName).not.toBe(byWebsite);
+  });
+
+  it("does not collide on the pair that broke the 32-bit digest", async () => {
+    // Both of these hashed to qualify-auto-76d7841e under FNV-1a, which would
+    // have deduped one paid approval onto the other's job.
+    const a = await submittedRequestId({
+      lead_refs: [{ website: "aeqexh0jh0.com" }],
+    });
+    const b = await submittedRequestId({
+      lead_refs: [{ website: "99rcha4ssn.com" }],
+    });
+    expect(a).not.toBe(b);
   });
 
   it("an explicit request_id always wins", async () => {

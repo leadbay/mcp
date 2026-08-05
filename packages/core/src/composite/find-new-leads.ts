@@ -12,6 +12,7 @@ import type { Tool, ToolContext } from "../types.js";
 import {
   clampWaitSeconds,
   collectJobSnapshot,
+  derivedKey,
   mockedSubmitPreview,
   compactBody,
   normalizeSearchFilters,
@@ -204,6 +205,33 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     const vetoed = params.confirm === false;
     const consented = !vetoed && params.confirm === true;
 
+    // `request_id` is schema-`required`, but the server does not validate
+    // schemas before dispatch, so a caller can omit it and compactBody would
+    // drop the key entirely — leaving a confirmed PAID search with no
+    // idempotency handle, so a timeout + retry launches a second paid,
+    // novelty-claiming job. Synthesize a stable key from the approved search
+    // itself, exactly as the qualify path does.
+    const requestId =
+      params.request_id ??
+      derivedKey(
+        "search-auto",
+        [
+          params.query ?? "",
+          JSON.stringify(params.example_lead ?? {}),
+          JSON.stringify(normalizeSearchFilters(params.filters) ?? {}),
+          params.count ?? "",
+          params.qualify === true ? "qualify" : "free",
+          params.min_ai_score ?? "",
+          (params.contact_titles ?? []).slice().sort().join(","),
+          params.title_gate ?? "",
+          (params.channels ?? []).slice().sort().join(","),
+          params.novelty ?? "",
+          params.max_cost ?? "",
+          params.exploration_cap ?? "",
+          params.lang ?? "",
+        ].join("#")
+      );
+
     const body = compactBody({
       query: params.query,
       example_lead: params.example_lead,
@@ -218,7 +246,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       novelty: params.novelty,
       max_cost: params.max_cost,
       exploration_cap: params.exploration_cap,
-      request_id: params.request_id,
+      request_id: requestId,
       lang: params.lang,
       dry_run: params.dry_run,
     });
@@ -287,7 +315,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     const { leads, skipped } = splitItems(snapshot);
     return {
       job_id: submit.job_id,
-      request_id: params.request_id,
+      request_id: requestId,
       duplicate_submit: submit.duplicate ?? false,
       state: snapshot.job.state,
       done,

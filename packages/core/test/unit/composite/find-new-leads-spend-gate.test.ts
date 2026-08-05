@@ -138,6 +138,31 @@ describe("leadbay_find_new_leads — spend gate", () => {
     expect(postBodies()[0].dry_run).toBeUndefined();
   });
 
+  it("synthesizes a request_id when the caller omits the required field", async () => {
+    // The server does not validate schemas before dispatch, so `required` is
+    // not enforced — a confirmed paid search could otherwise post with no
+    // idempotency handle and a retry would launch a second paid job.
+    mockHttp([
+      { method: "POST", path: "/1.6/mcp/search", status: 202, body: SUBMIT_202 },
+      {
+        method: "GET",
+        path: `/1.6/mcp/jobs/${JOB_ID}?limit=100`,
+        status: 200,
+        body: SNAPSHOT,
+      },
+    ]);
+
+    await findNewLeads.execute(newClient(), {
+      count: 10,
+      qualify: true,
+      confirm: true,
+      wait_seconds: 0,
+    } as any);
+
+    const body = postBodies()[0];
+    expect(body.request_id).toMatch(/^search-auto-[0-9a-f]{32}$/);
+  });
+
   it("confirm:true submits the paid search", async () => {
     mockHttp([
       { method: "POST", path: "/1.6/mcp/search", status: 202, body: SUBMIT_202 },

@@ -5,6 +5,7 @@
 // cumulatively from /mcp/jobs/{id} with an opaque `since` cursor. The
 // backend caps poll pages at 100 items, while a qualify job can carry up
 // to 500 refs — so a snapshot collects pages until the cursor drains.
+import { createHash } from "node:crypto";
 import type { LeadbayClient } from "../client.js";
 import type { ToolContext } from "../types.js";
 
@@ -154,7 +155,10 @@ export async function collectJobSnapshot(
   // next_since into a page with no items used to overwrite the cursor with that
   // empty page's (often null) next_since, so a caller that had just received a
   // full page lost its place and had to re-read everything it had already seen.
-  let cursor = page.next_since ?? null;
+  // Fall back to the cursor the CALLER passed in: an incremental poll of a
+  // running job legitimately returns items:[] with no next_since, and dropping
+  // to null there would make the next poll a full re-read.
+  let cursor = page.next_since ?? since ?? null;
   let pages = 1;
   while (page.items.length >= pageLimit && page.next_since && pages < maxPages) {
     const next = await client.request<McpJobSnapshot>(
@@ -216,6 +220,15 @@ export async function waitForJob(
     });
   }
   return snap;
+}
+
+/** Stable idempotency key derived from an approved batch's own shape.
+ *  SHA-256 truncated to 128 bits — a 32-bit digest collided in practice, and a
+ *  collision here redirects one paid approval onto a different job. Nothing
+ *  time-based goes into `shape`: a retry of the same approval must dedupe even
+ *  if it lands the next day. */
+export function derivedKey(prefix: string, shape: string): string {
+  return `${prefix}-${createHash("sha256").update(shape).digest("hex").slice(0, 32)}`;
 }
 
 /** LEADBAY_MOCK=1 journals writes and answers the generic

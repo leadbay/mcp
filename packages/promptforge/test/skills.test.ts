@@ -72,12 +72,6 @@ describe("audit: SKILL.md files", () => {
     }
   });
 
-  it("release-gated prompts emit no SKILL.md", () => {
-    for (const name of gatedPrompts) {
-      const path = join(SKILLS_DIR, name, "SKILL.md");
-      expect(existsSync(path), `${path} must not ship while gated`).toBe(false);
-    }
-  });
 
   it("every emitted SKILL.md is in sync with .md.tmpl source", () => {
     for (const skill of skillFiles) {

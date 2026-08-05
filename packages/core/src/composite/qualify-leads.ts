@@ -12,6 +12,7 @@ import type { Tool, ToolContext } from "../types.js";
 import {
   clampWaitSeconds,
   collectJobSnapshot,
+  derivedKey,
   mockedSubmitPreview,
   compactBody,
   splitItems,
@@ -94,14 +95,7 @@ function derivedRequestId(params: QualifyLeadsParams): string {
     // must not return the earlier job with evidence in the previous one.
     params.lang ?? "",
   ].join("#");
-  // FNV-1a — short, dependency-free, and only needs to be collision-resistant
-  // across one org's batches, not cryptographically strong.
-  let h = 0x811c9dc5;
-  for (let i = 0; i < shape.length; i++) {
-    h ^= shape.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return `qualify-auto-${h.toString(16).padStart(8, "0")}`;
+  return derivedKey("qualify-auto", shape);
 }
 
 export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
