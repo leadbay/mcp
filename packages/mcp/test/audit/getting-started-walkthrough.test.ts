@@ -51,6 +51,19 @@ describe("audit: getting-started walkthrough", () => {
     expect(BODY).toMatch(/Do not volunteer the lens/i);
   });
 
+  it("gate 1 delivers the real quota, not a one-line greeting", () => {
+    // The user clicked a button labelled "check my account status". A bare
+    // "you're connected as X at Y" under-delivers on that; the quota windows
+    // ARE the answer whenever they're readable.
+    expect(BODY).toMatch(/Daily \/ Weekly \/\s*\n?\s*Monthly/);
+    expect(BODY).toMatch(/% used/);
+    // The canonical rendering must be included, not re-invented inline.
+    expect(BODY).toMatch(/RENDERING — quota windows/);
+    expect(BODY).toMatch(/▰/);
+    // …and the silence gate still wins when quota is unreadable/unlimited.
+    expect(BODY).toMatch(/unlimited_credits/);
+  });
+
   it("declares ≥3 failure modes and names the spend gate", () => {
     const modes = PROMPT_META.leadbay_getting_started.failure_modes ?? [];
     // assembler.ts enforces ≥3 for prompts that call mutating tools

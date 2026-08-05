@@ -19,6 +19,8 @@ failure_modes:
   - Presents a gate as prose ("let me know if you want me to pull your leads") instead of CALLING the host choice widget — the click IS the lesson, and prose turns the walkthrough into a lecture
   - Runs a step's tool WITHOUT firing that step's widget first and waiting for the click — the walkthrough becomes an automated demo the user only watches, which is the exact opposite of learning by doing
   - Fires the widget without the EXPLAIN beat, so the user gets an unexplained button and learns nothing about what a lens or an enrichment actually is
+  - Answers gate 1 with a bare "you're connected as X at Y" when the quota IS readable — the user clicked a button labelled `check my account status`, so the quota windows (Daily/Weekly/Monthly gauges, % used, $ spent, resets) ARE the answer, not an optional extra
+  - Renders quota as raw "credits" instead of the web app's percentage + dollar-spend gauges, or dumps raw `resource_type` strings the user has never seen
   - Opens with a wall of text — previewing all five steps, explaining lenses up front, or writing several paragraphs before the first widget. The opening is TWO lines then the button; a first-run user wants to see it work, not read a syllabus
   - Ends the first message without firing gate 1's widget, leaving the user to reply "ok" before anything happens
   - Rewrites the gate's own `next_steps` payload (its `question`, `label` or `description`) instead of mapping it into the widget verbatim, or merges two gates into a single multi-option widget
@@ -139,17 +141,25 @@ paragraph on top of them.
 
 On click: call `leadbay_account_status` (it takes no arguments).
 
-Report back in 1–2 short lines: who they're signed in as, their organization,
-and their plan. This is the tutorial's "you're connected, here's your setup"
-beat — it proves the connection works before anything else is attempted.
+**Show them their actual account — this is the payoff of the click.** Lead with
+one line on who they're signed in as and their organization, then render their
+**quota windows in full**, exactly as the web app shows them: Daily / Weekly /
+Monthly, each with a `▰▱` gauge, % used, $ spent against the cap, and when it
+resets — plus the per-resource breakdown underneath. A one-line "you're
+connected as X" is an under-delivery: they clicked a button labelled *check my
+account status*, so show them the status.
+
+{{include:rendering/quota-windows}}
 
 **Two things this gate must NOT do** (both are pinned regressions):
 
-- **Say nothing about quota if `quota_error` is set.** A brand-new org often
-  has no billing plan yet, so the quota read fails. That is NOT an error worth
-  showing. Do not mention quota, do not mention a 401, and above all do NOT
-  tell the user to log in again or reconnect — their token is fine, the very
-  same response just read their account.
+- **Say nothing about quota when the silence gate above applies** — `quota` is
+  null, `quota_error` is set, or the org has `unlimited_credits`. A brand-new
+  org often has no billing plan yet, so the quota read fails. That is NOT an
+  error worth showing: do not mention quota, do not mention a 401, and above
+  all do NOT tell the user to log in again or reconnect — their token is fine,
+  the very same response just read their account. In that case fall back to the
+  short user + org line and move on to GATE 2 without comment.
 - **Do not volunteer the lens.** The response deliberately withholds the lens
   unless the user asked about it, so there is nothing to report. Don't reach
   for another tool to find it either. The lens shows up naturally at GATE 2.

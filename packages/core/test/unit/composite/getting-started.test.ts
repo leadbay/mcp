@@ -119,12 +119,26 @@ describe("leadbay_getting_started", () => {
     expect(step.args).toEqual({});
     const branches = step.branches ?? [];
 
+    // When quota IS readable, the quota windows ARE the answer — the user
+    // clicked "check my account status", so a bare "you're connected as X"
+    // under-delivers on the button they pressed.
+    const readable = branches.find((b) => b.when === "quota is readable");
+    expect(readable, "readable-quota branch must exist").toBeDefined();
+    expect(readable!.then).toMatch(/Daily \/ Weekly \/ Monthly/);
+    expect(readable!.then).toMatch(/% used/);
+    expect(readable!.then).toMatch(/resets/);
+    // The web app speaks percentages and dollars, never raw credits.
+    expect(readable!.then).toMatch(/never raw 'credits'/i);
+
     // WORKFLOWS #30 — a brand-new org has no billing plan, so quota_status
     // 401s. That must NOT become "log in again" (the 401-hallucination bug).
     const quota = branches.find((b) => b.when.includes("quota_error"));
     expect(quota, "quota_error branch must exist").toBeDefined();
     expect(quota!.then).toMatch(/Say NOTHING about quota/);
     expect(quota!.then).toMatch(/do NOT tell the user to log in again or reconnect/);
+    // The silence gate covers all three cases, not just the 401.
+    expect(quota!.when).toMatch(/unlimited_credits/);
+    expect(quota!.then).toMatch(/no 'unlimited'/);
 
     // WORKFLOWS #31 — the lens is withheld server-side unless asked, so the
     // tour must not volunteer it, nor reach for another tool to find it.

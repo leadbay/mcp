@@ -170,7 +170,8 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       explain:
         "The opening two lines ARE this gate's explanation — do not add another " +
         "paragraph. One sentence on what Leadbay is, one line naming this step, " +
-        "then fire the widget in the SAME message.",
+        "then fire the widget in the SAME message. On click, the ANSWER is the " +
+        "account itself: user + org, then the full quota windows (see branches).",
       next_steps: {
         question: "Let's start with your account status.",
         options: [
@@ -186,14 +187,14 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       args: {},
       branches: [
         {
-          when: "always",
+          when: "quota is readable",
           then:
-            "Report in 1-2 short lines: who they're signed in as, their organization, and their plan. This is the tutorial's 'you're connected, here's your setup' beat — it proves the connection works before anything else is attempted.",
+            "Show them their ACTUAL account — this is the payoff of the click. One line on who they're signed in as and their organization, then render the quota windows in full the way the web app does: Daily / Weekly / Monthly, each with a ▰▱ gauge, % used, $ spent against the cap, and when it resets, plus the per-resource breakdown underneath. Follow the canonical quota-windows rendering (never raw 'credits'). A one-line 'you're connected as X' under-delivers on a button labelled 'check my account status'.",
         },
         {
-          when: "quota_error is set",
+          when: "quota is null, quota_error is set, or organization.unlimited_credits is true",
           then:
-            "Say NOTHING about quota. A brand-new org often has no billing plan yet, so the quota read fails — that is not an error worth showing. Do not mention quota, do not mention a 401, and above all do NOT tell the user to log in again or reconnect: their token is fine, the same response just read their account. (WORKFLOWS #30.)",
+            "Say NOTHING about quota — no gauge, no 'unreadable', no 'unlimited'. A brand-new org often has no billing plan yet, so the quota read fails; that is not an error worth showing. Do not mention a 401, and above all do NOT tell the user to log in again or reconnect: their token is fine, the same response just read their account. Fall back to the short user + org line and move on. (WORKFLOWS #30.)",
         },
         {
           when: "always",
