@@ -35,7 +35,7 @@ routing:
       - "Which of my lenses is active right now?"
 rendering_hint: |
   Not a data table. Run the walkthrough ONE gate at a time: fire your host's
-  choice widget with that step's SINGLE option, wait for the click, make that
+  choice widget with that step's forward option + exit, wait for the click, make that
   step's tool call, then advance. Never dump all five steps at once, and never
   render a gate as a prose question.
 annotations:
@@ -50,11 +50,11 @@ Every click in the walkthrough runs a real Leadbay call against the user's own a
 
 For orientation **prose** with no clicking — "explain how Leadbay works", "what's the difference between discovery and follow-up" — this tool is the wrong answer; that's the `leadbay_prospecting_overview` prompt.
 
-## THE ONE-OPTION RULE
+## THE ONE-FORWARD-OPTION RULE
 
-Every gate carries **exactly ONE option**. Not one plus "Skip". Not one plus "No thanks". One.
+Every gate carries **exactly one way forward, plus a way out** — two options, never more: the action, and `I'm done for now`.
 
-A first-run user doesn't yet know enough to choose between options — a menu makes them stall. One option makes the next move obvious, and the click is what teaches the tool. The user's escape hatch is **typing**, which needs no button: if they type something off-script, abandon the walkthrough and serve what they asked.
+A first-run user doesn't yet know enough to choose between PATHS — a menu of alternatives makes them stall. One forward move makes the next step obvious, and the click is what teaches the tool. The exit keeps the tour from being a trap and satisfies the host widget's 2–4 option requirement: a lone option is rejected or silently degrades to prose. Never add a third option, and never turn the exit into an alternative route. Typing works too: if they type something off-script, abandon the walkthrough and serve what they asked.
 
 ## What it returns
 
@@ -66,17 +66,17 @@ A first-run user doesn't yet know enough to choose between options — a menu ma
 }
 ```
 
-Per step: `gate_label` / `gate_description` are the widget's single option, `calls` is the tool to invoke on click (or `null`), and `args` is the literal argument shape. Render each `gate_label` verbatim — don't reword them.
+Per step: `gate_label` / `gate_description` are the widget's forward option, `calls` is the tool to invoke on click (or `null`), and `args` is the literal argument shape. Render each `gate_label` verbatim — don't reword them.
 
 | Step | Gate | Calls |
 |---|---|---|
 | 1 | Check my account | `leadbay_account_status` (no args) |
 | 2 | Pull today's leads | `leadbay_pull_leads` (no args) |
-| 3 | Enrich top leads | `leadbay_enrich_titles` (`leadIds` + `lensId`, **no `titles`**) |
+| 3 | Enrich top leads | `leadbay_enrich_titles` — free preview, then a consented paid reveal |
 | 4 | Add these to my CRM | *nothing* — **your own** CRM connector |
 | 5 | Run this every morning | *nothing* — hands off to the host's scheduler |
 
-Steps 1 and 2 carry `branches[]`, step 3 carries `forbidden_args`, and steps 4–5 carry `handoff` prose instead of `args`. Every step also carries `explain` (say this BEFORE firing) and `next_steps` (`{question, options[]}` — already the widget's shape, map it verbatim).
+Steps 1 and 2 carry `branches[]`, step 3 carries `spend` + `quota_note`, and steps 4–5 carry `handoff` prose instead of `args`. Every step also carries `explain` (say this BEFORE firing) and `next_steps` (`{question, options[]}` — already the widget's shape, map it verbatim).
 
 The manifest also carries **`keep_going`**: the closing cheat-sheet of *what you want → what you say*. The buttons vanish when the tour ends, so render these rows as a small two-column table at the finish, phrases **verbatim**. Each one is lifted from that tool's own trigger list, so it genuinely routes — inventing or prettifying a phrase teaches the user something that won't work.
 
@@ -84,9 +84,9 @@ The manifest also carries **`keep_going`**: the closing cheat-sheet of *what you
 
 **Step 1 shows the real account, and is silent about two things.** The click is labelled *check my account status*, so deliver it: user + org, then the **full quota windows** the way the web app renders them — Daily / Weekly / Monthly with a `▰▱` gauge, % used, $ spent against the cap, resets countdown, and the per-resource breakdown. Never raw "credits". But apply the silence gate first: when `quota` is null, `quota_error` is set, or the org has `unlimited_credits`, say **nothing** about quota — never mention a 401, never suggest logging in again (the token is fine, the same response just read their account), and never announce "unlimited". And **never volunteer the lens**: the response withholds it unless the user asked, so there is nothing to report and no other tool to reach for. Both are pinned regressions (WORKFLOWS #30 / #31).
 
-**Step 3 spends nothing.** Omitting `titles` returns `mode:"discover"` — the free preview of available job titles. Never pass `titles`, `confirm=true`, `email=true` or `phone=true`; each one launches a **paid** reveal. This user has been using Leadbay for ninety seconds; never spend their quota to demo a feature.
+**Step 3 runs in two beats — free first, paid only on consent.** Beat 1 omits `titles` and returns `mode:"discover"`, the free preview of available job titles; say plainly that nothing has been spent. Beat 2 asks the user to pick 2–3 leads to really enrich, states the cost BEFORE they choose, and only then calls again with the chosen `titles` + `confirm:true` + `email:true` — a real paid reveal, polled via `leadbay_bulk_enrich_status` until done, reporting only the contacts that actually resolved. The gate click bought the free look, not the reveal: never launch without an explicit pick + confirm. Close with one line on what it cost (one credit per contact revealed).
 
-**Step 4 delegates to a connector Leadbay does not own.** Leadbay has **no** CRM integration — it cannot push, export or sync a lead anywhere, which is why `calls` is `null`. But the agent often can: many users run a CRM connector in the same host. Check **your own tool set** for a CRM capability (HubSpot, Salesforce, Pipedrive, Attio, Close, …) exactly the way you detect outreach tooling — the host's installed-connector inventory when available, else the conversation, else ask. With one, create/update the company + contact from the data in hand (name, website, city, contact name + title). **You do not have the contact's email or phone** — step 3 was the free preview — so never write a detail you did not receive. With no connector, say so honestly and offer `leadbay_report_friction` with `category: "missing_capability"`. **Never claim a CRM record was created unless the connector confirmed it.**
+**Step 4 delegates to a connector Leadbay does not own.** Leadbay has **no** CRM integration — it cannot push, export or sync a lead anywhere, which is why `calls` is `null`. But the agent often can: many users run a CRM connector in the same host. Check **your own tool set** for a CRM capability (HubSpot, Salesforce, Pipedrive, Attio, Close, …) exactly the way you detect outreach tooling — the host's installed-connector inventory when available, else the conversation, else ask. With one, create/update the company + contact from the data in hand (name, website, city, contact name + title). Pass through any emails or phones step 3 actually revealed; if the user declined the paid reveal you have **none**, and inventing one is fabrication. With no connector, say so honestly and offer `leadbay_report_friction` with `category: "missing_capability"`. **Never claim a CRM record was created unless the connector confirmed it.**
 
 **Step 5 has `calls: null` because Leadbay has no scheduling API.** No `leadbay_*` tool creates a scheduled task. The gate's option text is literal recurring language ("Run this every morning"), which is what lets the host's own scheduled-task flow take over. Follow that flow rather than re-asking frequency/time yourself, and never claim a scheduled task was created — only the host can create one.
 

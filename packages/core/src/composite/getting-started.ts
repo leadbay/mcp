@@ -74,8 +74,10 @@ export interface WalkthroughStep {
   args: Record<string, string> | null;
   /** Args that must NEVER be passed, with the reason. */
   forbidden_args?: string[];
-  /** Why those args are forbidden — surfaced so the agent can't rationalize past it. */
+  /** What this step does or doesn't cost, and the consent it requires first. */
   spend?: string;
+  /** What to tell the user about the credits this step consumed. */
+  quota_note?: string;
   /** Value to capture from the response and forward to later steps. */
   pin?: string;
   /** Conditional handling the agent must apply to the response. */
@@ -258,12 +260,12 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       gate_description: "See who to contact at the top leads.",
       explain:
         "Explain what enrichment IS before firing: a company is not a person, so " +
-        "Leadbay can find WHICH ROLES to approach at these companies. WHY IT'S " +
-        "USEFUL: they walk into the call knowing to ask for the operations " +
-        "director by title, instead of pitching whoever answers the switchboard " +
-        "— the difference between a conversation and a dead end. Say plainly " +
-        "that this preview is free and reveals no emails or phone numbers — that " +
-        "is a separate paid step they confirm later.",
+        "Leadbay can find WHICH ROLES to approach at these companies — and then " +
+        "reveal how to reach them. WHY IT'S USEFUL: they walk into the call " +
+        "knowing to ask for the operations director by name, instead of pitching " +
+        "whoever answers the switchboard — the difference between a conversation " +
+        "and a dead end. Say plainly that the first look is free, and that " +
+        "actually revealing contact details costs credits and needs their say-so.",
       next_steps: {
         question: "Want to see who to contact at these companies?",
         options: [
@@ -280,14 +282,26 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         leadIds: "<the lead ids from step 2>",
         lensId: "<the pinned lens id from step 2>",
       },
-      forbidden_args: ["titles", "confirm", "email", "phone"],
       spend:
-        "NOTHING. Omitting `titles` returns mode:'discover' — the free preview of " +
-        "which job titles are available. Passing titles, confirm=true, email=true " +
-        "or phone=true launches a PAID reveal. This user has been using Leadbay " +
-        "for ninety seconds; never spend their quota to demonstrate a feature. " +
-        "After presenting the titles, say plainly that nothing was spent and that " +
-        "revealing emails/phones is a separate, paid step they confirm.",
+        "TWO BEATS — free preview FIRST, real enrichment only after the user picks " +
+        "and confirms. Beat 1: call leadbay_enrich_titles with leadIds + lensId and " +
+        "NO titles / NO confirm / NO email / NO phone. That returns mode:'discover' " +
+        "— the FREE preview of which job titles exist at these companies. Say " +
+        "plainly that nothing has been spent yet. Beat 2: ask them to pick 2-3 leads " +
+        "to actually enrich, and tell them BEFORE they choose that this one spends " +
+        "credits (one per contact revealed). Only after they pick and confirm, call " +
+        "leadbay_enrich_titles AGAIN with those leadIds, the chosen titles, " +
+        "confirm:true and email:true — a real, paid reveal. Then poll " +
+        "leadbay_bulk_enrich_status with the returned bulk_id until all_done (or the " +
+        "count plateaus), and report the actual emails/phones found. NEVER launch " +
+        "the paid reveal without an explicit pick + confirm in the conversation: " +
+        "silence is not consent, and neither is 'they clicked the gate'.",
+      quota_note:
+        "After the real enrichment, tell them what it cost in plain terms: one " +
+        "credit per contact revealed, so N contacts = N credits. Re-check " +
+        "leadbay_account_status if you want to show the updated windows. This is the " +
+        "moment the quota numbers from gate 1 stop being abstract — they just " +
+        "watched them move. Keep it to a line; do not turn it into a pricing pitch.",
     },
     {
       n: 4,
@@ -324,8 +338,9 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         "the conversation, otherwise ask which CRM they use. If you have one, use " +
         "it to create or update the company + its contact from the lead data " +
         "already in hand: company name, website, city/region, contact name and job " +
-        "title. You do NOT have the contact's email or phone — gate 2 was the free " +
-        "preview — so never write a contact detail you did not receive. If you have " +
+        "title, plus any emails or phones the enrichment actually returned at gate 3. " +
+        "If the user declined the paid reveal you have NO contact details — never " +
+        "write one you did not receive. If you have " +
         "no CRM connector, say so in one honest line, name the CRM the user " +
         "mentioned, and offer leadbay_report_friction with " +
         "category:'missing_capability'. NEVER claim a CRM record was created unless " +

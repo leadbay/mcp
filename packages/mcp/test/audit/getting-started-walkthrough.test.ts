@@ -7,7 +7,7 @@
  *
  * This audit pins the pieces that must agree, plus the two product decisions
  * that a later well-meaning edit would erode: one forward option + an exit per
- * gate, and gate 3 never spending the new user's quota.
+ * gate, and gate 3 never spending without an explicit pick + confirm.
  */
 
 import { describe, it, expect } from "vitest";
@@ -171,13 +171,18 @@ describe("audit: getting-started walkthrough", () => {
     expect(BODY).toMatch(/typing/i);
   });
 
-  it("the prompt body forbids every paid-reveal argument", () => {
-    // Mirrors the manifest's forbidden_args. If the template stops naming one,
-    // the agent loses the only instruction preventing a paid launch.
-    for (const arg of GETTING_STARTED_MANIFEST.steps[1].forbidden_args ?? []) {
-      expect(BODY, `prompt body must forbid \`${arg}\``).toMatch(new RegExp(arg));
-    }
-    expect(BODY).toMatch(/SPENDS NOTHING/);
+  it("the prompt gates the paid reveal behind an explicit pick + confirm", () => {
+    // Beat 1 is free; beat 2 spends. The ordering is the consent guarantee, so
+    // the template must state both halves and the rule between them.
+    expect(BODY).toMatch(/TWO BEATS\*\*\. Do not collapse them/);
+    expect(BODY).toMatch(/This call must spend NOTHING/);
+    expect(BODY).toMatch(/pick 2–3 leads to actually enrich/i);
+    expect(BODY).toMatch(/Silence is not consent/);
+    // …and the real launch, plus polling so it reports only resolved contacts.
+    expect(BODY).toMatch(/`confirm: true`/);
+    expect(BODY).toMatch(/leadbay_bulk_enrich_status/);
+    // …and it must say what that cost.
+    expect(BODY).toMatch(/one credit per\s*\n?\s*contact revealed/i);
   });
 
   it("the prompt body handles the warming lens instead of reporting empty", () => {
@@ -219,7 +224,7 @@ describe("audit: getting-started walkthrough", () => {
     expect(BODY).toMatch(/Never claim a CRM record was created/i);
     // Gate 2 was the FREE title preview: no email/phone was ever revealed, so
     // writing one into the user's CRM would be fabricated PII.
-    expect(BODY).toMatch(/never write a contact detail you did not receive/i);
+    expect(BODY).toMatch(/never write\s*\n?\s*one you did not receive/i);
   });
 
   it("the no-connector path routes to the real escape hatch", () => {

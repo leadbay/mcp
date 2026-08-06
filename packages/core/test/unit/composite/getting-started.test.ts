@@ -17,7 +17,8 @@ beforeEach(() => resetHttpMock());
 
 // leadbay_getting_started returns a static walkthrough manifest (issue #3952).
 // These tests lock the two product decisions that are easy to erode by a later
-// well-meaning edit: one forward option + an exit per gate, and gate 3 never spends.
+// well-meaning edit: one forward option + an exit per gate, and gate 3 never
+// spending WITHOUT an explicit pick + confirm from the user.
 
 describe("leadbay_getting_started", () => {
   it("happy path — returns the 5-step manifest with no HTTP call", async () => {
@@ -195,16 +196,33 @@ describe("leadbay_getting_started", () => {
     expect(warming!.then).toMatch(/VERBATIM/);
   });
 
-  it("step 3 forbids every arg that would trigger a paid reveal", () => {
+  it("step 3 runs free-preview FIRST and only spends after an explicit pick", () => {
     const step = GETTING_STARTED_MANIFEST.steps[2];
     expect(step.calls).toBe("leadbay_enrich_titles");
-    // Any one of these counts as consent in enrich-titles and launches a PAID
-    // reveal. The tour is a demo on a 90-second-old account — it spends nothing.
-    expect(step.forbidden_args).toEqual(["titles", "confirm", "email", "phone"]);
-    expect(step.spend).toMatch(/NOTHING/);
-    expect(step.spend).toMatch(/discover/);
     // It must still scope to the leads from step 2 and the pinned lens.
     expect(Object.keys(step.args ?? {}).sort()).toEqual(["leadIds", "lensId"]);
+
+    // Beat 1 is the free discovery preview — passing titles/confirm/email/phone
+    // on the FIRST call would spend before the user has chosen anything.
+    expect(step.spend).toMatch(/TWO BEATS/);
+    expect(step.spend).toMatch(/NO titles \/ NO confirm \/ NO email \/ NO phone/);
+    expect(step.spend).toMatch(/discover/);
+
+    // Beat 2 is the real, paid reveal — but ONLY after a pick + confirm.
+    expect(step.spend).toMatch(/confirm:true/);
+    expect(step.spend).toMatch(/2-3 leads/);
+    expect(step.spend).toMatch(/leadbay_bulk_enrich_status/);
+    // The consent rule, stated so it can't be rationalized away.
+    expect(step.spend).toMatch(/silence is not consent/i);
+  });
+
+  it("step 3 tells the user what the enrichment cost", () => {
+    // They just watched credits move. Saying nothing is what makes quota feel
+    // like a surprise bill later.
+    const step = GETTING_STARTED_MANIFEST.steps[2];
+    expect(step.quota_note, "step 3 must explain the spend").toBeTypeOf("string");
+    expect(step.quota_note).toMatch(/one credit per contact/i);
+    expect(step.quota_note).toMatch(/not turn it into a pricing pitch/i);
   });
 
   it("step 4 calls no Leadbay tool — the CRM connector is the host's", () => {
@@ -221,7 +239,7 @@ describe("leadbay_getting_started", () => {
     expect(step.handoff).toMatch(/installed-connector/);
     // Honesty guards — the two ways this gate could lie to a new user.
     expect(step.handoff).toMatch(/NEVER claim a CRM record was created/);
-    expect(step.handoff).toMatch(/never write a contact detail you did not receive/);
+    expect(step.handoff).toMatch(/never\s+write one you did not receive/);
     // The no-connector path must route to the real escape hatch, not a dead end.
     expect(step.handoff).toMatch(/leadbay_report_friction/);
     expect(step.handoff).toMatch(/missing_capability/);
@@ -239,11 +257,13 @@ describe("leadbay_getting_started", () => {
     expect(step.gate_label.toLowerCase()).toContain("every morning");
   });
 
-  it("step 4 does not invent contact details it never received", () => {
-    // Gate 3 is the FREE title preview — no email/phone is ever revealed. A CRM
-    // push that writes them would be fabricating PII into the user's CRM.
+  it("step 4 passes through only what the enrichment actually returned", () => {
+    // Gate 3 may now reveal real contacts — but only the ones that resolved. If
+    // the user declined the paid reveal there are none at all, and writing an
+    // invented address into their CRM is fabricated PII.
     const step = GETTING_STARTED_MANIFEST.steps[3];
-    expect(step.handoff).toMatch(/do NOT have the contact's email or phone/i);
+    expect(step.handoff).toMatch(/actually returned at gate 3/);
+    expect(step.handoff).toMatch(/declined the paid reveal you have NO contact details/);
   });
 
   it("no step invents a leadbay_* tool that does not exist", () => {

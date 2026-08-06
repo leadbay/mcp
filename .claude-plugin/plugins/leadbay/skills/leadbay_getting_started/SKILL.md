@@ -397,22 +397,53 @@ approach at these companies.
 director by title, instead of pitching whoever answers the switchboard — the
 difference between a conversation and a dead end.
 
-Say plainly that this preview is **free** and reveals no emails or phone
-numbers — that's a separate, paid step they confirm later.
+Say plainly that the first look is **free**, and that actually revealing
+contact details costs credits and needs their say-so.
 
 **Then fire the widget** — question `Want to see who to contact at these companies?`, first option labelled `Enrich top leads`, description `See who to contact at the top leads. Free — no contact details revealed.` Second option: `I'm done for now` / `Stop the walkthrough here.` **Wait for the click.**
+
+This gate runs in **TWO BEATS**. Do not collapse them.
+
+## BEAT 1 — the free look (spends nothing)
 
 On click: call `leadbay_enrich_titles` with `leadIds` = the lead ids from
 GATE 2 and `lensId` = the pinned lens id.
 
-**IRON LAW — THIS CALL SPENDS NOTHING.** Omit `titles` entirely: that returns
-`mode:"discover"`, the free preview of which job titles are available. Do NOT
-pass `titles`. Do NOT pass `confirm=true`. Do NOT pass `email=true` or
-`phone=true`. Any one of those launches a PAID reveal. This user has been using
-Leadbay for ninety seconds — never spend their quota to demonstrate a feature.
+**This call must spend NOTHING.** Omit `titles` entirely: that returns
+`mode:"discover"`, the free preview of which job titles exist at those
+companies. Do NOT pass `titles`, `confirm=true`, `email=true` or `phone=true`
+on this call — any one of them launches the paid reveal before the user has
+chosen anything.
 
-Present the discovered titles, then say plainly: "nothing was spent here —
-revealing emails and phone numbers is a separate, paid step you confirm."
+Present the discovered titles and say plainly: "nothing spent yet."
+
+## BEAT 2 — really enrich the ones they pick (spends credits)
+
+Now ask them to **pick 2–3 leads to actually enrich**, and tell them the cost
+BEFORE they choose: revealing contact details spends credits, roughly one per
+contact revealed. Name the leads so the choice is concrete.
+
+**Wait for an explicit pick + confirmation.** Silence is not consent, and
+neither is "they clicked the gate earlier" — the gate click bought the free
+look, not the reveal.
+
+Once they've picked and confirmed, call `leadbay_enrich_titles` AGAIN with:
+their chosen `leadIds`, the `titles` worth contacting, `confirm: true` and
+`email: true`. That's the real, paid reveal.
+
+It returns a `bulk_id` and runs async — poll `leadbay_bulk_enrich_status`
+with that id (`include_contacts=true`) until `all_done`, or until the resolved
+count plateaus across a few spaced polls. Then report the **actual contacts
+found**: names, titles, and the emails/phones that came back. Some contacts
+never resolve; say so honestly rather than implying a full house.
+
+**Then explain what it cost** — one line, in plain terms: one credit per
+contact revealed, so N contacts = N credits. This is the moment the quota
+numbers from GATE 1 stop being abstract, because they just watched them move.
+Don't turn it into a pricing pitch.
+
+If they decline the reveal, that's fine — keep the free preview as the result
+and move on to GATE 4 without pushing.
 
 # GATE 4 — "Add these to my CRM"
 
@@ -442,8 +473,9 @@ conversation, otherwise ask the user which CRM they use.
 **If you have one**, use it to create or update the company and its contact
 from the lead data already in hand. Pass what Leadbay gave you and nothing
 invented: company name, website, city/region, the contact's name and job
-title. You do NOT have their email or phone — gate 3 was the free preview, so
-never write a contact detail you did not receive. Report back what the
+title — plus any emails or phones the enrichment actually returned at GATE 3.
+If the user declined the paid reveal, you have NO contact details: never write
+one you did not receive. Report back what the
 connector actually returned, per CRM record.
 
 **If you have no CRM connector**, say so in one honest line, name which CRM
