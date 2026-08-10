@@ -1,0 +1,433 @@
+---
+name: leadbay_getting_started
+kind: prompt
+short_description: |
+  Guided first-run walkthrough — four clicks that actually use Leadbay: check
+  the account, pull today's leads, draft a first email to the top one, then
+  reveal who to send it to. Use when the user is new or asks to be SHOWN how
+  Leadbay works ("walk me through Leadbay", "I'm new", "how do I use this",
+  "give me a tour"). Don't use it for orientation prose with no clicking —
+  that's leadbay_prospecting_overview.
+arguments: []
+expected_calls:
+  - leadbay_account_status
+  - leadbay_pull_leads
+  - leadbay_prepare_outreach
+  - leadbay_enrich_titles
+  - leadbay_bulk_enrich_status
+failure_modes:
+  - Presents a gate as prose ("let me know if you want me to pull your leads") instead of CALLING the host choice widget — the click IS the lesson, and prose turns the walkthrough into a lecture
+  - Runs a step's tool WITHOUT firing that step's widget first and waiting for the click — the walkthrough becomes an automated demo the user only watches, which is the exact opposite of learning by doing
+  - Fires the widget without the EXPLAIN beat, so the user gets an unexplained button and learns nothing about what a lens or an enrichment actually is
+  - Answers gate 1 with a bare "you're connected as X at Y" when the quota IS readable — the user clicked a button labelled `check my account status`, so the quota windows (Daily/Weekly/Monthly gauges, % used, $ spent, resets) ARE the answer, not an optional extra
+  - Renders quota as raw "credits" instead of the web app's percentage + dollar-spend gauges, or dumps raw `resource_type` strings the user has never seen
+  - Opens with a wall of text — previewing all four steps, explaining lenses up front, or writing several paragraphs before the first widget. The opening is TWO lines then the button; a first-run user wants to see it work, not read a syllabus
+  - Ends the first message without firing gate 1's widget, leaving the user to reply "ok" before anything happens
+  - Rewrites the gate's own `next_steps` payload (its `question`, `label` or `description`) instead of mapping it into the widget verbatim, or merges two gates into a single multi-option widget
+  - Fires a THIRD option, or turns the exit into an alternative route ("show me my lenses instead") — each gate carries exactly one forward action plus the `I'm done for now` exit, never a menu of paths
+  - Fires a single-option widget — the host requires 2–4 options, so a lone option is rejected or silently degrades to prose ("say the word and I'll check it"), which is the exact defect this rule exists to prevent
+  - Launches the PAID reveal at gate 4 BEFORE the user has picked leads and confirmed — beat 1 must be the free `mode:"discover"` preview (no `titles`, no `confirm`, no `email`, no `phone`); the gate click bought the free look, not the reveal, and silence is never consent
+  - Stops at the free preview after the user DID pick leads and confirm — they asked for real contact details, so the second call must actually run with `confirm:true` and the chosen titles
+  - Reports the enrichment without polling `leadbay_bulk_enrich_status` to completion, so it claims contacts it never actually saw resolve
+  - Reveals contacts and never says what it cost — the user just spent credits and deserves the one-line "N contacts = N credits", which is also what makes gate 1's quota numbers concrete
+  - Reports "no leads" on an empty batch while `computing_wishlist` / `computing_scores` is true — the lens is still building; render the tool's own two-option warm-up widget verbatim and pause
+  - Rewords, reorders or prose-ifies the `next_steps` payload from `leadbay_pull_leads` instead of mapping `options[]` into the widget verbatim
+  - Runs all four steps in one turn without waiting for the user's click between gates — the walkthrough is a sequence of gates, not a script to recite
+  - Skips `leadbay_pull_leads` and jumps straight to enrichment, leaving gate 4 with no `leadIds` to scope
+  - Drops the pinned `lens.id` between gates, so gate 4 enriches against a different lens than the one the user just saw
+  - Ends the completed walkthrough without the `keep_going` cheat-sheet — the buttons disappear with the tour, so a user who was never told what to TYPE learned to click a tutorial and nothing about using Leadbay tomorrow
+  - Invents phrases for the cheat-sheet, or rewords them into something that sounds nicer but doesn't match the tool's real triggers — teaching a phrase that doesn't route is worse than teaching none
+  - SENDS the gate 3 draft, or offers to send it — the walkthrough drafts and stops there; the email is the user's to judge, and nothing leaves the chat
+  - Passes `enrich:true` to `leadbay_prepare_outreach` at gate 3 — that launches a PAID contact reveal off the back of a DRAFT click, spending credits the user never agreed to
+  - Invents a contact NAME for the gate 3 draft — `recommended_contact` still has null email/name at that point, so the draft is addressed to the job TITLE; a fabricated name is the one thing that makes the whole draft untrustworthy
+  - Treats the null email at gate 3 as a failure — apologising for it, retrying, or calling another tool to fill it in. It is the setup for gate 4 — an email written, nobody to send it to yet
+  - Pastes the drafted email into chat prose alongside `message_compose_v1` instead of letting the composer BE the answer
+  - Enriches leads other than the one it drafted for at gate 3 — gate 4 reveals the person that email is going to, so it is scoped to that ONE lead, one contact, one credit
+  - Renders the cheat-sheet on the exit and stops there, dropping the 1:1 offer — the observed failure is that the agent feels finished once the table is on screen, so the user who just stepped out never hears about the help that would bring them back. ENDING B is not complete without the offer, and the offer goes LAST
+  - Treats the exit click as ENDING C (typed off-script) and closes in silence, or treats a typed request as ENDING B and buries their real answer under a cheat-sheet and a booking link
+  - Turns the exit offer into a pitch — several sentences, a re-opened gate, or an argument for finishing the tour. They said they were done; it is one line and a link
+  - Fires the 1:1 offer mid-tour, or at a user who left by TYPING a different request — a booking link on top of their real question is an interruption, not an offer
+  - Runs the four gates at a user whose actual problem is SETUP — the connector isn't installed, they can't sign in, or their Leadbay tools aren't appearing. The tour assumes a working connection and cannot fix any of it; the setup guide can
+  - Pastes the setup-guide link mid-tour, between gates, instead of once at the closing — a link in the middle of the walkthrough invites the user to leave the thing they're doing
+---
+
+{{include:headers/agent-memory-preamble}}
+
+Walk me through Leadbay. Treat these the same way: "I'm new here", "how do I
+use this?", "getting started", "show me how Leadbay works", "give me a tour",
+"I just installed this".
+
+This is a GUIDED WALKTHROUGH, not an explainer. The user learns by clicking,
+and every click runs a real Leadbay call against their own account. By the end
+they will have actually checked their account, pulled leads, had a first email
+drafted to the best of them, and revealed the person to send it to.
+
+If the user wants orientation PROSE without doing anything — "explain how
+Leadbay works", "what's the difference between discovery and follow-up" —
+this is the wrong prompt. Use `leadbay_prospecting_overview` instead.
+
+If their problem is **setup** rather than usage — the connector isn't installed
+yet, they can't sign in, their Leadbay tools aren't appearing, or they're asking
+how to run this on another host — this walkthrough cannot help them. It assumes
+a working connection, and GATE 1 is what proves it. Point them at the setup
+guide instead of guessing at install steps:
+<https://docs.leadbay.app/doc/leadbay-mcp/quickstart>
+
+{{include:gates/defer-to-tool-rendering}}
+
+{{include:heuristics/long-running-tools}}
+
+# THE ONE-FORWARD-OPTION RULE — the structural contract of this walkthrough
+
+Every gate presents **exactly ONE way forward, plus a way out**. Two options,
+never more:
+
+1. **The action** — the single next step of the tour.
+2. **The exit** — `I'm done for now`, which ends the walkthrough politely.
+
+This is deliberate. A first-run user does not yet know enough to choose between
+*paths* — a menu of alternatives makes them stall. One forward move makes the
+next step obvious, and the click is what teaches them the tool. The exit exists
+so the tour is never a trap, and because your host's choice widget requires 2–4
+options: a lone option is rejected or silently degrades to prose, which kills
+the whole feature.
+
+**Never add a third option**, and never turn the exit into an alternative route
+("show me my lenses instead") — that reintroduces the choice this rule exists
+to remove.
+
+**The gate IS the widget.** Call your host's choice widget with these two
+options. **Never render a gate as a prose question** — "say the word and I'll
+check it" is a defect, not a gate: the user gets no button and the walkthrough
+becomes a conversation they have to drive themselves.
+
+**EVERY GATE IS TWO BEATS — EXPLAIN, THEN ASK.** This is a tutorial, so the
+user must understand what they're about to do *before* they click:
+
+1. **Explain** — one or two plain sentences saying what this step does and why
+   it matters. Never jargon. This is the teaching half; skipping it turns the
+   walkthrough into a series of unexplained buttons.
+2. **Ask** — fire the widget. **Then STOP and wait for the click.**
+
+**NEVER run a step's tool without firing its widget first and receiving the
+user's click.** Calling `leadbay_pull_leads` because the walkthrough "obviously
+goes there next" defeats the entire feature — the click IS the lesson. The one
+exception is when the user's own message already told you to do it (e.g. "walk
+me through it and just run everything"); then follow what they asked.
+
+**Each gate ships its own widget payload — use it, don't rewrite it.** Every
+step in the manifest carries `explain` (what to say) and `next_steps`
+(`{question, options[]}`, already the widget's shape). Map `next_steps` into
+your host's widget VERBATIM — same question, same two options, same labels and
+descriptions. Do not reword them, do not merge two gates into one widget, and
+do not add a third option.
+
+Typing works as an escape hatch too. If the user types
+something off-script ("actually just show me my lenses"), abandon the
+walkthrough and serve what they asked. Never re-fire a gate the user has
+already declined in prose.
+
+{{include:next-steps/ask-user-input-routing}}
+
+# THE OPENING — SHORT, THEN STRAIGHT INTO GATE 1
+
+**A short paragraph, then the widget** — 3–4 sentences, all in your FIRST
+message. In the user's own language, no jargon, cover:
+
+1. **What Leadbay is** — it brings you a fresh batch of companies worth
+   selling to every day, rather than you going hunting for them.
+2. **How it knows what to send** — you describe who you sell to (that
+   description is your **lens**), and it goes and finds companies matching it,
+   getting sharper as you engage with what it sends.
+3. **What this walkthrough will do** — four quick steps, each a real action on
+   their own account, ending with leads in hand, a first email already written,
+   and the person to send it to.
+4. **One line handing off to the first step** — e.g. "First, let's see which
+   account you're on."
+
+Then **fire GATE 1's widget immediately, in the same message**, and stop.
+
+Keep it to a paragraph. Do NOT walk through the four steps one at a time here
+— each gate explains itself when its turn arrives, and turning the opening
+into a syllabus buries the first button under text nobody reads.
+
+Call no tool in the opening. The widget is the whole ask.
+
+# GATE 1 — "Check my account"
+
+The opening paragraph above IS this gate's explanation — don't add another one
+on top of it. Just hand off in a line and fire the widget.
+
+**Why it's useful**, if you say anything at all: this is where they can see at
+a glance how much they've used this week and what's left — so a batch that
+comes back small later has a visible reason rather than feeling broken.
+
+**Fire the widget** — question `Let's start with your account status.`, first option labelled `Check my account`, description `Check my Leadbay account status.` Second option: `I'm done for now` / `Stop the walkthrough here.` **Wait for the click.**
+
+On click: call `leadbay_account_status` (it takes no arguments).
+
+**Show them their actual account — this is the payoff of the click.** Lead with
+one line on who they're signed in as and their organization, then render their
+**quota windows in full**, exactly as the web app shows them: Daily / Weekly /
+Monthly, each with a `▰▱` gauge, % used, $ spent against the cap, and when it
+resets — plus the per-resource breakdown underneath. A one-line "you're
+connected as X" is an under-delivery: they clicked a button labelled *check my
+account status*, so show them the status.
+
+{{include:rendering/quota-windows}}
+
+**Then explain what they're looking at — one or two plain lines, no jargon.**
+A first-run user has never seen these numbers and won't know whether they're
+good, bad, or something to worry about. Say, in your own words:
+
+- **What it counts** — the AI work Leadbay does on their behalf: researching
+  companies on the web and qualifying leads against their criteria. Not
+  "credits", and not something they spend by clicking around.
+- **Why it matters to them** — it paces how many fresh leads arrive. Heavy use
+  now means Leadbay queues up a bigger batch for next time; and if a batch ever
+  comes back smaller than expected, this is where they'd see why. Each window
+  refills on its own at the reset time already shown.
+
+Keep it to a sentence or two, in their language. Do NOT lecture, do NOT explain
+every resource row one by one, and do NOT turn this into a pricing pitch — if a
+window is genuinely exhausted the tool's own guidance covers wait-vs-top-up.
+
+**When the silence gate above applies, skip this explanation too** — there is
+nothing on screen to explain, and describing an absent gauge just confuses.
+
+**Two things this gate must NOT do** (both are pinned regressions):
+
+- **Say nothing about quota when the silence gate above applies** — `quota` is
+  null, `quota_error` is set, or the org has `unlimited_credits`. A brand-new
+  org often has no billing plan yet, so the quota read fails. That is NOT an
+  error worth showing: do not mention quota, do not mention a 401, and above
+  all do NOT tell the user to log in again or reconnect — their token is fine,
+  the very same response just read their account. In that case fall back to the
+  short user + org line and move on to GATE 2 without comment.
+- **Do not volunteer the lens.** The response deliberately withholds the lens
+  unless the user asked about it, so there is nothing to report. Don't reach
+  for another tool to find it either. The lens shows up naturally at GATE 2.
+
+# GATE 2 — "Pull today's leads"
+
+**Explain first — this is where you teach the LENS.** Leadbay keeps a *lens*:
+their description of who they sell to. Every day it goes and finds fresh
+companies matching it. This click pulls today's batch.
+
+**Why it's useful:** it replaces the hour spent digging through directories and
+LinkedIn looking for someone worth calling — the list is already waiting, and
+already scored, when they sit down. And it sharpens itself: the leads they
+like, contact or skip teach the lens what a good fit looks like, so tomorrow's
+batch lands closer than today's.
+
+**Then fire the widget** — question `Now let's see today's leads. Ready?`, first option labelled `Pull today's leads`, description `Pull today's leads from your lens.` Second option: `I'm done for now` / `Stop the walkthrough here.` **Wait for the click.**
+
+On click: call `leadbay_pull_leads` with **no arguments** (it resolves the
+user's default lens itself).
+
+Capture `lens.id` from the response and pass it as an explicit `lensId` on
+every later call in this walkthrough, so gate 4 enriches the same lens the
+user just looked at. Pin the TOP-SCORING lead's id and name too — gate 3 drafts
+to it, and gate 4 reveals its contact.
+
+Render the batch with the canonical layout:
+
+{{include:rendering/pull-leads-table}}
+
+## Branch — the batch came back empty
+
+A brand-new account often reads empty for the first minute while the backend
+computes the lens wishlist. Check `computing_wishlist` / `computing_scores`:
+
+- **Either is true** → the lens is still building. Say exactly that, in the
+  user's terms: "your lens is still building your first batch — that's normal
+  on a new account, it takes about a minute." The tool's `next_steps` payload
+  carries a **two-option** warm-up widget ("Re-pull in ~30s" / "Refine
+  audience") — render it VERBATIM. This is the ONE place a gate carries two
+  options, because the server built the payload and a re-pull genuinely has a
+  real alternative. On "Re-pull in ~30s", wait ~30s and return to GATE 2.
+  **NEVER say "no leads found."**
+- **Both false** → the lens is genuinely empty or too narrow, and `next_steps`
+  is `null`. Say so honestly, offer to widen the audience, and end the
+  walkthrough here. There is nothing to enrich.
+
+# GATE 3 — "Draft the first email"
+
+**Explain first — and name the company.** Take the TOP-SCORING lead from
+GATE 2 and say its name out loud, so this is an offer about a real company
+rather than an abstraction. Leadbay already worked out *why* that company fits
+them, so it can write the first email instead of leaving them at a blank page.
+
+**Why it's useful:** finding companies was never the hard part. Writing the
+twentieth opener of the day is where prospecting actually dies. This turns a
+row in a table into something they could send in a minute.
+
+Say plainly that this only **drafts** — nothing is sent, and they see it first.
+
+**Then fire the widget** — question `Want me to draft the first email to your top lead?`, first option labelled `Draft the first email`, description `Write a first email to the best company in today's batch. Nothing is sent.` Second option: `I'm done for now` / `Stop the walkthrough here.` **Wait for the click.**
+
+On click: call `leadbay_prepare_outreach` with `leadId` = the top lead's id,
+**and nothing else**.
+
+**This gate spends NOTHING. Never pass `enrich: true`** — that launches a paid
+contact reveal off the back of a *draft* click. They agreed to see an email
+written, not to spend. GATE 4 is where the reveal gets asked for, on its own
+terms.
+
+`recommended_contact` comes back in its post-enrichment shape with `email` and
+`phone` still **null**. That is expected, not a failure — and it's exactly the
+hook for the next gate: an email written, and nobody to send it to yet. Don't
+apologise for it, and don't reach for another tool to fill it in.
+
+**Render the draft through `message_compose_v1`** — `kind: "email"`, a
+`summary_title` naming the company, and 2–3 variants whose labels name the
+**strategy** ("Lead with the growth signal", "Ask about their current setup"),
+never the tone. Do NOT also paste the body into chat prose; the composer *is*
+the answer. If the host exposes no composer, fall back to the canonical
+prepare-outreach layout: one context line, then subject + body as a quoted
+block.
+
+**Address it to the job TITLE** — "the Head of Operations at <Company>". You do
+not have a name yet, and inventing one is fabrication.
+
+Add one line on *why this company was the pick* — its score and the fit reason
+from the lead's summary — so the draft reads as reasoned rather than generated.
+
+# GATE 4 — "Find who to email"
+
+**Explain first — point at the gap the draft just opened.** They have an email
+ready and nobody to send it to: it's addressed to a job title, not a person.
+That's what this step fixes. Leadbay can find *which roles* exist at that
+company, then reveal the actual human and how to reach them.
+
+**Why it's useful:** they ask for the operations director by name instead of
+pitching whoever answers the switchboard — the difference between a
+conversation and a dead end.
+
+Say plainly that the first look is **free**, and that revealing the contact
+costs credits and needs their say-so.
+
+**Then fire the widget** — question `Want to find out who to send that email to?`, first option labelled `Find who to email`, description `See the roles at that company. Free — no contact details revealed yet.` Second option: `I'm done for now` / `Stop the walkthrough here.` **Wait for the click.**
+
+This gate runs in **TWO BEATS**. Do not collapse them.
+
+## BEAT 1 — the free look (spends nothing)
+
+On click: call `leadbay_enrich_titles` with `leadIds` = **the one lead you
+drafted for at GATE 3** and `lensId` = the pinned lens id.
+
+**This call must spend NOTHING.** Omit `titles` entirely: that returns
+`mode:"discover"`, the free preview of which job titles exist at that company.
+Do NOT pass `titles`, `confirm=true`, `email=true` or `phone=true` on this call
+— any one of them launches the paid reveal before the user has chosen anything.
+
+Present the discovered titles and say plainly: "nothing spent yet."
+
+## BEAT 2 — reveal the person the draft is for (spends credits)
+
+Name the title the GATE 3 draft is addressed to, and tell them the cost
+**before** they decide: one credit per contact revealed — here that's **one
+contact, one credit**. Then ask them to confirm.
+
+**Wait for an explicit confirmation.** Silence is not consent, and neither is
+"they clicked the gate earlier" — the gate click bought the free look, not the
+reveal.
+
+Once confirmed, call `leadbay_enrich_titles` AGAIN with that `leadId`, the
+chosen `titles`, `confirm: true` and `email: true`. That's the real, paid
+reveal.
+
+It returns a `bulk_id` and runs async — poll `leadbay_bulk_enrich_status`
+with that id (`include_contacts=true`) until `all_done`, or until the resolved
+count plateaus across a few spaced polls. Then report the contact that actually
+resolved: name, title, and the email/phone that came back. Contacts sometimes
+don't resolve; say so honestly rather than implying success.
+
+**Then close the loop** — one line: one credit per contact revealed, so this
+cost one. And say the thing that makes it land: the draft from GATE 3 now has a
+real person and a real address to go to. This is the moment GATE 1's quota
+numbers stop being abstract, because they just watched them move and got
+something for it. Don't turn it into a pricing pitch.
+
+If they decline the reveal, that's fine — keep the draft and the title, and
+let it go without pushing — the tour is done either way.
+
+# HOW THE TOUR ENDS — THREE ENDINGS, PICK THE RIGHT ONE
+
+This is the ONLY place that says what to do when the walkthrough stops. There
+is no other closing section: work out which of these three happened, then do
+that one in full, in the order written.
+
+**The buttons disappear when the walkthrough ends.** If it stops without
+telling the user what to *type*, they learned to click through a tutorial and
+nothing about using Leadbay tomorrow. That is what the cheat-sheet is for.
+
+## ENDING A — they finished all four gates
+
+1. Render the `keep_going` cheat-sheet (below).
+2. Then the setup-guide link (below).
+
+## ENDING B — they picked `I'm done for now`
+
+**All three beats, in this order. The offer is the LAST thing you say.**
+
+1. One short line acknowledging the stop — "No problem, we'll leave it there."
+2. The `keep_going` cheat-sheet, then the setup-guide link (below).
+3. **The 1:1 offer — REQUIRED, and it goes last.** Ending B without it is
+   incomplete: they stopped right before the setup work a call actually helps
+   with, which makes this the one moment the offer is welcome rather than
+   pushy. Say, in your own words, one sentence and the link:
+
+> Zoe on our team runs 1:1 sessions for the parts a walkthrough can't cover —
+> tuning your lens to your market, wiring the CRM push into your own setup, and
+> getting the daily run automated end to end. If that'd help:
+> <https://calendly.com/zoe-leadbay/demo-leadbay>
+
+   Keep it to **one sentence and the link**. Never re-open the walkthrough,
+   never re-fire the gate they just declined, and never argue for finishing the
+   tour.
+
+## ENDING C — they typed something off-script
+
+Serve what they actually asked for. **No cheat-sheet, no setup link, no 1:1
+offer** — they're already off doing what they wanted, and any of it on top of
+their real question is exactly the interruption they were avoiding.
+
+## The cheat-sheet (endings A and B)
+
+Render the manifest's `keep_going` rows as a compact two-column markdown table,
+titled something like **"Next time, just ask"**. Keep the phrases VERBATIM —
+each one is taken from that tool's own trigger list, so it's a phrase that
+genuinely routes. Do not invent extra rows, and do not reword the phrases into
+something that sounds nicer but doesn't match.
+
+| What you want | Just say |
+|---|---|
+| Today's fresh leads | "Show me today's leads" |
+| Who to follow up with | "What should I follow up on" |
+| The story on one company | "Research <Company>" |
+| An email to a contact | "Draft outreach for <Contact>" |
+| Change who you target | "Narrow the audience to <sector>" |
+| Switch target audience | "Show me my lenses" |
+
+Add one closing line in your own words: they don't need to remember exact
+wording — plain language works, and this is just a starting point.
+
+## The setup guide (endings A and B)
+
+One plain link, for the things the four gates didn't cover — installing Leadbay
+on another machine, adding a teammate, signing back in later:
+<https://docs.leadbay.app/doc/leadbay-mcp/quickstart>
+
+**Once, here, and nowhere else.** Never drop that link between gates: a link
+mid-tour is an invitation to leave the thing they're in the middle of doing.
+
+# STOP
+
+IRON LAW — the walkthrough **drafts** an email at GATE 3 but never **sends**
+one. The draft stays in the chat for the user to read and judge; nothing
+leaves. Never send it, never offer to send it on their behalf, and never call
+`leadbay_report_outreach` — logging an outreach that never happened poisons the
+human team's pipeline.
+
+{{include:gates/stop-and-wait}}

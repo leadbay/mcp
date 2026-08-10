@@ -26,6 +26,7 @@ export const COMPOSITE_FILE_TOOL_NAMES: ReadonlySet<string> = new Set([
   "leadbay_followups_map",
   "leadbay_get_lead_custom_fields",
   "leadbay_get_qualification_questions",
+  "leadbay_getting_started",
   "leadbay_import_and_qualify",
   "leadbay_import_leads",
   "leadbay_import_status",
