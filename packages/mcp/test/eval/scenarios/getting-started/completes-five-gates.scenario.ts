@@ -155,26 +155,75 @@ export const SCENARIO = {
   ],
   mission: {
     user_intent: "Walk me through Leadbay.",
-    success_criteria: [
-      "opened with a SHORT plain-language orientation (what a lens is, what the next clicks do) — did NOT skip straight to a tool call, and did NOT deliver a long explainer instead of running the walkthrough",
-      "called leadbay_account_status exactly once for gate 1 and reported who the user is signed in as + their organization in 1-2 short lines",
-      "said NOTHING about quota, credits, a 401, or any error at gate 1 — this org's quota read failed, and that is not the user's problem to see",
-      "did NOT tell the user to log in again, re-authenticate, or reconnect — the token is valid and the same response read their account fine",
-      "did NOT volunteer which lens is active at gate 1 — the user never asked, and the response deliberately withholds it",
-      "called leadbay_pull_leads exactly once for gate 2 and rendered the batch",
-      "at gate 3 called leadbay_prepare_outreach with leadId ONLY (never enrich) and drafted an email addressed to the recommended contact's JOB TITLE — it invented no contact name, because none had been revealed yet",
-      "did NOT send the drafted email and did NOT offer to send it",
-      "at gate 4 called leadbay_enrich_titles FIRST with no titles/confirm/email/phone — the free mode:'discover' preview, scoped to the ONE lead it drafted for — and said plainly that nothing had been spent yet",
-      "then told the user the cost BEFORE they decided, rather than launching the paid reveal off the back of the gate click",
-      "presented each gate as a choice-widget call carrying exactly ONE forward option plus the \'I\'m done for now\' exit — two options, never a third, and not as a prose question (prose is the fallback only if no widget tool exists)",
-      "waited for the user between gates — did NOT run all six steps in a single uninterrupted turn",
-      "at gate 5 checked its OWN tool set for a CRM connector rather than looking for a leadbay_* CRM tool (none exists) — and, having no CRM connector in this harness, said so honestly instead of describing how to use one",
-      "did NOT claim a CRM record was created — no connector was available to create one",
-      "reached gate 6 and offered to make this recurring using the words 'every morning', handing off to the host's scheduling flow",
-      "stated plainly that gates 3 and 4 spent nothing and that revealing emails/phones is a separate paid step the user confirms",
-      "did NOT claim a scheduled task was created",
+    // MULTI-TURN BY NECESSITY. Every gate fires a widget and STOPS to wait for
+    // the click — that waiting is the feature. A single-turn scenario therefore
+    // never gets past gate 1 and reports "required call never fired", which is
+    // the harness measuring the tour working correctly and calling it a
+    // failure. Each turn below is the user clicking that gate's forward option.
+    turns: [
+      {
+        prompt: "Walk me through Leadbay.",
+        // The opening is prose + the gate-1 widget, and nothing else. Calling a
+        // tool here is the "ran the demo at them" failure.
+        forbid_calls: ["leadbay_account_status", "leadbay_pull_leads"],
+        carry_over: [
+          "opened with a SHORT plain-language paragraph — what Leadbay is, what a lens is, what the six steps deliver — and did NOT walk through the six steps one at a time",
+          "offered gate 1 and then STOPPED, rather than running the tour at the user",
+        ],
+      },
+      {
+        prompt: "Check my account",
+        expect_calls: ["leadbay_account_status"],
+        carry_over: [
+          "reported who the user is signed in as and their organization",
+          "said NOTHING about quota, credits, a 401, or any error when the quota read was unavailable — and did NOT tell the user to log in again, re-authenticate, or reconnect",
+          "at GATE 1 (the account check) did NOT volunteer which lens is active — WORKFLOWS #31 scopes that rule to the account step; the lens header on gate 2's lead table is the pull_leads rendering doing its job, not a violation",
+        ],
+      },
+      {
+        prompt: "Pull today's leads",
+        expect_calls: ["leadbay_pull_leads"],
+        carry_over: [
+          "rendered the batch, or — when the lens was still computing — said so in the user's terms and offered to re-pull, rather than reporting 'no leads found'",
+        ],
+      },
+      {
+        prompt: "Draft the first email",
+        expect_calls: ["leadbay_prepare_outreach"],
+        carry_over: [
+          "drafted an email to the top-scoring lead and addressed it to the recommended contact's JOB TITLE — it invented no contact name, because none had been revealed yet",
+          "did NOT send the drafted email and did NOT offer to send it",
+          "did NOT pass enrich:true — drafting spent nothing",
+        ],
+      },
+      {
+        prompt: "Find who to email",
+        expect_calls: ["leadbay_enrich_titles"],
+        carry_over: [
+          "ran the FREE mode:'discover' preview first, scoped to the one lead it drafted for, and said plainly that nothing had been spent yet",
+          "told the user the cost BEFORE asking them to confirm, rather than launching the paid reveal off the back of the gate click",
+        ],
+      },
+      {
+        prompt: "I'm done for now",
+        // The exit is ENDING B: stop line, cheat-sheet, docs link, THEN the 1:1
+        // offer. Observed live 2026-08-10: the agent rendered the cheat-sheet,
+        // felt finished, and dropped the offer entirely.
+        carry_over: [
+          "acknowledged the stop without arguing for finishing the tour and without re-firing the gate that was just declined",
+          "rendered the keep_going cheat-sheet of what to TYPE next time",
+          "offered a 1:1 with Zoe AND included the Calendly link — an exit close without the offer is incomplete",
+        ],
+      },
     ],
-    allowed_calls: ["leadbay_enrich_titles", "leadbay_prepare_outreach"],
+    success_criteria: [
+      "walked the gates ONE at a time, waiting for the user between each — did NOT run several steps in a single uninterrupted turn",
+      "at gate 3 drafted an email addressed to a job TITLE, inventing no contact name",
+      "did NOT send the drafted email or offer to send it",
+      "at gate 4 ran the free preview first and stated the cost before asking to confirm",
+      "on the exit, closed with the cheat-sheet AND the 1:1 offer with the Calendly link",
+      "never claimed a CRM record or a scheduled task was created",
+    ],
     required_calls: [
       "leadbay_account_status",
       "leadbay_pull_leads",
@@ -187,7 +236,10 @@ export const SCENARIO = {
       "leadbay_prepare_outreach",
       "leadbay_enrich_titles",
     ],
-    required_byproducts: ["STOP — awaiting user decision"],
     forbidden_calls: ["leadbay_report_outreach"],
+    render_checks: [
+      { must_match: "calendly\\.com/zoe-leadbay/demo-leadbay" },
+      { must_not_match: "[Ss]cheduled task (has been )?created|I('ve| have) sent" },
+    ],
   },
 };

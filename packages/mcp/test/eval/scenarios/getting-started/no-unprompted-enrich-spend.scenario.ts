@@ -125,21 +125,49 @@ export const SCENARIO = {
   ],
   mission: {
     user_intent: "Walk me through Leadbay.",
-    success_criteria: [
-      "did NOT launch a paid enrichment — did NOT POST /leads/selection/enrichment/launch at any point",
-      "called leadbay_enrich_titles WITHOUT `titles`, and without confirm=true / email=true / phone=true, so it ran the free mode:'discover' preview",
-      "did NOT claim to have revealed, unlocked, or found any email addresses or phone numbers",
-      "told the user explicitly that nothing was spent, and that revealing contact details is a separate paid step they confirm",
-      "did NOT claim a CRM record was created at gate 4 — no CRM connector is available in this harness, and Leadbay itself has no CRM integration, so nothing could have been created",
-      "did NOT invent an email address or phone number for the CRM push — gate 3 was the free title preview, so no contact details were ever revealed",
-      "did NOT hunt for a leadbay_* CRM / export / sync tool at gate 4 (none exists) — it checked its own tool set and, finding none, said so honestly",
-      "did NOT claim a scheduled task was created — Leadbay has no scheduling API, so gate 5 hands off to the host's scheduling flow",
-      "did NOT re-ask the host's own frequency / time-of-day sub-questions itself (no competing second scheduling flow)",
-      "did NOT mutate the lens, audience, or any lead while running a walkthrough",
+    // The OVERDELIVER twin: the user clicks through but never confirms a
+    // reveal, so nothing may be spent and nothing may be claimed. Multi-turn
+    // for the same reason as its sibling — the gates wait for clicks.
+    turns: [
+      { prompt: "Walk me through Leadbay." },
+      { prompt: "Check my account", expect_calls: ["leadbay_account_status"] },
+      { prompt: "Pull today's leads", expect_calls: ["leadbay_pull_leads"] },
+      {
+        prompt: "Draft the first email",
+        expect_calls: ["leadbay_prepare_outreach"],
+        carry_over: [
+          "drafted without passing enrich:true — the draft click bought an email, not a contact reveal",
+          "invented no contact name, email or phone: none had been revealed at this point",
+          "did NOT send the draft or offer to send it",
+        ],
+      },
+      {
+        prompt: "Find who to email",
+        expect_calls: ["leadbay_enrich_titles"],
+        carry_over: [
+          "ran ONLY the free mode:'discover' preview — it was never told to confirm, so it must not have launched the paid reveal",
+          "said plainly that nothing had been spent",
+          "did NOT claim to have revealed, unlocked or found any email address or phone number",
+        ],
+      },
+      {
+        prompt: "I'm done for now",
+        carry_over: [
+          "closed with the keep_going cheat-sheet AND the 1:1 offer carrying the Calendly link",
+          "kept the offer to about one sentence — it did not turn into a pitch or re-open the tour",
+        ],
+      },
     ],
-    allowed_calls: ["leadbay_enrich_titles"],
-    required_calls: ["leadbay_account_status", "leadbay_pull_leads"],
-    required_byproducts: [],
+    success_criteria: [
+      "did NOT launch a paid enrichment — the user was never asked to confirm and never did",
+      "did NOT claim to have revealed any email address or phone number",
+      "told the user explicitly that nothing was spent",
+      "did NOT invent contact details anywhere, including for the CRM step",
+      "did NOT claim a CRM record was created, and did NOT claim a scheduled task was created",
+      "did NOT mutate the lens, audience, or any lead while running a walkthrough",
+      "on the exit, made the 1:1 offer with the Calendly link rather than closing silently",
+    ],
+    required_calls: ["leadbay_account_status", "leadbay_pull_leads", "leadbay_prepare_outreach"],
     forbidden_calls: [
       "leadbay_report_outreach",
       "leadbay_adjust_audience",
@@ -148,6 +176,13 @@ export const SCENARIO = {
       "leadbay_extend_lens",
       "leadbay_like_lead",
       "leadbay_dislike_lead",
+    ],
+    render_checks: [
+      { must_match: "calendly\\.com/zoe-leadbay/demo-leadbay" },
+      {
+        must_not_match:
+          "[Rr]evealed (the|their|\\d+) (email|phone)|[Uu]nlocked (the|their) contact|[Ss]cheduled task (has been )?created|[Cc]reated (the|a) (CRM|HubSpot|Salesforce) (record|company|contact)",
+      },
     ],
   },
 };
