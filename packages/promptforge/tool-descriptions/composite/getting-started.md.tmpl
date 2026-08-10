@@ -50,6 +50,8 @@ Every click in the walkthrough runs a real Leadbay call against the user's own a
 
 For orientation **prose** with no clicking — "explain how Leadbay works", "what's the difference between discovery and follow-up" — this tool is the wrong answer; that's the `leadbay_prospecting_overview` prompt.
 
+And when the problem is **setup** rather than usage — the connector isn't installed, they can't sign in, their Leadbay tools aren't appearing, or they want to run this on another host — the walkthrough can't help either: it assumes a working connection, and step 1 is what proves it. Send them to the setup guide the manifest carries as `docs_url`: <https://docs.leadbay.app/doc/leadbay-mcp/quickstart>. Its `docs_note` names the only two moments the link should appear — that pre-check, and once at the closing. Never between gates.
+
 ## THE ONE-FORWARD-OPTION RULE
 
 Every gate carries **exactly one way forward, plus a way out** — two options, never more: the action, and `I'm done for now`.
@@ -60,9 +62,9 @@ A first-run user doesn't yet know enough to choose between PATHS — a menu of a
 
 ```
 {
-  version, intro, one_option_rule,
+  version, intro, one_option_rule, docs_url, docs_note,
   steps: [ { n, gate_label, gate_description, calls, args, ... } ],
-  stop
+  keep_going, stop
 }
 ```
 
@@ -78,7 +80,7 @@ Per step: `gate_label` / `gate_description` are the widget's forward option, `ca
 
 Steps 1 and 2 carry `branches[]`, step 3 carries `spend` + `quota_note`, and steps 4–5 carry `handoff` prose instead of `args`. Every step also carries `explain` (say this BEFORE firing) and `next_steps` (`{question, options[]}` — already the widget's shape, map it verbatim).
 
-The manifest also carries **`keep_going`**: the closing cheat-sheet of *what you want → what you say*. The buttons vanish when the tour ends, so render these rows as a small two-column table at the finish, phrases **verbatim**. Each one is lifted from that tool's own trigger list, so it genuinely routes — inventing or prettifying a phrase teaches the user something that won't work.
+The manifest also carries **`keep_going`**: the closing cheat-sheet of *what you want → what you say*. The buttons vanish when the tour ends, so render these rows as a small two-column table at the finish, phrases **verbatim**. Each one is lifted from that tool's own trigger list, so it genuinely routes — inventing or prettifying a phrase teaches the user something that won't work. Add `docs_url` beneath it as one plain link, for what the gates didn't cover.
 
 ## Four hard rules the manifest encodes
 

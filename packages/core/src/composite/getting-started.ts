@@ -98,6 +98,10 @@ export interface GettingStartedManifest {
   version: number;
   intro: string;
   one_option_rule: string;
+  /** The canonical setup guide — install, sign-in, "my tools aren't showing up". */
+  docs_url: string;
+  /** The only two moments that link should appear. See DOCS_NOTE. */
+  docs_note: string;
   steps: WalkthroughStep[];
   /**
    * The hand-off. The buttons disappear when the walkthrough ends, so the tour
@@ -123,6 +127,26 @@ const ONE_OPTION_RULE =
   "prose question — 'say the word and I'll check it' is a defect, not a gate. " +
   "Typing also works: if the user types something off-script, abandon the " +
   "walkthrough and serve what they asked.";
+
+/**
+ * The setup guide: installing the connector, signing in, running the first
+ * query, and what to do when the Leadbay tools don't appear. It is the step
+ * BEFORE this walkthrough — the tour assumes an installed, signed-in connector
+ * and gate 1 is what proves it.
+ */
+const DOCS_QUICKSTART = "https://docs.leadbay.app/doc/leadbay-mcp/quickstart";
+
+const DOCS_NOTE =
+  "Surface this link in exactly TWO moments and nowhere else. (1) BEFORE the " +
+  "tour, when the user's problem is SETUP rather than usage — the connector " +
+  "isn't installed, they can't sign in, their Leadbay tools aren't appearing, " +
+  "or they want to run this on another host. The walkthrough cannot fix any of " +
+  "that: it assumes a working connection, and gate 1 is what proves it. Point " +
+  "them at the page instead of guessing at install steps. (2) At the CLOSING, " +
+  "as one plain link beside the keep_going cheat-sheet, for what the five gates " +
+  "didn't cover — installing on another machine, adding a teammate, signing in " +
+  "again later. NEVER paste it between gates: a link mid-tour is an invitation " +
+  "to leave the thing they're in the middle of doing.";
 
 /** The exit option every gate carries, so the widget has a valid 2-option shape. */
 const EXIT_OPTION = {
@@ -167,6 +191,8 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
   version: 1,
   intro: INTRO,
   one_option_rule: ONE_OPTION_RULE,
+  docs_url: DOCS_QUICKSTART,
+  docs_note: DOCS_NOTE,
   steps: [
     {
       n: 1,

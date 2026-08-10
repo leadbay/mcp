@@ -22,6 +22,13 @@ If the user wants orientation PROSE without doing anything — "explain how
 Leadbay works", "what's the difference between discovery and follow-up" —
 this is the wrong prompt. Use `leadbay_prospecting_overview` instead.
 
+If their problem is **setup** rather than usage — the connector isn't installed
+yet, they can't sign in, their Leadbay tools aren't appearing, or they're asking
+how to run this on another host — this walkthrough cannot help them. It assumes
+a working connection, and GATE 1 is what proves it. Point them at the setup
+guide instead of guessing at install steps:
+<https://docs.leadbay.app/doc/leadbay-mcp/quickstart>
+
 GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
 
 If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
@@ -537,6 +544,14 @@ something that sounds nicer but doesn't match.
 
 Add one closing line in your own words: they don't need to remember exact
 wording — plain language works, and this is just a starting point.
+
+Then hand them the **setup guide** as one plain link, for the things the five
+gates didn't cover — installing Leadbay on another machine, adding a teammate,
+signing back in later:
+<https://docs.leadbay.app/doc/leadbay-mcp/quickstart>
+
+**Once, here, and nowhere else.** Never drop that link between gates: a link
+mid-tour is an invitation to leave the thing they're in the middle of doing.
 
 Show this cheat-sheet **once**, at the end. If the user abandons the
 walkthrough early (they typed something off-script), skip it — they're already

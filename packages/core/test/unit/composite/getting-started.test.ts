@@ -327,6 +327,30 @@ describe("leadbay_getting_started", () => {
     }
   });
 
+  it("carries the setup guide, for the problem the tour cannot fix", () => {
+    // The walkthrough assumes an installed, signed-in connector — gate 1 is
+    // what proves it. A user whose connector isn't installed, who can't sign
+    // in, or whose tools aren't appearing is upstream of every gate here, and
+    // the tour has nothing for them. The docs page does.
+    expect(GETTING_STARTED_MANIFEST.docs_url).toBe(
+      "https://docs.leadbay.app/doc/leadbay-mcp/quickstart",
+    );
+    expect(GETTING_STARTED_MANIFEST.docs_note).toMatch(/setup/i);
+    expect(GETTING_STARTED_MANIFEST.docs_note).toMatch(/sign in|signed[- ]in/i);
+  });
+
+  it("bounds the setup link to two moments and forbids it mid-tour", () => {
+    // A link between gates is an invitation to leave the thing they're in the
+    // middle of. The note must name BOTH sanctioned moments (the pre-tour
+    // setup check and the closing) and forbid the rest, or a later edit will
+    // read "here's a helpful link" as licence to sprinkle it everywhere.
+    const note = GETTING_STARTED_MANIFEST.docs_note;
+    expect(note).toMatch(/TWO moments/i);
+    expect(note).toMatch(/BEFORE the\s+tour/i);
+    expect(note).toMatch(/CLOSING/i);
+    expect(note).toMatch(/NEVER paste it between gates/i);
+  });
+
   it("the tour never takes outbound action", () => {
     expect(GETTING_STARTED_MANIFEST.stop).toMatch(/never takes outbound action/);
     expect(GETTING_STARTED_MANIFEST.stop).toMatch(/leadbay_report_outreach/);

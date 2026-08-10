@@ -43,6 +43,8 @@ failure_modes:
   - Drops the pinned `lens.id` between gates, so gate 3 enriches against a different lens than the one the user just saw
   - Ends the completed walkthrough without the `keep_going` cheat-sheet — the buttons disappear with the tour, so a user who was never told what to TYPE learned to click a tutorial and nothing about using Leadbay tomorrow
   - Invents phrases for the cheat-sheet, or rewords them into something that sounds nicer but doesn't match the tool's real triggers — teaching a phrase that doesn't route is worse than teaching none
+  - Runs the five gates at a user whose actual problem is SETUP — the connector isn't installed, they can't sign in, or their Leadbay tools aren't appearing. The tour assumes a working connection and cannot fix any of it; the setup guide can
+  - Pastes the setup-guide link mid-tour, between gates, instead of once at the closing — a link in the middle of the walkthrough invites the user to leave the thing they're doing
 ---
 
 {{include:headers/agent-memory-preamble}}
@@ -59,6 +61,13 @@ contact, put them in their CRM, and set the whole thing up to run every morning.
 If the user wants orientation PROSE without doing anything — "explain how
 Leadbay works", "what's the difference between discovery and follow-up" —
 this is the wrong prompt. Use `leadbay_prospecting_overview` instead.
+
+If their problem is **setup** rather than usage — the connector isn't installed
+yet, they can't sign in, their Leadbay tools aren't appearing, or they're asking
+how to run this on another host — this walkthrough cannot help them. It assumes
+a working connection, and GATE 1 is what proves it. Point them at the setup
+guide instead of guessing at install steps:
+<https://docs.leadbay.app/doc/leadbay-mcp/quickstart>
 
 {{include:gates/defer-to-tool-rendering}}
 
@@ -387,6 +396,14 @@ something that sounds nicer but doesn't match.
 
 Add one closing line in your own words: they don't need to remember exact
 wording — plain language works, and this is just a starting point.
+
+Then hand them the **setup guide** as one plain link, for the things the five
+gates didn't cover — installing Leadbay on another machine, adding a teammate,
+signing back in later:
+<https://docs.leadbay.app/doc/leadbay-mcp/quickstart>
+
+**Once, here, and nowhere else.** Never drop that link between gates: a link
+mid-tour is an invitation to leave the thing they're in the middle of doing.
 
 Show this cheat-sheet **once**, at the end. If the user abandons the
 walkthrough early (they typed something off-script), skip it — they're already

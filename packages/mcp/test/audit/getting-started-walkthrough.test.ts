@@ -245,4 +245,27 @@ describe("audit: getting-started walkthrough", () => {
   it("routes orientation-prose asks to the overview prompt instead", () => {
     expect(BODY).toMatch(/leadbay_prospecting_overview/);
   });
+
+  it("routes SETUP problems to the docs, and uses the manifest's URL", () => {
+    // The third routing branch, alongside overview-prose. A user who can't sign
+    // in or whose tools aren't appearing is upstream of gate 1, and no gate can
+    // help them. Same drift risk as the gate labels: the prompt hardcodes the
+    // URL as prose, so pin it against the manifest rather than trusting both.
+    const url = GETTING_STARTED_MANIFEST.docs_url;
+    expect(BODY).toContain(url);
+    expect(BODY).toMatch(/tools aren't appearing/i);
+    expect(BODY).toMatch(/assumes\s*\n?\s*a working connection/i);
+  });
+
+  it("shows the setup link exactly twice — the pre-check and the closing", () => {
+    // The manifest's docs_note sanctions two moments and forbids the rest. If
+    // the prompt grows a third mention, it's a link between gates, which is
+    // what the note exists to prevent.
+    const url = GETTING_STARTED_MANIFEST.docs_url;
+    const hits = BODY.split(url).length - 1;
+    expect(hits, `expected the setup link twice, found ${hits}`).toBe(2);
+    // …and the second one sits in the CLOSING, after the cheat-sheet.
+    expect(BODY.lastIndexOf(url)).toBeGreaterThan(BODY.indexOf("Just say"));
+    expect(BODY).toMatch(/Once, here, and nowhere else/i);
+  });
 });
