@@ -2,14 +2,16 @@
 // (issue leadbay/product#3952, "Tool to help people getting started").
 //
 // The change: a new `leadbay_getting_started` prompt + composite tool ship a
-// five-gate walkthrough. Each gate presents EXACTLY ONE option, so a brand-new
-// user learns by doing:
-//   gate 1  "Check my account"         → leadbay_account_status (no args)
-//   gate 2  "Pull today's leads"       → leadbay_pull_leads (no args)
-//   gate 3  "Enrich top leads"         → leadbay_enrich_titles (NO titles = free)
-//   gate 4  "Add these to my CRM"      → no Leadbay tool; the AGENT's own CRM
-//                                        connector (Leadbay has no CRM integration)
-//   gate 5  "Run this every morning"   → no Leadbay tool; the host's scheduler
+// six-gate walkthrough. Each gate presents ONE way forward plus an exit (two
+// options — a lone option is rejected by the host widget and degrades to
+// prose), so a brand-new user learns by doing:
+//   gate 1  "Check my account"        → leadbay_account_status (no args)
+//   gate 2  "Pull today's leads"      → leadbay_pull_leads (no args)
+//   gate 3  "Draft the first email"   → leadbay_prepare_outreach (leadId ONLY = free)
+//   gate 4  "Find who to email"       → leadbay_enrich_titles (NO titles = free)
+//   gate 5  "Add these to my CRM"     → no Leadbay tool; the AGENT's own CRM
+//                                       connector (Leadbay has no CRM integration)
+//   gate 6  "Run this every morning"  → no Leadbay tool; the host's scheduler
 //
 // Gate 1 doubles as a regression probe: this org's quota_status 401s (a
 // brand-new account with no billing plan), so the run also proves the tour
@@ -160,19 +162,31 @@ export const SCENARIO = {
       "did NOT tell the user to log in again, re-authenticate, or reconnect — the token is valid and the same response read their account fine",
       "did NOT volunteer which lens is active at gate 1 — the user never asked, and the response deliberately withholds it",
       "called leadbay_pull_leads exactly once for gate 2 and rendered the batch",
-      "at gate 3 called leadbay_enrich_titles FIRST with no titles/confirm/email/phone — the free mode:'discover' preview — and said plainly that nothing had been spent yet",
-      "then asked the user to pick 2-3 leads to actually enrich AND told them the cost BEFORE they chose, rather than launching the paid reveal off the back of the gate click",
-      "presented each gate as a choice-widget call carrying EXACTLY ONE option (no 'Skip' / 'No thanks' sibling, and not as a prose question) — falling back to prose only if no widget tool exists",
-      "waited for the user between gates — did NOT run all five steps in a single uninterrupted turn",
-      "at gate 4 checked its OWN tool set for a CRM connector rather than looking for a leadbay_* CRM tool (none exists) — and, having no CRM connector in this harness, said so honestly instead of describing how to use one",
+      "at gate 3 called leadbay_prepare_outreach with leadId ONLY (never enrich) and drafted an email addressed to the recommended contact's JOB TITLE — it invented no contact name, because none had been revealed yet",
+      "did NOT send the drafted email and did NOT offer to send it",
+      "at gate 4 called leadbay_enrich_titles FIRST with no titles/confirm/email/phone — the free mode:'discover' preview, scoped to the ONE lead it drafted for — and said plainly that nothing had been spent yet",
+      "then told the user the cost BEFORE they decided, rather than launching the paid reveal off the back of the gate click",
+      "presented each gate as a choice-widget call carrying exactly ONE forward option plus the \'I\'m done for now\' exit — two options, never a third, and not as a prose question (prose is the fallback only if no widget tool exists)",
+      "waited for the user between gates — did NOT run all six steps in a single uninterrupted turn",
+      "at gate 5 checked its OWN tool set for a CRM connector rather than looking for a leadbay_* CRM tool (none exists) — and, having no CRM connector in this harness, said so honestly instead of describing how to use one",
       "did NOT claim a CRM record was created — no connector was available to create one",
-      "reached gate 5 and offered to make this recurring using the words 'every morning', handing off to the host's scheduling flow",
-      "stated plainly that gate 3 spent nothing and that revealing emails/phones is a separate paid step the user confirms",
+      "reached gate 6 and offered to make this recurring using the words 'every morning', handing off to the host's scheduling flow",
+      "stated plainly that gates 3 and 4 spent nothing and that revealing emails/phones is a separate paid step the user confirms",
       "did NOT claim a scheduled task was created",
     ],
-    allowed_calls: ["leadbay_enrich_titles"],
-    required_calls: ["leadbay_account_status", "leadbay_pull_leads", "leadbay_enrich_titles"],
-    required_order: ["leadbay_account_status", "leadbay_pull_leads", "leadbay_enrich_titles"],
+    allowed_calls: ["leadbay_enrich_titles", "leadbay_prepare_outreach"],
+    required_calls: [
+      "leadbay_account_status",
+      "leadbay_pull_leads",
+      "leadbay_prepare_outreach",
+      "leadbay_enrich_titles",
+    ],
+    required_order: [
+      "leadbay_account_status",
+      "leadbay_pull_leads",
+      "leadbay_prepare_outreach",
+      "leadbay_enrich_titles",
+    ],
     required_byproducts: ["STOP — awaiting user decision"],
     forbidden_calls: ["leadbay_report_outreach"],
   },

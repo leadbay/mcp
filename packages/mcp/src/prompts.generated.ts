@@ -803,15 +803,16 @@ message. In the user's own language, no jargon, cover:
 2. **How it knows what to send** — you describe who you sell to (that
    description is your **lens**), and it goes and finds companies matching it,
    getting sharper as you engage with what it sends.
-3. **What this walkthrough will do** — five quick steps, each a real action on
-   their own account, ending with leads in hand, contacts to call, and the
-   whole thing running by itself each morning.
+3. **What this walkthrough will do** — six quick steps, each a real action on
+   their own account, ending with leads in hand, a first email already written,
+   the person to send it to, and the whole thing running by itself each
+   morning.
 4. **One line handing off to the first step** — e.g. "First, let's see which
    account you're on."
 
 Then **fire GATE 1's widget immediately, in the same message**, and stop.
 
-Keep it to a paragraph. Do NOT walk through the five steps one at a time here
+Keep it to a paragraph. Do NOT walk through the six steps one at a time here
 — each gate explains itself when its turn arrives, and turning the opening
 into a syllabus buries the first button under text nobody reads.
 
@@ -964,8 +965,9 @@ On click: call \`leadbay_pull_leads\` with **no arguments** (it resolves the
 user's default lens itself).
 
 Capture \`lens.id\` from the response and pass it as an explicit \`lensId\` on
-every later call in this walkthrough, so gate 3 enriches the same lens the
-user just looked at.
+every later call in this walkthrough, so gate 4 enriches the same lens the
+user just looked at. Pin the TOP-SCORING lead's id and name too — gate 3 drafts
+to it, and gate 4 reveals its contact.
 
 Render the batch with the canonical layout:
 
@@ -1058,65 +1060,108 @@ computes the lens wishlist. Check \`computing_wishlist\` / \`computing_scores\`:
   is \`null\`. Say so honestly, offer to widen the audience, and end the
   walkthrough here. There is nothing to enrich.
 
-# GATE 3 — "Enrich top leads"
+# GATE 3 — "Draft the first email"
 
-**Explain first — teach what enrichment IS.** A company isn't a person: to
-actually reach out they need a human. Leadbay can find *which roles* to
-approach at these companies.
+**Explain first — and name the company.** Take the TOP-SCORING lead from
+GATE 2 and say its name out loud, so this is an offer about a real company
+rather than an abstraction. Leadbay already worked out *why* that company fits
+them, so it can write the first email instead of leaving them at a blank page.
 
-**Why it's useful:** they walk into the call knowing to ask for the operations
-director by title, instead of pitching whoever answers the switchboard — the
-difference between a conversation and a dead end.
+**Why it's useful:** finding companies was never the hard part. Writing the
+twentieth opener of the day is where prospecting actually dies. This turns a
+row in a table into something they could send in a minute.
 
-Say plainly that the first look is **free**, and that actually revealing
-contact details costs credits and needs their say-so.
+Say plainly that this only **drafts** — nothing is sent, and they see it first.
 
-**Then fire the widget** — question \`Want to see who to contact at these companies?\`, first option labelled \`Enrich top leads\`, description \`See who to contact at the top leads. Free — no contact details revealed.\` Second option: \`I'm done for now\` / \`Stop the walkthrough here.\` **Wait for the click.**
+**Then fire the widget** — question \`Want me to draft the first email to your top lead?\`, first option labelled \`Draft the first email\`, description \`Write a first email to the best company in today's batch. Nothing is sent.\` Second option: \`I'm done for now\` / \`Stop the walkthrough here.\` **Wait for the click.**
+
+On click: call \`leadbay_prepare_outreach\` with \`leadId\` = the top lead's id,
+**and nothing else**.
+
+**This gate spends NOTHING. Never pass \`enrich: true\`** — that launches a paid
+contact reveal off the back of a *draft* click. They agreed to see an email
+written, not to spend. GATE 4 is where the reveal gets asked for, on its own
+terms.
+
+\`recommended_contact\` comes back in its post-enrichment shape with \`email\` and
+\`phone\` still **null**. That is expected, not a failure — and it's exactly the
+hook for the next gate: an email written, and nobody to send it to yet. Don't
+apologise for it, and don't reach for another tool to fill it in.
+
+**Render the draft through \`message_compose_v1\`** — \`kind: "email"\`, a
+\`summary_title\` naming the company, and 2–3 variants whose labels name the
+**strategy** ("Lead with the growth signal", "Ask about their current setup"),
+never the tone. Do NOT also paste the body into chat prose; the composer *is*
+the answer. If the host exposes no composer, fall back to the canonical
+prepare-outreach layout: one context line, then subject + body as a quoted
+block.
+
+**Address it to the job TITLE** — "the Head of Operations at <Company>". You do
+not have a name yet, and inventing one is fabrication.
+
+Add one line on *why this company was the pick* — its score and the fit reason
+from the lead's summary — so the draft reads as reasoned rather than generated.
+
+# GATE 4 — "Find who to email"
+
+**Explain first — point at the gap the draft just opened.** They have an email
+ready and nobody to send it to: it's addressed to a job title, not a person.
+That's what this step fixes. Leadbay can find *which roles* exist at that
+company, then reveal the actual human and how to reach them.
+
+**Why it's useful:** they ask for the operations director by name instead of
+pitching whoever answers the switchboard — the difference between a
+conversation and a dead end.
+
+Say plainly that the first look is **free**, and that revealing the contact
+costs credits and needs their say-so.
+
+**Then fire the widget** — question \`Want to find out who to send that email to?\`, first option labelled \`Find who to email\`, description \`See the roles at that company. Free — no contact details revealed yet.\` Second option: \`I'm done for now\` / \`Stop the walkthrough here.\` **Wait for the click.**
 
 This gate runs in **TWO BEATS**. Do not collapse them.
 
 ## BEAT 1 — the free look (spends nothing)
 
-On click: call \`leadbay_enrich_titles\` with \`leadIds\` = the lead ids from
-GATE 2 and \`lensId\` = the pinned lens id.
+On click: call \`leadbay_enrich_titles\` with \`leadIds\` = **the one lead you
+drafted for at GATE 3** and \`lensId\` = the pinned lens id.
 
 **This call must spend NOTHING.** Omit \`titles\` entirely: that returns
-\`mode:"discover"\`, the free preview of which job titles exist at those
-companies. Do NOT pass \`titles\`, \`confirm=true\`, \`email=true\` or \`phone=true\`
-on this call — any one of them launches the paid reveal before the user has
-chosen anything.
+\`mode:"discover"\`, the free preview of which job titles exist at that company.
+Do NOT pass \`titles\`, \`confirm=true\`, \`email=true\` or \`phone=true\` on this call
+— any one of them launches the paid reveal before the user has chosen anything.
 
 Present the discovered titles and say plainly: "nothing spent yet."
 
-## BEAT 2 — really enrich the ones they pick (spends credits)
+## BEAT 2 — reveal the person the draft is for (spends credits)
 
-Now ask them to **pick 2–3 leads to actually enrich**, and tell them the cost
-BEFORE they choose: revealing contact details spends credits, roughly one per
-contact revealed. Name the leads so the choice is concrete.
+Name the title the GATE 3 draft is addressed to, and tell them the cost
+**before** they decide: one credit per contact revealed — here that's **one
+contact, one credit**. Then ask them to confirm.
 
-**Wait for an explicit pick + confirmation.** Silence is not consent, and
-neither is "they clicked the gate earlier" — the gate click bought the free
-look, not the reveal.
+**Wait for an explicit confirmation.** Silence is not consent, and neither is
+"they clicked the gate earlier" — the gate click bought the free look, not the
+reveal.
 
-Once they've picked and confirmed, call \`leadbay_enrich_titles\` AGAIN with:
-their chosen \`leadIds\`, the \`titles\` worth contacting, \`confirm: true\` and
-\`email: true\`. That's the real, paid reveal.
+Once confirmed, call \`leadbay_enrich_titles\` AGAIN with that \`leadId\`, the
+chosen \`titles\`, \`confirm: true\` and \`email: true\`. That's the real, paid
+reveal.
 
 It returns a \`bulk_id\` and runs async — poll \`leadbay_bulk_enrich_status\`
 with that id (\`include_contacts=true\`) until \`all_done\`, or until the resolved
-count plateaus across a few spaced polls. Then report the **actual contacts
-found**: names, titles, and the emails/phones that came back. Some contacts
-never resolve; say so honestly rather than implying a full house.
+count plateaus across a few spaced polls. Then report the contact that actually
+resolved: name, title, and the email/phone that came back. Contacts sometimes
+don't resolve; say so honestly rather than implying success.
 
-**Then explain what it cost** — one line, in plain terms: one credit per
-contact revealed, so N contacts = N credits. This is the moment the quota
-numbers from GATE 1 stop being abstract, because they just watched them move.
-Don't turn it into a pricing pitch.
+**Then close the loop** — one line: one credit per contact revealed, so this
+cost one. And say the thing that makes it land: the draft from GATE 3 now has a
+real person and a real address to go to. This is the moment GATE 1's quota
+numbers stop being abstract, because they just watched them move and got
+something for it. Don't turn it into a pricing pitch.
 
-If they decline the reveal, that's fine — keep the free preview as the result
-and move on to GATE 4 without pushing.
+If they decline the reveal, that's fine — keep the draft and the title, and
+move on to GATE 5 without pushing.
 
-# GATE 4 — "Add these to my CRM"
+# GATE 5 — "Add these to my CRM"
 
 **Explain first — teach the split.** Leadbay finds the leads; their CRM is
 where they'll actually work them. If a CRM connector is available in this chat,
@@ -1144,9 +1189,11 @@ conversation, otherwise ask the user which CRM they use.
 **If you have one**, use it to create or update the company and its contact
 from the lead data already in hand. Pass what Leadbay gave you and nothing
 invented: company name, website, city/region, the contact's name and job
-title — plus any emails or phones the enrichment actually returned at GATE 3.
+title — plus any emails or phones the enrichment actually returned at GATE 4.
 If the user declined the paid reveal, you have NO contact details: never write
-one you did not receive. Report back what the
+one you did not receive. If the connector supports a note or activity field,
+put the GATE 3 draft there too, so the email they just wrote travels with the
+record instead of being stranded in this chat. Report back what the
 connector actually returned, per CRM record.
 
 **If you have no CRM connector**, say so in one honest line, name which CRM
@@ -1160,7 +1207,7 @@ could use it right now.
 Only the connector can create one — Leadbay cannot, and neither can a
 description of the intent.
 
-# GATE 5 — "Run this every morning"
+# GATE 6 — "Run this every morning"
 
 **Explain first — close the loop.** Prospecting works when it's a habit, not a
 one-off. The whole sequence they just ran can happen on its own every morning.
@@ -1209,7 +1256,7 @@ something that sounds nicer but doesn't match.
 Add one closing line in your own words: they don't need to remember exact
 wording — plain language works, and this is just a starting point.
 
-Then hand them the **setup guide** as one plain link, for the things the five
+Then hand them the **setup guide** as one plain link, for the things the six
 gates didn't cover — installing Leadbay on another machine, adding a teammate,
 signing back in later:
 <https://docs.leadbay.app/doc/leadbay-mcp/quickstart>
@@ -1223,8 +1270,11 @@ off doing what they wanted, and a tutorial summary would interrupt.
 
 # STOP
 
-IRON LAW — the walkthrough never takes outbound action. Do not draft or send
-outreach. Do not call \`leadbay_report_outreach\`.
+IRON LAW — the walkthrough **drafts** an email at GATE 3 but never **sends**
+one. The draft stays in the chat for the user to read and judge; nothing
+leaves. Never send it, never offer to send it on their behalf, and never call
+\`leadbay_report_outreach\` — logging an outreach that never happened poisons the
+human team's pipeline.
 
 Render this acknowledgment VERBATIM as the last line of your message:
 
@@ -2575,7 +2625,7 @@ export const PROMPT_META = {
   leadbay_daily_check_in: {"name":"leadbay_daily_check_in","short_description":"Morning DISCOVERY workflow — new leads from the lens wishlist. Trigger\non \"show me leads\", \"what's new today\", \"let's prospect\", \"run my check-in\",\n\"my morning check-in\", \"I do this every day\", \"every morning\". Recurrence\nlanguage always means this prompt. Do NOT trigger on follow-up phrasings\n(\"follow up\", \"before my trip\") — those go to `leadbay_followup_check_in`.\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_research_lead_by_id","leadbay_bulk_qualify_leads","leadbay_enrich_contacts"],"failure_modes":["Calls leadbay_report_outreach without explicit user authorization","Surfaces fewer than 10 leads when more are available, or fails to top up via leadbay_qualify_top_n when the batch is short","Replaces the canonical pull_leads table layout with prose per row (the per-tool RENDERING block is the structural contract; \"Today's nudges\" goes above it, not in place of it)","Skips the nudge paragraph entirely — the table alone is fine but adding the nudge is the value-add","Skips deep research on promising leads (Phase 4) — the agent must call leadbay_research_lead_by_id on each when the user's intent is to research specific leads; Phase 4 is intentionally skipped for batch-view requests (\"show me today's leads\", \"run my morning check-in\") per the Phase 4 skip gate","Triggers contact enrichment without asking the user first (it consumes quota)","Skips the STOP byproduct and proposes next actions on its own","Fires 10 parallel leadbay_research_lead_by_id calls and treats \"stream closed\" errors as terminal — must serialize and retry singletons","Re-pulls leadbay_pull_leads without passing the captured lensId, allowing a backend lens shift to discard the Phase 2 batch","Treats a \"Request timed out\" from leadbay_bulk_qualify_leads as terminal instead of retrying with wait_for_completion:false + qualify_status polling","Triggers on a follow-up query (e.g., \"leads I should follow up with\") that should have routed to `leadbay_followup_check_in` — the two entry points are different data sources (Discover wishlist vs Monitor view) per §1.6"]},
   leadbay_extend_my_lens: {"name":"leadbay_extend_my_lens","short_description":"Add more leads to the current lens on demand — for users whose appetite\nexceeds the standard daily fill. The agent picks seeds silently from\nwhat's already on the lens, fires the extra refill, and surfaces the\nqueue confirmation. The user never reviews the seed list.\n","arguments":[{"name":"extra_count","description":"How many extra leads to add. Optional. Omit to use the backend default.","required":false}],"expected_calls":["leadbay_account_status","leadbay_seed_candidates","leadbay_extend_lens","leadbay_pull_leads"],"failure_modes":["Surfaces the seed candidate list to the user instead of picking silently — the user asked for MORE LEADS, not a candidate review meeting","Skips the seeded path and calls `leadbay_extend_lens` with no `seed_lead_ids`, losing the bias signal the recommender needs","On 429, silently retries instead of surfacing the three options (smaller / wait / upgrade) via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`)","Forgets to pre-check `LENS_EXTRA_REFILL` quota in `leadbay_account_status` and burns a wasted API call","Skips the post-queue pull-leads suggestion, so the user doesn't see what just got added"]},
   leadbay_followup_check_in: {"name":"leadbay_followup_check_in","short_description":"Follow-up check-in: surface KNOWN leads from the Monitor view needing\nre-engagement. Trigger on \"follow up\", \"already known leads\", \"what's\noverdue\", \"before my trip\", \"who should I re-engage\". Do NOT trigger on\n\"show me today's leads\", \"my morning check-in\", \"run my check-in\",\n\"I do this every day\", \"every morning\" — those go to\n`leadbay_daily_check_in`.\n","arguments":[],"expected_calls":["leadbay_pull_followups","leadbay_research_lead_by_id","leadbay_prepare_outreach"],"failure_modes":["Calls leadbay_pull_leads (the Discover entry point) instead of leadbay_pull_followups — these are different data sources; the Discover queue does NOT contain Monitor's known-but-cold pipeline","Iterates pages of leadbay_pull_leads filtering by engagement_count to \"fake\" a follow-up view (a real bug observed in 0.9.0 — the right move is to call pull_followups directly)","Replaces the canonical pull_followups table layout with prose per row (the per-tool RENDERING block is the structural contract; commentary belongs above or below)","Skips the cross-mode pivot offer at the end (\"Want to see NEW leads from your wishlist instead?\" routes to leadbay_pull_leads)"]},
-  leadbay_getting_started: {"name":"leadbay_getting_started","short_description":"Guided first-run walkthrough — five clicks that actually use Leadbay: check\nthe account, pull today's leads, preview who to contact, push them to the CRM\nconnector the host already has, then set it to run every morning. Use when the\nuser is new or asks to be SHOWN how Leadbay works (\"walk me through Leadbay\",\n\"I'm new\", \"how do I use this\", \"getting started\", \"give me a tour\"). Don't\nuse it for orientation prose with no clicking — that's\nleadbay_prospecting_overview.\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_enrich_titles","leadbay_bulk_enrich_status","leadbay_report_friction"],"failure_modes":["Presents a gate as prose (\"let me know if you want me to pull your leads\") instead of CALLING the host choice widget — the click IS the lesson, and prose turns the walkthrough into a lecture","Runs a step's tool WITHOUT firing that step's widget first and waiting for the click — the walkthrough becomes an automated demo the user only watches, which is the exact opposite of learning by doing","Fires the widget without the EXPLAIN beat, so the user gets an unexplained button and learns nothing about what a lens or an enrichment actually is","Answers gate 1 with a bare \"you're connected as X at Y\" when the quota IS readable — the user clicked a button labelled `check my account status`, so the quota windows (Daily/Weekly/Monthly gauges, % used, $ spent, resets) ARE the answer, not an optional extra","Renders quota as raw \"credits\" instead of the web app's percentage + dollar-spend gauges, or dumps raw `resource_type` strings the user has never seen","Opens with a wall of text — previewing all five steps, explaining lenses up front, or writing several paragraphs before the first widget. The opening is TWO lines then the button; a first-run user wants to see it work, not read a syllabus","Ends the first message without firing gate 1's widget, leaving the user to reply \"ok\" before anything happens","Rewrites the gate's own `next_steps` payload (its `question`, `label` or `description`) instead of mapping it into the widget verbatim, or merges two gates into a single multi-option widget","Fires a THIRD option, or turns the exit into an alternative route (\"show me my lenses instead\") — each gate carries exactly one forward action plus the `I'm done for now` exit, never a menu of paths","Fires a single-option widget — the host requires 2–4 options, so a lone option is rejected or silently degrades to prose (\"say the word and I'll check it\"), which is the exact defect this rule exists to prevent","Launches the PAID reveal at gate 3 BEFORE the user has picked leads and confirmed — beat 1 must be the free `mode:\"discover\"` preview (no `titles`, no `confirm`, no `email`, no `phone`); the gate click bought the free look, not the reveal, and silence is never consent","Stops at the free preview after the user DID pick leads and confirm — they asked for real contact details, so the second call must actually run with `confirm:true` and the chosen titles","Reports the enrichment without polling `leadbay_bulk_enrich_status` to completion, so it claims contacts it never actually saw resolve","Reveals contacts and never says what it cost — the user just spent credits and deserves the one-line \"N contacts = N credits\", which is also what makes gate 1's quota numbers concrete","Reports \"no leads\" on an empty batch while `computing_wishlist` / `computing_scores` is true — the lens is still building; render the tool's own two-option warm-up widget verbatim and pause","Rewords, reorders or prose-ifies the `next_steps` payload from `leadbay_pull_leads` instead of mapping `options[]` into the widget verbatim","Runs all five steps in one turn without waiting for the user's click between gates — the walkthrough is a sequence of gates, not a script to recite","Claims a CRM record was created when no CRM connector was actually called, or when the connector did not confirm it — Leadbay has no CRM integration, so only the host's own connector can create anything","Writes an email address or phone number into the CRM at gate 4 that the enrichment did NOT actually return — pass through only what leadbay_bulk_enrich_status resolved; if the user declined the paid reveal there are no contact details at all, and inventing them is fabrication","Tells a user with no CRM connector how to use one anyway, instead of saying so honestly and offering `leadbay_report_friction` with `missing_capability`","Claims to have created a scheduled task itself — Leadbay exposes no scheduling tool; gate 5 hands control to the HOST's scheduling flow","Re-implements the host's frequency / time sub-questions inside the walkthrough, producing two competing scheduling flows in one conversation","Skips `leadbay_pull_leads` and jumps straight to enrichment, leaving gate 3 with no `leadIds` to scope","Drops the pinned `lens.id` between gates, so gate 3 enriches against a different lens than the one the user just saw","Ends the completed walkthrough without the `keep_going` cheat-sheet — the buttons disappear with the tour, so a user who was never told what to TYPE learned to click a tutorial and nothing about using Leadbay tomorrow","Invents phrases for the cheat-sheet, or rewords them into something that sounds nicer but doesn't match the tool's real triggers — teaching a phrase that doesn't route is worse than teaching none","Runs the five gates at a user whose actual problem is SETUP — the connector isn't installed, they can't sign in, or their Leadbay tools aren't appearing. The tour assumes a working connection and cannot fix any of it; the setup guide can","Pastes the setup-guide link mid-tour, between gates, instead of once at the closing — a link in the middle of the walkthrough invites the user to leave the thing they're doing"]},
+  leadbay_getting_started: {"name":"leadbay_getting_started","short_description":"Guided first-run walkthrough — six clicks that actually use Leadbay: check\nthe account, pull today's leads, draft a first email to the top one, reveal\nwho to send it to, push to the host's CRM connector, then run it every\nmorning. Use when the user is new or asks to be SHOWN how Leadbay works\n(\"walk me through Leadbay\", \"I'm new\", \"how do I use this\", \"give me a\ntour\"). Don't use it for orientation prose with no clicking — that's\nleadbay_prospecting_overview.\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_prepare_outreach","leadbay_enrich_titles","leadbay_bulk_enrich_status","leadbay_report_friction"],"failure_modes":["Presents a gate as prose (\"let me know if you want me to pull your leads\") instead of CALLING the host choice widget — the click IS the lesson, and prose turns the walkthrough into a lecture","Runs a step's tool WITHOUT firing that step's widget first and waiting for the click — the walkthrough becomes an automated demo the user only watches, which is the exact opposite of learning by doing","Fires the widget without the EXPLAIN beat, so the user gets an unexplained button and learns nothing about what a lens or an enrichment actually is","Answers gate 1 with a bare \"you're connected as X at Y\" when the quota IS readable — the user clicked a button labelled `check my account status`, so the quota windows (Daily/Weekly/Monthly gauges, % used, $ spent, resets) ARE the answer, not an optional extra","Renders quota as raw \"credits\" instead of the web app's percentage + dollar-spend gauges, or dumps raw `resource_type` strings the user has never seen","Opens with a wall of text — previewing all six steps, explaining lenses up front, or writing several paragraphs before the first widget. The opening is TWO lines then the button; a first-run user wants to see it work, not read a syllabus","Ends the first message without firing gate 1's widget, leaving the user to reply \"ok\" before anything happens","Rewrites the gate's own `next_steps` payload (its `question`, `label` or `description`) instead of mapping it into the widget verbatim, or merges two gates into a single multi-option widget","Fires a THIRD option, or turns the exit into an alternative route (\"show me my lenses instead\") — each gate carries exactly one forward action plus the `I'm done for now` exit, never a menu of paths","Fires a single-option widget — the host requires 2–4 options, so a lone option is rejected or silently degrades to prose (\"say the word and I'll check it\"), which is the exact defect this rule exists to prevent","Launches the PAID reveal at gate 4 BEFORE the user has picked leads and confirmed — beat 1 must be the free `mode:\"discover\"` preview (no `titles`, no `confirm`, no `email`, no `phone`); the gate click bought the free look, not the reveal, and silence is never consent","Stops at the free preview after the user DID pick leads and confirm — they asked for real contact details, so the second call must actually run with `confirm:true` and the chosen titles","Reports the enrichment without polling `leadbay_bulk_enrich_status` to completion, so it claims contacts it never actually saw resolve","Reveals contacts and never says what it cost — the user just spent credits and deserves the one-line \"N contacts = N credits\", which is also what makes gate 1's quota numbers concrete","Reports \"no leads\" on an empty batch while `computing_wishlist` / `computing_scores` is true — the lens is still building; render the tool's own two-option warm-up widget verbatim and pause","Rewords, reorders or prose-ifies the `next_steps` payload from `leadbay_pull_leads` instead of mapping `options[]` into the widget verbatim","Runs all six steps in one turn without waiting for the user's click between gates — the walkthrough is a sequence of gates, not a script to recite","Claims a CRM record was created when no CRM connector was actually called, or when the connector did not confirm it — Leadbay has no CRM integration, so only the host's own connector can create anything","Writes an email address or phone number into the CRM at gate 4 that the enrichment did NOT actually return — pass through only what leadbay_bulk_enrich_status resolved; if the user declined the paid reveal there are no contact details at all, and inventing them is fabrication","Tells a user with no CRM connector how to use one anyway, instead of saying so honestly and offering `leadbay_report_friction` with `missing_capability`","Claims to have created a scheduled task itself — Leadbay exposes no scheduling tool; gate 5 hands control to the HOST's scheduling flow","Re-implements the host's frequency / time sub-questions inside the walkthrough, producing two competing scheduling flows in one conversation","Skips `leadbay_pull_leads` and jumps straight to enrichment, leaving gate 4 with no `leadIds` to scope","Drops the pinned `lens.id` between gates, so gate 4 enriches against a different lens than the one the user just saw","Ends the completed walkthrough without the `keep_going` cheat-sheet — the buttons disappear with the tour, so a user who was never told what to TYPE learned to click a tutorial and nothing about using Leadbay tomorrow","Invents phrases for the cheat-sheet, or rewords them into something that sounds nicer but doesn't match the tool's real triggers — teaching a phrase that doesn't route is worse than teaching none","SENDS the gate 3 draft, or offers to send it — the walkthrough drafts and stops there; the email is the user's to judge, and nothing leaves the chat","Passes `enrich:true` to `leadbay_prepare_outreach` at gate 3 — that launches a PAID contact reveal off the back of a DRAFT click, spending credits the user never agreed to","Invents a contact NAME for the gate 3 draft — `recommended_contact` still has null email/name at that point, so the draft is addressed to the job TITLE; a fabricated name is the one thing that makes the whole draft untrustworthy","Treats the null email at gate 3 as a failure — apologising for it, retrying, or calling another tool to fill it in. It is the setup for gate 4 — an email written, nobody to send it to yet","Pastes the drafted email into chat prose alongside `message_compose_v1` instead of letting the composer BE the answer","Enriches leads other than the one it drafted for at gate 3 — gate 4 reveals the person that email is going to, so it is scoped to that ONE lead, one contact, one credit","Runs the six gates at a user whose actual problem is SETUP — the connector isn't installed, they can't sign in, or their Leadbay tools aren't appearing. The tour assumes a working connection and cannot fix any of it; the setup guide can","Pastes the setup-guide link mid-tour, between gates, instead of once at the closing — a link in the middle of the walkthrough invites the user to leave the thing they're doing"]},
   leadbay_import_file: {"name":"leadbay_import_file","short_description":"Import a user-supplied CSV/file into Leadbay through five phases with\nevidence gates — scan, derive, resolve identities, preserve & commit,\nthen optionally qualify and report. The job is to maximize how many\nrows the Leadbay system actually ingests and matches.\n","arguments":[{"name":"file","description":"Path or user-visible name of the CSV/file to import. If omitted, use the file the user attached or referenced.","required":false},{"name":"instruction","description":"Additional user goal, e.g. \"then qualify the leads\", \"preserve owner phone as a custom field\", or \"only import restaurants in Manhattan\".","required":false}],"expected_calls":["leadbay_resolve_import_rows","leadbay_list_mappable_fields","leadbay_create_custom_field","leadbay_import_leads","leadbay_import_and_qualify","leadbay_add_note","leadbay_import_status"],"failure_modes":["Picks LEADBAY_ID from score alone, name-only, fuzzy-name-only, root-domain-only, brand-only, postcode-only, or city-only evidence","Drops meaningful business notes or CRM record links instead of preserving them as custom fields or lead notes","Treats a consumer mailbox domain (gmail.com, hotmail.com, ...) as the company domain","Skips deriving company_domain from a business email when no website column exists (this kills match rate)","Skips the COLUMN PRESERVATION PLAN byproduct before importing","Skips the DECISION LOG byproduct before writing LEADBAY_ID","Returns the imported records WITHOUT writing LEADBAY_ID values back into the user's file (leaves the user no audit trail of what matched)","Fabricates leadIds, contact emails, or mapping IDs not present in the file or a tool response"]},
   leadbay_log_outreach: {"name":"leadbay_log_outreach","short_description":"Log outreach (an email I sent, a call I made, a meeting I had) on a\nspecific lead. Captures verification so the SDR pipeline trusts the entry.\n","arguments":[{"name":"lead_id","description":"The lead UUID. Get it from leadbay_pull_leads or leadbay_research_lead_by_id.","required":true},{"name":"summary","description":"1-2 sentences describing what I did (e.g. 'Sent intro email to CTO citing recent Hornsea contract').","required":true}],"expected_calls":["leadbay_report_outreach"],"failure_modes":["Calls leadbay_report_outreach without first collecting a verification source","Fabricates a gmail_message_id or calendar_event_id (the human team treats verification as canonical)","Records outreach to a different lead_id than the one the user supplied","Skips the dry_run step when the user is unsure what would be sent"]},
   leadbay_plan_tour_in_city: {"name":"leadbay_plan_tour_in_city","short_description":"Use whenever the user names a city they'll be in and asks who to see\n— \"I'm in SF next Tuesday, who's worth meeting?\", \"I'm going to Berlin\n— who should I visit?\", \"plan my <city> tour\". Any in-person/visit\nintent tied to a place routes here, NOT to `leadbay_pull_leads`. It\nsurfaces follow-ups + fresh Discover leads in the city via\n`leadbay_tour_plan`, ALWAYS offers to plot them on a map (rendering it\non yes), then offers outreach drafts + campaign persistence.\n","arguments":[{"name":"city","description":"City or region the user is visiting (e.g. 'Limoges', 'Bay Area'). Used as the geo filter for both Monitor and Discover lookups.","required":true},{"name":"date","description":"When the visit is (e.g. 'May 24', 'next Thursday'). Surfaced in the outreach drafts as 'I'll be in <city> on <date>'.","required":false}],"expected_calls":["leadbay_tour_plan","leadbay_research_lead_by_id","leadbay_prepare_outreach","leadbay_create_campaign"],"failure_modes":["Calls leadbay_followups_map (Monitor-only) instead of leadbay_tour_plan — loses the Discover (fresh-lead) half that the user explicitly asked for","Calls leadbay_pull_leads then drops the geo filter — returns the lens-wide wishlist instead of city-relevant fresh leads","Skips the campaign-persist step (\"would you like to save these as a tour?\") — leaves the rep with a one-shot map but no follow-up artifact","Creates a campaign WITHOUT asking the user first — the persist step is high-intent; offer it, don't assume","Fabricates lead_ids when seeding the campaign instead of using the ids returned by tour_plan"]},
@@ -2598,7 +2648,7 @@ export const PROMPT_CATALOG_BULLETS = {
   leadbay_daily_check_in: `- \`leadbay_daily_check_in\`: Morning DISCOVERY workflow — new leads from the lens wishlist. Trigger on "show me leads", "what's new today", "let's prospect", "run my check-in", "my morning check-in", "I do this every day", "every morning". Recurrence language always means this prompt. Do NOT trigger on follow-up phrasings ("follow up", "before my trip") — those go to \`leadbay_followup_check_in\`.`,
   leadbay_extend_my_lens: `- \`leadbay_extend_my_lens\` (optional args: extra_count): Add more leads to the current lens on demand — for users whose appetite exceeds the standard daily fill. The agent picks seeds silently from what's already on the lens, fires the extra refill, and surfaces the queue confirmation. The user never reviews the seed list.`,
   leadbay_followup_check_in: `- \`leadbay_followup_check_in\`: Follow-up check-in: surface KNOWN leads from the Monitor view needing re-engagement. Trigger on "follow up", "already known leads", "what's overdue", "before my trip", "who should I re-engage". Do NOT trigger on "show me today's leads", "my morning check-in", "run my check-in", "I do this every day", "every morning" — those go to \`leadbay_daily_check_in\`.`,
-  leadbay_getting_started: `- \`leadbay_getting_started\`: Guided first-run walkthrough — five clicks that actually use Leadbay: check the account, pull today's leads, preview who to contact, push them to the CRM connector the host already has, then set it to run every morning. Use when the user is new or asks to be SHOWN how Leadbay works ("walk me through Leadbay", "I'm new", "how do I use this", "getting started", "give me a tour"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview.`,
+  leadbay_getting_started: `- \`leadbay_getting_started\`: Guided first-run walkthrough — six clicks that actually use Leadbay: check the account, pull today's leads, draft a first email to the top one, reveal who to send it to, push to the host's CRM connector, then run it every morning. Use when the user is new or asks to be SHOWN how Leadbay works ("walk me through Leadbay", "I'm new", "how do I use this", "give me a tour"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview.`,
   leadbay_import_file: `- \`leadbay_import_file\` (optional args: file, instruction): Import a user-supplied CSV/file into Leadbay through five phases with evidence gates — scan, derive, resolve identities, preserve & commit, then optionally qualify and report. The job is to maximize how many rows the Leadbay system actually ingests and matches.`,
   leadbay_log_outreach: `- \`leadbay_log_outreach\` (required args: lead_id, summary): Log outreach (an email I sent, a call I made, a meeting I had) on a specific lead. Captures verification so the SDR pipeline trusts the entry.`,
   leadbay_plan_tour_in_city: `- \`leadbay_plan_tour_in_city\` (required args: city; optional args: date): Use whenever the user names a city they'll be in and asks who to see — "I'm in SF next Tuesday, who's worth meeting?", "I'm going to Berlin — who should I visit?", "plan my <city> tour". Any in-person/visit intent tied to a place routes here, NOT to \`leadbay_pull_leads\`. It surfaces follow-ups + fresh Discover leads in the city via \`leadbay_tour_plan\`, ALWAYS offers to plot them on a map (rendering it on yes), then offers outreach drafts + campaign persistence.`,
@@ -2617,7 +2667,7 @@ export const PROMPT_CATALOG_INSTRUCTIONS: string = `This server exposes the foll
 - \`leadbay_daily_check_in\`: Morning DISCOVERY workflow — new leads from the lens wishlist. Trigger on "show me leads", "what's new today", "let's prospect", "run my check-in", "my morning check-in", "I do this every day", "every morning". Recurrence language always means this prompt. Do NOT trigger on follow-up phrasings ("follow up", "before my trip") — those go to \`leadbay_followup_check_in\`.
 - \`leadbay_extend_my_lens\` (optional args: extra_count): Add more leads to the current lens on demand — for users whose appetite exceeds the standard daily fill. The agent picks seeds silently from what's already on the lens, fires the extra refill, and surfaces the queue confirmation. The user never reviews the seed list.
 - \`leadbay_followup_check_in\`: Follow-up check-in: surface KNOWN leads from the Monitor view needing re-engagement. Trigger on "follow up", "already known leads", "what's overdue", "before my trip", "who should I re-engage". Do NOT trigger on "show me today's leads", "my morning check-in", "run my check-in", "I do this every day", "every morning" — those go to \`leadbay_daily_check_in\`.
-- \`leadbay_getting_started\`: Guided first-run walkthrough — five clicks that actually use Leadbay: check the account, pull today's leads, preview who to contact, push them to the CRM connector the host already has, then set it to run every morning. Use when the user is new or asks to be SHOWN how Leadbay works ("walk me through Leadbay", "I'm new", "how do I use this", "getting started", "give me a tour"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview.
+- \`leadbay_getting_started\`: Guided first-run walkthrough — six clicks that actually use Leadbay: check the account, pull today's leads, draft a first email to the top one, reveal who to send it to, push to the host's CRM connector, then run it every morning. Use when the user is new or asks to be SHOWN how Leadbay works ("walk me through Leadbay", "I'm new", "how do I use this", "give me a tour"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview.
 - \`leadbay_import_file\` (optional args: file, instruction): Import a user-supplied CSV/file into Leadbay through five phases with evidence gates — scan, derive, resolve identities, preserve & commit, then optionally qualify and report. The job is to maximize how many rows the Leadbay system actually ingests and matches.
 - \`leadbay_log_outreach\` (required args: lead_id, summary): Log outreach (an email I sent, a call I made, a meeting I had) on a specific lead. Captures verification so the SDR pipeline trusts the entry.
 - \`leadbay_plan_tour_in_city\` (required args: city; optional args: date): Use whenever the user names a city they'll be in and asks who to see — "I'm in SF next Tuesday, who's worth meeting?", "I'm going to Berlin — who should I visit?", "plan my <city> tour". Any in-person/visit intent tied to a place routes here, NOT to \`leadbay_pull_leads\`. It surfaces follow-ups + fresh Discover leads in the city via \`leadbay_tour_plan\`, ALWAYS offers to plot them on a map (rendering it on yes), then offers outreach drafts + campaign persistence.

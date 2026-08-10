@@ -3,20 +3,25 @@
 ## 0.28.0 — Guided first-run walkthrough
 
 - **New: "Walk me through Leadbay."** A brand-new user now learns Leadbay by
-  doing it, not by reading about it. Five steps, one button each: check which
-  account you're on, pull today's leads, see who to contact at the top ones, put
-  them in your CRM, then set the whole thing to run every morning.
+  doing it, not by reading about it. Six steps, one button each: check which
+  account you're on, pull today's leads, get a first email drafted to the best
+  of them, find out who to send it to, put them in your CRM, then set the whole
+  thing to run every morning.
 - **Your CRM, via the connector you already have.** Leadbay doesn't integrate
   with CRMs — but if you run a HubSpot, Salesforce, Pipedrive or Attio connector
   alongside it, the assistant can use *that* to create the company and contact
   for you. If you don't have one, it says so plainly and offers to pass the
   request to the Leadbay team instead of pretending.
-- **One option per step, on purpose.** A first-run user doesn't yet know enough
-  to pick from a menu, so each step offers exactly one next move. You can always
-  type instead — say anything off-script and the walkthrough steps aside.
-- **The tour never spends your credits.** Step 2 previews *which* job titles are
-  available to contact; revealing emails and phone numbers stays a separate,
-  paid step you confirm yourself.
+- **It writes the first email for you.** Leadbay already worked out why the top
+  company fits, so step 3 drafts the opener instead of leaving you at a blank
+  page. It drafts only — nothing is ever sent, and you see it first.
+- **One way forward per step, on purpose.** A first-run user doesn't yet know
+  enough to pick from a menu, so each step offers exactly one next move plus a
+  way out. You can always type instead — say anything off-script and the
+  walkthrough steps aside.
+- **Nothing is spent without your say-so.** Drafting is free, and so is the
+  preview of *which* roles you could contact. Revealing an actual email or phone
+  number is a separate step that tells you the cost before you decide.
 - **An empty first batch is explained, not reported as failure.** A new lens
   takes about a minute to compute its first wishlist; the walkthrough says so and
   offers to re-pull instead of announcing "no leads".

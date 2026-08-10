@@ -5,9 +5,10 @@
  * renderings of ONE sequence, so they can silently diverge: someone edits a
  * gate label in the template and the tool keeps returning the old one.
  *
- * This audit pins the pieces that must agree, plus the two product decisions
- * that a later well-meaning edit would erode: one forward option + an exit per
- * gate, and gate 3 never spending without an explicit pick + confirm.
+ * This audit pins the pieces that must agree, plus the product decisions a
+ * later well-meaning edit would erode: one forward option + an exit per gate,
+ * gate 3 drafting without ever spending, and gate 4 never revealing a contact
+ * without an explicit confirm.
  */
 
 import { describe, it, expect } from "vitest";
@@ -103,7 +104,7 @@ describe("audit: getting-started walkthrough", () => {
     expect(BODY).toMatch(/A short paragraph, then the widget/i);
     expect(BODY).toMatch(/that\s*\n?\s*description is your \*\*lens\*\*/i);
     expect(BODY).toMatch(/fire GATE 1's widget immediately, in the same message/i);
-    expect(BODY).toMatch(/Do NOT walk through the five steps one at a time/i);
+    expect(BODY).toMatch(/Do NOT walk through the six steps one at a time/i);
     // Gate 1 must not stack a second explanation on top of the opening.
     expect(BODY).toMatch(/opening paragraph above IS this gate's explanation/);
   });
@@ -117,7 +118,7 @@ describe("audit: getting-started walkthrough", () => {
       4,
     );
     // The concrete images, not abstractions — these are what make it land.
-    expect(BODY).toMatch(/operations\s*\n?\s*director by title/i);
+    expect(BODY).toMatch(/operations\s*\n?\s*director by name/i);
     expect(BODY).toMatch(/quietly die in a chat window/i);
   });
 
@@ -176,7 +177,7 @@ describe("audit: getting-started walkthrough", () => {
     // the template must state both halves and the rule between them.
     expect(BODY).toMatch(/TWO BEATS\*\*\. Do not collapse them/);
     expect(BODY).toMatch(/This call must spend NOTHING/);
-    expect(BODY).toMatch(/pick 2–3 leads to actually enrich/i);
+    expect(BODY).toMatch(/one\s*\n?\s*contact, one credit/i);
     expect(BODY).toMatch(/Silence is not consent/);
     // …and the real launch, plus polling so it reports only resolved contacts.
     expect(BODY).toMatch(/`confirm: true`/);
@@ -244,6 +245,34 @@ describe("audit: getting-started walkthrough", () => {
 
   it("routes orientation-prose asks to the overview prompt instead", () => {
     expect(BODY).toMatch(/leadbay_prospecting_overview/);
+  });
+
+  it("gate 3 drafts an email and the tour never sends it", () => {
+    // The IRON LAW was narrowed when this gate landed: DRAFTING is the point,
+    // and nothing leaves the chat — but sending, offering to send, and logging
+    // an outreach that never happened all stay forbidden.
+    expect(BODY).toMatch(/leadbay_prepare_outreach/);
+    expect(BODY).toMatch(/drafts\*\* an email at GATE 3 but never \*\*sends\*\*/i);
+    expect(BODY).toMatch(/never offer to send it on their behalf/i);
+    expect(BODY).toMatch(/leadbay_report_outreach/);
+  });
+
+  it("gate 3 cannot be talked into spending, and invents no recipient", () => {
+    // prepare_outreach takes an `enrich` flag that launches a PAID reveal. The
+    // user clicked "draft an email", not "spend my credits" — and with no
+    // enrichment yet there is no contact NAME, so the draft goes to a title.
+    expect(BODY).toMatch(/Never pass `enrich: true`/);
+    expect(BODY).toMatch(/Address it to the job TITLE/i);
+    expect(BODY).toMatch(/inventing one is fabrication/i);
+    // The null email is the hook for gate 4, not a failure to apologise for.
+    expect(BODY).toMatch(/nobody to send it to yet/i);
+  });
+
+  it("gate 4 is scoped to the lead gate 3 drafted for", () => {
+    // One draft → one recipient → one credit. Fanning across the batch loses
+    // the thread back to the email the user just watched being written.
+    expect(BODY).toMatch(/the one lead you\s*\n?\s*drafted for at GATE 3/i);
+    expect(BODY).toMatch(/one\s*\n?\s*contact, one credit/i);
   });
 
   it("routes SETUP problems to the docs, and uses the manifest's URL", () => {

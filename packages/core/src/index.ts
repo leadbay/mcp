@@ -290,8 +290,9 @@ export const compositeReadTools: Tool[] = [
   // ADVANCED-gated. Read-only; no MCP edit endpoint exists (issue #3768).
   getQualificationQuestions,
   // Guided first-run walkthrough (issue #3952). ALWAYS exposed, read-only:
-  // returns the three-gate script a brand-new user clicks through to learn
-  // Leadbay by doing (pull leads → preview who to contact → schedule it).
+  // returns the six-gate script a brand-new user clicks through to learn
+  // Leadbay by doing (check account → pull leads → draft the first email →
+  // reveal who to send it to → CRM → schedule it).
   // Makes no backend call. In compositeReadTools so the walkthrough still
   // works on a read-only (LEADBAY_MCP_WRITE=0) deployment.
   gettingStarted,

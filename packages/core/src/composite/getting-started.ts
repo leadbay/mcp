@@ -5,7 +5,7 @@ import { leadbay_getting_started as GETTING_STARTED_DESCRIPTION } from "../tool-
 
 // leadbay_getting_started returns the guided first-run walkthrough (issue
 // leadbay/product#3952): a short script the agent drives so a brand-new user
-// learns Leadbay by DOING. Five gates, each carrying ONE forward action plus an
+// learns Leadbay by DOING. Six gates, each carrying ONE forward action plus an
 // exit (two options — a lone option degrades to prose on real hosts). Makes
 // no backend call and mutates nothing — the manifest is static, version-locked
 // content.
@@ -15,9 +15,9 @@ import { leadbay_getting_started as GETTING_STARTED_DESCRIPTION } from "../tool-
 // is set (WORKFLOWS #30) and never volunteer the lens (WORKFLOWS #31, enforced
 // server-side — account-status.ts withholds it unless the trigger text asks).
 //
-// Two of the five gates delegate to a capability Leadbay does NOT have and the
-// HOST usually does (`calls: null`): the CRM push (gate 4) and the recurring
-// schedule (gate 5). Leadbay has no CRM integration and no scheduling API, so
+// Two of the six gates delegate to a capability Leadbay does NOT have and the
+// HOST usually does (`calls: null`): the CRM push (gate 5) and the recurring
+// schedule (gate 6). Leadbay has no CRM integration and no scheduling API, so
 // the manifest names the CAPABILITY rather than a third-party tool name and
 // lets the agent find its own connector — the same detection the
 // connected-outreach-tool table in leadbay_prospecting_overview already uses.
@@ -143,7 +143,7 @@ const DOCS_NOTE =
   "or they want to run this on another host. The walkthrough cannot fix any of " +
   "that: it assumes a working connection, and gate 1 is what proves it. Point " +
   "them at the page instead of guessing at install steps. (2) At the CLOSING, " +
-  "as one plain link beside the keep_going cheat-sheet, for what the five gates " +
+  "as one plain link beside the keep_going cheat-sheet, for what the six gates " +
   "didn't cover — installing on another machine, adding a teammate, signing in " +
   "again later. NEVER paste it between gates: a link mid-tour is an invitation " +
   "to leave the thing they're in the middle of doing.";
@@ -162,14 +162,14 @@ const INTRO =
   "selling to every day, rather than you hunting for them; (2) how it knows " +
   "what to send — you describe who you sell to (that description is your " +
   "LENS) and it goes and finds companies matching it, learning from what you " +
-  "engage with; (3) what this walkthrough will do — five quick steps, each one " +
-  "a real action on their own account, ending with leads in hand, contacts to " +
-  "call, and the whole thing running by itself each morning; (4) one line " +
-  "handing off to the first step, e.g. 'First, let's see which account you're " +
-  "on.' Then fire gate 1's widget immediately and stop. Keep it to a " +
-  "paragraph — do NOT walk through the five steps one at a time here (each " +
-  "gate explains itself when its turn arrives), and call no tool in the " +
-  "opening.";
+  "engage with; (3) what this walkthrough will do — six quick steps, each one " +
+  "a real action on their own account, ending with leads in hand, a first " +
+  "email already written, the person to send it to, and the whole thing " +
+  "running by itself each morning; (4) one line handing off to the first " +
+  "step, e.g. 'First, let's see which account you're on.' Then fire gate 1's " +
+  "widget immediately and stop. Keep it to a paragraph — do NOT walk through " +
+  "the six steps one at a time here (each gate explains itself when its turn " +
+  "arrives), and call no tool in the opening.";
 
 // Every `say` below is verbatim from that tool's own routing.triggers, so the
 // phrase the tutorial teaches is one the agent actually routes on. If a tool's
@@ -184,8 +184,11 @@ const KEEP_GOING: PhraseCard[] = [
 ];
 
 const STOP =
-  "The walkthrough never takes outbound action. Do not draft or send outreach. " +
-  "Do not call leadbay_report_outreach. End by waiting for the user.";
+  "The walkthrough DRAFTS an email at gate 3 but never SENDS one. The draft " +
+  "stays in the chat for the user to read and judge; nothing leaves. Never " +
+  "send it, never offer to send it on their behalf, and never call " +
+  "leadbay_report_outreach — logging an outreach that never happened poisons " +
+  "the human team's pipeline. End by waiting for the user.";
 
 export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
   version: 1,
@@ -262,7 +265,7 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       },
       calls: "leadbay_pull_leads",
       args: {},
-      pin: "lens.id — pass as an explicit lensId on every later step, so step 3 enriches the same lens the user just saw",
+      pin: "lens.id — pass as an explicit lensId on every later step, so step 4 enriches the same lens the user just saw. Also pin the TOP-SCORING lead's id and name: gate 3 drafts to it, and gate 4 reveals its contact",
       branches: [
         {
           when: "leads.length > 0",
@@ -282,22 +285,75 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
     },
     {
       n: 3,
-      gate_label: "Enrich top leads",
-      gate_description: "See who to contact at the top leads.",
+      gate_label: "Draft the first email",
+      gate_description: "Write a first email to the best company in today's batch.",
       explain:
-        "Explain what enrichment IS before firing: a company is not a person, so " +
-        "Leadbay can find WHICH ROLES to approach at these companies — and then " +
-        "reveal how to reach them. WHY IT'S USEFUL: they walk into the call " +
-        "knowing to ask for the operations director by name, instead of pitching " +
-        "whoever answers the switchboard — the difference between a conversation " +
-        "and a dead end. Say plainly that the first look is free, and that " +
-        "actually revealing contact details costs credits and needs their say-so.",
+        "Name the TOP-SCORING lead from gate 2 out loud, so the offer is about a " +
+        "real company and not an abstraction. Explain what's about to happen: " +
+        "Leadbay already worked out WHY this company fits them, so it can write " +
+        "the first email instead of leaving them at a blank page. WHY IT'S " +
+        "USEFUL: finding companies was never the hard part — writing the " +
+        "twentieth opener of the day is where prospecting actually dies. This " +
+        "turns a row in a table into something they could send in a minute. Say " +
+        "plainly that it only DRAFTS: nothing is sent, and they see it first.",
       next_steps: {
-        question: "Want to see who to contact at these companies?",
+        question: "Want me to draft the first email to your top lead?",
         options: [
           {
-            label: "Enrich top leads",
-            description: "See who to contact at the top leads. Free — no contact details revealed.",
+            label: "Draft the first email",
+            description: "Write a first email to the best company in today's batch. Nothing is sent.",
+            kind: "walkthrough_draft_outreach",
+          },
+          EXIT_OPTION,
+        ],
+      },
+      calls: "leadbay_prepare_outreach",
+      args: {
+        leadId: "<the highest-scoring lead id from step 2>",
+      },
+      forbidden_args: [
+        "enrich — enrich:true launches a PAID contact reveal off the back of a DRAFT click. They agreed to see an email written, not to spend. Gate 4 is where the reveal gets asked for, explicitly and on its own terms.",
+      ],
+      spend:
+        "This gate spends NOTHING. Call leadbay_prepare_outreach with leadId and " +
+        "nothing else. `recommended_contact` comes back in its post-enrichment " +
+        "shape with email and phone still null — that is EXPECTED, not a failure, " +
+        "and it is precisely the hook for gate 4: an email written, and nobody to " +
+        "send it to yet. Do not apologise for the missing contact, and do not " +
+        "reach for another tool to fill it in.",
+      branches: [
+        {
+          when: "always",
+          then:
+            "Render the draft through message_compose_v1 — kind:'email', a summary_title naming the company, and 2-3 variants whose labels name the STRATEGY ('Lead with the growth signal', 'Ask about their current setup'), never the tone. Do NOT also paste the body into chat prose; the composer IS the answer. Address it to the recommended contact's JOB TITLE ('the Head of Operations at <Company>') — you do not have a name yet, and inventing one is fabrication. Say in one line what made this company the pick: its score and the fit reason from the lead's summary, so the draft reads as reasoned rather than generated.",
+        },
+        {
+          when: "the host exposes no message_compose_v1",
+          then:
+            "Fall back to the canonical prepare-outreach rendering: one short context line, then the subject and body as a quoted block. Same content, same no-name rule.",
+        },
+      ],
+    },
+    {
+      n: 4,
+      gate_label: "Find who to email",
+      gate_description: "Reveal the person at that company to send the draft to.",
+      explain:
+        "Point straight at the gap the draft just opened: they have an email " +
+        "ready and nobody to send it to — it's addressed to a job title, not a " +
+        "person. That's what this step fixes. Explain what enrichment IS: " +
+        "Leadbay can find which roles exist at that company, then reveal the " +
+        "actual human and how to reach them. WHY IT'S USEFUL: they ask for the " +
+        "operations director by name instead of pitching whoever answers the " +
+        "switchboard — the difference between a conversation and a dead end. Say " +
+        "plainly that the first look is free, and that revealing the contact " +
+        "costs credits and needs their say-so.",
+      next_steps: {
+        question: "Want to find out who to send that email to?",
+        options: [
+          {
+            label: "Find who to email",
+            description: "See the roles at that company. Free — no contact details revealed yet.",
             kind: "walkthrough_enrich_titles",
           },
           EXIT_OPTION,
@@ -305,32 +361,34 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
       },
       calls: "leadbay_enrich_titles",
       args: {
-        leadIds: "<the lead ids from step 2>",
+        leadIds: "<the ONE lead you drafted for at step 3>",
         lensId: "<the pinned lens id from step 2>",
       },
       spend:
-        "TWO BEATS — free preview FIRST, real enrichment only after the user picks " +
-        "and confirms. Beat 1: call leadbay_enrich_titles with leadIds + lensId and " +
-        "NO titles / NO confirm / NO email / NO phone. That returns mode:'discover' " +
-        "— the FREE preview of which job titles exist at these companies. Say " +
-        "plainly that nothing has been spent yet. Beat 2: ask them to pick 2-3 leads " +
-        "to actually enrich, and tell them BEFORE they choose that this one spends " +
-        "credits (one per contact revealed). Only after they pick and confirm, call " +
-        "leadbay_enrich_titles AGAIN with those leadIds, the chosen titles, " +
-        "confirm:true and email:true — a real, paid reveal. Then poll " +
-        "leadbay_bulk_enrich_status with the returned bulk_id until all_done (or the " +
-        "count plateaus), and report the actual emails/phones found. NEVER launch " +
-        "the paid reveal without an explicit pick + confirm in the conversation: " +
-        "silence is not consent, and neither is 'they clicked the gate'.",
+        "TWO BEATS — free preview FIRST, the real reveal only after the user " +
+        "confirms. Beat 1: call leadbay_enrich_titles with the drafted lead's id + " +
+        "lensId and NO titles / NO confirm / NO email / NO phone. That returns " +
+        "mode:'discover' — the FREE list of job titles at that company. Say plainly " +
+        "that nothing has been spent yet. Beat 2: name the title the draft is " +
+        "addressed to, tell them BEFORE they decide what it costs (one credit per " +
+        "contact revealed — here that is ONE contact, one credit), and ask them to " +
+        "confirm. Only then call leadbay_enrich_titles AGAIN with that leadId, the " +
+        "chosen title, confirm:true and email:true. Poll leadbay_bulk_enrich_status " +
+        "with the returned bulk_id until all_done (or the count plateaus), and " +
+        "report the contact that actually resolved. NEVER launch the reveal without " +
+        "an explicit confirm: silence is not consent, and neither is 'they clicked " +
+        "the gate'. If they decline, keep the draft and the title and move on — " +
+        "that is a normal outcome, not a failure.",
       quota_note:
-        "After the real enrichment, tell them what it cost in plain terms: one " +
-        "credit per contact revealed, so N contacts = N credits. Re-check " +
-        "leadbay_account_status if you want to show the updated windows. This is the " +
-        "moment the quota numbers from gate 1 stop being abstract — they just " +
-        "watched them move. Keep it to a line; do not turn it into a pricing pitch.",
+        "After the reveal, close the loop on gate 1 in one line: one credit per " +
+        "contact revealed, so this cost one. Then say the thing that makes it land " +
+        "— the draft from gate 3 now has a real person and a real address to go " +
+        "to. Re-check leadbay_account_status if you want to show the moved windows. " +
+        "This is where gate 1's numbers stop being abstract: they just watched them " +
+        "move, and got something for it. Keep it to a line; no pricing pitch.",
     },
     {
-      n: 4,
+      n: 5,
       gate_label: "Add these to my CRM",
       gate_description: "Put these leads into your CRM.",
       explain:
@@ -364,16 +422,18 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         "the conversation, otherwise ask which CRM they use. If you have one, use " +
         "it to create or update the company + its contact from the lead data " +
         "already in hand: company name, website, city/region, contact name and job " +
-        "title, plus any emails or phones the enrichment actually returned at gate 3. " +
+        "title, plus any emails or phones the enrichment actually returned at gate 4. " +
         "If the user declined the paid reveal you have NO contact details — never " +
-        "write one you did not receive. If you have " +
+        "write one you did not receive. If the connector supports a note or activity " +
+        "field, the gate-3 draft belongs there too, so the email they just wrote " +
+        "travels with the record instead of being stranded in this chat. If you have " +
         "no CRM connector, say so in one honest line, name the CRM the user " +
         "mentioned, and offer leadbay_report_friction with " +
         "category:'missing_capability'. NEVER claim a CRM record was created unless " +
         "the connector confirmed it — only the connector can create one.",
     },
     {
-      n: 5,
+      n: 6,
       gate_label: "Run this every morning",
       gate_description: "Set this up to run automatically every morning.",
       explain:

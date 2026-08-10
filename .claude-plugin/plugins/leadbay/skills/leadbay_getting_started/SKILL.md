@@ -1,6 +1,6 @@
 ---
 name: leadbay_getting_started
-description: "Guided first-run walkthrough — five clicks that actually use Leadbay: check the account, pull today's leads, preview who to contact, push them to the CRM connector the host already has, then set it to run every morning. Use when the user is new or asks to be SHOWN how Leadbay works (\"walk me through Leadbay\", \"I'm new\", \"how do I use this\", \"getting started\", \"give me a tour\"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview."
+description: "Guided first-run walkthrough — six clicks that actually use Leadbay: check the account, pull today's leads, draft a first email to the top one, reveal who to send it to, push to the host's CRM connector, then run it every morning. Use when the user is new or asks to be SHOWN how Leadbay works (\"walk me through Leadbay\", \"I'm new\", \"how do I use this\", \"give me a tour\"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview."
 ---
 
 
@@ -139,15 +139,16 @@ message. In the user's own language, no jargon, cover:
 2. **How it knows what to send** — you describe who you sell to (that
    description is your **lens**), and it goes and finds companies matching it,
    getting sharper as you engage with what it sends.
-3. **What this walkthrough will do** — five quick steps, each a real action on
-   their own account, ending with leads in hand, contacts to call, and the
-   whole thing running by itself each morning.
+3. **What this walkthrough will do** — six quick steps, each a real action on
+   their own account, ending with leads in hand, a first email already written,
+   the person to send it to, and the whole thing running by itself each
+   morning.
 4. **One line handing off to the first step** — e.g. "First, let's see which
    account you're on."
 
 Then **fire GATE 1's widget immediately, in the same message**, and stop.
 
-Keep it to a paragraph. Do NOT walk through the five steps one at a time here
+Keep it to a paragraph. Do NOT walk through the six steps one at a time here
 — each gate explains itself when its turn arrives, and turning the opening
 into a syllabus buries the first button under text nobody reads.
 
@@ -300,8 +301,9 @@ On click: call `leadbay_pull_leads` with **no arguments** (it resolves the
 user's default lens itself).
 
 Capture `lens.id` from the response and pass it as an explicit `lensId` on
-every later call in this walkthrough, so gate 3 enriches the same lens the
-user just looked at.
+every later call in this walkthrough, so gate 4 enriches the same lens the
+user just looked at. Pin the TOP-SCORING lead's id and name too — gate 3 drafts
+to it, and gate 4 reveals its contact.
 
 Render the batch with the canonical layout:
 
@@ -394,65 +396,108 @@ computes the lens wishlist. Check `computing_wishlist` / `computing_scores`:
   is `null`. Say so honestly, offer to widen the audience, and end the
   walkthrough here. There is nothing to enrich.
 
-# GATE 3 — "Enrich top leads"
+# GATE 3 — "Draft the first email"
 
-**Explain first — teach what enrichment IS.** A company isn't a person: to
-actually reach out they need a human. Leadbay can find *which roles* to
-approach at these companies.
+**Explain first — and name the company.** Take the TOP-SCORING lead from
+GATE 2 and say its name out loud, so this is an offer about a real company
+rather than an abstraction. Leadbay already worked out *why* that company fits
+them, so it can write the first email instead of leaving them at a blank page.
 
-**Why it's useful:** they walk into the call knowing to ask for the operations
-director by title, instead of pitching whoever answers the switchboard — the
-difference between a conversation and a dead end.
+**Why it's useful:** finding companies was never the hard part. Writing the
+twentieth opener of the day is where prospecting actually dies. This turns a
+row in a table into something they could send in a minute.
 
-Say plainly that the first look is **free**, and that actually revealing
-contact details costs credits and needs their say-so.
+Say plainly that this only **drafts** — nothing is sent, and they see it first.
 
-**Then fire the widget** — question `Want to see who to contact at these companies?`, first option labelled `Enrich top leads`, description `See who to contact at the top leads. Free — no contact details revealed.` Second option: `I'm done for now` / `Stop the walkthrough here.` **Wait for the click.**
+**Then fire the widget** — question `Want me to draft the first email to your top lead?`, first option labelled `Draft the first email`, description `Write a first email to the best company in today's batch. Nothing is sent.` Second option: `I'm done for now` / `Stop the walkthrough here.` **Wait for the click.**
+
+On click: call `leadbay_prepare_outreach` with `leadId` = the top lead's id,
+**and nothing else**.
+
+**This gate spends NOTHING. Never pass `enrich: true`** — that launches a paid
+contact reveal off the back of a *draft* click. They agreed to see an email
+written, not to spend. GATE 4 is where the reveal gets asked for, on its own
+terms.
+
+`recommended_contact` comes back in its post-enrichment shape with `email` and
+`phone` still **null**. That is expected, not a failure — and it's exactly the
+hook for the next gate: an email written, and nobody to send it to yet. Don't
+apologise for it, and don't reach for another tool to fill it in.
+
+**Render the draft through `message_compose_v1`** — `kind: "email"`, a
+`summary_title` naming the company, and 2–3 variants whose labels name the
+**strategy** ("Lead with the growth signal", "Ask about their current setup"),
+never the tone. Do NOT also paste the body into chat prose; the composer *is*
+the answer. If the host exposes no composer, fall back to the canonical
+prepare-outreach layout: one context line, then subject + body as a quoted
+block.
+
+**Address it to the job TITLE** — "the Head of Operations at <Company>". You do
+not have a name yet, and inventing one is fabrication.
+
+Add one line on *why this company was the pick* — its score and the fit reason
+from the lead's summary — so the draft reads as reasoned rather than generated.
+
+# GATE 4 — "Find who to email"
+
+**Explain first — point at the gap the draft just opened.** They have an email
+ready and nobody to send it to: it's addressed to a job title, not a person.
+That's what this step fixes. Leadbay can find *which roles* exist at that
+company, then reveal the actual human and how to reach them.
+
+**Why it's useful:** they ask for the operations director by name instead of
+pitching whoever answers the switchboard — the difference between a
+conversation and a dead end.
+
+Say plainly that the first look is **free**, and that revealing the contact
+costs credits and needs their say-so.
+
+**Then fire the widget** — question `Want to find out who to send that email to?`, first option labelled `Find who to email`, description `See the roles at that company. Free — no contact details revealed yet.` Second option: `I'm done for now` / `Stop the walkthrough here.` **Wait for the click.**
 
 This gate runs in **TWO BEATS**. Do not collapse them.
 
 ## BEAT 1 — the free look (spends nothing)
 
-On click: call `leadbay_enrich_titles` with `leadIds` = the lead ids from
-GATE 2 and `lensId` = the pinned lens id.
+On click: call `leadbay_enrich_titles` with `leadIds` = **the one lead you
+drafted for at GATE 3** and `lensId` = the pinned lens id.
 
 **This call must spend NOTHING.** Omit `titles` entirely: that returns
-`mode:"discover"`, the free preview of which job titles exist at those
-companies. Do NOT pass `titles`, `confirm=true`, `email=true` or `phone=true`
-on this call — any one of them launches the paid reveal before the user has
-chosen anything.
+`mode:"discover"`, the free preview of which job titles exist at that company.
+Do NOT pass `titles`, `confirm=true`, `email=true` or `phone=true` on this call
+— any one of them launches the paid reveal before the user has chosen anything.
 
 Present the discovered titles and say plainly: "nothing spent yet."
 
-## BEAT 2 — really enrich the ones they pick (spends credits)
+## BEAT 2 — reveal the person the draft is for (spends credits)
 
-Now ask them to **pick 2–3 leads to actually enrich**, and tell them the cost
-BEFORE they choose: revealing contact details spends credits, roughly one per
-contact revealed. Name the leads so the choice is concrete.
+Name the title the GATE 3 draft is addressed to, and tell them the cost
+**before** they decide: one credit per contact revealed — here that's **one
+contact, one credit**. Then ask them to confirm.
 
-**Wait for an explicit pick + confirmation.** Silence is not consent, and
-neither is "they clicked the gate earlier" — the gate click bought the free
-look, not the reveal.
+**Wait for an explicit confirmation.** Silence is not consent, and neither is
+"they clicked the gate earlier" — the gate click bought the free look, not the
+reveal.
 
-Once they've picked and confirmed, call `leadbay_enrich_titles` AGAIN with:
-their chosen `leadIds`, the `titles` worth contacting, `confirm: true` and
-`email: true`. That's the real, paid reveal.
+Once confirmed, call `leadbay_enrich_titles` AGAIN with that `leadId`, the
+chosen `titles`, `confirm: true` and `email: true`. That's the real, paid
+reveal.
 
 It returns a `bulk_id` and runs async — poll `leadbay_bulk_enrich_status`
 with that id (`include_contacts=true`) until `all_done`, or until the resolved
-count plateaus across a few spaced polls. Then report the **actual contacts
-found**: names, titles, and the emails/phones that came back. Some contacts
-never resolve; say so honestly rather than implying a full house.
+count plateaus across a few spaced polls. Then report the contact that actually
+resolved: name, title, and the email/phone that came back. Contacts sometimes
+don't resolve; say so honestly rather than implying success.
 
-**Then explain what it cost** — one line, in plain terms: one credit per
-contact revealed, so N contacts = N credits. This is the moment the quota
-numbers from GATE 1 stop being abstract, because they just watched them move.
-Don't turn it into a pricing pitch.
+**Then close the loop** — one line: one credit per contact revealed, so this
+cost one. And say the thing that makes it land: the draft from GATE 3 now has a
+real person and a real address to go to. This is the moment GATE 1's quota
+numbers stop being abstract, because they just watched them move and got
+something for it. Don't turn it into a pricing pitch.
 
-If they decline the reveal, that's fine — keep the free preview as the result
-and move on to GATE 4 without pushing.
+If they decline the reveal, that's fine — keep the draft and the title, and
+move on to GATE 5 without pushing.
 
-# GATE 4 — "Add these to my CRM"
+# GATE 5 — "Add these to my CRM"
 
 **Explain first — teach the split.** Leadbay finds the leads; their CRM is
 where they'll actually work them. If a CRM connector is available in this chat,
@@ -480,9 +525,11 @@ conversation, otherwise ask the user which CRM they use.
 **If you have one**, use it to create or update the company and its contact
 from the lead data already in hand. Pass what Leadbay gave you and nothing
 invented: company name, website, city/region, the contact's name and job
-title — plus any emails or phones the enrichment actually returned at GATE 3.
+title — plus any emails or phones the enrichment actually returned at GATE 4.
 If the user declined the paid reveal, you have NO contact details: never write
-one you did not receive. Report back what the
+one you did not receive. If the connector supports a note or activity field,
+put the GATE 3 draft there too, so the email they just wrote travels with the
+record instead of being stranded in this chat. Report back what the
 connector actually returned, per CRM record.
 
 **If you have no CRM connector**, say so in one honest line, name which CRM
@@ -496,7 +543,7 @@ could use it right now.
 Only the connector can create one — Leadbay cannot, and neither can a
 description of the intent.
 
-# GATE 5 — "Run this every morning"
+# GATE 6 — "Run this every morning"
 
 **Explain first — close the loop.** Prospecting works when it's a habit, not a
 one-off. The whole sequence they just ran can happen on its own every morning.
@@ -545,7 +592,7 @@ something that sounds nicer but doesn't match.
 Add one closing line in your own words: they don't need to remember exact
 wording — plain language works, and this is just a starting point.
 
-Then hand them the **setup guide** as one plain link, for the things the five
+Then hand them the **setup guide** as one plain link, for the things the six
 gates didn't cover — installing Leadbay on another machine, adding a teammate,
 signing back in later:
 <https://docs.leadbay.app/doc/leadbay-mcp/quickstart>
@@ -559,8 +606,11 @@ off doing what they wanted, and a tutorial summary would interrupt.
 
 # STOP
 
-IRON LAW — the walkthrough never takes outbound action. Do not draft or send
-outreach. Do not call `leadbay_report_outreach`.
+IRON LAW — the walkthrough **drafts** an email at GATE 3 but never **sends**
+one. The draft stays in the chat for the user to read and judge; nothing
+leaves. Never send it, never offer to send it on their behalf, and never call
+`leadbay_report_outreach` — logging an outreach that never happened poisons the
+human team's pipeline.
 
 Render this acknowledgment VERBATIM as the last line of your message:
 

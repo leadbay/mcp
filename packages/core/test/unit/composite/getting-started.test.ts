@@ -17,15 +17,16 @@ beforeEach(() => resetHttpMock());
 
 // leadbay_getting_started returns a static walkthrough manifest (issue #3952).
 // These tests lock the two product decisions that are easy to erode by a later
-// well-meaning edit: one forward option + an exit per gate, and gate 3 never
-// spending WITHOUT an explicit pick + confirm from the user.
+// well-meaning edit: one forward option + an exit per gate, gate 3 drafting
+// without ever spending, and gate 4 never revealing a contact WITHOUT an
+// explicit confirm from the user.
 
 describe("leadbay_getting_started", () => {
-  it("happy path — returns the 5-step manifest with no HTTP call", async () => {
+  it("happy path — returns the 6-step manifest with no HTTP call", async () => {
     mockHttp([]);
     const result = await gettingStarted.execute(newClient(), {});
     expect(result.version).toBe(1);
-    expect(result.steps).toHaveLength(5);
+    expect(result.steps).toHaveLength(6);
     // Static content: the tour must not touch the backend at all. This is the
     // whole basis for readOnlyHint + openWorldHint:false in the annotations.
     expect(getHttpRequests()).toHaveLength(0);
@@ -64,7 +65,10 @@ describe("leadbay_getting_started", () => {
     }
     // The two concepts a first-run user genuinely does not know yet.
     expect(GETTING_STARTED_MANIFEST.steps[1].explain).toMatch(/lens/i);
-    expect(GETTING_STARTED_MANIFEST.steps[2].explain).toMatch(/free/i);
+    // Gate 3 drafts — its promise is that nothing is SENT, not that it's free.
+    expect(GETTING_STARTED_MANIFEST.steps[2].explain).toMatch(/nothing is sent/i);
+    // Gate 4 is where "free first, paid on consent" has to be said out loud.
+    expect(GETTING_STARTED_MANIFEST.steps[3].explain).toMatch(/free/i);
   });
 
   it("every gate says WHY the step is useful, not just what it does", () => {
@@ -84,9 +88,9 @@ describe("leadbay_getting_started", () => {
     // before they click, and know what they'll have at the end.
     const intro = GETTING_STARTED_MANIFEST.intro;
     expect(intro).toMatch(/lens/i);
-    expect(intro).toMatch(/five quick steps/i);
+    expect(intro).toMatch(/six quick steps/i);
     // Still bounded — the syllabus version buried the first button.
-    expect(intro).toMatch(/do NOT walk through the five steps one at a time/i);
+    expect(intro).toMatch(/do NOT walk through the six steps one at a time/i);
   });
 
   it("every gate carries exactly ONE way forward, plus an exit", () => {
@@ -128,7 +132,8 @@ describe("leadbay_getting_started", () => {
     expect(GETTING_STARTED_MANIFEST.steps.map((s) => s.gate_label)).toEqual([
       "Check my account",
       "Pull today's leads",
-      "Enrich top leads",
+      "Draft the first email",
+      "Find who to email",
       "Add these to my CRM",
       "Run this every morning",
     ]);
@@ -196,8 +201,8 @@ describe("leadbay_getting_started", () => {
     expect(warming!.then).toMatch(/VERBATIM/);
   });
 
-  it("step 3 runs free-preview FIRST and only spends after an explicit pick", () => {
-    const step = GETTING_STARTED_MANIFEST.steps[2];
+  it("step 4 runs free-preview FIRST and only spends after an explicit confirm", () => {
+    const step = GETTING_STARTED_MANIFEST.steps[3];
     expect(step.calls).toBe("leadbay_enrich_titles");
     // It must still scope to the leads from step 2 and the pinned lens.
     expect(Object.keys(step.args ?? {}).sort()).toEqual(["leadIds", "lensId"]);
@@ -210,23 +215,23 @@ describe("leadbay_getting_started", () => {
 
     // Beat 2 is the real, paid reveal — but ONLY after a pick + confirm.
     expect(step.spend).toMatch(/confirm:true/);
-    expect(step.spend).toMatch(/2-3 leads/);
+    expect(step.spend).toMatch(/ONE contact, one credit|one credit/i);
     expect(step.spend).toMatch(/leadbay_bulk_enrich_status/);
     // The consent rule, stated so it can't be rationalized away.
     expect(step.spend).toMatch(/silence is not consent/i);
   });
 
-  it("step 3 tells the user what the enrichment cost", () => {
+  it("step 4 tells the user what the enrichment cost", () => {
     // They just watched credits move. Saying nothing is what makes quota feel
     // like a surprise bill later.
-    const step = GETTING_STARTED_MANIFEST.steps[2];
-    expect(step.quota_note, "step 3 must explain the spend").toBeTypeOf("string");
+    const step = GETTING_STARTED_MANIFEST.steps[3];
+    expect(step.quota_note, "step 4 must explain the spend").toBeTypeOf("string");
     expect(step.quota_note).toMatch(/one credit per contact/i);
-    expect(step.quota_note).toMatch(/not turn it into a pricing pitch/i);
+    expect(step.quota_note).toMatch(/pricing pitch/i);
   });
 
-  it("step 4 calls no Leadbay tool — the CRM connector is the host's", () => {
-    const step = GETTING_STARTED_MANIFEST.steps[3];
+  it("step 5 calls no Leadbay tool — the CRM connector is the host's", () => {
+    const step = GETTING_STARTED_MANIFEST.steps[4];
     // calls:null is load-bearing. Leadbay has NO CRM integration, so an agent
     // reading the manifest must not be able to infer a leadbay_* tool that
     // would push, export or sync a lead.
@@ -245,9 +250,9 @@ describe("leadbay_getting_started", () => {
     expect(step.handoff).toMatch(/missing_capability/);
   });
 
-  it("step 5 calls no Leadbay tool — scheduling is the host's", () => {
-    const step = GETTING_STARTED_MANIFEST.steps[4];
-    // Same delegation shape as step 4: Leadbay has no scheduling API either.
+  it("step 6 calls no Leadbay tool — scheduling is the host's", () => {
+    const step = GETTING_STARTED_MANIFEST.steps[5];
+    // Same delegation shape as step 5: Leadbay has no scheduling API either.
     expect(step.calls).toBeNull();
     expect(step.args).toBeNull();
     expect(step.handoff).toMatch(/no scheduling API/);
@@ -257,12 +262,12 @@ describe("leadbay_getting_started", () => {
     expect(step.gate_label.toLowerCase()).toContain("every morning");
   });
 
-  it("step 4 passes through only what the enrichment actually returned", () => {
-    // Gate 3 may now reveal real contacts — but only the ones that resolved. If
-    // the user declined the paid reveal there are none at all, and writing an
+  it("step 5 passes through only what the enrichment actually returned", () => {
+    // Gate 4 may now reveal a real contact — but only if it resolved. If the
+    // user declined the paid reveal there is none at all, and writing an
     // invented address into their CRM is fabricated PII.
-    const step = GETTING_STARTED_MANIFEST.steps[3];
-    expect(step.handoff).toMatch(/actually returned at gate 3/);
+    const step = GETTING_STARTED_MANIFEST.steps[4];
+    expect(step.handoff).toMatch(/actually returned at gate 4/);
     expect(step.handoff).toMatch(/declined the paid reveal you have NO contact details/);
   });
 
@@ -290,7 +295,7 @@ describe("leadbay_getting_started", () => {
     expect(gettingStarted.inputSchema.additionalProperties).toBe(false);
     // Extra params are ignored rather than throwing: the manifest is invariant.
     const result = await gettingStarted.execute(newClient(), {} as never);
-    expect(result.steps).toHaveLength(5);
+    expect(result.steps).toHaveLength(6);
     expect(getHttpRequests()).toHaveLength(0);
   });
 
@@ -351,8 +356,43 @@ describe("leadbay_getting_started", () => {
     expect(note).toMatch(/NEVER paste it between gates/i);
   });
 
-  it("the tour never takes outbound action", () => {
-    expect(GETTING_STARTED_MANIFEST.stop).toMatch(/never takes outbound action/);
-    expect(GETTING_STARTED_MANIFEST.stop).toMatch(/leadbay_report_outreach/);
+  it("the tour drafts an email but never sends one", () => {
+    // Narrowed deliberately when gate 3 landed: DRAFTING is the whole point of
+    // that gate and nothing leaves the chat, but sending — and logging an
+    // outreach that never happened — stay forbidden.
+    expect(GETTING_STARTED_MANIFEST.stop).toMatch(/DRAFTS an email at gate 3 but never SENDS/);
+    expect(GETTING_STARTED_MANIFEST.stop).toMatch(/never call\s+leadbay_report_outreach/);
+  });
+
+  it("gate 3 drafts for free and can never be talked into spending", () => {
+    // The draft click bought an email, not a contact reveal. prepare_outreach
+    // takes an `enrich` flag that launches a PAID reveal — passing it here
+    // would spend credits the user never agreed to.
+    const step = GETTING_STARTED_MANIFEST.steps[2];
+    expect(step.calls).toBe("leadbay_prepare_outreach");
+    expect(Object.keys(step.args ?? {})).toEqual(["leadId"]);
+    expect(step.forbidden_args?.join(" ")).toMatch(/enrich/);
+    expect(step.spend).toMatch(/spends NOTHING/i);
+  });
+
+  it("gate 3 addresses the draft to a TITLE, because no name exists yet", () => {
+    // recommended_contact comes back with null email/name before gate 4, so a
+    // named recipient at this point is fabricated — the one thing that would
+    // make the whole draft untrustworthy. The null is the hook, not a bug.
+    const step = GETTING_STARTED_MANIFEST.steps[2];
+    const always = (step.branches ?? []).find((b) => b.when === "always");
+    expect(always!.then).toMatch(/JOB TITLE/);
+    expect(always!.then).toMatch(/inventing one is fabrication/i);
+    expect(always!.then).toMatch(/message_compose_v1/);
+    expect(step.spend).toMatch(/EXPECTED, not a failure/);
+  });
+
+  it("gate 4 enriches only the lead gate 3 drafted for", () => {
+    // The narrative depends on it: this reveals the person THAT email is going
+    // to. Fanning out across the batch turns one credit into several and loses
+    // the thread back to the draft.
+    const step = GETTING_STARTED_MANIFEST.steps[3];
+    expect(step.args?.leadIds).toMatch(/ONE lead you drafted for/);
+    expect(step.explain).toMatch(/addressed to a job title, not a person/i);
   });
 });
