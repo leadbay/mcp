@@ -22,11 +22,11 @@ beforeEach(() => resetHttpMock());
 // explicit confirm from the user.
 
 describe("leadbay_getting_started", () => {
-  it("happy path — returns the 6-step manifest with no HTTP call", async () => {
+  it("happy path — returns the 4-step manifest with no HTTP call", async () => {
     mockHttp([]);
     const result = await gettingStarted.execute(newClient(), {});
     expect(result.version).toBe(1);
-    expect(result.steps).toHaveLength(6);
+    expect(result.steps).toHaveLength(4);
     // Static content: the tour must not touch the backend at all. This is the
     // whole basis for readOnlyHint + openWorldHint:false in the annotations.
     expect(getHttpRequests()).toHaveLength(0);
@@ -88,9 +88,9 @@ describe("leadbay_getting_started", () => {
     // before they click, and know what they'll have at the end.
     const intro = GETTING_STARTED_MANIFEST.intro;
     expect(intro).toMatch(/lens/i);
-    expect(intro).toMatch(/six quick steps/i);
+    expect(intro).toMatch(/four quick steps/i);
     // Still bounded — the syllabus version buried the first button.
-    expect(intro).toMatch(/do NOT walk through the six steps one at a time/i);
+    expect(intro).toMatch(/do NOT walk through the four steps one at a time/i);
   });
 
   it("every gate carries exactly ONE way forward, plus an exit", () => {
@@ -134,8 +134,6 @@ describe("leadbay_getting_started", () => {
       "Pull today's leads",
       "Draft the first email",
       "Find who to email",
-      "Add these to my CRM",
-      "Run this every morning",
     ]);
   });
 
@@ -230,46 +228,8 @@ describe("leadbay_getting_started", () => {
     expect(step.quota_note).toMatch(/pricing pitch/i);
   });
 
-  it("step 5 calls no Leadbay tool — the CRM connector is the host's", () => {
-    const step = GETTING_STARTED_MANIFEST.steps[4];
-    // calls:null is load-bearing. Leadbay has NO CRM integration, so an agent
-    // reading the manifest must not be able to infer a leadbay_* tool that
-    // would push, export or sync a lead.
-    expect(step.calls).toBeNull();
-    expect(step.args).toBeNull();
-    expect(step.handoff).toMatch(/NO CRM integration/);
-    // Delegation: the agent checks ITS OWN tool set, the same way it detects
-    // outreach tooling. Capability named, not a third-party tool name.
-    expect(step.handoff).toMatch(/your\s+own tool set/);
-    expect(step.handoff).toMatch(/installed-connector/);
-    // Honesty guards — the two ways this gate could lie to a new user.
-    expect(step.handoff).toMatch(/NEVER claim a CRM record was created/);
-    expect(step.handoff).toMatch(/never\s+write one you did not receive/);
-    // The no-connector path must route to the real escape hatch, not a dead end.
-    expect(step.handoff).toMatch(/leadbay_report_friction/);
-    expect(step.handoff).toMatch(/missing_capability/);
-  });
 
-  it("step 6 calls no Leadbay tool — scheduling is the host's", () => {
-    const step = GETTING_STARTED_MANIFEST.steps[5];
-    // Same delegation shape as step 5: Leadbay has no scheduling API either.
-    expect(step.calls).toBeNull();
-    expect(step.args).toBeNull();
-    expect(step.handoff).toMatch(/no scheduling API/);
-    expect(step.handoff).toMatch(/NEVER claim a scheduled task was created/);
-    // The option text carries the literal recurring language the host's
-    // scheduled-task flow gates on.
-    expect(step.gate_label.toLowerCase()).toContain("every morning");
-  });
 
-  it("step 5 passes through only what the enrichment actually returned", () => {
-    // Gate 4 may now reveal a real contact — but only if it resolved. If the
-    // user declined the paid reveal there is none at all, and writing an
-    // invented address into their CRM is fabricated PII.
-    const step = GETTING_STARTED_MANIFEST.steps[4];
-    expect(step.handoff).toMatch(/actually returned at gate 4/);
-    expect(step.handoff).toMatch(/declined the paid reveal you have NO contact details/);
-  });
 
   it("no step invents a leadbay_* tool that does not exist", () => {
     const known = new Set([...compositeReadTools, ...compositeWriteTools].map((t) => t.name));
@@ -295,7 +255,7 @@ describe("leadbay_getting_started", () => {
     expect(gettingStarted.inputSchema.additionalProperties).toBe(false);
     // Extra params are ignored rather than throwing: the manifest is invariant.
     const result = await gettingStarted.execute(newClient(), {} as never);
-    expect(result.steps).toHaveLength(6);
+    expect(result.steps).toHaveLength(4);
     expect(getHttpRequests()).toHaveLength(0);
   });
 

@@ -5,7 +5,7 @@ import { leadbay_getting_started as GETTING_STARTED_DESCRIPTION } from "../tool-
 
 // leadbay_getting_started returns the guided first-run walkthrough (issue
 // leadbay/product#3952): a short script the agent drives so a brand-new user
-// learns Leadbay by DOING. Six gates, each carrying ONE forward action plus an
+// learns Leadbay by DOING. Four gates, each carrying ONE forward action plus an
 // exit (two options — a lone option degrades to prose on real hosts). Makes
 // no backend call and mutates nothing — the manifest is static, version-locked
 // content.
@@ -15,12 +15,12 @@ import { leadbay_getting_started as GETTING_STARTED_DESCRIPTION } from "../tool-
 // is set (WORKFLOWS #30) and never volunteer the lens (WORKFLOWS #31, enforced
 // server-side — account-status.ts withholds it unless the trigger text asks).
 //
-// Two of the six gates delegate to a capability Leadbay does NOT have and the
-// HOST usually does (`calls: null`): the CRM push (gate 5) and the recurring
-// schedule (gate 6). Leadbay has no CRM integration and no scheduling API, so
-// the manifest names the CAPABILITY rather than a third-party tool name and
-// lets the agent find its own connector — the same detection the
-// connected-outreach-tool table in leadbay_prospecting_overview already uses.
+// Every gate calls a real Leadbay tool. The CRM push and the recurring
+// schedule were gates 5 and 6 with `calls: null`, delegating to the host's own
+// connector and scheduler — both removed: the tour ends where Leadbay's own
+// value ends, with a contact revealed. A tutorial that finishes by handing off
+// to capabilities Leadbay does not have was two steps of somebody else's
+// product, and it pushed the payoff further from the click that earned it.
 //
 // STATELESS BY DESIGN — there is no `step` argument. The agent fetches the
 // whole manifest once and drives the gates from the conversation it already
@@ -147,7 +147,7 @@ const DOCS_NOTE =
   "or they want to run this on another host. The walkthrough cannot fix any of " +
   "that: it assumes a working connection, and gate 1 is what proves it. Point " +
   "them at the page instead of guessing at install steps. (2) At the CLOSING, " +
-  "as one plain link beside the keep_going cheat-sheet, for what the six gates " +
+  "as one plain link beside the keep_going cheat-sheet, for what the four gates " +
   "didn't cover — installing on another machine, adding a teammate, signing in " +
   "again later. NEVER paste it between gates: a link mid-tour is an invitation " +
   "to leave the thing they're in the middle of doing.";
@@ -200,13 +200,12 @@ const INTRO =
   "selling to every day, rather than you hunting for them; (2) how it knows " +
   "what to send — you describe who you sell to (that description is your " +
   "LENS) and it goes and finds companies matching it, learning from what you " +
-  "engage with; (3) what this walkthrough will do — six quick steps, each one " +
+  "engage with; (3) what this walkthrough will do — four quick steps, each one " +
   "a real action on their own account, ending with leads in hand, a first " +
-  "email already written, the person to send it to, and the whole thing " +
-  "running by itself each morning; (4) one line handing off to the first " +
+  "email already written, and the person to send it to; (4) one line handing off to the first " +
   "step, e.g. 'First, let's see which account you're on.' Then fire gate 1's " +
   "widget immediately and stop. Keep it to a paragraph — do NOT walk through " +
-  "the six steps one at a time here (each gate explains itself when its turn " +
+  "the four steps one at a time here (each gate explains itself when its turn " +
   "arrives), and call no tool in the opening.";
 
 // Every `say` below is verbatim from that tool's own routing.triggers, so the
@@ -426,85 +425,6 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         "to. Re-check leadbay_account_status if you want to show the moved windows. " +
         "This is where gate 1's numbers stop being abstract: they just watched them " +
         "move, and got something for it. Keep it to a line; no pricing pitch.",
-    },
-    {
-      n: 5,
-      gate_label: "Add these to my CRM",
-      gate_description: "Put these leads into your CRM.",
-      explain:
-        "Explain the split before firing: Leadbay finds the leads, but their CRM " +
-        "is where they'll actually work them — and if a CRM connector is available " +
-        "in this chat, these companies can go straight in. WHY IT'S USEFUL: no " +
-        "copy-pasting company names between two tabs, and the leads land where " +
-        "their pipeline, their reminders and their team already live — so a lead " +
-        "found here doesn't quietly die in a chat window. Do not promise it works " +
-        "until you have checked your own tool set.",
-      next_steps: {
-        question: "Want these leads in your CRM?",
-        options: [
-          {
-            label: "Add these to my CRM",
-            description: "Put these leads into your CRM, if a connector is available here.",
-            kind: "walkthrough_crm_push",
-          },
-          EXIT_OPTION,
-        ],
-      },
-      calls: null,
-      args: null,
-      handoff:
-        "Leadbay has NO CRM integration — it cannot push, export or sync a lead " +
-        "anywhere, which is why `calls` is null. But the AGENT often can: many " +
-        "users run a CRM connector alongside Leadbay in the same host. Check your " +
-        "own tool set for a CRM capability (HubSpot, Salesforce, Pipedrive, Attio, " +
-        "Close, or similar) the same way you detect outreach tooling — the host's " +
-        "installed-connector / installed-MCP inventory when available, otherwise " +
-        "the conversation, otherwise ask which CRM they use. If you have one, use " +
-        "it to create or update the company + its contact from the lead data " +
-        "already in hand: company name, website, city/region, contact name and job " +
-        "title, plus any emails or phones the enrichment actually returned at gate 4. " +
-        "If the user declined the paid reveal you have NO contact details — never " +
-        "write one you did not receive. If the connector supports a note or activity " +
-        "field, the gate-3 draft belongs there too, so the email they just wrote " +
-        "travels with the record instead of being stranded in this chat. If you have " +
-        "no CRM connector, say so in one honest line, name the CRM the user " +
-        "mentioned, and offer leadbay_report_friction with " +
-        "category:'missing_capability'. NEVER claim a CRM record was created unless " +
-        "the connector confirmed it — only the connector can create one.",
-    },
-    {
-      n: 6,
-      gate_label: "Run this every morning",
-      gate_description: "Set this up to run automatically every morning.",
-      explain:
-        "Close the loop before firing: prospecting works when it's a habit, not a " +
-        "one-off — and the whole sequence they just did can run on its own every " +
-        "morning. WHY IT'S USEFUL: prospecting is the first thing that slips on a " +
-        "busy week, and this removes the part that requires remembering — the " +
-        "leads are simply there when they open their laptop, the way an inbox is.",
-      next_steps: {
-        question: "Want this to run on its own every morning?",
-        options: [
-          {
-            label: "Run this every morning",
-            description: "Set this up to run automatically every morning.",
-            kind: "walkthrough_schedule",
-          },
-          EXIT_OPTION,
-        ],
-      },
-      calls: null,
-      args: null,
-      handoff:
-        "Leadbay has no scheduling API and no leadbay_* tool creates a scheduled " +
-        "task — that is why `calls` is null here. The gate's option text is " +
-        "literal recurring language, which is what lets your host's own " +
-        "scheduled-task flow take over. Follow that flow (it asks frequency, then " +
-        "time, then confirms) rather than re-asking those questions yourself — two " +
-        "competing scheduling flows in one conversation is a defect. Name the task " +
-        "concretely, e.g. 'Daily prospecting check-in'. If your host exposes no " +
-        "scheduler, say so honestly in one line. Either way: NEVER claim a " +
-        "scheduled task was created — only the host can create one.",
     },
   ],
   keep_going: KEEP_GOING,

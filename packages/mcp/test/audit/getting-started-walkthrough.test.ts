@@ -104,7 +104,7 @@ describe("audit: getting-started walkthrough", () => {
     expect(BODY).toMatch(/A short paragraph, then the widget/i);
     expect(BODY).toMatch(/that\s*\n?\s*description is your \*\*lens\*\*/i);
     expect(BODY).toMatch(/fire GATE 1's widget immediately, in the same message/i);
-    expect(BODY).toMatch(/Do NOT walk through the six steps one at a time/i);
+    expect(BODY).toMatch(/Do NOT walk through the four steps one at a time/i);
     // Gate 1 must not stack a second explanation on top of the opening.
     expect(BODY).toMatch(/opening paragraph above IS this gate's explanation/);
   });
@@ -119,7 +119,7 @@ describe("audit: getting-started walkthrough", () => {
     );
     // The concrete images, not abstractions — these are what make it land.
     expect(BODY).toMatch(/operations\s*\n?\s*director by name/i);
-    expect(BODY).toMatch(/quietly die in a chat window/i);
+    
   });
 
   it("the prompt makes every gate explain before it asks", () => {
@@ -192,56 +192,11 @@ describe("audit: getting-started walkthrough", () => {
     expect(BODY).toMatch(/NEVER say "no leads found\."/);
   });
 
-  it("the prompt defers scheduling to the host and claims nothing", () => {
-    // Leadbay has no scheduling API; the tour must not pretend otherwise.
-    expect(BODY).toMatch(/no scheduling API/);
-    expect(BODY).toMatch(/never claim a scheduled task was created/i);
-    // The gate text must carry the literal recurring language the host's
-    // scheduled-task flow gates on.
-    expect(BODY).toMatch(/every morning/);
-  });
 
-  it("the prompt delegates the CRM push to the agent's OWN connector", () => {
-    // Leadbay has NO CRM integration — no push, export or sync exists. The
-    // whole point of this gate is that the HOST often has a connector even
-    // though Leadbay doesn't.
-    expect(BODY).toMatch(/no CRM integration/i);
-    expect(BODY).toMatch(/check your own tool set/i);
-    // Detection reuses the existing outreach-tool mechanism rather than
-    // inventing a second one.
-    expect(BODY).toMatch(/installed-connector/);
-  });
 
-  it("the prompt names CRM capability, not third-party tool names", () => {
-    // Repo style: name the product/capability and let the agent find its own
-    // tool. A backticked `hubspot_*` tool name would be the first in the repo
-    // and would silently rot when the connector renames its tools.
-    expect(BODY).toMatch(/HubSpot/);
-    expect(BODY).not.toMatch(/`hubspot_[a-z_]+`/i);
-    expect(BODY).not.toMatch(/`salesforce_[a-z_]+`/i);
-  });
 
-  it("the CRM gate cannot claim a record was created, or invent contact details", () => {
-    expect(BODY).toMatch(/Never claim a CRM record was created/i);
-    // Gate 2 was the FREE title preview: no email/phone was ever revealed, so
-    // writing one into the user's CRM would be fabricated PII.
-    expect(BODY).toMatch(/never write\s*\n?\s*one you did not receive/i);
-  });
 
-  it("the no-connector path routes to the real escape hatch", () => {
-    // A user with no CRM connector must get an honest line + the friction
-    // route, not instructions for a connector they don't have.
-    expect(BODY).toMatch(/leadbay_report_friction/);
-    expect(BODY).toMatch(/missing_capability/);
-  });
 
-  it("does NOT re-implement the host's frequency/time sub-questions", () => {
-    // Two competing scheduling flows in one conversation is a defect. The tour
-    // hands off; it must not ask these itself.
-    expect(BODY).not.toMatch(/Every weekday/);
-    expect(BODY).not.toMatch(/Morning \(8am\)/);
-    expect(BODY).not.toMatch(/Which day\?/);
-  });
 
   it("routes orientation-prose asks to the overview prompt instead", () => {
     expect(BODY).toMatch(/leadbay_prospecting_overview/);
@@ -296,7 +251,7 @@ describe("audit: getting-started walkthrough", () => {
   it("the three endings are mutually exclusive and each is complete", () => {
     // The failure mode is picking the wrong one, so each must be named where
     // the agent decides, not buried in prose.
-    expect(BODY).toMatch(/## ENDING A — they finished all six gates/);
+    expect(BODY).toMatch(/## ENDING A — they finished all four gates/);
     expect(BODY).toMatch(/## ENDING B — they picked `I'm done for now`/);
     expect(BODY).toMatch(/## ENDING C — they typed something off-script/);
     // Endings A and B share the cheat-sheet + link; only B carries the offer.

@@ -2,16 +2,13 @@
 // (issue leadbay/product#3952, "Tool to help people getting started").
 //
 // The change: a new `leadbay_getting_started` prompt + composite tool ship a
-// six-gate walkthrough. Each gate presents ONE way forward plus an exit (two
+// four-gate walkthrough. Each gate presents ONE way forward plus an exit (two
 // options — a lone option is rejected by the host widget and degrades to
 // prose), so a brand-new user learns by doing:
 //   gate 1  "Check my account"        → leadbay_account_status (no args)
 //   gate 2  "Pull today's leads"      → leadbay_pull_leads (no args)
 //   gate 3  "Draft the first email"   → leadbay_prepare_outreach (leadId ONLY = free)
 //   gate 4  "Find who to email"       → leadbay_enrich_titles (NO titles = free)
-//   gate 5  "Add these to my CRM"     → no Leadbay tool; the AGENT's own CRM
-//                                       connector (Leadbay has no CRM integration)
-//   gate 6  "Run this every morning"  → no Leadbay tool; the host's scheduler
 //
 // Gate 1 doubles as a regression probe: this org's quota_status 401s (a
 // brand-new account with no billing plan), so the run also proves the tour
@@ -86,7 +83,7 @@ const aiResponses = (leadId: string) => ({
 });
 
 export const SCENARIO = {
-  name: "getting-started-completes-five-gates",
+  name: "getting-started-completes-all-gates",
   prompt: "leadbay_getting_started",
   tier: "gate",
   args: {},
@@ -222,7 +219,7 @@ export const SCENARIO = {
       "did NOT send the drafted email or offer to send it",
       "at gate 4 ran the free preview first and stated the cost before asking to confirm",
       "on the exit, closed with the cheat-sheet AND the 1:1 offer with the Calendly link",
-      "never claimed a CRM record or a scheduled task was created",
+      "did NOT reach for another tool to obtain contact details around gate 4's confirm, and claimed no phone or email it had not actually received",
     ],
     required_calls: [
       "leadbay_account_status",
@@ -239,7 +236,7 @@ export const SCENARIO = {
     forbidden_calls: ["leadbay_report_outreach"],
     render_checks: [
       { must_match: "calendly\\.com/zoe-leadbay/demo-leadbay" },
-      { must_not_match: "[Ss]cheduled task (has been )?created|I('ve| have) sent" },
+      { must_not_match: "I('ve| have) sent" },
     ],
   },
 };

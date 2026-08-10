@@ -3,15 +3,9 @@
 ## 0.28.0 — Guided first-run walkthrough
 
 - **New: "Walk me through Leadbay."** A brand-new user now learns Leadbay by
-  doing it, not by reading about it. Six steps, one button each: check which
+  doing it, not by reading about it. Four steps, one button each: check which
   account you're on, pull today's leads, get a first email drafted to the best
-  of them, find out who to send it to, put them in your CRM, then set the whole
-  thing to run every morning.
-- **Your CRM, via the connector you already have.** Leadbay doesn't integrate
-  with CRMs — but if you run a HubSpot, Salesforce, Pipedrive or Attio connector
-  alongside it, the assistant can use *that* to create the company and contact
-  for you. If you don't have one, it says so plainly and offers to pass the
-  request to the Leadbay team instead of pretending.
+  of them, and find out who to send it to.
 - **It writes the first email for you.** Leadbay already worked out why the top
   company fits, so step 3 drafts the opener instead of leaving you at a blank
   page. It drafts only — nothing is ever sent, and you see it first.

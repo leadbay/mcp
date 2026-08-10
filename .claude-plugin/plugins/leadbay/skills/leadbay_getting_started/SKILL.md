@@ -1,6 +1,6 @@
 ---
 name: leadbay_getting_started
-description: "Guided first-run walkthrough — six clicks that actually use Leadbay: check the account, pull today's leads, draft a first email to the top one, reveal who to send it to, push to the host's CRM connector, then run it every morning. Use when the user is new or asks to be SHOWN how Leadbay works (\"walk me through Leadbay\", \"I'm new\", \"how do I use this\", \"give me a tour\"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview."
+description: "Guided first-run walkthrough — four clicks that actually use Leadbay: check the account, pull today's leads, draft a first email to the top one, then reveal who to send it to. Use when the user is new or asks to be SHOWN how Leadbay works (\"walk me through Leadbay\", \"I'm new\", \"how do I use this\", \"give me a tour\"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview."
 ---
 
 
@@ -15,8 +15,8 @@ use this?", "getting started", "show me how Leadbay works", "give me a tour",
 
 This is a GUIDED WALKTHROUGH, not an explainer. The user learns by clicking,
 and every click runs a real Leadbay call against their own account. By the end
-they will have actually checked their account, pulled leads, seen who to
-contact, put them in their CRM, and set the whole thing up to run every morning.
+they will have actually checked their account, pulled leads, had a first email
+drafted to the best of them, and revealed the person to send it to.
 
 If the user wants orientation PROSE without doing anything — "explain how
 Leadbay works", "what's the difference between discovery and follow-up" —
@@ -139,16 +139,15 @@ message. In the user's own language, no jargon, cover:
 2. **How it knows what to send** — you describe who you sell to (that
    description is your **lens**), and it goes and finds companies matching it,
    getting sharper as you engage with what it sends.
-3. **What this walkthrough will do** — six quick steps, each a real action on
+3. **What this walkthrough will do** — four quick steps, each a real action on
    their own account, ending with leads in hand, a first email already written,
-   the person to send it to, and the whole thing running by itself each
-   morning.
+   and the person to send it to.
 4. **One line handing off to the first step** — e.g. "First, let's see which
    account you're on."
 
 Then **fire GATE 1's widget immediately, in the same message**, and stop.
 
-Keep it to a paragraph. Do NOT walk through the six steps one at a time here
+Keep it to a paragraph. Do NOT walk through the four steps one at a time here
 — each gate explains itself when its turn arrives, and turning the opening
 into a syllabus buries the first button under text nobody reads.
 
@@ -495,77 +494,7 @@ numbers stop being abstract, because they just watched them move and got
 something for it. Don't turn it into a pricing pitch.
 
 If they decline the reveal, that's fine — keep the draft and the title, and
-move on to GATE 5 without pushing.
-
-# GATE 5 — "Add these to my CRM"
-
-**Explain first — teach the split.** Leadbay finds the leads; their CRM is
-where they'll actually work them. If a CRM connector is available in this chat,
-these companies can go straight in.
-
-**Why it's useful:** no copy-pasting company names between two tabs, and the
-leads land where their pipeline, their reminders and their team already live —
-so a lead found here doesn't quietly die in a chat window.
-
-Don't promise it works until you've checked your own tool set.
-
-**Then fire the widget** — question `Want these leads in your CRM?`, first option labelled `Add these to my CRM`, description `Put these leads into your CRM, if a connector is available here.` Second option: `I'm done for now` / `Stop the walkthrough here.` **Wait for the click.**
-
-**Call no Leadbay tool for this step.** Leadbay has no CRM integration — it
-cannot push, export, or sync a lead anywhere. But YOU may be able to: many
-users run a CRM connector alongside Leadbay in the same host, and that
-connector is yours to call.
-
-So: **check your own tool set for a CRM capability** — HubSpot, Salesforce,
-Pipedrive, Attio, Close, or any similar CRM server. This is the same detection
-you already do for outreach tooling: read the host's installed-connector /
-installed-MCP inventory when it's available, otherwise infer from the
-conversation, otherwise ask the user which CRM they use.
-
-**If you have one**, use it to create or update the company and its contact
-from the lead data already in hand. Pass what Leadbay gave you and nothing
-invented: company name, website, city/region, the contact's name and job
-title — plus any emails or phones the enrichment actually returned at GATE 4.
-If the user declined the paid reveal, you have NO contact details: never write
-one you did not receive. If the connector supports a note or activity field,
-put the GATE 3 draft there too, so the email they just wrote travels with the
-record instead of being stranded in this chat. Report back what the
-connector actually returned, per CRM record.
-
-**If you have no CRM connector**, say so in one honest line, name which CRM
-the user mentioned so the answer is theirs and not generic, and offer to pass
-the request to the Leadbay team via `leadbay_report_friction` with
-`category: "missing_capability"` — that is the real route for "I want my leads
-in <CRM>". Do not describe a connector the user does not have as though they
-could use it right now.
-
-**Never claim a CRM record was created** unless the connector confirmed it.
-Only the connector can create one — Leadbay cannot, and neither can a
-description of the intent.
-
-# GATE 6 — "Run this every morning"
-
-**Explain first — close the loop.** Prospecting works when it's a habit, not a
-one-off. The whole sequence they just ran can happen on its own every morning.
-
-**Why it's useful:** prospecting is the first thing that slips on a busy week.
-This removes the part that depends on remembering — the leads are simply there
-when they open their laptop, the way an inbox is.
-
-**Then fire the widget** — question `Want this to run on its own every morning?`, first option labelled `Run this every morning`, description `Set this up to run automatically every morning.` Second option: `I'm done for now` / `Stop the walkthrough here.` **Wait for the click.**
-
-**Call no Leadbay tool for this step.** Leadbay has no scheduling API, and
-there is no `leadbay_*` tool that creates a scheduled task. What this gate does
-is hand control to YOUR host's own scheduling flow.
-
-When the user selects this option, follow your host's scheduled-task flow from
-the server instructions (it asks frequency, then time, then confirms). Do NOT
-re-ask those questions yourself — that would put two competing scheduling flows
-in one conversation. Name the task concretely, e.g. "Daily prospecting
-check-in".
-
-If your host exposes no scheduler at all, say so honestly in one line. Either
-way: **never claim a scheduled task was created.** Only the host can create one.
+let it go without pushing — the tour is done either way.
 
 # HOW THE TOUR ENDS — THREE ENDINGS, PICK THE RIGHT ONE
 
@@ -577,7 +506,7 @@ that one in full, in the order written.
 telling the user what to *type*, they learned to click through a tutorial and
 nothing about using Leadbay tomorrow. That is what the cheat-sheet is for.
 
-## ENDING A — they finished all six gates
+## ENDING A — they finished all four gates
 
 1. Render the `keep_going` cheat-sheet (below).
 2. Then the setup-guide link (below).
@@ -630,7 +559,7 @@ wording — plain language works, and this is just a starting point.
 
 ## The setup guide (endings A and B)
 
-One plain link, for the things the six gates didn't cover — installing Leadbay
+One plain link, for the things the four gates didn't cover — installing Leadbay
 on another machine, adding a teammate, signing back in later:
 <https://docs.leadbay.app/doc/leadbay-mcp/quickstart>
 
