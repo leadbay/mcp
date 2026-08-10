@@ -356,6 +356,22 @@ describe("leadbay_getting_started", () => {
     expect(note).toMatch(/NEVER paste it between gates/i);
   });
 
+  it("offers a 1:1 when the user takes the exit, and only then", () => {
+    // Going quiet on the exit wastes the goodwill the tour just earned: they
+    // stopped right before the setup work a call actually helps with. But the
+    // offer is scoped — mid-tour, or on top of an off-script question, the
+    // same link is an interruption.
+    expect(GETTING_STARTED_MANIFEST.calendly_url).toMatch(/^https:\/\/calendly\.com\//);
+    const offer = GETTING_STARTED_MANIFEST.exit_offer;
+    expect(offer).toMatch(/I'm done for now/);
+    expect(offer).toMatch(/ONE short, warm line/i);
+    // It must not become a pitch, or a lever to restart the tour.
+    expect(offer).toMatch(/Do NOT re-open the walkthrough/i);
+    expect(offer).toMatch(/never a pitch|an offer they can ignore/i);
+    // Typed-exit is a different case: serve the real question, drop the link.
+    expect(offer).toMatch(/TYPING something off-script/i);
+  });
+
   it("the tour drafts an email but never sends one", () => {
     // Narrowed deliberately when gate 3 landed: DRAFTING is the whole point of
     // that gate and nothing leaves the chat, but sending — and logging an

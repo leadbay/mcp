@@ -1764,6 +1764,7 @@ A first-run user doesn't yet know enough to choose between PATHS — a menu of a
 \`\`\`
 {
   version, intro, one_option_rule, docs_url, docs_note,
+  calendly_url, exit_offer,
   steps: [ { n, gate_label, gate_description, calls, args, ... } ],
   keep_going, stop
 }
@@ -1781,6 +1782,8 @@ Per step: \`gate_label\` / \`gate_description\` are the widget's forward option,
 | 6 | Run this every morning | *nothing* — hands off to the host's scheduler |
 
 Steps 1, 2 and 3 carry \`branches[]\`, steps 3 and 4 carry \`spend\` (+ \`quota_note\` on 4), and steps 5–6 carry \`handoff\` prose instead of \`args\`. Every step also carries \`explain\` (say this BEFORE firing) and \`next_steps\` (\`{question, options[]}\` — already the widget's shape, map it verbatim).
+
+When the user picks \`I'm done for now\`, don't just go quiet — **\`exit_offer\`** says what to do: one short line offering a 1:1 with Zoe (lens tuning, CRM wiring, automating the daily run) plus **\`calendly_url\`**, then stop. One sentence and the link, never a pitch, never a re-opened gate. Only on the EXIT click: if they left by *typing* a different request, skip it and serve what they asked.
 
 The manifest also carries **\`keep_going\`**: the closing cheat-sheet of *what you want → what you say*. The buttons vanish when the tour ends, so render these rows as a small two-column table at the finish, phrases **verbatim**. Each one is lifted from that tool's own trigger list, so it genuinely routes — inventing or prettifying a phrase teaches the user something that won't work. Add \`docs_url\` beneath it as one plain link, for what the gates didn't cover.
 

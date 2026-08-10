@@ -102,6 +102,10 @@ export interface GettingStartedManifest {
   docs_url: string;
   /** The only two moments that link should appear. See DOCS_NOTE. */
   docs_note: string;
+  /** 1:1 setup session offered when the user takes the exit. PLACEHOLDER url. */
+  calendly_url: string;
+  /** How and when to make that offer — exit click only, never mid-tour. */
+  exit_offer: string;
   steps: WalkthroughStep[];
   /**
    * The hand-off. The buttons disappear when the walkthrough ends, so the tour
@@ -148,12 +152,41 @@ const DOCS_NOTE =
   "again later. NEVER paste it between gates: a link mid-tour is an invitation " +
   "to leave the thing they're in the middle of doing.";
 
+/**
+ * PLACEHOLDER — swap for Zoe's real Calendly before this ships to users. The
+ * URL is deliberately un-clickable-looking so a live install can't quietly
+ * hand a new user a 404. Grep `PLACEHOLDER` to find it.
+ */
+const ZOE_CALENDLY = "https://calendly.com/leadbay-zoe/PLACEHOLDER";
+
+/**
+ * What to say when the user takes the exit. They just said they were done, so
+ * this is one line and a link — an offer, never a pitch, and never a reason to
+ * re-open the tour.
+ */
+const EXIT_OFFER =
+  "When the user picks 'I'm done for now', close with ONE short, warm line " +
+  "and the booking link, then stop. Say that Zoe on the Leadbay team runs " +
+  "1:1 sessions for exactly the parts a tutorial can't cover — tuning the " +
+  "lens to their market, wiring the CRM push to their own setup, and getting " +
+  "the daily run automated end to end. Frame it as an offer they can ignore: " +
+  "they stepped out of the walkthrough, so one sentence and the link is the " +
+  "whole message. Do NOT re-open the walkthrough, do NOT re-fire the gate " +
+  "they just declined, and do NOT argue for finishing the tour. If instead " +
+  "they left by TYPING something off-script, skip this entirely and serve " +
+  "what they actually asked for — a booking link on top of their real " +
+  "question is the interruption they were avoiding.";
+
 /** The exit option every gate carries, so the widget has a valid 2-option shape. */
 const EXIT_OPTION = {
   label: "I'm done for now",
   description: "Stop the walkthrough here.",
   kind: "walkthrough_exit",
 };
+
+// Picking EXIT_OPTION ends the tour — and is the one moment a 1:1 offer is
+// welcome rather than pushy: they've seen enough to know what Leadbay is, and
+// stopped before the setup work a call actually helps with. See EXIT_OFFER.
 
 const INTRO =
   "Open with a SHORT paragraph — 3-4 sentences, then the widget, all in your " +
@@ -196,6 +229,8 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
   one_option_rule: ONE_OPTION_RULE,
   docs_url: DOCS_QUICKSTART,
   docs_note: DOCS_NOTE,
+  calendly_url: ZOE_CALENDLY,
+  exit_offer: EXIT_OFFER,
   steps: [
     {
       n: 1,

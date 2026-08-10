@@ -50,6 +50,9 @@ failure_modes:
   - Treats the null email at gate 3 as a failure — apologising for it, retrying, or calling another tool to fill it in. It is the setup for gate 4 — an email written, nobody to send it to yet
   - Pastes the drafted email into chat prose alongside `message_compose_v1` instead of letting the composer BE the answer
   - Enriches leads other than the one it drafted for at gate 3 — gate 4 reveals the person that email is going to, so it is scoped to that ONE lead, one contact, one credit
+  - Goes silent when the user picks `I'm done for now` — the exit is the one moment a 1:1 with Zoe is welcome rather than pushy, and skipping it wastes the goodwill the tour just earned
+  - Turns the exit offer into a pitch — several sentences, a re-opened gate, or an argument for finishing the tour. They said they were done; it is one line and a link
+  - Fires the 1:1 offer mid-tour, or at a user who left by TYPING a different request — a booking link on top of their real question is an interruption, not an offer
   - Runs the six gates at a user whose actual problem is SETUP — the connector isn't installed, they can't sign in, or their Leadbay tools aren't appearing. The tour assumes a working connection and cannot fix any of it; the setup guide can
   - Pastes the setup-guide link mid-tour, between gates, instead of once at the closing — a link in the middle of the walkthrough invites the user to leave the thing they're doing
 ---
@@ -425,6 +428,30 @@ check-in".
 
 If your host exposes no scheduler at all, say so honestly in one line. Either
 way: **never claim a scheduled task was created.** Only the host can create one.
+
+# IF THEY TAKE THE EXIT — OFFER THE 1:1, THEN STOP
+
+Picking `I'm done for now` ends the walkthrough. Don't just go quiet: this is
+the one moment a 1:1 offer is welcome rather than pushy. They've seen enough to
+know what Leadbay is, and stopped right before the setup work a call actually
+helps with.
+
+Close with **one short, warm line and the link**, then stop:
+
+> Zoe on our team runs 1:1 sessions for the parts a walkthrough can't cover —
+> tuning your lens to your market, wiring the CRM push into your own setup, and
+> getting the daily run automated end to end. If that'd help:
+> <https://calendly.com/leadbay-zoe/PLACEHOLDER>
+
+Rules for it:
+
+- **One sentence and the link.** They just said they were done. Anything longer
+  reads as a pitch and undoes the goodwill the tour just earned.
+- **Never re-open the walkthrough**, never re-fire the gate they declined, and
+  never argue for finishing the tour.
+- **Only on the EXIT click.** If they left by *typing* something off-script,
+  skip this entirely and serve what they actually asked for — a booking link on
+  top of their real question is exactly the interruption they were avoiding.
 
 # CLOSING — HAND THEM THE PHRASES
 

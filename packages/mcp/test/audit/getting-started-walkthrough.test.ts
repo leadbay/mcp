@@ -275,6 +275,17 @@ describe("audit: getting-started walkthrough", () => {
     expect(BODY).toMatch(/one\s*\n?\s*contact, one credit/i);
   });
 
+  it("the exit offers Zoe's 1:1, using the manifest's URL", () => {
+    // Prompt and manifest are two renderings of one offer — pin the link
+    // against the manifest so a reworded prompt can't ship a different one.
+    expect(BODY).toContain(GETTING_STARTED_MANIFEST.calendly_url);
+    expect(BODY).toMatch(/IF THEY TAKE THE EXIT/);
+    expect(BODY).toMatch(/One sentence and the link/i);
+    expect(BODY).toMatch(/Never re-open the walkthrough/i);
+    // Scoped to the EXIT click — a typed request gets served, not sold to.
+    expect(BODY).toMatch(/Only on the EXIT click/i);
+  });
+
   it("routes SETUP problems to the docs, and uses the manifest's URL", () => {
     // The third routing branch, alongside overview-prose. A user who can't sign
     // in or whose tools aren't appearing is upstream of gate 1, and no gate can
