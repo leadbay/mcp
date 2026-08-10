@@ -153,19 +153,6 @@ function buildScoringParagraph(has: (name: string) => boolean): string {
   return base;
 }
 
-// First-run routing (issue leadbay/product#3952). The walkthrough is listed in
-// the prompt catalog, but a bare listing ~10k chars into the instructions does
-// not make the agent CHOOSE it: on a live "Walk me through Leadbay" the agent
-// improvised its own overview instead. This line is the binding — it names the
-// phrasings and says invoke the prompt rather than writing your own tour.
-const FIRST_RUN_ROUTING =
-  "FIRST RUN — when the user asks to be SHOWN how Leadbay works (\"walk me through Leadbay\", " +
-  "\"I'm new\", \"how do I use this\", \"getting started\", \"give me a tour\", \"I just installed this\"), " +
-  "invoke the `leadbay_getting_started` prompt via `prompts/get` and follow it. Do NOT improvise your " +
-  "own overview, tour, or summary of the product — it ships a five-gate walkthrough where each gate is " +
-  "a single-option choice widget the user clicks, so they learn by doing. Writing your own prose tour " +
-  "instead replaces the thing they asked for with a lecture.";
-
 function buildStartHereParagraph(has: (name: string) => boolean): string {
   const base =
     "Start with leadbay_account_status to see the user's state, then leadbay_pull_leads to surface fresh leads. " +
@@ -358,9 +345,6 @@ export function buildServerInstructions(exposed: Set<string>): string {
   // to the user (product#3761). The error is transient and already auto-retried.
   parts.push(TRANSIENT_401);
   parts.push(buildScoringParagraph(has));
-  // Ahead of the generic "start here" flow: a first-run user asking to be shown
-  // around must land on the walkthrough, not on account_status + pull_leads.
-  parts.push(FIRST_RUN_ROUTING);
   parts.push(buildStartHereParagraph(has));
   parts.push(buildRhythmParagraph(has));
   const updateParagraph = buildUpdateAvailableParagraph(has);

@@ -1,27 +1,5 @@
 # Changelog
 
-## 0.28.0 — Guided first-run walkthrough
-
-- **New: "Walk me through Leadbay."** A brand-new user now learns Leadbay by
-  doing it, not by reading about it. Four steps, one button each: check which
-  account you're on, pull today's leads, get a first email drafted to the best
-  of them, and find out who to send it to.
-- **It writes the first email for you.** Leadbay already worked out why the top
-  company fits, so step 3 drafts the opener instead of leaving you at a blank
-  page. It drafts only — nothing is ever sent, and you see it first.
-- **One way forward per step, on purpose.** A first-run user doesn't yet know
-  enough to pick from a menu, so each step offers exactly one next move plus a
-  way out. You can always type instead — say anything off-script and the
-  walkthrough steps aside.
-- **Nothing is spent without your say-so.** Drafting is free, and so is the
-  preview of *which* roles you could contact. Revealing an actual email or phone
-  number is a separate step that tells you the cost before you decide.
-- **An empty first batch is explained, not reported as failure.** A new lens
-  takes about a minute to compute its first wishlist; the walkthrough says so and
-  offers to re-pull instead of announcing "no leads".
-- Available as the `leadbay_getting_started` prompt (and slash command) or via
-  the matching tool when you just ask how to get started.
-
 ## 0.27.0 — 2026-07-31 — Consent-gated problem reporting
 
 - **`leadbay_report_friction` now asks before it reports.** Previously the agent
