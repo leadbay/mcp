@@ -364,12 +364,17 @@ describe("leadbay_getting_started", () => {
     expect(GETTING_STARTED_MANIFEST.calendly_url).toMatch(/^https:\/\/calendly\.com\//);
     const offer = GETTING_STARTED_MANIFEST.exit_offer;
     expect(offer).toMatch(/I'm done for now/);
-    expect(offer).toMatch(/ONE short, warm line/i);
+    // The ORDER is the fix for the observed failure: an agent that renders the
+    // cheat-sheet feels finished and stops, so the offer never lands. It is
+    // beat 3 of 3, it is REQUIRED, and it goes last.
+    expect(offer).toMatch(/THREE beats/i);
+    expect(offer).toMatch(/LAST, and REQUIRED/i);
+    expect(offer).toMatch(/WITHOUT the offer is\s+incomplete/i);
     // It must not become a pitch, or a lever to restart the tour.
-    expect(offer).toMatch(/Do NOT re-open the walkthrough/i);
-    expect(offer).toMatch(/never a pitch|an offer they can ignore/i);
-    // Typed-exit is a different case: serve the real question, drop the link.
-    expect(offer).toMatch(/TYPING something off-script/i);
+    expect(offer).toMatch(/Never re-open the walkthrough/i);
+    expect(offer).toMatch(/reads as a\s+pitch/i);
+    // Typed-exit is a different ending: serve the question, drop all of it.
+    expect(offer).toMatch(/ENDING C, not B/i);
   });
 
   it("the tour drafts an email but never sends one", () => {

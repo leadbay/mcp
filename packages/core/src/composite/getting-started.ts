@@ -166,17 +166,21 @@ const ZOE_CALENDLY = "https://calendly.com/zoe-leadbay/demo-leadbay";
  * re-open the tour.
  */
 const EXIT_OFFER =
-  "When the user picks 'I'm done for now', close with ONE short, warm line " +
-  "and the booking link, then stop. Say that Zoe on the Leadbay team runs " +
-  "1:1 sessions for exactly the parts a tutorial can't cover — tuning the " +
-  "lens to their market, wiring the CRM push to their own setup, and getting " +
-  "the daily run automated end to end. Frame it as an offer they can ignore: " +
-  "they stepped out of the walkthrough, so one sentence and the link is the " +
-  "whole message. Do NOT re-open the walkthrough, do NOT re-fire the gate " +
-  "they just declined, and do NOT argue for finishing the tour. If instead " +
-  "they left by TYPING something off-script, skip this entirely and serve " +
-  "what they actually asked for — a booking link on top of their real " +
-  "question is the interruption they were avoiding.";
+  "Picking 'I'm done for now' is ENDING B, and it has THREE beats in order: " +
+  "(1) one short line acknowledging the stop, (2) the keep_going cheat-sheet " +
+  "and the docs_url link, (3) the 1:1 offer — LAST, and REQUIRED. Beat 3 is " +
+  "the one that gets dropped: an agent that renders the cheat-sheet feels " +
+  "finished and stops, so the user who just stepped out never hears about the " +
+  "help that would have brought them back. An exit close WITHOUT the offer is " +
+  "incomplete. Say it in one sentence and give calendly_url: Zoe on the " +
+  "Leadbay team runs 1:1 sessions for the parts a walkthrough can't cover — " +
+  "tuning the lens to their market, wiring the CRM push into their own setup, " +
+  "and getting the daily run automated end to end. Keep it to that one " +
+  "sentence: they just said they were done, so anything longer reads as a " +
+  "pitch. Never re-open the walkthrough, never re-fire the declined gate, and " +
+  "never argue for finishing the tour. If they instead left by TYPING " +
+  "something off-script that is ENDING C, not B — serve what they asked and " +
+  "skip the cheat-sheet, the link AND the offer.";
 
 /** The exit option every gate carries, so the widget has a valid 2-option shape. */
 const EXIT_OPTION = {

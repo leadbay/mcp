@@ -152,7 +152,7 @@ describe("audit: getting-started walkthrough", () => {
   it("the prompt closes by teaching the phrases, and every row is in the body", () => {
     // The buttons vanish with the tour. A walkthrough that ends without telling
     // the user what to TYPE taught them to click a tutorial, not use Leadbay.
-    expect(BODY).toMatch(/buttons disappear when this walkthrough ends/i);
+    expect(BODY).toMatch(/buttons disappear when the walkthrough ends/i);
     expect(BODY).toMatch(/keep_going/);
     for (const row of GETTING_STARTED_MANIFEST.keep_going) {
       expect(BODY, `cheat-sheet phrase "${row.say}" missing from prompt`).toContain(row.say);
@@ -279,11 +279,29 @@ describe("audit: getting-started walkthrough", () => {
     // Prompt and manifest are two renderings of one offer — pin the link
     // against the manifest so a reworded prompt can't ship a different one.
     expect(BODY).toContain(GETTING_STARTED_MANIFEST.calendly_url);
-    expect(BODY).toMatch(/IF THEY TAKE THE EXIT/);
+    // ONE section owns how the tour ends, with three named endings. The bug
+    // this replaced: a separate exit section competing with a CLOSING section,
+    // so the agent rendered the cheat-sheet, felt finished, and never made the
+    // offer (observed live at gate 2).
+    expect(BODY).toMatch(/HOW THE TOUR ENDS — THREE ENDINGS/);
+    expect(BODY).toMatch(/This is the ONLY place that says what to do when the\s*\n?\s*walkthrough stops/i);
+    // Ending B must state that the offer is required AND last.
+    expect(BODY).toMatch(/The 1:1 offer — REQUIRED, and it goes last/i);
     expect(BODY).toMatch(/One sentence and the link/i);
     expect(BODY).toMatch(/Never re-open the walkthrough/i);
-    // Scoped to the EXIT click — a typed request gets served, not sold to.
-    expect(BODY).toMatch(/Only on the EXIT click/i);
+    // Ending C gets none of it — their real question is the answer.
+    expect(BODY).toMatch(/No cheat-sheet, no setup link, no 1:1\s*\n?\s*offer/i);
+  });
+
+  it("the three endings are mutually exclusive and each is complete", () => {
+    // The failure mode is picking the wrong one, so each must be named where
+    // the agent decides, not buried in prose.
+    expect(BODY).toMatch(/## ENDING A — they finished all six gates/);
+    expect(BODY).toMatch(/## ENDING B — they picked `I'm done for now`/);
+    expect(BODY).toMatch(/## ENDING C — they typed something off-script/);
+    // Endings A and B share the cheat-sheet + link; only B carries the offer.
+    expect(BODY).toMatch(/## The cheat-sheet \(endings A and B\)/);
+    expect(BODY).toMatch(/## The setup guide \(endings A and B\)/);
   });
 
   it("routes SETUP problems to the docs, and uses the manifest's URL", () => {

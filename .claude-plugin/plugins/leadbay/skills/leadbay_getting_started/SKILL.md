@@ -567,36 +567,48 @@ check-in".
 If your host exposes no scheduler at all, say so honestly in one line. Either
 way: **never claim a scheduled task was created.** Only the host can create one.
 
-# IF THEY TAKE THE EXIT — OFFER THE 1:1, THEN STOP
+# HOW THE TOUR ENDS — THREE ENDINGS, PICK THE RIGHT ONE
 
-Picking `I'm done for now` ends the walkthrough. Don't just go quiet: this is
-the one moment a 1:1 offer is welcome rather than pushy. They've seen enough to
-know what Leadbay is, and stopped right before the setup work a call actually
-helps with.
+This is the ONLY place that says what to do when the walkthrough stops. There
+is no other closing section: work out which of these three happened, then do
+that one in full, in the order written.
 
-Close with **one short, warm line and the link**, then stop:
+**The buttons disappear when the walkthrough ends.** If it stops without
+telling the user what to *type*, they learned to click through a tutorial and
+nothing about using Leadbay tomorrow. That is what the cheat-sheet is for.
+
+## ENDING A — they finished all six gates
+
+1. Render the `keep_going` cheat-sheet (below).
+2. Then the setup-guide link (below).
+
+## ENDING B — they picked `I'm done for now`
+
+**All three beats, in this order. The offer is the LAST thing you say.**
+
+1. One short line acknowledging the stop — "No problem, we'll leave it there."
+2. The `keep_going` cheat-sheet, then the setup-guide link (below).
+3. **The 1:1 offer — REQUIRED, and it goes last.** Ending B without it is
+   incomplete: they stopped right before the setup work a call actually helps
+   with, which makes this the one moment the offer is welcome rather than
+   pushy. Say, in your own words, one sentence and the link:
 
 > Zoe on our team runs 1:1 sessions for the parts a walkthrough can't cover —
 > tuning your lens to your market, wiring the CRM push into your own setup, and
 > getting the daily run automated end to end. If that'd help:
 > <https://calendly.com/zoe-leadbay/demo-leadbay>
 
-Rules for it:
+   Keep it to **one sentence and the link**. Never re-open the walkthrough,
+   never re-fire the gate they just declined, and never argue for finishing the
+   tour.
 
-- **One sentence and the link.** They just said they were done. Anything longer
-  reads as a pitch and undoes the goodwill the tour just earned.
-- **Never re-open the walkthrough**, never re-fire the gate they declined, and
-  never argue for finishing the tour.
-- **Only on the EXIT click.** If they left by *typing* something off-script,
-  skip this entirely and serve what they actually asked for — a booking link on
-  top of their real question is exactly the interruption they were avoiding.
+## ENDING C — they typed something off-script
 
-# CLOSING — HAND THEM THE PHRASES
+Serve what they actually asked for. **No cheat-sheet, no setup link, no 1:1
+offer** — they're already off doing what they wanted, and any of it on top of
+their real question is exactly the interruption they were avoiding.
 
-**The buttons disappear when this walkthrough ends.** If the tour stops without
-telling the user what to *type*, they learned to click through a tutorial and
-nothing about using Leadbay tomorrow. So close every completed walkthrough with
-a short cheat-sheet: what they want → what they say.
+## The cheat-sheet (endings A and B)
 
 Render the manifest's `keep_going` rows as a compact two-column markdown table,
 titled something like **"Next time, just ask"**. Keep the phrases VERBATIM —
@@ -616,17 +628,14 @@ something that sounds nicer but doesn't match.
 Add one closing line in your own words: they don't need to remember exact
 wording — plain language works, and this is just a starting point.
 
-Then hand them the **setup guide** as one plain link, for the things the six
-gates didn't cover — installing Leadbay on another machine, adding a teammate,
-signing back in later:
+## The setup guide (endings A and B)
+
+One plain link, for the things the six gates didn't cover — installing Leadbay
+on another machine, adding a teammate, signing back in later:
 <https://docs.leadbay.app/doc/leadbay-mcp/quickstart>
 
 **Once, here, and nowhere else.** Never drop that link between gates: a link
 mid-tour is an invitation to leave the thing they're in the middle of doing.
-
-Show this cheat-sheet **once**, at the end. If the user abandons the
-walkthrough early (they typed something off-script), skip it — they're already
-off doing what they wanted, and a tutorial summary would interrupt.
 
 # STOP
 
