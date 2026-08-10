@@ -72,6 +72,13 @@ export interface LiveSessionOpts {
   token?: string;
   /** Leadbay region ("us" or "fr"). Falls back to LEADBAY_REGION env var, then "us". */
   region?: string;
+  /**
+   * Block credit-spending endpoints inside the spawned server (see
+   * live-mcp-server.ts `withSpendGuard`). Set by scenarios whose whole point is
+   * that nothing may be spent: this runner hits the real API, so a regression
+   * would otherwise be paid for in real credits.
+   */
+  noSpend?: boolean;
 }
 
 export interface LiveSessionResult {
@@ -112,6 +119,7 @@ function writeMcpConfig(
   token: string,
   region: string,
   bulkStorePath: string,
+  noSpend: boolean,
 ): string {
   const configPath = join(tmpDir, "mcp-config.json");
   const tsxBin = findTsx();
@@ -130,6 +138,9 @@ function writeMcpConfig(
           // falls back to a per-process path. Keyed on session_id → stable
           // across the session's turns, isolated from other sessions.
           LEADBAY_BULK_STORE_PATH: bulkStorePath,
+          // Consent scenarios: block the paid enrichment launch at the client
+          // boundary so a regression fails the run instead of billing credits.
+          ...(noSpend ? { EVAL_NO_SPEND: "1" } : {}),
         },
       },
     },
@@ -323,6 +334,43 @@ function renderFullLog(rawJsonlPath: string, outPath: string, opts: {
   writeFileSync(outPath, JSON.stringify(doc, null, 2), "utf8");
 }
 
+/**
+ * Flatten a `tool_result` block into `{ ok, text }`.
+ *
+ * A call counts as FAILED when the transport marks it (`is_error`) or when the
+ * payload is one of our own error envelopes — Leadbay tools return
+ * `{ error: true, code, message, hint }` with a 200, so transport success is not
+ * outcome success. Both must fail the record, or `required_calls` is satisfied
+ * by a call that returned BAD_INPUT.
+ */
+function readToolResult(block: Record<string, unknown>): { ok: boolean; text: string } {
+  const content = block["content"];
+  let text: string;
+  if (typeof content === "string") {
+    text = content;
+  } else if (Array.isArray(content)) {
+    text = (content as Array<Record<string, unknown>>)
+      .filter((b) => b["type"] === "text")
+      .map((b) => (b["text"] as string) ?? "")
+      .join("\n");
+  } else {
+    text = content === undefined ? "" : JSON.stringify(content);
+  }
+
+  if (block["is_error"] === true) return { ok: false, text };
+
+  // Error ENVELOPE inside a 200: {"error":true,"code":"BAD_INPUT",…}
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === "object" && (parsed as { error?: unknown }).error === true) {
+      return { ok: false, text };
+    }
+  } catch {
+    /* not JSON — fall through to ok */
+  }
+  return { ok: true, text };
+}
+
 function parseStreamLine(line: string): StreamEvent | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
@@ -350,6 +398,10 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
   const rawLogPath = join(opts.transcript_dir, `${session_id}.raw.jsonl`);
   const fullLogPath = join(opts.transcript_dir, `${session_id}.full.json`);
   const stderrLogPath = join(opts.transcript_dir, `${session_id}.stderr.txt`);
+
+  // tool_use_id → the record awaiting its tool_result. Spans the whole session:
+  // a result can land in a later stream chunk than the call that opened it.
+  const pendingResults = new Map<string, ToolCallRecord>();
 
   const transcriptLines: string[] = [];
   const appendTranscript = (entry: Record<string, unknown>) => {
@@ -419,7 +471,13 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
     // Session-scoped bulk-store file: stable across this session's per-turn
     // server processes (multi-turn launch→poll), isolated from other sessions.
     const bulkStorePath = join(homedir(), ".leadbay", `bulks.eval.${session_id}.json`);
-    const mcpConfigPath = writeMcpConfig(tmpDir, token, region, bulkStorePath);
+    const mcpConfigPath = writeMcpConfig(
+      tmpDir,
+      token,
+      region,
+      bulkStorePath,
+      opts.noSpend === true,
+    );
     const evalSettingsPath = writeEvalSettings(tmpDir);
 
     const modelFlag = opts.model ?? process.env.EVAL_MODEL;
@@ -597,9 +655,16 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
                 turn: userTurn,
                 name: bareName,
                 input: block.input,
+                // Provisional. The real outcome is only known when the matching
+                // `tool_result` arrives (see the "user" branch below), so the
+                // record is indexed by tool_use_id and patched there. Leaving it
+                // optimistic-and-never-updated is what let a call that failed
+                // with LAST_PROMPT_REQUIRED / BAD_INPUT still satisfy
+                // `required_calls` and reach the judge as a success.
                 output_summary: { ok: true, output_len: 0 },
                 duration_ms: 0,
               };
+              if (block.id) pendingResults.set(block.id, rec);
               evidence.tool_calls.push(rec);
               appendTranscript({
                 kind: "tool-call",
@@ -629,6 +694,41 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
               terminal_reason = "max_turns";
               sessionAborted = true; // whole-session budget hit — don't start later user turns
               proc.stdin.end();
+            }
+          }
+
+          // Tool results come back as `user` events carrying tool_result blocks.
+          // Patch the provisional record so downstream consumers — the
+          // mechanical required_calls/forbidden_calls prechecks and the LLM
+          // judge — see whether the call actually SUCCEEDED, not merely that it
+          // fired. A tool that errored must not satisfy a required call.
+          if (event.type === "user") {
+            const msg = (event as { message?: { content?: unknown } }).message;
+            const blocks = Array.isArray(msg?.content)
+              ? (msg.content as Array<Record<string, unknown>>)
+              : [];
+            for (const block of blocks) {
+              if (block["type"] !== "tool_result") continue;
+              const rec = pendingResults.get(block["tool_use_id"] as string);
+              if (!rec) continue;
+              const { ok, text } = readToolResult(block);
+              rec.output_summary = {
+                ok,
+                output_len: text.length,
+                sample: text.slice(0, 400),
+              };
+              appendTranscript({
+                kind: "tool-result",
+                turn: userTurn,
+                name: rec.name,
+                ok,
+                output_len: text.length,
+              });
+              if (verbose && !ok) {
+                process.stderr.write(
+                  `${yellow(`  ✗ ${rec.name} failed`)} ${gray(text.slice(0, 200))}\n`,
+                );
+              }
             }
           }
 

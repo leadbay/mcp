@@ -295,6 +295,15 @@ from the lead's summary — so the draft reads as reasoned rather than generated
 
 # GATE 4 — "Find who to email"
 
+**FIRST, check your own tool set for `leadbay_enrich_titles` and
+`leadbay_bulk_enrich_status`.** This walkthrough is exposed even on a read-only
+connection (`LEADBAY_MCP_WRITE=0`), where those two are filtered out and the
+reveal cannot happen. If either is missing: do **not** announce this gate, do
+**not** fire its widget, and do **not** offer a button that dies on the click.
+Say in one honest line that revealing contacts is switched off on this
+connection and whoever set it up can enable it — then go straight to ENDING A.
+Three gates that all worked beats four with a dead button.
+
 **Explain first — point at the gap the draft just opened.** They have an email
 ready and nobody to send it to: it's addressed to a job title, not a person.
 That's what this step fixes. Leadbay can find *which roles* exist at that
@@ -333,9 +342,15 @@ contact, one credit**. Then ask them to confirm.
 "they clicked the gate earlier" — the gate click bought the free look, not the
 reveal.
 
-Once confirmed, call `leadbay_enrich_titles` AGAIN with that `leadId`, the
-chosen `titles`, `confirm: true` and `email: true`. That's the real, paid
+Once confirmed, call `leadbay_enrich_titles` AGAIN with `leadIds` = **the same
+one-element array you used in BEAT 1** (`leadIds: ["<the GATE 3 lead id>"]`),
+the chosen `titles`, `confirm: true` and `email: true`. That's the real, paid
 reveal.
+
+**The key is `leadIds`, an array — never a singular `leadId`.** The tool reads
+`leadIds` only; an unrecognised key is dropped, and with no `leadIds` it falls
+back to the top of the wishlist. That would spend on several leads instead of
+the one you drafted for.
 
 It returns a `bulk_id` and runs async — poll `leadbay_bulk_enrich_status`
 with that id (`include_contacts=true`) until `all_done`, or until the resolved
@@ -385,7 +400,8 @@ nothing about using Leadbay tomorrow. That is what the cheat-sheet is for.
 
    Keep it to **one sentence and the link**. Never re-open the walkthrough,
    never re-fire the gate they just declined, and never argue for finishing the
-   tour.
+   tour. **Do not append the stop line here** — the tour is over, there is no
+   decision pending, and the offer is the last thing they see (see STOP).
 
 ## ENDING C — they typed something off-script
 
@@ -429,5 +445,16 @@ one. The draft stays in the chat for the user to read and judge; nothing
 leaves. Never send it, never offer to send it on their behalf, and never call
 `leadbay_report_outreach` — logging an outreach that never happened poisons the
 human team's pipeline.
+
+## Where the stop line applies
+
+The verbatim stop line below closes **every GATE hand-back** — you fired a gate
+widget and are waiting for the click. That is the only place it belongs.
+
+It does **NOT** apply to the three endings: the walkthrough is over there, so no
+decision is pending. At ENDING B in particular the 1:1 offer is required to be
+the last line, and appending the stop line under it would displace the offer —
+the exact failure this prompt was already fixed for once. Ending A closes on the
+setup link, ending C on the answer to what they actually asked.
 
 {{include:gates/stop-and-wait}}

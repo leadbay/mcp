@@ -84,6 +84,18 @@ export interface WalkthroughStep {
   branches?: Array<{ when: string; then: string }>;
   /** Extra handling notes for steps with no tool call. */
   handoff?: string;
+  /**
+   * Tools this step CANNOT run without. This walkthrough ships in
+   * compositeReadTools, so it is exposed even on a read-only deployment
+   * (LEADBAY_MCP_WRITE=0) where the write composites are filtered out — gate 4's
+   * leadbay_enrich_titles is one of them. The agent checks its OWN tool set
+   * against this list BEFORE announcing the gate, and applies `unavailable`
+   * when any of them is missing, so the tour never offers a button it cannot
+   * honour.
+   */
+  requires_tools?: string[];
+  /** What to do instead when a `requires_tools` entry is not exposed. */
+  unavailable?: string;
 }
 
 /** One row of the closing cheat-sheet: what the user wants → what they type. */
@@ -403,6 +415,16 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         leadIds: "<the ONE lead you drafted for at step 3>",
         lensId: "<the pinned lens id from step 2>",
       },
+      requires_tools: ["leadbay_enrich_titles", "leadbay_bulk_enrich_status"],
+      unavailable:
+        "Check your own tool set for these BEFORE you say anything about this " +
+        "gate. On a read-only deployment (LEADBAY_MCP_WRITE=0) leadbay_enrich_titles " +
+        "is not exposed, so the reveal cannot happen. Then: do NOT announce gate 4, " +
+        "do NOT fire its widget, and do NOT offer a button that would fail on the " +
+        "click. Close the tour at gate 3 instead — say in one honest line that " +
+        "revealing contacts is turned off on this connection and that whoever set " +
+        "it up can enable it, then go to ENDING A (cheat-sheet, then the setup " +
+        "guide link). Three gates that all worked beats four with a dead button.",
       spend:
         "TWO BEATS — free preview FIRST, the real reveal only after the user " +
         "confirms. Beat 1: call leadbay_enrich_titles with the drafted lead's id + " +
@@ -411,7 +433,11 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         "that nothing has been spent yet. Beat 2: name the title the draft is " +
         "addressed to, tell them BEFORE they decide what it costs (one credit per " +
         "contact revealed — here that is ONE contact, one credit), and ask them to " +
-        "confirm. Only then call leadbay_enrich_titles AGAIN with that leadId, the " +
+        "confirm. Only then call leadbay_enrich_titles AGAIN with the SAME " +
+        "one-element leadIds array from beat 1 (leadIds:['<the gate 3 lead id>'] — " +
+        "the key is leadIds, an array, never a singular leadId: the tool reads " +
+        "leadIds only, drops an unknown key, and with none falls back to the top of " +
+        "the wishlist, spending on several leads instead of your one), plus the " +
         "chosen title, confirm:true and email:true. Poll leadbay_bulk_enrich_status " +
         "with the returned bulk_id until all_done (or the count plateaus), and " +
         "report the contact that actually resolved. NEVER launch the reveal without " +
@@ -460,6 +486,12 @@ export const gettingStarted: Tool<GettingStartedParams> = {
     _params: GettingStartedParams,
     _ctx?: ToolContext,
   ) => {
-    return GETTING_STARTED_MANIFEST;
+    // Deep-clone, never hand back the module-level singleton. The server
+    // mutates successful results IN PLACE to attach `_meta.update_available`
+    // and `_meta.notifications` (server.ts — `target._meta = {...}`). Returning
+    // the shared object would stick that per-call metadata onto the static
+    // manifest, so a later call in the same process could replay an
+    // already-acknowledged notification or a stale update banner.
+    return structuredClone(GETTING_STARTED_MANIFEST);
   },
 };

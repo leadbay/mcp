@@ -62,6 +62,13 @@ interface ScenarioFile {
   args?: Record<string, string | undefined>;
   /** Vestigial: the live runner hits the real API. Ignored. */
   backendFixtures?: unknown[];
+  /**
+   * Block credit-spending endpoints in the spawned server. Consent / no-spend
+   * scenarios MUST set this: fixtures are ignored here, so without it the only
+   * thing standing between a regression and a real charge is the agent
+   * behaving — which is the very thing under test.
+   */
+  noSpend?: boolean;
   mission: {
     user_intent: string;
     success_criteria: string[];
@@ -158,30 +165,66 @@ describe.skipIf(missing.length > 0)("eval: live scenarios", () => {
         transcript_dir,
         token: TOKEN,
         region: process.env.LEADBAY_REGION ?? "us",
+        noSpend: sc.noSpend === true,
       });
+      // Every call that FIRED, in order — the right set for "did something
+      // forbidden happen", since attempting a banned call is the violation.
       const called = live.evidence.tool_calls.map((c) => c.name);
+      // Only the calls that actually SUCCEEDED. The runner patches
+      // `output_summary.ok` from the matching tool_result, so a call that came
+      // back BAD_INPUT / LAST_PROMPT_REQUIRED / any `{error:true}` envelope is
+      // excluded here — firing a tool is not the same as the step working, and
+      // a required step must actually have worked.
+      const succeeded = live.evidence.tool_calls
+        .filter((c) => c.output_summary.ok)
+        .map((c) => c.name);
+      const failedDetail = live.evidence.tool_calls
+        .filter((c) => !c.output_summary.ok)
+        .map((c) => `${c.name} → ${(c.output_summary.sample ?? "").slice(0, 160)}`);
 
       // 2 — mechanical invariants the judge doesn't cover. These are cheap and
       // deterministic, so they run first: a wrong call sequence is a failure
       // regardless of how well the prose reads.
       for (const name of sc.mission.required_calls ?? []) {
-        expect(called, `required call ${name} never fired (called: ${called.join(", ")})`).toContain(
-          name,
-        );
+        expect(
+          succeeded,
+          `required call ${name} never succeeded (fired: ${called.join(", ") || "none"}` +
+            `${failedDetail.length ? `; failed: ${failedDetail.join(" | ")}` : ""})`,
+        ).toContain(name);
       }
       for (const name of sc.mission.forbidden_calls ?? []) {
         expect(called, `forbidden call ${name} fired`).not.toContain(name);
       }
       if (sc.mission.required_order?.length) {
         // Subsequence, not equality: extra calls between the pinned ones are
-        // fine, but their relative order is the contract.
+        // fine, but their relative order is the contract. Ordered over the
+        // SUCCEEDED calls — a failed call is not a step of the flow.
         const order = sc.mission.required_order;
         let cursor = 0;
-        for (const name of called) if (name === order[cursor]) cursor++;
+        for (const name of succeeded) if (name === order[cursor]) cursor++;
         expect(
           cursor,
-          `required_order not satisfied: wanted ${order.join(" → ")}, saw ${called.join(" → ")}`,
+          `required_order not satisfied: wanted ${order.join(" → ")}, saw ${succeeded.join(" → ")}`,
         ).toBe(order.length);
+      }
+      // `allowed_calls`, when a scenario declares one, is a WHITELIST — the
+      // scenario's declared scope. Without this check the field was inert:
+      // a consent/scope eval could fan out into real tools that are neither
+      // required nor explicitly forbidden and still reach the judge, leaving
+      // the verdict to a non-deterministic score instead of its own contract.
+      if (sc.mission.allowed_calls?.length) {
+        const whitelist = new Set<string>([
+          ...sc.mission.allowed_calls,
+          ...(sc.mission.required_calls ?? []),
+          ...(sc.mission.required_order ?? []),
+          ...(sc.mission.turns ?? []).flatMap((t) => t.expect_calls ?? []),
+        ]);
+        const strays = [...new Set(called)].filter((n) => !whitelist.has(n));
+        expect(
+          strays,
+          `call(s) outside allowed_calls: ${strays.join(", ")} — declared scope is ` +
+            `${[...whitelist].sort().join(", ")}`,
+        ).toEqual([]);
       }
 
       // 3 — the judge scores mission match, adherence, fabrication, tool fit.

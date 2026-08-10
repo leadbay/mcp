@@ -70,6 +70,14 @@ export const SCENARIO = {
   prompt: "leadbay_getting_started",
   tier: "gate",
   args: {},
+  // THE guard for this scenario. The runner hits the real Leadbay API and
+  // ignores `backendFixtures` entirely, so the absent
+  // /leads/selection/enrichment/launch fixture below stops nothing — an agent
+  // that regressed into an unprompted paid reveal would spend real credits and
+  // the eval would "pass" the endpoint it was meant to forbid. This flag blocks
+  // that one endpoint inside the spawned server, before the network: the free
+  // mode:"discover" half still runs for real, and a paid launch fails loudly.
+  noSpend: true,
   backendFixtures: [
     {
       method: "GET",
