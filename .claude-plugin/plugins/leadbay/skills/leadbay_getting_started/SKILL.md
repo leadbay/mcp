@@ -579,7 +579,7 @@ Close with **one short, warm line and the link**, then stop:
 > Zoe on our team runs 1:1 sessions for the parts a walkthrough can't cover —
 > tuning your lens to your market, wiring the CRM push into your own setup, and
 > getting the daily run automated end to end. If that'd help:
-> <https://calendly.com/leadbay-zoe/PLACEHOLDER>
+> <https://calendly.com/zoe-leadbay/demo-leadbay>
 
 Rules for it:
 

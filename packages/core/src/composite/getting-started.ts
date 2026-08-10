@@ -153,11 +153,12 @@ const DOCS_NOTE =
   "to leave the thing they're in the middle of doing.";
 
 /**
- * PLACEHOLDER — swap for Zoe's real Calendly before this ships to users. The
- * URL is deliberately un-clickable-looking so a live install can't quietly
- * hand a new user a 404. Grep `PLACEHOLDER` to find it.
+ * Zoe's real booking link. The `?month=` param Calendly hands out is stripped
+ * on purpose: it only pins which month the picker opens on, and this URL
+ * outlives any given month — a link shipped with `month=2026-08` opens on a
+ * stale calendar for every user who clicks it after August.
  */
-const ZOE_CALENDLY = "https://calendly.com/leadbay-zoe/PLACEHOLDER";
+const ZOE_CALENDLY = "https://calendly.com/zoe-leadbay/demo-leadbay";
 
 /**
  * What to say when the user takes the exit. They just said they were done, so
