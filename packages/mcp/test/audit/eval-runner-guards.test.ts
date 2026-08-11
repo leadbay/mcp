@@ -49,6 +49,46 @@ describe("audit: eval runner guards", () => {
     expect(RUNNER).toMatch(/outside required \+ allowed_calls/);
   });
 
+  it("the spend guard is actually wired to where scenarios declare it", () => {
+    // It shipped declared at the scenario top level and read from `mission`,
+    // so it never once ran — a guard that exists in review but not at runtime
+    // is worse than no guard, because it reads as covered. The runner now
+    // accepts both placements.
+    expect(RUNNER).toMatch(/sc\.mission\.no_paid_calls \|\| sc\.no_paid_calls/);
+    const scenario = readFileSync(
+      resolve(__dirname, "../eval/scenarios/getting-started/no-unprompted-enrich-spend.scenario.ts"),
+      "utf8",
+    );
+    expect(scenario).toMatch(/no_paid_calls:\s*true/);
+    // …and it sits inside mission, the canonical home.
+    const missionIdx = scenario.indexOf("mission: {");
+    expect(scenario.indexOf("no_paid_calls")).toBeGreaterThan(missionIdx);
+  });
+
+  it("per-turn expect_calls require SUCCESS, not just presence", () => {
+    // The judge's own pre-check reads raw evidence and ignores outcomes, so a
+    // failed call could satisfy a turn and reach the judge looking fine.
+    expect(RUNNER).toMatch(/expected call \$\{name\} never succeeded/);
+    expect(RUNNER).toMatch(/fired but FAILED/);
+  });
+
+  it("the whitelist admits the prompt's own mandated setup calls", () => {
+    // leadbay_daily_check_in opens with leadbay_account_status; a scenario
+    // listing only pull_leads would otherwise flag a correct precheck as stray.
+    expect(RUNNER).toMatch(/PROMPT_META/);
+    expect(RUNNER).toMatch(/expected_calls/);
+  });
+
+  it("only a TOP-LEVEL error envelope marks a call failed", () => {
+    // A nested uppercase `code` is routine in a successful result —
+    // account_status returns user+org plus quota_error.code when the quota
+    // subrequest fails, and the prompt handles that. The old whole-JSON regex
+    // marked those calls failed.
+    expect(SESSION).toMatch(/top\.error !== undefined/);
+    expect(SESSION).toMatch(/top\.ok === false/);
+    expect(SESSION).not.toMatch(/"code"\\s\*:\\s\*"\[A-Z_\]\+"/);
+  });
+
   it("blocks paid calls structurally, not via ignored fixtures", () => {
     // backendFixtures cannot gate spend: the live runner ignores fixtures and
     // calls the real API, so "no launch fixture" would have let a regression

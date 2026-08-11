@@ -541,10 +541,29 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
                           .map((b) => String(b["text"] ?? ""))
                           .join("\n")
                       : JSON.stringify(raw ?? "");
-                // is_error is the host's own flag; the error-envelope check
-                // catches tools that return a 200-shaped {error:{code}} body.
+                // is_error is the host's own flag. The envelope check must look
+                // at the TOP LEVEL only: a nested uppercase `code` is routine in
+                // a SUCCESSFUL result — leadbay_account_status returns user+org
+                // alongside `quota_error: { code }` when the quota subrequest
+                // fails, and the prompt is written to handle exactly that. The
+                // old regex scanned the whole JSON and marked those calls failed,
+                // which would have failed required_calls on a healthy session.
                 const flagged = blk["is_error"] === true;
-                const enveloped = /"error"\s*:\s*\{|"code"\s*:\s*"[A-Z_]+"/.test(text);
+                let enveloped = false;
+                try {
+                  const body = JSON.parse(text) as Record<string, unknown> | unknown;
+                  if (body && typeof body === "object" && !Array.isArray(body)) {
+                    const top = body as Record<string, unknown>;
+                    enveloped =
+                      top.error !== undefined ||
+                      top.isError === true ||
+                      top.ok === false;
+                  }
+                } catch {
+                  // Not JSON — fall back to the host flag alone. A plain-text
+                  // result is not evidence of failure on its own.
+                  enveloped = false;
+                }
                 rec.output_summary = {
                   ok: !flagged && !enveloped,
                   output_len: text.length,

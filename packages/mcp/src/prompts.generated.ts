@@ -1115,14 +1115,14 @@ conversation and a dead end.
 Say plainly that the first look is **free**, and that revealing the contact
 costs credits and needs their say-so.
 
-**Then fire the widget** — question \`Want to find out who to send that email to?\`, first option labelled \`Find who to email\`, description \`See the roles at that company. Free — no contact details revealed yet.\` Second option: \`I'm done for now\` / \`Stop the walkthrough here.\` **Wait for the click.**
-
 **First, check \`leadbay_enrich_titles\` is in your tool set.** On a read-only
 deployment it is not registered, and a gate whose tool cannot run is a dead
 end. If it's missing: don't fire this widget, say plainly that revealing
 contacts isn't enabled on this connection, note the draft is still theirs, and
 go straight to the closing. Ending one step early beats offering a button that
 does nothing.
+
+**Then fire the widget** — question \`Want to find out who to send that email to?\`, first option labelled \`Find who to email\`, description \`See the roles at that company. Free — no contact details revealed yet.\` Second option: \`I'm done for now\` / \`Stop the walkthrough here.\` **Wait for the click.**
 
 This gate runs in **TWO BEATS**. Do not collapse them.
 
