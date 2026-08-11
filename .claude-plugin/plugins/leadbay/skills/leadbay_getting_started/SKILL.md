@@ -451,6 +451,13 @@ conversation and a dead end.
 Say plainly that the first look is **free**, and that revealing the contact
 costs credits and needs their say-so.
 
+**First, check `leadbay_enrich_titles` is in your tool set.** On a read-only
+deployment it is not registered, and a gate whose tool cannot run is a dead
+end. If it's missing: don't fire this widget, say plainly that revealing
+contacts isn't enabled on this connection, note the draft is still theirs, and
+go straight to the closing. Ending one step early beats offering a button that
+does nothing.
+
 **Then fire the widget** — question `Want to find out who to send that email to?`, first option labelled `Find who to email`, description `See the roles at that company. Free — no contact details revealed yet.` Second option: `I'm done for now` / `Stop the walkthrough here.` **Wait for the click.**
 
 This gate runs in **TWO BEATS**. Do not collapse them.
@@ -477,9 +484,16 @@ contact, one credit**. Then ask them to confirm.
 "they clicked the gate earlier" — the gate click bought the free look, not the
 reveal.
 
-Once confirmed, call `leadbay_enrich_titles` AGAIN with that `leadId`, the
-chosen `titles`, `confirm: true` and `email: true`. That's the real, paid
-reveal.
+Once confirmed, call `leadbay_enrich_titles` AGAIN with
+`leadIds: [<the drafted lead's id>]` — **the array, always, even for one lead**
+— plus the chosen `titles`, `confirm: true` and `email: true`. That's the real,
+paid reveal.
+
+`leadIds` is the only key this tool reads for scope. A singular `leadId` is not
+a parameter: it is silently ignored, and the call then falls back to the
+account's **default wishlist selection** while `confirm`/`email` are set — so
+it would reveal and charge for the whole batch instead of the one lead the user
+agreed to.
 
 It returns a `bulk_id` and runs async — poll `leadbay_bulk_enrich_status`
 with that id (`include_contacts=true`) until `all_done`, or until the resolved
@@ -522,14 +536,21 @@ nothing about using Leadbay tomorrow. That is what the cheat-sheet is for.
    with, which makes this the one moment the offer is welcome rather than
    pushy. Say, in your own words, one sentence and the link:
 
-> Zoe on our team runs 1:1 sessions for the parts a walkthrough can't cover —
-> tuning your lens to your market, wiring the CRM push into your own setup, and
-> getting the daily run automated end to end. If that'd help:
-> <https://calendly.com/zoe-leadbay/demo-leadbay>
+> If you want a hand tuning this to your own market, Zoe on our team runs 1:1
+> sessions: <https://calendly.com/zoe-leadbay/demo-leadbay>
+
+   That length is the rule, not a suggestion — **one sentence**. Listing
+   everything Zoe could help with turns an offer into promotional copy, which
+   is exactly what a user who just said "I'm done" doesn't want.
 
    Keep it to **one sentence and the link**. Never re-open the walkthrough,
    never re-fire the gate they just declined, and never argue for finishing the
    tour.
+
+   **On this path the offer is the last PROSE you write.** The STOP block below
+   still closes the message — it is a machine marker, not something the user
+   reads as content, so it does not displace the offer. What must never happen
+   is the offer being dropped or pushed above the cheat-sheet to make room.
 
 ## ENDING C — they typed something off-script
 

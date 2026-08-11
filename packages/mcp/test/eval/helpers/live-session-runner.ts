@@ -361,6 +361,9 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
     if (rawLogFd >= 0) writeSync(rawLogFd, line + "\n");
   };
 
+  // tool_use id -> the record awaiting its outcome. Spans user turns, because
+  // a call made at the end of one turn can be resolved at the start of the next.
+  const pendingToolCalls = new Map<string, ToolCallRecord>();
   const evidence: MCPEvidence = {
     session: {
       session_id,
@@ -518,6 +521,60 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
           const event = parseStreamLine(line);
           if (!event) continue;
 
+          // A `user` event carries the tool_result for a call the assistant
+          // made earlier. This is the ONLY place the real outcome is visible,
+          // so without it every call stays recorded as a success.
+          if (event.type === "user") {
+            const content = ((event as { message?: { content?: unknown } }).message?.content ?? []);
+            if (Array.isArray(content)) {
+              for (const blk of content as Array<Record<string, unknown>>) {
+                if (blk["type"] !== "tool_result") continue;
+                const rec = pendingToolCalls.get(blk["tool_use_id"] as string);
+                if (!rec) continue;
+                const raw = blk["content"];
+                const text =
+                  typeof raw === "string"
+                    ? raw
+                    : Array.isArray(raw)
+                      ? (raw as Array<Record<string, unknown>>)
+                          .filter((b) => b["type"] === "text")
+                          .map((b) => String(b["text"] ?? ""))
+                          .join("\n")
+                      : JSON.stringify(raw ?? "");
+                // is_error is the host's own flag. The envelope check must look
+                // at the TOP LEVEL only: a nested uppercase `code` is routine in
+                // a SUCCESSFUL result — leadbay_account_status returns user+org
+                // alongside `quota_error: { code }` when the quota subrequest
+                // fails, and the prompt is written to handle exactly that. The
+                // old regex scanned the whole JSON and marked those calls failed,
+                // which would have failed required_calls on a healthy session.
+                const flagged = blk["is_error"] === true;
+                let enveloped = false;
+                try {
+                  const body = JSON.parse(text) as Record<string, unknown> | unknown;
+                  if (body && typeof body === "object" && !Array.isArray(body)) {
+                    const top = body as Record<string, unknown>;
+                    enveloped =
+                      top.error !== undefined ||
+                      top.isError === true ||
+                      top.ok === false;
+                  }
+                } catch {
+                  // Not JSON — fall back to the host flag alone. A plain-text
+                  // result is not evidence of failure on its own.
+                  enveloped = false;
+                }
+                rec.output_summary = {
+                  ok: !flagged && !enveloped,
+                  output_len: text.length,
+                  sample: text.slice(0, 240),
+                };
+                pendingToolCalls.delete(blk["tool_use_id"] as string);
+              }
+            }
+            continue;
+          }
+
           if (event.type === "assistant") {
             const ev = event as StreamAssistantEvent;
             turn += 1;
@@ -597,10 +654,19 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
                 turn: userTurn,
                 name: bareName,
                 input: block.input,
-                output_summary: { ok: true, output_len: 0 },
+                // Starts NOT ok, and is only promoted when this call's
+                // tool_result actually says so. Two bugs made this the right
+                // default: `ok: true` meant a LAST_PROMPT_REQUIRED / BAD_INPUT
+                // result still satisfied required_calls, AND a call whose
+                // result never arrives at all — max-turns closing stdin right
+                // after the assistant issued it, or the SDK exiting before the
+                // replay — stayed recorded as a zero-length success. Unproven
+                // is not the same as fine.
+                output_summary: { ok: false, output_len: 0, sample: "no tool_result observed" },
                 duration_ms: 0,
               };
               evidence.tool_calls.push(rec);
+              pendingToolCalls.set(block.id, rec);
               appendTranscript({
                 kind: "tool-call",
                 turn: userTurn,
@@ -707,6 +773,19 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
     try { if (rawLogFd >= 0) closeSync(rawLogFd); } catch { /* ignore */ }
     try { if (stderrFd >= 0) closeSync(stderrFd); } catch { /* ignore */ }
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+
+  // Sweep anything still unresolved. A call whose tool_result never arrived is
+  // not evidence of success — it is evidence of nothing, and the two must not
+  // be recorded the same way. Belt and braces with the not-ok default above:
+  // this also names WHY in the sample, so a run that ends mid-flight reads as
+  // truncated rather than as a silent pass.
+  for (const [, rec] of pendingToolCalls) {
+    rec.output_summary = {
+      ok: false,
+      output_len: 0,
+      sample: "session ended before this call's tool_result arrived",
+    };
   }
 
   return {

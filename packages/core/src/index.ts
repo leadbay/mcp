@@ -293,8 +293,11 @@ export const compositeReadTools: Tool[] = [
   // returns the six-gate script a brand-new user clicks through to learn
   // Leadbay by doing (check account → pull leads → draft the first email →
   // reveal who to send it to → CRM → schedule it).
-  // Makes no backend call. In compositeReadTools so the walkthrough still
-  // works on a read-only (LEADBAY_MCP_WRITE=0) deployment.
+  // Makes no backend call. In compositeReadTools so the tour is reachable on a
+  // read-only (LEADBAY_MCP_WRITE=0) deployment — where gate 4's
+  // leadbay_enrich_titles is NOT registered (it is write-gated), so the
+  // manifest's gate-4 branch ends the tour after gate 3 rather than offering a
+  // button whose tool cannot run.
   gettingStarted,
   // Per-lead custom-field VALUES. ALWAYS exposed: complements the always-on
   // list_mappable_fields (which returns DEFINITIONS only). The lead payload

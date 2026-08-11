@@ -47,11 +47,20 @@ import {
   TOOL_SELECTION_FIT_FLOOR,
 } from "./helpers/budget-thresholds.js";
 import { getPrompt } from "../../src/prompts.js";
+
 import { buildServerInstructions } from "../../src/server.js";
 import { compositeReadTools, compositeWriteTools, agentMemoryTools } from "@leadbay/core";
 
 const SCENARIOS_DIR = resolve(__dirname, "scenarios");
 const PROMPTFORGE_ROOT = resolve(__dirname, "../../../promptforge");
+
+/**
+ * Calls a prompt mandates BEFORE the scenario's own work, which therefore
+ * cannot be a scope breach. Deliberately narrow: leadbay_daily_check_in and
+ * others open with an account precheck. Widening this to a prompt's full
+ * expected_calls would let its entire workflow through the whitelist.
+ */
+const PROMPT_SETUP_CALLS = ["leadbay_account_status"] as const;
 
 /** The shape a `*.scenario.ts` exports. Wider than MissionMatchScenario. */
 interface ScenarioFile {
@@ -62,6 +71,8 @@ interface ScenarioFile {
   args?: Record<string, string | undefined>;
   /** Vestigial: the live runner hits the real API. Ignored. */
   backendFixtures?: unknown[];
+  /** Tolerated alias for mission.no_paid_calls — see the guard below. */
+  no_paid_calls?: boolean;
   mission: {
     user_intent: string;
     success_criteria: string[];
@@ -70,6 +81,13 @@ interface ScenarioFile {
     required_order?: string[];
     /** Not part of MissionMatchScenario — asserted mechanically below. */
     allowed_calls?: string[];
+    /**
+     * Overdeliver scenarios: no call may carry spend-shaped arguments. Checked
+     * against the recorded tool INPUTS, not against fixtures — the live runner
+     * hits the real API, so "there is no launch fixture" blocks nothing and a
+     * regression would spend real quota.
+     */
+    no_paid_calls?: boolean;
     required_byproducts?: string[];
     forbidden_calls?: string[];
     render_checks?: Array<string | { must_match?: string; must_not_match?: string }>;
@@ -151,6 +169,13 @@ describe.skipIf(missing.length > 0)("eval: live scenarios", () => {
       const transcript_dir = mkdtempSync(join(tmpdir(), `leadbay-eval-${sc.name}-`));
 
       // 1 — drive the real agent against the real server and API.
+      // Arm the kill switch BEFORE the session, not after. The assertion
+      // further down is a second net for shapes the endpoint block can't see;
+      // it is not the thing standing between a regression and a real charge.
+      const noSpend = Boolean(sc.mission.no_paid_calls || sc.no_paid_calls);
+      if (noSpend) process.env.LEADBAY_EVAL_NO_PAID_CALLS = "1";
+      else delete process.env.LEADBAY_EVAL_NO_PAID_CALLS;
+
       const live = await runSessionLive({
         prompt: { name: sc.prompt, body: sc.mission.user_intent, args: sc.args ?? {} },
         systemPrompt: buildSystemPrompt(sc.prompt),
@@ -164,24 +189,116 @@ describe.skipIf(missing.length > 0)("eval: live scenarios", () => {
       // 2 — mechanical invariants the judge doesn't cover. These are cheap and
       // deterministic, so they run first: a wrong call sequence is a failure
       // regardless of how well the prose reads.
+      // A call that ERRORED does not satisfy a requirement. The runner now
+      // records each call's real outcome from its tool_result, so a
+      // LAST_PROMPT_REQUIRED / BAD_INPUT envelope no longer counts as "fired".
+      const succeeded = live.evidence.tool_calls
+        .filter((c) => c.output_summary.ok)
+        .map((c) => c.name);
+      const failedCalls = live.evidence.tool_calls.filter((c) => !c.output_summary.ok);
       for (const name of sc.mission.required_calls ?? []) {
-        expect(called, `required call ${name} never fired (called: ${called.join(", ")})`).toContain(
-          name,
-        );
+        const why = failedCalls.some((c) => c.name === name)
+          ? `${name} fired but FAILED: ${failedCalls.find((c) => c.name === name)?.output_summary.sample ?? ""}`
+          : `required call ${name} never fired (called: ${called.join(", ")})`;
+        expect(succeeded, why).toContain(name);
       }
       for (const name of sc.mission.forbidden_calls ?? []) {
         expect(called, `forbidden call ${name} fired`).not.toContain(name);
       }
+      // allowed_calls is a WHITELIST, and scenarios already declare it to keep
+      // wider fan-out out of scope. It was collected and never checked, so a
+      // consent scenario could reach for extra real tools and still be judged
+      // purely on prose. Anything outside required + allowed is a scope breach.
+      if (sc.mission.allowed_calls?.length) {
+        // Only mandatory SETUP is exempt — not the prompt's whole success
+        // path. Several prompts open with an account precheck, so a scenario
+        // scoped to pull_leads would report a correct one as a stray; but
+        // folding in every expected_call would widen the whitelist to the
+        // prompt's full workflow and defeat the point of declaring scope.
+        const permitted = new Set([
+          ...(sc.mission.required_calls ?? []),
+          ...(sc.mission.required_order ?? []),
+          ...(sc.mission.turns ?? []).flatMap((t) => t.expect_calls ?? []),
+          ...PROMPT_SETUP_CALLS,
+          ...sc.mission.allowed_calls,
+        ]);
+        // Memory traffic is protocol, not scope: the server instructions tell
+        // the agent to capture and recall signals on its own initiative. Match
+        // the real catalog rather than a guessed prefix.
+        const memoryNames = new Set(agentMemoryTools.map((t) => t.name));
+        const strays = [...new Set(called)].filter(
+          (n) => !permitted.has(n) && !memoryNames.has(n),
+        );
+        expect(
+          strays,
+          `tools fired outside required + allowed_calls: ${strays.join(", ")}`,
+        ).toEqual([]);
+      }
+      // Per-turn expectations get the same treatment as required_calls. The
+      // judge's own pre-check builds from raw evidence and ignores
+      // output_summary, so a BAD_INPUT / LAST_PROMPT_REQUIRED result would
+      // satisfy a turn mechanically and reach the judge looking successful.
+      (sc.mission.turns ?? []).forEach((t, i) => {
+        for (const name of t.expect_calls ?? []) {
+          // Scoped to THIS turn. Searching the whole session let a success on
+          // any other turn mask a failure on the turn that declared it.
+          const inTurn = live.evidence.tool_calls.filter(
+            (c) => c.name === name && c.turn === i + 1,
+          );
+          const okInTurn = inTurn.some((c) => c.output_summary.ok);
+          const failedInTurn = inTurn.find((c) => !c.output_summary.ok);
+          expect(
+            okInTurn,
+            failedInTurn
+              ? `turn ${i + 1}: ${name} fired but FAILED — ${failedInTurn.output_summary.sample ?? ""}`
+              : `turn ${i + 1}: expected call ${name} never succeeded`,
+          ).toBe(true);
+        }
+      });
+
       if (sc.mission.required_order?.length) {
         // Subsequence, not equality: extra calls between the pinned ones are
         // fine, but their relative order is the contract.
         const order = sc.mission.required_order;
+        // Walk the SUCCEEDED sequence. On the raw list, a failed
+        // account_status followed by a successful pull_leads and only then a
+        // successful account_status would satisfy account_status → pull_leads,
+        // even though the real order is reversed.
+        const okSequence = live.evidence.tool_calls
+          .filter((c) => c.output_summary.ok)
+          .map((c) => c.name);
         let cursor = 0;
-        for (const name of called) if (name === order[cursor]) cursor++;
+        for (const name of okSequence) if (name === order[cursor]) cursor++;
         expect(
           cursor,
-          `required_order not satisfied: wanted ${order.join(" → ")}, saw ${called.join(" → ")}`,
+          `required_order not satisfied: wanted ${order.join(" → ")}, succeeded ${okSequence.join(" → ")}`,
         ).toBe(order.length);
+      }
+
+      // The spend guard, asserted on real inputs. `backendFixtures` cannot do
+      // this job: the runner ignores fixtures and calls the live API, so the
+      // absence of a launch fixture would let a regression charge the account
+      // instead of failing on an undeclared endpoint.
+      // Read BOTH placements. This flag is the only thing standing between a
+      // regression and a real charge, so a scenario that declares it in the
+      // wrong place must still be guarded rather than silently unprotected —
+      // which is exactly how it shipped: declared top-level, read from
+      // mission, never once enforced.
+      if (sc.mission.no_paid_calls || sc.no_paid_calls) {
+        const spenders = live.evidence.tool_calls.filter((c) => {
+          const i = (c.input ?? {}) as Record<string, unknown>;
+          return (
+            i.confirm === true ||
+            i.email === true ||
+            i.phone === true ||
+            i.enrich === true ||
+            (Array.isArray(i.titles) && i.titles.length > 0)
+          );
+        });
+        expect(
+          spenders.map((c) => `${c.name}(${JSON.stringify(c.input)})`),
+          "a paid call was made in a scenario that must never spend",
+        ).toEqual([]);
       }
 
       // 3 — the judge scores mission match, adherence, fabrication, tool fit.
