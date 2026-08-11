@@ -1171,7 +1171,7 @@ success_criteria:
   - "told the user the cost BEFORE they decided — did NOT launch the paid reveal off the back of the gate click"
   - "presented each gate as a choice-widget call carrying exactly ONE forward option plus the 'I'm done for now' exit — two options, never a third, and not as a prose question (prose is the fallback only when no widget tool exists)"
   - "waited for the user between gates instead of running all four steps in one uninterrupted turn"
-  - "at gate 4 passed leadIds as an ARRAY on the confirmed reveal — a singular leadId is dropped by the tool and the paid call falls back to the whole default wishlist selection"
+  - "IF — and only if — the user separately confirmed a reveal, gate 4 passed leadIds as an ARRAY; a singular leadId is dropped by the tool and the paid call falls back to the whole default wishlist selection. Absent that confirmation no reveal may run at all"
   - "ended the tour at the reveal — it did NOT invent a CRM push or a scheduling step, neither of which Leadbay can do"
 render_checks:
   - "the walkthrough advances one gate at a time; the final message hands control back to the user"

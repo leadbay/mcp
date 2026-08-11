@@ -72,7 +72,13 @@ export interface WalkthroughStep {
   next_steps: GateNextSteps;
   /** Tool to call on click, or null when no Leadbay tool applies. */
   calls: string | null;
-  /** Literal argument shape to pass to `calls`. */
+  /**
+   * Literal argument shape to pass to `calls`. Values are placeholder
+   * DESCRIPTIONS, not real values — so a shape that matters is written into
+   * the placeholder itself. `leadIds` is an ARRAY in leadbay_enrich_titles's
+   * input schema, and a bare scalar placeholder invited the agent to send a
+   * string and take a BAD_INPUT at the reveal; the brackets carry the shape.
+   */
   args: Record<string, string> | null;
   /** Args that must NEVER be passed, with the reason. */
   forbidden_args?: string[];
@@ -176,9 +182,10 @@ const EXIT_OFFER =
   "help that would have brought them back. An exit close WITHOUT the offer is " +
   "incomplete. ONE SENTENCE and calendly_url, e.g. 'If you want a hand tuning " +
   "this to your own market, Zoe on our team runs 1:1 sessions: <url>'. That " +
-  "length is the rule, not a suggestion — do NOT enumerate everything Zoe " +
-  "could help with, which turns an offer into promotional copy and is exactly " +
-  "what someone who just said they were done does not want. Never re-open the " +
+  "length is the rule, not a suggestion: anything longer reads as a pitch. Do " +
+  "NOT enumerate everything Zoe could help with — that turns an offer into " +
+  "promotional copy, which is exactly what someone who just said they were " +
+  "done does not want. Never re-open the " +
   "walkthrough, never re-fire the declined gate, and " +
   "never argue for finishing the tour. If they instead left by TYPING " +
   "something off-script that is ENDING C, not B — serve what they asked and " +
@@ -409,7 +416,7 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         },
       ],
       args: {
-        leadIds: "<the ONE lead you drafted for at step 3>",
+        leadIds: "[<the ONE lead you drafted for at step 3>] — an ARRAY, always",
         lensId: "<the pinned lens id from step 2>",
       },
       spend:

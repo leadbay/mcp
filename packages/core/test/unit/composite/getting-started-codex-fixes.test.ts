@@ -64,9 +64,32 @@ describe("leadbay_getting_started — Codex #175 fixes", () => {
     // The reason has to travel with the rule, or a later trim restores the
     // shorter-looking singular form.
     expect(gate4.spend).toMatch(/default wishlist selection/i);
-    // And the scoping arg itself is plural.
+    // And the scoping arg is plural AND carries its array shape. `args` values
+    // are placeholder descriptions, so the brackets are how the shape travels:
+    // a bare scalar placeholder invited the agent to send a string and take a
+    // BAD_INPUT at the reveal.
     expect(Object.keys(gate4.args ?? {})).toContain("leadIds");
     expect(Object.keys(gate4.args ?? {})).not.toContain("leadId");
+    expect(gate4.args?.leadIds).toMatch(/^\[/);
+    expect(gate4.args?.leadIds).toMatch(/an ARRAY, always/);
+  });
+
+  it("the exit offer's own example obeys its one-sentence rule", () => {
+    // A live judge scored IA 3 on this: the prompt demanded "one sentence and
+    // the link", then supplied a two-sentence sample listing three things Zoe
+    // covers. The agent copied the sample, correctly. A rule whose own example
+    // breaks it is not a rule.
+    const offer = GETTING_STARTED_MANIFEST.exit_offer;
+    expect(offer).toMatch(/ONE SENTENCE/);
+    expect(offer).toMatch(/promotional copy/i);
+    // The example itself must be a single sentence — one terminal period
+    // inside the quoted sample.
+    const sample = offer.match(/e\.g\. '([^']+)'/)?.[1] ?? "";
+    expect(sample.length, "the offer example is missing").toBeGreaterThan(20);
+    expect(
+      (sample.match(/\.\s/g) ?? []).length,
+      `the example runs more than one sentence: ${sample}`,
+    ).toBeLessThanOrEqual(1);
   });
 
   it("gate 4 ends the tour instead of dead-ending on a read-only deployment", () => {

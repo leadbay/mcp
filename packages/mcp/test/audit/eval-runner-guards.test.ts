@@ -72,11 +72,13 @@ describe("audit: eval runner guards", () => {
     expect(RUNNER).toMatch(/fired but FAILED/);
   });
 
-  it("the whitelist admits the prompt's own mandated setup calls", () => {
-    // leadbay_daily_check_in opens with leadbay_account_status; a scenario
-    // listing only pull_leads would otherwise flag a correct precheck as stray.
-    expect(RUNNER).toMatch(/PROMPT_META/);
-    expect(RUNNER).toMatch(/expected_calls/);
+  it("the whitelist admits mandatory setup, and only that", () => {
+    // leadbay_daily_check_in opens with leadbay_account_status, so a scenario
+    // scoped to pull_leads would otherwise flag a correct precheck as stray.
+    // The exemption is one named call, not the prompt's full expected_calls —
+    // that would let its whole workflow through and void the declared scope.
+    expect(RUNNER).toMatch(/PROMPT_SETUP_CALLS/);
+    expect(RUNNER).toMatch(/leadbay_account_status/);
   });
 
   it("only a TOP-LEVEL error envelope marks a call failed", () => {
@@ -87,6 +89,27 @@ describe("audit: eval runner guards", () => {
     expect(SESSION).toMatch(/top\.error !== undefined/);
     expect(SESSION).toMatch(/top\.ok === false/);
     expect(SESSION).not.toMatch(/"code"\\s\*:\\s\*"\[A-Z_\]\+"/);
+  });
+
+  it("scopes per-turn success to the turn that declared it", () => {
+    // Searching the whole session let a success on any other turn mask a
+    // failure on the turn under test.
+    expect(RUNNER).toMatch(/c\.turn === i \+ 1/);
+  });
+
+  it("exempts memory tools by catalog, not by a guessed prefix", () => {
+    // The old exception matched "leadbay_get_agent_memory", which is not what
+    // any of the memory tools are called — so a run following the memory
+    // protocol was reported as a stray.
+    expect(RUNNER).toMatch(/agentMemoryTools\.map/);
+    expect(RUNNER).not.toMatch(/leadbay_get_agent_memory/);
+  });
+
+  it("whitelists only mandatory setup, not a prompt's whole success path", () => {
+    // Folding in every expected_call would let the prompt's entire workflow
+    // through and defeat the point of a scenario declaring its scope.
+    expect(RUNNER).toMatch(/PROMPT_SETUP_CALLS/);
+    expect(RUNNER).not.toMatch(/\.\.\.promptExpected/);
   });
 
   it("blocks paid calls structurally, not via ignored fixtures", () => {

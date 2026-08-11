@@ -332,10 +332,7 @@ describe("leadbay_getting_started", () => {
     expect(offer).toMatch(/WITHOUT the offer is\s+incomplete/i);
     // It must not become a pitch, or a lever to restart the tour.
     expect(offer).toMatch(/Never re-open the walkthrough/i);
-    expect(offer).toMatch(/promotional copy/i);
-    // The length rule is the load-bearing half — the previous sample copy ran
-    // two sentences and the live judge marked it down as a pitch.
-    expect(offer).toMatch(/ONE SENTENCE/);
+    expect(offer).toMatch(/reads as a\s+pitch/i);
     // Typed-exit is a different ending: serve the question, drop all of it.
     expect(offer).toMatch(/ENDING C, not B/i);
   });

@@ -47,12 +47,20 @@ import {
   TOOL_SELECTION_FIT_FLOOR,
 } from "./helpers/budget-thresholds.js";
 import { getPrompt } from "../../src/prompts.js";
-import { PROMPT_META } from "../../src/prompts.generated.js";
+
 import { buildServerInstructions } from "../../src/server.js";
 import { compositeReadTools, compositeWriteTools, agentMemoryTools } from "@leadbay/core";
 
 const SCENARIOS_DIR = resolve(__dirname, "scenarios");
 const PROMPTFORGE_ROOT = resolve(__dirname, "../../../promptforge");
+
+/**
+ * Calls a prompt mandates BEFORE the scenario's own work, which therefore
+ * cannot be a scope breach. Deliberately narrow: leadbay_daily_check_in and
+ * others open with an account precheck. Widening this to a prompt's full
+ * expected_calls would let its entire workflow through the whitelist.
+ */
+const PROMPT_SETUP_CALLS = ["leadbay_account_status"] as const;
 
 /** The shape a `*.scenario.ts` exports. Wider than MissionMatchScenario. */
 interface ScenarioFile {
@@ -195,20 +203,24 @@ describe.skipIf(missing.length > 0)("eval: live scenarios", () => {
       // consent scenario could reach for extra real tools and still be judged
       // purely on prose. Anything outside required + allowed is a scope breach.
       if (sc.mission.allowed_calls?.length) {
-        // A prompt's OWN mandated setup calls are not stray. leadbay_daily_check_in
-        // opens with leadbay_account_status, so a scenario listing only
-        // pull_leads would flag a correct precheck as a scope breach. The
-        // prompt's declared expected_calls are part of following it.
-        const promptExpected = PROMPT_META[sc.prompt as keyof typeof PROMPT_META]?.expected_calls ?? [];
+        // Only mandatory SETUP is exempt — not the prompt's whole success
+        // path. Several prompts open with an account precheck, so a scenario
+        // scoped to pull_leads would report a correct one as a stray; but
+        // folding in every expected_call would widen the whitelist to the
+        // prompt's full workflow and defeat the point of declaring scope.
         const permitted = new Set([
           ...(sc.mission.required_calls ?? []),
           ...(sc.mission.required_order ?? []),
           ...(sc.mission.turns ?? []).flatMap((t) => t.expect_calls ?? []),
-          ...promptExpected,
+          ...PROMPT_SETUP_CALLS,
           ...sc.mission.allowed_calls,
         ]);
+        // Memory traffic is protocol, not scope: the server instructions tell
+        // the agent to capture and recall signals on its own initiative. Match
+        // the real catalog rather than a guessed prefix.
+        const memoryNames = new Set(agentMemoryTools.map((t) => t.name));
         const strays = [...new Set(called)].filter(
-          (n) => !permitted.has(n) && !n.startsWith("leadbay_get_agent_memory"),
+          (n) => !permitted.has(n) && !memoryNames.has(n),
         );
         expect(
           strays,
@@ -221,12 +233,13 @@ describe.skipIf(missing.length > 0)("eval: live scenarios", () => {
       // satisfy a turn mechanically and reach the judge looking successful.
       (sc.mission.turns ?? []).forEach((t, i) => {
         for (const name of t.expect_calls ?? []) {
-          const okInTurn = live.evidence.tool_calls.some(
-            (c) => c.name === name && c.output_summary.ok,
+          // Scoped to THIS turn. Searching the whole session let a success on
+          // any other turn mask a failure on the turn that declared it.
+          const inTurn = live.evidence.tool_calls.filter(
+            (c) => c.name === name && c.turn === i + 1,
           );
-          const failedInTurn = live.evidence.tool_calls.find(
-            (c) => c.name === name && !c.output_summary.ok,
-          );
+          const okInTurn = inTurn.some((c) => c.output_summary.ok);
+          const failedInTurn = inTurn.find((c) => !c.output_summary.ok);
           expect(
             okInTurn,
             failedInTurn
