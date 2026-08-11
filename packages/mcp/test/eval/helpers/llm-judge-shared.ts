@@ -14,7 +14,7 @@
  * - Retry policy: one retry with exponential backoff on transient errors
  *   (JSON parse, timeout) per eng-review T2 decision.
  */
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import { JUDGE_RETRY_DELAYS_MS } from "./budget-thresholds.js";
 
 export type JudgeError =
@@ -99,11 +99,30 @@ export interface CLIResult {
 }
 
 export function callClaudeCLI(prompt: string, model?: string): CLIResult {
-  const modelFlag = model ? `--model ${JSON.stringify(model)}` : "";
-  const raw = execSync(
-    `claude -p ${JSON.stringify(prompt)} --output-format json ${modelFlag}`.trim(),
-    { encoding: "utf8", timeout: 90_000 },
-  );
+  // The prompt goes over STDIN, never argv. It previously used
+  // `execSync(\`claude -p ${JSON.stringify(prompt)} …\`)`, which mixes two
+  // incompatible escaping schemes: JSON.stringify emits JSON escapes, and the
+  // result was then handed to /bin/sh, which applies its own. Any judge prompt
+  // whose criteria contained the wrong mix of quotes or backslashes died with
+  // `/bin/sh: Syntax error: Unterminated quoted string` — observed on the first
+  // real run, three times over (once per retry).
+  //
+  // execFileSync with no shell removes the class of bug entirely: argv is
+  // passed as an array, and the prompt never gets parsed by anything.
+  // A judged transcript is also far bigger than execSync's 1MB default buffer.
+  const args = ["-p", "--output-format", "json"];
+  if (model) args.push("--model", model);
+  const raw = execFileSync("claude", args, {
+    input: prompt,
+    encoding: "utf8",
+    // 90s was the old value and it is not enough. A gated walkthrough runs 20
+    // assistant turns, and the judge reads that entire transcript against ~20
+    // criteria before answering — the first real run died on `ETIMEDOUT` at
+    // 90s. Scored per-scenario, not per-suite, so a generous ceiling costs
+    // nothing on the fast ones and stops long sessions being unjudgeable.
+    timeout: Number(process.env.EVAL_JUDGE_TIMEOUT_MS ?? 300_000),
+    maxBuffer: 64 * 1024 * 1024,
+  });
   try {
     const parsed = JSON.parse(raw) as { result?: string; usage?: { input_tokens?: number; output_tokens?: number } };
     return {

@@ -24,6 +24,51 @@ async function main(): Promise<void> {
   if (!token) throw new Error("live-mcp-server: LEADBAY_TOKEN required");
   const baseUrl = REGIONS[region] ?? REGIONS.us;
   const client = new LeadbayClient(baseUrl, token);
+
+  // NO-SPEND KILL SWITCH. Set by the runner for scenarios declaring
+  // `no_paid_calls`. The previous guard inspected tool inputs AFTER the session
+  // finished — by which point a regression had already called
+  // enrich_titles({titles, confirm:true, email:true}) against the real API and
+  // charged the account. An overdeliver eval must not be able to spend the
+  // quota it exists to prove is safe, so the block lives at the HTTP boundary:
+  // it holds no matter which tool, argument shape, or future code path reaches
+  // for it.
+  if (process.env.LEADBAY_EVAL_NO_PAID_CALLS === "1") {
+    // Every route that actually reveals a contact, not just the bulk one. The
+    // first version matched only /leads/selection/enrichment/launch, which left
+    // a real hole: leadbay_prepare_outreach({enrich:true}) delegates to
+    // leadbay_enrich_contacts, whose paid requests go to the per-lead contact
+    // paths below and would have sailed straight past the guard to the real API.
+    //
+    // Deliberately matched on the ENRICH segment rather than an exact path, so
+    // a future endpoint rename doesn't silently reopen the hole. Read-only
+    // discovery paths (job_titles, preview, status) are explicitly not here —
+    // the tour depends on them and they cost nothing.
+    const PAID_PATHS = [
+      /\/enrichment\/launch/,                    // bulk reveal (enrich_titles)
+      /\/contacts\/[^\/]+\/enrich(\?|$)/,          // per-contact reveal, both
+      /\/enrich\/contacts\/[^\/]+\/enrich(\?|$)/,  // the paid + fallback routes
+    ];
+    const deny = (method: string, path: string): void => {
+      if (PAID_PATHS.some((re) => re.test(path))) {
+        throw new Error(
+          `EVAL_NO_PAID_CALLS: refused ${method} ${path} — this scenario must never spend. ` +
+            `The call was blocked before reaching the API, so the eval fails on the assertion, not on your quota.`,
+        );
+      }
+    };
+    for (const m of ["request", "requestVoid", "requestRawBinary"] as const) {
+      const orig = (client as unknown as Record<string, Function>)[m].bind(client);
+      (client as unknown as Record<string, Function>)[m] = (
+        method: string,
+        path: string,
+        ...rest: unknown[]
+      ) => {
+        deny(method, path);
+        return orig(method, path, ...rest);
+      };
+    }
+  }
   // Wire a bulk tracker + notifications inbox so the async-enrichment path is
   // fully exercised: leadbay_enrich_titles mints a bulk_id and
   // leadbay_bulk_enrich_status can poll it (Workflow 43 / product#3866). Without

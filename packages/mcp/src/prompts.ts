@@ -21,6 +21,7 @@ import type {
 import {
   leadbay_build_campaign,
   leadbay_daily_check_in,
+  leadbay_getting_started,
   leadbay_import_file,
   leadbay_log_outreach,
   leadbay_new_leads,
@@ -373,6 +374,15 @@ const CATALOG: CatalogEntry[] = [
         ),
       ];
     },
+  },
+  {
+    // Guided first-run walkthrough (issue #3952). No arguments — the tour is
+    // the same for every new user, and asking a brand-new user to parameterize
+    // their own onboarding defeats the point.
+    name: "leadbay_getting_started",
+    description: PROMPT_META.leadbay_getting_started.short_description,
+    arguments: [],
+    render: () => [userMessage(leadbay_getting_started)],
   },
 ];
 
