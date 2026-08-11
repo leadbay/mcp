@@ -1213,6 +1213,9 @@ render_checks:
 
 ```yaml scenario
 prompt: "Walk me through Leadbay."
+```
+
+```yaml expected
 workflow_name: Net-new lead delivery (one ask → qualified, contactable leads)
 prompt_name: leadbay_new_leads
 required_calls:
