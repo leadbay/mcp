@@ -14,6 +14,7 @@ import {
   collectJobSnapshot,
   canonicalSet,
   coerceArrayParams,
+  isUuidShaped,
   normalizeUuid,
   canonicalLabelSet,
   derivedKey,
@@ -63,6 +64,30 @@ const DEFAULT_WAIT_SECONDS = 45;
  *  after a stop_reason: max_cost) hashes differently and runs as a new job.
  *  A caller who wants a deliberate re-run of an identical batch passes an
  *  explicit request_id. */
+/** MCP args arrive unvalidated, and `coerceArrayParams` turns a scalar
+ *  `lead_refs: "acme.com"` into `["acme.com"]` — a STRING where the schema
+ *  promises an object. Read as an object that yields an all-null ref, so EVERY
+ *  string ref canonicalizes identically: two different companies derive the
+ *  same `qualify-auto-*` key and the second batch dedupes onto the first
+ *  PAID job. The raw string is also posted as-is, which the backend 400s
+ *  after this tool already promised a quote.
+ *
+ *  Map the shorthand onto the shape the schema documents instead — a UUID is
+ *  a lead_id, a domain is a website, anything else is a name — so the derived
+ *  key and the submitted body agree and describe the company the caller meant. */
+function normalizeLeadRefs(
+  refs: QualifyLeadsParams["lead_refs"]
+): QualifyLeadsParams["lead_refs"] {
+  if (!Array.isArray(refs)) return refs;
+  return refs.map((ref) => {
+    if (typeof ref !== "string") return ref;
+    const value = (ref as string).trim();
+    if (!value) return ref;
+    if (isUuidShaped(value)) return { lead_id: value };
+    return normalizeDomain(value) ? { website: value } : { name: value };
+  });
+}
+
 function derivedRequestId(params: QualifyLeadsParams): string {
   // JSON-serialize each ref rather than joining raw values with delimiters.
   // Field names alone were not enough: a value CONTAINING the delimiters
@@ -239,6 +264,11 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
       "contact_titles",
       "channels",
     ]);
+    // …and a coerced scalar is a STRING inside that array, which every
+    // downstream reader treats as an object. Reshape before the spend gate so
+    // the quote, the idempotency key and the posted body all describe the same
+    // companies.
+    params = { ...params, lead_refs: normalizeLeadRefs(params.lead_refs) };
     // Spend gate. `qualify` defaults to TRUE on the backend (~94 cost_cents per
     // lead needing fresh research), so a bare call carrying only lead_refs is a
     // PAID submit — up to 500 refs — that the user never approved. Prose in the

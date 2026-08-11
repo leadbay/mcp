@@ -283,6 +283,12 @@ const UUID_RE =
  *  key — the backend resolves `A1B2…` and `a1b2…` to the same record. A value
  *  that is not UUID-shaped is only trimmed, since we cannot assume the backend
  *  folds case for arbitrary identifiers. */
+/** True when a value is shaped like a Leadbay UUID. Lets a caller tell a
+ *  lead id apart from a website or a company name in an untyped ref. */
+export function isUuidShaped(value: unknown): boolean {
+  return typeof value === "string" && UUID_RE.test(value.trim());
+}
+
 export function normalizeUuid(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const v = value.trim();
