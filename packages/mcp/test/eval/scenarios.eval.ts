@@ -169,6 +169,13 @@ describe.skipIf(missing.length > 0)("eval: live scenarios", () => {
       const transcript_dir = mkdtempSync(join(tmpdir(), `leadbay-eval-${sc.name}-`));
 
       // 1 — drive the real agent against the real server and API.
+      // Arm the kill switch BEFORE the session, not after. The assertion
+      // further down is a second net for shapes the endpoint block can't see;
+      // it is not the thing standing between a regression and a real charge.
+      const noSpend = Boolean(sc.mission.no_paid_calls || sc.no_paid_calls);
+      if (noSpend) process.env.LEADBAY_EVAL_NO_PAID_CALLS = "1";
+      else delete process.env.LEADBAY_EVAL_NO_PAID_CALLS;
+
       const live = await runSessionLive({
         prompt: { name: sc.prompt, body: sc.mission.user_intent, args: sc.args ?? {} },
         systemPrompt: buildSystemPrompt(sc.prompt),
@@ -253,11 +260,18 @@ describe.skipIf(missing.length > 0)("eval: live scenarios", () => {
         // Subsequence, not equality: extra calls between the pinned ones are
         // fine, but their relative order is the contract.
         const order = sc.mission.required_order;
+        // Walk the SUCCEEDED sequence. On the raw list, a failed
+        // account_status followed by a successful pull_leads and only then a
+        // successful account_status would satisfy account_status → pull_leads,
+        // even though the real order is reversed.
+        const okSequence = live.evidence.tool_calls
+          .filter((c) => c.output_summary.ok)
+          .map((c) => c.name);
         let cursor = 0;
-        for (const name of called) if (name === order[cursor]) cursor++;
+        for (const name of okSequence) if (name === order[cursor]) cursor++;
         expect(
           cursor,
-          `required_order not satisfied: wanted ${order.join(" → ")}, saw ${called.join(" → ")}`,
+          `required_order not satisfied: wanted ${order.join(" → ")}, succeeded ${okSequence.join(" → ")}`,
         ).toBe(order.length);
       }
 

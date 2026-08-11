@@ -654,12 +654,15 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
                 turn: userTurn,
                 name: bareName,
                 input: block.input,
-                // Provisional. The real outcome arrives later, on the `user`
-                // event carrying this call's tool_result — see below. Leaving
-                // it at ok:true was the bug: a call that failed with
-                // LAST_PROMPT_REQUIRED / BAD_INPUT still satisfied
-                // required_calls and reached the judge as a success.
-                output_summary: { ok: true, output_len: 0 },
+                // Starts NOT ok, and is only promoted when this call's
+                // tool_result actually says so. Two bugs made this the right
+                // default: `ok: true` meant a LAST_PROMPT_REQUIRED / BAD_INPUT
+                // result still satisfied required_calls, AND a call whose
+                // result never arrives at all — max-turns closing stdin right
+                // after the assistant issued it, or the SDK exiting before the
+                // replay — stayed recorded as a zero-length success. Unproven
+                // is not the same as fine.
+                output_summary: { ok: false, output_len: 0, sample: "no tool_result observed" },
                 duration_ms: 0,
               };
               evidence.tool_calls.push(rec);
@@ -770,6 +773,19 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
     try { if (rawLogFd >= 0) closeSync(rawLogFd); } catch { /* ignore */ }
     try { if (stderrFd >= 0) closeSync(stderrFd); } catch { /* ignore */ }
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+
+  // Sweep anything still unresolved. A call whose tool_result never arrived is
+  // not evidence of success — it is evidence of nothing, and the two must not
+  // be recorded the same way. Belt and braces with the not-ok default above:
+  // this also names WHY in the sample, so a run that ends mid-flight reads as
+  // truncated rather than as a silent pass.
+  for (const [, rec] of pendingToolCalls) {
+    rec.output_summary = {
+      ok: false,
+      output_len: 0,
+      sample: "session ended before this call's tool_result arrived",
+    };
   }
 
   return {

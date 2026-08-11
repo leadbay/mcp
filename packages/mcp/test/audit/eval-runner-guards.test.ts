@@ -22,7 +22,41 @@ const SESSION = readFileSync(
   "utf8",
 );
 
+const MCP_SERVER = readFileSync(
+  resolve(__dirname, "../eval/helpers/live-mcp-server.ts"),
+  "utf8",
+);
+
 describe("audit: eval runner guards", () => {
+  it("blocks paid endpoints BEFORE dispatch, not after the session", () => {
+    // The post-hoc input check could only report a spend that had already
+    // happened: by the time it ran, the live server had called the real API
+    // and charged the account. The block now sits at the HTTP boundary, so it
+    // holds regardless of which tool or argument shape reaches for it.
+    expect(MCP_SERVER).toMatch(/LEADBAY_EVAL_NO_PAID_CALLS/);
+    expect(MCP_SERVER).toMatch(/enrichment\\\/launch/);
+    expect(MCP_SERVER).toMatch(/refused/);
+    // …and the runner must arm it BEFORE runSessionLive, not after.
+    const armIdx = RUNNER.indexOf("LEADBAY_EVAL_NO_PAID_CALLS");
+    const runIdx = RUNNER.indexOf("await runSessionLive");
+    expect(armIdx, "kill switch must be armed before the session").toBeGreaterThan(-1);
+    expect(armIdx).toBeLessThan(runIdx);
+  });
+
+  it("required_order walks the SUCCEEDED sequence", () => {
+    // On the raw list, a failed account_status then a successful pull_leads
+    // then a successful account_status satisfies account_status → pull_leads,
+    // though the real order is reversed.
+    expect(RUNNER).toMatch(/okSequence/);
+    expect(RUNNER).toMatch(/succeeded \$\{okSequence/);
+  });
+
+  it("an unresolved tool call is a failure, not a success", () => {
+    // Provisional records start not-ok, and anything still pending at session
+    // end is swept — a result that never arrived is evidence of nothing.
+    expect(SESSION).toMatch(/no tool_result observed/);
+    expect(SESSION).toMatch(/session ended before this call's tool_result arrived/);
+  });
   it("records each tool call's REAL outcome from its tool_result", () => {
     // The runner used to stamp every call `ok: true, output_len: 0` and never
     // revisit it, so a call failing with LAST_PROMPT_REQUIRED or BAD_INPUT
