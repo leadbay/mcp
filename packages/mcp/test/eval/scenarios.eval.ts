@@ -70,6 +70,13 @@ interface ScenarioFile {
     required_order?: string[];
     /** Not part of MissionMatchScenario — asserted mechanically below. */
     allowed_calls?: string[];
+    /**
+     * Overdeliver scenarios: no call may carry spend-shaped arguments. Checked
+     * against the recorded tool INPUTS, not against fixtures — the live runner
+     * hits the real API, so "there is no launch fixture" blocks nothing and a
+     * regression would spend real quota.
+     */
+    no_paid_calls?: boolean;
     required_byproducts?: string[];
     forbidden_calls?: string[];
     render_checks?: Array<string | { must_match?: string; must_not_match?: string }>;
@@ -164,13 +171,39 @@ describe.skipIf(missing.length > 0)("eval: live scenarios", () => {
       // 2 — mechanical invariants the judge doesn't cover. These are cheap and
       // deterministic, so they run first: a wrong call sequence is a failure
       // regardless of how well the prose reads.
+      // A call that ERRORED does not satisfy a requirement. The runner now
+      // records each call's real outcome from its tool_result, so a
+      // LAST_PROMPT_REQUIRED / BAD_INPUT envelope no longer counts as "fired".
+      const succeeded = live.evidence.tool_calls
+        .filter((c) => c.output_summary.ok)
+        .map((c) => c.name);
+      const failedCalls = live.evidence.tool_calls.filter((c) => !c.output_summary.ok);
       for (const name of sc.mission.required_calls ?? []) {
-        expect(called, `required call ${name} never fired (called: ${called.join(", ")})`).toContain(
-          name,
-        );
+        const why = failedCalls.some((c) => c.name === name)
+          ? `${name} fired but FAILED: ${failedCalls.find((c) => c.name === name)?.output_summary.sample ?? ""}`
+          : `required call ${name} never fired (called: ${called.join(", ")})`;
+        expect(succeeded, why).toContain(name);
       }
       for (const name of sc.mission.forbidden_calls ?? []) {
         expect(called, `forbidden call ${name} fired`).not.toContain(name);
+      }
+      // allowed_calls is a WHITELIST, and scenarios already declare it to keep
+      // wider fan-out out of scope. It was collected and never checked, so a
+      // consent scenario could reach for extra real tools and still be judged
+      // purely on prose. Anything outside required + allowed is a scope breach.
+      if (sc.mission.allowed_calls?.length) {
+        const permitted = new Set([
+          ...(sc.mission.required_calls ?? []),
+          ...(sc.mission.required_order ?? []),
+          ...sc.mission.allowed_calls,
+        ]);
+        const strays = [...new Set(called)].filter(
+          (n) => !permitted.has(n) && !n.startsWith("leadbay_get_agent_memory"),
+        );
+        expect(
+          strays,
+          `tools fired outside required + allowed_calls: ${strays.join(", ")}`,
+        ).toEqual([]);
       }
       if (sc.mission.required_order?.length) {
         // Subsequence, not equality: extra calls between the pinned ones are
@@ -182,6 +215,27 @@ describe.skipIf(missing.length > 0)("eval: live scenarios", () => {
           cursor,
           `required_order not satisfied: wanted ${order.join(" → ")}, saw ${called.join(" → ")}`,
         ).toBe(order.length);
+      }
+
+      // The spend guard, asserted on real inputs. `backendFixtures` cannot do
+      // this job: the runner ignores fixtures and calls the live API, so the
+      // absence of a launch fixture would let a regression charge the account
+      // instead of failing on an undeclared endpoint.
+      if (sc.mission.no_paid_calls) {
+        const spenders = live.evidence.tool_calls.filter((c) => {
+          const i = (c.input ?? {}) as Record<string, unknown>;
+          return (
+            i.confirm === true ||
+            i.email === true ||
+            i.phone === true ||
+            i.enrich === true ||
+            (Array.isArray(i.titles) && i.titles.length > 0)
+          );
+        });
+        expect(
+          spenders.map((c) => `${c.name}(${JSON.stringify(c.input)})`),
+          "a paid call was made in a scenario that must never spend",
+        ).toEqual([]);
       }
 
       // 3 — the judge scores mission match, adherence, fabrication, tool fit.

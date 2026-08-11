@@ -123,6 +123,10 @@ export const SCENARIO = {
     // NO /leads/selection/enrichment/launch fixture ON PURPOSE. This is the
     // whole point of the scenario: a paid launch must fail the run loudly.
   ],
+  // Enforced on real tool INPUTS by the runner. Previously this relied on the
+  // absence of a /leads/selection/enrichment/launch fixture, which the live
+  // runner ignores — so a regression would have spent real quota.
+  no_paid_calls: true,
   mission: {
     user_intent: "Walk me through Leadbay.",
     // The OVERDELIVER twin: the user clicks through but never confirms a

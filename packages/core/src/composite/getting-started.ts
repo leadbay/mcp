@@ -37,8 +37,10 @@ import { leadbay_getting_started as GETTING_STARTED_DESCRIPTION } from "../tool-
 // Lives in composite/ (user-facing, per CLAUDE.md) so it carries the
 // `_triggered_by` mandate — "walk me through Leadbay" is a genuine user
 // utterance with real provenance to capture. Registered in compositeReadTools
-// so the walkthrough still works on a read-only (LEADBAY_MCP_WRITE=0)
-// deployment.
+// so the tour is REACHABLE on a read-only (LEADBAY_MCP_WRITE=0) deployment —
+// but gate 4's leadbay_enrich_titles is write-gated and absent there, so that
+// gate carries a branch ending the tour after gate 3 rather than offering a
+// button whose tool cannot run.
 
 /**
  * The gate's widget payload — the SAME shape leadbay_pull_leads returns as
@@ -399,6 +401,13 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         ],
       },
       calls: "leadbay_enrich_titles",
+      branches: [
+        {
+          when: "leadbay_enrich_titles is NOT in your tool set",
+          then:
+            "This is a read-only deployment (LEADBAY_MCP_WRITE=0) — the reveal tool simply is not registered. Do NOT fire this gate's widget, and do not hunt for another way to get contact details. Close the tour after gate 3 instead: say plainly that revealing contacts isn't enabled on this connection, that the draft they just watched being written is still theirs, and go to the closing. A gate whose tool cannot run is a dead end, and offering the button anyway is worse than ending one step early.",
+        },
+      ],
       args: {
         leadIds: "<the ONE lead you drafted for at step 3>",
         lensId: "<the pinned lens id from step 2>",
@@ -411,7 +420,10 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         "that nothing has been spent yet. Beat 2: name the title the draft is " +
         "addressed to, tell them BEFORE they decide what it costs (one credit per " +
         "contact revealed — here that is ONE contact, one credit), and ask them to " +
-        "confirm. Only then call leadbay_enrich_titles AGAIN with that leadId, the " +
+        "confirm. Only then call leadbay_enrich_titles AGAIN with leadIds: [<that " +
+        "lead id>] — ALWAYS the array, even for a single lead: `leadId` singular is " +
+        "not a key this tool reads, so it is dropped and the paid call falls back to " +
+        "the default wishlist selection, charging for the whole batch — plus the " +
         "chosen title, confirm:true and email:true. Poll leadbay_bulk_enrich_status " +
         "with the returned bulk_id until all_done (or the count plateaus), and " +
         "report the contact that actually resolved. NEVER launch the reveal without " +
@@ -460,6 +472,13 @@ export const gettingStarted: Tool<GettingStartedParams> = {
     _params: GettingStartedParams,
     _ctx?: ToolContext,
   ) => {
-    return GETTING_STARTED_MANIFEST;
+    // A DEEP COPY, never the singleton itself. The server attaches per-call
+    // metadata (`_meta.update_available`, `_meta.notifications`) to successful
+    // result objects IN PLACE. Returning GETTING_STARTED_MANIFEST by reference
+    // let those fields stick to the module-level constant, so a later call in
+    // the same process could carry another call's notifications — including
+    // ones the user had already acknowledged. The manifest is static content;
+    // the response is per-call, and the two must not be the same object.
+    return structuredClone(GETTING_STARTED_MANIFEST);
   },
 };

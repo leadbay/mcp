@@ -34,6 +34,7 @@ failure_modes:
   - Rewords, reorders or prose-ifies the `next_steps` payload from `leadbay_pull_leads` instead of mapping `options[]` into the widget verbatim
   - Runs all four steps in one turn without waiting for the user's click between gates — the walkthrough is a sequence of gates, not a script to recite
   - Skips `leadbay_pull_leads` and jumps straight to enrichment, leaving gate 4 with no `leadIds` to scope
+  - Passes a singular `leadId` to `leadbay_enrich_titles` on the confirmed reveal — that key does not exist on this tool, so it is dropped and the paid call falls back to the whole default wishlist selection, charging for far more than the one lead the user agreed to. it is always the `leadIds` ARRAY, even for a single lead
   - Drops the pinned `lens.id` between gates, so gate 4 enriches against a different lens than the one the user just saw
   - Ends the completed walkthrough without the `keep_going` cheat-sheet — the buttons disappear with the tour, so a user who was never told what to TYPE learned to click a tutorial and nothing about using Leadbay tomorrow
   - Invents phrases for the cheat-sheet, or rewords them into something that sounds nicer but doesn't match the tool's real triggers — teaching a phrase that doesn't route is worse than teaching none
@@ -309,6 +310,13 @@ costs credits and needs their say-so.
 
 **Then fire the widget** — question `Want to find out who to send that email to?`, first option labelled `Find who to email`, description `See the roles at that company. Free — no contact details revealed yet.` Second option: `I'm done for now` / `Stop the walkthrough here.` **Wait for the click.**
 
+**First, check `leadbay_enrich_titles` is in your tool set.** On a read-only
+deployment it is not registered, and a gate whose tool cannot run is a dead
+end. If it's missing: don't fire this widget, say plainly that revealing
+contacts isn't enabled on this connection, note the draft is still theirs, and
+go straight to the closing. Ending one step early beats offering a button that
+does nothing.
+
 This gate runs in **TWO BEATS**. Do not collapse them.
 
 ## BEAT 1 — the free look (spends nothing)
@@ -333,9 +341,16 @@ contact, one credit**. Then ask them to confirm.
 "they clicked the gate earlier" — the gate click bought the free look, not the
 reveal.
 
-Once confirmed, call `leadbay_enrich_titles` AGAIN with that `leadId`, the
-chosen `titles`, `confirm: true` and `email: true`. That's the real, paid
-reveal.
+Once confirmed, call `leadbay_enrich_titles` AGAIN with
+`leadIds: [<the drafted lead's id>]` — **the array, always, even for one lead**
+— plus the chosen `titles`, `confirm: true` and `email: true`. That's the real,
+paid reveal.
+
+`leadIds` is the only key this tool reads for scope. A singular `leadId` is not
+a parameter: it is silently ignored, and the call then falls back to the
+account's **default wishlist selection** while `confirm`/`email` are set — so
+it would reveal and charge for the whole batch instead of the one lead the user
+agreed to.
 
 It returns a `bulk_id` and runs async — poll `leadbay_bulk_enrich_status`
 with that id (`include_contacts=true`) until `all_done`, or until the resolved
@@ -386,6 +401,11 @@ nothing about using Leadbay tomorrow. That is what the cheat-sheet is for.
    Keep it to **one sentence and the link**. Never re-open the walkthrough,
    never re-fire the gate they just declined, and never argue for finishing the
    tour.
+
+   **On this path the offer is the last PROSE you write.** The STOP block below
+   still closes the message — it is a machine marker, not something the user
+   reads as content, so it does not displace the offer. What must never happen
+   is the offer being dropped or pushed above the cheat-sheet to make room.
 
 ## ENDING C — they typed something off-script
 

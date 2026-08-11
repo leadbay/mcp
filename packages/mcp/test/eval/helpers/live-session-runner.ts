@@ -361,6 +361,9 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
     if (rawLogFd >= 0) writeSync(rawLogFd, line + "\n");
   };
 
+  // tool_use id -> the record awaiting its outcome. Spans user turns, because
+  // a call made at the end of one turn can be resolved at the start of the next.
+  const pendingToolCalls = new Map<string, ToolCallRecord>();
   const evidence: MCPEvidence = {
     session: {
       session_id,
@@ -518,6 +521,41 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
           const event = parseStreamLine(line);
           if (!event) continue;
 
+          // A `user` event carries the tool_result for a call the assistant
+          // made earlier. This is the ONLY place the real outcome is visible,
+          // so without it every call stays recorded as a success.
+          if (event.type === "user") {
+            const content = ((event as { message?: { content?: unknown } }).message?.content ?? []);
+            if (Array.isArray(content)) {
+              for (const blk of content as Array<Record<string, unknown>>) {
+                if (blk["type"] !== "tool_result") continue;
+                const rec = pendingToolCalls.get(blk["tool_use_id"] as string);
+                if (!rec) continue;
+                const raw = blk["content"];
+                const text =
+                  typeof raw === "string"
+                    ? raw
+                    : Array.isArray(raw)
+                      ? (raw as Array<Record<string, unknown>>)
+                          .filter((b) => b["type"] === "text")
+                          .map((b) => String(b["text"] ?? ""))
+                          .join("\n")
+                      : JSON.stringify(raw ?? "");
+                // is_error is the host's own flag; the error-envelope check
+                // catches tools that return a 200-shaped {error:{code}} body.
+                const flagged = blk["is_error"] === true;
+                const enveloped = /"error"\s*:\s*\{|"code"\s*:\s*"[A-Z_]+"/.test(text);
+                rec.output_summary = {
+                  ok: !flagged && !enveloped,
+                  output_len: text.length,
+                  sample: text.slice(0, 240),
+                };
+                pendingToolCalls.delete(blk["tool_use_id"] as string);
+              }
+            }
+            continue;
+          }
+
           if (event.type === "assistant") {
             const ev = event as StreamAssistantEvent;
             turn += 1;
@@ -597,10 +635,16 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
                 turn: userTurn,
                 name: bareName,
                 input: block.input,
+                // Provisional. The real outcome arrives later, on the `user`
+                // event carrying this call's tool_result — see below. Leaving
+                // it at ok:true was the bug: a call that failed with
+                // LAST_PROMPT_REQUIRED / BAD_INPUT still satisfied
+                // required_calls and reached the judge as a success.
                 output_summary: { ok: true, output_len: 0 },
                 duration_ms: 0,
               };
               evidence.tool_calls.push(rec);
+              pendingToolCalls.set(block.id, rec);
               appendTranscript({
                 kind: "tool-call",
                 turn: userTurn,
