@@ -164,7 +164,7 @@ export const SCENARIO = {
         // tool here is the "ran the demo at them" failure.
         forbid_calls: ["leadbay_account_status", "leadbay_pull_leads"],
         carry_over: [
-          "opened with a SHORT plain-language paragraph — what Leadbay is, what a lens is, what the six steps deliver — and did NOT walk through the six steps one at a time",
+          "opened with a SHORT plain-language paragraph — what Leadbay is, what a lens is, what the four steps deliver — and did NOT walk through the four steps one at a time",
           "offered gate 1 and then STOPPED, rather than running the tour at the user",
         ],
       },

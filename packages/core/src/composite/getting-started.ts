@@ -174,12 +174,12 @@ const EXIT_OFFER =
   "the one that gets dropped: an agent that renders the cheat-sheet feels " +
   "finished and stops, so the user who just stepped out never hears about the " +
   "help that would have brought them back. An exit close WITHOUT the offer is " +
-  "incomplete. Say it in one sentence and give calendly_url: Zoe on the " +
-  "Leadbay team runs 1:1 sessions for the parts a walkthrough can't cover — " +
-  "tuning the lens to their market, wiring the CRM push into their own setup, " +
-  "and getting the daily run automated end to end. Keep it to that one " +
-  "sentence: they just said they were done, so anything longer reads as a " +
-  "pitch. Never re-open the walkthrough, never re-fire the declined gate, and " +
+  "incomplete. ONE SENTENCE and calendly_url, e.g. 'If you want a hand tuning " +
+  "this to your own market, Zoe on our team runs 1:1 sessions: <url>'. That " +
+  "length is the rule, not a suggestion — do NOT enumerate everything Zoe " +
+  "could help with, which turns an offer into promotional copy and is exactly " +
+  "what someone who just said they were done does not want. Never re-open the " +
+  "walkthrough, never re-fire the declined gate, and " +
   "never argue for finishing the tour. If they instead left by TYPING " +
   "something off-script that is ENDING C, not B — serve what they asked and " +
   "skip the cheat-sheet, the link AND the offer.";

@@ -536,10 +536,12 @@ nothing about using Leadbay tomorrow. That is what the cheat-sheet is for.
    with, which makes this the one moment the offer is welcome rather than
    pushy. Say, in your own words, one sentence and the link:
 
-> Zoe on our team runs 1:1 sessions for the parts a walkthrough can't cover —
-> tuning your lens to your market, wiring the CRM push into your own setup, and
-> getting the daily run automated end to end. If that'd help:
-> <https://calendly.com/zoe-leadbay/demo-leadbay>
+> If you want a hand tuning this to your own market, Zoe on our team runs 1:1
+> sessions: <https://calendly.com/zoe-leadbay/demo-leadbay>
+
+   That length is the rule, not a suggestion — **one sentence**. Listing
+   everything Zoe could help with turns an offer into promotional copy, which
+   is exactly what a user who just said "I'm done" doesn't want.
 
    Keep it to **one sentence and the link**. Never re-open the walkthrough,
    never re-fire the gate they just declined, and never argue for finishing the
