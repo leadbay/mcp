@@ -34,7 +34,11 @@ describe("audit: eval runner guards", () => {
     // and charged the account. The block now sits at the HTTP boundary, so it
     // holds regardless of which tool or argument shape reaches for it.
     expect(MCP_SERVER).toMatch(/LEADBAY_EVAL_NO_PAID_CALLS/);
-    expect(MCP_SERVER).toMatch(/enrichment\\\/launch/);
+    expect(MCP_SERVER).toMatch(/PAID_PATHS/);
+    // Which paths those patterns actually cover is tested behaviourally in
+    // eval-no-spend-paths.test.ts — a source grep can't tell a guard that
+    // blocks every reveal route from one that blocks only the bulk endpoint,
+    // which is precisely how the first version leaked.
     expect(MCP_SERVER).toMatch(/refused/);
     // …and the runner must arm it BEFORE runSessionLive, not after.
     const armIdx = RUNNER.indexOf("LEADBAY_EVAL_NO_PAID_CALLS");
