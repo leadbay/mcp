@@ -18,6 +18,7 @@ import {
   canonicalLabelSet,
   canonicalOptionalObject,
   derivedKey,
+  presentRequestId,
   mockedSubmitPreview,
   compactBody,
   normalizeSearchFilters,
@@ -242,7 +243,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     // novelty-claiming job. Synthesize a stable key from the approved search
     // itself, exactly as the qualify path does.
     const requestId =
-      params.request_id ??
+      presentRequestId(params.request_id) ??
       derivedKey(
         "search-auto",
         // Passed as an OBJECT: derivedKey canonicalizes recursively, so nested
@@ -272,7 +273,17 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
           exclude_lead_ids: canonicalIdSet(params.exclude_lead_ids),
           novelty: params.novelty ?? "org",
           max_cost: params.max_cost ?? null,
-          exploration_cap: params.exploration_cap ?? null,
+          // Documented backend default is min(3n,150), so an omitted cap is
+          // canonicalized TO it — same principle as min_ai_score/novelty above.
+          // Otherwise an approval that omits the cap and a retry that passes the
+          // materialized default ask for identical work under different keys,
+          // and the retry escapes dedupe into a second paid, novelty-claiming
+          // job. An explicit non-default cap still hashes distinctly.
+          exploration_cap:
+            params.exploration_cap ??
+            (typeof params.count === "number" && params.count > 0
+              ? Math.min(3 * params.count, 150)
+              : null),
           lang: params.lang ?? null,
         }
       );

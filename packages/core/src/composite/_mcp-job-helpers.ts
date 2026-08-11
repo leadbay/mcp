@@ -283,6 +283,17 @@ const UUID_RE =
  *  key — the backend resolves `A1B2…` and `a1b2…` to the same record. A value
  *  that is not UUID-shaped is only trimmed, since we cannot assume the backend
  *  folds case for arbitrary identifiers. */
+/** A caller can fill a schema-`required` string with `""` — the server does not
+ *  validate schemas before dispatch. `??` treats that as an explicit value, so a
+ *  blank id would ship AS the idempotency key: if the backend reads blank as
+ *  absent, a timeout retry launches a second paid job; if it reads blank as a
+ *  key, unrelated blank-key approvals dedupe onto each other. Blank is missing. */
+export function presentRequestId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 /** True when a value is shaped like a Leadbay UUID. Lets a caller tell a
  *  lead id apart from a website or a company name in an untyped ref. */
 export function isUuidShaped(value: unknown): boolean {

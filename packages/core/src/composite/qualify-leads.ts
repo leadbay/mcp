@@ -16,6 +16,7 @@ import {
   coerceArrayParams,
   isUuidShaped,
   normalizeUuid,
+  presentRequestId,
   canonicalLabelSet,
   derivedKey,
   mockedSubmitPreview,
@@ -291,8 +292,10 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     // the same refs. `request_id` is optional on this tool (unlike the search),
     // so derive a stable one from the batch when the caller omits it: same refs
     // + same paid flags on the same day = same key = backend dedupe.
+    // Blank is missing: a caller can fill this optional field with "" and `??`
+    // would ship it as the key — see presentRequestId.
     const requestId =
-      params.request_id ??
+      presentRequestId(params.request_id) ??
       (isPaid ? derivedRequestId(params) : undefined);
 
     const body = compactBody({
