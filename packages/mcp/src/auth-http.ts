@@ -30,13 +30,37 @@ export interface ResolveTokenOptions {
   // Set false to skip the round-trip (e.g. an explicit region/baseUrl pin where
   // the caller doesn't need the refresh signal).
   validate?: boolean;
+  // Per-probe deadline in ms. Defaults to PROBE_TIMEOUT_MS; exposed so tests can
+  // drive the stalled-region path without waiting seconds.
+  probeTimeoutMs?: number;
 }
+
+/**
+ * Wall-clock budget for ONE region's `/users/me` validation probe.
+ *
+ * The probes run one after another (the outcome of the first decides whether the
+ * second is even meaningful), so without a deadline a single stalled region
+ * would hold the whole request open: node:https has no default socket timeout,
+ * and a backend that accepts the connection then goes silent never rejects. That
+ * would strand a caller whose token the SIBLING region would have accepted.
+ * A probe that overruns is treated exactly like a 5xx — a transient fault — so
+ * the resolver moves to the next candidate instead of forcing re-auth. Worst
+ * case for a request is therefore two deadlines (both regions dark), which is
+ * bounded — the previous behaviour was not bounded at all.
+ */
+export const PROBE_TIMEOUT_MS = 4000;
 
 /**
  * Decode the region from a Stargate-issued access token's trailing suffix:
  * `o.<token>_fr` / `o.<token>_us` → "fr" / "us". Returns undefined for an
  * untagged/legacy token (caller falls back). The token body isn't otherwise
  * inspected here — the backend validates it.
+ *
+ * The suffix is a routing HINT, not proof of provenance: a legacy opaque bearer
+ * can end in `_fr` by coincidence and it would be indistinguishable from a
+ * tagged one. So callers must not treat a match as a hard region pin — see the
+ * candidate list in resolveClientFromToken, which still probes the sibling
+ * region before declaring such a token expired.
  */
 export function regionFromToken(token: string): "us" | "fr" | undefined {
   const i = token.lastIndexOf("_");
@@ -49,7 +73,14 @@ export async function resolveClientFromToken(
   token: string | undefined,
   opts: ResolveTokenOptions = {}
 ): Promise<ResolvedClient> {
-  const { region, preferRegion, baseUrl, logger, validate = true } = opts;
+  const {
+    region,
+    preferRegion,
+    baseUrl,
+    logger,
+    validate = true,
+    probeTimeoutMs = PROBE_TIMEOUT_MS,
+  } = opts;
 
   if (!token || token.length === 0) {
     // Same broken-client pattern as stdio: let the JSON-RPC handshake
@@ -82,12 +113,9 @@ export async function resolveClientFromToken(
   // Stargate-issued tokens carry a `_us`/`_fr` region suffix, so we route directly
   // to the owning backend. A legacy/untagged token has NO suffix — we must not pin
   // it to one region, or an existing FR token validated only against US would 401
-  // and be falsely reported expired. So:
-  //   - suffixed token  → probe the one region the suffix names.
-  //   - untagged token  → probe the preferred region (a `_fr` path hint via `opts`
-  //                       can't reach here since it early-returns above, so the
-  //                       preference is US-first), then FALL BACK to the other
-  //                       region; only expired if BOTH reject.
+  // and be falsely reported expired. So the suffix (else `preferRegion`, else US)
+  // decides which region is tried FIRST and which one the client binds to; it
+  // never decides that the sibling goes untried.
   const suffixRegion = regionFromToken(token);
   // Untagged token: probe `preferRegion` first (e.g. "fr" from the /fr/mcp alias),
   // else default US-first. Suffixed token: the suffix is authoritative.
@@ -97,16 +125,21 @@ export async function resolveClientFromToken(
     return { client: createClient({ token, region: primaryRegion }), authState: "ok" };
   }
 
-  // Probe candidates: a suffixed token names exactly one region; an untagged token
-  // tries both (primary first, then the sibling) so a valid legacy token in EITHER
-  // region resolves. A candidate's outcome is one of: OK (return immediately),
-  // auth-reject (try the next), or non-auth fault (try the next — it might be a
-  // transient/backend error while the token is valid elsewhere).
-  const candidates: ("us" | "fr")[] = suffixRegion
-    ? [suffixRegion]
-    : primaryRegion === "us"
-      ? ["us", "fr"]
-      : ["fr", "us"];
+  // Probe candidates: the primary region first, then the sibling. A candidate's
+  // outcome is one of: OK (return immediately), auth-reject (try the next), or
+  // non-auth fault (try the next — it might be a transient/backend error while
+  // the token is valid elsewhere).
+  //
+  // The sibling is a candidate even for a SUFFIXED token, because the suffix is
+  // only a hint: a legacy opaque bearer whose value happens to end in `_us`/`_fr`
+  // is byte-for-byte indistinguishable from a Stargate-tagged one. Probing only
+  // the named region would report such a token `expired` on its single 401 and
+  // push a user with a perfectly valid sibling-region token through reauth, over
+  // and over, until their token is rotated. The extra probe costs one round trip
+  // and ONLY on the failure path — a token the named region accepts still
+  // resolves on the first probe, which is the whole point of the suffix.
+  const candidates: ("us" | "fr")[] =
+    primaryRegion === "us" ? ["us", "fr"] : ["fr", "us"];
 
   let sawAuthReject = false;
   // The region whose probe hit a transient (non-auth) fault, if any. When we
@@ -123,11 +156,14 @@ export async function resolveClientFromToken(
       // (a legacy FR token 401'ing on US must move to FR, not retry US and bind there).
       // Cache-warming for telemetry is handled after success via seedMe(), so this
       // still avoids the second /users/me round trip resolveIdentity would otherwise do.
+      // The deadline is what keeps the candidates independent: probes run in
+      // sequence, so an unbounded first probe against a stalled region would
+      // starve the sibling that could still accept this token.
       const me = await client.request<UserMePayload>(
         "GET",
         "/users/me",
         undefined,
-        { retryOn401: false }
+        { retryOn401: false, timeoutMs: probeTimeoutMs }
       );
       client.seedMe(me); // warm the /users/me cache so resolveIdentity reuses it
       return { client, authState: "ok" };
@@ -136,7 +172,12 @@ export async function resolveClientFromToken(
       if (code === "AUTH_EXPIRED" || code === "NOT_AUTHENTICATED") {
         sawAuthReject = true;
       } else {
-        // Non-auth fault (5xx / network) on THIS region — do NOT bind here yet. The
+        if (code === "TIMEOUT") {
+          logger?.warn?.(
+            `hosted MCP auth probe against ${r} exceeded ${probeTimeoutMs}ms — moving on to the next candidate region`
+          );
+        }
+        // Non-auth fault (5xx / network / timeout) on THIS region — do NOT bind here yet. The
         // token may be valid in the sibling region (e.g. US 503 while FR is healthy
         // on the shared /mcp URL), so keep probing the remaining candidates. Record
         // the first such region so we can bind to it if nothing resolves cleanly.

@@ -42,7 +42,13 @@ function httpsRequest(
   method: string,
   url: string,
   headers: Record<string, string>,
-  body?: string | Buffer
+  body?: string | Buffer,
+  // Optional wall-clock deadline. node:https sets NO socket timeout by default,
+  // so a peer that completes the TCP handshake and then stalls leaves this
+  // promise pending indefinitely. Callers that must bound their own latency —
+  // the hosted auth probe, which walks candidate regions one after another —
+  // pass this; every other call keeps the previous unbounded behaviour.
+  timeoutMs?: number
 ): Promise<HttpResult> {
   return new Promise((resolve, reject) => {
     const start = Date.now();
@@ -51,6 +57,10 @@ function httpsRequest(
     if (body !== undefined) {
       reqHeaders["Content-Length"] = Buffer.byteLength(body);
     }
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const clearDeadline = () => {
+      if (deadline !== undefined) clearTimeout(deadline);
+    };
     const req = https.request(
       {
         hostname: parsed.hostname,
@@ -63,6 +73,7 @@ function httpsRequest(
         const chunks: Buffer[] = [];
         res.on("data", (chunk) => chunks.push(chunk));
         res.on("end", () => {
+          clearDeadline();
           resolve({
             status: res.statusCode ?? 0,
             body: Buffer.concat(chunks).toString("utf8"),
@@ -72,7 +83,28 @@ function httpsRequest(
         });
       }
     );
-    req.on("error", reject);
+
+    if (timeoutMs !== undefined && timeoutMs > 0) {
+      deadline = setTimeout(() => {
+        // destroy() actually cancels — it aborts the request and frees the
+        // socket rather than leaving a stalled connection behind a raced
+        // promise. Optional-called because the node:https test double is a bare
+        // EventEmitter with no destroy().
+        (req as { destroy?: (e?: Error) => void }).destroy?.();
+        const err = new Error(
+          `Request timed out after ${timeoutMs}ms: ${method} ${url}`
+        ) as Error & { code?: string };
+        err.code = "TIMEOUT"; // not an auth code — callers treat it as a transient fault
+        reject(err);
+      }, timeoutMs);
+      // Never hold the process open on a probe deadline.
+      (deadline as unknown as { unref?: () => void }).unref?.();
+    }
+
+    req.on("error", (e) => {
+      clearDeadline();
+      reject(e);
+    });
     if (body !== undefined) req.write(body);
     req.end();
   });
@@ -441,9 +473,10 @@ export class LeadbayClient {
     method: string,
     url: string,
     headers: Record<string, string>,
-    body?: string | Buffer
+    body?: string | Buffer,
+    timeoutMs?: number
   ): Promise<HttpResult> => {
-    const res = await httpsRequest(method, url, headers, body);
+    const res = await httpsRequest(method, url, headers, body, timeoutMs);
     if (res.status === 401 && method.toUpperCase() === "GET") {
       this.releaseSemaphore();
       try {
@@ -451,7 +484,7 @@ export class LeadbayClient {
       } finally {
         await this.acquireSemaphore();
       }
-      return httpsRequest(method, url, headers, body);
+      return httpsRequest(method, url, headers, body, timeoutMs);
     }
     return res;
   };
@@ -460,7 +493,10 @@ export class LeadbayClient {
     method: string,
     path: string,
     body?: unknown,
-    opts?: { retryOn401?: boolean }
+    // `timeoutMs` bounds a single attempt (each retry gets its own deadline) and
+    // surfaces as a `TIMEOUT`-coded Error — never an auth code, so a caller that
+    // classifies failures reads it as a transient fault.
+    opts?: { retryOn401?: boolean; timeoutMs?: number }
   ): Promise<T> {
     // Mock mode short-circuit (no auth required).
     if (process.env.LEADBAY_MOCK === "1") {
@@ -491,7 +527,8 @@ export class LeadbayClient {
         method,
         url,
         headers,
-        body ? JSON.stringify(body) : undefined
+        body ? JSON.stringify(body) : undefined,
+        opts?.timeoutMs
       );
 
       this._lastMeta = {

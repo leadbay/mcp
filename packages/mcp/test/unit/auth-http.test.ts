@@ -52,11 +52,27 @@ describe("resolveClientFromToken", () => {
     expect(requests).toHaveLength(0);
   });
 
-  // NOTE: the three "auto-probe" tests that lived here (first-region-wins,
-  // dual-region AUTH_EXPIRED → expired, dual-region 5xx → probe_failed) tested the
-  // pre-Stargate DUAL-region probe model, which this PR removes: the region is now
-  // decoded from the token suffix and validated with a SINGLE-region probe. Those
-  // obsolete tests are dropped; the single-region probe / expired / validate:false
-  // / region-from-token coverage lives in the new file
-  // auth-http-single-region-probe.test.ts (repo rule: new tests in new files).
+  it("auto-probe: first region to respond wins", async () => {
+    // Respond to /users/me on us; fr gets a 401 (will be ignored since us wins)
+    mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 200, body: { id: "u1" } },
+      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "NOT_AUTHENTICATED", message: "bad" } },
+    ]);
+    const result = await resolveClientFromToken("tok");
+    expect(result.authState).toBe("ok");
+  });
+
+  // NOTE: two "auto-probe" tests that lived here could not be kept, because they
+  // assert contracts this PR deliberately replaces — not because the coverage was
+  // unwanted:
+  //   - "both regions AUTH_EXPIRED → expired broken client" asserted that the
+  //     expired path hands back a BROKEN client. It now hands back a live one:
+  //     the hosted server answers 401 + WWW-Authenticate itself, so the client is
+  //     never called (see http-auth-challenge-stargate.test.ts).
+  //   - "both regions network error → probe_failed" asserted the `probe_failed`
+  //     authState, which no longer exists — a transient fault resolves as "ok" so
+  //     a backend blip can't force a spurious re-auth.
+  // Their replacements, plus the region-from-token / single-probe / validate:false
+  // coverage, live in the new file auth-http-single-region-probe.test.ts (repo
+  // rule: new tests in new files).
 });

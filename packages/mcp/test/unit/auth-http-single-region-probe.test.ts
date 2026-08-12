@@ -3,8 +3,11 @@
 //
 // Under the single-Stargate flow the region is decoded from the token's
 // `_fr`/`_us` suffix and validated with ONE `/users/me` probe against the owning
-// backend. A rejected token → authState "expired" (drives the invalid_token
-// refresh challenge); a non-auth fault → "ok" (don't force spurious re-auth).
+// backend — the happy path costs a single round trip. A rejected token →
+// authState "expired" (drives the invalid_token refresh challenge); a non-auth
+// fault → "ok" (don't force spurious re-auth). Only on those failure paths is
+// the sibling region also asked, because the suffix is a hint rather than proof
+// of provenance — see auth-http-probe-resilience.test.ts.
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { vi } from "vitest";
@@ -39,13 +42,22 @@ describe("resolveClientFromToken — single-region validation probe", () => {
   });
 
   it("rejected token → expired (drives the invalid_token refresh challenge)", async () => {
-    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 401, body: {} }]);
+    // Both regions are scripted because a rejection is exactly when the sibling
+    // gets asked too — the suffix names the owning backend, it doesn't prove the
+    // token came from Stargate at all.
+    mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 401, body: {} },
+      { method: "GET", path: "/1.6/users/me", status: 401, body: {} },
+    ]);
     const result = await resolveClientFromToken("o.staletoken_fr");
     expect(result.authState).toBe("expired");
   });
 
   it("non-auth probe failure (5xx) → ok (don't force re-auth on a transient fault)", async () => {
-    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 503, body: {} }]);
+    mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 503, body: {} },
+      { method: "GET", path: "/1.6/users/me", status: 503, body: {} },
+    ]);
     const result = await resolveClientFromToken("o.sometoken_us");
     expect(result.authState).toBe("ok");
   });
