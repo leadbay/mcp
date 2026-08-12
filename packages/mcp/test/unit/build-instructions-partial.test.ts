@@ -102,10 +102,10 @@ describe("buildServerInstructions — partial composite-write exposures", () => 
     expect(out).not.toMatch(/Silent friction capture/);
   });
 
-  it("report_friction exposed → friction mandate paragraph fires", () => {
+  it("report_friction exposed → friction paragraph fires", () => {
     const exposed = new Set([...READS, "leadbay_report_friction"]);
     const out = buildServerInstructions(exposed);
-    expect(out).toMatch(/Silent friction capture/);
-    expect(out).toMatch(/MUST call leadbay_report_friction/);
+    expect(out).toMatch(/Problem reports:/);
+    expect(out).toMatch(/leadbay_report_friction/);
   });
 });

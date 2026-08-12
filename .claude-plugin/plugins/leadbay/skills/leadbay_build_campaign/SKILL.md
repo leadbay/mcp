@@ -1,6 +1,6 @@
 ---
 name: leadbay_build_campaign
-description: "Build a sales campaign from scratch in one guided flow: discover on the active lens, qualify and pick a cohort, enrich the contacts most likely to engage, save it via `leadbay_create_campaign`, then show a one-tap call/email view via `leadbay_campaign_call_sheet`. Trigger on \"build me a campaign\", \"set up a new campaign\", \"create a campaign from scratch\". WORK an existing campaign with `leadbay_work_campaign`; split leads across reps with `leadbay_setup_team_prospecting`."
+description: "Build a sales campaign from scratch, autonomously, to a target size: discover on the lens, qualify, and enrich the buyer titles until `count` leads each have a reachable target-title contact — no pauses, no confirm gates. Saves via `leadbay_create_campaign` and renders a one-tap call/email view via `leadbay_campaign_call_sheet`. Trigger on \"build me a campaign\", \"build N leads\", \"create a campaign from scratch\". Work an existing one with `leadbay_work_campaign`."
 ---
 
 
@@ -9,7 +9,9 @@ description: "Build a sales campaign from scratch in one guided flow: discover o
 Before responding, glance at any `_meta.agent_memory.summary` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call `leadbay_agent_memory_capture` to persist it: `source:"user_stated"` if literal, `source:"inferred"` with confidence <=6 if inferred.
 
 
-Build me a Leadbay campaign from scratch<if the user supplied this argument, render the short parenthetical or inline clause derived from it; otherwise empty. Source: Optional: a name for the campaign. Omit and one is derived from the lens/audience + date (or the backend AI-names it).>. <if the user supplied this argument, render the short block derived from it; otherwise empty. Source: Optional: a fresh audience to target (e.g. 'dental clinics in Texas'). Omit to build from your ACTIVE lens — the default.>
+Build me a Leadbay campaign from scratch<if the user supplied this argument, render the short parenthetical or inline clause derived from it; otherwise empty. Source: Optional: a name for the campaign. Omit and one is derived from the lens/audience + date (or the backend AI-names it).> — a cohort of **<the user-supplied value if any; otherwise a sensible default. Source: Optional: how many fully-actionable leads to build (default 20). The loop keeps discovering, qualifying and enriching until this many in-ICP leads each have a reachable target-title contact — or the lens is exhausted. Higher counts take longer and consume more quota.>** fully-actionable leads: each in-ICP, high `ai_agent_lead_score`, AND with a reachable buyer contact. <if the user supplied this argument, render the short block derived from it; otherwise empty. Source: Optional: a fresh audience to target (e.g. 'dental clinics in Texas'). Omit to build from your ACTIVE lens — the default.> <if the user supplied this argument, render the short block derived from it; otherwise empty. Source: Optional: the exact buyer job titles to enrich, comma-separated (e.g. 'VP Sales, Head of Growth, Director of Business Development'). Omit and the buyer persona is derived from what you sell. A lead only counts toward the target when it has a reachable contact matching one of these titles.>
+
+**Run this end-to-end, autonomously, without pausing.** Do NOT stop to confirm the audience, do NOT stop to confirm the enrichment spend, do NOT ask me to pick, and do NOT stop to hand off — just keep discovering, qualifying, enriching, and swapping until the cohort holds **<the count_or_default (as extracted above)>** leads that each meet EVERY requirement (in-ICP, high `ai_agent_lead_score`, and a reachable target-title contact whose email/phone actually landed). The ONLY reasons to stop short: the lens genuinely can't supply that many buyer-ready in-ICP leads, or enrichment quota is exhausted (a backend 429). In those cases, finish with whatever you locked and tell me plainly how many you got and why it stopped. Enrichment consumes quota, not credits — never pre-refuse on a credit balance.
 
 GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
 
@@ -47,14 +49,14 @@ If `pull_leads` itself fails and you have no prior batch, then yes — retry it,
 
 Call `leadbay_account_status` to see my remaining **quota** and my **active lens**. Enrichment (Phase 3) consumes quota — email + phone reveals draw on the per-window allowance. Reason in quota, NOT in "credits": there is no separate credit wall to clear, and a freemium/fresh account with quota left can enrich even if a credit counter reads 0. Never pre-refuse enrichment on a credit balance. If `organization.unlimited_credits` is true, this is an internal/unlimited account: proceed freely and say nothing about quota or credits.
 
-Resolve the audience:
+Resolve the audience (do NOT stop to ask):
 
 - **Default — use my active lens.** If I didn't name a fresh audience, the active lens IS the audience. Do NOT create a new lens.
-- **Fresh-audience fork.** Only if I described a NEW audience the active lens doesn't already cover, set it up first: `leadbay_adjust_audience` for sector/size tweaks, or `leadbay_new_lens` to create a brand-new named lens — then continue on that lens. Do NOT silently overwrite my existing lens; confirm once before switching.
+- **Fresh-audience fork.** If I described a NEW audience the active lens doesn't already cover, set it up first — `leadbay_adjust_audience` for sector/size tweaks, or `leadbay_new_lens` to create a brand-new named lens — then continue on that lens. Naming the audience IS my authorization; switch without asking. Just state in one line which lens you're building on.
 
 # PHASE 1 — DISCOVER
 
-Call `leadbay_pull_leads` on the resolved lens. **Capture `response.lens.id` and pass it as an explicit `lensId` on every later call this session** — a mid-session lens shift would discard the cohort I'm about to pick. Render the batch with the canonical layout:
+Call `leadbay_pull_leads` on the resolved lens. **Capture `response.lens.id` and pass it as an explicit `lensId` on every later call this session** — a mid-session lens shift would discard the cohort I'm building. Render each batch you show with the canonical layout:
 
 ## RENDERING — markdown table, three columns, score-bar driven
 
@@ -128,47 +130,45 @@ When the response carries `social_urls` (the post-fix multi-platform URL block o
 
 
 
-If the batch is thin (fewer than ~10 workable leads) or I ask for more depth, top it up: call `leadbay_bulk_qualify_leads({lensId:<captured>, count:<deficit, max 25>, wait_for_completion:false})`, poll `leadbay_qualify_status` until done, then re-pull with the same `lensId`. Never re-pull without `lensId`.
+The target is **<the count_or_default (as extracted above)>** buyer-ready in-ICP leads, so keep the pipeline deep. Whenever the workable in-ICP pool is thinner than ~1.5× the target, top it up: call `leadbay_bulk_qualify_leads({lensId:<captured>, count:<deficit, max 25 per call>, wait_for_completion:false})`, poll `leadbay_qualify_status` until done, then re-pull with the same `lensId`. Repeat this qualify→re-pull loop as many times as needed to feed Phases 2–3. Never re-pull without `lensId`.
 
 # PHASE 2 — PICK AN ICP CANDIDATE POOL
 
-A campaign is only as good as the leads in it — AND only as good as whether each lead has a reachable BUYER (see Phase 3). So pick a **generous candidate pool** now, not the final cohort: aim for ~1.5× the target size of in-ICP leads (highest `ai_agent_lead_score`), so Phase 3 can drop any lead that turns out to have no buyer-persona contact and still hit the target. If the batch is short, top up via `leadbay_bulk_qualify_leads` / `leadbay_extend_lens`.
+A campaign is only as good as the leads in it — AND only as good as whether each lead has a reachable BUYER (see Phase 3). So build a **generous candidate pool**, not the final cohort: aim for ~1.5× the target (<the count_or_default (as extracted above)>) of in-ICP leads (highest `ai_agent_lead_score`), so Phase 3 can drop any lead that turns out to have no buyer contact and still reach the target. If the pool is short, top up via `leadbay_bulk_qualify_leads` / `leadbay_extend_lens` and loop back — keep going until the pool is deep enough to yield the target after coverage filtering.
 
-If I named specific leads, use those (but still apply the Phase 3 buyer-coverage check and tell me which lack a buyer). Otherwise recommend the pool and show it. Capture the candidate `leadIds`. Confirm the count ("12 candidates — I'll lock the final ~8 after checking each has a buyer"). Do NOT create the campaign yet — the final cohort is decided after Phase 3's coverage check.
+If I named specific leads, seed with those (still apply the Phase 3 buyer-coverage check). Otherwise pick the top-scoring in-ICP leads yourself — do NOT ask me to choose. Capture the candidate `leadIds`. Do NOT create the campaign yet — the final cohort is locked after Phase 3's coverage check.
 
 # PHASE 3 — ENRICH THE RIGHT CONTACTS (load-bearing)
 
-This is the phase that decides whether the campaign is worth a salesperson's time. Contacts aren't attached by default and enrichment is paid — so spend it ONLY on the people who would actually **buy what I sell**, not on whoever is most senior.
+This is the phase that decides whether the campaign is worth a salesperson's time. Contacts aren't attached by default and enrichment is paid — so spend it ONLY on the people who would actually **buy what I sell**, at the target titles, not on whoever is most senior.
 
-**Step A — work out MY buyer persona (do this before touching titles).**
-Figure out what *I* sell and therefore who, inside the target company, owns the decision to buy it:
+**Step A — settle the target titles / buyer persona.**
 
-- Infer my product / value-prop from my context: my org and account (`leadbay_account_status`), and especially my lens's qualification criteria — the `qualification_summary` on the leads tells you *why* these companies are good targets for me, which implies what I'm offering them.
-- Map value-prop → the **buying department/persona**, NOT seniority:
+- **If I named target titles at the top of this request:** those ARE the persona — enrich exactly those titles. Do NOT re-derive and do NOT substitute "more senior" titles. If a given title looks off for what I sell, you may note it in one line, but honor my titles.
+- **If I did NOT name titles:** derive my buyer persona yourself (do NOT ask me). Infer my product / value-prop from my org + account (`leadbay_account_status`) and especially my lens's `qualification_summary` — it tells you *why* these companies are targets, which implies what I'm offering. Then map value-prop → the **buying department/persona**, NOT seniority:
   - A sales / prospecting / lead-gen / outbound / marketing / GTM / revenue tool → the **revenue org**: VP / Head / Director of Sales, Business Development, Account/Carrier Sales, CRO, CMO / VP Marketing, Head of Growth / Demand Gen, RevOps. (This is Leadbay's own persona.)
   - An operations / logistics tool → operations leaders. A finance tool → finance. A dev tool → engineering. Etc.
-  - **Company size caveat:** Founder / CEO / Owner is a real buyer at small companies (≤~50), but at larger ones they are not — there the functional leader (e.g. VP Sales) is the buyer.
-- **State the persona in one line and confirm it with me** before spending (see Step C). I can correct it.
+  - **Company size caveat:** Founder / CEO / Owner is a real buyer at small companies (≤~50), but at larger ones the functional leader (e.g. VP Sales) is the buyer.
+  - State the persona in one line — for the record, NOT to wait for my approval.
 
-**ANTI-PATTERN — do NOT do this:** picking the most senior or most "decision-maker-sounding" title regardless of department. A Director of Operations, COO, Mgr of Logistics, CFO, or CTO will **never** buy a sales tool — enriching them wastes credits and hands me a useless list. Seniority is not the same as being my buyer.
+**ANTI-PATTERN — do NOT do this:** picking the most senior or most "decision-maker-sounding" title regardless of department. A Director of Operations, COO, Mgr of Logistics, CFO, or CTO will **never** buy a sales tool — enriching them wastes quota and hands me a useless list. Seniority is not the same as being my buyer.
 
 **Step B — find the persona-matching, enrichable contacts.**
-Call `leadbay_recall_ordered_titles({leadIds, lensId})` and `leadbay_enrich_titles({leadIds, lensId})` in **discovery mode** (no `titles`). These return previously-enriched titles, `title_suggestions`, `auto_included_titles`, `available_in_selection`, `enrichable_contacts`, and `credits_remaining`. Treat them as a **menu to filter against my persona — not the answer.** If past-enriched titles or suggestions are off-persona (e.g. operations roles for a sales tool), do NOT repeat them. Select the titles that match my buyer persona AND are actually enrichable.
+Call `leadbay_recall_ordered_titles({leadIds, lensId})` and `leadbay_enrich_titles({leadIds, lensId})` in **discovery mode** (no `titles`). These return previously-enriched titles, `title_suggestions`, `auto_included_titles`, `available_in_selection`, `enrichable_contacts`, and `credits_remaining`. Treat them as a **menu to filter against my target titles — not the answer.** If past-enriched titles or suggestions are off-persona (e.g. operations roles for a sales tool), do NOT repeat them. Select the titles that match my target persona AND are actually enrichable.
 
-**Step B.5 — coverage guarantee (lock the final cohort here).** A campaign where half the leads have no buyer is a failed campaign. So before enriching, determine for each candidate lead whether it actually has an **enrichable buyer-persona contact** — use the discovery data plus, where it's ambiguous, a quick `leadbay_research_lead_by_id` to see that lead's available contact titles. Then:
+**Step B.5 — coverage guarantee + run-to-goal (lock the cohort here).** A campaign where leads have no buyer is a failed campaign, and I asked for **<the count_or_default (as extracted above)>** actionable leads — so this step LOOPS until you have that many. For each candidate, determine whether it has an **enrichable target-title contact** — use the discovery data plus, where it's ambiguous, a quick `leadbay_research_lead_by_id` to see that lead's available contact titles. Then:
 
-- **KEEP** candidates that have ≥1 enrichable buyer-persona contact.
-- **SWAP OUT** candidates whose only contacts are off-persona (e.g. ops/dispatch/finance only) or who have no enrichable contact at all. Replace each with the **highest-`ai_agent_lead_score` in-ICP candidate** from the pool that DOES have a buyer, until the cohort hits the target size (default 20; here capped by the enrichment budget).
+- **KEEP** candidates that have ≥1 enrichable target-title contact.
+- **SWAP OUT** candidates whose only contacts are off-persona (e.g. ops/dispatch/finance only) or who have no enrichable contact at all. Replace each with the **highest-`ai_agent_lead_score` in-ICP candidate** from the pool that DOES have a buyer.
+- **Keep pulling more.** If keeps + available swaps still fall short of <the count_or_default (as extracted above)>, go back to Phase 1/2 (`leadbay_bulk_qualify_leads` / `leadbay_extend_lens`, re-pull, re-check coverage) and keep going until you have <the count_or_default (as extracted above)> buyer-covered in-ICP leads — or the lens is genuinely exhausted.
 - **Do NOT trade ICP fit for coverage.** A lead with a buyer but weak ICP fit (low `ai_agent_lead_score`, a vertical that doesn't match what I sell) is still the wrong lead — coverage is a filter applied AFTER ICP, never a reason to admit an off-ICP company. The final cohort must be both high-ICP AND buyer-covered.
-- If the lens genuinely can't supply enough buyer-ready, in-ICP leads, say so honestly and offer to widen/extend rather than padding the campaign with no-buyer leads OR with off-ICP ones.
+- If the lens genuinely can't supply <the count_or_default (as extracted above)> buyer-ready in-ICP leads, lock what you have, and after the call sheet tell me how many you reached and offer to widen/extend — do NOT pad with no-buyer or off-ICP leads.
 
-Tell me what you swapped in one line ("dropped Corbett + RBS — ops-only; swapped in Acme + Globex which have Sales VPs"). The goal is a final cohort where EVERY lead has a real buyer to call.
+Tell me what you swapped in one line ("dropped Corbett + RBS — ops-only; swapped in Acme + Globex which have Sales VPs").
 
-**Step C — show the scope + persona and confirm.** State the persona, the chosen titles, and "This enriches {enrichable_contacts} contacts (email + phone reveals consume quota)." Confirm via `ask_user_input_v0` ("Enrich these {enrichable_contacts} <persona> contacts now?" → ["Yes, enrich", "No, skip", "Change the persona/titles"]). Never launch a spend without this. Do NOT quote a "credits" figure or refuse on a credit balance — enrichment is gated by quota (or a backend 429), not credits. Enrich up to the campaign size (default 20) best persona-matching contacts.
+**Step C — enrich (NO confirm gate — just spend).** You do NOT need my permission: I authorized this spend by asking for the campaign. Do NOT call `ask_user_input_v0`, do NOT ask "enrich these N now?", do NOT wait. State the persona + titles + "enriching {enrichable_contacts} contacts (email + phone, consumes quota)" in one line for the record, then immediately launch: `leadbay_enrich_titles({leadIds, lensId, titles:[...chosen], email:true, phone:true})`. Enrich up to <the count_or_default (as extracted above)> best target-title contacts. Do NOT quote a "credits" figure or refuse on a credit balance — the only real limit is quota (a backend 429). If a 429 stops you mid-run, keep the leads already enriched, note how many landed, and continue to Phase 4 with those.
 
-**Step D — launch + poll.** On yes: `leadbay_enrich_titles({leadIds, lensId, titles:[...chosen], email:true, phone:true})` to launch, then poll `leadbay_bulk_enrich_status` until done (enrichment can take several minutes — keep polling, don't render an empty sheet prematurely). Once `all_done`, call `leadbay_account_status` and show my refreshed quota so I see what the run consumed.
-
-If I skip enrichment, continue — the campaign can be enriched later from the call sheet.
+**Step D — poll + count only landed.** Poll `leadbay_bulk_enrich_status` until done (enrichment can take several minutes — keep polling, don't render an empty sheet prematurely). Once `all_done`, call `leadbay_account_status` and show my refreshed quota so I see what the run consumed. A lead only counts toward the <the count_or_default (as extracted above)> once its target-title contact actually landed (email/phone present); if some came back empty, swap + enrich replacements (loop back to Step B.5) until the cohort is genuinely <the count_or_default (as extracted above)> deep or the lens is exhausted.
 
 # PHASE 4 — CREATE THE CAMPAIGN
 
@@ -176,27 +176,26 @@ Derive a name (`<lens or audience> – <today's date>`) or use the one I gave. C
 
 # PHASE 5 — THE VIEW (call / email ready)
 
-If you launched enrichment in Phase 3, **poll `leadbay_bulk_enrich_status` until it's actually done before rendering** — do not render a "still enriching" sheet with empty contact cells; the whole point is the landed phones/emails. Enrichment can take several minutes; keep polling.
+**Poll `leadbay_bulk_enrich_status` until it's actually done before rendering** — do not render a "still enriching" sheet with empty contact cells; the whole point is the landed phones/emails. Enrichment can take several minutes; keep polling.
 
 Then call `leadbay_campaign_call_sheet({campaign_id})` and render it per its RENDERING block — one card per lead, contacts with `[phone](tel:)` + `[email](mailto:)` one-tap links, the readiness chip at the top, map optional. This is the view I work from: scan → tap to call → tap to email.
 
 **Flag suspect contacts** so I don't email the wrong person blind: mark with ⚠ any enriched contact whose email domain doesn't match the company's website, or who shows up on more than one lead in this campaign (a sign of a mis-attributed enrichment). Keep the phone (it's usually still right) but tell me the email looks off.
 
-# PHASE 6 — HANDOFF + STOP
+# PHASE 6 — DONE (no handoff prompt)
 
-The campaign exists and is call/email ready. End by offering, via `ask_user_input_v0`:
+The campaign exists and is call/email ready. State in one line how many actionable leads landed vs. the <the count_or_default (as extracted above)> target, and — as plain text, NOT an `ask_user_input_v0` question — mention I can work it later with `leadbay_work_campaign` (the calling/email + outcome-logging loop) or check its pulse with `leadbay_campaign_progression`. Then STOP.
 
-- "Start working it now" → run `leadbay_work_campaign` on this campaign (the calling/email session + outcome-logging loop).
-- "See the pulse" → `leadbay_campaign_progression` for per-lead status.
-
-Then STOP. Building a campaign is NOT outreaching — do not send anything and do not call `leadbay_report_outreach`. When I come back later to log calls, see previous statuses, and do follow-ups, that is `leadbay_work_campaign`, not this prompt.
+Building a campaign is NOT outreaching — do not send anything and do not call `leadbay_report_outreach`. Do not run `leadbay_work_campaign` yourself; that's a separate session I start when I'm ready to call.
 
 # Iron laws
 
-- Enrichment targets MY buyer persona — the people who would actually buy what *I* sell, derived from my product/ICP — NOT generic seniority. For a sales/prospecting tool that means the revenue org (sales / BD / growth / marketing leaders); a Director of Operations, COO, or logistics manager is useless no matter how senior. Get the persona right or the campaign is worthless.
-- Selection is DATA-DRIVEN (`leadbay_recall_ordered_titles` + `leadbay_enrich_titles` discovery) but FILTERED to the persona — never blindly repeat past-enriched or suggested titles that don't match who buys my product.
-- The FINAL cohort must be all buyer-ready: drop/swap any lead with no enrichable buyer-persona contact (Phase 3 Step B.5) rather than shipping it empty. A campaign where half the leads have no buyer to call is a failed campaign. Pick a generous pool in Phase 2 so swaps are possible.
-- NEVER launch enrichment without showing `enrichable_contacts`, naming the persona, and getting a yes. Enrichment consumes quota — do NOT show a "credits" figure or refuse on a credit balance; the gate is quota (or a backend 429), not credits.
+- **Run to the goal, autonomously.** Keep discovering → qualifying → enriching → swapping until the cohort holds <the count_or_default (as extracted above)> leads that are ALL in-ICP, high-score, and buyer-covered — or the lens is genuinely exhausted. Do NOT stop early, do NOT ask me to pick, do NOT hand off mid-flow.
+- **No confirm gates. No pauses.** Do NOT confirm the audience switch, and do NOT confirm the enrichment spend (no `ask_user_input_v0` before enriching) — asking for the campaign IS the authorization. The only acceptable stops are lens exhaustion or a backend 429.
+- Enrichment targets MY buyer titles — the people who would actually buy what *I* sell (my given titles, or the persona derived from my product/ICP) — NOT generic seniority. For a sales/prospecting tool that means the revenue org; a Director of Operations, COO, or logistics manager is useless no matter how senior.
+- Selection is DATA-DRIVEN (`leadbay_recall_ordered_titles` + `leadbay_enrich_titles` discovery) but FILTERED to the target titles — never blindly repeat past-enriched or suggested titles that don't match who buys my product.
+- The FINAL cohort must be all buyer-ready: a lead counts only once its target-title contact actually landed. Drop/swap + re-enrich any lead with no reachable buyer rather than shipping it empty.
+- Enrichment consumes quota — never show a "credits" figure or refuse on a credit balance; the gate is quota (or a backend 429), not credits.
 - Qualify / pick BEFORE `leadbay_create_campaign` — never seed a campaign with unvetted leads.
 - Carry the captured `lensId` on every call. A lens shift loses the cohort.
-- End at the rendered call sheet, then hand off to `leadbay_work_campaign`. Do NOT re-implement the calling / follow-up loop here, and do NOT call `leadbay_report_outreach`.
+- End at the rendered call sheet. Do NOT re-implement the calling / follow-up loop here, do NOT run `leadbay_work_campaign` yourself, and do NOT call `leadbay_report_outreach`.

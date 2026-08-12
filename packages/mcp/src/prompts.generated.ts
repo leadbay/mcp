@@ -11,7 +11,9 @@ export const leadbay_build_campaign: string = `
 Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
 
 
-Build me a Leadbay campaign from scratch{{arg:campaign_name_paren}}. {{arg:audience_block}}
+Build me a Leadbay campaign from scratch{{arg:campaign_name_paren}} — a cohort of **{{arg:count_or_default}}** fully-actionable leads: each in-ICP, high \`ai_agent_lead_score\`, AND with a reachable buyer contact. {{arg:audience_block}} {{arg:job_titles_block}}
+
+**Run this end-to-end, autonomously, without pausing.** Do NOT stop to confirm the audience, do NOT stop to confirm the enrichment spend, do NOT ask me to pick, and do NOT stop to hand off — just keep discovering, qualifying, enriching, and swapping until the cohort holds **{{arg:count_or_default}}** leads that each meet EVERY requirement (in-ICP, high \`ai_agent_lead_score\`, and a reachable target-title contact whose email/phone actually landed). The ONLY reasons to stop short: the lens genuinely can't supply that many buyer-ready in-ICP leads, or enrichment quota is exhausted (a backend 429). In those cases, finish with whatever you locked and tell me plainly how many you got and why it stopped. Enrichment consumes quota, not credits — never pre-refuse on a credit balance.
 
 GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
 
@@ -49,14 +51,14 @@ If \`pull_leads\` itself fails and you have no prior batch, then yes — retry i
 
 Call \`leadbay_account_status\` to see my remaining **quota** and my **active lens**. Enrichment (Phase 3) consumes quota — email + phone reveals draw on the per-window allowance. Reason in quota, NOT in "credits": there is no separate credit wall to clear, and a freemium/fresh account with quota left can enrich even if a credit counter reads 0. Never pre-refuse enrichment on a credit balance. If \`organization.unlimited_credits\` is true, this is an internal/unlimited account: proceed freely and say nothing about quota or credits.
 
-Resolve the audience:
+Resolve the audience (do NOT stop to ask):
 
 - **Default — use my active lens.** If I didn't name a fresh audience, the active lens IS the audience. Do NOT create a new lens.
-- **Fresh-audience fork.** Only if I described a NEW audience the active lens doesn't already cover, set it up first: \`leadbay_adjust_audience\` for sector/size tweaks, or \`leadbay_new_lens\` to create a brand-new named lens — then continue on that lens. Do NOT silently overwrite my existing lens; confirm once before switching.
+- **Fresh-audience fork.** If I described a NEW audience the active lens doesn't already cover, set it up first — \`leadbay_adjust_audience\` for sector/size tweaks, or \`leadbay_new_lens\` to create a brand-new named lens — then continue on that lens. Naming the audience IS my authorization; switch without asking. Just state in one line which lens you're building on.
 
 # PHASE 1 — DISCOVER
 
-Call \`leadbay_pull_leads\` on the resolved lens. **Capture \`response.lens.id\` and pass it as an explicit \`lensId\` on every later call this session** — a mid-session lens shift would discard the cohort I'm about to pick. Render the batch with the canonical layout:
+Call \`leadbay_pull_leads\` on the resolved lens. **Capture \`response.lens.id\` and pass it as an explicit \`lensId\` on every later call this session** — a mid-session lens shift would discard the cohort I'm building. Render each batch you show with the canonical layout:
 
 ## RENDERING — markdown table, three columns, score-bar driven
 
@@ -130,47 +132,45 @@ When the response carries \`social_urls\` (the post-fix multi-platform URL block
 
 
 
-If the batch is thin (fewer than ~10 workable leads) or I ask for more depth, top it up: call \`leadbay_bulk_qualify_leads({lensId:<captured>, count:<deficit, max 25>, wait_for_completion:false})\`, poll \`leadbay_qualify_status\` until done, then re-pull with the same \`lensId\`. Never re-pull without \`lensId\`.
+The target is **{{arg:count_or_default}}** buyer-ready in-ICP leads, so keep the pipeline deep. Whenever the workable in-ICP pool is thinner than ~1.5× the target, top it up: call \`leadbay_bulk_qualify_leads({lensId:<captured>, count:<deficit, max 25 per call>, wait_for_completion:false})\`, poll \`leadbay_qualify_status\` until done, then re-pull with the same \`lensId\`. Repeat this qualify→re-pull loop as many times as needed to feed Phases 2–3. Never re-pull without \`lensId\`.
 
 # PHASE 2 — PICK AN ICP CANDIDATE POOL
 
-A campaign is only as good as the leads in it — AND only as good as whether each lead has a reachable BUYER (see Phase 3). So pick a **generous candidate pool** now, not the final cohort: aim for ~1.5× the target size of in-ICP leads (highest \`ai_agent_lead_score\`), so Phase 3 can drop any lead that turns out to have no buyer-persona contact and still hit the target. If the batch is short, top up via \`leadbay_bulk_qualify_leads\` / \`leadbay_extend_lens\`.
+A campaign is only as good as the leads in it — AND only as good as whether each lead has a reachable BUYER (see Phase 3). So build a **generous candidate pool**, not the final cohort: aim for ~1.5× the target ({{arg:count_or_default}}) of in-ICP leads (highest \`ai_agent_lead_score\`), so Phase 3 can drop any lead that turns out to have no buyer contact and still reach the target. If the pool is short, top up via \`leadbay_bulk_qualify_leads\` / \`leadbay_extend_lens\` and loop back — keep going until the pool is deep enough to yield the target after coverage filtering.
 
-If I named specific leads, use those (but still apply the Phase 3 buyer-coverage check and tell me which lack a buyer). Otherwise recommend the pool and show it. Capture the candidate \`leadIds\`. Confirm the count ("12 candidates — I'll lock the final ~8 after checking each has a buyer"). Do NOT create the campaign yet — the final cohort is decided after Phase 3's coverage check.
+If I named specific leads, seed with those (still apply the Phase 3 buyer-coverage check). Otherwise pick the top-scoring in-ICP leads yourself — do NOT ask me to choose. Capture the candidate \`leadIds\`. Do NOT create the campaign yet — the final cohort is locked after Phase 3's coverage check.
 
 # PHASE 3 — ENRICH THE RIGHT CONTACTS (load-bearing)
 
-This is the phase that decides whether the campaign is worth a salesperson's time. Contacts aren't attached by default and enrichment is paid — so spend it ONLY on the people who would actually **buy what I sell**, not on whoever is most senior.
+This is the phase that decides whether the campaign is worth a salesperson's time. Contacts aren't attached by default and enrichment is paid — so spend it ONLY on the people who would actually **buy what I sell**, at the target titles, not on whoever is most senior.
 
-**Step A — work out MY buyer persona (do this before touching titles).**
-Figure out what *I* sell and therefore who, inside the target company, owns the decision to buy it:
+**Step A — settle the target titles / buyer persona.**
 
-- Infer my product / value-prop from my context: my org and account (\`leadbay_account_status\`), and especially my lens's qualification criteria — the \`qualification_summary\` on the leads tells you *why* these companies are good targets for me, which implies what I'm offering them.
-- Map value-prop → the **buying department/persona**, NOT seniority:
+- **If I named target titles at the top of this request:** those ARE the persona — enrich exactly those titles. Do NOT re-derive and do NOT substitute "more senior" titles. If a given title looks off for what I sell, you may note it in one line, but honor my titles.
+- **If I did NOT name titles:** derive my buyer persona yourself (do NOT ask me). Infer my product / value-prop from my org + account (\`leadbay_account_status\`) and especially my lens's \`qualification_summary\` — it tells you *why* these companies are targets, which implies what I'm offering. Then map value-prop → the **buying department/persona**, NOT seniority:
   - A sales / prospecting / lead-gen / outbound / marketing / GTM / revenue tool → the **revenue org**: VP / Head / Director of Sales, Business Development, Account/Carrier Sales, CRO, CMO / VP Marketing, Head of Growth / Demand Gen, RevOps. (This is Leadbay's own persona.)
   - An operations / logistics tool → operations leaders. A finance tool → finance. A dev tool → engineering. Etc.
-  - **Company size caveat:** Founder / CEO / Owner is a real buyer at small companies (≤~50), but at larger ones they are not — there the functional leader (e.g. VP Sales) is the buyer.
-- **State the persona in one line and confirm it with me** before spending (see Step C). I can correct it.
+  - **Company size caveat:** Founder / CEO / Owner is a real buyer at small companies (≤~50), but at larger ones the functional leader (e.g. VP Sales) is the buyer.
+  - State the persona in one line — for the record, NOT to wait for my approval.
 
-**ANTI-PATTERN — do NOT do this:** picking the most senior or most "decision-maker-sounding" title regardless of department. A Director of Operations, COO, Mgr of Logistics, CFO, or CTO will **never** buy a sales tool — enriching them wastes credits and hands me a useless list. Seniority is not the same as being my buyer.
+**ANTI-PATTERN — do NOT do this:** picking the most senior or most "decision-maker-sounding" title regardless of department. A Director of Operations, COO, Mgr of Logistics, CFO, or CTO will **never** buy a sales tool — enriching them wastes quota and hands me a useless list. Seniority is not the same as being my buyer.
 
 **Step B — find the persona-matching, enrichable contacts.**
-Call \`leadbay_recall_ordered_titles({leadIds, lensId})\` and \`leadbay_enrich_titles({leadIds, lensId})\` in **discovery mode** (no \`titles\`). These return previously-enriched titles, \`title_suggestions\`, \`auto_included_titles\`, \`available_in_selection\`, \`enrichable_contacts\`, and \`credits_remaining\`. Treat them as a **menu to filter against my persona — not the answer.** If past-enriched titles or suggestions are off-persona (e.g. operations roles for a sales tool), do NOT repeat them. Select the titles that match my buyer persona AND are actually enrichable.
+Call \`leadbay_recall_ordered_titles({leadIds, lensId})\` and \`leadbay_enrich_titles({leadIds, lensId})\` in **discovery mode** (no \`titles\`). These return previously-enriched titles, \`title_suggestions\`, \`auto_included_titles\`, \`available_in_selection\`, \`enrichable_contacts\`, and \`credits_remaining\`. Treat them as a **menu to filter against my target titles — not the answer.** If past-enriched titles or suggestions are off-persona (e.g. operations roles for a sales tool), do NOT repeat them. Select the titles that match my target persona AND are actually enrichable.
 
-**Step B.5 — coverage guarantee (lock the final cohort here).** A campaign where half the leads have no buyer is a failed campaign. So before enriching, determine for each candidate lead whether it actually has an **enrichable buyer-persona contact** — use the discovery data plus, where it's ambiguous, a quick \`leadbay_research_lead_by_id\` to see that lead's available contact titles. Then:
+**Step B.5 — coverage guarantee + run-to-goal (lock the cohort here).** A campaign where leads have no buyer is a failed campaign, and I asked for **{{arg:count_or_default}}** actionable leads — so this step LOOPS until you have that many. For each candidate, determine whether it has an **enrichable target-title contact** — use the discovery data plus, where it's ambiguous, a quick \`leadbay_research_lead_by_id\` to see that lead's available contact titles. Then:
 
-- **KEEP** candidates that have ≥1 enrichable buyer-persona contact.
-- **SWAP OUT** candidates whose only contacts are off-persona (e.g. ops/dispatch/finance only) or who have no enrichable contact at all. Replace each with the **highest-\`ai_agent_lead_score\` in-ICP candidate** from the pool that DOES have a buyer, until the cohort hits the target size (default 20; here capped by the enrichment budget).
+- **KEEP** candidates that have ≥1 enrichable target-title contact.
+- **SWAP OUT** candidates whose only contacts are off-persona (e.g. ops/dispatch/finance only) or who have no enrichable contact at all. Replace each with the **highest-\`ai_agent_lead_score\` in-ICP candidate** from the pool that DOES have a buyer.
+- **Keep pulling more.** If keeps + available swaps still fall short of {{arg:count_or_default}}, go back to Phase 1/2 (\`leadbay_bulk_qualify_leads\` / \`leadbay_extend_lens\`, re-pull, re-check coverage) and keep going until you have {{arg:count_or_default}} buyer-covered in-ICP leads — or the lens is genuinely exhausted.
 - **Do NOT trade ICP fit for coverage.** A lead with a buyer but weak ICP fit (low \`ai_agent_lead_score\`, a vertical that doesn't match what I sell) is still the wrong lead — coverage is a filter applied AFTER ICP, never a reason to admit an off-ICP company. The final cohort must be both high-ICP AND buyer-covered.
-- If the lens genuinely can't supply enough buyer-ready, in-ICP leads, say so honestly and offer to widen/extend rather than padding the campaign with no-buyer leads OR with off-ICP ones.
+- If the lens genuinely can't supply {{arg:count_or_default}} buyer-ready in-ICP leads, lock what you have, and after the call sheet tell me how many you reached and offer to widen/extend — do NOT pad with no-buyer or off-ICP leads.
 
-Tell me what you swapped in one line ("dropped Corbett + RBS — ops-only; swapped in Acme + Globex which have Sales VPs"). The goal is a final cohort where EVERY lead has a real buyer to call.
+Tell me what you swapped in one line ("dropped Corbett + RBS — ops-only; swapped in Acme + Globex which have Sales VPs").
 
-**Step C — show the scope + persona and confirm.** State the persona, the chosen titles, and "This enriches {enrichable_contacts} contacts (email + phone reveals consume quota)." Confirm via \`ask_user_input_v0\` ("Enrich these {enrichable_contacts} <persona> contacts now?" → ["Yes, enrich", "No, skip", "Change the persona/titles"]). Never launch a spend without this. Do NOT quote a "credits" figure or refuse on a credit balance — enrichment is gated by quota (or a backend 429), not credits. Enrich up to the campaign size (default 20) best persona-matching contacts.
+**Step C — enrich (NO confirm gate — just spend).** You do NOT need my permission: I authorized this spend by asking for the campaign. Do NOT call \`ask_user_input_v0\`, do NOT ask "enrich these N now?", do NOT wait. State the persona + titles + "enriching {enrichable_contacts} contacts (email + phone, consumes quota)" in one line for the record, then immediately launch: \`leadbay_enrich_titles({leadIds, lensId, titles:[...chosen], email:true, phone:true})\`. Enrich up to {{arg:count_or_default}} best target-title contacts. Do NOT quote a "credits" figure or refuse on a credit balance — the only real limit is quota (a backend 429). If a 429 stops you mid-run, keep the leads already enriched, note how many landed, and continue to Phase 4 with those.
 
-**Step D — launch + poll.** On yes: \`leadbay_enrich_titles({leadIds, lensId, titles:[...chosen], email:true, phone:true})\` to launch, then poll \`leadbay_bulk_enrich_status\` until done (enrichment can take several minutes — keep polling, don't render an empty sheet prematurely). Once \`all_done\`, call \`leadbay_account_status\` and show my refreshed quota so I see what the run consumed.
-
-If I skip enrichment, continue — the campaign can be enriched later from the call sheet.
+**Step D — poll + count only landed.** Poll \`leadbay_bulk_enrich_status\` until done (enrichment can take several minutes — keep polling, don't render an empty sheet prematurely). Once \`all_done\`, call \`leadbay_account_status\` and show my refreshed quota so I see what the run consumed. A lead only counts toward the {{arg:count_or_default}} once its target-title contact actually landed (email/phone present); if some came back empty, swap + enrich replacements (loop back to Step B.5) until the cohort is genuinely {{arg:count_or_default}} deep or the lens is exhausted.
 
 # PHASE 4 — CREATE THE CAMPAIGN
 
@@ -178,30 +178,29 @@ Derive a name (\`<lens or audience> – <today's date>\`) or use the one I gave.
 
 # PHASE 5 — THE VIEW (call / email ready)
 
-If you launched enrichment in Phase 3, **poll \`leadbay_bulk_enrich_status\` until it's actually done before rendering** — do not render a "still enriching" sheet with empty contact cells; the whole point is the landed phones/emails. Enrichment can take several minutes; keep polling.
+**Poll \`leadbay_bulk_enrich_status\` until it's actually done before rendering** — do not render a "still enriching" sheet with empty contact cells; the whole point is the landed phones/emails. Enrichment can take several minutes; keep polling.
 
 Then call \`leadbay_campaign_call_sheet({campaign_id})\` and render it per its RENDERING block — one card per lead, contacts with \`[phone](tel:)\` + \`[email](mailto:)\` one-tap links, the readiness chip at the top, map optional. This is the view I work from: scan → tap to call → tap to email.
 
 **Flag suspect contacts** so I don't email the wrong person blind: mark with ⚠ any enriched contact whose email domain doesn't match the company's website, or who shows up on more than one lead in this campaign (a sign of a mis-attributed enrichment). Keep the phone (it's usually still right) but tell me the email looks off.
 
-# PHASE 6 — HANDOFF + STOP
+# PHASE 6 — DONE (no handoff prompt)
 
-The campaign exists and is call/email ready. End by offering, via \`ask_user_input_v0\`:
+The campaign exists and is call/email ready. State in one line how many actionable leads landed vs. the {{arg:count_or_default}} target, and — as plain text, NOT an \`ask_user_input_v0\` question — mention I can work it later with \`leadbay_work_campaign\` (the calling/email + outcome-logging loop) or check its pulse with \`leadbay_campaign_progression\`. Then STOP.
 
-- "Start working it now" → run \`leadbay_work_campaign\` on this campaign (the calling/email session + outcome-logging loop).
-- "See the pulse" → \`leadbay_campaign_progression\` for per-lead status.
-
-Then STOP. Building a campaign is NOT outreaching — do not send anything and do not call \`leadbay_report_outreach\`. When I come back later to log calls, see previous statuses, and do follow-ups, that is \`leadbay_work_campaign\`, not this prompt.
+Building a campaign is NOT outreaching — do not send anything and do not call \`leadbay_report_outreach\`. Do not run \`leadbay_work_campaign\` yourself; that's a separate session I start when I'm ready to call.
 
 # Iron laws
 
-- Enrichment targets MY buyer persona — the people who would actually buy what *I* sell, derived from my product/ICP — NOT generic seniority. For a sales/prospecting tool that means the revenue org (sales / BD / growth / marketing leaders); a Director of Operations, COO, or logistics manager is useless no matter how senior. Get the persona right or the campaign is worthless.
-- Selection is DATA-DRIVEN (\`leadbay_recall_ordered_titles\` + \`leadbay_enrich_titles\` discovery) but FILTERED to the persona — never blindly repeat past-enriched or suggested titles that don't match who buys my product.
-- The FINAL cohort must be all buyer-ready: drop/swap any lead with no enrichable buyer-persona contact (Phase 3 Step B.5) rather than shipping it empty. A campaign where half the leads have no buyer to call is a failed campaign. Pick a generous pool in Phase 2 so swaps are possible.
-- NEVER launch enrichment without showing \`enrichable_contacts\`, naming the persona, and getting a yes. Enrichment consumes quota — do NOT show a "credits" figure or refuse on a credit balance; the gate is quota (or a backend 429), not credits.
+- **Run to the goal, autonomously.** Keep discovering → qualifying → enriching → swapping until the cohort holds {{arg:count_or_default}} leads that are ALL in-ICP, high-score, and buyer-covered — or the lens is genuinely exhausted. Do NOT stop early, do NOT ask me to pick, do NOT hand off mid-flow.
+- **No confirm gates. No pauses.** Do NOT confirm the audience switch, and do NOT confirm the enrichment spend (no \`ask_user_input_v0\` before enriching) — asking for the campaign IS the authorization. The only acceptable stops are lens exhaustion or a backend 429.
+- Enrichment targets MY buyer titles — the people who would actually buy what *I* sell (my given titles, or the persona derived from my product/ICP) — NOT generic seniority. For a sales/prospecting tool that means the revenue org; a Director of Operations, COO, or logistics manager is useless no matter how senior.
+- Selection is DATA-DRIVEN (\`leadbay_recall_ordered_titles\` + \`leadbay_enrich_titles\` discovery) but FILTERED to the target titles — never blindly repeat past-enriched or suggested titles that don't match who buys my product.
+- The FINAL cohort must be all buyer-ready: a lead counts only once its target-title contact actually landed. Drop/swap + re-enrich any lead with no reachable buyer rather than shipping it empty.
+- Enrichment consumes quota — never show a "credits" figure or refuse on a credit balance; the gate is quota (or a backend 429), not credits.
 - Qualify / pick BEFORE \`leadbay_create_campaign\` — never seed a campaign with unvetted leads.
 - Carry the captured \`lensId\` on every call. A lens shift loses the cohort.
-- End at the rendered call sheet, then hand off to \`leadbay_work_campaign\`. Do NOT re-implement the calling / follow-up loop here, and do NOT call \`leadbay_report_outreach\`.
+- End at the rendered call sheet. Do NOT re-implement the calling / follow-up loop here, do NOT run \`leadbay_work_campaign\` yourself, and do NOT call \`leadbay_report_outreach\`.
 `;
 // endregion: leadbay_build_campaign
 
@@ -667,6 +666,609 @@ Do not propose a next action. Do not call any more tools. Hand control back to t
 `;
 // endregion: leadbay_followup_check_in
 
+// region: leadbay_getting_started
+export const leadbay_getting_started: string = `
+## MEMORY
+
+Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+
+
+Walk me through Leadbay. Treat these the same way: "I'm new here", "how do I
+use this?", "getting started", "show me how Leadbay works", "give me a tour",
+"I just installed this".
+
+This is a GUIDED WALKTHROUGH, not an explainer. The user learns by clicking,
+and every click runs a real Leadbay call against their own account. By the end
+they will have actually checked their account, pulled leads, had a first email
+drafted to the best of them, and revealed the person to send it to.
+
+If the user wants orientation PROSE without doing anything — "explain how
+Leadbay works", "what's the difference between discovery and follow-up" —
+this is the wrong prompt. Use \`leadbay_prospecting_overview\` instead.
+
+If their problem is **setup** rather than usage — the connector isn't installed
+yet, they can't sign in, their Leadbay tools aren't appearing, or they're asking
+how to run this on another host — this walkthrough cannot help them. It assumes
+a working connection, and GATE 1 is what proves it. Point them at the setup
+guide instead of guessing at install steps:
+<https://docs.leadbay.app/doc/leadbay-mcp/quickstart>
+
+GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
+
+If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
+
+
+# Resilience rules for Leadbay long-running tools
+
+These four rules apply to every Leadbay workflow that calls \`leadbay_pull_leads\`, \`leadbay_bulk_qualify_leads\`, \`leadbay_research_lead_by_id\`, \`leadbay_import_and_qualify\`, or \`leadbay_enrich_titles\`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
+
+## Rule 1 — Pin the lens
+
+After your first \`leadbay_pull_leads\` call, capture \`response.lens.id\` into your working memory and **pass it explicitly as the \`lensId\` argument to every subsequent call** in this session — including any re-pulls, bulk qualifies, or research calls that accept it. (Field-name caveat: the response nests it as \`lens.id\`; the parameter on subsequent calls is \`lensId\`.) The active lens can shift between calls (5-minute client cache + backend \`last_requested_lens\` can change if the user touches the web UI). A lens shift mid-workflow throws away your top-10 work.
+
+## Rule 2 — Prefer async for bulk operations
+
+\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\`, which returns \`{status:'running', qualify_id}\` immediately. Then poll \`leadbay_qualify_status\` (or \`leadbay_import_status\`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
+
+## Rule 3 — Serialize \`leadbay_research_lead_by_id\` fan-out
+
+\`leadbay_research_lead_by_id\` is composite and reads many sub-resources. Calling it on 10 leads in parallel can saturate the transport and produce \`"Tool permission stream closed"\` errors that look like permission failures but are really backpressure. **Call it sequentially**, or at most 3 in parallel. If one call fails with a stream/timeout error, retry that one call once before moving on; on a second failure, note the lead and continue — do not abandon the remaining leads.
+
+## Rule 4 — Retry, don't replan
+
+If a Leadbay tool returns \`"Request timed out"\`, \`"stream closed"\`, or any other transport-level error (distinct from a Leadbay-issued error payload), the work may still be running server-side. Do this in order:
+
+1. For bulk tools — retry with \`wait_for_completion:false\` and poll the status tool with the returned id. Don't re-pull leads; that can shift the lens.
+2. For single-lead tools — retry the same call once. If it still fails, record the lead id and continue with the rest of the workflow.
+3. **Do not** switch strategies (e.g. "the endpoint is broken, let me re-pull from scratch"). The earlier work is still valid; the timeout was the wire.
+
+If \`pull_leads\` itself fails and you have no prior batch, then yes — retry it, explicitly pass the lensId you captured (if any), and continue.
+
+
+# THE ONE-FORWARD-OPTION RULE — the structural contract of this walkthrough
+
+Every gate presents **exactly ONE way forward, plus a way out**. Two options,
+never more:
+
+1. **The action** — the single next step of the tour.
+2. **The exit** — \`I'm done for now\`, which ends the walkthrough politely.
+
+This is deliberate. A first-run user does not yet know enough to choose between
+*paths* — a menu of alternatives makes them stall. One forward move makes the
+next step obvious, and the click is what teaches them the tool. The exit exists
+so the tour is never a trap, and because your host's choice widget requires 2–4
+options: a lone option is rejected or silently degrades to prose, which kills
+the whole feature.
+
+**Never add a third option**, and never turn the exit into an alternative route
+("show me my lenses instead") — that reintroduces the choice this rule exists
+to remove.
+
+**The gate IS the widget.** Call your host's choice widget with these two
+options. **Never render a gate as a prose question** — "say the word and I'll
+check it" is a defect, not a gate: the user gets no button and the walkthrough
+becomes a conversation they have to drive themselves.
+
+**EVERY GATE IS TWO BEATS — EXPLAIN, THEN ASK.** This is a tutorial, so the
+user must understand what they're about to do *before* they click:
+
+1. **Explain** — one or two plain sentences saying what this step does and why
+   it matters. Never jargon. This is the teaching half; skipping it turns the
+   walkthrough into a series of unexplained buttons.
+2. **Ask** — fire the widget. **Then STOP and wait for the click.**
+
+**NEVER run a step's tool without firing its widget first and receiving the
+user's click.** Calling \`leadbay_pull_leads\` because the walkthrough "obviously
+goes there next" defeats the entire feature — the click IS the lesson. The one
+exception is when the user's own message already told you to do it (e.g. "walk
+me through it and just run everything"); then follow what they asked.
+
+**Each gate ships its own widget payload — use it, don't rewrite it.** Every
+step in the manifest carries \`explain\` (what to say) and \`next_steps\`
+(\`{question, options[]}\`, already the widget's shape). Map \`next_steps\` into
+your host's widget VERBATIM — same question, same two options, same labels and
+descriptions. Do not reword them, do not merge two gates into one widget, and
+do not add a third option.
+
+Typing works as an escape hatch too. If the user types
+something off-script ("actually just show me my lenses"), abandon the
+walkthrough and serve what they asked. Never re-fire a gate the user has
+already declined in prose.
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+# THE OPENING — SHORT, THEN STRAIGHT INTO GATE 1
+
+**A short paragraph, then the widget** — 3–4 sentences, all in your FIRST
+message. In the user's own language, no jargon, cover:
+
+1. **What Leadbay is** — it brings you a fresh batch of companies worth
+   selling to every day, rather than you going hunting for them.
+2. **How it knows what to send** — you describe who you sell to (that
+   description is your **lens**), and it goes and finds companies matching it,
+   getting sharper as you engage with what it sends.
+3. **What this walkthrough will do** — four quick steps, each a real action on
+   their own account, ending with leads in hand, a first email already written,
+   and the person to send it to.
+4. **One line handing off to the first step** — e.g. "First, let's see which
+   account you're on."
+
+Then **fire GATE 1's widget immediately, in the same message**, and stop.
+
+Keep it to a paragraph. Do NOT walk through the four steps one at a time here
+— each gate explains itself when its turn arrives, and turning the opening
+into a syllabus buries the first button under text nobody reads.
+
+Call no tool in the opening. The widget is the whole ask.
+
+# GATE 1 — "Check my account"
+
+The opening paragraph above IS this gate's explanation — don't add another one
+on top of it. Just hand off in a line and fire the widget.
+
+**Why it's useful**, if you say anything at all: this is where they can see at
+a glance how much they've used this week and what's left — so a batch that
+comes back small later has a visible reason rather than feeling broken.
+
+**Fire the widget** — question \`Let's start with your account status.\`, first option labelled \`Check my account\`, description \`Check my Leadbay account status.\` Second option: \`I'm done for now\` / \`Stop the walkthrough here.\` **Wait for the click.**
+
+On click: call \`leadbay_account_status\` (it takes no arguments).
+
+**Show them their actual account — this is the payoff of the click.** Lead with
+one line on who they're signed in as and their organization, then render their
+**quota windows in full**, exactly as the web app shows them: Daily / Weekly /
+Monthly, each with a \`▰▱\` gauge, % used, $ spent against the cap, and when it
+resets — plus the per-resource breakdown underneath. A one-line "you're
+connected as X" is an under-delivery: they clicked a button labelled *check my
+account status*, so show them the status.
+
+## RENDERING — quota windows (percentage + $, like the frontend)
+
+Mirror the Leadbay web quota widget: three windows side by side — **Daily**,
+**Weekly**, **Monthly** — each headlined by a **% used** gauge and a **$ spend /
+$ cap** figure, with a per-resource usage breakdown underneath. **Never speak in
+raw "credits"** for quota — the unit is a percentage and a dollar spend.
+
+**Include the quota whenever it is readable** — as part of the default account
+answer, even when the user only asked "what account am I connected to?". The
+sole reason to omit it is the silence gate below (unreadable quota, or an
+unlimited account); it is NOT gated on the user explicitly asking for quota.
+
+**Silence gate (check FIRST).** Render NOTHING about quota when any of these
+holds — do not mention quota at all, do not say "unreadable", never tell the user
+to reconnect:
+- \`quota\` is null, OR \`quota_error\` is set (a 401/403 backend quirk for plan-less
+  orgs — the same token read user/org fine), OR
+- \`organization.unlimited_credits\` is true (internal/unlimited account — stay
+  silent on quota; never announce "unlimited").
+
+**Pick the group (for DISPLAY only).** Prefer \`quota.user\` (present for every
+caller). Use \`quota.org\` only when \`quota.user\` is absent (admins receive both —
+still show the caller's own \`user\` view). Call the chosen group \`<group>\` below.
+
+**Exception — lens-refill pre-checks read the refill row, ORG-first.** This
+user-preference is for the display gauge ONLY. When you pre-check the
+\`LENS_EXTRA_REFILL\` resource before \`leadbay_extend_lens\`, look for the row in
+**\`quota.org.resources[]\` first** (admins get the org group, and the refill
+quota is org-scoped there); when \`quota.org\` is absent — non-admin callers only
+receive the \`user\` group — fall back to **\`quota.user.resources[]\`**. Match the
+resource type case-insensitively (\`LENS_EXTRA_REFILL\` / \`lens_extra_refill\`).
+Skipping the \`user\` fallback for non-admins would make the row invisible even
+when the quota data exists, so the agent burns the write and hits the very 429
+this pre-check exists to avoid.
+
+**Per window (fixed order: daily → weekly → monthly).** Match entries by
+\`window_type\` (\`"daily"\` / \`"weekly"\` / \`"monthly"\`).
+
+**Headline — when \`<group>.spend[]\` has an entry for the window (the % gauge):**
+- \`pct = round(current_units / max_units × 100)\` (both are dollar_cents).
+- \`$used = (current_units / 100).toFixed(2)\`, \`$cap = (max_units / 100).toFixed(2)\`.
+- 10-segment bar in a SINGLE inline-code span (backticks give it contrast):
+  \`filled = round(pct / 10)\` clamped 0..10; \`bar = "▰"×filled + "▱"×(10 − filled)\`.
+  Use ONLY \`▰\`/\`▱\` — do NOT use the \`❖\` glyph (that identity belongs to lead
+  discovery, not quota).
+- Line: **\`<Window>\`** \`\` \`▰▰▱▱▱▱▱▱▱▱\` \`\` \`<pct>% used · $<used> / $<cap> · resets <resets_at, relative>\`.
+  e.g. \`**Daily** \` + \`\` \`▰▱▱▱▱▱▱▱▱▱\` \`\` + \` 7% used · $0.84 / $12.00 · resets in ~7 h\`.
+
+**Fallback — when \`<group>.spend[]\` is empty** (internal / free orgs have no
+OVERALL_SPEND quota): no gauge. Render the per-window resource breakdown as a
+compact table instead — one row per resource in \`<group>.resources[]\` for that
+window: the friendly label + \`count\` (append \`/ <max_units>\` only when
+\`max_units\` is a number). This is the pre-existing behavior, preserved.
+
+**Resource labels (look up case-insensitively — lower-case \`resource_type\`
+first).** Localize to \`user.language\` (FR canonical shown; English in parens):
+- \`llm_completion\` → **Générations par IA** (AI generations)
+- \`ai_rescore\` → **Leads qualifiés** (qualified leads)
+- \`web_fetch\` → **Informations web** (web insights)
+- \`contact_enrichment_phone\` → **Téléphones enrichis** (phones enriched)
+- \`contact_enrichment_email\` → **E-mails enrichis** (emails enriched)
+
+Skip any resource type not in this map silently — never dump the raw
+\`resource_type\` string at the user.
+
+**\`resets_at\`.** Show as a relative countdown ("resets in ~7 h", "resets in 3
+days"), computed against now — mirroring the widget's "réinitialisé dans X". The
+raw value is an ISO-8601 timestamp.
+
+**Top-up (optional, subordinate).** When \`quota.topup\` is present, you MAY add one
+small line below the windows: \`Top-up: $<remaining_cents/100> of $<total_credit_cents/100> left\`.
+Keep it secondary — the three window gauges are the headline. Omit when null.
+
+**Legend** (once, below): \`\` \`▰\` used · \`▱\` remaining \`\`.
+
+
+**Then explain what they're looking at — one or two plain lines, no jargon.**
+A first-run user has never seen these numbers and won't know whether they're
+good, bad, or something to worry about. Say, in your own words:
+
+- **What it counts** — the AI work Leadbay does on their behalf: researching
+  companies on the web and qualifying leads against their criteria. Not
+  "credits", and not something they spend by clicking around.
+- **Why it matters to them** — it paces how many fresh leads arrive. Heavy use
+  now means Leadbay queues up a bigger batch for next time; and if a batch ever
+  comes back smaller than expected, this is where they'd see why. Each window
+  refills on its own at the reset time already shown.
+
+Keep it to a sentence or two, in their language. Do NOT lecture, do NOT explain
+every resource row one by one, and do NOT turn this into a pricing pitch — if a
+window is genuinely exhausted the tool's own guidance covers wait-vs-top-up.
+
+**When the silence gate above applies, skip this explanation too** — there is
+nothing on screen to explain, and describing an absent gauge just confuses.
+
+**Two things this gate must NOT do** (both are pinned regressions):
+
+- **Say nothing about quota when the silence gate above applies** — \`quota\` is
+  null, \`quota_error\` is set, or the org has \`unlimited_credits\`. A brand-new
+  org often has no billing plan yet, so the quota read fails. That is NOT an
+  error worth showing: do not mention quota, do not mention a 401, and above
+  all do NOT tell the user to log in again or reconnect — their token is fine,
+  the very same response just read their account. In that case fall back to the
+  short user + org line and move on to GATE 2 without comment.
+- **Do not volunteer the lens.** The response deliberately withholds the lens
+  unless the user asked about it, so there is nothing to report. Don't reach
+  for another tool to find it either. The lens shows up naturally at GATE 2.
+
+# GATE 2 — "Pull today's leads"
+
+**Explain first — this is where you teach the LENS.** Leadbay keeps a *lens*:
+their description of who they sell to. Every day it goes and finds fresh
+companies matching it. This click pulls today's batch.
+
+**Why it's useful:** it replaces the hour spent digging through directories and
+LinkedIn looking for someone worth calling — the list is already waiting, and
+already scored, when they sit down. And it sharpens itself: the leads they
+like, contact or skip teach the lens what a good fit looks like, so tomorrow's
+batch lands closer than today's.
+
+**Then fire the widget** — question \`Now let's see today's leads. Ready?\`, first option labelled \`Pull today's leads\`, description \`Pull today's leads from your lens.\` Second option: \`I'm done for now\` / \`Stop the walkthrough here.\` **Wait for the click.**
+
+On click: call \`leadbay_pull_leads\` with **no arguments** (it resolves the
+user's default lens itself).
+
+Capture \`lens.id\` from the response and pass it as an explicit \`lensId\` on
+every later call in this walkthrough, so gate 4 enriches the same lens the
+user just looked at. Pin the TOP-SCORING lead's id and name too — gate 3 drafts
+to it, and gate 4 reveals its contact.
+
+Render the batch with the canonical layout:
+
+## RENDERING — markdown table, three columns, score-bar driven
+
+Present the response as a markdown table **in the exact order the tool returned the leads** — this is the Discover-tab order (the backend orders by new-today first, then status, then score). Do **not** re-sort the rows (in particular, do NOT re-order by \`score\`); render them top-to-bottom as received so the list matches what the user sees in the Leadbay UI. Exactly three columns. Do not summarize in prose. Do not show the numeric score anywhere.
+
+## Score-bar (10-segment, inline-code wrapped)
+
+Wrap a 10-glyph bar in a SINGLE inline-code span (backticks). The inline-code styling is what gives the bar contrast in most chat renderers — HTML \`<span>\` is stripped inside table cells.
+
+Glyphs (use these exact characters; do not substitute):
+
+- \`▰\` — firmographic-only fill
+- \`❖\` — AI-booster cap (placed at the RIGHT END of the filled run, never the front)
+- \`▱\` — empty
+
+Computation:
+
+\`\`\`
+total_filled  = round(score / 10), clamped to 0..10
+ai_segments   = round(qualification_summary.avg_qualification_boost / 3.3),
+                clamped to [0, total_filled]
+normal_filled = total_filled − ai_segments
+bar = "▰" × normal_filled
+    + "❖" × ai_segments
+    + "▱" × (10 − total_filled)
+\`\`\`
+
+If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is null, set \`ai_segments = 0\` (no ❖). Always wrap the bar in backticks. Print the legend \`\` \`▰\` firmographic · \`❖\` AI booster cap · \`▱\` unfilled \`\` once below the table.
+
+
+**Column 1 — Company**
+
+- Line 1: the 10-segment score bar in inline-code backticks (see the score-bar snippet above for the algorithm).
+- Insert \`<br>\` between lines.
+- Line 2: linked company name + \` · \` + short location + \` · \` + compact size.
+  - Link target: \`website\` (prefix \`https://\` if it's a bare hostname). Don't synthesize an app deep-link.
+  - Location: shorten "City of New York" → "NYC"; otherwise "City ST"; state alone only when city missing.
+  - Size: \`"Xk+"\` when \`size.min >= 1000\`, \`"min–max"\` otherwise.
+
+**Column 2 — Why it fits**
+
+- One sentence, ≤ 20 words.
+- Synthesize from (in priority order, whichever is present) the lead's \`short_description\`, top 2 \`tags[].display_name\`, and the gist of \`qualification_summary.best_response_excerpt\`. The trim payload does NOT carry the longer \`description\` field — for that, agent must call \`leadbay_research_lead_by_id\` or \`leadbay_research_lead_by_name_fuzzy\`.
+- Do NOT append \`(boost N)\` — the ❖ cap in column 1 already carries that signal.
+- No bullet lists, no line breaks inside the cell.
+
+**Column 3 — Contact**
+
+\`[Contact name](LINK) · short job title\`. The \`[Contact name](LINK)\` markdown link wrapping is mandatory — never render the name as plain text. See linking/contact-linkedin for the URL priority (real profile → constructed people-search) and the °-flag fallback.
+
+**Hide from the user (never include in any cell):** \`id\`, \`location.pos\`, \`location.country\` (unless city/state both missing), \`sector_id\`, \`is_hq\`, \`web_fetch_in_progress\`, \`enrichment_in_progress\`, \`highlighted_fields\`, \`custom_fields\`, \`contacts_count\` when 0, \`notes_count\` / \`epilogue_actions_count\` / \`prospecting_actions_count\` when 0, \`stale_at\`, \`deal_insights\`, \`social_presence\` booleans (except as the °-flag signal), \`need_attention\` flags, any field whose value is the string \`"null"\`.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
+
+When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
+
+\`social_presence\` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+
+
+## Branch — the batch came back empty
+
+A brand-new account often reads empty for the first minute while the backend
+computes the lens wishlist. Check \`computing_wishlist\` / \`computing_scores\`:
+
+- **Either is true** → the lens is still building. Say exactly that, in the
+  user's terms: "your lens is still building your first batch — that's normal
+  on a new account, it takes about a minute." The tool's \`next_steps\` payload
+  carries a **two-option** warm-up widget ("Re-pull in ~30s" / "Refine
+  audience") — render it VERBATIM. This is the ONE place a gate carries two
+  options, because the server built the payload and a re-pull genuinely has a
+  real alternative. On "Re-pull in ~30s", wait ~30s and return to GATE 2.
+  **NEVER say "no leads found."**
+- **Both false** → the lens is genuinely empty or too narrow, and \`next_steps\`
+  is \`null\`. Say so honestly, offer to widen the audience, and end the
+  walkthrough here. There is nothing to enrich.
+
+# GATE 3 — "Draft the first email"
+
+**Explain first — and name the company.** Take the TOP-SCORING lead from
+GATE 2 and say its name out loud, so this is an offer about a real company
+rather than an abstraction. Leadbay already worked out *why* that company fits
+them, so it can write the first email instead of leaving them at a blank page.
+
+**Why it's useful:** finding companies was never the hard part. Writing the
+twentieth opener of the day is where prospecting actually dies. This turns a
+row in a table into something they could send in a minute.
+
+Say plainly that this only **drafts** — nothing is sent, and they see it first.
+
+**Then fire the widget** — question \`Want me to draft the first email to your top lead?\`, first option labelled \`Draft the first email\`, description \`Write a first email to the best company in today's batch. Nothing is sent.\` Second option: \`I'm done for now\` / \`Stop the walkthrough here.\` **Wait for the click.**
+
+On click: call \`leadbay_prepare_outreach\` with \`leadId\` = the top lead's id,
+**and nothing else**.
+
+**This gate spends NOTHING. Never pass \`enrich: true\`** — that launches a paid
+contact reveal off the back of a *draft* click. They agreed to see an email
+written, not to spend. GATE 4 is where the reveal gets asked for, on its own
+terms.
+
+\`recommended_contact\` comes back in its post-enrichment shape with \`email\` and
+\`phone\` still **null**. That is expected, not a failure — and it's exactly the
+hook for the next gate: an email written, and nobody to send it to yet. Don't
+apologise for it, and don't reach for another tool to fill it in.
+
+**Render the draft through \`message_compose_v1\`** — \`kind: "email"\`, a
+\`summary_title\` naming the company, and 2–3 variants whose labels name the
+**strategy** ("Lead with the growth signal", "Ask about their current setup"),
+never the tone. Do NOT also paste the body into chat prose; the composer *is*
+the answer. If the host exposes no composer, fall back to the canonical
+prepare-outreach layout: one context line, then subject + body as a quoted
+block.
+
+**Address it to the job TITLE** — "the Head of Operations at <Company>". You do
+not have a name yet, and inventing one is fabrication.
+
+Add one line on *why this company was the pick* — its score and the fit reason
+from the lead's summary — so the draft reads as reasoned rather than generated.
+
+# GATE 4 — "Find who to email"
+
+**Explain first — point at the gap the draft just opened.** They have an email
+ready and nobody to send it to: it's addressed to a job title, not a person.
+That's what this step fixes. Leadbay can find *which roles* exist at that
+company, then reveal the actual human and how to reach them.
+
+**Why it's useful:** they ask for the operations director by name instead of
+pitching whoever answers the switchboard — the difference between a
+conversation and a dead end.
+
+Say plainly that the first look is **free**, and that revealing the contact
+costs credits and needs their say-so.
+
+**First, check \`leadbay_enrich_titles\` is in your tool set.** On a read-only
+deployment it is not registered, and a gate whose tool cannot run is a dead
+end. If it's missing: don't fire this widget, say plainly that revealing
+contacts isn't enabled on this connection, note the draft is still theirs, and
+go straight to the closing. Ending one step early beats offering a button that
+does nothing.
+
+**Then fire the widget** — question \`Want to find out who to send that email to?\`, first option labelled \`Find who to email\`, description \`See the roles at that company. Free — no contact details revealed yet.\` Second option: \`I'm done for now\` / \`Stop the walkthrough here.\` **Wait for the click.**
+
+This gate runs in **TWO BEATS**. Do not collapse them.
+
+## BEAT 1 — the free look (spends nothing)
+
+On click: call \`leadbay_enrich_titles\` with \`leadIds\` = **the one lead you
+drafted for at GATE 3** and \`lensId\` = the pinned lens id.
+
+**This call must spend NOTHING.** Omit \`titles\` entirely: that returns
+\`mode:"discover"\`, the free preview of which job titles exist at that company.
+Do NOT pass \`titles\`, \`confirm=true\`, \`email=true\` or \`phone=true\` on this call
+— any one of them launches the paid reveal before the user has chosen anything.
+
+Present the discovered titles and say plainly: "nothing spent yet."
+
+## BEAT 2 — reveal the person the draft is for (spends credits)
+
+Name the title the GATE 3 draft is addressed to, and tell them the cost
+**before** they decide: one credit per contact revealed — here that's **one
+contact, one credit**. Then ask them to confirm.
+
+**Wait for an explicit confirmation.** Silence is not consent, and neither is
+"they clicked the gate earlier" — the gate click bought the free look, not the
+reveal.
+
+Once confirmed, call \`leadbay_enrich_titles\` AGAIN with
+\`leadIds: [<the drafted lead's id>]\` — **the array, always, even for one lead**
+— plus the chosen \`titles\`, \`confirm: true\` and \`email: true\`. That's the real,
+paid reveal.
+
+\`leadIds\` is the only key this tool reads for scope. A singular \`leadId\` is not
+a parameter: it is silently ignored, and the call then falls back to the
+account's **default wishlist selection** while \`confirm\`/\`email\` are set — so
+it would reveal and charge for the whole batch instead of the one lead the user
+agreed to.
+
+It returns a \`bulk_id\` and runs async — poll \`leadbay_bulk_enrich_status\`
+with that id (\`include_contacts=true\`) until \`all_done\`, or until the resolved
+count plateaus across a few spaced polls. Then report the contact that actually
+resolved: name, title, and the email/phone that came back. Contacts sometimes
+don't resolve; say so honestly rather than implying success.
+
+**Then close the loop** — one line: one credit per contact revealed, so this
+cost one. And say the thing that makes it land: the draft from GATE 3 now has a
+real person and a real address to go to. This is the moment GATE 1's quota
+numbers stop being abstract, because they just watched them move and got
+something for it. Don't turn it into a pricing pitch.
+
+If they decline the reveal, that's fine — keep the draft and the title, and
+let it go without pushing — the tour is done either way.
+
+# HOW THE TOUR ENDS — THREE ENDINGS, PICK THE RIGHT ONE
+
+This is the ONLY place that says what to do when the walkthrough stops. There
+is no other closing section: work out which of these three happened, then do
+that one in full, in the order written.
+
+**The buttons disappear when the walkthrough ends.** If it stops without
+telling the user what to *type*, they learned to click through a tutorial and
+nothing about using Leadbay tomorrow. That is what the cheat-sheet is for.
+
+## ENDING A — they finished all four gates
+
+1. Render the \`keep_going\` cheat-sheet (below).
+2. Then the setup-guide link (below).
+
+## ENDING B — they picked \`I'm done for now\`
+
+**All three beats, in this order. The offer is the LAST thing you say.**
+
+1. One short line acknowledging the stop — "No problem, we'll leave it there."
+2. The \`keep_going\` cheat-sheet, then the setup-guide link (below).
+3. **The 1:1 offer — REQUIRED, and it goes last.** Ending B without it is
+   incomplete: they stopped right before the setup work a call actually helps
+   with, which makes this the one moment the offer is welcome rather than
+   pushy. Say, in your own words, one sentence and the link:
+
+> If you want a hand tuning this to your own market, Zoe on our team runs 1:1
+> sessions: <https://calendly.com/zoe-leadbay/demo-leadbay>
+
+   That length is the rule, not a suggestion — **one sentence**. Listing
+   everything Zoe could help with turns an offer into promotional copy, which
+   is exactly what a user who just said "I'm done" doesn't want.
+
+   Keep it to **one sentence and the link**. Never re-open the walkthrough,
+   never re-fire the gate they just declined, and never argue for finishing the
+   tour.
+
+   **On this path the offer is the last PROSE you write.** The STOP block below
+   still closes the message — it is a machine marker, not something the user
+   reads as content, so it does not displace the offer. What must never happen
+   is the offer being dropped or pushed above the cheat-sheet to make room.
+
+## ENDING C — they typed something off-script
+
+Serve what they actually asked for. **No cheat-sheet, no setup link, no 1:1
+offer** — they're already off doing what they wanted, and any of it on top of
+their real question is exactly the interruption they were avoiding.
+
+## The cheat-sheet (endings A and B)
+
+Render the manifest's \`keep_going\` rows as a compact two-column markdown table,
+titled something like **"Next time, just ask"**. Keep the phrases VERBATIM —
+each one is taken from that tool's own trigger list, so it's a phrase that
+genuinely routes. Do not invent extra rows, and do not reword the phrases into
+something that sounds nicer but doesn't match.
+
+| What you want | Just say |
+|---|---|
+| Today's fresh leads | "Show me today's leads" |
+| Who to follow up with | "What should I follow up on" |
+| The story on one company | "Research <Company>" |
+| An email to a contact | "Draft outreach for <Contact>" |
+| Change who you target | "Narrow the audience to <sector>" |
+| Switch target audience | "Show me my lenses" |
+
+Add one closing line in your own words: they don't need to remember exact
+wording — plain language works, and this is just a starting point.
+
+## The setup guide (endings A and B)
+
+One plain link, for the things the four gates didn't cover — installing Leadbay
+on another machine, adding a teammate, signing back in later:
+<https://docs.leadbay.app/doc/leadbay-mcp/quickstart>
+
+**Once, here, and nowhere else.** Never drop that link between gates: a link
+mid-tour is an invitation to leave the thing they're in the middle of doing.
+
+# STOP
+
+IRON LAW — the walkthrough **drafts** an email at GATE 3 but never **sends**
+one. The draft stays in the chat for the user to read and judge; nothing
+leaves. Never send it, never offer to send it on their behalf, and never call
+\`leadbay_report_outreach\` — logging an outreach that never happened poisons the
+human team's pipeline.
+
+Render this acknowledgment VERBATIM as the last line of your message:
+
+\`\`\`
+STOP — awaiting user decision. I will not take any further action until you tell me what to do next.
+\`\`\`
+
+Do not propose a next action. Do not call any more tools. Hand control back to the user.
+`;
+// endregion: leadbay_getting_started
+
 // region: leadbay_import_file
 export const leadbay_import_file: string = `
 Import the user's Leadbay file{{arg:file_paren}} and satisfy this instruction: {{arg:instruction_or_default}}.
@@ -798,7 +1400,7 @@ Build the final mappings yourself. Start from \`leadbay_resolve_import_rows.mapp
 
 # PHASE 5 — QUALIFY (optional) + REPORT
 
-Prefer \`leadbay_import_and_qualify\` when the user asks to qualify/research after import; otherwise use \`leadbay_import_leads\`. For large files or short client timeouts, pass \`wait_for_completion=false\` and poll \`leadbay_import_status\`. After import, qualify only lead IDs returned by the import; late website matches may appear later via \`import_status\`.
+Prefer \`leadbay_import_and_qualify\` when the user asks to qualify/research after import; otherwise use \`leadbay_import_leads\`. For large files or short client timeouts, pass \`wait_for_completion=false\` and poll \`leadbay_import_status\`. After import, qualify only lead IDs returned by the import. Rows that came back \`uncrawled\` are pending a background crawl (not failures); the leads Leadbay adds for them populate in the user's Leadbay account as the crawl completes — tell the user that, not that a tool call will fetch them (\`import_status\` refreshes status/progress only; \`pull_leads\` reads the active lens, so an imported lead outside it may not appear; re-running the import later re-reconciles those companies).
 
 **Deliver the augmented file back to the user**: the original file plus a new \`LEADBAY_ID\` column populated from the resolution step. This is the second deliverable of a job well done.
 
@@ -1439,6 +2041,460 @@ Done. The lens is live, the validated cohort is persisted as named campaigns, an
 `;
 // endregion: leadbay_setup_team_prospecting
 
+// region: leadbay_top_accounts_to_activate
+export const leadbay_top_accounts_to_activate: string = `
+## MEMORY
+
+Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+
+
+Build me a **top-{{arg:count_or_default}} account-conquest plan** — the accounts worth activating, ranked, each one carrying a strategic motif, a phone pitch and a three-step checklist. {{arg:territory_block}}
+
+This deliverable goes in front of a paying client, so **the honesty of the numbers matters more than their completeness**. Deliver the strongest plan the available data actually supports, and be explicit about what it doesn't.
+
+**DATA PROVENANCE — every number carries its source.** This deliverable mixes
+four data sources with very different trust levels, and it is shown to a
+paying client. A figure whose origin is unstated reads as measured fact. Tag
+every number you emit with exactly one class:
+
+| Tag | Meaning | Where it comes from |
+|---|---|---|
+| \`[ERP]\` | measured in the client's own invoicing / management extract | the file the user attached, or a \`leadbay_get_lead_custom_fields\` read of a value imported from it |
+| \`[LB]\` | returned by a \`leadbay_*\` tool THIS session | \`leadbay_pull_leads\`, \`leadbay_pull_followups\`, \`leadbay_bulk_qualify_leads\`, \`leadbay_enrich_titles\`, \`leadbay_scan_portfolio_signals\`, \`leadbay_account_history\`, \`leadbay_research_lead_by_id\` |
+| \`[SIRENE]\` | the French public company registry | \`recherche-entreprises.api.gouv.fr\` — **your own web tool, NOT Leadbay.** Leadbay does not proxy the registry |
+| \`[HYP]\` | a modelled assumption | the €/employee benchmark, the 35 % objective, the trade purchase mix, any Tier-1 threshold the client hasn't confirmed |
+
+**Taint propagates.** A derived figure inherits the weakest class of its
+inputs. \`cash = pot12 − ca12\` where \`pot12\` is \`[HYP]\` makes **\`cash\` itself
+\`[HYP]\`** — say so in the artefact's own caveat block, not only in chat. A
+client who mistakes a modelled \`cash\` figure for an audited one will build a
+sales plan on it.
+
+**Print the PROVENANCE LEDGER before you build anything**, BEFORE writing
+artifact code or the final table. The block below is a **shape, not a literal**:
+keep the header, the \`field / class / source\` columns and the closing rule, but
+**replace every \`<...>\` placeholder with the real field name, class and source**
+— one row per field you actually emit. A ledger still showing \`<field name>\` has
+passed the ordering check while telling the reader nothing, which defeats its
+entire purpose.
+
+\`\`\`
+PROVENANCE LEDGER
+=================
+field           class     source
+<field name>    ERP       <file>:col "<column header>"
+<field name>    LB        <tool that returned it>
+<field name>    SIRENE    recherche-entreprises.api.gouv.fr
+<field name>    HYP       <the formula + which input is assumed>
+<field name>    OMITTED   <why it cannot be computed>
+=================
+\`\`\`
+
+An \`OMITTED\` row is the point of the ledger: it makes a gap **visible** instead
+of silently filled with a plausible guess. Never drop a field from the ledger
+just because you couldn't source it — render it as \`OMITTED\` with the reason.
+
+**When a number is unavailable, do NOT model it — switch modes.** Specifically:
+if the client's revenue-realized figure is absent, do not estimate it, do not
+proxy it from headcount / sector / score, and **do not sort by any quantity
+derived from it.** Say plainly which fields are unavailable, name the exact
+columns you'd need, and deliver the plan the prompt describes — ordered by the
+strongest \`[LB]\` ranking you actually have.
+
+**Sorting is where fabrication hides.** Asked for a ranking "by cash to go
+get" with no revenue data, the tempting move is to invent a revenue figure per
+account purely so the sort produces a plausible-looking order. That is
+fabrication with a confident shape, and it is the single most likely failure of
+this workflow. Change the sort and say so; never invent the key.
+
+**Client-specific parameters are to be CONFIRMED, not assumed as product
+constants.** The Tier-1 threshold, the €/employee benchmark and the purchase
+mix all come from one client's economics. State each as \`[HYP]\` with its value
+visible and offer to re-run when the client supplies the real figure.
+
+
+GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
+
+If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
+
+
+# Resilience rules for Leadbay long-running tools
+
+These four rules apply to every Leadbay workflow that calls \`leadbay_pull_leads\`, \`leadbay_bulk_qualify_leads\`, \`leadbay_research_lead_by_id\`, \`leadbay_import_and_qualify\`, or \`leadbay_enrich_titles\`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
+
+## Rule 1 — Pin the lens
+
+After your first \`leadbay_pull_leads\` call, capture \`response.lens.id\` into your working memory and **pass it explicitly as the \`lensId\` argument to every subsequent call** in this session — including any re-pulls, bulk qualifies, or research calls that accept it. (Field-name caveat: the response nests it as \`lens.id\`; the parameter on subsequent calls is \`lensId\`.) The active lens can shift between calls (5-minute client cache + backend \`last_requested_lens\` can change if the user touches the web UI). A lens shift mid-workflow throws away your top-10 work.
+
+## Rule 2 — Prefer async for bulk operations
+
+\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\`, which returns \`{status:'running', qualify_id}\` immediately. Then poll \`leadbay_qualify_status\` (or \`leadbay_import_status\`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
+
+## Rule 3 — Serialize \`leadbay_research_lead_by_id\` fan-out
+
+\`leadbay_research_lead_by_id\` is composite and reads many sub-resources. Calling it on 10 leads in parallel can saturate the transport and produce \`"Tool permission stream closed"\` errors that look like permission failures but are really backpressure. **Call it sequentially**, or at most 3 in parallel. If one call fails with a stream/timeout error, retry that one call once before moving on; on a second failure, note the lead and continue — do not abandon the remaining leads.
+
+## Rule 4 — Retry, don't replan
+
+If a Leadbay tool returns \`"Request timed out"\`, \`"stream closed"\`, or any other transport-level error (distinct from a Leadbay-issued error payload), the work may still be running server-side. Do this in order:
+
+1. For bulk tools — retry with \`wait_for_completion:false\` and poll the status tool with the returned id. Don't re-pull leads; that can shift the lens.
+2. For single-lead tools — retry the same call once. If it still fails, record the lead id and continue with the rest of the workflow.
+3. **Do not** switch strategies (e.g. "the endpoint is broken, let me re-pull from scratch"). The earlier work is still valid; the timeout was the wire.
+
+If \`pull_leads\` itself fails and you have no prior batch, then yes — retry it, explicitly pass the lensId you captured (if any), and continue.
+
+
+# PHASE 0 — SCOPE + STATE
+
+Call \`leadbay_account_status\` for my quota and active lens.
+
+**What this plan is, and what it deliberately isn't.** Leadbay knows who a company is, how it scores, what signals it has and who to call there. It does **not** know what any account buys from me — invoicing lives in my ERP, and no Leadbay tool exposes it. So this is a **conquest plan**: real accounts, real qualification, real signals, real contacts, ranked by the strongest Leadbay signal available. Revenue-realized, per-family revenue, addressable spend and cash-to-capture are **OMITTED — never estimated, never proxied from headcount, sector or lead score.**
+
+Say that scope in one line up front, so nobody reads the ranking as a money sort. If I ask for a cash-ranked plan, tell me plainly that it needs my invoicing extract and that the MCP has no path to it today — then deliver this plan anyway rather than stopping.
+
+**DELIVER FIRST, ASK ALONGSIDE — never gate the plan on a missing input.** Only ONE thing can stop you before you have shipped a ranked list of real accounts: not knowing **whose** plan this is (a company-identity mismatch you genuinely cannot resolve). Everything else is a question you carry *next to* the delivered plan, not a reason to withhold it:
+
+- **No benchmark?** Costs nothing here — the money column is OMITTED regardless. Pull, qualify, rank by the Leadbay signal, deliver, and mention what a cash-ranked version would need.
+- **No Tier-1 threshold?** Not a blocker. Deliver, and ask alongside.
+- **No territory?** Not a blocker — but do NOT call the result "national". You'll be pulling my ACTIVE lens, which may already be scoped to a city, sector or rep patch. Say the plan covers **my active lens's existing scope** (name the lens), not the whole country, and offer to re-scope. Calling a city-scoped lens a national plan misdescribes the deliverable to a client.
+- **\`last_requested_lens: null\`?** Not a blocker — and **do NOT read it as "no lens exists".** \`leadbay_account_status\` deliberately WITHHOLDS the lens id unless the request mentioned the lens/audience, so a plain "top 50 accounts to activate" returns null even when I have a perfectly good active lens. Default to calling \`leadbay_pull_leads\` with **no** \`lensId\` and let it resolve my active lens; capture \`response.lens.id\` from that result and pin it thereafter. Only create or switch a lens when I explicitly asked to scope or change the audience (e.g. a \`territory\` argument) — inventing a new lens silently changes what I see in the product.
+- **Only 3 qualification questions instead of 5?** Not a blocker. Use the org's real questions, note the gap, recommend the additions — do not wait for permission before pulling.
+
+Bundling a non-blocking question in with a blocking one turns a justified pause into an over-wide gate, and the user gets a plan-of-a-plan instead of a plan. The test is **"have I shipped a ranked list of real accounts yet?"** — if you're about to end a turn without one, you are almost certainly over-gating: deliver first, then ask.
+
+If I gave a \`territory\`, scope discovery to it now, and **make sure the scoping actually took effect before you pull** — a territory request that silently returns out-of-territory accounts is worse than none.
+
+- **Preferred: \`leadbay_adjust_audience\`** on my active lens, passing the place as \`locations\`. It applies directly, so the lens I already use is now scoped and \`leadbay_pull_leads\` needs no new id.
+
+  ⚠ **Location criteria MERGE — they do not replace.** \`adjust_audience\` unions the new \`location_ids\` into any existing include-location criterion (and \`pull_followups\` merges its \`city\` shortcut the same way). So asking for "Région Ouest" on a lens already scoped to Paris yields **Paris OR Région Ouest** while your header claims Région Ouest. Before adding a territory, check the current filter: if it already carries locations you were not asked to keep, clear or replace them (or build a fresh territory-only lens for this one-off plan) rather than stacking a union.
+- **If a new lens is genuinely warranted: \`leadbay_new_lens\` is a two-step call.** It returns \`status:"preview"\` and creates NOTHING unless you re-call the same args with \`confirm:true\`. So: preview → confirm → take \`lens.id\` from the \`created\` response → pass that id as \`lensId\` on every subsequent pull. Never continue on the previous active lens after previewing a new one; that delivers the old audience under a new heading.
+
+A place name goes to \`locations\`, never to \`sectors\` or a refine prompt.
+
+# PHASE 1 — THE FIVE QUALIFICATION QUESTIONS
+
+Call \`leadbay_get_qualification_questions\` and use the org's **actual** questions — they become the qualification row on every card. Do NOT invent them.
+
+If the org has none set, or they don't discriminate for this exercise, recommend this shape and offer to set it via \`leadbay_set_qualification_questions\` (max 5, and ask before replacing anything): **Q1** exercises a core-target trade · **Q2** big enough to matter · **Q3** operates in the covered territory · **Q4** recent activity signals · **Q5** likely need in the next quarter. Q4 and Q5 are the load-bearing pair — they separate "fits the profile" from "worth calling this week". Recommend; don't overwrite without my say-so.
+
+# PHASE 2 — THE ACCOUNT UNIVERSE
+
+⚠ **Monitor membership is not client status.** Monitor tells you what Leadbay is watching — lens scoring decides who lands there, not whether the company ever bought anything. Label that pane "Leadbay view membership", never "customer".
+
+**Get the accounts.** \`leadbay_pull_followups\` for the known/identified side, \`leadbay_pull_leads\` for the not-yet-identified side.
+
+⚠ **Monitor's scope must match the scope you put in the header — never leave it accidental.** \`leadbay_pull_followups\` defaults to applying whatever Monitor filter is persisted server-side from a previous session, and that filter has nothing to do with the lens Discover is using. Two stale-state traps, one rule:
+
+- **A persisted filter you didn't ask for** silently shrinks the known side, so a rep who once filtered Monitor to a city gets a "whole base" plan missing most of it.
+- **Blindly passing \`filtered:false\`** does the opposite: Monitor goes org-wide while Discover stays on a scoped lens, so out-of-scope known accounts land in a plan headed with the lens's name.
+
+⚠ **You cannot mirror a geography you haven't read.** \`leadbay_pull_leads\` returns only \`lens: {id}\` — not the lens's filter — so capturing the id tells you nothing about which locations it covers. Before scoping Monitor to match a lens, read the **\`lens://<id>/definition\` resource** — that is where the filter and its \`location_ids\` actually live. \`leadbay_my_lenses\` returns only id / name / description / active flags, so it cannot tell you a lens's geography and must not be used for this. If you cannot determine the lens's geography, do NOT guess: pull Monitor org-wide with \`filtered:false\` and say in the header that the known side is org-wide while Discover follows lens \`<id>\`, whose scope you could not read. An unstated mismatch is the failure; a stated one is honest.
+
+So: **read the persisted filter first** (the response reports \`active_filters\`), then make it match the plan's declared scope. If the plan is scoped (a \`territory\`, or an active lens with its own geography), apply that same geography to Monitor. If the plan is genuinely org-wide, pass \`filtered:false\`. Either way, state the known side's scope in the header in the same breath as the Discover side — a plan whose two halves are scoped differently is misleading even when both halves are individually correct.
+
+⚠ **A territory must scope BOTH sides.** Adjusting or creating a lens only scopes Discover; Monitor is filtered through its own path, so pass the territory to \`leadbay_pull_followups\` as well (its \`city\` free-text shortcut resolves to a \`location_ids\` filter, same resolver as the lens). Otherwise a territory-scoped plan quietly mixes in out-of-territory known accounts — and a client reading "Région Ouest" at the top will not check every row. Unless I named a \`territory\`, call \`leadbay_pull_leads\` with **no \`lensId\`** so it resolves my active lens — do not create a lens just because \`account_status\` showed a null. Capture \`response.lens.id\` from the first pull and pass it as an explicit \`lensId\` on every later call — a mid-session lens shift discards the cohort. Keep pulling until you have a pool comfortably deeper than {{arg:count_or_default}}, topping up with \`leadbay_bulk_qualify_leads\` → \`leadbay_qualify_status\` → re-pull as needed.
+
+# PHASE 3 — QUALIFY, SIGNAL, MOTIF
+
+**Qualify — the SELECTED cohort, in chunks of 25.** \`leadbay_bulk_qualify_leads\` caps \`count\` at **25**, so a single call cannot cover a 50-account plan. Loop until the whole cohort is qualified, polling \`leadbay_qualify_status\` between chunks.
+
+⚠ **Never qualify Monitor rows through a Discover \`lensId\`.** \`leadbay_qualify_status\` re-checks each lead against the lens it was launched on and returns them under **\`not_in_lens\`** — the backend does not qualify them, so those rows ship with permanently empty pills while the poll reads "still running". So split the cohort: qualify the Discover rows with the pinned \`lensId\`, and for known-side rows use the qualification data \`leadbay_pull_followups\` already returned rather than re-launching them off-lens. If a Monitor row has no qualification data, say so in its cell — do not leave a pill that will never fill. **Always read \`not_in_lens\` in the poll response** and report anything listed there rather than waiting on it.
+
+⚠ **Pass explicit \`leadIds\` whenever the cohort isn't simply "the next N on the lens"** — e.g. after you've selected a shortlist, or when the plan mixes Monitor and Discover rows. The \`count\`-based path selects the next *unqualified leads from the lens wishlist*, so on any other cohort it qualifies unrelated leads and hands you handles whose pills belong to different companies. Use \`leadbay_bulk_qualify_leads({leadIds:[…≤25 of the cohort], wait_for_completion:false})\` and chunk through the cohort's own ids. The \`{lensId, count}\` form is only right when the cohort genuinely *is* the lens's top N.
+
+**Qualify the plan cohort, not the whole base.** Select your ~{{arg:count_or_default}} candidates (plus a modest buffer for drop-outs) BEFORE qualifying — qualification is async and quota-bearing, so running it across an entire portfolio to produce a top-{{arg:count_or_default}} burns the user's quota for rows that will never appear. **Keep every returned \`qualify_id\`** — the deck's live qualification layer is wired from those handles, and a deck with none is a dead deck that still looks finished. Never ship a plan whose lower ranks have empty qualification pills because only the first 25 were ever qualified.
+
+**Signals — scoped to the cohort.** ⚠ **Always pass the selected \`leadIds\`.** With \`leadIds\` omitted, \`leadbay_scan_portfolio_signals\` builds its own portfolio by paging \`/monitor\` — so on an imported cohort or a freshly-pulled Discover set it would scan a *different population* and you'd render dashes for accounts whose signals were never read.
+
+\`leadbay_scan_portfolio_signals\` is also a **filtered** read: it requires a concrete \`query\` and returns only the accounts whose cached signals match it. It is not a generic "read every signal" call. So run it **once per why-now theme, as SEPARATE calls** — expansion/new site · contract or tender won · funding · hiring · acquisition · new venue — and union the results.
+
+⚠ **One comma-joined omnibus query is NOT six themed scans.** Cramming every keyword into a single string is one match attempt whose recall you cannot inspect: a lead that would have matched "hiring" alone can be missed, and you have no way to tell which themes actually returned anything. Six calls, six result sets, one union. If a theme returns nothing, that is information — record it rather than hiding it inside a broad string. An account that matched no query has **not** been shown to be signal-free; render it with an explicit \`—\`, never an invented event. For the identified side, take interaction recency from the fields \`leadbay_pull_followups\` already returned. ⚠ **Do NOT reach for \`leadbay_account_history\` on Monitor rows outside the active lens** — it calls \`research_lead_by_id\` first, which fetches \`/lenses/{lensId}/leads/{leadId}\` and 404s off-lens, so the very rows that need a SUIVI / RÉVEIL-LB decision are the ones it fails on. Use it only for a lead you know is in the pinned lens.
+
+**SIGNAL HONESTY — never infer signals from freshness.** \`stale_at\`,
+\`web_fetch_in_progress\`, \`fetch_at\` are freshness markers, not signal
+indicators — signal presence is read ONLY from the actual \`signals[]\` /
+\`web_fetch.content\` entries. For "which of my leads have signal X" across a
+portfolio, call **\`leadbay_scan_portfolio_signals\`** (bulk-reads cached
+signals); don't loop \`leadbay_research_lead_by_id\` per lead or guess from
+freshness. A lead with no cached content is \`not_researched\`, not "no match";
+never report a signal verdict for a lead you never read.
+
+
+**Assign the motif.**
+
+**THE ACTIVATION MOTIFS.** Every account on the plan carries exactly one motif
+from this closed set of six. The motif is not decoration — it decides the phone
+pitch, the checklist, and whether the account belongs to the *Pilotage* engine
+(already identified) or the *Conquête* engine (not yet identified). Assign it
+from observable data and state the deciding evidence in one line per account.
+
+| Motif | Assign when | Engine |
+|---|---|---|
+| **SAUVETAGE** | was buying steadily, has now stopped — a recent, sharp break (e.g. no order in ~60–90 days against a real history) | Pilotage |
+| **PLAN DE COMPTE** | large, still active, buying broadly — the risk is complacency, not loss; plan the coming half-year and lock volume terms | Pilotage |
+| **MONTÉE EN GAMME** | active but narrow — buys one product family while comparable accounts of the same size buy several; the gap is cross-sell | Pilotage |
+| **RÉVEIL** | account exists, essentially dormant — long-dead history (e.g. 12+ months at zero) but the company is demonstrably still trading | Pilotage |
+| **CONQUÊTE** | not present in the Leadbay known pipeline — in the addressable market, absent from the base. ⚠ Absence from Monitor is NOT proof they never bought (see below) | Conquête |
+| **SUIVI** | in the known pipeline with recent activity, purchase behaviour unknown — the honest label for an active Monitor row when no order history is available | Pilotage |
+
+**Decision order matters.** Test in this order and stop at the first match, or
+a big lapsed account will be labelled RÉVEIL when it is really a SAUVETAGE:
+recent sharp break → SAUVETAGE; long-dormant → RÉVEIL; never bought →
+CONQUÊTE; buying broadly at scale → PLAN DE COMPTE; buying narrowly →
+MONTÉE EN GAMME.
+
+**Without order history the first five tests cannot run at all.** In that case
+the split is simply: in the Leadbay known pipeline → **SUIVI**; not in the
+pipeline → **CONQUÊTE**. Never reach for a Pilotage motif you cannot evidence,
+and never invent a seventh label — the set is closed at six.
+
+When a known-pipeline row has long-dormant *Leadbay* activity, it stays
+**SUIVI** and you say what the dormancy measures in its why-now cell: "no
+Leadbay-logged action in N months". That is a qualifier on the evidence, not a
+new motif. It is NOT RÉVEIL — RÉVEIL means dormant *purchasing*, which needs
+order history you do not have.
+
+**What each motif changes in the output.**
+
+- The **pitch angle** — SAUVETAGE opens on the silence itself and offers terms
+  to resume; PLAN DE COMPTE opens on the relationship and plans forward;
+  MONTÉE EN GAMME opens on what comparable firms buy that this one doesn't;
+  RÉVEIL asks what made them leave and offers a re-entry incentive; CONQUÊTE
+  introduces the company and asks for a short first meeting — **without
+  asserting no prior relationship**. Never write "we've never worked together"
+  or "as a new customer" on a Leadbay-only plan: absence from the known
+  pipeline is not proof they never bought, and that line told to an existing
+  customer is the one mistake a rep cannot walk back. Write the pitch in the
+  client's own commercial voice, naming the specific families and figures the
+  account's data actually supports. **SUIVI** picks up the existing thread —
+  a continuation, never an introduction and never a win-back.
+- The **checklist** — three concrete, checkable next actions matching the
+  motif's shape: diagnose → schedule → send-terms for SAUVETAGE; review →
+  propose → open-a-family for PLAN DE COMPTE; visit-with-full-tariff → quote →
+  first-order-in-the-new-family for MONTÉE EN GAMME; understand-the-departure →
+  send-offer → first-order-back for RÉVEIL; reach-the-decision-maker →
+  open-the-account → first-test-order for CONQUÊTE; confirm-the-state →
+  identify-the-current-need → agree-a-next-step for SUIVI. When a signal exists,
+  promote "exploit <the signal>" to the top of that account's checklist.
+
+**Motif assignment depends on order history, which is ERP data.** Without the
+client's extract, SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL cannot
+be assigned from purchase behaviour — do not guess them from a lead score, a
+sector, or a company's size. Two honest options, in order of preference:
+
+**The Monitor gap — read this before assigning anything.** Four of the six
+motifs (SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL) are purchase-
+behaviour reads, and CONQUÊTE means "not in the known pipeline". A Monitor row
+that is *actively* worked therefore matches none of them: it IS in the pipeline,
+and without order history you cannot tell whether it buys broadly, narrowly, or
+at all. Do NOT resolve that by guessing a purchase motif, and do NOT silently
+drop the row.
+
+Those rows take **SUIVI** (row 6 of the table above). Say in the plan's legend
+that SUIVI exists precisely because purchase history is unavailable, and that
+ERP order data would split those rows into the four Pilotage motifs.
+
+1. **CONQUÊTE is assignable from Leadbay alone — but say what it actually
+   means.** Discover membership proves a company is **not in the Leadbay known
+   pipeline**; it does NOT prove they never bought. Monitor membership is set by
+   lens scoring, not by purchase history, so an existing customer who was never
+   scored into the known view will appear in Discover. Without order history
+   there is no way to tell the two apart.
+
+   So label the motif for what the data supports — "fresh / not in the Leadbay
+   pipeline" — and **write the pitch so it survives being wrong**: an opener
+   that introduces the company works for a genuine prospect and merely sounds
+   uninformed to a customer, whereas "we've never worked together" told to a
+   current customer damages the relationship and the credibility of the whole
+   plan. Only ERP order history can upgrade this to a true never-a-client
+   claim. A Leadbay-only plan is still a legitimate *Conquête* plan — say so in
+   the title rather than implying it covers the whole base.
+2. **Leadbay-activity recency is a qualifier, never a motif.** A long-dormant
+   known row stays **SUIVI** with "no Leadbay-logged action in N months" in its
+   why-now cell — never "no orders in N months", and never a seventh label.
+   Logged activity is not invoicing.
+
+
+# PHASE 4 — POTENTIAL AND RANKING
+
+Rank by \`ai_agent_lead_score\`, then qualification boost, then headcount. **Name that key in the plan's own header** — a reader who assumes a money-sort misreads the whole order — and title the deliverable for what it is (a conquest plan), not for what it isn't.
+
+Cash-to-capture is not available: it needs \`ca12\` from my invoicing system, which no Leadbay tool exposes. Show it as OMITTED in the ledger and say what a cash-ranked version would require (12-month revenue per account, per-family split, last order date, order count, plus a €/employee benchmark) — do not model it.
+
+# PHASE 5 — CONTACTS (consent-gated)
+
+Each card needs a reachable decision-maker. \`leadbay_enrich_titles({leadIds, lensId})\` in discovery mode first — that reveals what's enrichable and spends nothing. Render whatever contact detail is already on the record; many accounts already carry a named contact.
+
+**Do NOT stop and wait for enrichment consent before delivering.** Asking for a plan is not authorization to spend quota on {{arg:count_or_default}} accounts — but neither is it a reason to end the turn on a spending question with no plan attached. Ship the ranked plan (Phase 6), then **offer** the paid reveal alongside it. The discovery call returned no \`titles\`, so it only told you what's *available* — **the offer must therefore carry the titles you propose to enrich AND the channels**, not just a volume: "enrich N contacts at these titles (\`<the titles you picked from available_titles / title_suggestions>\`), email only / email + phone — reveals consume quota". A bare "yes" to a volume-only question is not a mandate to pick titles yourself, and re-running discovery instead of launching wastes a turn.
+
+⚠ **Do NOT quote a cost or a credits figure.** The per-reveal rate is backend-side and enrichment is gated by quota, not a credit balance; \`credits_remaining\` is advisory context only. A spend number invented to make the offer concrete is the same failure as an invented euro on a card.
+
+On an explicit yes, launch with the agreed \`titles\` + channels, then poll \`leadbay_bulk_enrich_status\` until done and **keep the \`bulk_id\` handles** for the deck.
+
+⚠ **Render only the channels that actually came back.** The default reveal is email-only unless phone was explicitly requested, so never emit a \`tel:\` link for a contact whose phone was never revealed — show the channels enrichment returned and mark the rest omitted. A fabricated phone link is the same failure as a fabricated euro.
+
+# PHASE 6 — DELIVER
+
+Render the PROVENANCE LEDGER and its legend FIRST, then the chat answer beneath it — never the other way round. A ranked money column read before its sourcing has already misled the reader:
+
+## RENDERING — account activation plan
+
+Two surfaces. The **chat table** is the default answer and must stand alone as
+useful. The **interactive deck** is offered, not forced (see the widget gate) —
+build it only once the user accepts.
+
+### Order on the page — ledger FIRST, then the plan
+
+Print the PROVENANCE LEDGER (and the one-line provenance legend) **before** the
+chat table, the deck, or any other part of the deliverable. The reader must know
+which figures are measured and which are modelled *before* they read a ranking
+built on them — a cash column read first and sourced second has already done its
+damage. This ordering is the workflow contract, not a stylistic preference.
+
+### The chat table (render immediately after the ledger)
+
+**The chat answer must be the whole deliverable the user asked for** — the deck
+is optional, so a top-50 request whose chat half stops at 10 rows has delivered
+a fifth of the plan. Render the **requested count**, with its pitch + checklist
+block per row (see below).
+
+If that is genuinely too long for one message, do NOT silently truncate: state
+the delivered count plainly ("here are 20 of the 50 — say the word for the
+rest"), so the user knows what they have. Never present a partial list as
+though it were the plan. Four columns:
+
+Col 3's header is **the ranking key you actually used** — never a cash label,
+since cash-to-capture cannot be computed from Leadbay data:
+
+\`\`\`
+| # · Account | Motif | Fit score | Why now |
+\`\`\`
+
+- **Col 1** — rank number, then the company name linked to its website when one
+  is known. Follow with a compact \` · \`-separated pill line: city · headcount ·
+  any account reference you were given. **Every figure in that pill line carries
+  its class too** — headcount is \`[LB]\` (a Leadbay size band, so render the band
+  rather than a false-precision point value) or \`[SIRENE]\` if you read it from
+  the registry. An untagged employee count is still an untagged number in front
+  of a client; omit it rather than ship it bare.
+- **Col 2** — the motif, exactly one of SAUVETAGE / PLAN DE COMPTE / MONTÉE EN
+  GAMME / RÉVEIL / CONQUÊTE / SUIVI. Never invent a seventh.
+- **Col 3** — the ranking signal with its provenance class, e.g. \`AI 30 [LB]\`.
+  Tagging is not optional; an untagged figure reads as measured fact. **There is
+  no money column** — cash-to-capture needs invoicing data Leadbay does not
+  hold, so it stays OMITTED in the ledger rather than being modelled. A column
+  of invented euros next to a client's name is the exact failure this
+  deliverable must not ship.
+- **Col 4** — the one-line reason to act now: the signal when there is one,
+  otherwise the motif's deciding evidence. Never fill this with a
+  plausible-sounding invented event; an account with nothing read shows \`—\`.
+
+Sort strictly by the ranking key named in the ledger (which was printed above).
+
+### The pitch + checklist block (part of the chat answer, not the deck)
+
+The table alone is a shortlist, not a plan — the pitch and the three-step
+checklist are what make it actionable, and the deck is **optional**, so they
+cannot live only there. Under the table, render a block for **every account you
+put in the table** — if a row is good enough to rank, it is good enough to carry
+its pitch. Do NOT ship the top 5 or 10 and offer the rest "on request": that
+puts the actionable half of the deliverable behind another user turn, and the
+rows you defer are the ones a rep is least likely to chase. If the full plan is
+genuinely long, shrink the TABLE (fewer rows, stated plainly) rather than
+shipping ranked rows with no pitch:
+
+\`\`\`
+**<rank> · <Company>** — <MOTIF>
+☎ <contact name>, <title> · <only the channels actually revealed>
+> "<the motif's pitch, in the client's commercial voice>"
+☐ <step 1>  ☐ <step 2>  ☐ <step 3>
+\`\`\`
+
+Keep each pitch to one or two sentences a rep can say out loud, and each
+checklist to three concrete, checkable actions matching that motif's shape.
+When an account has a signal, lead the pitch with it and promote
+"exploit &lt;the signal&gt;" to the top of its checklist.
+
+### The interactive deck (only after the user accepts)
+
+One card per account, ordered by the same key. Per card:
+
+- **Header** — rank badge, company name, city · trade · headcount, and the
+  ranking signal right-aligned with its class tag (e.g. \`AI 30 [LB]\`). No cash
+  figure: the deck and the chat answer must never disagree about which fields
+  exist, and a card carrying a euro the table omitted means one was modelled.
+- **Motif badge** — the motif, visually distinct per motif so the deck can be
+  scanned by strategy.
+- **Qualification row** — the org's **actual** questions as returned by
+  \`leadbay_get_qualification_questions\` (there may be fewer than five), each with
+  ✓ / ✗ / pending and labelled with its real text. Render exactly as many rows as
+  the org has: never pad to five with invented labels or bogus pending pills, and
+  never substitute invented wording.
+- **Signal line** — the event driving urgency, or omitted.
+- **Action block** — the named contact with **only the channels enrichment
+  actually returned** as one-tap \`tel:\` / \`mailto:\` links (the default reveal is
+  email-only unless phone was requested — never emit a \`tel:\` for a phone that
+  was never revealed; mark it omitted instead), the motif's pitch as a quoted
+  line, and the three-item checklist as checkboxes.
+- **Caveat block** — closing the deck: which classes fed it, an explicit line
+  that \`[HYP]\` figures are modelled rather than measured, and which fields are
+  OMITTED because Leadbay does not hold them. A missing input means an omitted
+  field, never a stand-in number.
+
+Header KPIs across the top, each carrying its provenance class: accounts on the
+plan, count qualified, count with a reachable contact. **No euro totals** — the
+same rule as the table, for the same reason.
+
+⚠ **No "activated" KPI at build time.** Nothing in this workflow measures
+activation — the deck is built before any outreach happens — so a count would be
+fabricated or imply outcome tracking that doesn't exist. If the deck's checklists
+persist locally, an "activated" tile may count *checked* accounts and must be
+labelled as local checklist state, not a measured outcome.
+
+
+Then **offer** the interactive deck — don't force it:
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+
+
+⚠ **The deck's contact layer depends on what actually happened in Phase 5.** Bind a \`leadbay_bulk_enrich_status\` resource ONLY if a paid reveal was launched and you hold a \`bulk_id\`. If the user accepted the deck but not the reveal, render the contacts already on record and carry the paid-reveal offer inside the deck — never wire a status resource with no handle (it renders permanently empty) and never launch enrichment from the deck to manufacture one.
+
+On acceptance, call \`leadbay_artifact_kit\`, read its \`usage_guide\` before writing any code, and build a single-file deck. Wire the live layer from the handles you kept: a poll-until-done resource per \`qualify_id\` for the qualification pills, and one over \`leadbay_bulk_enrich_status\` for the contacts. ⚠ **If enrichment already ran this session, bind the existing \`bulk_id\` — re-launching enrichment from the deck double-spends my quota.** Per-card notes and outcomes go through the pre-wired note/outreach view-models (they carry the required verification and \`_triggered_by\` fields; hand-rolling those is where it breaks). Keep the checklists in local storage, and always wire a Refresh — auto-poll is host-dependent. List every tool the deck calls in its \`mcp_tools\`, and render the bridge-unavailable branch, or the pills silently show empty.
+
+# Iron laws
+
+- **Never invent a number.** No revenue figure, registry count, signal or lead id that didn't come from a Leadbay response or a real registry query. A modelled figure is fine — tagged \`[HYP]\` and named as an assumption. An untagged one is not.
+- **The ledger ships before the deliverable**, with un-sourceable fields shown as OMITTED rather than dropped.
+- **A conquest plan is the deliverable, not a consolation prize.** Leadbay holds no invoicing data, so the money columns are OMITTED by design. Title it honestly, name what a cash-ranked version would need — never refuse, and never fill the gap with a guess.
+- **Deliver first, ask alongside.** Do not end a turn without a ranked list of real accounts. The benchmark, the Tier-1 threshold, the territory, a missing lens, a short question set and an unanswered enrichment offer are all NON-blocking — carry them next to the plan. Only an unresolvable identity mismatch (whose plan is this?) may stop delivery.
+- **One motif per account, from the closed set of six**, with its deciding evidence stated.
+- **The org's real qualification questions**, read from Leadbay — never invented.
+- **Consent before any paid enrichment**, and never re-launch a bulk that already exists.
+- **Offer the deck; don't force it.** The chat answer must stand alone as useful.
+- Carry the captured \`lensId\` on the calls whose schema **accepts** it (\`leadbay_pull_leads\`, \`leadbay_bulk_qualify_leads\`, \`leadbay_enrich_titles\`). Do NOT add it to \`leadbay_pull_followups\`, \`leadbay_scan_portfolio_signals\`, \`leadbay_qualify_status\` or \`leadbay_bulk_enrich_status\` — they declare no such argument and reject unknown properties.
+- Building a plan is not outreaching — do not send anything and do not call \`leadbay_report_outreach\`.
+`;
+// endregion: leadbay_top_accounts_to_activate
+
 // region: leadbay_work_campaign
 export const leadbay_work_campaign: string = `
 Work my **{{arg:campaign_or_default}}** campaign as an outreach session{{arg:mode_paren}}.
@@ -1548,10 +2604,11 @@ Optional: offer to review the \`leadbay_campaign_progression\` for the same camp
 
 // Prompt metadata (descriptions + arguments) for MCP listings.
 export const PROMPT_META = {
-  leadbay_build_campaign: {"name":"leadbay_build_campaign","short_description":"Build a sales campaign from scratch in one guided flow: discover on the\nactive lens, qualify and pick a cohort, enrich the contacts most likely to\nengage, save it via `leadbay_create_campaign`, then show a one-tap call/email\nview via `leadbay_campaign_call_sheet`. Trigger on \"build me a campaign\",\n\"set up a new campaign\", \"create a campaign from scratch\". WORK an existing\ncampaign with `leadbay_work_campaign`; split leads across reps with\n`leadbay_setup_team_prospecting`.\n","arguments":[{"name":"audience","description":"Optional: a fresh audience to target (e.g. 'dental clinics in Texas'). Omit to build from your ACTIVE lens — the default.","required":false},{"name":"campaign_name","description":"Optional: a name for the campaign. Omit and one is derived from the lens/audience + date (or the backend AI-names it).","required":false}],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_bulk_qualify_leads","leadbay_qualify_status","leadbay_recall_ordered_titles","leadbay_enrich_titles","leadbay_bulk_enrich_status","leadbay_create_campaign","leadbay_add_leads_to_campaign","leadbay_campaign_call_sheet","leadbay_campaign_progression","leadbay_new_lens","leadbay_adjust_audience"],"failure_modes":["Enriches by seniority instead of by buyer persona — picks COO / Director of Operations / Mgr of Logistics / CFO / CTO because they sound senior, when the user sells a SALES tool whose buyer is the revenue org (VP/Head/Director of Sales, BD, growth, marketing). Operations people never buy a sales tool; this hands the salesperson a useless list.","Fails to derive the user's buyer persona from their product/ICP before choosing titles — jumps straight to titles without working out who buys what THIS user sells, then defaults to generic exec titles.","Blindly repeats leadbay_recall_ordered_titles / discovery suggestions even when they are off-persona (e.g. operations roles a prior session wrongly enriched) — recall is a filtered input, not the answer.","Poor coverage — leaves many picked leads with no persona-matching contact (or 0 enrichments on some leads) and doesn't flag it, so the salesperson opens the campaign to half-empty rows.","Launches enrichment without first showing enrichable_contacts, naming the persona, and getting a yes — the confirm gate is mandatory. (Enrichment consumes quota; never refuse on a credit balance.)","Creates the campaign before qualifying / picking — seeds a campaign with unvetted leads. Qualify and let the user pick (or AI-recommend) FIRST, then leadbay_create_campaign.","Ends at 'campaign created' without rendering the leadbay_campaign_call_sheet view — the ready-to-work view IS the deliverable; stopping short is purpose drift.","Re-implements the calling / outcome / follow-up loop instead of handing off to leadbay_work_campaign — that prompt already owns it. This prompt BUILDS; work_campaign WORKS.","Auto-sends outreach or calls leadbay_report_outreach — building a campaign is not outreaching. No send, no log; the user works it afterward.","Re-pulls leadbay_pull_leads without the captured lensId — a mid-session lens shift discards the picked cohort.","Silently overwrites the user's active lens when forking to a fresh audience — confirm once before switching lenses.","Renders the picked leads or the call sheet as prose instead of the canonical per-tool RENDERING layout."]},
+  leadbay_build_campaign: {"name":"leadbay_build_campaign","short_description":"Build a sales campaign from scratch, autonomously, to a target size:\ndiscover on the lens, qualify, and enrich the buyer titles until `count`\nleads each have a reachable target-title contact — no pauses, no confirm\ngates. Saves via `leadbay_create_campaign` and renders a one-tap\ncall/email view via `leadbay_campaign_call_sheet`. Trigger on \"build me a\ncampaign\", \"build N leads\", \"create a campaign from scratch\". Work an\nexisting one with `leadbay_work_campaign`.\n","arguments":[{"name":"audience","description":"Optional: a fresh audience to target (e.g. 'dental clinics in Texas'). Omit to build from your ACTIVE lens — the default.","required":false},{"name":"campaign_name","description":"Optional: a name for the campaign. Omit and one is derived from the lens/audience + date (or the backend AI-names it).","required":false},{"name":"count","description":"Optional: how many fully-actionable leads to build (default 20). The loop keeps discovering, qualifying and enriching until this many in-ICP leads each have a reachable target-title contact — or the lens is exhausted. Higher counts take longer and consume more quota.","required":false},{"name":"job_titles","description":"Optional: the exact buyer job titles to enrich, comma-separated (e.g. 'VP Sales, Head of Growth, Director of Business Development'). Omit and the buyer persona is derived from what you sell. A lead only counts toward the target when it has a reachable contact matching one of these titles.","required":false}],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_bulk_qualify_leads","leadbay_qualify_status","leadbay_recall_ordered_titles","leadbay_enrich_titles","leadbay_bulk_enrich_status","leadbay_create_campaign","leadbay_add_leads_to_campaign","leadbay_campaign_call_sheet","leadbay_campaign_progression","leadbay_new_lens","leadbay_adjust_audience"],"failure_modes":["Pauses to confirm before enriching (or asks 'enrich these N now?' via ask_user_input_v0) — this prompt runs to goal with NO confirm gate; asking for the campaign IS the authorization. Never stop for a spend confirmation.","Stops to confirm a lens switch when the user named a fresh audience — naming the audience IS the authorization; switch, state which lens in one line, and don't ask.","Pauses at any point to ask the user to choose, confirm, or hand off — the only acceptable stops are lens exhaustion (can't supply the count) or a backend 429 (quota out). Anything else is purpose drift.","Stops at fewer than the target `count` of actionable leads without looping back to pull / qualify / enrich more — must run to the target, or honestly report the lens is exhausted and offer to widen.","Counts a lead toward `count` before its target-title contact actually landed (email/phone present) — an empty enrichment doesn't count; swap and re-enrich until the cohort is genuinely `count` deep.","Enriches by seniority instead of by buyer persona — picks COO / Director of Operations / Mgr of Logistics / CFO / CTO because they sound senior, when the user sells a SALES tool whose buyer is the revenue org (VP/Head/Director of Sales, BD, growth, marketing). Operations people never buy a sales tool; this hands the salesperson a useless list.","When no titles are given, fails to derive the user's buyer persona from their product/ICP before choosing titles — jumps straight to generic exec titles instead of working out who buys what THIS user sells. (When titles ARE given, use them verbatim — don't substitute 'more senior' ones.)","Blindly repeats leadbay_recall_ordered_titles / discovery suggestions even when they are off-persona (e.g. operations roles a prior session wrongly enriched) — recall is a filtered input, not the answer.","Poor coverage — leaves picked leads with no target-title contact (or 0 enrichments on some leads) and ships them anyway, so the salesperson opens the campaign to half-empty rows. Swap them out and refill to the count instead.","Creates the campaign before qualifying / picking — seeds a campaign with unvetted leads. Qualify and lock the buyer-covered cohort FIRST, then leadbay_create_campaign.","Ends at 'campaign created' without rendering the leadbay_campaign_call_sheet view — the ready-to-work view IS the deliverable; stopping short is purpose drift.","Runs the calling / outcome / follow-up loop, or calls leadbay_work_campaign itself, instead of stopping at the call sheet — this prompt BUILDS and stops; work_campaign is a separate session the user starts later.","Auto-sends outreach or calls leadbay_report_outreach — building a campaign is not outreaching. No send, no log.","Re-pulls leadbay_pull_leads without the captured lensId — a mid-session lens shift discards the cohort being built.","Renders the picked leads or the call sheet as prose instead of the canonical per-tool RENDERING layout."]},
   leadbay_daily_check_in: {"name":"leadbay_daily_check_in","short_description":"Morning DISCOVERY workflow — new leads from the lens wishlist. Trigger\non \"show me leads\", \"what's new today\", \"let's prospect\", \"run my check-in\",\n\"my morning check-in\", \"I do this every day\", \"every morning\". Recurrence\nlanguage always means this prompt. Do NOT trigger on follow-up phrasings\n(\"follow up\", \"before my trip\") — those go to `leadbay_followup_check_in`.\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_research_lead_by_id","leadbay_bulk_qualify_leads","leadbay_enrich_contacts"],"failure_modes":["Calls leadbay_report_outreach without explicit user authorization","Surfaces fewer than 10 leads when more are available, or fails to top up via leadbay_qualify_top_n when the batch is short","Replaces the canonical pull_leads table layout with prose per row (the per-tool RENDERING block is the structural contract; \"Today's nudges\" goes above it, not in place of it)","Skips the nudge paragraph entirely — the table alone is fine but adding the nudge is the value-add","Skips deep research on promising leads (Phase 4) — the agent must call leadbay_research_lead_by_id on each when the user's intent is to research specific leads; Phase 4 is intentionally skipped for batch-view requests (\"show me today's leads\", \"run my morning check-in\") per the Phase 4 skip gate","Triggers contact enrichment without asking the user first (it consumes quota)","Skips the STOP byproduct and proposes next actions on its own","Fires 10 parallel leadbay_research_lead_by_id calls and treats \"stream closed\" errors as terminal — must serialize and retry singletons","Re-pulls leadbay_pull_leads without passing the captured lensId, allowing a backend lens shift to discard the Phase 2 batch","Treats a \"Request timed out\" from leadbay_bulk_qualify_leads as terminal instead of retrying with wait_for_completion:false + qualify_status polling","Triggers on a follow-up query (e.g., \"leads I should follow up with\") that should have routed to `leadbay_followup_check_in` — the two entry points are different data sources (Discover wishlist vs Monitor view) per §1.6"]},
   leadbay_extend_my_lens: {"name":"leadbay_extend_my_lens","short_description":"Add more leads to the current lens on demand — for users whose appetite\nexceeds the standard daily fill. The agent picks seeds silently from\nwhat's already on the lens, fires the extra refill, and surfaces the\nqueue confirmation. The user never reviews the seed list.\n","arguments":[{"name":"extra_count","description":"How many extra leads to add. Optional. Omit to use the backend default.","required":false}],"expected_calls":["leadbay_account_status","leadbay_seed_candidates","leadbay_extend_lens","leadbay_pull_leads"],"failure_modes":["Surfaces the seed candidate list to the user instead of picking silently — the user asked for MORE LEADS, not a candidate review meeting","Skips the seeded path and calls `leadbay_extend_lens` with no `seed_lead_ids`, losing the bias signal the recommender needs","On 429, silently retries instead of surfacing the three options (smaller / wait / upgrade) via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`)","Forgets to pre-check `LENS_EXTRA_REFILL` quota in `leadbay_account_status` and burns a wasted API call","Skips the post-queue pull-leads suggestion, so the user doesn't see what just got added"]},
   leadbay_followup_check_in: {"name":"leadbay_followup_check_in","short_description":"Follow-up check-in: surface KNOWN leads from the Monitor view needing\nre-engagement. Trigger on \"follow up\", \"already known leads\", \"what's\noverdue\", \"before my trip\", \"who should I re-engage\". Do NOT trigger on\n\"show me today's leads\", \"my morning check-in\", \"run my check-in\",\n\"I do this every day\", \"every morning\" — those go to\n`leadbay_daily_check_in`.\n","arguments":[],"expected_calls":["leadbay_pull_followups","leadbay_research_lead_by_id","leadbay_prepare_outreach"],"failure_modes":["Calls leadbay_pull_leads (the Discover entry point) instead of leadbay_pull_followups — these are different data sources; the Discover queue does NOT contain Monitor's known-but-cold pipeline","Iterates pages of leadbay_pull_leads filtering by engagement_count to \"fake\" a follow-up view (a real bug observed in 0.9.0 — the right move is to call pull_followups directly)","Replaces the canonical pull_followups table layout with prose per row (the per-tool RENDERING block is the structural contract; commentary belongs above or below)","Skips the cross-mode pivot offer at the end (\"Want to see NEW leads from your wishlist instead?\" routes to leadbay_pull_leads)"]},
+  leadbay_getting_started: {"name":"leadbay_getting_started","short_description":"Guided first-run walkthrough — four clicks that actually use Leadbay: check\nthe account, pull today's leads, draft a first email to the top one, then\nreveal who to send it to. Use when the user is new or asks to be SHOWN how\nLeadbay works (\"walk me through Leadbay\", \"I'm new\", \"how do I use this\",\n\"give me a tour\"). Don't use it for orientation prose with no clicking —\nthat's leadbay_prospecting_overview.\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_prepare_outreach","leadbay_enrich_titles","leadbay_bulk_enrich_status"],"failure_modes":["Presents a gate as prose (\"let me know if you want me to pull your leads\") instead of CALLING the host choice widget — the click IS the lesson, and prose turns the walkthrough into a lecture","Runs a step's tool WITHOUT firing that step's widget first and waiting for the click — the walkthrough becomes an automated demo the user only watches, which is the exact opposite of learning by doing","Fires the widget without the EXPLAIN beat, so the user gets an unexplained button and learns nothing about what a lens or an enrichment actually is","Answers gate 1 with a bare \"you're connected as X at Y\" when the quota IS readable — the user clicked a button labelled `check my account status`, so the quota windows (Daily/Weekly/Monthly gauges, % used, $ spent, resets) ARE the answer, not an optional extra","Renders quota as raw \"credits\" instead of the web app's percentage + dollar-spend gauges, or dumps raw `resource_type` strings the user has never seen","Opens with a wall of text — previewing all four steps, explaining lenses up front, or writing several paragraphs before the first widget. The opening is TWO lines then the button; a first-run user wants to see it work, not read a syllabus","Ends the first message without firing gate 1's widget, leaving the user to reply \"ok\" before anything happens","Rewrites the gate's own `next_steps` payload (its `question`, `label` or `description`) instead of mapping it into the widget verbatim, or merges two gates into a single multi-option widget","Fires a THIRD option, or turns the exit into an alternative route (\"show me my lenses instead\") — each gate carries exactly one forward action plus the `I'm done for now` exit, never a menu of paths","Fires a single-option widget — the host requires 2–4 options, so a lone option is rejected or silently degrades to prose (\"say the word and I'll check it\"), which is the exact defect this rule exists to prevent","Launches the PAID reveal at gate 4 BEFORE the user has picked leads and confirmed — beat 1 must be the free `mode:\"discover\"` preview (no `titles`, no `confirm`, no `email`, no `phone`); the gate click bought the free look, not the reveal, and silence is never consent","Stops at the free preview after the user DID pick leads and confirm — they asked for real contact details, so the second call must actually run with `confirm:true` and the chosen titles","Reports the enrichment without polling `leadbay_bulk_enrich_status` to completion, so it claims contacts it never actually saw resolve","Reveals contacts and never says what it cost — the user just spent credits and deserves the one-line \"N contacts = N credits\", which is also what makes gate 1's quota numbers concrete","Reports \"no leads\" on an empty batch while `computing_wishlist` / `computing_scores` is true — the lens is still building; render the tool's own two-option warm-up widget verbatim and pause","Rewords, reorders or prose-ifies the `next_steps` payload from `leadbay_pull_leads` instead of mapping `options[]` into the widget verbatim","Runs all four steps in one turn without waiting for the user's click between gates — the walkthrough is a sequence of gates, not a script to recite","Skips `leadbay_pull_leads` and jumps straight to enrichment, leaving gate 4 with no `leadIds` to scope","Passes a singular `leadId` to `leadbay_enrich_titles` on the confirmed reveal — that key does not exist on this tool, so it is dropped and the paid call falls back to the whole default wishlist selection, charging for far more than the one lead the user agreed to. it is always the `leadIds` ARRAY, even for a single lead","Drops the pinned `lens.id` between gates, so gate 4 enriches against a different lens than the one the user just saw","Ends the completed walkthrough without the `keep_going` cheat-sheet — the buttons disappear with the tour, so a user who was never told what to TYPE learned to click a tutorial and nothing about using Leadbay tomorrow","Invents phrases for the cheat-sheet, or rewords them into something that sounds nicer but doesn't match the tool's real triggers — teaching a phrase that doesn't route is worse than teaching none","SENDS the gate 3 draft, or offers to send it — the walkthrough drafts and stops there; the email is the user's to judge, and nothing leaves the chat","Passes `enrich:true` to `leadbay_prepare_outreach` at gate 3 — that launches a PAID contact reveal off the back of a DRAFT click, spending credits the user never agreed to","Invents a contact NAME for the gate 3 draft — `recommended_contact` still has null email/name at that point, so the draft is addressed to the job TITLE; a fabricated name is the one thing that makes the whole draft untrustworthy","Treats the null email at gate 3 as a failure — apologising for it, retrying, or calling another tool to fill it in. It is the setup for gate 4 — an email written, nobody to send it to yet","Pastes the drafted email into chat prose alongside `message_compose_v1` instead of letting the composer BE the answer","Enriches leads other than the one it drafted for at gate 3 — gate 4 reveals the person that email is going to, so it is scoped to that ONE lead, one contact, one credit","Renders the cheat-sheet on the exit and stops there, dropping the 1:1 offer — the observed failure is that the agent feels finished once the table is on screen, so the user who just stepped out never hears about the help that would bring them back. ENDING B is not complete without the offer, and the offer goes LAST","Treats the exit click as ENDING C (typed off-script) and closes in silence, or treats a typed request as ENDING B and buries their real answer under a cheat-sheet and a booking link","Turns the exit offer into a pitch — several sentences, a re-opened gate, or an argument for finishing the tour. They said they were done; it is one line and a link","Fires the 1:1 offer mid-tour, or at a user who left by TYPING a different request — a booking link on top of their real question is an interruption, not an offer","Runs the four gates at a user whose actual problem is SETUP — the connector isn't installed, they can't sign in, or their Leadbay tools aren't appearing. The tour assumes a working connection and cannot fix any of it; the setup guide can","Pastes the setup-guide link mid-tour, between gates, instead of once at the closing — a link in the middle of the walkthrough invites the user to leave the thing they're doing"]},
   leadbay_import_file: {"name":"leadbay_import_file","short_description":"Import a user-supplied CSV/file into Leadbay through five phases with\nevidence gates — scan, derive, resolve identities, preserve & commit,\nthen optionally qualify and report. The job is to maximize how many\nrows the Leadbay system actually ingests and matches.\n","arguments":[{"name":"file","description":"Path or user-visible name of the CSV/file to import. If omitted, use the file the user attached or referenced.","required":false},{"name":"instruction","description":"Additional user goal, e.g. \"then qualify the leads\", \"preserve owner phone as a custom field\", or \"only import restaurants in Manhattan\".","required":false}],"expected_calls":["leadbay_resolve_import_rows","leadbay_list_mappable_fields","leadbay_create_custom_field","leadbay_import_leads","leadbay_import_and_qualify","leadbay_add_note","leadbay_import_status"],"failure_modes":["Picks LEADBAY_ID from score alone, name-only, fuzzy-name-only, root-domain-only, brand-only, postcode-only, or city-only evidence","Drops meaningful business notes or CRM record links instead of preserving them as custom fields or lead notes","Treats a consumer mailbox domain (gmail.com, hotmail.com, ...) as the company domain","Skips deriving company_domain from a business email when no website column exists (this kills match rate)","Skips the COLUMN PRESERVATION PLAN byproduct before importing","Skips the DECISION LOG byproduct before writing LEADBAY_ID","Returns the imported records WITHOUT writing LEADBAY_ID values back into the user's file (leaves the user no audit trail of what matched)","Fabricates leadIds, contact emails, or mapping IDs not present in the file or a tool response"]},
   leadbay_log_outreach: {"name":"leadbay_log_outreach","short_description":"Log outreach (an email I sent, a call I made, a meeting I had) on a\nspecific lead. Captures verification so the SDR pipeline trusts the entry.\n","arguments":[{"name":"lead_id","description":"The lead UUID. Get it from leadbay_pull_leads or leadbay_research_lead_by_id.","required":true},{"name":"summary","description":"1-2 sentences describing what I did (e.g. 'Sent intro email to CTO citing recent Hornsea contract').","required":true}],"expected_calls":["leadbay_report_outreach"],"failure_modes":["Calls leadbay_report_outreach without first collecting a verification source","Fabricates a gmail_message_id or calendar_event_id (the human team treats verification as canonical)","Records outreach to a different lead_id than the one the user supplied","Skips the dry_run step when the user is unsure what would be sent"]},
   leadbay_plan_tour_in_city: {"name":"leadbay_plan_tour_in_city","short_description":"Use whenever the user names a city they'll be in and asks who to see\n— \"I'm in SF next Tuesday, who's worth meeting?\", \"I'm going to Berlin\n— who should I visit?\", \"plan my <city> tour\". Any in-person/visit\nintent tied to a place routes here, NOT to `leadbay_pull_leads`. It\nsurfaces follow-ups + fresh Discover leads in the city via\n`leadbay_tour_plan`, ALWAYS offers to plot them on a map (rendering it\non yes), then offers outreach drafts + campaign persistence.\n","arguments":[{"name":"city","description":"City or region the user is visiting (e.g. 'Limoges', 'Bay Area'). Used as the geo filter for both Monitor and Discover lookups.","required":true},{"name":"date","description":"When the visit is (e.g. 'May 24', 'next Thursday'). Surfaced in the outreach drafts as 'I'll be in <city> on <date>'.","required":false}],"expected_calls":["leadbay_tour_plan","leadbay_research_lead_by_id","leadbay_prepare_outreach","leadbay_create_campaign"],"failure_modes":["Calls leadbay_followups_map (Monitor-only) instead of leadbay_tour_plan — loses the Discover (fresh-lead) half that the user explicitly asked for","Calls leadbay_pull_leads then drops the geo filter — returns the lens-wide wishlist instead of city-relevant fresh leads","Skips the campaign-persist step (\"would you like to save these as a tour?\") — leaves the rep with a one-shot map but no follow-up artifact","Creates a campaign WITHOUT asking the user first — the persist step is high-intent; offer it, don't assume","Fabricates lead_ids when seeding the campaign instead of using the ids returned by tour_plan"]},
@@ -1560,6 +2617,7 @@ export const PROMPT_META = {
   leadbay_refine_audience: {"name":"leadbay_refine_audience","short_description":"Refine the kind of leads Leadbay surfaces beyond firmographics, with a\nfree-text instruction. Handles the clarification round-trip if the new\nprompt is ambiguous.\n","arguments":[{"name":"instruction","description":"The refinement (e.g. 'focus on hospitals running their own IT'). Set to plain English.","required":true}],"expected_calls":["leadbay_refine_prompt","leadbay_account_status"],"failure_modes":["Calls leadbay_answer_clarification on the user's behalf instead of surfacing the clarification verbatim","Glosses over the clarification options instead of presenting them as offered","Promises immediate effect when status='applied' actually triggers an async intelligence recompute"]},
   leadbay_research_a_domain: {"name":"leadbay_research_a_domain","short_description":"Resolve a company by name or domain across the user's visible Discover,\nMonitor, and Activate corpus, then return everything Leadbay knows about it.\n","arguments":[{"name":"domain","description":"Company name or domain (for example 'Acme Corporation' or 'acme.com'). The legacy argument key remains `domain` for client compatibility.","required":true}],"expected_calls":["leadbay_research_lead_by_name_fuzzy"],"failure_modes":["Fabricates qualification answers not present in any tool response","Calls leadbay_import_and_qualify before searching the existing visible corpus","Treats the active lens as the entire search universe when the user did not request a lens scope","Imports a missing company without the user's explicit permission","Renders the research result as a freeform narrative instead of the canonical research-company-card layout (the card with header score bar, pill row, signal sections, contacts table is the structural contract; commentary belongs ABOVE or BELOW it)"]},
   leadbay_setup_team_prospecting: {"name":"leadbay_setup_team_prospecting","short_description":"Manager-led prospecting setup: conversationally turn a natural-language\naudience ask into a Leadbay lens, validate the candidate leads, and\npersist them as one or more named campaigns the rep(s) can work\nthrough. Closes #3630 US3 end-to-end (within the current\ncreator-scoped campaign visibility model).\n","arguments":[{"name":"audience","description":"Natural-language audience description (e.g. 'plumbing companies with 10-50 employees in Seine-Maritime'). The lens-creation step (`leadbay_refine_prompt` → `leadbay_create_lens`) interprets it.","required":true},{"name":"rep_split","description":"Optional: how to split the validated leads into per-rep campaigns. Free text — e.g. 'split by city' or 'one campaign per rep: John gets Tulsa, Sarah gets OKC'.","required":false}],"expected_calls":["leadbay_refine_prompt","leadbay_create_lens","leadbay_promote_lens","leadbay_pull_leads","leadbay_research_lead_by_id","leadbay_create_campaign","leadbay_add_leads_to_campaign"],"failure_modes":["Skips the validation step — creates a campaign of unvetted leads from a freshly-created lens without giving the manager a chance to drop weak fits","Creates ONE campaign for all reps without asking about the split — the user explicitly mentioned per-rep distribution and the prompt should honor it","Pretends the backend supports cross-user assignment — campaigns are owned by the caller (creator-scoped). Surface this honestly instead of fabricating an assignment model","Asks ALL clarifying questions inline before tool calls — instead, run the lens refinement loop with `leadbay_refine_prompt` which handles the clarification protocol natively"]},
+  leadbay_top_accounts_to_activate: {"name":"leadbay_top_accounts_to_activate","short_description":"Build a ranked account-conquest plan from Leadbay data — the accounts worth\nactivating, each with a motif, a pitch and a checklist, ranked by the\nstrongest Leadbay signal. Every figure carries its source, and anything\nLeadbay can't measure is shown as OMITTED rather than estimated. Uses\n`leadbay_bulk_qualify_leads` and `leadbay_enrich_titles`. Trigger on\n\"top 50 accounts to activate\", \"who should we go after\".\n","arguments":[{"name":"count","description":"Optional: how many accounts the plan should hold (default 50).","required":false},{"name":"territory","description":"Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire', 'Région Ouest'). Sets geography on the Discover lens.","required":false}],"expected_calls":["leadbay_account_status","leadbay_get_qualification_questions","leadbay_pull_leads","leadbay_pull_followups","leadbay_bulk_qualify_leads","leadbay_qualify_status","leadbay_scan_portfolio_signals","leadbay_enrich_titles","leadbay_bulk_enrich_status","leadbay_account_history","leadbay_artifact_kit","leadbay_new_lens","leadbay_adjust_audience"],"failure_modes":["Invents, estimates or proxies a revenue-realized figure — the single worst failure. Leadbay does not hold what an account buys, and headcount, sector and lead score are NOT proxies for it.","Sorts by cash-to-capture, synthesizing a revenue figure per account purely to make that ranking work. Leadbay has no revenue data: rank by the Leadbay signal, say so in the header, and never invent the key.","Emits € figures with no provenance class, so modelled numbers read as measured fact in front of a paying client.","Skips the PROVENANCE LEDGER, or drops un-sourceable fields from it instead of rendering them as OMITTED — which hides the gap.","Fabricates registry/TAM counts (France or regional company counts) instead of querying the registry or marking the figure NOT COMPUTED. Leadbay does not proxy SIRENE.","Invents the five qualification questions from this prompt's own recommendations instead of reading the org's actual questions via leadbay_get_qualification_questions.","Leaves the deck's live layer dead — qualification and enrichment handles never wired in, so the pills and contacts stay empty while the deck still looks finished.","Invents lead ids to make the qualification pills appear populated.","Fabricates a plausible-sounding signal ('just won a public tender') for an account whose signals were never read. No signal read means an explicit dash.","Assigns a motif outside the closed set of six, or assigns SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL from a lead score or sector when order history was never available.","Labels Monitor membership as 'is a client' — Monitor is a Leadbay view whose membership is decided by lens scoring, not by whether the company ever bought anything.","Launches paid enrichment on the whole plan without consent. Asking for a plan is not authorization to spend on 50 accounts.","Re-launches enrichment from inside the built deck when a bulk handle already exists this session — double-spends the user's quota.","Forces the interactive deck without offering it first, or ships the deck INSTEAD of a chat answer that stands on its own.","Refuses the task because revenue data is missing, instead of delivering the conquest plan and naming what a cash-ranked version would need.","Ends the turn without a ranked list of real accounts — gating the whole plan on a NON-blocking question (the territory, a missing lens, or a 3-vs-5 qualification-question gap) so the user gets a plan-of-a-plan. Only an unresolvable company-identity mismatch may stop delivery; every other open question rides alongside the delivered plan.","Stops after the discovery contact preview to wait for enrichment consent, delivering no plan that turn — the ranked plan ships first; the paid reveal is offered alongside it.","Renders a contact channel enrichment never returned (e.g. a phone link when only email was approved and revealed) instead of showing the returned channels and marking the rest omitted."]},
   leadbay_work_campaign: {"name":"leadbay_work_campaign","short_description":"Work a campaign as a real outreach session: pick the campaign,\nassess what the user has (phones / emails / coords), then PROPOSE\nthe right session mode (call sheet, email sheet, enrich titles\nfirst, map). After they pick, render — and as they dictate\noutcomes per lead, record both note + epilogue via\n`leadbay_report_outreach` in one round trip.\n","arguments":[{"name":"campaign","description":"Campaign name (fuzzy match against your own campaigns) or campaign UUID. Omit to list and pick interactively.","required":false},{"name":"mode","description":"Optional: skip the readiness-assessment proposal and jump directly into 'call_sheet' / 'email_sheet' / 'map' / 'enrich_first'. Omit (recommended) and let the prompt propose based on the data.","required":false}],"expected_calls":["leadbay_list_campaigns","leadbay_campaign_call_sheet","leadbay_enrich_titles","leadbay_report_outreach"],"failure_modes":["Renders the call sheet immediately without proposing the right mode — if 60% of leads have no contacts, calling is futile; enrich first. Always assess `readiness` first.","Auto-renders the map widget without asking — maps are intrusive when the user just wants to scroll a list. Map mode is a proposed option, not a default.","Proposes map mode after the user has previously said they don't like maps — check conversation memory before adding 'View on a map' to the options list.","Calls `leadbay_campaign_progression` instead of `leadbay_campaign_call_sheet` — progression has counts but no phones / LinkedIn / call-ready data; the user can't actually dial from progression rows.","Renders contacts WITHOUT making the phone number a `[bare](tel:URL)` link — on mobile that breaks one-tap calling, which is the whole point of the cheat sheet.","Records outreach WITHOUT epilogue_status — leaves the lead's pipeline state unchanged; the rep then sees the same lead surfaced again next session.","Records outreach WITHOUT verification — verification.source/ref is REQUIRED. For calls, pass `{source: 'user_confirmed', ref: <user's exact words>}`.","Loops through ALL leads in a 50-lead campaign before recording any outreach — the call-then-record loop must be per-lead, not batched."]},
 } as const;
 
@@ -1569,10 +2627,11 @@ export type PromptName = keyof typeof PROMPT_META;
 export const PROMPT_CATALOG_HEADER: string = `This server exposes the following workflow prompts via \`prompts/list\` and \`prompts/get\`. Some MCP clients render them as slash commands; if your client does not, you (the agent) should invoke them directly via \`prompts/get\` when the user's request matches one of the triggers described below.`;
 
 export const PROMPT_CATALOG_BULLETS = {
-  leadbay_build_campaign: `- \`leadbay_build_campaign\` (optional args: audience, campaign_name): Build a sales campaign from scratch in one guided flow: discover on the active lens, qualify and pick a cohort, enrich the contacts most likely to engage, save it via \`leadbay_create_campaign\`, then show a one-tap call/email view via \`leadbay_campaign_call_sheet\`. Trigger on "build me a campaign", "set up a new campaign", "create a campaign from scratch". WORK an existing campaign with \`leadbay_work_campaign\`; split leads across reps with \`leadbay_setup_team_prospecting\`.`,
+  leadbay_build_campaign: `- \`leadbay_build_campaign\` (optional args: audience, campaign_name, count, job_titles): Build a sales campaign from scratch, autonomously, to a target size: discover on the lens, qualify, and enrich the buyer titles until \`count\` leads each have a reachable target-title contact — no pauses, no confirm gates. Saves via \`leadbay_create_campaign\` and renders a one-tap call/email view via \`leadbay_campaign_call_sheet\`. Trigger on "build me a campaign", "build N leads", "create a campaign from scratch". Work an existing one with \`leadbay_work_campaign\`.`,
   leadbay_daily_check_in: `- \`leadbay_daily_check_in\`: Morning DISCOVERY workflow — new leads from the lens wishlist. Trigger on "show me leads", "what's new today", "let's prospect", "run my check-in", "my morning check-in", "I do this every day", "every morning". Recurrence language always means this prompt. Do NOT trigger on follow-up phrasings ("follow up", "before my trip") — those go to \`leadbay_followup_check_in\`.`,
   leadbay_extend_my_lens: `- \`leadbay_extend_my_lens\` (optional args: extra_count): Add more leads to the current lens on demand — for users whose appetite exceeds the standard daily fill. The agent picks seeds silently from what's already on the lens, fires the extra refill, and surfaces the queue confirmation. The user never reviews the seed list.`,
   leadbay_followup_check_in: `- \`leadbay_followup_check_in\`: Follow-up check-in: surface KNOWN leads from the Monitor view needing re-engagement. Trigger on "follow up", "already known leads", "what's overdue", "before my trip", "who should I re-engage". Do NOT trigger on "show me today's leads", "my morning check-in", "run my check-in", "I do this every day", "every morning" — those go to \`leadbay_daily_check_in\`.`,
+  leadbay_getting_started: `- \`leadbay_getting_started\`: Guided first-run walkthrough — four clicks that actually use Leadbay: check the account, pull today's leads, draft a first email to the top one, then reveal who to send it to. Use when the user is new or asks to be SHOWN how Leadbay works ("walk me through Leadbay", "I'm new", "how do I use this", "give me a tour"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview.`,
   leadbay_import_file: `- \`leadbay_import_file\` (optional args: file, instruction): Import a user-supplied CSV/file into Leadbay through five phases with evidence gates — scan, derive, resolve identities, preserve & commit, then optionally qualify and report. The job is to maximize how many rows the Leadbay system actually ingests and matches.`,
   leadbay_log_outreach: `- \`leadbay_log_outreach\` (required args: lead_id, summary): Log outreach (an email I sent, a call I made, a meeting I had) on a specific lead. Captures verification so the SDR pipeline trusts the entry.`,
   leadbay_plan_tour_in_city: `- \`leadbay_plan_tour_in_city\` (required args: city; optional args: date): Use whenever the user names a city they'll be in and asks who to see — "I'm in SF next Tuesday, who's worth meeting?", "I'm going to Berlin — who should I visit?", "plan my <city> tour". Any in-person/visit intent tied to a place routes here, NOT to \`leadbay_pull_leads\`. It surfaces follow-ups + fresh Discover leads in the city via \`leadbay_tour_plan\`, ALWAYS offers to plot them on a map (rendering it on yes), then offers outreach drafts + campaign persistence.`,
@@ -1581,15 +2640,17 @@ export const PROMPT_CATALOG_BULLETS = {
   leadbay_refine_audience: `- \`leadbay_refine_audience\` (required args: instruction): Refine the kind of leads Leadbay surfaces beyond firmographics, with a free-text instruction. Handles the clarification round-trip if the new prompt is ambiguous.`,
   leadbay_research_a_domain: `- \`leadbay_research_a_domain\` (required args: domain): Resolve a company by name or domain across the user's visible Discover, Monitor, and Activate corpus, then return everything Leadbay knows about it.`,
   leadbay_setup_team_prospecting: `- \`leadbay_setup_team_prospecting\` (required args: audience; optional args: rep_split): Manager-led prospecting setup: conversationally turn a natural-language audience ask into a Leadbay lens, validate the candidate leads, and persist them as one or more named campaigns the rep(s) can work through. Closes #3630 US3 end-to-end (within the current creator-scoped campaign visibility model).`,
+  leadbay_top_accounts_to_activate: `- \`leadbay_top_accounts_to_activate\` (optional args: count, territory): Build a ranked account-conquest plan from Leadbay data — the accounts worth activating, each with a motif, a pitch and a checklist, ranked by the strongest Leadbay signal. Every figure carries its source, and anything Leadbay can't measure is shown as OMITTED rather than estimated. Uses \`leadbay_bulk_qualify_leads\` and \`leadbay_enrich_titles\`. Trigger on "top 50 accounts to activate", "who should we go after".`,
   leadbay_work_campaign: `- \`leadbay_work_campaign\` (optional args: campaign, mode): Work a campaign as a real outreach session: pick the campaign, assess what the user has (phones / emails / coords), then PROPOSE the right session mode (call sheet, email sheet, enrich titles first, map). After they pick, render — and as they dictate outcomes per lead, record both note + epilogue via \`leadbay_report_outreach\` in one round trip.`,
 } as const;
 
 export const PROMPT_CATALOG_INSTRUCTIONS: string = `This server exposes the following workflow prompts via \`prompts/list\` and \`prompts/get\`. Some MCP clients render them as slash commands; if your client does not, you (the agent) should invoke them directly via \`prompts/get\` when the user's request matches one of the triggers described below.
 
-- \`leadbay_build_campaign\` (optional args: audience, campaign_name): Build a sales campaign from scratch in one guided flow: discover on the active lens, qualify and pick a cohort, enrich the contacts most likely to engage, save it via \`leadbay_create_campaign\`, then show a one-tap call/email view via \`leadbay_campaign_call_sheet\`. Trigger on "build me a campaign", "set up a new campaign", "create a campaign from scratch". WORK an existing campaign with \`leadbay_work_campaign\`; split leads across reps with \`leadbay_setup_team_prospecting\`.
+- \`leadbay_build_campaign\` (optional args: audience, campaign_name, count, job_titles): Build a sales campaign from scratch, autonomously, to a target size: discover on the lens, qualify, and enrich the buyer titles until \`count\` leads each have a reachable target-title contact — no pauses, no confirm gates. Saves via \`leadbay_create_campaign\` and renders a one-tap call/email view via \`leadbay_campaign_call_sheet\`. Trigger on "build me a campaign", "build N leads", "create a campaign from scratch". Work an existing one with \`leadbay_work_campaign\`.
 - \`leadbay_daily_check_in\`: Morning DISCOVERY workflow — new leads from the lens wishlist. Trigger on "show me leads", "what's new today", "let's prospect", "run my check-in", "my morning check-in", "I do this every day", "every morning". Recurrence language always means this prompt. Do NOT trigger on follow-up phrasings ("follow up", "before my trip") — those go to \`leadbay_followup_check_in\`.
 - \`leadbay_extend_my_lens\` (optional args: extra_count): Add more leads to the current lens on demand — for users whose appetite exceeds the standard daily fill. The agent picks seeds silently from what's already on the lens, fires the extra refill, and surfaces the queue confirmation. The user never reviews the seed list.
 - \`leadbay_followup_check_in\`: Follow-up check-in: surface KNOWN leads from the Monitor view needing re-engagement. Trigger on "follow up", "already known leads", "what's overdue", "before my trip", "who should I re-engage". Do NOT trigger on "show me today's leads", "my morning check-in", "run my check-in", "I do this every day", "every morning" — those go to \`leadbay_daily_check_in\`.
+- \`leadbay_getting_started\`: Guided first-run walkthrough — four clicks that actually use Leadbay: check the account, pull today's leads, draft a first email to the top one, then reveal who to send it to. Use when the user is new or asks to be SHOWN how Leadbay works ("walk me through Leadbay", "I'm new", "how do I use this", "give me a tour"). Don't use it for orientation prose with no clicking — that's leadbay_prospecting_overview.
 - \`leadbay_import_file\` (optional args: file, instruction): Import a user-supplied CSV/file into Leadbay through five phases with evidence gates — scan, derive, resolve identities, preserve & commit, then optionally qualify and report. The job is to maximize how many rows the Leadbay system actually ingests and matches.
 - \`leadbay_log_outreach\` (required args: lead_id, summary): Log outreach (an email I sent, a call I made, a meeting I had) on a specific lead. Captures verification so the SDR pipeline trusts the entry.
 - \`leadbay_plan_tour_in_city\` (required args: city; optional args: date): Use whenever the user names a city they'll be in and asks who to see — "I'm in SF next Tuesday, who's worth meeting?", "I'm going to Berlin — who should I visit?", "plan my <city> tour". Any in-person/visit intent tied to a place routes here, NOT to \`leadbay_pull_leads\`. It surfaces follow-ups + fresh Discover leads in the city via \`leadbay_tour_plan\`, ALWAYS offers to plot them on a map (rendering it on yes), then offers outreach drafts + campaign persistence.
@@ -1598,4 +2659,5 @@ export const PROMPT_CATALOG_INSTRUCTIONS: string = `This server exposes the foll
 - \`leadbay_refine_audience\` (required args: instruction): Refine the kind of leads Leadbay surfaces beyond firmographics, with a free-text instruction. Handles the clarification round-trip if the new prompt is ambiguous.
 - \`leadbay_research_a_domain\` (required args: domain): Resolve a company by name or domain across the user's visible Discover, Monitor, and Activate corpus, then return everything Leadbay knows about it.
 - \`leadbay_setup_team_prospecting\` (required args: audience; optional args: rep_split): Manager-led prospecting setup: conversationally turn a natural-language audience ask into a Leadbay lens, validate the candidate leads, and persist them as one or more named campaigns the rep(s) can work through. Closes #3630 US3 end-to-end (within the current creator-scoped campaign visibility model).
+- \`leadbay_top_accounts_to_activate\` (optional args: count, territory): Build a ranked account-conquest plan from Leadbay data — the accounts worth activating, each with a motif, a pitch and a checklist, ranked by the strongest Leadbay signal. Every figure carries its source, and anything Leadbay can't measure is shown as OMITTED rather than estimated. Uses \`leadbay_bulk_qualify_leads\` and \`leadbay_enrich_titles\`. Trigger on "top 50 accounts to activate", "who should we go after".
 - \`leadbay_work_campaign\` (optional args: campaign, mode): Work a campaign as a real outreach session: pick the campaign, assess what the user has (phones / emails / coords), then PROPOSE the right session mode (call sheet, email sheet, enrich titles first, map). After they pick, render — and as they dictate outcomes per lead, record both note + epilogue via \`leadbay_report_outreach\` in one round trip.`;

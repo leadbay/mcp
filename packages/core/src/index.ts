@@ -76,6 +76,7 @@ import { updateCustomField } from "./composite/update-custom-field.js";
 import { deleteCustomField } from "./composite/delete-custom-field.js";
 import { likeLead } from "./tools/like-lead.js";
 import { dislikeLead } from "./tools/dislike-lead.js";
+import { setTelemetry } from "./tools/set-telemetry.js";
 // Contact management — single-call relay tools (granular-shaped); registered
 // in compositeWriteTools below so they stay on the default surface.
 import { addContact } from "./tools/add-contact.js";
@@ -103,6 +104,7 @@ import { campaignCallSheet } from "./composite/campaign-call-sheet.js";
 import { researchLeadById } from "./composite/research-lead-by-id.js";
 import { researchLeadByNameFuzzy } from "./composite/research-lead-by-name-fuzzy.js";
 import { getQualificationQuestions } from "./composite/get-qualification-questions.js";
+import { gettingStarted } from "./composite/getting-started.js";
 import { setQualificationQuestions } from "./composite/set-qualification-questions.js";
 import { getLeadCustomFields } from "./composite/get-lead-custom-fields.js";
 import { accountHistory } from "./composite/account-history.js";
@@ -148,6 +150,14 @@ export type {
   CreateDefaultBulkStoreOpts,
 } from "./jobs/bulk-store.js";
 
+// Guided first-run walkthrough manifest (issue #3952) — exported so the MCP
+// audit can cross-check the prompt template against the tool's gate labels.
+export { GETTING_STARTED_MANIFEST } from "./composite/getting-started.js";
+export type {
+  GettingStartedManifest,
+  WalkthroughStep,
+} from "./composite/getting-started.js";
+
 // Re-export individual tools for granular consumers
 export {
   // existing granular
@@ -166,7 +176,7 @@ export {
   updateLens, updateLensFilter, createLensDraft, promoteLens, setUserPrompt,
   clearUserPrompt, pickClarification, dismissClarification, setEpilogueStatus,
   removeEpilogue, setPushback, removePushback, previewBulkEnrichment,
-  launchBulkEnrichment, likeLead, dislikeLead,
+  launchBulkEnrichment, likeLead, dislikeLead, setTelemetry,
   createCustomField, updateCustomField, deleteCustomField,
   // existing composite
   prepareOutreach,
@@ -174,6 +184,7 @@ export {
   pullLeads, pullFollowups, followupsMap, tourPlan, listCampaigns,
   campaignProgression, campaignCallSheet, researchLeadById, researchLeadByNameFuzzy,
   getQualificationQuestions, getLeadCustomFields,
+  gettingStarted,
   setQualificationQuestions,
   accountHistory,
   recallOrderedTitles, accountStatus, scanPortfolioSignals, teamActivity,
@@ -246,6 +257,7 @@ export const granularWriteTools: Tool[] = [
   removePushback,
   previewBulkEnrichment,
   launchBulkEnrichment,
+  setTelemetry,
   createCustomField,
 ];
 
@@ -277,6 +289,16 @@ export const compositeReadTools: Tool[] = [
   // is a first-session question, and the underlying get_taste_profile is
   // ADVANCED-gated. Read-only; no MCP edit endpoint exists (issue #3768).
   getQualificationQuestions,
+  // Guided first-run walkthrough (issue #3952). ALWAYS exposed, read-only:
+  // returns the six-gate script a brand-new user clicks through to learn
+  // Leadbay by doing (check account → pull leads → draft the first email →
+  // reveal who to send it to → CRM → schedule it).
+  // Makes no backend call. In compositeReadTools so the tour is reachable on a
+  // read-only (LEADBAY_MCP_WRITE=0) deployment — where gate 4's
+  // leadbay_enrich_titles is NOT registered (it is write-gated), so the
+  // manifest's gate-4 branch ends the tour after gate 3 rather than offering a
+  // button whose tool cannot run.
+  gettingStarted,
   // Per-lead custom-field VALUES. ALWAYS exposed: complements the always-on
   // list_mappable_fields (which returns DEFINITIONS only). The lead payload
   // embeds each field's definition, so no catalog join is needed (issue #3768).
@@ -324,11 +346,12 @@ export const compositeReadTools: Tool[] = [
   createTopupLink,
   openBillingPortal,
   prepareOutreach,
-  // Friction reporting — ALWAYS exposed (must work even in read-only
-  // deployments because the most valuable signal is "the tool I tried
-  // didn't deliver"). Does not mutate Leadbay state; emits a PostHog
-  // event only. Companion to leadbay_report_outreach (which DOES write
-  // to the backend and stays gated behind LEADBAY_MCP_WRITE).
+  // Problem reporting — ALWAYS exposed so a user on a read-only deployment
+  // can still ask for a problem to be reported. Consent-gated and visible:
+  // the agent calls it only when the user asks or accepts an offer, and shows
+  // the confirmation back (product#3943). Does not mutate Leadbay state;
+  // emits a PostHog event carrying only what the user approved. Companion to
+  // leadbay_report_outreach (which DOES write and stays behind LEADBAY_MCP_WRITE).
   reportFriction,
   // Notification ack — ALWAYS exposed even though it POSTs to /seen.
   // _meta.notifications surfaces terminal bulk-progress notifications on

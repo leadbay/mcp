@@ -1,5 +1,72 @@
 # Changelog — @leadbay/mcp
 
+## 0.28.0 — 2026-07-31
+
+Add **`leadbay_top_accounts_to_activate`** — a prompt that builds a ranked
+account-**conquest** plan from Leadbay data: the accounts worth activating,
+ranked by the strongest Leadbay signal (not by money — Leadbay holds no
+invoicing data), each carrying one of six strategic motifs (SAUVETAGE / PLAN DE
+COMPTE / MONTÉE EN GAMME / RÉVEIL / CONQUÊTE / SUIVI) that drives its phone
+pitch and three-step checklist (product#3863). Renders via `leadbay_artifact_kit` when the user
+accepts the offered deck; the chat table stands alone otherwise.
+
+**Leadbay-only by design.** Leadbay holds no invoicing data, so the plan ranks
+by the strongest Leadbay signal and renders revenue-realized, per-family revenue
+and cash-to-capture as **OMITTED — never estimated**, naming the extract columns
+a cash-ranked version would require. An ERP-ingest mode was explored and
+deliberately cut before release: it depended on inputs the platform cannot
+supply (headcount for off-lens imported leads) and permissions it cannot assume
+(`leadbay_import_leads` is admin-only). It is tracked separately.
+
+**New `gates/data-provenance` snippet.** The deliverable mixes Leadbay
+responses, public-registry counts and modelled assumptions in
+front of a paying client, so every emitted number carries a provenance class
+(`[ERP]` / `[LB]` / `[SIRENE]` / `[HYP]`), taint propagates through derived
+figures, and a PROVENANCE LEDGER prints **before** the plan with un-sourceable
+fields shown as OMITTED instead of quietly filled. The existing
+`iron-laws/no-fabrication` covers identifiers only, so a derived quantity such
+as a revenue figure could previously be invented without violating it.
+
+Also adds `heuristics/account-activation-motifs` and `rendering/activation-card`,
+plus WORKFLOWS entries 46–47 — the conquest plan and its fabrication guard.
+
+The six motifs are SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL /
+CONQUÊTE / **SUIVI**. The last is the honest label for an active known-pipeline
+account when no order history is available: the four Pilotage motifs are
+purchase-behaviour reads and CONQUÊTE means "not in the pipeline", so without
+invoicing data an active Monitor row matches none of them. ERP order data would
+split those rows into the Pilotage four.
+
+Fixes a stale `server.json` npx pin that tracked the `0.25` line while the
+package was on `0.26`, and bumps the `.claude-plugin` bundle off `@leadbay/mcp@0.13`,
+which predated `leadbay_get_qualification_questions`,
+`leadbay_scan_portfolio_signals` and `leadbay_artifact_kit`.
+
+## 0.27.0 — 2026-07-31
+
+Consent-gated friction reporting (#171) — see that PR for detail. Released from
+`main`; this entry is a placeholder so the version line is unbroken.
+
+## 0.26.0 — 2026-07-27 (tagged, never published)
+
+Makes **`leadbay_build_campaign`** autonomous: runs to a target `count` with no
+confirm gates, and accepts explicit `job_titles` for buyer enrichment (#169).
+The version was bumped and `mcp-v0.26.0` tagged, but the npm publish did not
+complete — npm's latest remained `0.25.0`. Documented here retroactively;
+`0.27.0` supersedes it and carries these changes forward.
+
+## 0.25.0 — 2026-07-13
+
+Add `leadbay_set_telemetry` — an in-product control to enable, disable, or check
+product-usage telemetry (product#3879). Telemetry stays ON by default (opt-out).
+The preference is stored per-user on the Leadbay account (via `POST
+/users/telemetry`, read from `GET /users/me`). On the **hosted/web connector** a
+user who opts out has their telemetry suppressed per-request. A **local/stdio
+install** decides telemetry at process start from `LEADBAY_TELEMETRY_ENABLED` and
+does NOT consult the account flag, so local opt-out also requires setting that
+env var (the tool's copy says so). Requires the backend `telemetry_enabled`
+field (leadbay/backend) + api-specs contract.
+
 ## 0.24.2 — 2026-07-13
 
 Release bump to publish a fresh hosted HTTP-server image carrying the 0.24.1

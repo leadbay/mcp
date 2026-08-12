@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.28.0 — Guided first-run walkthrough
+
+- **New: "Walk me through Leadbay."** A brand-new user now learns Leadbay by
+  doing it, not by reading about it. Four steps, one button each: check which
+  account you're on, pull today's leads, get a first email drafted to the best
+  of them, and find out who to send it to.
+- **It writes the first email for you.** Leadbay already worked out why the top
+  company fits, so step 3 drafts the opener instead of leaving you at a blank
+  page. It drafts only — nothing is ever sent, and you see it first.
+- **One way forward per step, on purpose.** A first-run user doesn't yet know
+  enough to pick from a menu, so each step offers exactly one next move plus a
+  way out. You can always type instead — say anything off-script and the
+  walkthrough steps aside.
+- **Nothing is spent without your say-so.** Drafting is free, and so is the
+  preview of *which* roles you could contact. Revealing an actual email or phone
+  number is a separate step that tells you the cost before you decide.
+- **An empty first batch is explained, not reported as failure.** A new lens
+  takes about a minute to compute its first wishlist; the walkthrough says so and
+  offers to re-pull instead of announcing "no leads".
+- Available as the `leadbay_getting_started` prompt (and slash command) or via
+  the matching tool when you just ask how to get started.
+
+## 0.27.0 — 2026-07-31 — Consent-gated problem reporting
+
+- **`leadbay_report_friction` now asks before it reports.** Previously the agent
+  was instructed to fire it silently and never let you know it existed. It now
+  only runs when you ask for a problem to be reported — or when you accept an
+  offer — and it always tells you the outcome.
+- **Your words, not the agent's.** The report is the message you approved. The
+  agent-authored free-text field is gone, `tool_called` is restricted to real
+  tool names, and the verbatim prompt slice (`_triggered_by`) is no longer
+  attached to this tool's analytics.
+- **Honest confirmations.** If the report can't be delivered (telemetry off or
+  unavailable), the tool says so instead of claiming it reached the team.
+- **Venting is not consent.** Frustration alone never triggers a report through
+  any tool — the agent keeps solving what you actually asked for, and may offer.
+- Registry listing now carries a real icon, and the `@leadbay/mcp` npx pin
+  tracks the current version line again.
+
+## 0.26.0 — 2026-07-29 — Autonomous, target-sized `leadbay_build_campaign`
+
+- `leadbay_build_campaign` now runs **end-to-end without pausing** and builds to
+  a caller-specified size. Two new optional arguments:
+  - `count` — how many fully-actionable leads to build (default 20). The prompt
+    keeps discovering, qualifying, enriching, and swapping until that many in-ICP
+    leads each have a reachable target-title contact — or the lens is exhausted.
+  - `job_titles` — the exact buyer titles to enrich (comma-separated, e.g.
+    "VP Sales, Head of Growth, Director of Business Development"). Omit and the
+    buyer persona is derived from what the user sells, as before.
+- Removed the mandatory enrichment confirm gate and the lens-switch / handoff
+  pauses: asking for the campaign IS the authorization. The only early stops are
+  lens exhaustion or a backend 429 (quota). Enrichment is still quota-gated and is
+  never refused on a "credits" balance.
+- A lead counts toward the target only once its target-title contact actually
+  landed (email/phone present); empty enrichments are swapped out and refilled.
+
 ## 0.23.0 — 2026-06-21 — Build-a-campaign guided flow
 
 - Added the `leadbay_build_campaign` prompt (and auto-generated Claude skill):

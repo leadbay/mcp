@@ -21,6 +21,7 @@ import type {
 import {
   leadbay_build_campaign,
   leadbay_daily_check_in,
+  leadbay_getting_started,
   leadbay_import_file,
   leadbay_log_outreach,
   leadbay_plan_tour_in_city,
@@ -29,6 +30,7 @@ import {
   leadbay_refine_audience,
   leadbay_research_a_domain,
   leadbay_setup_team_prospecting,
+  leadbay_top_accounts_to_activate,
   leadbay_work_campaign,
   PROMPT_META,
 } from "./prompts.generated.js";
@@ -213,19 +215,38 @@ const CATALOG: CatalogEntry[] = [
           "Optional: a name for the campaign. Omit and one is derived from the lens/audience + date (or the backend AI-names it).",
         required: false,
       },
+      {
+        name: "count",
+        description:
+          "Optional: how many fully-actionable leads to build (default 20). The loop keeps discovering, qualifying and enriching until this many in-ICP leads each have a reachable target-title contact — or the lens is exhausted. Higher counts take longer and consume more quota.",
+        required: false,
+      },
+      {
+        name: "job_titles",
+        description:
+          "Optional: the exact buyer job titles to enrich, comma-separated (e.g. 'VP Sales, Head of Growth, Director of Business Development'). Omit and the buyer persona is derived from what you sell. A lead only counts toward the target when it has a reachable contact matching one of these titles.",
+        required: false,
+      },
     ],
-    render: (args) => [
-      userMessage(
-        substitutePlaceholders(leadbay_build_campaign, {
-          audience_block: args.audience
-            ? `Target audience: **${args.audience}** — if my active lens doesn't already cover it, set it up first (confirm before switching lenses).`
-            : "Use my active Leadbay lens as the audience.",
-          campaign_name_paren: args.campaign_name
-            ? ` named **${args.campaign_name}**`
-            : "",
-        }),
-      ),
-    ],
+    render: (args) => {
+      const n = args.count ?? "20";
+      return [
+        userMessage(
+          substitutePlaceholders(leadbay_build_campaign, {
+            audience_block: args.audience
+              ? `Target audience: **${args.audience}** — if my active lens doesn't already cover it, set it up first and continue on it (no need to ask me).`
+              : "Use my active Leadbay lens as the audience.",
+            campaign_name_paren: args.campaign_name
+              ? ` named **${args.campaign_name}**`
+              : "",
+            count_or_default: n,
+            job_titles_block: args.job_titles
+              ? `Enrich exactly these buyer titles: **${args.job_titles}**. A lead only counts toward the ${n} when it has a reachable contact matching one of these titles.`
+              : `No titles given — derive my buyer persona from what I sell (Phase 3 Step A) and enrich those titles.`,
+          }),
+        ),
+      ];
+    },
   },
   {
     name: "leadbay_setup_team_prospecting",
@@ -302,6 +323,46 @@ const CATALOG: CatalogEntry[] = [
         ),
       ];
     },
+  },
+  {
+    name: "leadbay_top_accounts_to_activate",
+    description: PROMPT_META.leadbay_top_accounts_to_activate.short_description,
+    arguments: [
+      {
+        name: "count",
+        description:
+          "Optional: how many accounts the plan should hold (default 50).",
+        required: false,
+      },
+      {
+        name: "territory",
+        description:
+          "Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire'). Sets geography on the Discover lens via `locations`.",
+        required: false,
+      },
+    ],
+    render: (args) => {
+      const n = args.count ?? "50";
+      return [
+        userMessage(
+          substitutePlaceholders(leadbay_top_accounts_to_activate, {
+            count_or_default: n,
+            territory_block: args.territory
+              ? `Scope the plan to **${args.territory}** — pass it as \`locations\` on the lens, never as a sector.`
+              : "",
+          }),
+        ),
+      ];
+    },
+  },
+  {
+    // Guided first-run walkthrough (issue #3952). No arguments — the tour is
+    // the same for every new user, and asking a brand-new user to parameterize
+    // their own onboarding defeats the point.
+    name: "leadbay_getting_started",
+    description: PROMPT_META.leadbay_getting_started.short_description,
+    arguments: [],
+    render: () => [userMessage(leadbay_getting_started)],
   },
 ];
 

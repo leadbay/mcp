@@ -242,7 +242,7 @@ These never modify your account, so they're always safe to allow.
 | `leadbay_create_topup_link` | Generate a Stripe top-up link (you pay in your browser — nothing is charged automatically) |
 | `leadbay_open_billing_portal` | Open the billing portal |
 | `leadbay_acknowledge_notification` | Clear a terminal bulk-job notification so it stops resurfacing |
-| `leadbay_report_friction` | Report when a tool didn't deliver — helps improve the product (no account change) |
+| `leadbay_report_friction` | Report a problem to the Leadbay team — asks you first, and shows you what was sent (no account change) |
 | `leadbay_artifact_kit` | Fetch the headless view-models the agent uses to build an interactive HTML artifact |
 
 ### Write actions (on by default since 0.3.0; set `LEADBAY_MCP_WRITE=0` to disable)

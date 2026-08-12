@@ -10,9 +10,9 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Retrieve the current state of an async lead import. Pass `handle_id` returned by `leadbay_import_leads({wait_for_completion:false})`, or pass legacy `importIds[]` to inspect backend wizard rows. This status call performs a single refresh pass and never polls in a loop.
+Retrieve the current **status/progress** of a lead import. Pass `handle_id` — returned by either `leadbay_import_leads` OR `leadbay_import_and_qualify` when called with `wait_for_completion:false` — to resolve the stored result (leads + not_imported) once that async run has completed in this MCP instance. **If you were given a `handle_id`, poll with it, not with `importIds[]`** — only the `handle_id` path returns the stored result/not_imported breakdown. Pass `importIds[]` (a completed import returns `importIds`; `leadbay_import_and_qualify` returns `import_ids`) only when you don't have a handle, to refresh the backend wizard rows' phase + record counts. Note: the `importIds[]` path returns status/progress only — it does NOT re-reconcile records or return refreshed leads/not_imported. This status call performs a single refresh pass and never polls in a loop.
 
-{{include:headers/tool-when-to-use}} after leadbay_import_leads or leadbay_import_and_qualify returns `{status:'running', handle_id}` for the import phase, call this tool later to retrieve progress or the final import result without re-running the import.
+{{include:headers/tool-when-to-use}} after an async import (`leadbay_import_leads` OR `leadbay_import_and_qualify` with `wait_for_completion:false`) returns `{status:'running', handle_id}`, poll with that `handle_id`; OR to check whether a finished import is still processing. This tool does NOT surface the leads Leadbay adds later for pending-crawl (`uncrawled`) rows — those populate in the user's Leadbay account as the crawl completes; no tool here fetches them on demand (re-run the import to pull them back through the MCP).
 
 {{include:headers/tool-when-not-to-use}} for qualification handles returned as `qualify_id` — use leadbay_qualify_status for those; or when you still want the legacy blocking behavior from leadbay_import_leads with `wait_for_completion=true`.
 
@@ -22,16 +22,25 @@ Retrieve the current state of an async lead import. Pass `handle_id` returned by
 
 Specifically for import status:
 
-- Running → `"⏳ Import still running — N% complete; check back in ~M minutes."`
-- Complete → `"✓ Import complete — N leads imported, M failed."`
-- Error / failed → `"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."`
+This tool returns `status`, `importIds`, and `progress` ({phase, records_processed, records_total}). It carries a `result` object (with `leads` + `not_imported`) ONLY when resolving an async `handle_id` whose run completed in this MCP instance — the `importIds[]` status-check path does NOT return `result`. **Render only from the fields actually present; never invent counts.**
+
+Caveat on `progress`: `records_processed` counts only the rows that MATCHED an existing lead (backend `imported_records`), not every row that finished processing — so for a complete import whose rows are mostly/all `uncrawled` (pending crawl), `records_processed` is legitimately low or 0. Never read a low `records_processed` on a `complete` import as "stuck" or "failed": once `status:"complete"`, processing is done; the pending-crawl rows just matched no existing lead yet.
+
+- Running → `"⏳ Import still running — phase <phase>; check back in ~M minutes."` (use the phase; don't turn the matched-count into an "X/Y processed" progress bar).
+- Complete, **no `result`** (the usual `importIds` status check) → `"✓ Import complete."` Do NOT append a `records_processed/records_total` fraction (it undercounts pending-crawl rows and looks stuck) and do NOT report pending-crawl / need-attention bucket counts — the row-level `not_imported` breakdown isn't in this response.
+- Complete, **`result` present AND it was a dry run** (`result.dry_run:true`, or every `result.not_imported` row has `reason:"dry_run"`) → this resolved handle was a VALIDATION pass, nothing committed. Render `"🔎 Dry run complete — V rows validated, nothing imported. Re-run without dry_run to commit."` — do NOT render it as a real import completion or use the pending/attention buckets.
+- Complete, **`result` present** (async handle resolved, real import) → then, and only then, partition `result.not_imported` as in the shared import-result render block below — `"✓ Import complete — N imported · P pending crawl · Q need attention"` where **pending crawl** is `uncrawled` rows that HAVE a `domain` (not failures) and no-`domain` `uncrawled` rows fall under need-attention. Drop any zero segment.
+- Error / failed → `"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."` — reserve this ONLY for a true transport/backend error on the import itself, never for `uncrawled` rows.
+
+{{include:rendering/uncrawled-status}}
 
 ---
 
 ## NEXT STEPS
 
-| Observation             | Suggest                                | Calls                          |
-|-------------------------|----------------------------------------|--------------------------------|
-| Status: complete        | "See the imported leads"               | leadbay_pull_leads             |
-| Status: running         | "Check again in N minutes"             | leadbay_import_status — re-call|
-| Status: error / failed  | "Diagnose the failure"                 | leadbay_resolve_import_rows    |
+| Observation                          | Suggest                                              | Calls                          |
+|--------------------------------------|------------------------------------------------------|--------------------------------|
+| Status: complete                     | "See the imported (matched) leads"                   | leadbay_pull_leads             |
+| Pending-crawl (`uncrawled`) rows     | "Re-run the import for those domains later, once Leadbay has crawled them" | leadbay_import_leads (re-run with just the uncrawled domains, later — they re-reconcile once crawled). The added leads otherwise populate in the user's Leadbay account as the crawl completes; no live-fetch here |
+| Status: running                      | "Check again in N minutes"                           | leadbay_import_status — re-call|
+| Status: error / failed (true error)  | "Diagnose the failure"                               | leadbay_resolve_import_rows    |

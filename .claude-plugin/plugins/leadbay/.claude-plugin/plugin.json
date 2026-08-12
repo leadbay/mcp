@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "leadbay",
-  "version": "0.13.0",
+  "version": "0.28.0",
   "description": "AI lead discovery, qualification, and outreach prep on your Leadbay account.",
   "author": {
     "name": "Leadbay",
@@ -11,11 +11,21 @@
   "homepage": "https://github.com/leadbay/mcp/tree/main/packages/mcp#readme",
   "repository": "https://github.com/leadbay/mcp",
   "license": "MIT",
-  "keywords": ["mcp", "sales", "lead-generation", "b2b", "outreach"],
+  "keywords": [
+    "mcp",
+    "sales",
+    "lead-generation",
+    "b2b",
+    "outreach"
+  ],
   "mcpServers": {
     "leadbay": {
       "command": "npx",
-      "args": ["-y", "@leadbay/mcp@0.13"],
+      "args": [
+        "-y",
+        "--package=@leadbay/mcp@0.28",
+        "leadbay-mcp"
+      ],
       "env": {
         "LEADBAY_TOKEN": "${user_config.leadbay_token}",
         "LEADBAY_REGION": "${user_config.leadbay_region}",

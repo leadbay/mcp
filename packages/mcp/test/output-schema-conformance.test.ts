@@ -681,7 +681,7 @@ const CASES: ConformanceCase[] = [
     toolName: "leadbay_report_friction",
     arguments: {
       category: "silent_failure",
-      user_quote: "still nothing — third time asking for Wisconsin leads",
+      message: "Searching Wisconsin returns nothing.",
       tool_called: "leadbay_pull_leads",
       severity: "medium",
     },
