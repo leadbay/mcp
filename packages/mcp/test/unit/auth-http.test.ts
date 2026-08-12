@@ -62,17 +62,23 @@ describe("resolveClientFromToken", () => {
     expect(result.authState).toBe("ok");
   });
 
-  // NOTE: two "auto-probe" tests that lived here could not be kept, because they
-  // assert contracts this PR deliberately replaces — not because the coverage was
-  // unwanted:
-  //   - "both regions AUTH_EXPIRED → expired broken client" asserted that the
-  //     expired path hands back a BROKEN client. It now hands back a live one:
-  //     the hosted server answers 401 + WWW-Authenticate itself, so the client is
-  //     never called (see http-auth-challenge-stargate.test.ts).
-  //   - "both regions network error → probe_failed" asserted the `probe_failed`
-  //     authState, which no longer exists — a transient fault resolves as "ok" so
-  //     a backend blip can't force a spurious re-auth.
-  // Their replacements, plus the region-from-token / single-probe / validate:false
-  // coverage, live in the new file auth-http-single-region-probe.test.ts (repo
-  // rule: new tests in new files).
+  it("auto-probe: both regions return AUTH_EXPIRED → expired broken client", async () => {
+    mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "token expired" } },
+      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "token expired" } },
+    ]);
+    const result = await resolveClientFromToken("tok");
+    expect(result.authState).toBe("expired");
+    await expect(result.client.request("GET", "/any")).rejects.toMatchObject({
+      code: "AUTH_EXPIRED",
+    });
+  });
+
+  // NOTE: one "auto-probe" test that lived here could not be kept —
+  // "both regions network error → probe_failed" asserted the `probe_failed`
+  // authState, and this PR removes it: a transient fault now resolves as "ok" so
+  // a backend blip can't force a spurious re-auth. Nothing about that assertion
+  // survives the contract change. Its replacement, plus the region-from-token /
+  // single-probe / validate:false coverage, lives in the new file
+  // auth-http-single-region-probe.test.ts (repo rule: new tests in new files).
 });

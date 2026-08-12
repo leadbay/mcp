@@ -142,6 +142,9 @@ export async function resolveClientFromToken(
     primaryRegion === "us" ? ["us", "fr"] : ["fr", "us"];
 
   let sawAuthReject = false;
+  // The first rejection, kept so the expired envelope carries the backend's own
+  // code and message rather than a generic stand-in.
+  let firstAuthError: LeadbayError | undefined;
   // The region whose probe hit a transient (non-auth) fault, if any. When we
   // suppress re-auth below we bind the client HERE, not to primaryRegion: the
   // token is plausibly valid in this region (the fault was transient), whereas
@@ -171,6 +174,7 @@ export async function resolveClientFromToken(
       const code = (e as LeadbayError)?.code;
       if (code === "AUTH_EXPIRED" || code === "NOT_AUTHENTICATED") {
         sawAuthReject = true;
+        firstAuthError ??= e as LeadbayError;
       } else {
         if (code === "TIMEOUT") {
           logger?.warn?.(
@@ -192,7 +196,24 @@ export async function resolveClientFromToken(
   // expired → invalid_token challenge (host silently refreshes).
   if (sawAuthReject && nonAuthFaultRegion === undefined) {
     logger?.warn?.("hosted MCP bearer rejected by all candidate regions — emitting invalid_token challenge");
-    return { client: createClient({ token, region: primaryRegion }), authState: "expired" };
+    // A broken client, not a live one holding a bearer every region just
+    // rejected. Both hosted call sites answer the 401 challenge without ever
+    // touching it, and the stdio resolver does the same (bin.ts), so this only
+    // matters for a caller that forgets to check authState — and that caller
+    // should get a render-able AUTH_EXPIRED envelope, not a request fired with a
+    // known-bad token.
+    return {
+      client: makeBrokenClient(
+        {
+          error: true,
+          code: firstAuthError?.code ?? "AUTH_EXPIRED",
+          message: firstAuthError?.message ?? "The Leadbay access token was rejected.",
+          hint: "The token is invalid or expired. The 401 challenge carries `error=\"invalid_token\"` so a spec-compliant host refreshes silently; otherwise authenticate again with `npx -y @leadbay/mcp login --oauth`.",
+        },
+        primaryRegion
+      ),
+      authState: "expired",
+    };
   }
   // A non-auth fault occurred, so we can't be sure the token is invalid → proceed
   // as ok (don't force spurious re-auth); a real fault re-surfaces on the tool call.
