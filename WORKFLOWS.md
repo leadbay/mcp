@@ -1220,10 +1220,15 @@ workflow_name: Country-wide scope — omit the location filter
 prompt_name: ~
 required_calls: []
 forbidden_calls:
+  - leadbay_new_lens
+  - leadbay_adjust_audience
+  - leadbay_update_lens_filter
+  - leadbay_refine_prompt
   - leadbay_report_outreach
 success_criteria:
   - "recognized that the workspace already serves exactly ONE country, so a whole-country ask needs NO location criterion"
-  - "did NOT pass a country name to locations / location_ids / city on any call"
+  - "did NOT pass a country name to locations / location_ids / city, nor inside a set_filter location_ids criterion, on any call"
+  - "wrote NOTHING to express the country scope — no lens created or edited, and no audience prompt rewritten (which would trigger an intelligence recompute for a scope the workspace already has)"
   - "did NOT create or edit a lens merely to express a country-wide scope"
   - "still delivered — explained the scope it used and offered the axes that actually narrow (sector, size, sub-country region) rather than only asking a question"
   - "did NOT claim a location filter had been applied"

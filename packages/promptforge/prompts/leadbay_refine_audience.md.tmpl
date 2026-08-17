@@ -20,16 +20,25 @@ failure_modes:
 
 Refine the Leadbay audience prompt to: {{arg:instruction}}
 
-# PHASE 0 — IS THIS ACTUALLY A GEO ASK?
-A refine prompt shapes the KIND of company, never WHERE it is. If my instruction is a
-place ("prospects in Texas", "restrict to Indre-et-Loire"), do NOT put it in the refine
-prompt — route it to `leadbay_adjust_audience({locations: [...]})` instead, and say why.
-If it names a whole country, set no geography at all and tell me the workspace already
-covers exactly one country.
+# PHASE 0 — GATE: IS THIS A GEO ASK? (may end the run)
+A refine prompt shapes the KIND of company, never WHERE it is. Classify my instruction
+FIRST, before any tool call:
+
+- **Whole-country or supra-national scope** ("the whole US", "partout en France",
+  "nationwide", "EU-wide") → **STOP HERE. Call NOTHING.** Do not continue to PHASE 1:
+  `leadbay_refine_prompt` would overwrite my qualitative audience prompt and kick off an
+  intelligence recompute to express a scope this workspace already has. Tell me the
+  workspace serves exactly ONE country so there is nothing to set, offer the axes that do
+  narrow an audience (sector, size, or a sub-country region / state / county / city), and
+  end your turn.
+- **A sub-country place** ("prospects in Texas", "restrict to Indre-et-Loire") → **do not
+  continue to PHASE 1 either.** A place is not a qualitative refinement: route it to
+  `leadbay_adjust_audience({locations: [...]})`, say why, and stop.
+- **Anything else** (a genuine qualitative refinement) → continue to PHASE 1.
 
 {{include:heuristics/single-country-universe}}
 
-# PHASE 1 — REFINE
+# PHASE 1 — REFINE (only when PHASE 0 classified the instruction as qualitative)
 Call `leadbay_refine_prompt` with `prompt=<the instruction above>`.
 
 # PHASE 2 — CLARIFICATION ROUND-TRIP (if needed)

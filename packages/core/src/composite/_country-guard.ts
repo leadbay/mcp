@@ -268,6 +268,55 @@ export function countryLocationStatus(
 }
 
 /**
+ * Walk one `FilterCriterion[]` array for country-level values.
+ *
+ * The wire shape is the backend's `anyOf` over 10 typed criteria; only
+ * `location_ids` carries geography. Defined once because the same criteria
+ * array reaches us through two different envelopes — a lens `FilterPayload`
+ * (`lens_filter.items[].criteria[]`) and a Monitor `set_filter`
+ * (`criteria[]`) — and a rule enforced on one envelope but not the other is
+ * how the `set_filter` bypass happened in the first place.
+ */
+function criteriaHits(
+  criteria: unknown,
+  param: string,
+  region: GuardRegion
+): CountryHit[] {
+  if (!Array.isArray(criteria)) return [];
+  const hits: CountryHit[] = [];
+  for (const criterion of criteria) {
+    const record = criterion as Record<string, unknown> | null;
+    if (!record || record.type !== "location_ids") continue;
+    hits.push(...detectCountryLocations(record.locations, param, region));
+  }
+  return hits;
+}
+
+/**
+ * Walk a Monitor `set_filter` (`MonitorFilterItem`) for country-level values.
+ *
+ * This ingress is documented and load-bearing: `pull_followups` and
+ * `scan_portfolio_signals` both accept geography as a raw `location_ids`
+ * criterion, which never touches `city` / `city_id` and so never touched the
+ * argument-level guard. Leaving it open was worse than the bug it was meant to
+ * fix: the criterion reaches `POST /monitor/filter`, and both composites CATCH
+ * a failed POST and continue reading the Monitor view with whatever filter was
+ * previously persisted (pull-followups.ts, "Fall through — still try to read").
+ * So the caller got a confident, plausible cohort drawn from a stale filter
+ * instead of a named `country_level_location` — the exact
+ * silently-wrong-answer class this guard exists to prevent.
+ */
+export function detectCountryLocationsInSetFilter(
+  setFilter: unknown,
+  param: string,
+  region: GuardRegion
+): CountryHit[] {
+  if (!setFilter || typeof setFilter !== "object") return [];
+  const criteria = (setFilter as Record<string, unknown>).criteria;
+  return criteriaHits(criteria, `${param}.criteria[].locations`, region);
+}
+
+/**
  * Walk a raw `FilterPayload` for country-level values.
  *
  * Two ingress paths, both best-effort and both tolerant of junk:
@@ -296,19 +345,13 @@ export function detectCountryLocationsInFilter(
   const items = lensFilter?.items;
   if (Array.isArray(items)) {
     for (const item of items) {
-      const criteria = (item as Record<string, unknown> | null)?.criteria;
-      if (!Array.isArray(criteria)) continue;
-      for (const criterion of criteria) {
-        const record = criterion as Record<string, unknown> | null;
-        if (!record || record.type !== "location_ids") continue;
-        hits.push(
-          ...detectCountryLocations(
-            record.locations,
-            "filter.lens_filter.items[].criteria[].locations",
-            region
-          )
-        );
-      }
+      hits.push(
+        ...criteriaHits(
+          (item as Record<string, unknown> | null)?.criteria,
+          "filter.lens_filter.items[].criteria[].locations",
+          region
+        )
+      );
     }
   }
 

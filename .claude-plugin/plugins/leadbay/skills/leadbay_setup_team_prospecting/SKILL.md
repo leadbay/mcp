@@ -16,14 +16,16 @@ If the prompt's body and the tool's RENDERING appear to conflict, the tool's REN
 
 # PHASE 1 — INTERPRET INTENT INTO A LENS
 
-Call `leadbay_refine_prompt({user_prompt: "<the audience (as extracted above)>"})`. This handles the clarification protocol natively — if the system needs more info (e.g. industry disambiguation, geography precision), it returns `status: "clarification_needed"` with options. Surface those to me; on my answer, re-call `leadbay_refine_prompt` until the prompt converges.
-
 **One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (`city` / `locations` / `location_ids`) and say the result covers the whole workspace.
 
 **Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so `"France"` matches the *commune of Francs* and `"United States"` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On `code: "COUNTRY_LEVEL_LOCATION"`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
 
 Place names never go in `keywords`, `sectors` or `refine_prompt` — those are text matches, not geo filters.
 
+
+**Before calling:** if my `audience` carries a whole-country scope ("plumbers across the US", "partout en France"), drop that clause rather than passing it through — the workspace already covers exactly one country, and a country label in the audience just fences the lens to a same-named village. Say that you dropped it. Keep any sub-country place (state, *région*, *département*, county, city) as-is.
+
+Call `leadbay_refine_prompt({user_prompt: "<the audience (as extracted above)>"})`. This handles the clarification protocol natively — if the system needs more info (e.g. industry disambiguation, geography precision), it returns `status: "clarification_needed"` with options. Surface those to me; on my answer, re-call `leadbay_refine_prompt` until the prompt converges.
 
 When the prompt has converged, call `leadbay_create_lens({user_prompt: <refined>, name: "<short descriptive name>"})` to create a draft lens, then `leadbay_promote_lens({lensId})` to make it the active lens.
 

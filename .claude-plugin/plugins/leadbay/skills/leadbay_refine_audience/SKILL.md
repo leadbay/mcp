@@ -6,12 +6,21 @@ description: "Refine the kind of leads Leadbay surfaces beyond firmographics, wi
 
 Refine the Leadbay audience prompt to: <The refinement (e.g. 'focus on hospitals running their own IT'). Set to plain English. If not provided in the user's most recent message, ask once before proceeding.>
 
-# PHASE 0 — IS THIS ACTUALLY A GEO ASK?
-A refine prompt shapes the KIND of company, never WHERE it is. If my instruction is a
-place ("prospects in Texas", "restrict to Indre-et-Loire"), do NOT put it in the refine
-prompt — route it to `leadbay_adjust_audience({locations: [...]})` instead, and say why.
-If it names a whole country, set no geography at all and tell me the workspace already
-covers exactly one country.
+# PHASE 0 — GATE: IS THIS A GEO ASK? (may end the run)
+A refine prompt shapes the KIND of company, never WHERE it is. Classify my instruction
+FIRST, before any tool call:
+
+- **Whole-country or supra-national scope** ("the whole US", "partout en France",
+  "nationwide", "EU-wide") → **STOP HERE. Call NOTHING.** Do not continue to PHASE 1:
+  `leadbay_refine_prompt` would overwrite my qualitative audience prompt and kick off an
+  intelligence recompute to express a scope this workspace already has. Tell me the
+  workspace serves exactly ONE country so there is nothing to set, offer the axes that do
+  narrow an audience (sector, size, or a sub-country region / state / county / city), and
+  end your turn.
+- **A sub-country place** ("prospects in Texas", "restrict to Indre-et-Loire") → **do not
+  continue to PHASE 1 either.** A place is not a qualitative refinement: route it to
+  `leadbay_adjust_audience({locations: [...]})`, say why, and stop.
+- **Anything else** (a genuine qualitative refinement) → continue to PHASE 1.
 
 **One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (`city` / `locations` / `location_ids`) and say the result covers the whole workspace.
 
@@ -20,7 +29,7 @@ covers exactly one country.
 Place names never go in `keywords`, `sectors` or `refine_prompt` — those are text matches, not geo filters.
 
 
-# PHASE 1 — REFINE
+# PHASE 1 — REFINE (only when PHASE 0 classified the instruction as qualitative)
 Call `leadbay_refine_prompt` with `prompt=<the instruction above>`.
 
 # PHASE 2 — CLARIFICATION ROUND-TRIP (if needed)

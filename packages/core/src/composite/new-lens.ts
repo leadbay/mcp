@@ -77,12 +77,12 @@ export const newLens: Tool<NewLensParams> = {
         type: "array",
         items: { type: "string" },
         description:
-          "Geographic scope — free text (e.g. ['Indre-et-Loire', 'Bavaria']) or admin-area ids. Auto-resolved via /geo/search across all admin levels (city / county / département / région / state / country). Scopes the lens to a sales territory.",
+          "Geographic scope — free text (e.g. ['Indre-et-Loire', 'Texas']) or admin-area ids. Resolved via /geo/search at any level from state down to city (state / région / département / county / city). NEVER a country name — this workspace serves exactly ONE country, so a whole-country ask means passing NO location at all (rejected with COUNTRY_LEVEL_LOCATION). Scopes the lens to a sales territory.",
       },
       exclude_locations: {
         type: "array",
         items: { type: "string" },
-        description: "Locations to exclude — free text or ids.",
+        description: "Locations to exclude — free text or ids. Sub-country areas only — excluding a country is meaningless on a single-country workspace and is rejected.",
       },
       base: {
         type: "number",

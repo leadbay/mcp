@@ -28,14 +28,16 @@ Map my answers to the `leadbay_tour_plan` call:
 
 # PHASE 2 — BUILD THE ITINERARY
 
-Call `leadbay_tour_plan({city: "<the city (as extracted above)>", …scope from PHASE 1})`. If the response is `status: "ambiguous_locations"`, surface the candidates and ask me to pick one, then re-call with `city_id`.
-
 **One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (`city` / `locations` / `location_ids`) and say the result covers the whole workspace.
 
 **Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so `"France"` matches the *commune of Francs* and `"United States"` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On `code: "COUNTRY_LEVEL_LOCATION"`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
 
 Place names never go in `keywords`, `sectors` or `refine_prompt` — those are text matches, not geo filters.
 
+
+**Gate before calling.** If `<the city (as extracted above)>` is a country name or a supra-national scope rather than a city, do NOT call `leadbay_tour_plan` with it — a tour of an entire country is not an itinerary, and the value would resolve to a same-named village. Tell me the workspace already covers one country and ask which city or region I'm actually visiting. Otherwise:
+
+Call `leadbay_tour_plan({city: "<the city (as extracted above)>", …scope from PHASE 1})`. If the response is `status: "ambiguous_locations"`, surface the candidates and ask me to pick one, then re-call with `city_id`. If it is `status: "country_level_location"`, do NOT retry with a spelling variant — ask me for a city.
 
 Split the returned `monitor_leads` into two buckets client-side using their engagement-history fields:
 

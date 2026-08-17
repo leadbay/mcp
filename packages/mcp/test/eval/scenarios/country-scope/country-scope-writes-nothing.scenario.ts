@@ -28,7 +28,7 @@ export const SCENARIO = {
     user_intent: "Scope my lens to the whole US — I sell nationwide.",
     success_criteria: [
       "explained that the workspace already serves exactly ONE country, so a country-wide scope is not a filter it can or should set",
-      "did NOT pass a country value to locations, location_ids or city on any call",
+      "did NOT pass a country value to locations, location_ids, city, or a set_filter location_ids criterion on any call",
       "did NOT create a lens or edit the audience merely to express a country-wide scope",
       "offered the axes that actually narrow an audience — sector, company size, or a sub-country region (state / county / city) — instead of leaving the user with only a question",
       "did NOT claim to have applied, saved or changed a territory",
@@ -40,6 +40,11 @@ export const SCENARIO = {
       "leadbay_new_lens",
       "leadbay_adjust_audience",
       "leadbay_update_lens_filter",
+      // PHASE 0 of leadbay_refine_audience terminates for a country-only ask:
+      // rewriting the audience prompt would overwrite the user's qualitative
+      // refinement and kick off an intelligence recompute to express a scope the
+      // workspace already has.
+      "leadbay_refine_prompt",
       "leadbay_report_outreach",
     ],
   },

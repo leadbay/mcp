@@ -12,6 +12,7 @@ import { resolveLocations } from "./_geo-helpers.js";
 import {
   countryLocationStatus,
   detectCountryLocationsIn,
+  detectCountryLocationsInSetFilter,
 } from "./_country-guard.js";
 
 import { leadbay_scan_portfolio_signals as SCAN_PORTFOLIO_SIGNALS_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -181,7 +182,7 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
       city: {
         type: "string",
         description:
-          "Free-text city / region to scope the Monitor portfolio before scanning (resolved via /geo/search, same as leadbay_pull_followups). Ignored when `leadIds` is given.",
+          "Free-text city / region to scope the Monitor portfolio before scanning (resolved via /geo/search, same as leadbay_pull_followups). Ignored when `leadIds` is given. NEVER a country name: this workspace serves exactly ONE country, so a whole-country ask means omitting `city` entirely.",
       },
       city_id: {
         type: "string",
@@ -191,7 +192,7 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
       set_filter: {
         type: "object",
         description:
-          "Optional Monitor FilterItem ({criteria: FilterCriterion[]}) to scope the portfolio before scanning. Persisted server-side then applied, mirroring leadbay_pull_followups. Ignored when `leadIds` is given.",
+          "Optional Monitor FilterItem ({criteria: FilterCriterion[]}) to scope the portfolio before scanning. Persisted server-side then applied, mirroring leadbay_pull_followups. Ignored when `leadIds` is given. A `location_ids` criterion must carry sub-country admin areas only — a country name here is rejected with COUNTRY_LEVEL_LOCATION before anything is persisted.",
         properties: {
           criteria: { type: "array", items: { type: "object" } },
         },
@@ -242,11 +243,17 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
       status: {
         type: "string",
         description:
-          "`ambiguous_locations` when a passed `city` matched multiple admin_areas; pick an id from `location_ambiguities` and re-call with `city_id`. Absent on the happy path.",
+          "`ambiguous_locations` when a passed `city` matched multiple admin_areas; pick an id from `location_ambiguities` and re-call with `city_id`. `country_level_location` when `city`, `city_id` or a `set_filter` `location_ids` criterion carried a country name — nothing was scanned and no filter was persisted. Absent on the happy path.",
       },
       location_ambiguities: {
         type: "array",
         description: "Only present when status === 'ambiguous_locations'.",
+        items: { type: "object" },
+      },
+      country_locations: {
+        type: "array",
+        description:
+          "Per offending value: {value, param, kind, country}. Only present when `status === 'country_level_location'`. This workspace serves exactly ONE country, so a whole-country ask needs NO geo argument at all — re-call without it. Do NOT retry with another spelling or a nearby city.",
         items: { type: "object" },
       },
       _meta: {
@@ -291,13 +298,24 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
       // Deliberately inside this branch: when `leadIds` is supplied the schema
       // documents `city` as ignored, so failing on it would be a false alarm.
       // Unwrapped by withAgentMemoryMeta, which would cost a resolveMe() call.
-      const countryHits = detectCountryLocationsIn(
-        [
-          { input: params.city, param: "city" },
-          { input: params.city_id, param: "city_id" },
-        ],
-        client.region
-      );
+      // Includes `set_filter`: geography can arrive as a raw `location_ids`
+      // criterion that never touches `city`/`city_id`, and that criterion would
+      // be persisted server-side by the store-then-apply POST below — scanning
+      // a village, or falling back to a stale filter, either way silently.
+      const countryHits = [
+        ...detectCountryLocationsIn(
+          [
+            { input: params.city, param: "city" },
+            { input: params.city_id, param: "city_id" },
+          ],
+          client.region
+        ),
+        ...detectCountryLocationsInSetFilter(
+          params.set_filter,
+          "set_filter",
+          client.region
+        ),
+      ];
       if (countryHits.length > 0) {
         return {
           ...countryLocationStatus(countryHits, client.region),

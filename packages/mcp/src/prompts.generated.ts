@@ -1489,14 +1489,16 @@ Map my answers to the \`leadbay_tour_plan\` call:
 
 # PHASE 2 — BUILD THE ITINERARY
 
-Call \`leadbay_tour_plan({city: "{{arg:city}}", …scope from PHASE 1})\`. If the response is \`status: "ambiguous_locations"\`, surface the candidates and ask me to pick one, then re-call with \`city_id\`.
-
 **One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
 
 **Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On \`code: "COUNTRY_LEVEL_LOCATION"\`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — those are text matches, not geo filters.
 
+
+**Gate before calling.** If \`{{arg:city}}\` is a country name or a supra-national scope rather than a city, do NOT call \`leadbay_tour_plan\` with it — a tour of an entire country is not an itinerary, and the value would resolve to a same-named village. Tell me the workspace already covers one country and ask which city or region I'm actually visiting. Otherwise:
+
+Call \`leadbay_tour_plan({city: "{{arg:city}}", …scope from PHASE 1})\`. If the response is \`status: "ambiguous_locations"\`, surface the candidates and ask me to pick one, then re-call with \`city_id\`. If it is \`status: "country_level_location"\`, do NOT retry with a spelling variant — ask me for a city.
 
 Split the returned \`monitor_leads\` into two buckets client-side using their engagement-history fields:
 
@@ -1872,12 +1874,21 @@ Recommend the single most-promising lead from this batch and offer to research i
 export const leadbay_refine_audience: string = `
 Refine the Leadbay audience prompt to: {{arg:instruction}}
 
-# PHASE 0 — IS THIS ACTUALLY A GEO ASK?
-A refine prompt shapes the KIND of company, never WHERE it is. If my instruction is a
-place ("prospects in Texas", "restrict to Indre-et-Loire"), do NOT put it in the refine
-prompt — route it to \`leadbay_adjust_audience({locations: [...]})\` instead, and say why.
-If it names a whole country, set no geography at all and tell me the workspace already
-covers exactly one country.
+# PHASE 0 — GATE: IS THIS A GEO ASK? (may end the run)
+A refine prompt shapes the KIND of company, never WHERE it is. Classify my instruction
+FIRST, before any tool call:
+
+- **Whole-country or supra-national scope** ("the whole US", "partout en France",
+  "nationwide", "EU-wide") → **STOP HERE. Call NOTHING.** Do not continue to PHASE 1:
+  \`leadbay_refine_prompt\` would overwrite my qualitative audience prompt and kick off an
+  intelligence recompute to express a scope this workspace already has. Tell me the
+  workspace serves exactly ONE country so there is nothing to set, offer the axes that do
+  narrow an audience (sector, size, or a sub-country region / state / county / city), and
+  end your turn.
+- **A sub-country place** ("prospects in Texas", "restrict to Indre-et-Loire") → **do not
+  continue to PHASE 1 either.** A place is not a qualitative refinement: route it to
+  \`leadbay_adjust_audience({locations: [...]})\`, say why, and stop.
+- **Anything else** (a genuine qualitative refinement) → continue to PHASE 1.
 
 **One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
 
@@ -1886,7 +1897,7 @@ covers exactly one country.
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — those are text matches, not geo filters.
 
 
-# PHASE 1 — REFINE
+# PHASE 1 — REFINE (only when PHASE 0 classified the instruction as qualitative)
 Call \`leadbay_refine_prompt\` with \`prompt=<the instruction above>\`.
 
 # PHASE 2 — CLARIFICATION ROUND-TRIP (if needed)
@@ -2030,14 +2041,16 @@ If the prompt's body and the tool's RENDERING appear to conflict, the tool's REN
 
 # PHASE 1 — INTERPRET INTENT INTO A LENS
 
-Call \`leadbay_refine_prompt({user_prompt: "{{arg:audience}}"})\`. This handles the clarification protocol natively — if the system needs more info (e.g. industry disambiguation, geography precision), it returns \`status: "clarification_needed"\` with options. Surface those to me; on my answer, re-call \`leadbay_refine_prompt\` until the prompt converges.
-
 **One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
 
 **Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On \`code: "COUNTRY_LEVEL_LOCATION"\`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — those are text matches, not geo filters.
 
+
+**Before calling:** if my \`audience\` carries a whole-country scope ("plumbers across the US", "partout en France"), drop that clause rather than passing it through — the workspace already covers exactly one country, and a country label in the audience just fences the lens to a same-named village. Say that you dropped it. Keep any sub-country place (state, *région*, *département*, county, city) as-is.
+
+Call \`leadbay_refine_prompt({user_prompt: "{{arg:audience}}"})\`. This handles the clarification protocol natively — if the system needs more info (e.g. industry disambiguation, geography precision), it returns \`status: "clarification_needed"\` with options. Surface those to me; on my answer, re-call \`leadbay_refine_prompt\` until the prompt converges.
 
 When the prompt has converged, call \`leadbay_create_lens({user_prompt: <refined>, name: "<short descriptive name>"})\` to create a draft lens, then \`leadbay_promote_lens({lensId})\` to make it the active lens.
 

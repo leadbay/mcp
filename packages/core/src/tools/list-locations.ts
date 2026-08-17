@@ -26,7 +26,7 @@ export const listLocations: Tool<ListLocationsParams, GeoSearchResponse> = {
       q: {
         type: "string",
         description:
-          "Free-text city / region name (e.g. 'Berlin', 'NYC', 'São Paulo'). Returns top-10 prefix matches sorted by relevance, each with an admin_area id usable in FilterCriterion.location_ids.",
+          "Free-text city / region name (e.g. 'Berlin', 'NYC', 'São Paulo'). Returns top-10 prefix matches sorted by relevance, each with an admin_area id usable in FilterCriterion.location_ids. A COUNTRY name is refused — the index holds no country nodes, so the lookup could only return a same-named town.",
       },
     },
     required: ["q"],

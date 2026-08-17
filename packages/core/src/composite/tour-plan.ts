@@ -168,7 +168,7 @@ export const tourPlan: Tool<TourPlanParams> = {
       city: {
         type: "string",
         description:
-          "Free-text city or region (e.g. 'Limoges', 'Bay Area'). Resolved via the same /geo/search the followups_map uses. Ambiguous matches surface as `status: ambiguous_locations` with location_ambiguities[]; pick a location id and re-call with city_id.",
+          "Free-text city or region (e.g. 'Limoges', 'Bay Area'). Resolved via the same /geo/search the followups_map uses. Ambiguous matches surface as `status: ambiguous_locations` with location_ambiguities[]; pick a location id and re-call with city_id. NEVER a country name: this workspace serves exactly ONE country, so a whole-country ask means omitting `city` entirely.",
       },
       city_id: {
         type: "string",
@@ -227,10 +227,16 @@ export const tourPlan: Tool<TourPlanParams> = {
       status: {
         type: "string",
         description:
-          "'ambiguous_locations' when the passed `city` matched multiple admin areas — pick an id from location_ambiguities and re-call with city_id.",
+          "'ambiguous_locations' when the passed `city` matched multiple admin areas — pick an id from location_ambiguities and re-call with city_id. 'country_level_location' when `city` was a country name — drop the argument entirely; the itinerary arrays are empty and nothing was fetched.",
       },
       location_ambiguities: {
         type: "array",
+        items: { type: "object" },
+      },
+      country_locations: {
+        type: "array",
+        description:
+          "Per offending value: {value, param, kind, country}. Only present when `status === 'country_level_location'`. This workspace serves exactly ONE country, so a whole-country ask needs NO geo argument at all — re-call without it. Do NOT retry with another spelling or a nearby city.",
         items: { type: "object" },
       },
       _meta: {

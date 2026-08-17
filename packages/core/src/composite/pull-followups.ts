@@ -7,6 +7,7 @@ import { resolveLocations } from "./_geo-helpers.js";
 import {
   countryLocationStatus,
   detectCountryLocationsIn,
+  detectCountryLocationsInSetFilter,
 } from "./_country-guard.js";
 
 // B6/B7: coerce the legacy literal `"null"` LinkedIn string back to JSON null
@@ -132,7 +133,7 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
           criteria: {
             type: "array",
             description:
-              "Array of FilterCriterion objects per the backend FilterCriterion anyOf schema (location_ids, sector_ids, size, keywords, last_action, last_action_date, liked, yc, custom_field, custom_field_comparison).",
+              "Array of FilterCriterion objects per the backend FilterCriterion anyOf schema (location_ids, sector_ids, size, keywords, last_action, last_action_date, liked, yc, custom_field, custom_field_comparison). A `location_ids` criterion must carry sub-country admin areas only — a country name here is rejected with COUNTRY_LEVEL_LOCATION before anything is persisted.",
             items: { type: "object" },
           },
         },
@@ -140,7 +141,7 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
       city: {
         type: "string",
         description:
-          "Free-text city / region (e.g. 'Berlin', 'NYC', 'São Paulo'). The composite resolves it to an admin_area id via GET /geo/search and merges it into the active Monitor filter as a `location_ids` FilterCriterion. Ambiguous matches surface as `status: 'ambiguous_locations'` with `location_ambiguities[]` — the agent picks an id and re-calls via `city_id`.",
+          "Free-text city / region (e.g. 'Berlin', 'NYC', 'São Paulo'). The composite resolves it to an admin_area id via GET /geo/search and merges it into the active Monitor filter as a `location_ids` FilterCriterion. Ambiguous matches surface as `status: 'ambiguous_locations'` with `location_ambiguities[]` — the agent picks an id and re-calls via `city_id`. NEVER a country name: this workspace serves exactly ONE country, so a whole-country ask means omitting `city` entirely.",
       },
       city_id: {
         type: "string",
@@ -219,13 +220,26 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
     // view is silently fenced to one village (product#3951). The envelope is
     // deliberately NOT wrapped in withAgentMemoryMeta — that helper calls
     // resolveMe(), which would make a doomed call cost an HTTP round-trip.
-    const countryHits = detectCountryLocationsIn(
-      [
-        { input: params.city, param: "city" },
-        { input: params.city_id, param: "city_id" },
-      ],
-      client.region
-    );
+    // `set_filter` is checked alongside the shortcut args, not instead of them:
+    // geography can arrive as a raw `location_ids` criterion that never touches
+    // `city`/`city_id`. That path is the dangerous one — the criterion would
+    // reach POST /monitor/filter, and the failed-POST handler below deliberately
+    // falls through to read with the PREVIOUSLY stored filter, so the caller
+    // would get a confident cohort from a stale filter instead of a named error.
+    const countryHits = [
+      ...detectCountryLocationsIn(
+        [
+          { input: params.city, param: "city" },
+          { input: params.city_id, param: "city_id" },
+        ],
+        client.region
+      ),
+      ...detectCountryLocationsInSetFilter(
+        params.set_filter,
+        "set_filter",
+        client.region
+      ),
+    ];
     if (countryHits.length > 0) {
       return {
         ...countryLocationStatus(countryHits, client.region),

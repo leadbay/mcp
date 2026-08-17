@@ -310,17 +310,17 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
         type: "array",
         items: { type: "string" },
         description:
-          "Geographic scope — free text (e.g. ['Indre-et-Loire', 'Bavaria', 'Austin']) or admin-area ids. Auto-resolved via /geo/search across all admin levels (city / county / département / région / state / country). Place names go HERE, never in sectors/keywords.",
+          "Geographic scope — free text (e.g. ['Indre-et-Loire', 'Texas', 'Austin']) or admin-area ids. Resolved via /geo/search at any level from state down to city (state / région / département / county / city). NEVER a country name — this workspace serves exactly ONE country, so a whole-country ask means passing NO location at all (rejected with COUNTRY_LEVEL_LOCATION). Place names go HERE, never in sectors/keywords.",
       },
       location_ids: {
         type: "array",
         items: { type: "string" },
-        description: "Explicit admin-area ids (skips /geo/search resolution)",
+        description: "Explicit admin-area ids (skips /geo/search resolution). Sub-country areas only — a country name here is rejected with COUNTRY_LEVEL_LOCATION.",
       },
       exclude_locations: {
         type: "array",
         items: { type: "string" },
-        description: "Locations to exclude (free text or ids)",
+        description: "Locations to exclude (free text or ids). Sub-country areas only — excluding a country is meaningless on a single-country workspace and is rejected.",
       },
       lensId: { type: "number", description: "Lens id (escape hatch)" },
       lensName: {
