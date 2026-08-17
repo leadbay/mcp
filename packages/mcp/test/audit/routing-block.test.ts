@@ -18,7 +18,6 @@ import {
   compositeWriteTools,
   granularReadTools,
   granularWriteTools,
-  mcpFirstDeliveryAllTools,
   type Tool,
 } from "@leadbay/core";
 
@@ -29,9 +28,6 @@ const MEMORY_POINTER = "**Memory:** recall + capture via `leadbay_agent_memory_*
 // The audit ensures none of them regresses. Other tools MAY add routing
 // later — when they do, append here.
 const TOOLS_WITH_ROUTING = new Set([
-  "leadbay_find_new_leads",
-  "leadbay_qualify_leads",
-  "leadbay_lead_job_status",
   "leadbay_prepare_outreach",
   "leadbay_account_status",
   "leadbay_add_leads_to_campaign",
@@ -79,8 +75,6 @@ const ALL_TOOLS: Tool[] = [
   ...compositeWriteTools,
   ...granularReadTools,
   ...granularWriteTools,
-  // Gated off by default until the backend routes ship; still registered.
-  ...mcpFirstDeliveryAllTools,
 ];
 
 const ALL_TOOL_NAMES = new Set(ALL_TOOLS.map((t) => t.name));

@@ -34,10 +34,13 @@ high-priority (P0/P1) issues:
 
 - **New user-facing tools must be wired completely.** They must declare
   `routing` and `rendering_hint` frontmatter (plus `next_steps` when the
-  tool has a NEXT STEPS table), be added to `TOOLS_WITH_ROUTING` in
-  `packages/mcp/test/audit/routing-block.test.ts`, and carry ≥2 positive
-  AND ≥2 negative routing examples. Every `route_to` anti-trigger must
-  resolve to a registered tool name.
+  tool has a NEXT STEPS table), have the routing contract asserted for
+  them in a NEW audit file (never by appending to `TOOLS_WITH_ROUTING` in
+  the existing `packages/mcp/test/audit/routing-block.test.ts` — the
+  new-coverage-in-new-files rule above wins; see
+  `packages/mcp/test/audit/lead-delivery-routing-block.test.ts`), and
+  carry ≥2 positive AND ≥2 negative routing examples. Every `route_to`
+  anti-trigger must resolve to a registered tool name.
 
 - **`WORKFLOWS.md` is normative.** A new user story needs a row, and
   every backtick-wrapped `leadbay_*` identifier must resolve to a

@@ -218,8 +218,16 @@ next_steps: pull-leads   # snippets/next-steps/pull-leads.md
    description over, trim the BODY — never disable the audit.
 
 When you add a new user-facing tool: declare `routing`,
-`rendering_hint`, `next_steps`; add the tool name to
-`TOOLS_WITH_ROUTING` in the routing audit; run `pnpm -r test`.
+`rendering_hint`, `next_steps`; assert the routing contract for it;
+run `pnpm -r test`.
+
+**Do not append to `TOOLS_WITH_ROUTING` in
+`packages/mcp/test/audit/routing-block.test.ts`** — that is an existing
+test file, and the "new coverage lives in new files" rule wins. Add a new
+audit file asserting the same contract for your tool instead;
+`test/audit/lead-delivery-routing-block.test.ts` is the worked example.
+The `route_to` resolution check needs nothing: it already iterates every
+registered tool.
 
 ## Tool descriptions are generated, not hand-edited
 
@@ -426,7 +434,10 @@ pnpm -r typecheck    # must stay green
 
 If `prompts:build` fails: check `name:` matches filename, `kind: tool-description` is set, every `{{include:...}}` resolves, and `route_to:` values match registered tool names.
 
-Also: add the tool name to `TOOLS_WITH_ROUTING` in `packages/mcp/test/audit/routing-block.test.ts`.
+Also: assert the routing contract for the new tool in a **new** audit file — do
+not append its name to `TOOLS_WITH_ROUTING` in the existing
+`packages/mcp/test/audit/routing-block.test.ts`. See
+`packages/mcp/test/audit/lead-delivery-routing-block.test.ts`.
 
 ## Composite vs granular
 
