@@ -6,6 +6,20 @@ description: "Refine the kind of leads Leadbay surfaces beyond firmographics, wi
 
 Refine the Leadbay audience prompt to: <The refinement (e.g. 'focus on hospitals running their own IT'). Set to plain English. If not provided in the user's most recent message, ask once before proceeding.>
 
+# PHASE 0 — IS THIS ACTUALLY A GEO ASK?
+A refine prompt shapes the KIND of company, never WHERE it is. If my instruction is a
+place ("prospects in Texas", "restrict to Indre-et-Loire"), do NOT put it in the refine
+prompt — route it to `leadbay_adjust_audience({locations: [...]})` instead, and say why.
+If it names a whole country, set no geography at all and tell me the workspace already
+covers exactly one country.
+
+**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (`city` / `locations` / `location_ids`) and say the result covers the whole workspace.
+
+**Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so `"France"` matches the *commune of Francs* and `"United States"` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On `code: "COUNTRY_LEVEL_LOCATION"`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
+
+Place names never go in `keywords`, `sectors` or `refine_prompt` — those are text matches, not geo filters.
+
+
 # PHASE 1 — REFINE
 Call `leadbay_refine_prompt` with `prompt=<the instruction above>`.
 

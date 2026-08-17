@@ -20,6 +20,15 @@ failure_modes:
 
 Refine the Leadbay audience prompt to: {{arg:instruction}}
 
+# PHASE 0 — IS THIS ACTUALLY A GEO ASK?
+A refine prompt shapes the KIND of company, never WHERE it is. If my instruction is a
+place ("prospects in Texas", "restrict to Indre-et-Loire"), do NOT put it in the refine
+prompt — route it to `leadbay_adjust_audience({locations: [...]})` instead, and say why.
+If it names a whole country, set no geography at all and tell me the workspace already
+covers exactly one country.
+
+{{include:heuristics/single-country-universe}}
+
 # PHASE 1 — REFINE
 Call `leadbay_refine_prompt` with `prompt=<the instruction above>`.
 

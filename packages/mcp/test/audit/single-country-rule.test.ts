@@ -61,11 +61,24 @@ const TOOLS_THAT_ACCEPT_LOCATIONS = [
   "leadbay_update_lens_filter",
 ] as const;
 
-/** Prompts that route geographic intent to those tools. */
+/**
+ * Prompts that can receive geographic intent — either through a declared geo
+ * argument or through a free-text audience/instruction a user can phrase as a
+ * whole country. product#3951 names all five.
+ *
+ * `refine_audience` and `setup_team_prospecting` are here for a reason worth
+ * keeping: neither has a geo ARGUMENT, so a sweep that only followed geo params
+ * skips them — which is exactly what happened on the first pass of this PR. But
+ * "scope my lens to the whole US" lands in refine_audience, and
+ * setup_team_prospecting's free-text `audience` / `rep_split` can both carry a
+ * country. Absence of a geo param is not absence of geo intent.
+ */
 const PROMPTS_WITH_GEO_INTENT = [
   "leadbay_followup_check_in",
   "leadbay_top_accounts_to_activate",
   "leadbay_plan_tour_in_city",
+  "leadbay_refine_audience",
+  "leadbay_setup_team_prospecting",
 ] as const;
 
 const RULE = readFileSync(SNIPPET_PATH, "utf8");

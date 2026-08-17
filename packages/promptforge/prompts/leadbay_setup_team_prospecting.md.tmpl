@@ -12,7 +12,7 @@ arguments:
     description: "Natural-language audience description (e.g. 'plumbing companies with 10-50 employees in Seine-Maritime'). The lens-creation step (`leadbay_refine_prompt` → `leadbay_create_lens`) interprets it."
     required: true
   - name: rep_split
-    description: "Optional: how to split the validated leads into per-rep campaigns. Free text — e.g. 'split by city' or 'one campaign per rep: John gets Tulsa, Sarah gets OKC'."
+    description: "Optional: how to split the validated leads into per-rep campaigns. Free text — e.g. 'split by city' or 'one campaign per rep: John gets Tulsa, Sarah gets OKC'. Splitting by country is not a split — the workspace is single-country."
     required: false
 expected_calls:
   - leadbay_refine_prompt
@@ -39,6 +39,8 @@ Audience: **{{arg:audience}}**
 # PHASE 1 — INTERPRET INTENT INTO A LENS
 
 Call `leadbay_refine_prompt({user_prompt: "{{arg:audience}}"})`. This handles the clarification protocol natively — if the system needs more info (e.g. industry disambiguation, geography precision), it returns `status: "clarification_needed"` with options. Surface those to me; on my answer, re-call `leadbay_refine_prompt` until the prompt converges.
+
+{{include:heuristics/single-country-universe}}
 
 When the prompt has converged, call `leadbay_create_lens({user_prompt: <refined>, name: "<short descriptive name>"})` to create a draft lens, then `leadbay_promote_lens({lensId})` to make it the active lens.
 
