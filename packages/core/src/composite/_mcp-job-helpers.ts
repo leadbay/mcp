@@ -552,6 +552,31 @@ function countryKey(raw: string): string {
     .trim();
 }
 
+/** `exclude_lead_ids` accepts at most 500 ids. The shortfall top-up is where
+ *  this bites: a paid run may examine up to `exploration_cap`'s ceiling
+ *  (min(20n, 1000)) candidates, so "exclude everything already seen" overflows
+ *  the cap and the backend refuses the whole call — the one call that exists
+ *  to close a gap the user already paid toward. Reject it here, carrying the
+ *  bounding rule, rather than letting an opaque 400 surface after the spend.
+ *
+ *  `novelty: org` already excludes prior DELIVERIES, so delivered ids are the
+ *  redundant half of the list and dropping them is usually enough to fit. */
+export const MAX_EXCLUDE_LEAD_IDS = 500;
+
+export function rejectOversizedExclusions(ids: unknown): void {
+  if (ids === undefined || ids === null) return;
+  // Count what would actually be SENT — canonicalIdSet drops non-uuids and
+  // dedupes, so a list that merely repeats itself is not a real overflow.
+  const unique = canonicalIdSet(ids);
+  if (unique.length <= MAX_EXCLUDE_LEAD_IDS) return;
+  throw {
+    error: true,
+    code: "TOO_MANY_EXCLUSIONS",
+    message: `exclude_lead_ids carries ${unique.length} ids — the maximum is ${MAX_EXCLUDE_LEAD_IDS}.`,
+    hint: "Drop the DELIVERED ids first: novelty:'org' already excludes those. Send the examined-but-rejected ones (disqualified + skipped), most recent first, capped at 500.",
+  };
+}
+
 export function rejectCountryLocations(locations: unknown): void {
   if (locations === undefined || locations === null) return;
   // The server does not validate the schema before dispatch, so an agent can

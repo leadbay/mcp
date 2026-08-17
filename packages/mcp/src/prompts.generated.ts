@@ -1584,11 +1584,14 @@ When I want qualification evidence and/or reachable contacts:
    search under a NEW \`request_id\`, quoted first like any paid run. Never
    silently hand back fewer than I asked for and paid toward.
 
-   Pass every lead already SEEN into that top-up's \`exclude_lead_ids\` —
-   delivered, disqualified and skipped alike, from both the preview and the
-   paid pass. \`novelty: org\` only excludes prior DELIVERIES, so a candidate
-   that was examined and rejected is still eligible; without the exclusion
-   list the top-up re-picks the same misses and charges again to close no gap.
+   Pass the leads already EXAMINED-AND-REJECTED into that top-up's
+   \`exclude_lead_ids\` — disqualified and skipped, from both the preview and
+   the paid pass. \`novelty: org\` already excludes prior DELIVERIES, so
+   delivered ids are redundant there; the rejected ones are exactly what it
+   misses, and without them the top-up re-picks the same misses and charges
+   again to close no gap. **\`exclude_lead_ids\` caps at 500** — a wide
+   \`exploration_cap\` can examine more than that, so send the most recent 500
+   rejects rather than an over-long list the tool refuses outright.
 3. While the job runs, poll with \`leadbay_lead_job_status\`
    (\`wait_seconds: 60\`); report progress, not silence.
 

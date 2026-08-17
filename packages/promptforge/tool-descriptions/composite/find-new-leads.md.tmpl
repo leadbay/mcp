@@ -78,11 +78,12 @@ phone 250c, success-only). The gate is enforced in code: a paid call
 **Free preview first**: run FREE, eyeball fit, THEN pay — reshaping an
 off-profile seed is free, exploring it with `qualify: true` is not.
 
-**Exclusions ("no chains") are enforced by QUALIFICATION, not the free
-match** — `filters` has no exclusion key. Put the positive inverse in the
-seed, then `qualify: true`: IBP anti-patterns score violators negative and
-`min_ai_score: 0` drops them. Durable exclusion → `leadbay_refine_prompt`.
-In a FREE preview, drop violating rows and say the tier doesn't enforce.
+**Ad-hoc exclusions ("no chains") are enforced by NO tier** — `filters` has
+no exclusion key, and `qualify` scores against the org's FROZEN questions and
+IBP, which need not mention chains; the seed's positive inverse only shifts
+ranking. Violators can survive, be paid for and be delivered — post-filter
+them yourself and say the tier didn't enforce it. Durable enforcement →
+`leadbay_refine_prompt`.
 
 {{include:heuristics/example-lead-craft}}
 

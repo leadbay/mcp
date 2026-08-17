@@ -23,6 +23,7 @@ import {
   compactBody,
   normalizeSearchFilters,
   rejectCountryLocations,
+  rejectOversizedExclusions,
   splitItems,
   TERMINAL_JOB_STATES,
   waitForJob,
@@ -168,7 +169,8 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       exclude_lead_ids: {
         type: "array",
         items: { type: "string" },
-        description: "Caller-side novelty belt on top of the server-side one (max 500 ids).",
+        description:
+          "Caller-side novelty belt on top of the server-side one (max 500 ids — over that the call is refused, so drop the DELIVERED ids first: novelty:'org' already covers those, and the examined-but-rejected ones are what it misses).",
       },
       novelty: {
         type: "string",
@@ -224,6 +226,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       "exclude_lead_ids",
     ]);
     rejectCountryLocations(params.filters?.locations);
+    rejectOversizedExclusions(params.exclude_lead_ids);
 
     // Same spend gate as leadbay_qualify_leads. The trigger differs: `qualify`
     // defaults to FALSE here, so the default ask really is free and only an
