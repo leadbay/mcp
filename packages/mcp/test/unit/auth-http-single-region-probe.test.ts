@@ -103,7 +103,11 @@ describe("resolveClientFromToken — single-region validation probe", () => {
     ]);
     const result = await resolveClientFromToken("o.trulyexpired");
     expect(result.authState).toBe("expired");
-    expect(requests).toHaveLength(2); // probed both before declaring expired
+    // Probed both, then gave each rejecting region one last look before the
+    // verdict — a Leadbay 401 is usually a blip, not expiry, and for an untagged
+    // token either region could be the one that blipped. Bounded at four; the
+    // per-region behaviour is pinned in auth-http-untagged-transient-401.test.ts.
+    expect(requests).toHaveLength(4);
   });
 
   it("untagged token → US 503 (transient) then FR 200 → ok, does NOT bind to failing US", async () => {
