@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.28.0 — Guided first-run walkthrough
+## 0.29.0 — 2026-08-17 — Guided first-run walkthrough
 
 - **New: "Walk me through Leadbay."** A brand-new user now learns Leadbay by
   doing it, not by reading about it. Four steps, one button each: check which
