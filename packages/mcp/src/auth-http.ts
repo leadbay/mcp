@@ -343,9 +343,20 @@ export async function resolveClientFromToken(
 // works regardless of the user's region, and the region rides in the token
 // suffix, not the connector path.
 
-/** The single OAuth authorization server (Stargate). Overridable for staging/tests. */
+/**
+ * The single OAuth authorization server (Stargate). Overridable for
+ * staging/tests via `LEADBAY_AUTH_SERVER` (staging is
+ * `https://staging.stargate.leadbay.app`).
+ *
+ * This is the deployed hostname, not an alias: `stargate.leadbay.app` serves
+ * `/.well-known/oauth-authorization-server` with `issuer:
+ * "https://stargate.leadbay.app"`, and a spec-compliant client rejects metadata
+ * whose issuer doesn't match the URL it discovered. An earlier draft advertised
+ * `auth.leadbay.app`, which was never deployed — discovery pointed at a host
+ * that doesn't resolve, so the sign-in prompt could never appear.
+ */
 export const STARGATE_AUTH_SERVER =
-  process.env.LEADBAY_AUTH_SERVER ?? "https://auth.leadbay.app";
+  process.env.LEADBAY_AUTH_SERVER ?? "https://stargate.leadbay.app";
 
 export interface ProtectedResourceMetadata {
   resource: string;
