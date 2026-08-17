@@ -11,7 +11,7 @@ short_description: |
   on yes), then offers outreach drafts + campaign persistence.
 arguments:
   - name: city
-    description: "City or region the user is visiting (e.g. 'Limoges', 'Bay Area'). Used as the geo filter for both Monitor and Discover lookups."
+    description: "City or region the user is visiting (e.g. 'Limoges', 'Bay Area'). Used as the geo filter for both Monitor and Discover lookups. A country is not a city: this workspace already covers exactly one country, so a whole-country ask needs no geo filter at all."
     required: true
   - name: date
     description: "When the visit is (e.g. 'May 24', 'next Thursday'). Surfaced in the outreach drafts as 'I'll be in <city> on <date>'."
@@ -51,6 +51,8 @@ Map my answers to the `leadbay_tour_plan` call:
 # PHASE 2 — BUILD THE ITINERARY
 
 Call `leadbay_tour_plan({city: "{{arg:city}}", …scope from PHASE 1})`. If the response is `status: "ambiguous_locations"`, surface the candidates and ask me to pick one, then re-call with `city_id`.
+
+{{include:heuristics/single-country-universe}}
 
 Split the returned `monitor_leads` into two buckets client-side using their engagement-history fields:
 

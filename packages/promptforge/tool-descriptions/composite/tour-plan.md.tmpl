@@ -26,7 +26,7 @@ routing:
       route_to: leadbay_pull_leads
     - phrase: "research one account"
       route_to: leadbay_research_lead_by_id
-  prefer_when: "user wants known accounts plus new discoveries in one geographic itinerary"
+  prefer_when: "user wants known accounts plus new discoveries in one geographic itinerary; NEVER a country name — a whole-country ask means NO geo filter"
   examples:
     positive:
       - "I'm flying to Limoges in 4 days — give me 3 customers, 3 qualified prospects, and 3 new high-potential."
@@ -55,7 +55,9 @@ annotations:
 
 Build a single-call mixed-mode itinerary for a field sales tour. Combines `leadbay_pull_followups` (Monitor leads in the city — known accounts) with `leadbay_pull_leads` (Discover wishlist — new prospects, then client-side filtered by city) so the agent can answer the canonical #3630 US1 ask: *"I'm visiting Limoges in 4 days — propose 3 customers + 3 qualified prospects + 3 new high-potential discoveries."*
 
-**Geo resolution** is identical to `leadbay_followups_map`: pass `city` (any admin level — city, state, country, region — the `/geo/search` resolver picks the best match), or a pre-resolved `city_id`. Ambiguous matches surface as `status: "ambiguous_locations"` + `location_ambiguities[]`; pick an id and re-call with `city_id`.
+**Geo resolution** is identical to `leadbay_followups_map`: pass `city` (any level from state down to neighborhood — state, *région*, county, city — the `/geo/search` resolver picks the best match), or a pre-resolved `city_id`. Ambiguous matches surface as `status: "ambiguous_locations"` + `location_ambiguities[]`; pick an id and re-call with `city_id`.
+
+{{include:heuristics/single-country-universe}}
 
 **Counts**: `followups_count` (default 6 — generous so the agent can split into "customers + qualified" client-side) and `discover_count` (default 6 after client-side geo filter). The composite over-pulls Discover (30 raw) because the wishlist endpoint has no server-side geo filter — it then filters by `location.city/state/country/full` substring match against the requested city. The `discover_filter_note` string in the response tells the agent the match ratio so it can be honest about coverage ("matched 3/30 by city/state" vs. "matched 12/30").
 

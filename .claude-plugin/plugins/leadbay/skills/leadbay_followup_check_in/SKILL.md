@@ -50,7 +50,14 @@ Call `leadbay_pull_followups` (NOT `leadbay_pull_leads` — those are different 
 
 For geo filters specifically: prefer the `city` shortcut on `leadbay_pull_followups({city: "Berlin"})` — the composite resolves the free-text city via `/geo/search`, returns ambiguities to disambiguate when needed (status: "ambiguous_locations" → pick an id → re-call with `city_id`), then merges the resolved admin_area into the Monitor filter as `location_ids`. If the user has already given you a numeric id, pass it as `city_id`. Don't guess admin_area ids — let the resolver do it.
 
-**TRAVEL / IN-PERSON ROUTING** — when the user's intent is geographic and visual ("I'm going to NYC next week", "leads I should visit in person", "this week's trip", "show me followups in <city>", "plan my itinerary", "trip itinerary", "show on a map", "leads in Texas / California / France", or any phrasing that asks for a map / geographic / trip-planning view — INCLUDING state-, country-, and region-level place names):
+**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (`city` / `locations` / `location_ids`) and say the result covers the whole workspace.
+
+**Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so `"France"` matches the *commune of Francs* and `"United States"` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On `code: "COUNTRY_LEVEL_LOCATION"`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
+
+Place names never go in `keywords`, `sectors` or `refine_prompt` — those are text matches, not geo filters.
+
+
+**TRAVEL / IN-PERSON ROUTING** — when the user's intent is geographic and visual ("I'm going to NYC next week", "leads I should visit in person", "this week's trip", "show me followups in <city>", "plan my itinerary", "trip itinerary", "show on a map", "leads in Texas / California", or any phrasing that asks for a map / geographic / trip-planning view — INCLUDING state- and region-level place names, but NEVER a country):
 
 1. Call **`leadbay_followups_map`** (same params as `pull_followups`: `city` / `city_id` / `set_filter`). Same response shape — just the explicit entry-point so the agent and the host know to route geographically.
 2. Output a **per-lead place-card block** for each top follow-up, in this exact format — modern chat hosts (Claude / cowork) detect addresses + company names and surface them as a beautiful Google-Place-card carousel with our notes as the "Notes from Claude" section. Lean INTO that surface; don't fight it.

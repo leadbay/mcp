@@ -12,7 +12,9 @@ annotations:
 ---
 Search the geo / admin-area taxonomy by free-text name and return the matching admin_area ids. This is the primary way to turn a user's "leads in Berlin" / "filter to Lyon" intent into the `{type: "location_ids", locations: [<id>]}` shape that the backend filter expects.
 
-The response has two arrays: `results` (top-10 prefix matches ranked by relevance) and `parents` (the admin-area chain referenced by `results[].parent_ids`, useful for disambiguation breadcrumbs). Each entry: `{id, country, level, name, parent_ids}`. The `level` is the admin depth — **5** = region, **6** = county, **7** = township-area, **8** = city/town.
+The response has two arrays: `results` (top-10 prefix matches ranked by relevance) and `parents` (the admin-area chain referenced by `results[].parent_ids`, useful for disambiguation breadcrumbs). Each entry: `{id, country, level, name, parent_ids}`. The `level` is the admin depth — **5** = region, **6** = county, **7** = township-area, **8** = city/town. Country nodes are NOT in this index, so searching a country name cannot return that country — it returns whatever same-named town the trigram matcher finds (measured: `France` → the commune of Francs, `United States` → Statesboro). Passing such an id onward fences the caller to one village, so this tool refuses a country query outright and returns `status: "country_level_location"` with an empty `results`.
+
+{{include:heuristics/single-country-universe}}
 
 {{include:headers/tool-when-to-use}} to resolve a free-text city/region name before passing it to a `location_ids` filter (e.g. on `leadbay_pull_followups({set_filter})` or `leadbay_adjust_audience`). The composite `leadbay_pull_followups` accepts `city: <free-text>` directly and runs this resolver internally — prefer that path; reach for this granular tool only when you need to surface candidates to the user before committing.
 

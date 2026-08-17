@@ -244,6 +244,11 @@ Common shared blocks live in `packages/promptforge/snippets/`:
 | `next-steps/*.md` | Per-tool NEXT STEPS tables — every one includes the `ask_user_input_v0` routing at the top |
 | `gates/builtin-widgets.md` | The three-host-widget table |
 | `gates/defer-to-tool-rendering.md` | Reminder that prompts defer layout to tool RENDERING blocks |
+| `heuristics/single-country-universe.md` | The single-country rule — a country name is never a location filter (product#3951) |
+| `heuristics/*.md` | Judgement aids (address matching, consumer email domains, long-running tools, …) |
+| `iron-laws/*.md` | Non-negotiables (no fabrication, verification required, outcome after outreach) |
+| `headers/*.md` | The tiny shared header fragments promptforge stitches in |
+| `server-instructions/*.md` | Server-instruction blocks — emitted as consts by `emitServerInstructions`, NOT resolved via `{{include:}}` |
 
 Include them via `{{include:rendering/score-bar}}` etc. Don't duplicate
 content across templates — extract a snippet if you find yourself
@@ -251,11 +256,28 @@ copy-pasting.
 
 ## Tool description budget
 
-Each tool description has a per-class char budget (currently 16,000 for
-composites). Enforced by
+Every generated tool description is capped at **17,000 chars** — one cap
+for all classes, not per-class. Enforced by
+`MIGRATED_TOOL_DESCRIPTION_MAX_CHARS` in
 `packages/mcp/test/audit/tool-description-source.test.ts`. If your edit
 pushes a description over budget, trim verbose paragraphs **within the
-template** — don't disable the audit.
+template** — don't disable the audit and don't raise the cap.
+
+Measure the REAL length before you draft: a naive `wc` over the generated
+file over-reports by 70–360 chars per tool, because `\``, `\${` and `\\`
+are escapes in the template literal. Unescape first:
+
+```bash
+node -e "const s=require('fs').readFileSync('packages/core/src/tool-descriptions.generated.ts','utf8');
+const re=/export const (leadbay_[a-z_0-9]+): string = \`([\s\S]*?)\`;\n/g;let m;
+while((m=re.exec(s))){const n=m[2].replace(/\\\\([\`\$\\\\])/g,'\$1').length;
+if(n>16000)console.log(n,m[1],'headroom',17000-n);}"
+```
+
+The tools closest to the cap today are `leadbay_prepare_outreach` (~7 chars
+of headroom), `leadbay_research_lead_by_id` (~27) and
+`leadbay_pull_followups` (~419). Check headroom before adding a shared
+snippet to any of them.
 
 ## Workspace test invariant
 
@@ -295,7 +317,7 @@ graph TD
 
     subgraph promptforge["packages/promptforge  (build-time)"]
         PF_TMPL["tool-descriptions/**/*.md.tmpl\nprompts/**/*.md.tmpl"]
-        PF_SNIP["snippets/\n  rendering/ · next-steps/\n  linking/ · gates/"]
+        PF_SNIP["snippets/\n  rendering/ · next-steps/ · linking/\n  gates/ · heuristics/ · iron-laws/\n  headers/ · server-instructions/"]
         PF_BUILD["pnpm prompts:build"]
     end
 

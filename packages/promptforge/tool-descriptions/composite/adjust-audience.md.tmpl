@@ -31,6 +31,8 @@ routing:
       route_to: leadbay_my_lenses
     - phrase: "focus on a kind of company beyond sector/size (e.g. 'hospitals running their own IT')"
       route_to: leadbay_refine_prompt
+    - phrase: "companies anywhere in the <country> / nationwide"
+      route_to: leadbay_pull_leads
   prefer_when: "user wants to change an EXISTING lens's sectors/sizes. If the user NAMES a lens ('my Joinery lens'), you MUST pass lensName with that name — do NOT edit the active lens. To create a brand-new lens use leadbay_new_lens instead."
   examples:
     positive:
@@ -41,6 +43,7 @@ routing:
       - "Create a lens called Joinery for fintech."
       - "Show me my lenses."
       - "Focus on hospitals that run their own IT."
+      - "Show me companies anywhere in the US."
 rendering_hint: |
   On `applied`: confirm the lens edited (name) + the sectors/sizes/locations
   added as chips. On `ambiguous_sectors` / `ambiguous_locations` /
@@ -51,7 +54,9 @@ Restrict (or expand) the lens audience by sector / size. Free-text sectors are a
 
 **Targeting a lens — READ THIS.** By default this edits the user's ACTIVE lens. **If the user names a lens** ("add fintech to my **Joinery** lens", "in my Nordics lens, exclude retail"), you MUST pass `lensName` with that name (`lensName:"Joinery"`). Do NOT silently edit the active lens when a different one was named — that corrupts the wrong audience and is a top friction source. The name resolves against the user's lenses (case-insensitive, exact then unique-substring); it is edit-only and does NOT change which lens is active. An unmatched name returns `status:"lens_not_found"` with the lens list, and a name matching several returns `status:"ambiguous_lens"` with the candidates — surface them and re-call with the exact `lensName` or a `lensId`. Use `leadbay_my_lenses` if the user first wants to SEE or SWITCH lenses. To CREATE a brand-new lens, use `leadbay_new_lens` — not this tool.
 
-**Geography — scope a sales territory.** Pass `locations` (free text like `["Indre-et-Loire"]`, `["Bavaria"]`, `["Austin"]`, or admin-area ids) to restrict the lens to a region, and `exclude_locations` to carve one out. Free text auto-resolves via `/geo/search` across every admin level — city, county, *département*, *région*, state, country. Place names go in `locations`, **never** in `sectors` or `refine_prompt`. Unresolved/ambiguous text returns `status:"ambiguous_locations"` with candidates — surface them and re-call the chosen id via the SAME axis it came from: an INCLUDE pick → `location_ids`; an EXCLUDE pick → `exclude_locations` (**NOT** `location_ids`, which would include the area the user asked to exclude). The returned `message` names the right param per text. This is how a director scopes a rep's territory and then asks for net-new accounts there.
+**Geography — scope a sales territory.** Pass `locations` (free text like `["Indre-et-Loire"]`, `["Texas"]`, `["Austin"]`, or admin-area ids) to restrict the lens to a region, and `exclude_locations` to carve one out. Free text auto-resolves via `/geo/search` at any level from state down to city — state, *région*, *département*, county, city. Unresolved/ambiguous text returns `status:"ambiguous_locations"` with candidates — surface them and re-call the chosen id via the SAME axis it came from: an INCLUDE pick → `location_ids`; an EXCLUDE pick → `exclude_locations` (**NOT** `location_ids`, which would include the area the user asked to exclude). The returned `message` names the right param per text. This is how a director scopes a rep's territory and then asks for net-new accounts there.
+
+{{include:heuristics/single-country-universe}}
 
 {{include:headers/tool-when-to-use}} when the user wants to see different kinds of leads (sector / size / geography / etc.).
 

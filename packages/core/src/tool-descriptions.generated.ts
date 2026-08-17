@@ -441,7 +441,7 @@ Trigger phrases: "narrow the audience to <sector>", "add <sector> to my <name> l
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "create a new lens called X" → \`leadbay_new_lens\`; "make a new audience for Y" → \`leadbay_new_lens\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`; "focus on a kind of company beyond sector/size (e.g. 'hospitals running their own IT')" → \`leadbay_refine_prompt\`.
+Do NOT use for: "create a new lens called X" → \`leadbay_new_lens\`; "make a new audience for Y" → \`leadbay_new_lens\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`; "focus on a kind of company beyond sector/size (e.g. 'hospitals running their own IT')" → \`leadbay_refine_prompt\`; "companies anywhere in the <country> / nationwide" → \`leadbay_pull_leads\`.
 
 Prefer when: user wants to change an EXISTING lens's sectors/sizes. If the user NAMES a lens ('my Joinery lens'), you MUST pass lensName with that name — do NOT edit the active lens. To create a brand-new lens use leadbay_new_lens instead.
 
@@ -454,6 +454,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Create a lens called Joinery for fintech."
 - "Show me my lenses."
 - "Focus on hospitals that run their own IT."
+- "Show me companies anywhere in the US."
 
 ## RENDER (quick)
 
@@ -468,7 +469,14 @@ Restrict (or expand) the lens audience by sector / size. Free-text sectors are a
 
 **Targeting a lens — READ THIS.** By default this edits the user's ACTIVE lens. **If the user names a lens** ("add fintech to my **Joinery** lens", "in my Nordics lens, exclude retail"), you MUST pass \`lensName\` with that name (\`lensName:"Joinery"\`). Do NOT silently edit the active lens when a different one was named — that corrupts the wrong audience and is a top friction source. The name resolves against the user's lenses (case-insensitive, exact then unique-substring); it is edit-only and does NOT change which lens is active. An unmatched name returns \`status:"lens_not_found"\` with the lens list, and a name matching several returns \`status:"ambiguous_lens"\` with the candidates — surface them and re-call with the exact \`lensName\` or a \`lensId\`. Use \`leadbay_my_lenses\` if the user first wants to SEE or SWITCH lenses. To CREATE a brand-new lens, use \`leadbay_new_lens\` — not this tool.
 
-**Geography — scope a sales territory.** Pass \`locations\` (free text like \`["Indre-et-Loire"]\`, \`["Bavaria"]\`, \`["Austin"]\`, or admin-area ids) to restrict the lens to a region, and \`exclude_locations\` to carve one out. Free text auto-resolves via \`/geo/search\` across every admin level — city, county, *département*, *région*, state, country. Place names go in \`locations\`, **never** in \`sectors\` or \`refine_prompt\`. Unresolved/ambiguous text returns \`status:"ambiguous_locations"\` with candidates — surface them and re-call the chosen id via the SAME axis it came from: an INCLUDE pick → \`location_ids\`; an EXCLUDE pick → \`exclude_locations\` (**NOT** \`location_ids\`, which would include the area the user asked to exclude). The returned \`message\` names the right param per text. This is how a director scopes a rep's territory and then asks for net-new accounts there.
+**Geography — scope a sales territory.** Pass \`locations\` (free text like \`["Indre-et-Loire"]\`, \`["Texas"]\`, \`["Austin"]\`, or admin-area ids) to restrict the lens to a region, and \`exclude_locations\` to carve one out. Free text auto-resolves via \`/geo/search\` at any level from state down to city — state, *région*, *département*, county, city. Unresolved/ambiguous text returns \`status:"ambiguous_locations"\` with candidates — surface them and re-call the chosen id via the SAME axis it came from: an INCLUDE pick → \`location_ids\`; an EXCLUDE pick → \`exclude_locations\` (**NOT** \`location_ids\`, which would include the area the user asked to exclude). The returned \`message\` names the right param per text. This is how a director scopes a rep's territory and then asks for net-new accounts there.
+
+**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+
+**Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On \`code: "COUNTRY_LEVEL_LOCATION"\`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — those are text matches, not geo filters.
+
 
 WHEN TO USE: when the user wants to see different kinds of leads (sector / size / geography / etc.).
 
@@ -1280,7 +1288,7 @@ Trigger phrases: "I'm going to <city>", "visit in person", "map of leads", "plan
 
 Do NOT use for: "default follow-up table" → \`leadbay_pull_followups\`; "new prospects" → \`leadbay_pull_leads\`.
 
-Prefer when: geographic, travel, in-person, itinerary, or map intent
+Prefer when: geographic, travel, in-person, itinerary, or map intent; NEVER a country name — a whole-country ask means NO geo filter
 
 Examples that SHOULD invoke this tool:
 - "I'm flying to New York Thursday — who should I meet in person?"
@@ -1305,7 +1313,14 @@ Plot the user's follow-up leads on an interactive map — the canonical surface 
 
 **Common city aliases resolve automatically** — \`NYC\` / \`New York\` → City of New York, \`SF\` / \`S.F.\` → San Francisco, \`LA\` / \`L.A.\` → Los Angeles, \`DC\` / \`Washington D.C.\` → Washington, \`Philly\` → Philadelphia, \`Vegas\` → Las Vegas, \`NOLA\` → New Orleans. Pass either an abbreviation, a city name, or a pre-resolved \`city_id\`. Ambiguous matches surface as \`status: "ambiguous_locations"\` + \`location_ambiguities[]\` — pick an id and re-call with \`city_id\`.
 
-**\`city\` is the universal geo arg — it resolves any admin level.** Despite the name, pass any place name there: states (\`"Texas"\`, \`"California"\`, \`"Bavaria"\`), countries (\`"France"\`, \`"United States"\`), regions (\`"New England"\`, \`"Bay Area"\`), neighborhoods (\`"Brooklyn"\`, \`"SoHo"\`), or cities. The \`/geo/search\` resolver indexes all levels — level 4 (state), level 2 (country), level 5 (city) — and the composite picks the best match. **Never** put a place name into \`keywords\` instead — that's a text-match against company descriptions, not a real geo filter (e.g. \`keywords: ["Texas"]\` returns ≈0 hits even when the user has dozens of Texas leads). If \`keywords: ["<PlaceName>"]\` returned empty, the correct next call is \`city: "<PlaceName>"\`, NOT the unfiltered Monitor view.
+**\`city\` is the universal SUB-country geo arg.** Despite the name, pass any place name BELOW country level: states (\`"Texas"\`, \`"California"\`), regions (\`"New England"\`, \`"Bay Area"\`), counties, neighborhoods (\`"Brooklyn"\`, \`"SoHo"\`), or cities — the \`/geo/search\` resolver indexes every level it returns and the composite picks the best match. A COUNTRY name is the one thing it must never receive (rule below). And \`keywords: ["Texas"]\` returns ≈0 hits even when the user has dozens of Texas leads — that's a text-match against company descriptions, not a geo filter. If \`keywords: ["<PlaceName>"]\` returned empty, the correct next call is \`city: "<PlaceName>"\`, NOT the unfiltered Monitor view.
+
+**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+
+**Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On \`code: "COUNTRY_LEVEL_LOCATION"\`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — those are text matches, not geo filters.
+
 
 ---
 
@@ -2179,7 +2194,14 @@ WHEN NOT TO USE: in normal flow — composites auto-resolve the active lens via 
 // region: leadbay_list_locations
 export const leadbay_list_locations: string = `Search the geo / admin-area taxonomy by free-text name and return the matching admin_area ids. This is the primary way to turn a user's "leads in Berlin" / "filter to Lyon" intent into the \`{type: "location_ids", locations: [<id>]}\` shape that the backend filter expects.
 
-The response has two arrays: \`results\` (top-10 prefix matches ranked by relevance) and \`parents\` (the admin-area chain referenced by \`results[].parent_ids\`, useful for disambiguation breadcrumbs). Each entry: \`{id, country, level, name, parent_ids}\`. The \`level\` is the admin depth — **5** = region, **6** = county, **7** = township-area, **8** = city/town.
+The response has two arrays: \`results\` (top-10 prefix matches ranked by relevance) and \`parents\` (the admin-area chain referenced by \`results[].parent_ids\`, useful for disambiguation breadcrumbs). Each entry: \`{id, country, level, name, parent_ids}\`. The \`level\` is the admin depth — **5** = region, **6** = county, **7** = township-area, **8** = city/town. Country nodes are NOT in this index, so searching a country name cannot return that country — it returns whatever same-named town the trigram matcher finds (measured: \`France\` → the commune of Francs, \`United States\` → Statesboro). Passing such an id onward fences the caller to one village, so this tool refuses a country query outright and returns \`status: "country_level_location"\` with an empty \`results\`.
+
+**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+
+**Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On \`code: "COUNTRY_LEVEL_LOCATION"\`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — those are text matches, not geo filters.
+
 
 WHEN TO USE: to resolve a free-text city/region name before passing it to a \`location_ids\` filter (e.g. on \`leadbay_pull_followups({set_filter})\` or \`leadbay_adjust_audience\`). The composite \`leadbay_pull_followups\` accepts \`city: <free-text>\` directly and runs this resolver internally — prefer that path; reach for this granular tool only when you need to surface candidates to the user before committing.
 
@@ -2391,7 +2413,7 @@ Trigger phrases: "create a lens", "create a new lens called <name>", "create a l
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "narrow the audience / add or remove a sector on an EXISTING lens" → \`leadbay_adjust_audience\`; "add <sector> to my <name> lens" → \`leadbay_adjust_audience\`; "focus on a qualitative trait beyond sector/size" → \`leadbay_refine_prompt\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`; "more leads on this lens" → \`leadbay_extend_lens\`.
+Do NOT use for: "narrow the audience / add or remove a sector on an EXISTING lens" → \`leadbay_adjust_audience\`; "add <sector> to my <name> lens" → \`leadbay_adjust_audience\`; "focus on a qualitative trait beyond sector/size" → \`leadbay_refine_prompt\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`; "more leads on this lens" → \`leadbay_extend_lens\`; "companies anywhere in the <country> / nationwide" → \`leadbay_pull_leads\`.
 
 Prefer when: user wants a brand-new lens (create/make/set up, often 'specialized in <X>'). Editing an existing lens → leadbay_adjust_audience (use lensName). Qualitative refinement → refine_prompt (admin-only).
 
@@ -2404,6 +2426,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Add fintech to my Joinery lens."
 - "Show me my lenses."
 - "I want more leads on this lens."
+- "Show me companies anywhere in the US."
 
 ## RENDER (quick)
 
@@ -2423,7 +2446,14 @@ Create a brand-new lens (saved audience) and apply its sector/size criteria. Clo
 
 **Sectors resolve first.** Free-text \`sectors\`/\`exclude_sectors\` are auto-resolved against the taxonomy. If any don't resolve, the tool returns \`status:"ambiguous_sectors"\` with the candidates and **does NOT create the lens** — so re-calling after picking the right sector won't leave orphan half-built lenses. To discover valid sector labels up front, use \`leadbay_list_sectors\`.
 
-**Geography — scope a territory.** Pass \`locations\` (free text like \`["Indre-et-Loire"]\`, \`["Bavaria"]\`, or admin-area ids) to scope the lens to a sales territory, and \`exclude_locations\` to carve one out. Free text auto-resolves via \`/geo/search\` across every admin level (city / county / *département* / *région* / state / country). Like sectors, locations resolve BEFORE the lens is created — unresolved/ambiguous text returns \`status:"ambiguous_locations"\` with candidates and **does NOT create the lens**. Re-call the chosen id via the SAME axis it came from: an INCLUDE pick → \`locations\`; an EXCLUDE pick → \`exclude_locations\` (**NOT** \`locations\`, which would include the area the user asked to exclude). This is how a director spins up a lens for a rep's zone to surface net-new accounts there.
+**Geography — scope a territory.** Pass \`locations\` (free text like \`["Indre-et-Loire"]\`, \`["Texas"]\`, or admin-area ids) to scope the lens to a sales territory, and \`exclude_locations\` to carve one out. Free text auto-resolves via \`/geo/search\` at any level from state down to city (state / *région* / *département* / county / city). Like sectors, locations resolve BEFORE the lens is created — unresolved/ambiguous text returns \`status:"ambiguous_locations"\` with candidates and **does NOT create the lens**. Re-call the chosen id via the SAME axis it came from: an INCLUDE pick → \`locations\`; an EXCLUDE pick → \`exclude_locations\` (**NOT** \`locations\`, which would include the area the user asked to exclude). This is how a director spins up a lens for a rep's zone to surface net-new accounts there.
+
+**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+
+**Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On \`code: "COUNTRY_LEVEL_LOCATION"\`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — those are text matches, not geo filters.
+
 
 **Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer \`leadbay_my_lenses(switchToLensId=<new id>)\` as a next step if they want to start pulling from it.
 
@@ -2767,20 +2797,18 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // region: leadbay_pull_followups
 export const leadbay_pull_followups: string = `## WHEN TO USE
 
-Trigger phrases: "what should I follow up on", "leads I've already worked", "what's overdue", "leads in <city / state / country>", "reach out to today", "should reach out to", "get back to", "contact today", "reconnect with", "re-engage", "leads to contact", "who should I ping".
+Trigger phrases: "what should I follow up on", "leads I've already worked", "what's overdue", "leads in <city / state / region>", "reach out to today", "should reach out to", "get back to", "contact today", "reconnect with", "re-engage", "leads to contact", "who should I ping".
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Do NOT use for: "new leads / today's prospects" → \`leadbay_pull_leads\`; "map / trip / in person" → \`leadbay_followups_map\`.
 
-Prefer when: known Monitor leads; pass \`city\` or \`set_filter\` for geo/sector/recency
+Prefer when: known Monitor leads; pass \`city\` or \`set_filter\` for geo/sector/recency; NEVER a country name — a whole-country ask means NO geo filter
 
 Examples that SHOULD invoke this tool:
 - "What should I follow up on this week?"
 - "What's overdue in my pipeline?"
 - "Show me leads I should reach out to today."
-- "Who should I get back to today?"
-- "Leads I should contact today."
 
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Show me today's new leads."
@@ -2797,7 +2825,7 @@ table. Detail + status priority below.
 
 ---
 
-Pull KNOWN leads from the user's Monitor view — the re-engagement entry point. Use when the user asks "what should I follow up on", "leads I haven't contacted", "leads in [city]", "before my trip", or any phrasing implying pre-existing pipeline context. For NEW leads from Discover, use \`leadbay_pull_leads\`.
+Pull KNOWN leads from the user's Monitor view — the re-engagement entry point. Use for any phrasing implying pre-existing pipeline context. For NEW leads from Discover, use \`leadbay_pull_leads\`.
 
 Backend: wraps \`GET /1.6/monitor?personal=&liked=&filtered=&count=&page=\` plus, when \`set_filter\` is supplied, a preceding \`POST /1.6/monitor/filter\`. The Monitor filter is a single \`FilterItem\` per user — refreshing restores it.
 
@@ -2816,7 +2844,14 @@ Practical mapping from user phrasing to criterion:
 
 Geo filtering needs \`admin_area_id\` resolution — backend rejects free-text in \`location_ids\`. Pass \`city: "<free-text>"\` and the composite calls \`/geo/search\` internally, picks the best match, merges its id into \`set_filter\`. Ambiguous matches return \`status: "ambiguous_locations"\` + \`location_ambiguities[]\` — pick an id and re-call with \`city_id\`.
 
-**Place names go through \`city\`, NEVER \`keywords\`.** Any geographic token the user names — cities (\`"Berlin"\`), states/regions (\`"Texas"\`, \`"Bavaria"\`), countries (\`"France"\`), neighborhoods (\`"Brooklyn"\`) — resolves via \`/geo/search\` (all admin levels). A place name in \`keywords\` becomes a TEXT-MATCH against company descriptions (≈0 hits), not a real filter. If a place resolves ambiguously, surface the choices — never silently fall back to keyword search or the unfiltered view.
+**Place names go through \`city\`, NEVER \`keywords\`.** Any SUB-country geographic token the user names — cities (\`"Berlin"\`), states/regions (\`"Texas"\`), counties, neighborhoods (\`"Brooklyn"\`) — resolves via \`/geo/search\`. A place name in \`keywords\` becomes a TEXT-MATCH against company descriptions (≈0 hits), not a real filter. If a place resolves ambiguously, surface the choices — never silently fall back to keyword search or the unfiltered view.
+
+**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+
+**Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On \`code: "COUNTRY_LEVEL_LOCATION"\`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — those are text matches, not geo filters.
+
 
 **Pushback exclusion.** Leads with active pushback (\`pushback_status\` set, \`pushback_until > today\`) are excluded client-side; \`total_excluded_by_pushback\` reports how many rows were dropped.
 
@@ -3844,7 +3879,7 @@ Trigger phrases: "which of my leads <did X>", "find leads that <raised / acquire
 
 Do NOT use for: "research one named company" → \`leadbay_research_lead_by_name_fuzzy\`; "everything about lead <UUID>" → \`leadbay_research_lead_by_id\`; "qualify my next N leads (they aren't researched yet)" → \`leadbay_bulk_qualify_leads\`; "just list my follow-ups" → \`leadbay_pull_followups\`.
 
-Prefer when: user wants to FILTER a known portfolio by a web-research signal in bulk — pass \`query\`, optionally \`since\`, \`city\`/\`set_filter\`, or \`leadIds\`
+Prefer when: user wants to FILTER a known portfolio by a web-research signal in bulk — pass \`query\`, optionally \`since\`, \`city\`/\`set_filter\`, or \`leadIds\`; NEVER a country name in \`city\` — a whole-country ask means NO geo filter
 
 Examples that SHOULD invoke this tool:
 - "Which of my leads acquired a company since 2025?"
@@ -3881,7 +3916,14 @@ match". Qualify them with \`leadbay_bulk_qualify_leads\`, then re-scan.
 
 **Scope.** Pass \`leadIds\` for an explicit cohort, or omit it to scan the
 Monitor portfolio. Narrow the Monitor scope with \`city\` / \`set_filter\` exactly
-as \`leadbay_pull_followups\` does (store-then-apply server-side filter). The
+as \`leadbay_pull_followups\` does (store-then-apply server-side filter).
+
+**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+
+**Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On \`code: "COUNTRY_LEVEL_LOCATION"\`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — those are text matches, not geo filters.
+ The
 scan is bounded by \`max_leads\` (default 200, hard cap 300); when the portfolio
 is larger, \`truncated_at\` is set and coverage is partial — say so.
 
@@ -4356,7 +4398,7 @@ Trigger phrases: "visiting <city> in <N> days", "I'm in <city> next week / Tuesd
 
 Do NOT use for: "follow-ups only, no new prospects" → \`leadbay_followups_map\`; "new leads only" → \`leadbay_pull_leads\`; "research one account" → \`leadbay_research_lead_by_id\`.
 
-Prefer when: user wants known accounts plus new discoveries in one geographic itinerary
+Prefer when: user wants known accounts plus new discoveries in one geographic itinerary; NEVER a country name — a whole-country ask means NO geo filter
 
 Examples that SHOULD invoke this tool:
 - "I'm flying to Limoges in 4 days — give me 3 customers, 3 qualified prospects, and 3 new high-potential."
@@ -4385,7 +4427,14 @@ prose paragraph. Full recipe below.
 
 Build a single-call mixed-mode itinerary for a field sales tour. Combines \`leadbay_pull_followups\` (Monitor leads in the city — known accounts) with \`leadbay_pull_leads\` (Discover wishlist — new prospects, then client-side filtered by city) so the agent can answer the canonical #3630 US1 ask: *"I'm visiting Limoges in 4 days — propose 3 customers + 3 qualified prospects + 3 new high-potential discoveries."*
 
-**Geo resolution** is identical to \`leadbay_followups_map\`: pass \`city\` (any admin level — city, state, country, region — the \`/geo/search\` resolver picks the best match), or a pre-resolved \`city_id\`. Ambiguous matches surface as \`status: "ambiguous_locations"\` + \`location_ambiguities[]\`; pick an id and re-call with \`city_id\`.
+**Geo resolution** is identical to \`leadbay_followups_map\`: pass \`city\` (any level from state down to neighborhood — state, *région*, county, city — the \`/geo/search\` resolver picks the best match), or a pre-resolved \`city_id\`. Ambiguous matches surface as \`status: "ambiguous_locations"\` + \`location_ambiguities[]\`; pick an id and re-call with \`city_id\`.
+
+**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+
+**Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On \`code: "COUNTRY_LEVEL_LOCATION"\`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — those are text matches, not geo filters.
+
 
 **Counts**: \`followups_count\` (default 6 — generous so the agent can split into "customers + qualified" client-side) and \`discover_count\` (default 6 after client-side geo filter). The composite over-pulls Discover (30 raw) because the wishlist endpoint has no server-side geo filter — it then filters by \`location.city/state/country/full\` substring match against the requested city. The \`discover_filter_note\` string in the response tells the agent the match ratio so it can be honest about coverage ("matched 3/30 by city/state" vs. "matched 12/30").
 
@@ -4579,7 +4628,14 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_update_lens
 
 // region: leadbay_update_lens_filter
-export const leadbay_update_lens_filter: string = `Replace the audience filter (sectors, sizes, locations) on a lens. Body is the full \`Filter\` object — this is a REPLACE, not a merge. Returns 400 \`default_lens\` if applied to the org default lens (clone it first). \`dry_run:true\` returns the call shape without contacting the backend.
+export const leadbay_update_lens_filter: string = `Replace the audience filter (sectors, sizes, locations) on a lens. Body is the full \`Filter\` object — this is a REPLACE, not a merge. Returns 400 \`default_lens\` if applied to the org default lens (clone it first). \`dry_run:true\` returns the call shape without contacting the backend. A country name anywhere in the payload's \`location_ids\` criteria (or in the echoed \`locations.results[]\` block) is rejected with \`code: "COUNTRY_LEVEL_LOCATION"\` — including on a dry run, so a preview can never suggest such a body is valid.
+
+**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+
+**Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On \`code: "COUNTRY_LEVEL_LOCATION"\`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — those are text matches, not geo filters.
+
 
 WHEN TO USE: low-level mutation when you've already prepared the merged filter.
 

@@ -1,5 +1,57 @@
 # Changelog — @leadbay/mcp
 
+## 0.30.0 — 2026-08-17
+
+Encode the **single-country rule** across every location-accepting surface
+(product#3951). Each backend serves exactly ONE country, so a country name is
+never a location criterion — whole-country intent means omitting the filter.
+It never failed loudly: the admin-area index excludes country nodes
+(product#3885), so the value trigram-matched a same-named town ("France" → the
+commune of Francs, "United States" → Statesboro) and silently fenced the search
+to one village. 3/3 sessions in the 2026-08-02 acceptance eval passed one; an FR
+session burned six variants inside that fence before answering wrongly.
+
+- **The descriptions were telling the agent to do it.** This was a
+  contradiction sweep, not a missing rule. `followups-map.md.tmpl:47` said to
+  pass `countries ("France", "United States")` and advertised
+  `level 2 (country)` as searchable; `pull-followups`, `adjust-audience`,
+  `new-lens`, `tour-plan` and the `leadbay_followup_check_in` prompt each
+  legitimized country-level values. All rewritten to enumerate the levels the
+  argument accepts. (Their `"Bavaria"` examples went too — a German region on a
+  US/FR-only product.)
+- **New shared snippet** `heuristics/single-country-universe.md`, included by 8
+  tool descriptions and 3 prompts, carrying the rule, the measured failure and
+  the recovery step (on `COUNTRY_LEVEL_LOCATION`, re-issue the same call
+  without the location argument — do not re-spell it).
+- **Mechanical rejection** in `_country-guard.ts` + `_country-names.ts` (full
+  ISO 3166-1, English + French, no new dependency). Delivered in each tool's own
+  idiom: composites return `status: "country_level_location"` and write nothing,
+  `update_lens_filter` throws (including on `dry_run`), `list_locations` returns
+  its empty envelope. Always the first statement of `execute`, so a bad value
+  costs zero HTTP.
+- **Exemptions that keep real prospecting working:** a `sovereign` field
+  (Guadeloupe/Martinique/Réunion/Guyane valid on FR, Puerto Rico/Guam on US),
+  region homonyms (Georgia the state, Jersey), and no foreign alpha-2 rejection
+  on US, where 26 ISO codes double as state postal codes. Test sweeps over all
+  50 states + postal codes and all 13 régions + 101 départements hold the line.
+- **New audit** `test/audit/single-country-rule.test.ts` — asserts the rule is
+  present in all 11 surfaces AND that none of them still says a country is a
+  valid geo value, so the pre-fix state is unmergeable. It imports
+  `COUNTRY_LEVEL_LOCATION` from core so a rename cannot leave the prose
+  teaching a recovery for an error that no longer exists.
+- **`WORKFLOWS.md`**: row 39 gains the country-is-not-a-territory rule and a
+  success criterion; new row 52 "Country-wide scope — omit the location filter"
+  with its contract.
+- **Two eval scenarios** under `test/eval/scenarios/country-scope/` (over- and
+  under-deliver). Gated behind `EVAL=1`; CI protection is the audit.
+- Freed the budget for the snippet by de-padding the `pull-followups` NEXT
+  STEPS table (1109 chars of markdown column alignment, no content change) —
+  that tool was 52 chars from the 17000 cap.
+
+Known gap: a country passed as an already-resolved numeric admin-area id stays
+invisible client-side (deciding whether id "1234" is a country needs a lookup
+this client does not have). Tracked in product#3939; a test records it.
+
 ## 0.28.0 — 2026-07-31
 
 Add **`leadbay_top_accounts_to_activate`** — a prompt that builds a ranked

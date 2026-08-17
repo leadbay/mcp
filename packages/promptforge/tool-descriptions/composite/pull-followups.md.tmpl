@@ -10,7 +10,7 @@ routing:
     - "what should I follow up on"
     - "leads I've already worked"
     - "what's overdue"
-    - "leads in <city / state / country>"
+    - "leads in <city / state / region>"
     - "reach out to today"
     - "should reach out to"
     - "get back to"
@@ -24,14 +24,12 @@ routing:
       route_to: leadbay_pull_leads
     - phrase: "map / trip / in person"
       route_to: leadbay_followups_map
-  prefer_when: "known Monitor leads; pass `city` or `set_filter` for geo/sector/recency"
+  prefer_when: "known Monitor leads; pass `city` or `set_filter` for geo/sector/recency; NEVER a country name — a whole-country ask means NO geo filter"
   examples:
     positive:
       - "What should I follow up on this week?"
       - "What's overdue in my pipeline?"
       - "Show me leads I should reach out to today."
-      - "Who should I get back to today?"
-      - "Leads I should contact today."
     negative:
       - "Show me today's new leads."
       - "Draft an email to Sarah at Acme."
@@ -49,7 +47,7 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Pull KNOWN leads from the user's Monitor view — the re-engagement entry point. Use when the user asks "what should I follow up on", "leads I haven't contacted", "leads in [city]", "before my trip", or any phrasing implying pre-existing pipeline context. For NEW leads from Discover, use `leadbay_pull_leads`.
+Pull KNOWN leads from the user's Monitor view — the re-engagement entry point. Use for any phrasing implying pre-existing pipeline context. For NEW leads from Discover, use `leadbay_pull_leads`.
 
 Backend: wraps `GET /1.6/monitor?personal=&liked=&filtered=&count=&page=` plus, when `set_filter` is supplied, a preceding `POST /1.6/monitor/filter`. The Monitor filter is a single `FilterItem` per user — refreshing restores it.
 
@@ -68,7 +66,9 @@ Practical mapping from user phrasing to criterion:
 
 Geo filtering needs `admin_area_id` resolution — backend rejects free-text in `location_ids`. Pass `city: "<free-text>"` and the composite calls `/geo/search` internally, picks the best match, merges its id into `set_filter`. Ambiguous matches return `status: "ambiguous_locations"` + `location_ambiguities[]` — pick an id and re-call with `city_id`.
 
-**Place names go through `city`, NEVER `keywords`.** Any geographic token the user names — cities (`"Berlin"`), states/regions (`"Texas"`, `"Bavaria"`), countries (`"France"`), neighborhoods (`"Brooklyn"`) — resolves via `/geo/search` (all admin levels). A place name in `keywords` becomes a TEXT-MATCH against company descriptions (≈0 hits), not a real filter. If a place resolves ambiguously, surface the choices — never silently fall back to keyword search or the unfiltered view.
+**Place names go through `city`, NEVER `keywords`.** Any SUB-country geographic token the user names — cities (`"Berlin"`), states/regions (`"Texas"`), counties, neighborhoods (`"Brooklyn"`) — resolves via `/geo/search`. A place name in `keywords` becomes a TEXT-MATCH against company descriptions (≈0 hits), not a real filter. If a place resolves ambiguously, surface the choices — never silently fall back to keyword search or the unfiltered view.
+
+{{include:heuristics/single-country-universe}}
 
 **Pushback exclusion.** Leads with active pushback (`pushback_status` set, `pushback_until > today`) are excluded client-side; `total_excluded_by_pushback` reports how many rows were dropped.
 
