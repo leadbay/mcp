@@ -184,6 +184,30 @@ export async function collectJobSnapshot(
   return { ...page, items, next_since: cursor };
 }
 
+/** Sleep, but wake immediately if the request is cancelled.
+ *
+ *  A bare `setTimeout` cannot observe the signal until it fires, so a cancel
+ *  landing just after a poll waited out the FULL 4s interval — while the
+ *  server's own instructions promise the polling loop exits "within ≤2
+ *  seconds". Racing the timer against `abort` keeps that promise, and the
+ *  listener is removed either way so a long wait loop cannot accumulate one
+ *  listener per poll. */
+export function sleepUnlessAborted(
+  ms: number,
+  signal?: AbortSignal
+): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
+  });
+}
+
 /** Poll until the job is terminal or `waitSeconds` elapse (0 = single poll).
  *  Fires ctx.progress per poll and respects ctx.signal cancellation.
  *  `since`/`limit` are forwarded to every snapshot so a caller that block-waits
@@ -210,8 +234,9 @@ export async function waitForJob(
     // bound by most of an interval (MCP clients time calls out).
     const remainingMs = waitSeconds * 1000 - (Date.now() - startedAt);
     if (remainingMs <= 0) break;
-    await new Promise((resolve) =>
-      setTimeout(resolve, Math.min(MCP_JOB_POLL.intervalMs, remainingMs))
+    await sleepUnlessAborted(
+      Math.min(MCP_JOB_POLL.intervalMs, remainingMs),
+      ctx?.signal
     );
     if (ctx?.signal?.aborted) break;
     snap = await collectJobSnapshot(client, jobId, since, limit);
@@ -461,32 +486,50 @@ const COUNTRY_ALIASES = [
   "republique francaise",
 ];
 
-/** Country names that are ALSO a legitimate administrative fence inside a
- *  Leadbay universe, so rejecting them would break a correct search:
+/** Country names that are ALSO a legitimate administrative fence — but only
+ *  inside ONE universe, which is why these are keyed by region rather than
+ *  subtracted globally. Each universe is single-country, so a name that is a
+ *  state in the US universe is nothing but a country in the French one:
  *
  *  - `Georgia` is a US state before it is a country, and one of the most
- *    common state fences a US account will ask for.
+ *    common state fences a US account will ask for. On a FRANCE account it
+ *    can only mean the country, and must still be rejected.
  *  - The French overseas regions and collectivities each carry their own
  *    ISO 3166-1 entry, so a comprehensive country list swallows every one of
  *    them — while "leads in Martinique" is exactly the kind of regional fence
- *    this parameter exists for.
+ *    this parameter exists for. On a US account they are foreign countries.
  *
  *  Municipality collisions (`Lebanon`, `Peru`, `Mexico`, … are all US town
  *  names) are deliberately NOT exempted: a bare town name identical to a
  *  country is genuinely ambiguous, and the rejection is loud and recoverable —
  *  `Lebanon, Kentucky` folds to a two-word key that never matches. A silent
  *  fence to one village is the failure this guard exists to prevent. */
-const SUBNATIONAL_EXEMPTIONS = new Set(
-  [
-    "georgia", "georgie",
-    "guadeloupe", "martinique", "reunion", "mayotte",
-    "french guiana", "guyane francaise",
-    "new caledonia", "nouvelle caledonie",
-    "french polynesia", "polynesie francaise",
-    "saint martin", "saint barthelemy", "saint pierre and miquelon",
-    "saint pierre et miquelon", "wallis and futuna", "wallis et futuna",
-  ].map(countryKey),
+const SUBNATIONAL_EXEMPTIONS: Record<string, ReadonlySet<string>> = {
+  us: new Set(["georgia", "georgie"].map(countryKey)),
+  fr: new Set(
+    [
+      "guadeloupe", "martinique", "reunion", "mayotte",
+      "french guiana", "guyane francaise",
+      "new caledonia", "nouvelle caledonie",
+      "french polynesia", "polynesie francaise",
+      "saint martin", "saint barthelemy", "saint pierre and miquelon",
+      "saint pierre et miquelon", "wallis and futuna", "wallis et futuna",
+    ].map(countryKey),
+  ),
+};
+
+/** Union of every region's exemptions — the fallback when the caller's region
+ *  is unknown. Deliberately permissive: without a region we cannot tell a
+ *  legitimate state fence from a foreign country, and wrongly REJECTING a
+ *  correct search is the louder failure. */
+const ALL_EXEMPTIONS: ReadonlySet<string> = new Set(
+  Object.values(SUBNATIONAL_EXEMPTIONS).flatMap((s) => [...s]),
 );
+
+function exemptionsFor(region?: string): ReadonlySet<string> {
+  const key = typeof region === "string" ? region.trim().toLowerCase() : "";
+  return SUBNATIONAL_EXEMPTIONS[key] ?? ALL_EXEMPTIONS;
+}
 
 /** Every ISO 3166-1 country name, in English and French, folded to the same
  *  comparison key as the input. Built from `Intl.DisplayNames` rather than a
@@ -520,7 +563,8 @@ function buildCountryLocationValues(): Set<string> {
     // the explicit aliases keeps the originally-observed failure covered
     // rather than throwing at import time.
   }
-  for (const exempt of SUBNATIONAL_EXEMPTIONS) values.delete(exempt);
+  // Exemptions are NOT subtracted here — they are region-scoped and applied
+  // per call. Baking them in would exempt a French region on a US account.
   return values;
 }
 
@@ -565,8 +609,10 @@ export const MAX_EXCLUDE_LEAD_IDS = 500;
 
 export function rejectOversizedExclusions(ids: unknown): void {
   if (ids === undefined || ids === null) return;
-  // Count what would actually be SENT — canonicalIdSet drops non-uuids and
-  // dedupes, so a list that merely repeats itself is not a real overflow.
+  // Count what would actually be SENT. That is only true because the submit
+  // body posts `canonicalIdSet(exclude_lead_ids)` too — counting the canonical
+  // list while wiring the raw one would clear a 600-entry array that dedupes
+  // to 400 and then let the backend refuse it anyway.
   const unique = canonicalIdSet(ids);
   if (unique.length <= MAX_EXCLUDE_LEAD_IDS) return;
   throw {
@@ -577,8 +623,16 @@ export function rejectOversizedExclusions(ids: unknown): void {
   };
 }
 
-export function rejectCountryLocations(locations: unknown): void {
+export function rejectCountryLocations(
+  locations: unknown,
+  region?: string
+): void {
   if (locations === undefined || locations === null) return;
+  // Exemptions depend on WHICH universe is asking: `Georgia` is a state on a
+  // US account and nothing but a country on a French one, and the French
+  // overseas regions are the mirror image. A process-wide exemption set let
+  // each one bypass the guard on the wrong side and reach the backend.
+  const exempt = exemptionsFor(region);
   // The server does not validate the schema before dispatch, so an agent can
   // send `filters.locations` as a bare string. Treating a non-array as "no
   // locations" let a scalar "United States" sail past the guard and reach the
@@ -586,7 +640,9 @@ export function rejectCountryLocations(locations: unknown): void {
   // exists to stop. Normalize to a one-item list instead of returning.
   const list = Array.isArray(locations) ? locations : [locations];
   for (const loc of list) {
-    if (typeof loc === "string" && COUNTRY_LOCATION_VALUES.has(countryKey(loc))) {
+    if (typeof loc !== "string") continue;
+    const key = countryKey(loc);
+    if (!exempt.has(key) && COUNTRY_LOCATION_VALUES.has(key)) {
       throw {
         error: true,
         code: "COUNTRY_LEVEL_LOCATION",

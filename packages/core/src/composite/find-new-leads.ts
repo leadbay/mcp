@@ -225,7 +225,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       "channels",
       "exclude_lead_ids",
     ]);
-    rejectCountryLocations(params.filters?.locations);
+    rejectCountryLocations(params.filters?.locations, client.region);
     rejectOversizedExclusions(params.exclude_lead_ids);
 
     // Same spend gate as leadbay_qualify_leads. The trigger differs: `qualify`
@@ -301,7 +301,14 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       contact_titles: params.contact_titles,
       title_gate: params.title_gate,
       channels: params.channels,
-      exclude_lead_ids: params.exclude_lead_ids,
+      // Wire the SAME list the cap guard counted and the idempotency key was
+      // derived from. Posting the raw array instead let a 600-entry list that
+      // dedupes to 400 clear the guard and still be refused by the backend.
+      // Kept undefined when absent so compactBody drops it rather than
+      // sending an empty array.
+      exclude_lead_ids: params.exclude_lead_ids
+        ? canonicalIdSet(params.exclude_lead_ids)
+        : undefined,
       novelty: params.novelty,
       max_cost: params.max_cost,
       exploration_cap: params.exploration_cap,

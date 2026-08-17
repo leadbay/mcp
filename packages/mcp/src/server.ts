@@ -281,6 +281,14 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
     "enrich_titles",
     "bulk_enrich_status",
     "qualify_status",
+    // The MCP-first delivery jobs block-poll for 45s by default and up to
+    // 180s. Without a progressToken ctx.progress is absent, so the call looks
+    // frozen for minutes — the exact case this paragraph exists to prevent.
+    // `.filter(has)` keeps the iter-12 invariant: a deployment without the
+    // delivery flag never sees them named.
+    "find_new_leads",
+    "qualify_leads",
+    "lead_job_status",
   ].filter((n) => has(`leadbay_${n}`));
   const elicitTools = [
     "refine_prompt clarifications",
