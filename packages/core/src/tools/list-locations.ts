@@ -1,6 +1,10 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, GeoSearchResponse } from "../types.js";
 import { leadbay_list_locations as LIST_LOCATIONS_DESCRIPTION } from "../tool-descriptions.generated.js";
+import {
+  countryLocationStatus,
+  detectCountryLocations,
+} from "../composite/_country-guard.js";
 
 interface ListLocationsParams {
   q: string;
@@ -43,12 +47,37 @@ export const listLocations: Tool<ListLocationsParams, GeoSearchResponse> = {
           "Parent admin areas referenced by `results[].parent_ids`, returned for breadcrumb / hover-disambiguation rendering.",
         items: { type: "object" },
       },
+      status: {
+        type: "string",
+        description:
+          "`country_level_location` when `q` was a country name — `results` is empty on purpose. This workspace serves exactly ONE country, so there is no country to look up and no id to pass on. Absent on the happy path.",
+      },
+      country_locations: {
+        type: "array",
+        description:
+          "Per offending value: {value, param, kind, country}. Only present when `status === 'country_level_location'`.",
+        items: { type: "object" },
+      },
     },
     required: ["results", "parents"],
   },
   execute: async (client: LeadbayClient, params: ListLocationsParams) => {
     const q = (params.q ?? "").trim();
     if (!q) return { results: [], parents: [] };
+    // This is the tool that HANDS OUT the ids other tools filter on, so
+    // refusing a country lookup here is the single highest-leverage stop:
+    // there is no country node to return, only a same-named town, and an id
+    // pasted from such a result fences the caller to one village with no
+    // visible sign (product#3951). Matches this tool's own idiom — an empty
+    // `q` already returns an envelope rather than throwing.
+    const countryHits = detectCountryLocations(q, "q", client.region);
+    if (countryHits.length > 0) {
+      return {
+        results: [],
+        parents: [],
+        ...countryLocationStatus(countryHits, client.region),
+      };
+    }
     const path = `/geo/search?q=${encodeURIComponent(q)}`;
     return await client.request<GeoSearchResponse>("GET", path);
   },

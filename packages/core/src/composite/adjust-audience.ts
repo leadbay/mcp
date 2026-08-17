@@ -9,6 +9,10 @@ import type {
 } from "../types.js";
 
 import { resolveLocations } from "./_geo-helpers.js";
+import {
+  countryLocationStatus,
+  detectCountryLocationsIn,
+} from "./_country-guard.js";
 import { leadbay_adjust_audience as ADJUST_AUDIENCE_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface AdjustAudienceParams {
   sectors?: string[];           // free text or sector ids
@@ -340,12 +344,18 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
   outputSchema: {
     type: "object",
     description:
-      "Return shapes: 'applied' on success; 'ambiguous_sectors' when free-text sectors matched multiple candidates (re-call with sector_ids); 'ambiguous_locations' when free-text locations didn't resolve to one area — re-call with the chosen id via the SAME axis it came from (an include pick → location_ids; an EXCLUDE pick → exclude_locations, NOT location_ids, which would include it); 'lens_not_found' / 'ambiguous_lens' when a lensName didn't resolve to exactly one lens (re-call with lensId or an exact lensName).",
+      "Return shapes: 'applied' on success; 'ambiguous_sectors' when free-text sectors matched multiple candidates (re-call with sector_ids); 'ambiguous_locations' when free-text locations didn't resolve to one area — re-call with the chosen id via the SAME axis it came from (an include pick → location_ids; an EXCLUDE pick → exclude_locations, NOT location_ids, which would include it); 'country_level_location' when a country name was passed as a location (drop it — nothing was read or written); 'lens_not_found' / 'ambiguous_lens' when a lensName didn't resolve to exactly one lens (re-call with lensId or an exact lensName).",
     properties: {
       status: {
         type: "string",
         description:
-          "'applied', 'ambiguous_sectors', 'ambiguous_locations', 'lens_not_found', or 'ambiguous_lens'.",
+          "'applied', 'ambiguous_sectors', 'ambiguous_locations', 'country_level_location', 'lens_not_found', or 'ambiguous_lens'.",
+      },
+      country_locations: {
+        type: "array",
+        description:
+          "On 'country_level_location': per offending value {value, param, kind, country}. A country name is never a location criterion — each workspace serves exactly ONE country, so whole-country intent means passing no location at all. The lens was NOT modified. Do NOT retry with another spelling or a nearby city.",
+        items: { type: "object" },
       },
       sector_ambiguities: {
         type: "array",
@@ -395,6 +405,23 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
     params: AdjustAudienceParams,
     ctx?: ToolContext
   ) => {
+    // Country-level geo values are rejected before the FIRST request. This
+    // tool MERGES criteria as a union rather than replacing them, so a bad
+    // value that got through would permanently add a village-sized fence to
+    // the lens filter — bailing here means nothing is read and nothing is
+    // written (product#3951).
+    const countryHits = detectCountryLocationsIn(
+      [
+        { input: params.locations, param: "locations" },
+        { input: params.location_ids, param: "location_ids" },
+        { input: params.exclude_locations, param: "exclude_locations" },
+      ],
+      client.region
+    );
+    if (countryHits.length > 0) {
+      return countryLocationStatus(countryHits, client.region);
+    }
+
     const me = await client.resolveMe();
     const isAdmin = me.admin === true;
 

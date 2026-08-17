@@ -9,6 +9,10 @@ import type {
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
 import { reshapeWebFetchContent } from "./_web-fetch-helpers.js";
 import { resolveLocations } from "./_geo-helpers.js";
+import {
+  countryLocationStatus,
+  detectCountryLocationsIn,
+} from "./_country-guard.js";
 
 import { leadbay_scan_portfolio_signals as SCAN_PORTFOLIO_SIGNALS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -282,6 +286,30 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
       if (params.leadIds.length > maxLeads) truncatedAt = maxLeads;
       portfolio = sliced.map((id) => ({ id, name: null, location: null }));
     } else {
+      // A country in `city` is refused before any request — it would resolve
+      // to a same-named commune and silently scan one village (product#3951).
+      // Deliberately inside this branch: when `leadIds` is supplied the schema
+      // documents `city` as ignored, so failing on it would be a false alarm.
+      // Unwrapped by withAgentMemoryMeta, which would cost a resolveMe() call.
+      const countryHits = detectCountryLocationsIn(
+        [
+          { input: params.city, param: "city" },
+          { input: params.city_id, param: "city_id" },
+        ],
+        client.region
+      );
+      if (countryHits.length > 0) {
+        return {
+          ...countryLocationStatus(countryHits, client.region),
+          matched: [],
+          not_researched: [],
+          scanned_count: 0,
+          matched_count: 0,
+          quota_exceeded: false,
+          _meta: { region: client.region },
+        };
+      }
+
       // Geo / filter scope, then paginate /monitor (same store-then-apply
       // mechanism as leadbay_pull_followups).
       let effectiveSetFilter: MonitorFilterItem | undefined = params.set_filter;

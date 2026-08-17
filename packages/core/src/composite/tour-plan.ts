@@ -16,6 +16,10 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 import { pullFollowups } from "./pull-followups.js";
 import { pullLeads } from "./pull-leads.js";
+import {
+  countryLocationStatus,
+  detectCountryLocationsIn,
+} from "./_country-guard.js";
 
 import { leadbay_tour_plan as TOUR_PLAN_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -244,6 +248,36 @@ export const tourPlan: Tool<TourPlanParams> = {
     params: TourPlanParams,
     ctx?: ToolContext,
   ) => {
+    // Guard here rather than relying on the delegated pullFollowups call:
+    // the two pulls run in parallel, so leaving it to the delegate would
+    // still spend the pullLeads request on a doomed tour. A country in `city`
+    // would silently fence the itinerary to a same-named commune
+    // (product#3951).
+    const countryHits = detectCountryLocationsIn(
+      [
+        { input: params.city, param: "city" },
+        { input: params.city_id, param: "city_id" },
+      ],
+      client.region
+    );
+    if (countryHits.length > 0) {
+      return {
+        ...countryLocationStatus(countryHits, client.region),
+        monitor_leads: [],
+        discover_leads: [],
+        discover_filter_note: null,
+        map_locations: [],
+        map_summary: {
+          total_leads: 0,
+          leads_with_coords: 0,
+          leads_without_coords: 0,
+        },
+        city: params.city ?? null,
+        city_id: params.city_id ?? null,
+        _meta: { region: client.region },
+      };
+    }
+
     const followupsCount = params.followups_count ?? DEFAULT_FOLLOWUPS_COUNT;
     const discoverCount = params.discover_count ?? DEFAULT_DISCOVER_COUNT;
 

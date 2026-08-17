@@ -17,6 +17,10 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, LensPayload, FilterPayload } from "../types.js";
 import { resolveSectors, mergeFilter, filterWriteBody } from "./adjust-audience.js";
 import { resolveLocations } from "./_geo-helpers.js";
+import {
+  countryLocationStatus,
+  detectCountryLocationsIn,
+} from "./_country-guard.js";
 
 import { leadbay_new_lens as NEW_LENS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -98,9 +102,9 @@ export const newLens: Tool<NewLensParams> = {
   outputSchema: {
     type: "object",
     description:
-      "'preview' (default, NOTHING created — confirm with the user then re-call with confirm:true); 'created' on success; 'ambiguous_sectors' / 'ambiguous_locations' when free-text sectors / locations didn't resolve (re-call with ids — the lens was NOT created).",
+      "'preview' (default, NOTHING created — confirm with the user then re-call with confirm:true); 'created' on success; 'ambiguous_sectors' / 'ambiguous_locations' when free-text sectors / locations didn't resolve (re-call with ids — the lens was NOT created); 'country_level_location' when a country name was passed as a location (drop it — the lens was NOT created).",
     properties: {
-      status: { type: "string", description: "'preview', 'created', 'ambiguous_sectors', 'ambiguous_locations', or 'orphan_created' (filter write failed + cleanup failed)." },
+      status: { type: "string", description: "'preview', 'created', 'ambiguous_sectors', 'ambiguous_locations', 'country_level_location', or 'orphan_created' (filter write failed + cleanup failed)." },
       will_create: {
         type: "object",
         description:
@@ -123,6 +127,12 @@ export const newLens: Tool<NewLensParams> = {
           "On 'ambiguous_locations': per text {location_text, matches:[{id,name,country,level,score}]}. Re-call the chosen id via the SAME axis the text came from — an include text → locations; a text from exclude_locations → exclude_locations (NOT locations, which would include the area the user asked to exclude). The `message` field names the correct param per text.",
         items: { type: "object" },
       },
+      country_locations: {
+        type: "array",
+        description:
+          "On 'country_level_location': per offending value {value, param, kind, country}. A country name is never a location criterion — each workspace serves exactly ONE country, so whole-country intent means omitting `locations` entirely. Do NOT retry with another spelling or a nearby city.",
+        items: { type: "object" },
+      },
       filter_applied: { type: "object", description: "On 'created': the FilterPayload POSTed to the new lens." },
       computing_wishlist: {
         type: "boolean",
@@ -139,6 +149,21 @@ export const newLens: Tool<NewLensParams> = {
     params: NewLensParams,
     ctx?: ToolContext
   ) => {
+    // 0. Country-level geo values are rejected BEFORE anything else, so a
+    //    doomed lens costs neither a taxonomy fetch nor a /geo/search call.
+    //    A country name would silently resolve to a same-named commune and
+    //    leave a lens permanently fenced to one village (product#3951).
+    const countryHits = detectCountryLocationsIn(
+      [
+        { input: params.locations, param: "locations" },
+        { input: params.exclude_locations, param: "exclude_locations" },
+      ],
+      client.region
+    );
+    if (countryHits.length > 0) {
+      return countryLocationStatus(countryHits, client.region);
+    }
+
     // 1. Resolve sectors FIRST — if any don't resolve, surface and bail before
     //    creating a lens, so we never leave a half-built lens behind.
     const includeRes = await resolveSectors(

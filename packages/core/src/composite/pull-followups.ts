@@ -4,6 +4,10 @@ import { withAgentMemoryMeta } from "../agent-memory/index.js";
 
 import { leadbay_pull_followups as PULL_FOLLOWUPS_DESCRIPTION } from "../tool-descriptions.generated.js";
 import { resolveLocations } from "./_geo-helpers.js";
+import {
+  countryLocationStatus,
+  detectCountryLocationsIn,
+} from "./_country-guard.js";
 
 // B6/B7: coerce the legacy literal `"null"` LinkedIn string back to JSON null
 // across every contact-shaped object the response emits.
@@ -172,12 +176,18 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
       status: {
         type: "string",
         description:
-          "`ambiguous_locations` when a passed `city` matched multiple admin_areas; the agent picks an id from `location_ambiguities` and re-calls with `city_id`. Absent on the happy path.",
+          "`ambiguous_locations` when a passed `city` matched multiple admin_areas; the agent picks an id from `location_ambiguities` and re-calls with `city_id`. `country_level_location` when `city` was a country name — drop the argument, do not re-call with a spelling variant. Absent on the happy path.",
       },
       location_ambiguities: {
         type: "array",
         description:
           "Per ambiguous city: {location_text, matches:[{id, name, country, level, score}]}. Only present when `status === 'ambiguous_locations'`.",
+        items: { type: "object" },
+      },
+      country_locations: {
+        type: "array",
+        description:
+          "Per offending value: {value, param, kind, country}. Only present when `status === 'country_level_location'`. This workspace serves exactly ONE country, so a whole-country ask needs NO `city` argument at all — re-call without it and say the view covers everything.",
         items: { type: "object" },
       },
       _meta: {
@@ -202,6 +212,30 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
     const liked = params.liked ?? false;
     const page = params.page ?? 0;
     const count = Math.min(params.count ?? 20, 200);
+
+    // A country name in `city` is refused before any request. It would not
+    // fail loudly: the admin-area index has no country nodes, so the resolver
+    // trigram-matches a same-named commune ("France" → Francs) and the whole
+    // view is silently fenced to one village (product#3951). The envelope is
+    // deliberately NOT wrapped in withAgentMemoryMeta — that helper calls
+    // resolveMe(), which would make a doomed call cost an HTTP round-trip.
+    const countryHits = detectCountryLocationsIn(
+      [
+        { input: params.city, param: "city" },
+        { input: params.city_id, param: "city_id" },
+      ],
+      client.region
+    );
+    if (countryHits.length > 0) {
+      return {
+        ...countryLocationStatus(countryHits, client.region),
+        leads: [],
+        active_filters: null,
+        pagination: null,
+        total_excluded_by_pushback: 0,
+        _meta: { region: client.region, latency_ms: null },
+      };
+    }
 
     // Geo-shortcut: resolve city / city_id → location_ids, then merge into
     // the effective set_filter. city_id bypasses the resolver; city goes

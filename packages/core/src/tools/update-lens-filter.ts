@@ -1,6 +1,10 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, FilterPayload } from "../types.js";
 import { leadbay_update_lens_filter as UPDATE_LENS_FILTER_DESCRIPTION } from "../tool-descriptions.generated.js";
+import {
+  countryLocationEnvelope,
+  detectCountryLocationsInFilter,
+} from "../composite/_country-guard.js";
 
 interface UpdateLensFilterParams {
   lensId: number;
@@ -41,6 +45,25 @@ export const updateLensFilter: Tool<UpdateLensFilterParams> = {
     client: LeadbayClient,
     params: UpdateLensFilterParams
   ) => {
+    // Checked BEFORE the dry_run short-circuit on purpose: a dry run that
+    // cheerfully echoed `would_call` for a country-bearing payload would
+    // teach the agent the payload is valid. This is the rawest write path to
+    // a location_ids criterion, so it is also the easiest place to smuggle a
+    // country in (product#3951).
+    const countryHits = detectCountryLocationsInFilter(
+      params.filter,
+      client.region
+    );
+    if (countryHits.length > 0) {
+      const envelope = countryLocationEnvelope(countryHits, client.region);
+      throw {
+        error: true,
+        code: envelope.code,
+        message: envelope.message,
+        hint: envelope.hint,
+      };
+    }
+
     if (params.dry_run) {
       return {
         dry_run: true,
