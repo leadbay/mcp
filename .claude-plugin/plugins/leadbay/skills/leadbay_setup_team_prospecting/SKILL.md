@@ -30,9 +30,15 @@ On `code: "COUNTRY_LEVEL_LOCATION"` do NOT retry with another spelling or a near
 Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.
 
 
-**Before calling:** if my `audience` carries a whole-country scope ("plumbers across the US", "partout en France"), drop that clause rather than passing it through — the workspace already covers exactly one country, and a country label in the audience just fences the lens to a same-named village. Say that you dropped it. Keep any sub-country place (state, *région*, *département*, county, city) as-is.
+**Before calling, classify any country in my `audience` — the three cases do NOT get the same treatment:**
 
-Call `leadbay_refine_prompt({user_prompt: "<the audience (as extracted above)>"})`. This handles the clarification protocol natively — if the system needs more info (e.g. industry disambiguation, geography precision), it returns `status: "clarification_needed"` with options. Surface those to me; on my answer, re-call `leadbay_refine_prompt` until the prompt converges.
+- **This workspace's own country** ("plumbers across the US" on a US workspace) → drop only that clause and keep everything else. Say you dropped it, then continue: the lens covers the whole workspace anyway.
+- **A different country** ("plumbers across France" on a US workspace) → **STOP. Create nothing.** Do NOT drop the country and build a lens for this workspace instead — that would hand me a US lens, plus campaigns, presented as the answer to a France request. Say this workspace holds only its own country's companies, so the ask cannot be filled here, and end your turn.
+- **A supra-national scope** ("plumbers across EMEA") → also stop: name what the workspace covers and ask whether I want that instead, rather than assuming it.
+
+Keep any sub-country place (state, *région*, *département*, county, city) exactly as-is.
+
+Call `leadbay_refine_prompt({user_prompt: "<my audience with the home-country clause removed>"})` — pass the SANITIZED text, not the raw argument, or the country label reaches the lens anyway and fences it to a same-named village. This handles the clarification protocol natively — if the system needs more info (e.g. industry disambiguation, geography precision), it returns `status: "clarification_needed"` with options. Surface those to me; on my answer, re-call `leadbay_refine_prompt` until the prompt converges.
 
 When the prompt has converged, call `leadbay_create_lens({user_prompt: <refined>, name: "<short descriptive name>"})` to create a draft lens, then `leadbay_promote_lens({lensId})` to make it the active lens.
 

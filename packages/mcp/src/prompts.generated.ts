@@ -1892,13 +1892,19 @@ Refine the Leadbay audience prompt to: {{arg:instruction}}
 A refine prompt shapes the KIND of company, never WHERE it is. Classify my instruction
 FIRST, before any tool call:
 
-- **Whole-country or supra-national scope** ("the whole US", "partout en France",
-  "nationwide", "EU-wide") → **STOP HERE. Call NOTHING.** Do not continue to PHASE 1:
-  \`leadbay_refine_prompt\` would overwrite my qualitative audience prompt and kick off an
-  intelligence recompute to express a scope this workspace already has. Tell me the
-  workspace serves exactly ONE country so there is nothing to set, offer the axes that do
-  narrow an audience (sector, size, or a sub-country region / state / county / city), and
-  end your turn.
+- **This workspace's own country** ("the whole US" on a US workspace, "nationwide") →
+  **STOP HERE. Call NOTHING.** Do not continue to PHASE 1: \`leadbay_refine_prompt\` would
+  overwrite my qualitative audience prompt and kick off an intelligence recompute to
+  express a scope this workspace already has. Tell me there is nothing to set because the
+  workspace already covers exactly that, offer the axes that do narrow an audience
+  (sector, size, or a sub-country region / state / county / city), and end your turn.
+- **A DIFFERENT country** ("partout en France" on a US workspace) → **STOP HERE too, but
+  do not say "there is nothing to set" — that is false.** The ask is UNSUPPORTED, not
+  already-satisfied: this workspace holds only its own country's companies, so there are
+  no leads there to scope to. Say so plainly, do not offer an unfiltered view as if it
+  answered the request, and end your turn.
+- **A supra-national scope** ("EU-wide", "EMEA") → stop as well: name what the workspace
+  covers and ask whether I want that instead, rather than assuming it.
 - **A sub-country place** ("prospects in Texas", "restrict to Indre-et-Loire") → **do not
   continue to PHASE 1 either.** A place is not a qualitative refinement: route it to
   \`leadbay_adjust_audience({locations: [...]})\`, say why, and stop.
@@ -2076,9 +2082,15 @@ On \`code: "COUNTRY_LEVEL_LOCATION"\` do NOT retry with another spelling or a ne
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
 
-**Before calling:** if my \`audience\` carries a whole-country scope ("plumbers across the US", "partout en France"), drop that clause rather than passing it through — the workspace already covers exactly one country, and a country label in the audience just fences the lens to a same-named village. Say that you dropped it. Keep any sub-country place (state, *région*, *département*, county, city) as-is.
+**Before calling, classify any country in my \`audience\` — the three cases do NOT get the same treatment:**
 
-Call \`leadbay_refine_prompt({user_prompt: "{{arg:audience}}"})\`. This handles the clarification protocol natively — if the system needs more info (e.g. industry disambiguation, geography precision), it returns \`status: "clarification_needed"\` with options. Surface those to me; on my answer, re-call \`leadbay_refine_prompt\` until the prompt converges.
+- **This workspace's own country** ("plumbers across the US" on a US workspace) → drop only that clause and keep everything else. Say you dropped it, then continue: the lens covers the whole workspace anyway.
+- **A different country** ("plumbers across France" on a US workspace) → **STOP. Create nothing.** Do NOT drop the country and build a lens for this workspace instead — that would hand me a US lens, plus campaigns, presented as the answer to a France request. Say this workspace holds only its own country's companies, so the ask cannot be filled here, and end your turn.
+- **A supra-national scope** ("plumbers across EMEA") → also stop: name what the workspace covers and ask whether I want that instead, rather than assuming it.
+
+Keep any sub-country place (state, *région*, *département*, county, city) exactly as-is.
+
+Call \`leadbay_refine_prompt({user_prompt: "<my audience with the home-country clause removed>"})\` — pass the SANITIZED text, not the raw argument, or the country label reaches the lens anyway and fences it to a same-named village. This handles the clarification protocol natively — if the system needs more info (e.g. industry disambiguation, geography precision), it returns \`status: "clarification_needed"\` with options. Surface those to me; on my answer, re-call \`leadbay_refine_prompt\` until the prompt converges.
 
 When the prompt has converged, call \`leadbay_create_lens({user_prompt: <refined>, name: "<short descriptive name>"})\` to create a draft lens, then \`leadbay_promote_lens({lensId})\` to make it the active lens.
 
@@ -2246,7 +2258,10 @@ If I gave a \`territory\`, scope discovery to it now, and **make sure the scopin
   ⚠ **Location criteria MERGE — they do not replace.** \`adjust_audience\` unions the new \`location_ids\` into any existing include-location criterion (and \`pull_followups\` merges its \`city\` shortcut the same way). So asking for "Région Ouest" on a lens already scoped to Paris yields **Paris OR Région Ouest** while your header claims Région Ouest. Before adding a territory, check the current filter: if it already carries locations you were not asked to keep, clear or replace them (or build a fresh territory-only lens for this one-off plan) rather than stacking a union.
 - **If a new lens is genuinely warranted: \`leadbay_new_lens\` is a two-step call.** It returns \`status:"preview"\` and creates NOTHING unless you re-call the same args with \`confirm:true\`. So: preview → confirm → take \`lens.id\` from the \`created\` response → pass that id as \`lensId\` on every subsequent pull. Never continue on the previous active lens after previewing a new one; that delivers the old audience under a new heading.
 
-If the territory I named is a country, scope NOTHING — say the plan already covers the whole workspace and offer sector / size / sub-country region instead.
+If the \`territory\` I named is a country, which one decides what you do:
+
+- **This workspace's own country** → scope NOTHING and carry on: say the plan already covers the whole workspace, and offer sector / size / sub-country region as the axes that would actually narrow it.
+- **A different country, or a supra-national scope** → do NOT simply drop the scope and build the plan anyway. An unfiltered plan is this workspace's own accounts, which is not an answer to a request about somewhere else — delivering it under my heading would be a confidently wrong plan. Say the ask cannot be filled from this workspace and stop.
 
 **One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France). The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 

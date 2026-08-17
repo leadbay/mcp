@@ -91,7 +91,10 @@ If I gave a `territory`, scope discovery to it now, and **make sure the scoping 
   ⚠ **Location criteria MERGE — they do not replace.** `adjust_audience` unions the new `location_ids` into any existing include-location criterion (and `pull_followups` merges its `city` shortcut the same way). So asking for "Région Ouest" on a lens already scoped to Paris yields **Paris OR Région Ouest** while your header claims Région Ouest. Before adding a territory, check the current filter: if it already carries locations you were not asked to keep, clear or replace them (or build a fresh territory-only lens for this one-off plan) rather than stacking a union.
 - **If a new lens is genuinely warranted: `leadbay_new_lens` is a two-step call.** It returns `status:"preview"` and creates NOTHING unless you re-call the same args with `confirm:true`. So: preview → confirm → take `lens.id` from the `created` response → pass that id as `lensId` on every subsequent pull. Never continue on the previous active lens after previewing a new one; that delivers the old audience under a new heading.
 
-If the territory I named is a country, scope NOTHING — say the plan already covers the whole workspace and offer sector / size / sub-country region instead.
+If the `territory` I named is a country, which one decides what you do:
+
+- **This workspace's own country** → scope NOTHING and carry on: say the plan already covers the whole workspace, and offer sector / size / sub-country region as the axes that would actually narrow it.
+- **A different country, or a supra-national scope** → do NOT simply drop the scope and build the plan anyway. An unfiltered plan is this workspace's own accounts, which is not an answer to a request about somewhere else — delivering it under my heading would be a confidently wrong plan. Say the ask cannot be filled from this workspace and stop.
 
 {{include:heuristics/single-country-universe}}
 

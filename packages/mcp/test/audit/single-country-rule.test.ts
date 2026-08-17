@@ -213,6 +213,66 @@ describe("audit: single-country-universe rule", () => {
     }
   );
 
+  /**
+   * Prompts that GATE on a country themselves, rather than only carrying the
+   * shared rule. Each one decides whether to stop, so each one has to make the
+   * home-vs-foreign distinction in its own words — and each one got it wrong on
+   * the first pass, in the same way: a combined "whole-country or supra-national"
+   * branch that answers a France request with US data.
+   */
+  const PROMPTS_WITH_COUNTRY_GATE = [
+    "leadbay_refine_audience",
+    "leadbay_setup_team_prospecting",
+    "leadbay_top_accounts_to_activate",
+  ] as const;
+
+  it.each(PROMPTS_WITH_COUNTRY_GATE)(
+    "%s gates on a country WITHOUT conflating home with foreign",
+    (promptName) => {
+      const body = withoutRule((Prompts as Record<string, string>)[promptName]);
+      expect(body, `prompt ${promptName} is missing from prompts.generated.ts`).toBeTruthy();
+
+      // It must name the foreign case separately from the home case.
+      expect(
+        body,
+        `${promptName} gates on a country but never distinguishes a DIFFERENT country. Only the home country maps to "nothing to set" / an unfiltered result; a foreign ask is UNSUPPORTED and must be reported as such (product#3951)`
+      ).toMatch(/a different country/i);
+
+      // And it must not carry the constructions that conflated them. Each of
+      // these shipped once and answered a foreign request with home-country data.
+      const conflations: ReadonlyArray<{ pattern: RegExp; origin: string }> = [
+        {
+          pattern: /whole-country or supra-national/i,
+          origin: 'the combined "whole-country or supra-national" branch',
+        },
+        {
+          pattern: /is a country, scope NOTHING/i,
+          origin: '"if the territory is a country, scope NOTHING"',
+        },
+        {
+          pattern: /carries a whole-country scope[^.]*drop that clause/i,
+          origin: '"carries a whole-country scope → drop that clause"',
+        },
+      ];
+      const found = conflations.filter((c) => c.pattern.test(body));
+      expect(
+        found.map((c) => c.origin),
+        `${promptName} still treats any country as the home country. Split the branches: home → proceed unfiltered; foreign / supra-national → stop and report it unsupported`
+      ).toEqual([]);
+    }
+  );
+
+  it("the team-setup prompt passes a SANITIZED audience, not the raw argument", () => {
+    // Dropping the country in prose while still interpolating {{arg:audience}}
+    // sent the country label to the lens anyway.
+    const body = (Prompts as Record<string, string>).leadbay_setup_team_prospecting;
+    expect(body).toMatch(/pass the SANITIZED text/i);
+    expect(
+      body,
+      "the refine_prompt call must not interpolate the raw audience argument after asking the agent to strip a country from it"
+    ).not.toMatch(/leadbay_refine_prompt\(\{user_prompt: "\{\{arg:audience\}\}"\}\)/);
+  });
+
   it("no prompt legitimizes country-level place names", () => {
     const violations: string[] = [];
     for (const promptName of PROMPTS_WITH_GEO_INTENT) {
