@@ -100,10 +100,15 @@ describe("resolveClientFromToken — single-region validation probe", () => {
     const { requests } = mockHttp([
       { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "x" } },
       { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "x" } },
+      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "x" } },
+      { method: "GET", path: "/1.6/users/me", status: 401, body: { error: true, code: "AUTH_EXPIRED", message: "x" } },
     ]);
     const result = await resolveClientFromToken("o.trulyexpired");
     expect(result.authState).toBe("expired");
-    expect(requests).toHaveLength(2); // probed both before declaring expired
+    // Codex P1 (#162): the resolver now retries the primary region once before
+    // declaring expiry, so a genuinely dead token is judged after 4 requests
+    // (fr, us, then the retried fr GET) rather than 2. The verdict is unchanged.
+    expect(requests).toHaveLength(4); // probed both, then retried, before declaring expired
   });
 
   it("untagged token → US 503 (transient) then FR 200 → ok, does NOT bind to failing US", async () => {

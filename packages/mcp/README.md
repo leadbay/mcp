@@ -280,11 +280,10 @@ Leadbay connection OK.
 
 ### Claude Desktop / ChatGPT / remote-MCP clients
 
-Leadbay runs a hosted MCP server that any remote-MCP client can connect to without a local install. Pick the URL for your account's region:
+Leadbay runs a hosted MCP server that any remote-MCP client can connect to without a local install. One URL works for every region:
 
 ```
-https://mcp.leadbay.app/mcp       # US accounts
-https://mcp.leadbay.app/fr/mcp    # FR accounts
+https://mcp.leadbay.app/mcp       # all accounts (US and FR)
 ```
 
 - **Claude Desktop**: Settings → Connectors → Add custom connector → paste the URL.
@@ -292,7 +291,7 @@ https://mcp.leadbay.app/fr/mcp    # FR accounts
 
 On first connect the client runs the Leadbay OAuth sign-in (the server advertises OAuth 2.0 Protected Resource Metadata per RFC 9728 and challenges unauthenticated requests with `401 + WWW-Authenticate`). Sign in once in the browser; the client stores the token and sends it as `Authorization: Bearer <token>` on every request. No token to copy-paste, no local Node install needed.
 
-The region is encoded in the URL because OAuth discovery happens before sign-in and Leadbay tokens are region-scoped — a US account uses `/mcp`, a FR account uses `/fr/mcp`. If the sign-in prompt never appears, you're on an old build of the hosted server (pre-0.21.0); it auto-updates on release.
+You don't pick a region. Sign-in goes through Stargate, Leadbay's single region-agnostic OAuth authority, and your region rides in the token itself rather than in the connector path — so `/mcp` resolves US and FR accounts alike. `/fr/mcp` still works as a compatibility alias for connectors configured before this change; there is no need to migrate and no benefit to using it. If the sign-in prompt never appears, you're on an old build of the hosted server (pre-0.21.0); it auto-updates on release.
 
 **Updates are automatic** — the hosted server is always running the latest published release. You never need to update a config file or restart anything on your side.
 

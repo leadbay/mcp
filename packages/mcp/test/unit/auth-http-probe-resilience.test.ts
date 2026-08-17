@@ -145,13 +145,18 @@ describe("auth probe — a `_us`/`_fr` suffix is a hint, not a pin", () => {
   });
 
   it("genuinely expired tagged token → still `expired`, bound to the suffix region", async () => {
-    h.state.scripts = [AUTH_401, AUTH_401]; // no region accepts it
+    // Four rejections: both candidates, then the retried primary GET (which the
+    // client itself attempts twice). See the note below.
+    h.state.scripts = [AUTH_401, AUTH_401, AUTH_401, AUTH_401]; // no region accepts it
 
     const result = await resolveClientFromToken("o.staletoken_fr");
 
     expect(result.authState).toBe("expired"); // drives the invalid_token challenge
     expect(result.client.region).toBe("fr"); // the suffix still names the owning backend
-    expect(h.state.calls).toHaveLength(2); // asked both before passing that verdict
+    // Codex P1 (#162): the resolver now retries the primary region once before
+    // declaring expiry, so a genuinely dead token is judged after 4 requests
+    // (fr, us, then the retried fr GET) rather than 2. The verdict is unchanged.
+    expect(h.state.calls).toHaveLength(4); // asked both, then retried, before that verdict
   });
 
   it("valid tagged token still costs exactly ONE probe — the fallback is failure-path only", async () => {

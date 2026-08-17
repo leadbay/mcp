@@ -42,7 +42,14 @@ describe("hosted MCP challenge — Stargate flow", () => {
   });
 
   it("POST /mcp with an expired/rejected token → 401 + error=invalid_token challenge", async () => {
-    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 401, body: {} }]);
+    // Four 401s: both candidate probes plus the retried primary GET the resolver
+    // now makes before declaring expiry (Codex P1, #162).
+    mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 401, body: {} },
+      { method: "GET", path: "/1.6/users/me", status: 401, body: {} },
+      { method: "GET", path: "/1.6/users/me", status: 401, body: {} },
+      { method: "GET", path: "/1.6/users/me", status: 401, body: {} },
+    ]);
     const res = await app.fetch(
       initRequest("https://mcp.test/mcp", { authorization: "Bearer o.staletoken_fr" })
     );

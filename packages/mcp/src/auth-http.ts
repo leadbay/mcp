@@ -191,6 +191,50 @@ export async function resolveClientFromToken(
     }
   }
 
+  // Last chance before we force a re-auth: retry the PRIMARY region once.
+  //
+  // The probes above deliberately run with retryOn401:false so an auth rejection
+  // can't be masked and the dual-region fallback still happens. But a Leadbay 401
+  // is usually NOT expiry — LeadbayClient's own retry exists because "tokens don't
+  // expire, so a 401 is almost always a transient server-side blip" (client.ts
+  // httpsRequestWithRetry). Without this step a blip on the owning region cascades:
+  // the sibling 401s too (the token is region-scoped), both rejections look
+  // authoritative, and a perfectly valid token gets an invalid_token challenge —
+  // a regression against the previous resolveMe() probe, which inherited the
+  // client's one-retry policy.
+  //
+  // Placed AFTER the loop rather than inside it on purpose: retrying mid-loop
+  // would delay the sibling probe (which the sequential-probe deadline exists to
+  // protect) and would spend the extra round trip on the legacy-token path, where
+  // the 401 is expected and the sibling is the answer. Here it costs one request
+  // only on the path that was about to force re-auth, which is far more expensive
+  // for the user.
+  if (sawAuthReject && nonAuthFaultRegion === undefined) {
+    const client = createClient({ token, region: primaryRegion });
+    try {
+      const me = await client.request<UserMePayload>(
+        "GET",
+        "/users/me",
+        undefined,
+        { retryOn401: true, timeoutMs: probeTimeoutMs }
+      );
+      logger?.warn?.(
+        `hosted MCP auth probe against ${primaryRegion} recovered on retry — the first 401 was a transient blip, not an expired token`
+      );
+      client.seedMe(me);
+      return { client, authState: "ok" };
+    } catch (e) {
+      const code = (e as LeadbayError)?.code;
+      if (code !== "AUTH_EXPIRED" && code !== "NOT_AUTHENTICATED") {
+        // The retry hit a transient fault instead. Same reasoning as in the loop:
+        // we can no longer be sure the token is bad, so don't force re-auth.
+        nonAuthFaultRegion = primaryRegion;
+      } else {
+        firstAuthError ??= e as LeadbayError;
+      }
+    }
+  }
+
   // No candidate returned OK. If ANY candidate rejected on auth grounds AND none
   // hit a transient fault that could be masking a valid token, treat as genuinely
   // expired → invalid_token challenge (host silently refreshes).
