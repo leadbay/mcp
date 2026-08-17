@@ -31,6 +31,7 @@ import {
   REGION_EXEMPT_KEYS,
   SUPRANATIONAL_KEYS,
   US_STATE_POSTAL_CODES,
+  WHOLE_WORKSPACE_KEYS,
   countryKey,
   type CountryEntry,
 } from "./_country-names.js";
@@ -98,6 +99,19 @@ function classify(
   if (!key) return null;
 
   if (SUPRANATIONAL_KEYS.has(key)) return { kind: "supranational" };
+
+  // "nationwide" / "partout en France" / "everywhere" mean the whole of THIS
+  // workspace, so the recovery is the home-country one (omit the argument and
+  // answer), not the supra-national one (report the scope). Grouping them with
+  // EMEA/APAC gave the wrong advice for the commonest phrasing of all.
+  if (WHOLE_WORKSPACE_KEYS.has(key)) {
+    const homeIso2 = homeCountryIso2(region);
+    // No home country (custom backend) → we cannot claim it means "everything
+    // here", so fall back to the conservative report-the-scope treatment.
+    if (homeIso2 === undefined) return { kind: "supranational" };
+    const homeEntry = COUNTRY_BY_KEY.get(countryKey(homeIso2));
+    return { kind: "home_country", entry: homeEntry };
+  }
 
   const entry = COUNTRY_BY_KEY.get(key);
   if (!entry) return null;
@@ -189,12 +203,34 @@ function messageFor(hit: CountryHit, region: GuardRegion): string {
   return `${hit.param} value "${hit.value}" is a country outside this workspace${serves}, so it holds no ${hit.country} companies. A country name is also absent from the admin-area index (product#3885), so it silently trigram-matches a same-named town and fences the search to one village.`;
 }
 
+/**
+ * The recovery differs by KIND, and conflating them is its own accuracy bug.
+ *
+ * Only the HOME country is equivalent to "no filter": on a US workspace, "all of
+ * the US" really does mean every lead. A FOREIGN country is UNSUPPORTED — "leads
+ * in France" on a US workspace has no answer here, and re-running unfiltered
+ * would hand back US leads as though they answered it, which is the same
+ * confidently-wrong-result failure this guard exists to prevent. So the foreign
+ * and supra-national hints must NOT tell the agent to drop the argument and
+ * retry; they tell it to report the workspace's scope instead.
+ */
 function hintFor(hit: CountryHit, region: GuardRegion): string {
   const narrow = NARROW_EXAMPLES[region];
-  if (hit.kind === "foreign_country") {
-    return `Drop ${hit.param}, or pass ${narrow} that is inside this workspace. If you truly meant a same-named town, qualify it ("Germany, OH") — a qualified place name is accepted.`;
+  const home = homeCountryName(region);
+  const holds = home ? `holds ${home} companies only` : "covers a single country";
+
+  if (hit.kind === "home_country") {
+    return `Whole-workspace intent = OMIT ${hit.param} entirely, then say the result covers everything. To narrow, pass ${narrow}. Do NOT retry with another spelling or a nearby city.`;
   }
-  return `Whole-workspace intent = OMIT ${hit.param} entirely, then say the result covers everything. To narrow, pass ${narrow}. Do NOT retry with another spelling or a nearby city.`;
+
+  if (hit.kind === "foreign_country") {
+    const none = home
+      ? `there are no ${hit.country} leads to return`
+      : `this workspace holds no ${hit.country} leads`;
+    return `Do NOT simply drop ${hit.param} and re-run — an unfiltered result is ${home ?? "whole-workspace"} data, which does NOT answer a question about ${hit.country}. Tell the user this workspace ${holds}, so ${none}. If they actually meant a same-named town inside it, qualify the value ("Germany, OH") — a qualified place name is accepted.`;
+  }
+
+  return `Do NOT drop ${hit.param} and re-run as though the result answered this — a supra-national ask is not the same as the whole workspace. Say the workspace ${holds}, then offer the whole-workspace view as an explicit choice. To narrow instead, pass ${narrow}.`;
 }
 
 /**

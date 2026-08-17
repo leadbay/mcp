@@ -205,6 +205,40 @@ describe("rejected values — FR universe", () => {
   }
 });
 
+describe("whole-workspace phrasings are HOME intent, not supra-national", () => {
+  // These mean "the whole of MY country", so the recovery is the home one
+  // (omit and answer) rather than report-the-scope. Grouping them with
+  // EMEA/APAC gave the wrong advice for the commonest phrasing of all.
+  for (const value of [
+    "nationwide", "Nation-wide", "countrywide", "the whole country",
+    "entire country", "everywhere", "anywhere", "all regions",
+  ]) {
+    it(`classifies ${JSON.stringify(value)} as home_country on US`, () => {
+      const hits = hitsFor(value, "us");
+      expect(hits).toHaveLength(1);
+      expect(hits[0].kind).toBe("home_country");
+      expect(hits[0].country).toBe("United States");
+    });
+  }
+
+  for (const value of ["Toute la France", "partout", "partout en France", "Échelle nationale"]) {
+    it(`classifies ${JSON.stringify(value)} as home_country on FR`, () => {
+      expect(hitsFor(value, "fr")[0]?.kind).toBe("home_country");
+    });
+  }
+
+  it("their hint is the omit-and-answer one", () => {
+    const envelope = countryLocationEnvelope(hitsFor("nationwide", "us"), "us");
+    expect(envelope.hint).toMatch(/OMIT/);
+  });
+
+  it("falls back to report-the-scope when there is no home country", () => {
+    // A custom backend has an unknown universe, so "everywhere" cannot be
+    // claimed to mean "everything here".
+    expect(hitsFor("everywhere", "custom")[0]?.kind).toBe("supranational");
+  });
+});
+
 describe("rejected values — supra-national scopes", () => {
   for (const value of [
     "EU",
@@ -213,10 +247,6 @@ describe("rejected values — supra-national scopes", () => {
     "EMEA",
     "Worldwide",
     "Global",
-    "Everywhere",
-    "nationwide",
-    "Toute la France",
-    "partout",
     "Le monde entier",
   ]) {
     it(`rejects ${JSON.stringify(value)}`, () => {
@@ -450,15 +480,40 @@ describe("envelope shapes", () => {
     expect(status.country_locations).toHaveLength(1);
   });
 
-  it("the hint tells the agent to omit rather than re-spell", () => {
+  it("the HOME-country hint says omit, and not to re-spell", () => {
     const envelope = countryLocationEnvelope(hitsFor("United States", "us"), "us");
     expect(envelope.hint).toMatch(/OMIT/);
     expect(envelope.hint).toMatch(/not retry with another spelling/i);
   });
 
-  it("the foreign-country hint offers the qualified-name override", () => {
+  it("the FOREIGN-country hint must NOT say to drop the argument and re-run", () => {
+    // The accuracy bug this pins: "leads in France" on a US workspace is
+    // UNSUPPORTED, not equivalent to "all US leads". Telling the agent to drop
+    // the argument and retry produces whole-workspace data presented as an
+    // answer about another country — the same confidently-wrong-result class
+    // the guard exists to prevent.
+    const envelope = countryLocationEnvelope(hitsFor("France", "us"), "us");
+    expect(envelope.hint).toMatch(/do NOT simply drop/i);
+    expect(envelope.hint).not.toMatch(/\bOMIT\b/);
+    // It must say what the workspace actually holds, and name the country asked for.
+    expect(envelope.hint).toMatch(/United States/);
+    expect(envelope.hint).toMatch(/France/);
+    // The qualified-town override survives.
+    expect(envelope.hint).toMatch(/qualify the value/i);
+  });
+
+  it("the SUPRA-NATIONAL hint must NOT say to drop the argument and re-run", () => {
+    // "EMEA" is not answered by one country's leads either.
+    const envelope = countryLocationEnvelope(hitsFor("EMEA", "fr"), "fr");
+    expect(envelope.hint).toMatch(/Do NOT drop/i);
+    expect(envelope.hint).not.toMatch(/\bOMIT\b/);
+    expect(envelope.hint).toMatch(/France/);
+  });
+
+  it("the foreign message states the workspace scope, not a retry", () => {
     const envelope = countryLocationEnvelope(hitsFor("Germany", "us"), "us");
-    expect(envelope.hint).toMatch(/qualify it/i);
+    expect(envelope.message).toMatch(/outside this workspace/i);
+    expect(envelope.message).toMatch(/no Germany companies/i);
   });
 });
 

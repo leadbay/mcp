@@ -50,11 +50,17 @@ Call `leadbay_pull_followups` (NOT `leadbay_pull_leads` — those are different 
 
 For geo filters specifically: prefer the `city` shortcut on `leadbay_pull_followups({city: "Berlin"})` — the composite resolves the free-text city via `/geo/search`, returns ambiguities to disambiguate when needed (status: "ambiguous_locations" → pick an id → re-call with `city_id`), then merges the resolved admin_area into the Monitor filter as `location_ids`. If the user has already given you a numeric id, pass it as `city_id`. Don't guess admin_area ids — let the resolver do it.
 
-**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (`city` / `locations` / `location_ids`) and say the result covers the whole workspace.
+**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France). The admin-area index holds no country nodes, so `"France"` matches the *commune of Francs* and `"United States"` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 
-**Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so `"France"` matches the *commune of Francs* and `"United States"` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On `code: "COUNTRY_LEVEL_LOCATION"`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
+**Which country decides the recovery — these are NOT interchangeable:**
 
-Place names never go in `keywords`, `sectors` or `refine_prompt` — those are text matches, not geo filters.
+- **This workspace's own country**, or "nationwide" / "partout en France" / "everywhere" → omit the geo argument (`city` / `locations` / `location_ids`) and say the result covers the whole workspace.
+- **A different country** ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- **A supra-national scope** ("EU", "EMEA", "worldwide") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+
+On `code: "COUNTRY_LEVEL_LOCATION"` do NOT retry with another spelling or a nearby city — read `country_locations[].kind` (`home_country` / `foreign_country` / `supranational`) and follow the matching line.
+
+Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.
 
 
 **TRAVEL / IN-PERSON ROUTING** — when the user's intent is geographic and visual ("I'm going to NYC next week", "leads I should visit in person", "this week's trip", "show me followups in <city>", "plan my itinerary", "trip itinerary", "show on a map", "leads in Texas / California", or any phrasing that asks for a map / geographic / trip-planning view — INCLUDING state- and region-level place names, but NEVER a country):

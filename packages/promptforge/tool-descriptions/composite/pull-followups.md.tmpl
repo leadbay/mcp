@@ -55,14 +55,14 @@ Backend: wraps `GET /1.6/monitor?personal=&liked=&filtered=&count=&page=` plus, 
 
 Practical mapping from user phrasing to criterion:
 
-| User phrase                          | Criterion                                                            |
-|--------------------------------------|----------------------------------------------------------------------|
-| "leads in Lyon"                      | `{type: "location_ids", locations: [<admin_area_id>]}`               |
-| "healthcare staffing"                | `{type: "keywords", keywords: ["healthcare", "staffing"]}`           |
-| "leads I haven't touched in 30 days" | `{type: "last_action_date", last_days: 30}`                          |
-| "leads I liked"                      | `{type: "liked"}`                                                    |
-| "leads 50–200 employees"             | `{type: "size", sizes: [{min: 50, max: 200}]}`                       |
-| "Y Combinator companies"             | `{type: "yc"}`                                                       |
+| User phrase | Criterion |
+|---|---|
+| "leads in Lyon" | `{type: "location_ids", locations: [<admin_area_id>]}` |
+| "healthcare staffing" | `{type: "keywords", keywords: ["healthcare", "staffing"]}` |
+| "leads I haven't touched in 30 days" | `{type: "last_action_date", last_days: 30}` |
+| "leads I liked" | `{type: "liked"}` |
+| "leads 50–200 employees" | `{type: "size", sizes: [{min: 50, max: 200}]}` |
+| "Y Combinator companies" | `{type: "yc"}` |
 
 Geo filtering needs `admin_area_id` resolution — backend rejects free-text in `location_ids`. Pass `city: "<free-text>"` and the composite calls `/geo/search` internally, picks the best match, merges its id into `set_filter`. Ambiguous matches return `status: "ambiguous_locations"` + `location_ambiguities[]` — pick an id and re-call with `city_id`.
 

@@ -140,6 +140,25 @@ describe("audit: single-country-universe rule", () => {
     expect(RULE).toMatch(/Keep the city, drop the country/i);
   });
 
+  it("the snippet keeps foreign countries SEPARATE from the home country", () => {
+    // The accuracy regression this pins: an earlier draft told the agent to
+    // "pass no geo argument" for a country only OR a supra-national scope,
+    // lumping them with the home country. On a US workspace that turns "leads in
+    // France" — an UNSUPPORTED request — into an unfiltered run that returns US
+    // leads as though they answered it. Only the HOME country is equivalent to
+    // "no filter".
+    expect(RULE, "the rule must distinguish the three cases").toMatch(
+      /unsupported, not unfiltered/i
+    );
+    expect(RULE, "it must forbid re-running unfiltered for a foreign country").toMatch(
+      /Do NOT re-run without the argument/i
+    );
+    // And it must point at the runtime field that says WHICH case this is.
+    for (const kind of ["home_country", "foreign_country", "supranational"]) {
+      expect(RULE, `the rule must name the ${kind} branch`).toContain(kind);
+    }
+  });
+
   it("the runtime error code is the one the snippet teaches", () => {
     // Imported from core rather than hardcoded: a rename there must not
     // silently leave the prose teaching a recovery for an error that no longer

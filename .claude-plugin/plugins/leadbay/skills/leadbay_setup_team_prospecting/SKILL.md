@@ -16,11 +16,17 @@ If the prompt's body and the tool's RENDERING appear to conflict, the tool's REN
 
 # PHASE 1 — INTERPRET INTENT INTO A LENS
 
-**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France), so every lead in it is already in that country. "Across the US", "nationwide", "partout en France" therefore mean **no location filter at all**: omit the geo argument (`city` / `locations` / `location_ids`) and say the result covers the whole workspace.
+**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France). The admin-area index holds no country nodes, so `"France"` matches the *commune of Francs* and `"United States"` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 
-**Never pass a country name to a geo argument.** The admin-area index holds no country nodes, so `"France"` matches the *commune of Francs* and `"United States"` matches *Statesboro* — the call is silently fenced to one village and every conclusion drawn from it is wrong. City AND country named? Keep the city, drop the country. Country only, or a supra-national scope ("EU", "EMEA", "worldwide")? Pass no geo argument. On `code: "COUNTRY_LEVEL_LOCATION"`, do NOT retry with another spelling or a nearby city — re-issue the SAME call without the location argument.
+**Which country decides the recovery — these are NOT interchangeable:**
 
-Place names never go in `keywords`, `sectors` or `refine_prompt` — those are text matches, not geo filters.
+- **This workspace's own country**, or "nationwide" / "partout en France" / "everywhere" → omit the geo argument (`city` / `locations` / `location_ids`) and say the result covers the whole workspace.
+- **A different country** ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- **A supra-national scope** ("EU", "EMEA", "worldwide") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+
+On `code: "COUNTRY_LEVEL_LOCATION"` do NOT retry with another spelling or a nearby city — read `country_locations[].kind` (`home_country` / `foreign_country` / `supranational`) and follow the matching line.
+
+Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.
 
 
 **Before calling:** if my `audience` carries a whole-country scope ("plumbers across the US", "partout en France"), drop that clause rather than passing it through — the workspace already covers exactly one country, and a country label in the audience just fences the lens to a same-named village. Say that you dropped it. Keep any sub-country place (state, *région*, *département*, county, city) as-is.

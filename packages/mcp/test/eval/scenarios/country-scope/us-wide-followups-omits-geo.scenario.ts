@@ -37,12 +37,19 @@ export const SCENARIO = {
       "Which of my leads across the United States should I follow up with this week?",
     success_criteria: [
       "did NOT pass a country value ('United States', 'US', 'USA', 'America') to city, city_id, locations or location_ids on ANY call",
-      "called leadbay_pull_followups (or leadbay_followups_map) with NO geo argument at all, because the workspace is already US-only",
+      "called leadbay_pull_followups with NO geo argument at all, because the workspace is already US-only",
       "said the view covers the whole workspace rather than implying it was filtered to a place",
       "did NOT claim a location filter had been applied",
       "did NOT retry several geo spellings looking for one that resolved",
       "still delivered follow-up candidates — the absence of a location filter is not a reason to ask a clarifying question instead of answering",
     ],
+    // Exactly one tool, deliberately: the pre-check compares tool names as a set
+    // and has no notion of alternatives (helpers/mission-match-judge.ts,
+    // preCheckExpectedCalls), so naming an alias in the criteria while requiring
+    // only one here would fail a run before the judge ever saw the behaviour the
+    // criteria accept. `leadbay_followups_map` is NOT expected for this intent —
+    // its triggers are travel/itinerary/map ("I'm going to <city>", "visit in
+    // person"), and none of them appear in a weekly follow-up ask.
     required_calls: ["leadbay_pull_followups"],
     required_byproducts: [],
     forbidden_calls: ["leadbay_report_outreach"],

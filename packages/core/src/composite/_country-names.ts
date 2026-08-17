@@ -366,10 +366,38 @@ export const COUNTRIES: readonly CountryEntry[] = [
 ];
 
 /**
- * Supra-national and whole-universe scopes. Not countries, but the same bug
- * class: none of them is an admin area, so each can only trigram-match some
- * unrelated town. These are what an agent writes when the user says
- * "everywhere" / "nationwide" / "partout".
+ * "The whole of my own country" phrasings.
+ *
+ * These are NOT supra-national: on a single-country workspace "nationwide" or
+ * "partout en France" means exactly the home country, so the recovery is the
+ * same as naming the home country outright — omit the geo argument and say the
+ * result covers everything. Keeping them in the supra-national bucket produced
+ * the wrong advice (report the scope instead of just answering).
+ */
+export const WHOLE_WORKSPACE_LABELS: readonly string[] = [
+  "Nationwide",
+  "Nation-wide",
+  "Countrywide",
+  "Whole country",
+  "Entire country",
+  "The whole country",
+  "Everywhere",
+  "Anywhere",
+  "All regions",
+  "Tout le pays",
+  "Toute la France",
+  "Partout",
+  "Partout en France",
+  "Échelle nationale",
+  "National",
+  "Nationale",
+];
+
+/**
+ * Genuinely MULTI-country scopes. Not admin areas, and — unlike the labels
+ * above — not satisfiable by this workspace either: a request for "EMEA" or
+ * "APAC" is not answered by handing back one country's leads. The recovery is
+ * to name what the workspace covers, never to silently re-run unfiltered.
  */
 export const SUPRANATIONAL_LABELS: readonly string[] = [
   "EU",
@@ -392,26 +420,10 @@ export const SUPRANATIONAL_LABELS: readonly string[] = [
   "Global",
   "Globally",
   "International",
-  "Everywhere",
-  "Anywhere",
   "All countries",
-  "All regions",
-  "Nationwide",
-  "Nation-wide",
-  "Whole country",
-  "Entire country",
-  "The whole country",
-  "Countrywide",
-  "Tout le pays",
-  "Toute la France",
-  "Partout",
-  "Partout en France",
   "Monde",
   "Monde entier",
   "Le monde entier",
-  "Échelle nationale",
-  "National",
-  "Nationale",
 ];
 
 /** Which country each backend region IS. `custom` has no home country. */
@@ -500,4 +512,8 @@ export const COUNTRY_KEY_COLLISIONS: readonly string[] = KEY_INDEX.collisions;
 
 export const SUPRANATIONAL_KEYS: ReadonlySet<string> = new Set(
   SUPRANATIONAL_LABELS.map((label) => countryKey(label)).filter(Boolean)
+);
+
+export const WHOLE_WORKSPACE_KEYS: ReadonlySet<string> = new Set(
+  WHOLE_WORKSPACE_LABELS.map((label) => countryKey(label)).filter(Boolean)
 );
