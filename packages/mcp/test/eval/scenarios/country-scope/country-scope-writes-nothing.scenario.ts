@@ -19,15 +19,27 @@
 
 export const SCENARIO = {
   name: "country-scope-writes-nothing",
-  // The audience-editing prompt: this is where a "scope my lens" ask lands.
-  prompt: "leadbay_refine_audience",
+  // The args-less ORIENTATION prompt, deliberately — not leadbay_refine_audience.
+  //
+  // `scenario.prompt` is injected as the SYSTEM PROMPT (scenarios.eval.ts,
+  // buildSystemPrompt), so seeding refine_audience would hand the agent that
+  // prompt's PHASE 0 country gate — the very rule under test. The scenario would
+  // then pass on the strength of an injected prompt while the ordinary
+  // unprompted ask still wrote a country filter, which is also why the matching
+  // contract declares `prompt_name: ~` (WORKFLOWS.md, "Country-wide scope").
+  //
+  // leadbay_prospecting_overview mentions no geography at all (verified: zero
+  // occurrences of "country", and it does not include the single-country
+  // snippet), so the rule has to reach the agent through the TOOL DESCRIPTIONS.
+  // That is the path the unprompted user story actually takes.
+  prompt: "leadbay_prospecting_overview",
   tier: "gate",
   args: {},
   backendFixtures: [],
   mission: {
     user_intent: "Scope my lens to the whole US — I sell nationwide.",
     success_criteria: [
-      "explained that the workspace already serves exactly ONE country, so a country-wide scope is not a filter it can or should set",
+      "explained that the workspace already serves exactly ONE country, so a country-wide scope is not a filter it can or should set — reached from the tool descriptions alone, with no prompt injecting the rule",
       "did NOT pass a country value to locations, location_ids, city, or a set_filter location_ids criterion on any call",
       "did NOT create a lens or edit the audience merely to express a country-wide scope",
       "offered the axes that actually narrow an audience — sector, company size, or a sub-country region (state / county / city) — instead of leaving the user with only a question",

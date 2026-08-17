@@ -434,16 +434,48 @@ describe("input tolerance", () => {
   });
 });
 
-describe("custom region", () => {
-  it("has no home country, so nothing is classified home_country", () => {
-    expect(hitsFor("United States", "custom")[0]?.kind).toBe("foreign_country");
-    expect(hitsFor("France", "custom")[0]?.kind).toBe("foreign_country");
+describe("custom region — the home country is UNKNOWN, so claim nothing", () => {
+  // LEADBAY_BASE_URL is documented config for staging/dev (bin.ts), and a custom
+  // base URL with no explicit region yields region "custom". Classifying every
+  // recognized country as `foreign_country` there told the user "this workspace
+  // holds no French leads" — which on a custom FR staging backend is simply
+  // false. The value is still refused (the trigram fall-through is a property of
+  // the admin-area index, not of the region), but the claim is withheld.
+  for (const value of ["France", "United States", "Germany", "la France"]) {
+    it(`classifies ${JSON.stringify(value)} as country_indeterminate`, () => {
+      const hits = hitsFor(value, "custom");
+      expect(hits).toHaveLength(1);
+      expect(hits[0].kind).toBe("country_indeterminate");
+    });
+  }
+
+  it("never claims the workspace lacks that country's leads", () => {
+    const envelope = countryLocationEnvelope(hitsFor("France", "custom"), "custom");
+    expect(envelope.message).not.toMatch(/holds no/i);
+    expect(envelope.message).not.toMatch(/no France leads/i);
+    expect(envelope.message).not.toMatch(/outside this workspace/i);
+    // It may say "which country it serves is unknown"; what it must never do is
+    // assert a specific one ("serves the United States only").
+    expect(envelope.message).not.toMatch(/serves \w[\w ]* only/i);
+    // It says WHY the value is unusable, and that the country is unknown.
+    expect(envelope.message).toMatch(/custom-configured/i);
+    expect(envelope.message).toMatch(/no country nodes|absent from the admin-area index/i);
   });
 
-  it("uses the union of exemptions and omits the 'serves X only' clause", () => {
-    expect(rejects("Georgia", "custom")).toBe(false);
+  it("offers omission as a CONDITION, never as an instruction", () => {
     const envelope = countryLocationEnvelope(hitsFor("France", "custom"), "custom");
-    expect(envelope.message).not.toContain("serves");
+    expect(envelope.hint).toMatch(/If you meant this entire workspace/i);
+    expect(envelope.hint).toMatch(/do NOT re-run unfiltered/i);
+  });
+
+  it("still uses the union of regional exemptions", () => {
+    expect(rejects("Georgia", "custom")).toBe(false);
+  });
+
+  it("a real region still gets the definite foreign verdict", () => {
+    // The indeterminate kind must not leak into us/fr, where we DO know.
+    expect(hitsFor("France", "us")[0]?.kind).toBe("foreign_country");
+    expect(hitsFor("Germany", "fr")[0]?.kind).toBe("foreign_country");
   });
 });
 

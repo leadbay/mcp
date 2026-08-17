@@ -154,7 +154,7 @@ describe("audit: single-country-universe rule", () => {
       /Do NOT re-run without the argument/i
     );
     // And it must point at the runtime field that says WHICH case this is.
-    for (const kind of ["home_country", "foreign_country", "supranational"]) {
+    for (const kind of ["home_country", "foreign_country", "supranational", "country_indeterminate"]) {
       expect(RULE, `the rule must name the ${kind} branch`).toContain(kind);
     }
   });

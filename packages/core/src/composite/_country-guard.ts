@@ -52,7 +52,18 @@ export interface CountryHit {
   value: string;
   /** The argument it arrived on — "locations", "city", "location_ids", … */
   param: string;
-  kind: "home_country" | "foreign_country" | "supranational";
+  kind:
+    | "home_country"
+    | "foreign_country"
+    | "supranational"
+    /**
+     * A real country, on a backend whose own country we cannot determine
+     * (LEADBAY_BASE_URL points at a custom/staging endpoint, so `region` is
+     * "custom"). The value is still unusable — the admin-area index holds no
+     * country nodes whatever the deployment — but we must NOT claim it is out
+     * of universe: a custom FR staging backend really does serve France.
+     */
+    | "country_indeterminate";
   /** English country name; null for a supra-national scope. */
   country: string | null;
 }
@@ -138,6 +149,13 @@ function classify(
     return null;
   }
 
+  // (5) With no known home country we cannot say whether this is the
+  //     workspace's own country or a different one. The value is still refused
+  //     (the trigram fall-through is a property of the admin-area index, not of
+  //     the region), but the guidance must stop short of claiming there are no
+  //     such leads here — on a custom FR backend that claim is simply false.
+  if (home === undefined) return { kind: "country_indeterminate", entry };
+
   return { kind: "foreign_country", entry };
 }
 
@@ -199,8 +217,10 @@ function messageFor(hit: CountryHit, region: GuardRegion): string {
   if (hit.kind === "home_country") {
     return `${hit.param} value "${hit.value}" names this whole workspace, not a place inside it — this backend serves ${hit.country} and nothing else, so filtering by it removes nothing. Country names are absent from the admin-area index (product#3885), so the value silently trigram-matches a same-named town instead ("France" → the commune of Francs, "United States" → Statesboro) and fences the search to one village.`;
   }
-  const serves = home ? ` — this backend serves ${home} only` : "";
-  return `${hit.param} value "${hit.value}" is a country outside this workspace${serves}, so it holds no ${hit.country} companies. A country name is also absent from the admin-area index (product#3885), so it silently trigram-matches a same-named town and fences the search to one village.`;
+  if (hit.kind === "country_indeterminate") {
+    return `${hit.param} value "${hit.value}" is a country name, which is never a usable location filter: country names are absent from the admin-area index (product#3885), so the value silently trigram-matches a same-named town and fences the search to one village. This backend is custom-configured, so which country it serves is unknown — ${hit.country} may or may not be it.`;
+  }
+  return `${hit.param} value "${hit.value}" is a country outside this workspace — this backend serves ${home} only, so it holds no ${hit.country} companies. A country name is also absent from the admin-area index (product#3885), so it silently trigram-matches a same-named town and fences the search to one village.`;
 }
 
 /**
@@ -223,11 +243,17 @@ function hintFor(hit: CountryHit, region: GuardRegion): string {
     return `Whole-workspace intent = OMIT ${hit.param} entirely, then say the result covers everything. To narrow, pass ${narrow}. Do NOT retry with another spelling or a nearby city.`;
   }
 
+  if (hit.kind === "country_indeterminate") {
+    // Deliberately claims nothing about what this workspace holds. Omitting is
+    // only correct if the user meant the whole workspace, so it is offered as a
+    // condition rather than an instruction.
+    return `If you meant this entire workspace, OMIT ${hit.param} and say the result covers all of it. If you meant a place inside it, pass ${narrow}. Do NOT re-run unfiltered while presenting the result as an answer about ${hit.country} specifically, and do NOT retry another spelling.`;
+  }
+
   if (hit.kind === "foreign_country") {
-    const none = home
-      ? `there are no ${hit.country} leads to return`
-      : `this workspace holds no ${hit.country} leads`;
-    return `Do NOT simply drop ${hit.param} and re-run — an unfiltered result is ${home ?? "whole-workspace"} data, which does NOT answer a question about ${hit.country}. Tell the user this workspace ${holds}, so ${none}. If they actually meant a same-named town inside it, qualify the value ("Germany, OH") — a qualified place name is accepted.`;
+    // `home` is always defined here: an unknown home country routes to
+    // country_indeterminate above rather than asserting "foreign".
+    return `Do NOT simply drop ${hit.param} and re-run — an unfiltered result is ${home} data, which does NOT answer a question about ${hit.country}. Tell the user this workspace ${holds}, so there are no ${hit.country} leads to return. If they actually meant a same-named town inside it, qualify the value ("Germany, OH") — a qualified place name is accepted.`;
   }
 
   return `Do NOT drop ${hit.param} and re-run as though the result answered this — a supra-national ask is not the same as the whole workspace. Say the workspace ${holds}, then offer the whole-workspace view as an explicit choice. To narrow instead, pass ${narrow}.`;

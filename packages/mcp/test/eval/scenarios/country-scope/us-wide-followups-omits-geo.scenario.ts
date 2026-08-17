@@ -25,6 +25,12 @@ export const SCENARIO = {
   name: "us-wide-followups-omits-geo",
   // Geographic follow-up intent enters through the check-in prompt, whose
   // TRAVEL / IN-PERSON ROUTING block is one of the surfaces this PR rewrote.
+  // This is the real entry point for a follow-up ask, so testing it is right —
+  // but be clear about what it proves. `scenario.prompt` is injected as the
+  // system prompt, and this prompt now carries the single-country rule, so a
+  // pass here does NOT show the tool descriptions alone would hold the line.
+  // The unprompted path is covered by the sibling scenario
+  // (country-scope-writes-nothing), which seeds a rule-free orientation prompt.
   prompt: "leadbay_followup_check_in",
   tier: "gate",
   args: {},
