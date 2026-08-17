@@ -32,6 +32,7 @@ import {
   SUPRANATIONAL_KEYS,
   US_STATE_POSTAL_CODES,
   WHOLE_WORKSPACE_KEYS,
+  embeddedCountryKey,
   countryKey,
   type CountryEntry,
 } from "./_country-names.js";
@@ -111,11 +112,19 @@ function classify(
 
   if (SUPRANATIONAL_KEYS.has(key)) return { kind: "supranational" };
 
-  // "nationwide" / "partout en France" / "everywhere" mean the whole of THIS
-  // workspace, so the recovery is the home-country one (omit the argument and
-  // answer), not the supra-national one (report the scope). Grouping them with
-  // EMEA/APAC gave the wrong advice for the commonest phrasing of all.
-  if (WHOLE_WORKSPACE_KEYS.has(key)) {
+  // A NAMED country decides the verdict, even wrapped in a scope phrase. This
+  // must run BEFORE the generic whole-workspace labels: "partout en France" and
+  // "all of France" name France, so on a US workspace they are FOREIGN asks, and
+  // treating them as "everything here" would answer them with US leads. It also
+  // catches the canonical phrasings a bare exact match missed entirely — "whole
+  // US", "the whole US", "across the United States" — which previously sailed
+  // through to /geo/search and the same-named-town fence.
+  const namedKey = embeddedCountryKey(key);
+
+  // Generic "the whole of here" with NO country named ("nationwide", "partout",
+  // "everywhere") means this workspace, so the recovery is the home-country one
+  // (omit and answer) rather than the supra-national one (report the scope).
+  if (namedKey === undefined && WHOLE_WORKSPACE_KEYS.has(key)) {
     const homeIso2 = homeCountryIso2(region);
     // No home country (custom backend) → we cannot claim it means "everything
     // here", so fall back to the conservative report-the-scope treatment.
@@ -124,12 +133,18 @@ function classify(
     return { kind: "home_country", entry: homeEntry };
   }
 
-  const entry = COUNTRY_BY_KEY.get(key);
+  const entry = COUNTRY_BY_KEY.get(namedKey ?? key);
   if (!entry) return null;
+
+  // Exemptions and the alpha-2 kill switch are keyed on the BARE label, so they
+  // only apply when the value was already just a country name. "all of Georgia"
+  // is still a scope phrase about the state and must not be rejected, but the
+  // exemption lookup below needs the bare key to see it.
+  const bareKey = namedKey ?? key;
 
   // (1) This bare label is a legitimate in-universe admin area (Georgia the
   //     US state, colloquial Jersey) — never warn about it.
-  if (exemptKeysFor(region).has(key)) return null;
+  if (exemptKeysFor(region).has(bareKey)) return null;
 
   const home = homeCountryIso2(region);
 
@@ -145,7 +160,7 @@ function classify(
   // (4) A 2-letter token that is also a local admin-area code is a state, not
   //     a country ("CA" = California, "IN" = Indiana, "LA" = Los Angeles).
   //     Checked AFTER (3) so the home country's own code still rejects.
-  if (key.length <= 2 && alpha2LooksLocal(region) && US_STATE_POSTAL_CODES.has(key)) {
+  if (bareKey.length <= 2 && alpha2LooksLocal(region) && US_STATE_POSTAL_CODES.has(bareKey)) {
     return null;
   }
 

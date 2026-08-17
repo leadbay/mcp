@@ -236,7 +236,7 @@ export const tourPlan: Tool<TourPlanParams> = {
       country_locations: {
         type: "array",
         description:
-          "Per offending value: {value, param, kind, country}. Only present when `status === 'country_level_location'`. This workspace serves exactly ONE country, so a whole-country ask needs NO geo argument at all — re-call without it. Do NOT retry with another spelling or a nearby city.",
+          "Per offending value: {value, param, kind, country}. Only present when `status === 'country_level_location'`. Unlike the Monitor tools, the recovery here is NOT to drop `city`: a tour with no city returns arbitrary leads from the whole workspace, which is not an itinerary. Ask which city or region the user is visiting and re-call with that — see `hint`.",
         items: { type: "object" },
       },
       _meta: {
@@ -267,8 +267,18 @@ export const tourPlan: Tool<TourPlanParams> = {
       client.region
     );
     if (countryHits.length > 0) {
+      const envelope = countryLocationStatus(countryHits, client.region);
       return {
-        ...countryLocationStatus(countryHits, client.region),
+        ...envelope,
+        // The shared hint says "omit the geo argument and the result covers the
+        // whole workspace" — right for a Monitor pull, WRONG here. tour_plan
+        // accepts no city and then returns arbitrary nationwide leads, which is
+        // not an itinerary; the prompt contract requires asking which city or
+        // region the user is visiting (prompts/leadbay_plan_tour_in_city.md.tmpl).
+        // So this tool overrides the recovery rather than forwarding advice that
+        // would produce a confident, useless tour.
+        hint:
+          "A tour needs a place to walk around in, so there is nothing to omit here: do NOT re-call without `city`, which would return arbitrary leads from across the whole workspace as an itinerary. Ask which city or region the user is actually visiting, then re-call with that. Do NOT retry another spelling of the country.",
         monitor_leads: [],
         discover_leads: [],
         discover_filter_note: null,

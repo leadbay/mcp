@@ -91,8 +91,20 @@ export interface CreateClientConfig {
 }
 
 export function createClient(config: CreateClientConfig = {}): LeadbayClient {
-  const region = config.region ?? "us";
-  const baseUrl = config.baseUrl ?? REGIONS[region];
+  // A supplied baseUrl must NOT inherit the US default. LEADBAY_BASE_URL is the
+  // documented staging/dev escape hatch and is routinely set WITHOUT
+  // LEADBAY_REGION (bin.ts: "If the user pinned a baseUrl or region, honor it
+  // exactly"), so defaulting to "us" here labelled every custom endpoint a US
+  // tenant. That is not cosmetic: the single-country guard reads client.region
+  // to decide whether a country is this workspace's own, so a French staging
+  // backend reported France as a FOREIGN country and told the user it holds no
+  // French leads (product#3951).
+  //
+  // Passing region undefined lets the constructor derive it — known regional
+  // URLs still map to "us"/"fr", anything else becomes "custom", which is the
+  // honest answer when nobody pinned one. setBaseUrl() already derives this way.
+  const region = config.baseUrl ? config.region : (config.region ?? "us");
+  const baseUrl = config.baseUrl ?? REGIONS[region ?? "us"];
   if (!baseUrl) {
     throw new Error(
       `Leadbay: unknown region "${region}". Supported: ${Object.keys(REGIONS).join(", ")}. Or pass an explicit baseUrl.`

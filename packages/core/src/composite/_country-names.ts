@@ -514,6 +514,74 @@ export const SUPRANATIONAL_KEYS: ReadonlySet<string> = new Set(
   SUPRANATIONAL_LABELS.map((label) => countryKey(label)).filter(Boolean)
 );
 
+/**
+ * Generic "the whole of somewhere" wrappers, applied to an already-normalized
+ * key. Stripping these is what lets a NAMED country inside a scope phrase be
+ * classified by that country rather than by the generic phrase:
+ *
+ *   "all of France"            -> "france"        -> classified as France
+ *   "across the United States" -> "united states" -> classified as the US
+ *   "partout en France"        -> "france"        -> France, even on a US
+ *                                                    workspace (where it is
+ *                                                    FOREIGN, not "everything
+ *                                                    here")
+ *
+ * A phrase that leaves no country behind ("nationwide", "partout",
+ * "everywhere") falls through to WHOLE_WORKSPACE_KEYS and means this workspace.
+ *
+ * Kept deliberately narrow, and only ever applied when the remainder is a
+ * recognized country: "Whole Foods" -> "foods" and "across the Bay" -> "bay"
+ * match nothing, so ordinary place names are untouched.
+ */
+export const SCOPE_WRAPPERS: readonly RegExp[] = [
+  /^whole\s+/,
+  /^all\s+of\s+/,
+  /^all\s+/,
+  /^across\s+/,
+  /^entire\s+/,
+  /^anywhere\s+in\s+/,
+  /^everywhere\s+in\s+/,
+  /^nationwide\s+in\s+/,
+  /^throughout\s+/,
+  /^partout\s+en\s+/,
+  /^partout\s+dans\s+/,
+  /^toute\s+la\s+/,
+  /^tout\s+le\s+/,
+  /^toute\s+l\s+/,
+  /^dans\s+toute\s+la\s+/,
+  /^dans\s+tout\s+le\s+/,
+  /\s+wide$/,
+  /\s+entier$/,
+  /\s+entiere$/,
+];
+
+/** Leading articles, re-stripped after a wrapper is removed ("across the US"). */
+const LEADING_ARTICLE = /^(les|the|la|le|l|el|los|du|de|d)\s+/;
+
+/**
+ * Peel generic scope wrappers off a normalized key and return the embedded
+ * country key, or undefined when nothing recognizable is left.
+ */
+export function embeddedCountryKey(key: string): string | undefined {
+  let current = key;
+  // Bounded loop: each pass must shorten the string, so it cannot spin.
+  for (let pass = 0; pass < 4; pass += 1) {
+    if (COUNTRY_BY_KEY.has(current)) return current;
+    let next = current;
+    for (const wrapper of SCOPE_WRAPPERS) {
+      const stripped = next.replace(wrapper, "").trim();
+      if (stripped !== next && stripped.length > 0) {
+        next = stripped;
+        break;
+      }
+    }
+    next = next.replace(LEADING_ARTICLE, "").trim();
+    if (next === current || next.length === 0) return undefined;
+    current = next;
+  }
+  return COUNTRY_BY_KEY.has(current) ? current : undefined;
+}
+
 export const WHOLE_WORKSPACE_KEYS: ReadonlySet<string> = new Set(
   WHOLE_WORKSPACE_LABELS.map((label) => countryKey(label)).filter(Boolean)
 );

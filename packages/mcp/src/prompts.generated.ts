@@ -1512,7 +1512,7 @@ Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text 
 
 **Gate before calling.** If \`{{arg:city}}\` is a country name or a supra-national scope rather than a city, do NOT call \`leadbay_tour_plan\` with it — a tour of an entire country is not an itinerary, and the value would resolve to a same-named village. Tell me the workspace already covers one country and ask which city or region I'm actually visiting. Otherwise:
 
-Call \`leadbay_tour_plan({city: "{{arg:city}}", …scope from PHASE 1})\`. If the response is \`status: "ambiguous_locations"\`, surface the candidates and ask me to pick one, then re-call with \`city_id\`. If it is \`status: "country_level_location"\`, do NOT retry with a spelling variant — ask me for a city.
+Call \`leadbay_tour_plan({city: "{{arg:city}}", …scope from PHASE 1})\`. If the response is \`status: "ambiguous_locations"\`, surface the candidates and ask me to pick one, then re-call with \`city_id\`. If it is \`status: "country_level_location"\`, do NOT retry with a spelling variant and do NOT re-call without \`city\` — a tour with no city is arbitrary nationwide leads, not an itinerary. Ask me which city or region I am visiting.
 
 Split the returned \`monitor_leads\` into two buckets client-side using their engagement-history fields:
 
