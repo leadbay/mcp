@@ -455,11 +455,76 @@ export function compactBody(
  *  description saying not to — prose does not prevent this, so the tool
  *  rejects it with a named, actionable error (tracked backend-side in
  *  product#3939). */
-const COUNTRY_LOCATION_VALUES = new Set([
+const COUNTRY_ALIASES = [
   "united states", "united states of america", "usa", "us", "america",
   "etats unis", "etats unis d amerique", "france", "fr", "french republic",
   "republique francaise",
-]);
+];
+
+/** Country names that are ALSO a legitimate administrative fence inside a
+ *  Leadbay universe, so rejecting them would break a correct search:
+ *
+ *  - `Georgia` is a US state before it is a country, and one of the most
+ *    common state fences a US account will ask for.
+ *  - The French overseas regions and collectivities each carry their own
+ *    ISO 3166-1 entry, so a comprehensive country list swallows every one of
+ *    them — while "leads in Martinique" is exactly the kind of regional fence
+ *    this parameter exists for.
+ *
+ *  Municipality collisions (`Lebanon`, `Peru`, `Mexico`, … are all US town
+ *  names) are deliberately NOT exempted: a bare town name identical to a
+ *  country is genuinely ambiguous, and the rejection is loud and recoverable —
+ *  `Lebanon, Kentucky` folds to a two-word key that never matches. A silent
+ *  fence to one village is the failure this guard exists to prevent. */
+const SUBNATIONAL_EXEMPTIONS = new Set(
+  [
+    "georgia", "georgie",
+    "guadeloupe", "martinique", "reunion", "mayotte",
+    "french guiana", "guyane francaise",
+    "new caledonia", "nouvelle caledonie",
+    "french polynesia", "polynesie francaise",
+    "saint martin", "saint barthelemy", "saint pierre and miquelon",
+    "saint pierre et miquelon", "wallis and futuna", "wallis et futuna",
+  ].map(countryKey),
+);
+
+/** Every ISO 3166-1 country name, in English and French, folded to the same
+ *  comparison key as the input. Built from `Intl.DisplayNames` rather than a
+ *  hand-kept list: the two-country allowlist this replaces let `Canada`,
+ *  `United Kingdom`, `Germany` and every other country through to the same
+ *  silent same-named-town fencing it was written to stop.
+ *
+ *  Two-letter codes are NOT added wholesale — they collide head-on with US
+ *  state abbreviations (`CA` California, `DE` Delaware, `IN` Indiana). The
+ *  only codes here are the two deliberate aliases in COUNTRY_ALIASES. */
+function buildCountryLocationValues(): Set<string> {
+  const values = new Set(COUNTRY_ALIASES.map(countryKey));
+  try {
+    const A = "A".charCodeAt(0);
+    const displays = ["en", "fr"].map(
+      (locale) =>
+        new Intl.DisplayNames([locale], { type: "region", fallback: "none" }),
+    );
+    for (let i = 0; i < 26; i++) {
+      for (let j = 0; j < 26; j++) {
+        const code = String.fromCharCode(A + i) + String.fromCharCode(A + j);
+        for (const display of displays) {
+          const name = display.of(code);
+          if (!name || name === code) continue;
+          values.add(countryKey(name));
+        }
+      }
+    }
+  } catch {
+    // A Node built without full ICU yields no region names. Falling back to
+    // the explicit aliases keeps the originally-observed failure covered
+    // rather than throwing at import time.
+  }
+  for (const exempt of SUBNATIONAL_EXEMPTIONS) values.delete(exempt);
+  return values;
+}
+
+const COUNTRY_LOCATION_VALUES = buildCountryLocationValues();
 
 /** Fold a location label to a comparison key so spelling variants collapse:
  *  strips accents, punctuation (so `U.S.` and `U.S` both become `us`), a
@@ -474,6 +539,11 @@ function countryKey(raw: string): string {
     // Hyphens/underscores separate words; dots and apostrophes do not (so
     // "U.S" folds to "us", while "etats-unis" stays two words).
     .replace(/[-_,]/g, " ")
+    // French elides its article onto the noun with no space — "l'Allemagne",
+    // "l'Espagne" — so the space-anchored article strip below never fires and
+    // the label folded to "lallemagne". Drop the elided article first, before
+    // the apostrophe itself is deleted. Anchored, so "U.S" still folds to "us".
+    .replace(/^\s*(l|d)['’]\s*/, "")
     .replace(/['’.]/g, "")
     .replace(/\s+/g, " ")
     .trim()
@@ -496,7 +566,7 @@ export function rejectCountryLocations(locations: unknown): void {
         error: true,
         code: "COUNTRY_LEVEL_LOCATION",
         message: `filters.locations value "${loc}" is country-level — it would silently fence the search to a same-named town, not the whole country.`,
-        hint: "Whole-country intent = OMIT filters.locations entirely (each universe is single-country). Use city/state/region names for narrower fences.",
+        hint: "Whole-country intent = OMIT filters.locations entirely (each universe is single-country). Use city/state/region names for narrower fences. If you meant a town that shares the name, qualify it with its state or region (e.g. \"Lebanon, Kentucky\").",
       };
     }
   }

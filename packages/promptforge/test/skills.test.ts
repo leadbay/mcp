@@ -52,26 +52,15 @@ describe("audit: SKILL.md files", () => {
   const result = assemble({ root: PKG_ROOT, registeredToolNames: registered });
   const skillFiles = buildSkillFiles(result.prompts);
 
-  // release_gated prompts deliberately emit NO SKILL.md: a skill is a static
-  // auto-triggering file with no runtime gate, so shipping one while its tools
-  // are hidden starts a workflow that fails on the first call.
-  const gatedPrompts = new Set(
-    result.prompts
-      .filter((p) => p.frontmatter.release_gated === true)
-      .map((p) => p.frontmatter.name),
-  );
-
   it("every prompt .md.tmpl has a matching SKILL.md", () => {
     const templates = readdirSync(PROMPTS_DIR)
       .filter((f) => f.endsWith(".md.tmpl"))
-      .map((f) => f.replace(/\.md\.tmpl$/, ""))
-      .filter((name) => !gatedPrompts.has(name));
+      .map((f) => f.replace(/\.md\.tmpl$/, ""));
     for (const name of templates) {
       const path = join(SKILLS_DIR, name, "SKILL.md");
       expect(existsSync(path), `expected ${path}`).toBe(true);
     }
   });
-
 
   it("every emitted SKILL.md is in sync with .md.tmpl source", () => {
     for (const skill of skillFiles) {

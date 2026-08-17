@@ -43,7 +43,11 @@ One short line narrating the delivery honestly, built from `funnel` + `cost` +
 `explain.scope_notes`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent $C.CC.
+> the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
+
+**Never hard-code `$`.** `cost` carries no currency, and the same job bills in
+euros on a France account — `$6.09` for a €6.09 charge misstates a paid
+operation. US → `$`, France → `€`; region unknown → write the bare amount.
 
 "of the Y asked" needs `summary.items_requested`, which submit results carry
 but a later `leadbay_lead_job_status` snapshot does not. Without it write
