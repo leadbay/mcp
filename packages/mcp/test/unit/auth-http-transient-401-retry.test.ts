@@ -13,10 +13,14 @@
 // The pre-Stargate resolver used `resolveMe()`, which inherited the client's
 // retry, so this was a regression rather than a pre-existing gap.
 //
-// The fix retries the PRIMARY region once AFTER the candidate walk. These tests
-// pin both halves: the blip recovers, and a genuinely dead token is still
-// reported expired (a retry that swallowed real expiry would be worse than the
-// bug).
+// The fix gives the rejecting region(s) one more look AFTER the candidate walk.
+// These tests pin both halves: the blip recovers, and a genuinely dead token is
+// still reported expired (a retry that swallowed real expiry would be worse than
+// the bug).
+//
+// On the path that is about to emit the challenge, EVERY rejecting region is
+// re-tested — the suffix is a hint during probing and can't become an ownership
+// claim here (see the expired case below).
 //
 // Uses a local node:https double rather than ../harness.ts because the point is
 // the ORDER and COUNT of raw requests, including the client's internal retry.
@@ -86,32 +90,37 @@ beforeEach(() => {
 describe("transient 401 on the owning region", () => {
   it("recovers on the retry instead of emitting an expired challenge", async () => {
     // FR blips, US rejects it (region-scoped token), then the FR retry succeeds.
-    // The client's own retry makes the last-chance step two raw requests.
-    h.state.scripts = [AUTH_401, AUTH_401, AUTH_401, OK_200];
+    h.state.scripts = [AUTH_401, AUTH_401, OK_200];
 
     const result = await resolveClientFromToken(FR_TOKEN, { probeTimeoutMs: 200 });
 
     expect(result.authState).toBe("ok");
     expect(result.client.region).toBe("fr");
-    // fr (blip) → us (region-scoped reject) → fr retry (blip) → fr retry (200)
-    expect(hosts()).toEqual(["fr", "us", "fr", "fr"]);
+    // fr (blip) → us (region-scoped reject) → fr retry (200)
+    expect(hosts()).toEqual(["fr", "us", "fr"]);
   });
 
   it("still reports a genuinely dead token as expired", async () => {
-    // Every probe AND the retry reject: this really is expiry, and the host must
-    // still get its invalid_token challenge.
+    // Every probe AND every retry rejects: this really is expiry, and the host
+    // must still get its invalid_token challenge.
+    //
+    // The retry pass covers BOTH rejecting regions, suffix or not: a legacy US
+    // bearer whose opaque value happens to end in `_fr` gets a legitimate 401
+    // from FR and a blip from the US backend that actually owns it, so treating
+    // the suffix as ownership here would expire a live token (Codex P2).
     h.state.scripts = [AUTH_401, AUTH_401, AUTH_401, AUTH_401];
 
     const result = await resolveClientFromToken(FR_TOKEN, { probeTimeoutMs: 200 });
 
     expect(result.authState).toBe("expired");
-    expect(hosts()).toEqual(["fr", "us", "fr", "fr"]);
+    expect(hosts()).toEqual(["fr", "us", "fr", "us"]);
   });
 
   it("treats a fault on the retry as transient, not as expiry", async () => {
     // The retry hits a 503 rather than a 401 — we can no longer be sure the token
-    // is bad, so don't force re-auth. (503 is not a GET-401, so the client's
-    // internal retry does not fire: one raw request.)
+    // is bad, so don't force re-auth. The pass also stops there: the challenge is
+    // off the table, so re-testing US would be latency on a request we're letting
+    // through anyway.
     h.state.scripts = [AUTH_401, AUTH_401, FAULT_503];
 
     const result = await resolveClientFromToken(FR_TOKEN, { probeTimeoutMs: 200 });

@@ -94,8 +94,17 @@ async function resolveTelemetryContext(
 ): Promise<{ identity: CaptureIdentity; enabled: boolean; forceClosed: boolean }> {
   const region = client.region;
   try {
+    // The race bounds how long the TOOL waits; `timeoutMs` bounds the REQUEST.
+    // Both are needed. Losing the race abandons the promise but nothing cancels
+    // the HTTPS call underneath it, so a region that accepted the connection and
+    // then went silent (exactly the case the auth probe's deadline exists for —
+    // and after which resolveClientFromToken hands back an unseeded live client,
+    // so this read runs on every authenticated request) would hold a socket and
+    // an API-semaphore slot for the life of the process. The deadline destroys
+    // the request instead; its TIMEOUT rejection lands in the catch below and
+    // fails closed exactly like the race did.
     const me = await Promise.race([
-      client.resolveMe(),
+      client.resolveMe(false, { timeoutMs: IDENTITY_RESOLVE_TIMEOUT_MS }),
       new Promise<null>((resolve) =>
         setTimeout(() => resolve(null), IDENTITY_RESOLVE_TIMEOUT_MS)
       ),
@@ -684,7 +693,11 @@ export function scheduleSseTelemetryRefresh(
     applyIfCurrent(failClosed, false);
   }, timeoutMs);
 
-  void session.client.fetchTelemetryEnabled().then(
+  // Same deadline as the timer above: the timer decides when we stop WAITING,
+  // `timeoutMs` decides when the request itself is cancelled. Without it the
+  // `refreshing` guard released above waits on a read that a dark region never
+  // finishes, and the semaphore slot it holds never comes back.
+  void session.client.fetchTelemetryEnabled({ timeoutMs }).then(
     (enabled) => {
       readSettled = true;
       clearTimeout(timeout);

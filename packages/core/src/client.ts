@@ -834,7 +834,14 @@ export class LeadbayClient {
 
   // /me cache (60s TTL). Separate from resolveOrgId() which still works for
   // legacy callers (it now delegates here).
-  async resolveMe(force = false): Promise<UserMePayload> {
+  //
+  // `opts.timeoutMs` bounds each underlying attempt and CANCELS it. Callers that
+  // give up on this read with their own `Promise.race` must pass it: abandoning
+  // the promise doesn't stop the request, so against a silent backend (handshake
+  // completes, nothing ever comes back) the socket and its API-semaphore slot
+  // stay held for the life of the process. Racing bounds the caller's wait; only
+  // the deadline bounds the resource.
+  async resolveMe(force = false, opts?: { timeoutMs?: number }): Promise<UserMePayload> {
     const now = Date.now();
     if (
       !force &&
@@ -850,7 +857,9 @@ export class LeadbayClient {
     // writes — cachedTelemetryEnabled() stays undefined and the caller's
     // fallback (resolve verdict / session flag) governs.
     const seqAtStart = ++this.telemetryStateSeq;
-    const me = await this.request<UserMePayload>("GET", "/users/me");
+    const me = await this.request<UserMePayload>("GET", "/users/me", undefined, {
+      timeoutMs: opts?.timeoutMs,
+    });
     this.mePayload = me;
     this.mePayloadCachedAt = now;
     if (this.telemetryStateSeq === seqAtStart && me.telemetry_enabled !== undefined) {
@@ -877,7 +886,12 @@ export class LeadbayClient {
   //
   // Returns the observed preference: true/false, or undefined when the backend
   // omitted the field (older backend → caller treats as enabled default).
-  async fetchTelemetryEnabled(): Promise<boolean | undefined> {
+  //
+  // `opts.timeoutMs` bounds and CANCELS each attempt — same reasoning as
+  // resolveMe(): the hosted SSE refresh fires this off behind its own timer and
+  // stops waiting, so without a deadline a dark region leaves the request (and
+  // the semaphore slot the caller is explicitly waiting on) held forever.
+  async fetchTelemetryEnabled(opts?: { timeoutMs?: number }): Promise<boolean | undefined> {
     const seqAtStart = ++this.telemetryStateSeq;
     if (process.env.LEADBAY_MOCK === "1") {
       const metaBefore = this._lastMeta;
@@ -909,7 +923,8 @@ export class LeadbayClient {
         "GET",
         `${this._baseUrl}${API_PREFIX}/users/me`,
         { Authorization: `Bearer ${this.token}` },
-        undefined
+        undefined,
+        opts?.timeoutMs
       );
       if (res.status < 200 || res.status >= 300) {
         throw this.mapErrorResponse(res.status, res.body, "/users/me", res.headers);

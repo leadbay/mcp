@@ -221,45 +221,45 @@ export async function resolveClientFromToken(
   // spent only on the path that was about to force re-auth, which is far more
   // expensive for the user.
   //
-  // Who gets that second look depends on whether the token names its own region.
+  // Who gets that second look is decided by AMBIGUITY, not by the suffix.
   //
-  // SUFFIXED — retry the PRIMARY, and only it. `primaryRegion` is the region the
-  // token actually CLAIMS, so a 401 there is the blip worth re-testing; the
-  // sibling's 401 is expected (the token is region-scoped). `retryOn401:true`
-  // hands the attempt to the client's own blip policy, which spaces the two
-  // requests out. Deliberately NOT gated on "no sibling faulted" — that was the
-  // mixed-outcome bug: owning region blips 401 while the sibling times out or
-  // 5xxs, `nonAuthFaultRegion` gets set, the retry is skipped, and we bind to the
-  // FAULTING SIBLING — the wrong backend for a region-scoped token, so the
-  // request proceeds with no challenge and every later tool call 401s against a
-  // region the token was never scoped to. A recovered retry is positive evidence
-  // that this region does accept the token, so it outranks that fallback.
+  // ABOUT TO EXPIRE (every candidate rejected, nothing faulted) — retry EVERY
+  // region that rejected, in candidate order, suffix or no suffix. This is the
+  // only path that emits a challenge, and on it we cannot tell which 401 was the
+  // blip and which was the region-scoped rejection: an FR token blipping on FR
+  // looks exactly like a US token blipping on US, and the suffix does not settle
+  // it — a legacy US bearer whose opaque value happens to end in `_fr` gets a
+  // legitimate rejection from FR and a blip from the US backend that actually
+  // owns it. Treating the suffix as ownership HERE would contradict the probe
+  // loop above, which deliberately treats it as a hint. So each rejecting region
+  // gets one extra request (`retryOn401:false`, so the client's internal double
+  // doesn't stack on top): four requests on the whole failure path, zero on the
+  // happy one.
   //
-  // UNTAGGED — retry EVERY region that rejected, but only when nothing faulted,
-  // i.e. only on the path that is about to declare expiry. With no suffix,
-  // `primaryRegion` is just preferRegion-or-US, so we don't know which of the two
-  // 401s was the blip and which was the region-scoped rejection: an FR legacy
-  // token blipping on FR looks exactly like a US legacy token blipping on US.
-  // Retrying only the primary would leave half the legacy population forced
-  // through reauth on a hiccup — the pre-Stargate resolver probed both regions
-  // through `resolveMe()` and inherited the client's retry on each, so both must
-  // get their second look here too. One extra request per region (not the
-  // client's internal double), which keeps the whole failure path at four.
+  // A FAULT OCCURRED — no challenge is coming either way, so the retry exists
+  // only to pick the right BIND region, and there the suffix does carry weight:
+  // retry the PRIMARY when it auth-rejected and the token names it. That is the
+  // mixed-outcome fix — owning region blips 401 while the sibling times out or
+  // 5xxs, so `nonAuthFaultRegion` is set and we would otherwise bind to the
+  // FAULTING SIBLING: the wrong backend for a region-scoped token, no challenge
+  // raised, and every later tool call 401s against a region the token was never
+  // scoped to. A recovered retry is positive evidence that this region accepts
+  // the token, so it outranks that fallback. `retryOn401:true` here hands the
+  // attempt to the client's own blip policy, which spaces the two requests out.
   //
-  // The fault condition is what keeps the UNTAGGED mixed-outcome contract intact:
-  // if a region faulted we are not about to challenge anyway, and the sibling
-  // that merely faulted stays the better bind than the one that rejected (see the
+  // For an UNTAGGED token on that same fault path there is nothing to prefer:
+  // `primaryRegion` is just preferRegion-or-US, so a 401 there is not evidence
+  // about the owning backend, and the sibling that merely faulted stays the
+  // better bind than the one that definitively rejected the token (see the
   // "bind to the transient region, not the rejecting one" cases).
-  const retryPlan: Array<{ region: "us" | "fr"; retryOn401: boolean }> =
-    suffixRegion !== undefined
-      ? primaryAuthRejected
-        ? [{ region: primaryRegion, retryOn401: true }]
-        : []
-      : sawAuthReject && nonAuthFaultRegion === undefined
-      ? candidates
-          .filter((r) => authRejectedRegions.has(r))
-          .map((r) => ({ region: r, retryOn401: false }))
-      : [];
+  const aboutToExpire = sawAuthReject && nonAuthFaultRegion === undefined;
+  const retryPlan: Array<{ region: "us" | "fr"; retryOn401: boolean }> = aboutToExpire
+    ? candidates
+        .filter((r) => authRejectedRegions.has(r))
+        .map((r) => ({ region: r, retryOn401: false }))
+    : primaryAuthRejected && suffixRegion !== undefined
+    ? [{ region: primaryRegion, retryOn401: true }]
+    : [];
 
   for (const step of retryPlan) {
     const client = createClient({ token, region: step.region });
@@ -280,16 +280,19 @@ export async function resolveClientFromToken(
       if (code !== "AUTH_EXPIRED" && code !== "NOT_AUTHENTICATED") {
         // The retry hit a transient fault instead. Same reasoning as in the loop:
         // we can no longer be sure the token is bad, so don't force re-auth.
-        if (suffixRegion !== undefined) {
-          // Overwrites a sibling's recorded fault on purpose. Both regions are now
-          // unproven, and the primary is the one the token CLAIMS — so it is the
-          // better region to bind to than a sibling that merely faulted first.
+        if (aboutToExpire) {
+          // Nothing had faulted before this pass (that's its entry condition), so
+          // this is the first fault: record it and STOP. The challenge is off the
+          // table now, and the remaining retries would only add latency to a
+          // request we are about to let through anyway.
           nonAuthFaultRegion = step.region;
-        } else {
-          // Untagged: nothing had faulted (that's the entry condition), and with
-          // no claimed region the first one to fault is as good a bind as any.
-          nonAuthFaultRegion ??= step.region;
+          break;
         }
+        // Mixed path: overwrites the sibling's recorded fault on purpose. Both
+        // regions are now unproven, and the primary is the one the token CLAIMS —
+        // so it is the better region to bind to than a sibling that merely
+        // faulted first.
+        nonAuthFaultRegion = step.region;
       } else {
         firstAuthError ??= e as LeadbayError;
       }
