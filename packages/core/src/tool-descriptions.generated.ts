@@ -4485,6 +4485,14 @@ On \`code: "COUNTRY_LEVEL_LOCATION"\` do NOT retry with another spelling or a ne
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
 
+**Tour-specific override of the rule above.** For a tour, the home-country
+recovery ("omit the geo argument") does NOT apply: this tool accepts a missing
+\`city\` and then returns arbitrary leads from across the whole workspace, which is
+not an itinerary. So for ANY country-level \`city\` — this workspace's own included
+— do not drop the argument. Ask which city or region the user is actually
+visiting and re-call with that. \`status: "country_level_location"\` carries the
+same instruction in its \`hint\`.
+
 **Counts**: \`followups_count\` (default 6 — generous so the agent can split into "customers + qualified" client-side) and \`discover_count\` (default 6 after client-side geo filter). The composite over-pulls Discover (30 raw) because the wishlist endpoint has no server-side geo filter — it then filters by \`location.city/state/country/full\` substring match against the requested city. The \`discover_filter_note\` string in the response tells the agent the match ratio so it can be honest about coverage ("matched 3/30 by city/state" vs. "matched 12/30").
 
 **What \`tour_plan\` does NOT do**: it doesn't persist the tour as a campaign artifact. To do that — create a "Limoges Tour – May 24" campaign and attach the selected accounts — chain into \`leadbay_create_campaign({lead_ids: [...selected_ids], name: 'Limoges Tour – <date>'})\` after the user picks. See the \`leadbay_plan_tour_in_city\` prompt for the full end-to-end orchestrator.

@@ -90,7 +90,12 @@ describe("leadbay_new_lens — country guard", () => {
     });
     expect(result.status).toBe("country_level_location");
     expect(result.country_locations[0].param).toBe("exclude_locations");
-    expect(result.hint).toMatch(/OMIT exclude_locations/);
+    // The recovery must NOT be "omit it" — this assertion originally demanded
+    // exactly that, encoding the polarity bug: omitting an exclusion of the home
+    // country returns every company the user asked to remove. Exclusion-specific
+    // wording is covered in country-exclude-polarity.test.ts.
+    expect(result.hint).not.toMatch(/OMIT `?exclude_locations/i);
+    expect(result.hint).toMatch(/entire workspace/i);
     expect(getHttpRequests()).toHaveLength(0);
   });
 

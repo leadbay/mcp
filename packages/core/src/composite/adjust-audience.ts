@@ -414,7 +414,7 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
       [
         { input: params.locations, param: "locations" },
         { input: params.location_ids, param: "location_ids" },
-        { input: params.exclude_locations, param: "exclude_locations" },
+        { input: params.exclude_locations, param: "exclude_locations", axis: "exclude" as const },
       ],
       client.region
     );

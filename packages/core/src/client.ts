@@ -324,16 +324,33 @@ export class LeadbayClient {
   // surface latency/region/retry_after to the agent in their `_meta` block.
   private _lastMeta: RequestMeta | null = null;
 
+  /**
+   * Derive the region from a base URL, comparing the NORMALIZED form.
+   *
+   * The trailing slash matters: `LEADBAY_BASE_URL=https://api-fr.leadbay.app/`
+   * is an ordinary way to spell an env var, and comparing it raw labelled that
+   * tenant "custom". Since createClient stopped forcing "us" onto a supplied
+   * baseUrl, that mislabel reaches the single-country guard, which then reports
+   * country_indeterminate instead of correctly classifying France as this
+   * workspace's own country (product#3951).
+   */
+  private static regionFromBaseUrl(baseUrl: string): "us" | "fr" | "custom" {
+    const normalized = baseUrl.replace(/\/+$/, "");
+    if (normalized === REGIONS.us.replace(/\/+$/, "")) return "us";
+    if (normalized === REGIONS.fr.replace(/\/+$/, "")) return "fr";
+    return "custom";
+  }
+
   constructor(baseUrl: string | { baseUrl: string; bearer?: string; region?: "us" | "fr" }, token?: string, region?: "us" | "fr") {
     if (typeof baseUrl === "object") {
       const opts = baseUrl;
       this._baseUrl = opts.baseUrl.replace(/\/+$/, "");
       this.token = opts.bearer ?? null;
-      this._region = opts.region ?? (opts.baseUrl === REGIONS.us ? "us" : opts.baseUrl === REGIONS.fr ? "fr" : "custom");
+      this._region = opts.region ?? LeadbayClient.regionFromBaseUrl(opts.baseUrl);
     } else {
       this._baseUrl = baseUrl.replace(/\/+$/, "");
       this.token = token ?? null;
-      this._region = region ?? (baseUrl === REGIONS.us ? "us" : baseUrl === REGIONS.fr ? "fr" : "custom");
+      this._region = region ?? LeadbayClient.regionFromBaseUrl(baseUrl);
     }
   }
 
@@ -371,10 +388,7 @@ export class LeadbayClient {
   // one the client was constructed with.
   setBaseUrl(baseUrl: string, region?: "us" | "fr"): void {
     this._baseUrl = baseUrl.replace(/\/+$/, "");
-    this._region = region ?? (
-      baseUrl === REGIONS.us ? "us" :
-      baseUrl === REGIONS.fr ? "fr" : "custom"
-    );
+    this._region = region ?? LeadbayClient.regionFromBaseUrl(baseUrl);
     // Region change invalidates everything — different tenant.
     this.clearTenantScopedCaches();
   }

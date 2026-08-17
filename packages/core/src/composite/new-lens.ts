@@ -156,7 +156,7 @@ export const newLens: Tool<NewLensParams> = {
     const countryHits = detectCountryLocationsIn(
       [
         { input: params.locations, param: "locations" },
-        { input: params.exclude_locations, param: "exclude_locations" },
+        { input: params.exclude_locations, param: "exclude_locations", axis: "exclude" as const },
       ],
       client.region
     );

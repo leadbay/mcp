@@ -168,7 +168,7 @@ export const tourPlan: Tool<TourPlanParams> = {
       city: {
         type: "string",
         description:
-          "Free-text city or region (e.g. 'Limoges', 'Bay Area'). Resolved via the same /geo/search the followups_map uses. Ambiguous matches surface as `status: ambiguous_locations` with location_ambiguities[]; pick a location id and re-call with city_id. NEVER a country name: this workspace serves exactly ONE country, so a whole-country ask means omitting `city` entirely.",
+          "Free-text city or region (e.g. 'Limoges', 'Bay Area'). Resolved via the same /geo/search the followups_map uses. Ambiguous matches surface as `status: ambiguous_locations` with location_ambiguities[]; pick a location id and re-call with city_id. NEVER a country name — and unlike the Monitor tools the fix is NOT to omit this argument: a tour with no city returns arbitrary leads from the whole workspace, which is not an itinerary. Ask which city or region the user is visiting and pass that.",
       },
       city_id: {
         type: "string",
@@ -227,7 +227,7 @@ export const tourPlan: Tool<TourPlanParams> = {
       status: {
         type: "string",
         description:
-          "'ambiguous_locations' when the passed `city` matched multiple admin areas — pick an id from location_ambiguities and re-call with city_id. 'country_level_location' when `city` was a country name — drop the argument entirely; the itinerary arrays are empty and nothing was fetched.",
+          "'ambiguous_locations' when the passed `city` matched multiple admin areas — pick an id from location_ambiguities and re-call with city_id. 'country_level_location' when `city` was a country name — do NOT drop the argument (a city-less tour is arbitrary nationwide leads); ask which city or region to use. The itinerary arrays are empty and nothing was fetched.",
       },
       location_ambiguities: {
         type: "array",
@@ -281,7 +281,11 @@ export const tourPlan: Tool<TourPlanParams> = {
           "A tour needs a place to walk around in, so there is nothing to omit here: do NOT re-call without `city`, which would return arbitrary leads from across the whole workspace as an itinerary. Ask which city or region the user is actually visiting, then re-call with that. Do NOT retry another spelling of the country.",
         monitor_leads: [],
         discover_leads: [],
-        discover_filter_note: null,
+        // A STRING, not null: the declared schema allows only a string, and a
+        // client that validates structuredContent would reject the whole
+        // rejection payload — hiding the very recovery hint it carries.
+        discover_filter_note:
+          "No Discover leads were fetched: the request named a country, which cannot scope an itinerary.",
         map_locations: [],
         map_summary: {
           total_leads: 0,

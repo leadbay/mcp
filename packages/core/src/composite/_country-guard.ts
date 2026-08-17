@@ -67,6 +67,17 @@ export interface CountryHit {
     | "country_indeterminate";
   /** English country name; null for a supra-national scope. */
   country: string | null;
+  /**
+   * Whether the value was being INCLUDED or EXCLUDED.
+   *
+   * Load-bearing for the recovery, which reverses with polarity. "Omit the
+   * argument and the result covers the whole workspace" is right for an include
+   * of the home country and exactly backwards for an EXCLUDE of it — the user
+   * asked to remove those companies, and omitting the exclusion returns every
+   * one of them. And excluding a FOREIGN country is a harmless no-op, not an
+   * unsupported request.
+   */
+  axis: "include" | "exclude";
 }
 
 export interface CountryLocationEnvelope {
@@ -187,7 +198,8 @@ function classify(
 export function detectCountryLocations(
   input: unknown,
   param: string,
-  region: GuardRegion
+  region: GuardRegion,
+  axis: "include" | "exclude" = "include"
 ): CountryHit[] {
   if (input === undefined || input === null) return [];
   const list = Array.isArray(input) ? input : [input];
@@ -201,6 +213,7 @@ export function detectCountryLocations(
       param,
       kind: verdict.kind,
       country: verdict.entry?.name ?? null,
+      axis,
     });
   }
   return hits;
@@ -208,12 +221,17 @@ export function detectCountryLocations(
 
 /** Detect across several arguments in one pass, preserving order. */
 export function detectCountryLocationsIn(
-  params: ReadonlyArray<{ input: unknown; param: string }>,
+  params: ReadonlyArray<{
+    input: unknown;
+    param: string;
+    /** Defaults to "include"; pass "exclude" for exclude_locations and friends. */
+    axis?: "include" | "exclude";
+  }>,
   region: GuardRegion
 ): CountryHit[] {
   const hits: CountryHit[] = [];
-  for (const { input, param } of params) {
-    hits.push(...detectCountryLocations(input, param, region));
+  for (const { input, param, axis } of params) {
+    hits.push(...detectCountryLocations(input, param, region, axis ?? "include"));
   }
   return hits;
 }
@@ -253,6 +271,22 @@ function hintFor(hit: CountryHit, region: GuardRegion): string {
   const narrow = NARROW_EXAMPLES[region];
   const home = homeCountryName(region);
   const holds = home ? `holds ${home} companies only` : "covers a single country";
+
+  // EXCLUDING a country inverts every recovery, so it is answered first. The
+  // generic advice ("omit it and the result covers the whole workspace") is the
+  // precise opposite of what an exclusion asked for.
+  if (hit.axis === "exclude") {
+    if (hit.kind === "home_country") {
+      return `Excluding ${hit.country} excludes this ENTIRE workspace, so the result would be empty — and dropping ${hit.param} does the reverse of what was asked, returning every company instead. Neither is what the user wants: ask what they actually meant to carve out, then exclude ${narrow} instead.`;
+    }
+    if (hit.kind === "foreign_country") {
+      return `Nothing in this workspace is in ${hit.country}, so this exclusion changes nothing — it is a no-op, not an unsupported request. Drop ${hit.param} and say the result is unaffected. To carve something out for real, exclude ${narrow}.`;
+    }
+    if (hit.kind === "country_indeterminate") {
+      return `This backend is custom-configured, so whether ${hit.country} is inside this workspace is unknown — the exclusion may remove everything or nothing. Do not guess: ask what should be carved out, then exclude ${narrow}.`;
+    }
+    return `A supra-national scope cannot be excluded as an admin area, and dropping ${hit.param} would instead include everything. Say what the workspace covers and ask what should be carved out, then exclude ${narrow}.`;
+  }
 
   if (hit.kind === "home_country") {
     return `Whole-workspace intent = OMIT ${hit.param} entirely, then say the result covers everything. To narrow, pass ${narrow}. Do NOT retry with another spelling or a nearby city.`;
@@ -364,7 +398,9 @@ function criteriaHits(
   for (const criterion of criteria) {
     const record = criterion as Record<string, unknown> | null;
     if (!record || record.type !== "location_ids") continue;
-    hits.push(...detectCountryLocations(record.locations, param, region));
+    // The criterion carries its own polarity, and the recovery reverses with it.
+    const axis = record.is_excluded === true ? "exclude" : "include";
+    hits.push(...detectCountryLocations(record.locations, param, region, axis));
   }
   return hits;
 }
