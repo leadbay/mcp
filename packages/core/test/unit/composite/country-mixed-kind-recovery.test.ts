@@ -118,7 +118,7 @@ describe("one argument, several kinds — one reconciled recovery", () => {
   it("keeps a valid sibling instead of emptying the argument", () => {
     const text = hint(["Paris", "France", "Canada"], "fr");
     expect(text).toMatch(/Do NOT omit locations/);
-    expect(text).toMatch(/Remove ONLY "France", "Canada"/);
+    expect(text).toMatch(/Remove ALL of "France", "Canada" in ONE re-call/);
     expect(text).toMatch(/covers "Paris"/);
     expect(text).not.toMatch(/Omitting locations entirely/);
   });
@@ -145,7 +145,7 @@ describe("one argument, several kinds — one reconciled recovery", () => {
 
   it("an exclusion beside a valid one keeps the valid one", () => {
     const text = hint(["Paris", "France", "Canada"], "fr", "exclude_locations", "exclude");
-    expect(text).toMatch(/Remove ONLY "France", "Canada"/);
+    expect(text).toMatch(/Remove ALL of "France", "Canada" in ONE re-call/);
     expect(text).toMatch(/other exclusions still apply/i);
   });
 
@@ -162,10 +162,18 @@ describe("what reconciliation must NOT change", () => {
     expect(hint(["Canada"], "fr")).toMatch(/Do NOT simply drop locations and re-run/);
   });
 
-  it("several foreign countries each get named — no value is silently dropped", () => {
+  it("several offenders of the SAME kind get one instruction, naming both", () => {
+    // Two per-hit hints each said `Remove ONLY "Canada"` / `Remove ONLY
+    // "Germany"` and re-call: following either literally left the other country
+    // in place, and "ONLY" made that read as deliberate. One argument, one
+    // instruction — but neither value may be dropped from what it SAYS.
     const text = hint(["Canada", "Germany"], "fr");
-    expect(text).toMatch(/no Canada leads/);
-    expect(text).toMatch(/no Germany leads/);
+    expect((text.match(/Remove every one of/g) ?? []).length).toBe(1);
+    expect(text).toMatch(/"Canada", "Germany"/);
+    expect(text).toMatch(/holds no Canada, Germany companies/);
+    expect(text, "the per-hit instruction must be gone").not.toMatch(
+      /Do NOT simply drop locations and re-run/
+    );
   });
 
   it("two DIFFERENT arguments still get their own instruction", () => {
@@ -183,7 +191,7 @@ describe("what reconciliation must NOT change", () => {
     expect(text).toMatch(/Excluding France excludes this ENTIRE workspace/);
   });
 
-  it("identical hints across arguments are still emitted once", () => {
+  it("the same value arriving twice on one argument yields one instruction", () => {
     const found = detectCountryLocationsIn(
       [
         { input: ["Canada"], param: "locations" },
@@ -192,6 +200,22 @@ describe("what reconciliation must NOT change", () => {
       "fr"
     );
     const text = countryLocationEnvelope(found, "fr").hint;
-    expect((text.match(/Do NOT simply drop locations and re-run/g) ?? []).length).toBe(1);
+    expect((text.match(/Remove every one of/g) ?? []).length).toBe(1);
+  });
+
+  it("the same country on two DIFFERENT arguments gets an instruction each", () => {
+    // Grouping is per argument, so this is two groups, and each instruction
+    // names the argument it applies to. Collapsing them would leave one of the
+    // two values unaddressed.
+    const found = detectCountryLocationsIn(
+      [
+        { input: ["Canada"], param: "locations" },
+        { input: ["Canada"], param: "city" },
+      ],
+      "fr"
+    );
+    const text = countryLocationEnvelope(found, "fr").hint;
+    expect(text).toMatch(/Do NOT simply drop locations and re-run/);
+    expect(text).toMatch(/Do NOT simply drop city and re-run/);
   });
 });

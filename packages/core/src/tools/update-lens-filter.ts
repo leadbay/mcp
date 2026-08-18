@@ -55,7 +55,7 @@ export const updateLensFilter: Tool<UpdateLensFilterParams> = {
       client.region
     );
     if (countryHits.length > 0) {
-      const envelope = countryLocationEnvelope(countryHits, client.region);
+      const envelope = countryLocationEnvelope(countryHits, client.region, "write");
       throw {
         error: true,
         code: envelope.code,

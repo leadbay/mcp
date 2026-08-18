@@ -150,7 +150,12 @@ describe("leadbay_new_lens — exclude_locations carries the exclude axis", () =
     expect(result.status).toBe("country_level_location");
     expect(result.country_locations[0].axis).toBe("exclude");
     expect(result.hint).not.toMatch(/OMIT `?exclude_locations/i);
-    expect(result.hint).toMatch(/entire workspace/i);
+    // new_lens WRITES, and the country was the only scope passed, so the
+    // recovery is to stop rather than re-call — re-calling would create the
+    // lens WORKFLOWS.md forbids for this ask. It still has to say why the
+    // exclusion is impossible.
+    expect(result.hint).toMatch(/would empty the entire audience/i);
+    expect(result.hint).toMatch(/Write NOTHING/);
   });
 
   it("keeps the include recovery on the include axis", async () => {
@@ -161,7 +166,12 @@ describe("leadbay_new_lens — exclude_locations carries the exclude axis", () =
       confirm: true,
     });
     expect(result.country_locations[0].axis).toBe("include");
-    expect(result.hint).toMatch(/OMIT/);
+    // Not "OMIT locations and re-call": on a lens-writing tool with nothing
+    // else in the argument, that re-call IS the forbidden mutation. The include
+    // axis still shows through in what it says — the audience already covers
+    // the whole country, which the exclude axis never claims.
+    expect(result.hint).toMatch(/do NOT re-call this tool with locations omitted/i);
+    expect(result.hint).toMatch(/already covers all of France/);
   });
 
   it("reports both axes distinctly in one envelope", async () => {

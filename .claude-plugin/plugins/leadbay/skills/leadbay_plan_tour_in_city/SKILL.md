@@ -41,6 +41,8 @@ Map my answers to the `leadbay_tour_plan` call:
 
 `axis: "exclude"` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
+On a lens-WRITING tool (`new_lens`, `adjust_audience`, `update_lens_filter`), if the country was the only scope: write nothing, do not re-call without it.
+
 Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.
 
 

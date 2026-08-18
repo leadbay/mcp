@@ -161,7 +161,7 @@ export const newLens: Tool<NewLensParams> = {
       client.region
     );
     if (countryHits.length > 0) {
-      return countryLocationStatus(countryHits, client.region);
+      return countryLocationStatus(countryHits, client.region, "write");
     }
 
     // 1. Resolve sectors FIRST — if any don't resolve, surface and bail before

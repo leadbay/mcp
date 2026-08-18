@@ -99,7 +99,12 @@ describe("leadbay_update_lens_filter — country guard", () => {
     }
     expect(thrown.message).toContain("criteria[].locations");
     expect(thrown.message).toContain("France");
-    expect(thrown.hint).toMatch(/OMIT/);
+    // NOT "omit the criterion and re-call": update_lens_filter replaces the
+    // whole filter, so re-calling without the criterion rewrites the lens to
+    // express no scope — the mutation WORKFLOWS.md forbids for a country-wide
+    // ask. The recovery has to stop.
+    expect(thrown.hint).toMatch(/Write NOTHING/);
+    expect(thrown.hint).toMatch(/do NOT re-call this tool/i);
   });
 
   it("writes a clean filter through untouched", async () => {

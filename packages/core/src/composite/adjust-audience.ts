@@ -419,7 +419,7 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
       client.region
     );
     if (countryHits.length > 0) {
-      return countryLocationStatus(countryHits, client.region);
+      return countryLocationStatus(countryHits, client.region, "write");
     }
 
     const me = await client.resolveMe();

@@ -41,6 +41,20 @@ import {
 /** Mirrors `LeadbayClient.region`. */
 export type GuardRegion = "us" | "fr" | "custom";
 
+/**
+ * Whether the guarded tool WRITES.
+ *
+ * The recovery diverges here, and only here. On a read tool "drop the country
+ * and re-call" is exactly right — `pull_followups` with no `city` is every
+ * follow-up, which is what a whole-country ask meant. On a WRITE tool with
+ * nothing else in the argument it is the forbidden move: re-calling `new_lens`
+ * / `adjust_audience` / `update_lens_filter` without the country persists a
+ * lens or filter change that expresses no scope at all, to say something the
+ * workspace already is. WORKFLOWS.md's "Country-wide scope" row forbids exactly
+ * those three tools for exactly this ask, and requires that NOTHING be written.
+ */
+export type GuardIntent = "read" | "write";
+
 export const COUNTRY_LEVEL_LOCATION = "COUNTRY_LEVEL_LOCATION" as const;
 
 /** The status a returning tool surfaces. Deliberately NOT
@@ -323,10 +337,32 @@ function messageFor(hit: CountryHit, region: GuardRegion): string {
  * and supra-national hints must NOT tell the agent to drop the argument and
  * retry; they tell it to report the workspace's scope instead.
  */
-function hintFor(hit: CountryHit, region: GuardRegion): string {
+function hintFor(hit: CountryHit, region: GuardRegion, intent: GuardIntent): string {
   const narrow = NARROW_EXAMPLES[region];
   const home = homeCountryName(region);
   const holds = home ? `holds ${home} companies only` : "covers a single country";
+
+  // A WRITE tool with nothing left to write. Ordered before everything else
+  // because every recovery below ends in "re-call", and here the re-call is the
+  // defect: a lens created or rewritten to express a country-wide scope is the
+  // forbidden outcome, not the fix for it. Only when the argument is left EMPTY
+  // — `kept.length > 0` means a real place survives and writing it is exactly
+  // what the user asked for.
+  if (intent === "write" && hit.kept.length === 0) {
+    const stop = `A country-level value was the ONLY scope passed, so do NOT re-call this tool with ${hit.param} omitted: that persists a lens or filter change carrying no scope at all, to express something this workspace already is. Write NOTHING here.`;
+    if (hit.kind === "home_country") {
+      return hit.axis === "exclude"
+        ? `${stop} Excluding ${hit.country} would empty the entire audience, so it cannot be written either. Ask what should actually be carved out — ${narrow} — and only then write.`
+        : `${stop} Say the audience already covers all of ${hit.country}, then offer the axes that DO narrow it: sector, size, or ${narrow}.`;
+    }
+    if (hit.kind === "foreign_country") {
+      return `${stop} Say this workspace ${holds}, so there is no ${hit.country} audience to scope to and none can be created. Ask what to target inside it — ${narrow}.`;
+    }
+    if (hit.kind === "country_indeterminate") {
+      return `${stop} This backend is custom-configured, so claim nothing about whether ${hit.country} is inside it. Ask what should be targeted — ${narrow} — before writing anything.`;
+    }
+    return `${stop} A supra-national scope is not an admin area and cannot be persisted. Say what the workspace covers, then ask which part of it to target — ${narrow}.`;
+  }
 
   // MIXED ARRAY — the argument also carries values that are fine. Answered
   // before anything else, because every hint below ends in some form of "drop
@@ -406,7 +442,11 @@ function hintFor(hit: CountryHit, region: GuardRegion): string {
  * claimed about the result. The home country is the only kind that licenses an
  * unfiltered re-run, and even then only for its own half of the ask.
  */
-function reconciledHint(hits: readonly CountryHit[], region: GuardRegion): string {
+function reconciledHint(
+  hits: readonly CountryHit[],
+  region: GuardRegion,
+  intent: GuardIntent
+): string {
   const { param, axis, kept } = hits[0];
   const narrow = NARROW_EXAMPLES[region];
   const home = homeCountryName(region);
@@ -426,10 +466,42 @@ function reconciledHint(hits: readonly CountryHit[], region: GuardRegion): strin
 
   // What happens to the argument. Identical in both axes: the offending values
   // leave, and the survivors decide whether that empties it.
+  const because =
+    new Set(hits.map((h) => h.kind)).size > 1
+      ? `they are country-level or wider, and mixing kinds makes none of them usable`
+      : `not one of them is a usable location filter`;
   const surgical =
     kept.length > 0
-      ? `Do NOT omit ${param} — ${quoted(kept)} ${kept.length > 1 ? "are" : "is"} valid and would be lost with it. Remove ONLY ${offending} and re-call with the rest.`
-      : `Remove every one of ${offending} from ${param} — they are country-level or wider, and mixing kinds makes none of them usable.`;
+      ? `Do NOT omit ${param} — ${quoted(kept)} ${kept.length > 1 ? "are" : "is"} valid and would be lost with it. Remove ALL of ${offending} in ONE re-call and keep the rest.`
+      : `Remove every one of ${offending} from ${param} — ${because}.`;
+
+  // A WRITE tool with an argument that would be left empty. Same reason as in
+  // hintFor: the re-call every branch below ends in is itself the forbidden
+  // outcome. Stated once for the whole group, since the group is one argument.
+  if (intent === "write" && kept.length === 0) {
+    const cannot: string[] = [];
+    if (homeCountry) {
+      cannot.push(
+        axis === "exclude"
+          ? `excluding ${homeCountry} would empty the audience entirely`
+          : `the audience already covers all of ${homeCountry}`
+      );
+    }
+    if (foreign.length > 0) {
+      cannot.push(
+        `this workspace ${holds}, so there is no ${foreign.join(", ")} audience to scope to`
+      );
+    }
+    if (indeterminate.length > 0) {
+      cannot.push(
+        `this backend is custom-configured, so whether ${indeterminate.join(", ")} is inside it is unknown`
+      );
+    }
+    if (supra.length > 0) {
+      cannot.push(`${quoted(supra)} is a supra-national scope, which cannot be persisted`);
+    }
+    return `${surgical} Then STOP: do NOT re-call this tool with ${param} omitted, which would persist a lens or filter change carrying no scope at all. Write NOTHING — ${cannot.join("; ")}. Say what the audience already covers, then offer the axes that DO narrow it: sector, size, or ${narrow}.`;
+  }
 
   const say: string[] = [];
   if (axis === "exclude") {
@@ -478,7 +550,7 @@ function reconciledHint(hits: readonly CountryHit[], region: GuardRegion): strin
   }
   if (supra.length > 0) {
     say.push(
-      `${quoted(supra)} is a supra-national scope, not a place — say what the workspace covers rather than letting the result stand for it`
+      `${quoted(supra)} is a supra-national scope, not a place — say what the workspace covers and offer the whole-workspace view as an explicit choice, rather than letting the result stand for it`
     );
   }
   return `${surgical} ${scope} And be explicit that ${say.join("; ")}. To narrow, pass ${narrow}. Do NOT retry with another spelling.`;
@@ -491,7 +563,8 @@ function reconciledHint(hits: readonly CountryHit[], region: GuardRegion): strin
  */
 export function countryLocationEnvelope(
   hits: readonly CountryHit[],
-  region: GuardRegion
+  region: GuardRegion,
+  intent: GuardIntent = "read"
 ): CountryLocationEnvelope {
   const message = hits.map((hit) => messageFor(hit, region)).join(" ");
 
@@ -510,15 +583,16 @@ export function countryLocationEnvelope(
   }
 
   const hints: string[] = [];
-  const push = (hint: string) => {
-    if (!hints.includes(hint)) hints.push(hint);
-  };
+  const push = (hint: string) => hints.push(hint);
   for (const group of groups.values()) {
-    const kinds = new Set(group.map((h) => h.kind));
-    // One kind — every hit in the group agrees, so the per-kind text stands and
-    // each distinct country still gets named.
-    if (kinds.size === 1) for (const hit of group) push(hintFor(hit, region));
-    else push(reconciledHint(group, region));
+    // Reconciled whenever the argument carries MORE THAN ONE offender, same
+    // kind or not. Same-kind hints do not contradict each other on what to
+    // claim, but they do on what to DO: two per-hit hints each said `Remove
+    // ONLY "Canada"` / `Remove ONLY "Germany"` and re-call, so following either
+    // one literally leaves the other country in place, and "ONLY" made that
+    // read as deliberate. One argument gets one instruction.
+    if (group.length === 1) push(hintFor(group[0], region, intent));
+    else push(reconciledHint(group, region, intent));
   }
   return { code: COUNTRY_LEVEL_LOCATION, message, hint: hints.join(" ") };
 }
@@ -533,11 +607,12 @@ export function countryLocationEnvelope(
  */
 export function rejectCountryLocations(
   params: ReadonlyArray<{ input: unknown; param: string }>,
-  region: GuardRegion
+  region: GuardRegion,
+  intent: GuardIntent = "read"
 ): void {
   const hits = detectCountryLocationsIn(params, region);
   if (hits.length === 0) return;
-  const envelope = countryLocationEnvelope(hits, region);
+  const envelope = countryLocationEnvelope(hits, region, intent);
   throw {
     error: true,
     code: envelope.code,
@@ -557,7 +632,8 @@ export function rejectCountryLocations(
  */
 export function countryLocationStatus(
   hits: readonly CountryHit[],
-  region: GuardRegion
+  region: GuardRegion,
+  intent: GuardIntent = "read"
 ): {
   status: typeof COUNTRY_LEVEL_STATUS;
   code: typeof COUNTRY_LEVEL_LOCATION;
@@ -565,7 +641,7 @@ export function countryLocationStatus(
   hint: string;
   country_locations: CountryHit[];
 } {
-  const envelope = countryLocationEnvelope(hits, region);
+  const envelope = countryLocationEnvelope(hits, region, intent);
   return {
     status: COUNTRY_LEVEL_STATUS,
     code: envelope.code,
