@@ -33,6 +33,7 @@ import {
   countryLocationEnvelope,
   detectCountryLocations,
   detectCountryLocationsIn,
+  detectCountryLocationsInFilter,
   detectCountryLocationsInSetFilter,
 } from "../../../src/composite/_country-guard.js";
 import { newLens } from "../../../src/composite/new-lens.js";
@@ -175,6 +176,141 @@ describe("leadbay_new_lens — exclude_locations carries the exclude axis", () =
       "include",
       "exclude",
     ]);
+  });
+});
+
+describe("echoed resolved-areas block inherits the criterion's polarity", () => {
+  // The dangerous shape: the criterion carries only a numeric id, so the country
+  // is visible ONLY via the echoed name. Defaulting that hit to "include" made
+  // the recovery tell the caller to omit the location — returning the whole
+  // workspace instead of explaining that the exclusion would empty it.
+  const roundTripped = (isExcluded: boolean) => ({
+    lens_filter: {
+      items: [
+        { criteria: [{ type: "location_ids", is_excluded: isExcluded, locations: ["27925"] }] },
+      ],
+    },
+    locations: {
+      results: [{ id: "27925", name: "France", country: "FR", level: 2, parent_ids: [] }],
+      parents: [],
+    },
+  });
+
+  it("marks an echoed row as exclude when its criterion excludes it", () => {
+    const hits = detectCountryLocationsInFilter(roundTripped(true), "fr");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].param).toContain("locations.results");
+    expect(hits[0].axis).toBe("exclude");
+  });
+
+  it("keeps include polarity when the criterion includes it", () => {
+    const hits = detectCountryLocationsInFilter(roundTripped(false), "fr");
+    expect(hits[0].axis).toBe("include");
+  });
+
+  it("gives the exclusion recovery for the excluded round-trip", () => {
+    const hits = detectCountryLocationsInFilter(roundTripped(true), "fr");
+    const hint = countryLocationEnvelope(hits, "fr").hint;
+    expect(hint).not.toMatch(/\bOMIT\b/i);
+    expect(hint).toMatch(/entire workspace/i);
+  });
+
+  it("matches a numeric id against a string-keyed criterion", () => {
+    // The wire shape is loose: ids arrive as numbers or strings.
+    const filter = {
+      lens_filter: {
+        items: [{ criteria: [{ type: "location_ids", is_excluded: true, locations: [27925] }] }],
+      },
+      locations: { results: [{ id: "27925", name: "France" }], parents: [] },
+    };
+    expect(detectCountryLocationsInFilter(filter, "fr")[0].axis).toBe("exclude");
+  });
+
+  it("defaults to include when no criterion references the echoed row", () => {
+    const filter = {
+      lens_filter: { items: [] },
+      locations: { results: [{ id: "27925", name: "France" }], parents: [] },
+    };
+    expect(detectCountryLocationsInFilter(filter, "fr")[0].axis).toBe("include");
+  });
+
+  it("lets the destructive reading win when both axes name the same id", () => {
+    const filter = {
+      lens_filter: {
+        items: [
+          { criteria: [{ type: "location_ids", is_excluded: false, locations: ["27925"] }] },
+          { criteria: [{ type: "location_ids", is_excluded: true, locations: ["27925"] }] },
+        ],
+      },
+      locations: { results: [{ id: "27925", name: "France" }], parents: [] },
+    };
+    const echoed = detectCountryLocationsInFilter(filter, "fr").filter((h) =>
+      h.param.includes("locations.results")
+    );
+    expect(echoed[0].axis).toBe("exclude");
+  });
+});
+
+describe("dependent territories stay valid on a custom endpoint", () => {
+  // With no known home country a strict sovereign===home test exempted nothing,
+  // so Martinique on an FR staging backend and Puerto Rico on a US one were
+  // rejected — blocking real prospecting on the documented LEADBAY_BASE_URL path.
+  for (const territory of [
+    "Martinique",
+    "Guadeloupe",
+    "La Réunion",
+    "Mayotte",
+    "Guyane",
+    "Puerto Rico",
+    "Guam",
+    "American Samoa",
+  ]) {
+    it(`allows ${JSON.stringify(territory)} on a custom endpoint`, () => {
+      expect(detectCountryLocations(territory, "city", "custom")).toEqual([]);
+    });
+  }
+
+  it("still rejects a sovereign country on a custom endpoint", () => {
+    // The permissive branch is for DEPENDENT territories only — a sovereign
+    // state is still refused (as indeterminate, claiming nothing).
+    expect(detectCountryLocations("France", "city", "custom")[0]?.kind).toBe(
+      "country_indeterminate"
+    );
+    expect(detectCountryLocations("Germany", "city", "custom")[0]?.kind).toBe(
+      "country_indeterminate"
+    );
+  });
+
+  it("keeps the strict per-region behaviour where the home country IS known", () => {
+    // Guadeloupe is in-universe on FR and out-of-universe on US.
+    expect(detectCountryLocations("Guadeloupe", "city", "fr")).toEqual([]);
+    expect(detectCountryLocations("Guadeloupe", "city", "us")[0]?.kind).toBe(
+      "foreign_country"
+    );
+  });
+});
+
+describe("the country MESSAGE respects polarity too", () => {
+  it("does not claim an exclusion 'removes nothing'", () => {
+    // Message and hint are surfaced together; an un-branched message said
+    // filtering by France "removes nothing" while the hint said the exclusion
+    // would empty the workspace.
+    const hits = detectCountryLocations("France", "exclude_locations", "fr", "exclude");
+    const message = countryLocationEnvelope(hits, "fr").message;
+    expect(message).not.toMatch(/removes nothing/i);
+    expect(message).toMatch(/remove every company/i);
+  });
+
+  it("still says an INCLUDE of the home country removes nothing", () => {
+    const hits = detectCountryLocations("France", "locations", "fr", "include");
+    expect(countryLocationEnvelope(hits, "fr").message).toMatch(/removes nothing/i);
+  });
+
+  it("says excluding a foreign country removes nothing to exclude", () => {
+    const hits = detectCountryLocations("Germany", "exclude_locations", "us", "exclude");
+    const message = countryLocationEnvelope(hits, "us").message;
+    expect(message).toMatch(/nothing here to exclude/i);
+    expect(message).not.toMatch(/holds no Germany companies/i);
   });
 });
 

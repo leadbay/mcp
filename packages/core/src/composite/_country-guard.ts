@@ -161,7 +161,18 @@ function classify(
 
   // (2) A dependent territory of the backend's own country IS in the universe:
   //     Guadeloupe/Martinique/Réunion on FR, Puerto Rico/Guam on US.
-  if (entry.sovereign !== undefined && entry.sovereign === home) return null;
+  //
+  //     On a CUSTOM endpoint `home` is undefined, so a strict equality test
+  //     exempted nothing and rejected Martinique on an FR staging backend and
+  //     Puerto Rico on a US one — blocking real prospecting on the documented
+  //     LEADBAY_BASE_URL path. With no known home country we cannot tell which
+  //     territories are in the universe, so we take the permissive branch, the
+  //     same choice exemptKeysFor() already makes for custom: a dependent
+  //     territory is far more likely a local admin area than a user asking for
+  //     a foreign island.
+  if (entry.sovereign !== undefined && (home === undefined || entry.sovereign === home)) {
+    return null;
+  }
 
   // (3) The universe's own country — the "all of France" case.
   if (home !== undefined && entry.iso2 === home) {
@@ -248,12 +259,23 @@ function messageFor(hit: CountryHit, region: GuardRegion): string {
     return `${hit.param} value "${hit.value}" is a supra-national scope, which is never an admin area — it cannot resolve to anything.`;
   }
   if (hit.kind === "home_country") {
-    return `${hit.param} value "${hit.value}" names this whole workspace, not a place inside it — this backend serves ${hit.country} and nothing else, so filtering by it removes nothing. Country names are absent from the admin-area index (product#3885), so the value silently trigram-matches a same-named town instead ("France" → the commune of Francs, "United States" → Statesboro) and fences the search to one village.`;
+    // "Filtering by it removes nothing" is true of an INCLUDE and false of an
+    // exclusion, which would remove everything. Message and hint are surfaced
+    // together, so leaving this un-branched contradicted the hint outright.
+    const effect =
+      hit.axis === "exclude"
+        ? `so excluding it would remove every company in the workspace`
+        : `so filtering by it removes nothing`;
+    return `${hit.param} value "${hit.value}" names this whole workspace, not a place inside it — this backend serves ${hit.country} and nothing else, ${effect}. Country names are absent from the admin-area index (product#3885), so the value silently trigram-matches a same-named town instead ("France" → the commune of Francs, "United States" → Statesboro) and fences the search to one village.`;
   }
   if (hit.kind === "country_indeterminate") {
     return `${hit.param} value "${hit.value}" is a country name, which is never a usable location filter: country names are absent from the admin-area index (product#3885), so the value silently trigram-matches a same-named town and fences the search to one village. This backend is custom-configured, so which country it serves is unknown — ${hit.country} may or may not be it.`;
   }
-  return `${hit.param} value "${hit.value}" is a country outside this workspace — this backend serves ${home} only, so it holds no ${hit.country} companies. A country name is also absent from the admin-area index (product#3885), so it silently trigram-matches a same-named town and fences the search to one village.`;
+  const foreignEffect =
+    hit.axis === "exclude"
+      ? `so excluding it removes nothing — there is nothing here to exclude`
+      : `so it holds no ${hit.country} companies`;
+  return `${hit.param} value "${hit.value}" is a country outside this workspace — this backend serves ${home} only, ${foreignEffect}. A country name is also absent from the admin-area index (product#3885), so it silently trigram-matches a same-named town and fences the search to one village.`;
 }
 
 /**
@@ -456,28 +478,65 @@ export function detectCountryLocationsInFilter(
 
   const lensFilter = asRecord.lens_filter as Record<string, unknown> | undefined;
   const items = lensFilter?.items;
+  // id -> polarity, harvested from the criteria so an echoed row can inherit the
+  // polarity of the criterion that actually references it. Without this an
+  // EXCLUDED country carried as a numeric id and revealed only by its echoed
+  // name defaulted to "include", and the recovery then told the caller to omit
+  // the location — returning the whole workspace instead of explaining that the
+  // exclusion would empty it.
+  const polarityById = new Map<string, "include" | "exclude">();
   if (Array.isArray(items)) {
     for (const item of items) {
+      const criteria = (item as Record<string, unknown> | null)?.criteria;
       hits.push(
         ...criteriaHits(
-          (item as Record<string, unknown> | null)?.criteria,
+          criteria,
           "filter.lens_filter.items[].criteria[].locations",
           region
         )
       );
+      if (!Array.isArray(criteria)) continue;
+      for (const criterion of criteria) {
+        const record = criterion as Record<string, unknown> | null;
+        if (!record || record.type !== "location_ids") continue;
+        const axis = record.is_excluded === true ? "exclude" : "include";
+        const ids = Array.isArray(record.locations) ? record.locations : [];
+        for (const id of ids) {
+          if (typeof id === "string" || typeof id === "number") {
+            const key = String(id);
+            // An id named by BOTH axes is contradictory input; the exclusion is
+            // the destructive reading, so it wins.
+            if (axis === "exclude" || !polarityById.has(key)) {
+              polarityById.set(key, axis);
+            }
+          }
+        }
+      }
     }
   }
 
   const locations = asRecord.locations as Record<string, unknown> | undefined;
-  for (const axis of ["results", "parents"] as const) {
-    const rows = locations?.[axis];
+  for (const block of ["results", "parents"] as const) {
+    const rows = locations?.[block];
     if (!Array.isArray(rows)) continue;
-    const names = rows
-      .map((row) => (row as Record<string, unknown> | null)?.name)
-      .filter((name): name is string => typeof name === "string");
-    hits.push(
-      ...detectCountryLocations(names, `filter.locations.${axis}[].name`, region)
-    );
+    for (const row of rows) {
+      const record = row as Record<string, unknown> | null;
+      const name = record?.name;
+      if (typeof name !== "string") continue;
+      const id = record?.id;
+      const axis =
+        (typeof id === "string" || typeof id === "number"
+          ? polarityById.get(String(id))
+          : undefined) ?? "include";
+      hits.push(
+        ...detectCountryLocations(
+          name,
+          `filter.locations.${block}[].name`,
+          region,
+          axis
+        )
+      );
+    }
   }
 
   return hits;

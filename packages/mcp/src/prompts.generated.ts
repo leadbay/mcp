@@ -509,16 +509,18 @@ Call \`leadbay_pull_followups\` (NOT \`leadbay_pull_leads\` — those are differ
 
 For geo filters specifically: prefer the \`city\` shortcut on \`leadbay_pull_followups({city: "Berlin"})\` — the composite resolves the free-text city via \`/geo/search\`, returns ambiguities to disambiguate when needed (status: "ambiguous_locations" → pick an id → re-call with \`city_id\`), then merges the resolved admin_area into the Monitor filter as \`location_ids\`. If the user has already given you a numeric id, pass it as \`city_id\`. Don't guess admin_area ids — let the resolver do it.
 
-**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France). The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 
-**Which country decides the recovery — these are NOT interchangeable:**
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
 
-- **This workspace's own country**, or "nationwide" / "partout en France" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
-- **A different country** ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
-- **A supra-national scope** ("EU", "EMEA", "worldwide") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
-- **A country on a custom/staging backend** (\`country_indeterminate\`) → which country this workspace serves is unknown, so claim nothing: omit the argument ONLY if the user meant the whole workspace, and never present the result as an answer about one specific country.
+\`axis: "include"\`:
 
-On \`code: "COUNTRY_LEVEL_LOCATION"\` do NOT retry with another spelling or a nearby city — read \`country_locations[].kind\` (\`home_country\` / \`foreign_country\` / \`supranational\` / \`country_indeterminate\`) and follow the matching line.
+- \`home_country\`, or "nationwide" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -1496,16 +1498,18 @@ Map my answers to the \`leadbay_tour_plan\` call:
 
 # PHASE 2 — BUILD THE ITINERARY
 
-**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France). The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 
-**Which country decides the recovery — these are NOT interchangeable:**
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
 
-- **This workspace's own country**, or "nationwide" / "partout en France" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
-- **A different country** ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
-- **A supra-national scope** ("EU", "EMEA", "worldwide") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
-- **A country on a custom/staging backend** (\`country_indeterminate\`) → which country this workspace serves is unknown, so claim nothing: omit the argument ONLY if the user meant the whole workspace, and never present the result as an answer about one specific country.
+\`axis: "include"\`:
 
-On \`code: "COUNTRY_LEVEL_LOCATION"\` do NOT retry with another spelling or a nearby city — read \`country_locations[].kind\` (\`home_country\` / \`foreign_country\` / \`supranational\` / \`country_indeterminate\`) and follow the matching line.
+- \`home_country\`, or "nationwide" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -1910,16 +1914,18 @@ FIRST, before any tool call:
   \`leadbay_adjust_audience({locations: [...]})\`, say why, and stop.
 - **Anything else** (a genuine qualitative refinement) → continue to PHASE 1.
 
-**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France). The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 
-**Which country decides the recovery — these are NOT interchangeable:**
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
 
-- **This workspace's own country**, or "nationwide" / "partout en France" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
-- **A different country** ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
-- **A supra-national scope** ("EU", "EMEA", "worldwide") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
-- **A country on a custom/staging backend** (\`country_indeterminate\`) → which country this workspace serves is unknown, so claim nothing: omit the argument ONLY if the user meant the whole workspace, and never present the result as an answer about one specific country.
+\`axis: "include"\`:
 
-On \`code: "COUNTRY_LEVEL_LOCATION"\` do NOT retry with another spelling or a nearby city — read \`country_locations[].kind\` (\`home_country\` / \`foreign_country\` / \`supranational\` / \`country_indeterminate\`) and follow the matching line.
+- \`home_country\`, or "nationwide" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -2068,16 +2074,18 @@ If the prompt's body and the tool's RENDERING appear to conflict, the tool's REN
 
 # PHASE 1 — INTERPRET INTENT INTO A LENS
 
-**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France). The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 
-**Which country decides the recovery — these are NOT interchangeable:**
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
 
-- **This workspace's own country**, or "nationwide" / "partout en France" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
-- **A different country** ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
-- **A supra-national scope** ("EU", "EMEA", "worldwide") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
-- **A country on a custom/staging backend** (\`country_indeterminate\`) → which country this workspace serves is unknown, so claim nothing: omit the argument ONLY if the user meant the whole workspace, and never present the result as an answer about one specific country.
+\`axis: "include"\`:
 
-On \`code: "COUNTRY_LEVEL_LOCATION"\` do NOT retry with another spelling or a nearby city — read \`country_locations[].kind\` (\`home_country\` / \`foreign_country\` / \`supranational\` / \`country_indeterminate\`) and follow the matching line.
+- \`home_country\`, or "nationwide" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -2263,16 +2271,18 @@ If the \`territory\` I named is a country, which one decides what you do:
 - **This workspace's own country** → scope NOTHING and carry on: say the plan already covers the whole workspace, and offer sector / size / sub-country region as the axes that would actually narrow it.
 - **A different country, or a supra-national scope** → do NOT simply drop the scope and build the plan anyway. An unfiltered plan is this workspace's own accounts, which is not an answer to a request about somewhere else — delivering it under my heading would be a confidently wrong plan. Say the ask cannot be filled from this workspace and stop.
 
-**One workspace = one country — a country name is NEVER a location filter.** This workspace serves exactly ONE country (US backend → US companies, FR → France). The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 
-**Which country decides the recovery — these are NOT interchangeable:**
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
 
-- **This workspace's own country**, or "nationwide" / "partout en France" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
-- **A different country** ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
-- **A supra-national scope** ("EU", "EMEA", "worldwide") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
-- **A country on a custom/staging backend** (\`country_indeterminate\`) → which country this workspace serves is unknown, so claim nothing: omit the argument ONLY if the user meant the whole workspace, and never present the result as an answer about one specific country.
+\`axis: "include"\`:
 
-On \`code: "COUNTRY_LEVEL_LOCATION"\` do NOT retry with another spelling or a nearby city — read \`country_locations[].kind\` (\`home_country\` / \`foreign_country\` / \`supranational\` / \`country_indeterminate\`) and follow the matching line.
+- \`home_country\`, or "nationwide" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 

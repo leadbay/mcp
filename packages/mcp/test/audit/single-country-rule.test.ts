@@ -159,6 +159,24 @@ describe("audit: single-country-universe rule", () => {
     }
   });
 
+  it("the snippet carries the EXCLUSION recovery, not just the include one", () => {
+    // Every recovery in this rule was written for an include, and each inverts on
+    // an exclude axis: "omit the argument" returns the very companies the user
+    // asked to remove. Both new_lens and adjust_audience carry this snippet and
+    // both accept exclude_locations, so a missing exclusion branch here can
+    // persist an audience that includes everything the user excluded.
+    expect(RULE, "the rule must key the recovery off the axis").toContain("axis");
+    expect(RULE, "it must forbid the omit advice on an exclusion").toMatch(
+      /never "omit the argument"/i
+    );
+    expect(RULE, "it must say what excluding the home country does").toMatch(
+      /would empty it/i
+    );
+    expect(RULE, "it must say excluding a foreign country is a no-op").toMatch(
+      /no-op/i
+    );
+  });
+
   it("the runtime error code is the one the snippet teaches", () => {
     // Imported from core rather than hardcoded: a rename there must not
     // silently leave the prose teaching a recovery for an error that no longer
