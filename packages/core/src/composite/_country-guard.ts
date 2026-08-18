@@ -33,6 +33,7 @@ import {
   US_STATE_POSTAL_CODES,
   WHOLE_WORKSPACE_KEYS,
   embeddedCountryKey,
+  embeddedSupranationalKey,
   countryKey,
   type CountryEntry,
 } from "./_country-names.js";
@@ -146,13 +147,22 @@ function classify(
   // Generic "the whole of here" with NO country named ("nationwide", "partout",
   // "everywhere") means this workspace, so the recovery is the home-country one
   // (omit and answer) rather than the supra-national one (report the scope).
-  if (namedKey === undefined && WHOLE_WORKSPACE_KEYS.has(key)) {
-    const homeIso2 = homeCountryIso2(region);
-    // No home country (custom backend) → we cannot claim it means "everything
-    // here", so fall back to the conservative report-the-scope treatment.
-    if (homeIso2 === undefined) return { kind: "supranational" };
-    const homeEntry = COUNTRY_BY_KEY.get(countryKey(homeIso2));
-    return { kind: "home_country", entry: homeEntry };
+  if (namedKey === undefined) {
+    if (WHOLE_WORKSPACE_KEYS.has(key)) {
+      const homeIso2 = homeCountryIso2(region);
+      // No home country (custom backend) → we cannot claim it means "everything
+      // here", so fall back to the conservative report-the-scope treatment.
+      if (homeIso2 === undefined) return { kind: "supranational" };
+      const homeEntry = COUNTRY_BY_KEY.get(countryKey(homeIso2));
+      return { kind: "home_country", entry: homeEntry };
+    }
+    // A WRAPPED supra-national scope — "EU-wide", "all of Europe", "across
+    // EMEA". The exact-key check above catches only the bare label, and the
+    // wrapper strip was applied while looking for a country and nowhere else,
+    // so these reached /geo/search and got fenced to a same-named town. Last of
+    // the three, so a named country ("all of France") and the generic
+    // whole-workspace phrasings ("the whole country") keep their own verdicts.
+    if (embeddedSupranationalKey(key) !== undefined) return { kind: "supranational" };
   }
 
   const entry = COUNTRY_BY_KEY.get(namedKey ?? key);
@@ -380,6 +390,101 @@ function hintFor(hit: CountryHit, region: GuardRegion): string {
 }
 
 /**
+ * ONE recovery for an argument that carries country-level values of DIFFERENT
+ * kinds.
+ *
+ * The per-kind hints above are each correct alone and mutually exclusive
+ * together: `locations: ["France", "Canada"]` on FR produced "OMIT locations
+ * entirely" immediately followed by "Do NOT simply drop locations and re-run",
+ * and an agent handed both has no safe move left. The snippet is explicit that
+ * the kinds are not interchangeable, so they cannot be concatenated — they have
+ * to be reconciled.
+ *
+ * The reconciliation: the ARGUMENT is handled once (every country-level value
+ * comes off it, and what survives decides whether it is dropped or trimmed),
+ * then each kind contributes only the thing it alone knows — what may be
+ * claimed about the result. The home country is the only kind that licenses an
+ * unfiltered re-run, and even then only for its own half of the ask.
+ */
+function reconciledHint(hits: readonly CountryHit[], region: GuardRegion): string {
+  const { param, axis, kept } = hits[0];
+  const narrow = NARROW_EXAMPLES[region];
+  const home = homeCountryName(region);
+  const holds = home ? `holds ${home} companies only` : "covers a single country";
+  const quoted = (values: readonly string[]) => values.map((v) => `"${v}"`).join(", ");
+  const offending = quoted(hits.map((h) => h.value));
+  const countriesOf = (kind: CountryHit["kind"]) => [
+    ...new Set(
+      hits.filter((h) => h.kind === kind).map((h) => h.country).filter((c): c is string => !!c)
+    ),
+  ];
+
+  const homeCountry = countriesOf("home_country")[0];
+  const foreign = countriesOf("foreign_country");
+  const indeterminate = countriesOf("country_indeterminate");
+  const supra = hits.filter((h) => h.kind === "supranational").map((h) => h.value);
+
+  // What happens to the argument. Identical in both axes: the offending values
+  // leave, and the survivors decide whether that empties it.
+  const surgical =
+    kept.length > 0
+      ? `Do NOT omit ${param} — ${quoted(kept)} ${kept.length > 1 ? "are" : "is"} valid and would be lost with it. Remove ONLY ${offending} and re-call with the rest.`
+      : `Remove every one of ${offending} from ${param} — they are country-level or wider, and mixing kinds makes none of them usable.`;
+
+  const say: string[] = [];
+  if (axis === "exclude") {
+    if (homeCountry) {
+      say.push(
+        `excluding ${homeCountry} would empty the ENTIRE workspace, so that part cannot be honoured at all`
+      );
+    }
+    if (foreign.length > 0) {
+      say.push(`excluding ${foreign.join(", ")} removes nothing — there is nothing here to exclude`);
+    }
+    if (indeterminate.length > 0) {
+      say.push(
+        `this backend is custom-configured, so whether ${indeterminate.join(", ")} is inside it is unknown and its exclusion may remove everything or nothing`
+      );
+    }
+    if (supra.length > 0) {
+      say.push(`${quoted(supra)} is a supra-national scope, which is not an admin area and cannot be excluded`);
+    }
+    const tail =
+      kept.length > 0
+        ? `The other exclusions still apply.`
+        : `Do NOT present the result as though any of these exclusions had been applied.`;
+    return `${surgical} Then say why: ${say.join("; ")}. ${tail} Ask what should actually be carved out, then exclude ${narrow}.`;
+  }
+
+  // INCLUDE. Only the home country makes an unfiltered re-run meaningful, and
+  // only for its own half — so it is stated as a partial answer, never as THE
+  // answer.
+  const scope =
+    kept.length > 0
+      ? `The result then covers ${quoted(kept)} — describe it as those places only.`
+      : homeCountry
+        ? `Omitting ${param} entirely then returns the whole workspace, which IS ${homeCountry}: that answers the ${homeCountry} part of the ask and nothing else — say so in those words.`
+        : `Do NOT re-run with ${param} omitted as though the unfiltered result answered this.`;
+
+  if (foreign.length > 0) {
+    say.push(
+      `this workspace ${holds}, so it holds no ${foreign.join(", ")} companies and the result says nothing about ${foreign.join(", ")}`
+    );
+  }
+  if (indeterminate.length > 0) {
+    say.push(
+      `this backend is custom-configured, so claim nothing about whether ${indeterminate.join(", ")} is inside it`
+    );
+  }
+  if (supra.length > 0) {
+    say.push(
+      `${quoted(supra)} is a supra-national scope, not a place — say what the workspace covers rather than letting the result stand for it`
+    );
+  }
+  return `${surgical} ${scope} And be explicit that ${say.join("; ")}. To narrow, pass ${narrow}. Do NOT retry with another spelling.`;
+}
+
+/**
  * The single source of truth for the code, message and hint. Every hit is
  * reported, not just the first, so an agent fixes one envelope instead of
  * discovering its bad values one turn at a time.
@@ -389,10 +494,31 @@ export function countryLocationEnvelope(
   region: GuardRegion
 ): CountryLocationEnvelope {
   const message = hits.map((hit) => messageFor(hit, region)).join(" ");
-  const hints: string[] = [];
+
+  // Hints are built PER ARGUMENT+AXIS, not per value. Two arguments genuinely
+  // need two instructions; two KINDS on one argument need one reconciled
+  // instruction, because the per-kind recoveries contradict each other by
+  // design (only the home country licenses an unfiltered re-run). Insertion
+  // order is preserved so the envelope reads in the order the caller sent the
+  // arguments.
+  const groups = new Map<string, CountryHit[]>();
   for (const hit of hits) {
-    const hint = hintFor(hit, region);
+    const key = `${hit.param}\u0000${hit.axis}`;
+    const group = groups.get(key);
+    if (group) group.push(hit);
+    else groups.set(key, [hit]);
+  }
+
+  const hints: string[] = [];
+  const push = (hint: string) => {
     if (!hints.includes(hint)) hints.push(hint);
+  };
+  for (const group of groups.values()) {
+    const kinds = new Set(group.map((h) => h.kind));
+    // One kind — every hit in the group agrees, so the per-kind text stands and
+    // each distinct country still gets named.
+    if (kinds.size === 1) for (const hit of group) push(hintFor(hit, region));
+    else push(reconciledHint(group, region));
   }
   return { code: COUNTRY_LEVEL_LOCATION, message, hint: hints.join(" ") };
 }

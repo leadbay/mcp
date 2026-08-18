@@ -569,11 +569,14 @@ const LEADING_ARTICLE = /^(les|the|la|le|l|el|los|du|de|d)\s+/;
  * Peel generic scope wrappers off a normalized key and return the embedded
  * country key, or undefined when nothing recognizable is left.
  */
-export function embeddedCountryKey(key: string): string | undefined {
+function embeddedKey(
+  key: string,
+  known: { has(candidate: string): boolean }
+): string | undefined {
   let current = key;
   // Bounded loop: each pass must shorten the string, so it cannot spin.
   for (let pass = 0; pass < 4; pass += 1) {
-    if (COUNTRY_BY_KEY.has(current)) return current;
+    if (known.has(current)) return current;
     let next = current;
     for (const wrapper of SCOPE_WRAPPERS) {
       const stripped = next.replace(wrapper, "").trim();
@@ -586,7 +589,26 @@ export function embeddedCountryKey(key: string): string | undefined {
     if (next === current || next.length === 0) return undefined;
     current = next;
   }
-  return COUNTRY_BY_KEY.has(current) ? current : undefined;
+  return known.has(current) ? current : undefined;
+}
+
+export function embeddedCountryKey(key: string): string | undefined {
+  return embeddedKey(key, COUNTRY_BY_KEY);
+}
+
+/**
+ * The same wrapper strip, against the supra-national labels.
+ *
+ * "EU-wide", "all of Europe" and "across EMEA" are the phrasings a rep types,
+ * and an exact-key check saw none of them: the wrappers were only ever applied
+ * while looking for a COUNTRY, so these fell through to /geo/search and the
+ * same-named-town fence — the one outcome this module exists to prevent. Only
+ * consulted after `embeddedCountryKey` comes up empty, so a named country
+ * inside a scope phrase still decides the verdict ("all of France" is France,
+ * not a region).
+ */
+export function embeddedSupranationalKey(key: string): string | undefined {
+  return embeddedKey(key, SUPRANATIONAL_KEYS);
 }
 
 export const WHOLE_WORKSPACE_KEYS: ReadonlySet<string> = new Set(
