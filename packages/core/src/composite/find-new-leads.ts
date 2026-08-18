@@ -23,6 +23,7 @@ import {
   compactBody,
   normalizeSearchFilters,
   rejectCountryLocations,
+  rejectMalformedExclusions,
   rejectOversizedExclusions,
   splitItems,
   TERMINAL_JOB_STATES,
@@ -226,6 +227,9 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       "exclude_lead_ids",
     ]);
     rejectCountryLocations(params.filters?.locations, client.region);
+    // Types first, then the cap: counting a list that still contains junk
+    // would size the cap against entries that were never going to be sent.
+    rejectMalformedExclusions(params.exclude_lead_ids);
     rejectOversizedExclusions(params.exclude_lead_ids);
 
     // Same spend gate as leadbay_qualify_leads. The trigger differs: `qualify`

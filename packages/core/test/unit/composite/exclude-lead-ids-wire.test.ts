@@ -67,10 +67,11 @@ async function submittedBody(extra: Record<string, unknown>): Promise<any> {
 describe("leadbay_find_new_leads — exclude_lead_ids on the wire", () => {
   it("posts the canonical list, not the raw array", async () => {
     const body = await submittedBody({
-      exclude_lead_ids: [UUID_A, UUID_A.toUpperCase(), UUID_B, "  "],
+      exclude_lead_ids: [UUID_A, UUID_A.toUpperCase(), UUID_B],
     });
-    // Deduped case-insensitively, blanks dropped — exactly what the cap guard
-    // counted.
+    // Deduped case-insensitively — exactly what the cap guard counted.
+    // (A blank entry is no longer silently dropped here; it is refused
+    // outright by rejectMalformedExclusions — see exclude-ids-malformed.)
     expect(body.exclude_lead_ids).toEqual([UUID_A, UUID_B].sort());
   });
 

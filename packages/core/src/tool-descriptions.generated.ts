@@ -1433,14 +1433,15 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
 > the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
 
-**Never hard-code \`$\`** — \`cost\` carries no currency and a France account
-bills in euros, so \`$6.09\` for a €6.09 charge misstates a paid operation.
-US → \`$\`, France → \`€\`; region unknown → bare amount.
+**Money: divide, then symbol.** Every amount (\`cost.spent\`,
+\`estimated_cost.max\`, quotes) is \`cost_cents\` — divide by 100, two decimals,
+so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
+\`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
 
 "of the Y asked" needs \`summary.items_requested\`, which submit results carry
 but a later \`leadbay_lead_job_status\` snapshot does not. Without it write
 **delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (they
-count candidates, not the target), never guess it.
+count candidates), never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
@@ -1458,11 +1459,10 @@ the table as an answer — open with "weak matches only", show at most the top
 barely-better-than-random candidates.
 
 **Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
-requested fence; drop and call out leaks (a same-named city in another state
-slips through). (b) When \`explain.seed_strategy\` is \`text_match_exemplars\`
-(the standard FR path), fit is calibrated for lead-to-lead distances, not
-exemplar centroids — treat high scores skeptically and verify each row's
-\`description\` matches the ask.
+requested fence; drop and call out leaks (same-named cities slip through).
+(b) When \`explain.seed_strategy\` is \`text_match_exemplars\` (the standard FR
+path), fit is calibrated for lead-to-lead distances, not exemplar centroids —
+treat high scores skeptically and verify each row's \`description\`.
 
 **Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
 table \`Ref → Outcome\` translating \`status_reason\` to plain words:
@@ -2424,14 +2424,15 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
 > the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
 
-**Never hard-code \`$\`** — \`cost\` carries no currency and a France account
-bills in euros, so \`$6.09\` for a €6.09 charge misstates a paid operation.
-US → \`$\`, France → \`€\`; region unknown → bare amount.
+**Money: divide, then symbol.** Every amount (\`cost.spent\`,
+\`estimated_cost.max\`, quotes) is \`cost_cents\` — divide by 100, two decimals,
+so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
+\`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
 
 "of the Y asked" needs \`summary.items_requested\`, which submit results carry
 but a later \`leadbay_lead_job_status\` snapshot does not. Without it write
 **delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (they
-count candidates, not the target), never guess it.
+count candidates), never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
@@ -2449,11 +2450,10 @@ the table as an answer — open with "weak matches only", show at most the top
 barely-better-than-random candidates.
 
 **Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
-requested fence; drop and call out leaks (a same-named city in another state
-slips through). (b) When \`explain.seed_strategy\` is \`text_match_exemplars\`
-(the standard FR path), fit is calibrated for lead-to-lead distances, not
-exemplar centroids — treat high scores skeptically and verify each row's
-\`description\` matches the ask.
+requested fence; drop and call out leaks (same-named cities slip through).
+(b) When \`explain.seed_strategy\` is \`text_match_exemplars\` (the standard FR
+path), fit is calibrated for lead-to-lead distances, not exemplar centroids —
+treat high scores skeptically and verify each row's \`description\`.
 
 **Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
 table \`Ref → Outcome\` translating \`status_reason\` to plain words:
@@ -3693,14 +3693,15 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
 > the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
 
-**Never hard-code \`$\`** — \`cost\` carries no currency and a France account
-bills in euros, so \`$6.09\` for a €6.09 charge misstates a paid operation.
-US → \`$\`, France → \`€\`; region unknown → bare amount.
+**Money: divide, then symbol.** Every amount (\`cost.spent\`,
+\`estimated_cost.max\`, quotes) is \`cost_cents\` — divide by 100, two decimals,
+so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
+\`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
 
 "of the Y asked" needs \`summary.items_requested\`, which submit results carry
 but a later \`leadbay_lead_job_status\` snapshot does not. Without it write
 **delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (they
-count candidates, not the target), never guess it.
+count candidates), never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
@@ -3718,11 +3719,10 @@ the table as an answer — open with "weak matches only", show at most the top
 barely-better-than-random candidates.
 
 **Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
-requested fence; drop and call out leaks (a same-named city in another state
-slips through). (b) When \`explain.seed_strategy\` is \`text_match_exemplars\`
-(the standard FR path), fit is calibrated for lead-to-lead distances, not
-exemplar centroids — treat high scores skeptically and verify each row's
-\`description\` matches the ask.
+requested fence; drop and call out leaks (same-named cities slip through).
+(b) When \`explain.seed_strategy\` is \`text_match_exemplars\` (the standard FR
+path), fit is calibrated for lead-to-lead distances, not exemplar centroids —
+treat high scores skeptically and verify each row's \`description\`.
 
 **Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
 table \`Ref → Outcome\` translating \`status_reason\` to plain words:

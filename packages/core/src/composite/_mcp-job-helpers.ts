@@ -6,6 +6,10 @@
 // backend caps poll pages at 100 items, while a qualify job can carry up
 // to 500 refs — so a snapshot collects pages until the cursor drains.
 import { createHash } from "node:crypto";
+// Same website folding the idempotency key uses, so a caller's
+// "https://Acme.com/" and a backend echo of "acme.com" compare equal.
+// import-leads does not import this module, so no cycle.
+import { normalizeDomain } from "./import-leads.js";
 import type { LeadbayClient } from "../client.js";
 import type { ToolContext } from "../types.js";
 
@@ -291,6 +295,89 @@ export async function waitForJob(
     });
   }
   return snap;
+}
+
+/** Fold one ref-shaped object to a comparison key. Uses the same fields and
+ *  the same website normalization as the idempotency key, so a caller's
+ *  `https://Acme.com/` and a backend echo of `acme.com` compare equal. */
+function refIdentity(ref: unknown): string | null {
+  if (!ref || typeof ref !== "object" || Array.isArray(ref)) return null;
+  const o = ref as Record<string, unknown>;
+  const str = (f: string): string | null => {
+    const v = o[f];
+    if (typeof v !== "string") return null;
+    const t = v.trim().toLowerCase();
+    return t ? t : null;
+  };
+  const website = str("website");
+  const parts = [
+    normalizeUuid(o.lead_id) ?? null,
+    normalizeUuid(o.contact_id) ?? null,
+    website ? normalizeDomain(website) ?? website : null,
+    str("name"),
+    str("location"),
+  ];
+  return parts.some((p) => p !== null) ? JSON.stringify(parts) : null;
+}
+
+/** Re-point `ref.input_indexes` at the CURRENT caller's `lead_refs`.
+ *
+ *  The qualify key is order-insensitive on purpose — the same refs in another
+ *  order are the same approved work — so a reordered retry dedupes onto the
+ *  ORIGINAL job, whose `input_indexes` describe the ORIGINAL order. Relaying
+ *  them then maps every skipped-item verdict onto the wrong company for this
+ *  caller: retrying `[B, A]` after `[A, B]` reports A at index 0.
+ *
+ *  Remap by ref identity where every item resolves. Where any item cannot be
+ *  matched — the backend echo is missing or shaped differently than assumed —
+ *  null the indexes for ALL items rather than relay a mix of correct and
+ *  stale ones. A missing index is a gap; a wrong index is a false statement
+ *  about which company was skipped. */
+export function remapInputIndexes(
+  items: McpJobItem[],
+  refs: unknown
+): { items: McpJobItem[]; remapped: boolean } {
+  const list = Array.isArray(refs) ? refs : [];
+  if (list.length === 0) return { items, remapped: false };
+  const byIdentity = new Map<string, number[]>();
+  list.forEach((ref, i) => {
+    const key = refIdentity(ref);
+    if (!key) return;
+    const at = byIdentity.get(key);
+    if (at) at.push(i);
+    else byIdentity.set(key, [i]);
+  });
+
+  const next: McpJobItem[] = [];
+  let ok = true;
+  for (const item of items) {
+    const ref = item.ref;
+    if (!ref || ref.input_indexes == null) {
+      next.push(item);
+      continue;
+    }
+    const key =
+      refIdentity(ref.requested_as) ??
+      refIdentity({ lead_id: ref.lead_id ?? undefined });
+    const found = key ? byIdentity.get(key) : undefined;
+    if (!found) {
+      ok = false;
+      break;
+    }
+    next.push({ ...item, ref: { ...ref, input_indexes: found } });
+  }
+
+  if (!ok) {
+    return {
+      items: items.map((item) =>
+        item.ref && item.ref.input_indexes != null
+          ? { ...item, ref: { ...item.ref, input_indexes: null } }
+          : item
+      ),
+      remapped: false,
+    };
+  }
+  return { items: next, remapped: true };
 }
 
 /** Canonicalize a SET-valued list for hashing: sorted AND de-duplicated.
@@ -647,6 +734,31 @@ function countryKey(raw: string): string {
  *  `novelty: org` already excludes prior DELIVERIES, so delivered ids are the
  *  redundant half of the list and dropping them is usually enough to fit. */
 export const MAX_EXCLUDE_LEAD_IDS = 500;
+
+/** `canonicalIdSet` maps a non-string to null and drops blanks. That is right
+ *  for hashing, but the canonical list is now what goes ON THE WIRE — so a
+ *  silent drop means the paid search runs WITHOUT an exclusion the caller
+ *  asked for, and can reselect and charge for exactly the lead they were
+ *  trying to skip. Refuse the list instead of quietly shrinking it. */
+export function rejectMalformedExclusions(ids: unknown): void {
+  if (ids === undefined || ids === null) return;
+  const list = Array.isArray(ids) ? ids : [ids];
+  const bad: string[] = [];
+  list.forEach((v, i) => {
+    if (typeof v !== "string") {
+      bad.push(`${i} (${v === null ? "null" : typeof v})`);
+    } else if (!v.trim()) {
+      bad.push(`${i} (blank)`);
+    }
+  });
+  if (bad.length === 0) return;
+  throw {
+    error: true,
+    code: "INVALID_EXCLUDE_LEAD_ID",
+    message: `exclude_lead_ids has ${bad.length} entr${bad.length === 1 ? "y" : "ies"} that is not a lead id: ${bad.join(", ")}.`,
+    hint: "Drop or fix those entries and re-call — every entry must be a non-blank lead id string. Silently skipping them would run the search without an exclusion you asked for, and could re-deliver and charge for that exact lead.",
+  };
+}
 
 export function rejectOversizedExclusions(ids: unknown): void {
   if (ids === undefined || ids === null) return;

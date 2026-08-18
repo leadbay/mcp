@@ -17,6 +17,7 @@ import {
   isUuidShaped,
   normalizeUuid,
   presentRequestId,
+  remapInputIndexes,
   canonicalLabelSet,
   derivedKey,
   mockedSubmitPreview,
@@ -450,6 +451,17 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
         : await collectJobSnapshot(client, submit.job_id);
 
     const done = TERMINAL_JOB_STATES.has(snapshot.job.state);
+
+    // A duplicate submit returns the ORIGINAL job. Its ref.input_indexes
+    // describe the order THAT request used, and this key is deliberately
+    // order-insensitive, so a reordered retry would map each verdict onto the
+    // wrong company for the current caller. Re-point them at this caller's
+    // lead_refs, or null them when the mapping cannot be proven.
+    const indexed = (submit.duplicate ?? false)
+      ? remapInputIndexes(snapshot.items, params.lead_refs)
+      : { items: snapshot.items, remapped: true };
+    const view = { ...snapshot, items: indexed.items };
+
     return {
       job_id: submit.job_id,
       // Echo the key actually sent, so a retry can reuse it verbatim.
@@ -473,14 +485,20 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
       // QualifiedLead payload when delivered/degraded, and an honest
       // status_reason (not_in_universe, low_confidence_identity, ...) when
       // skipped — a skip is an ANSWER about that ref, not an error.
-      items: snapshot.items,
+      items: view.items,
+      // On a duplicate submit whose indexes could not be re-pointed at this
+      // caller's refs, input_indexes are null rather than stale — match items
+      // by `ref.requested_as` / `lead_id` instead.
+      input_indexes_remapped: (submit.duplicate ?? false)
+        ? indexed.remapped
+        : null,
       // ...and the same outcomes pre-split, because the shared
       // rendering/lead-delivery-table contract this tool's description
       // mandates reads deliveries from `leads[]` and skips from `skipped[]`.
       // Returning only `items` left an agent following the RENDER block with
       // two empty tables; the sibling tools (find_new_leads, lead_job_status)
       // both split. `items` stays for input-order per-ref mapping.
-      ...splitItems(snapshot),
+      ...splitItems(view),
       cost: snapshot.cost,
       estimated_cost: submit.estimated_cost,
       explain: snapshot.explain,
