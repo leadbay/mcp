@@ -301,6 +301,33 @@ export function detectCountryLocationsIn(
   return hits;
 }
 
+/**
+ * Does any geo argument still carry a usable value once the country-level ones
+ * are taken out?
+ *
+ * `CountryHit.kept` only ever sees the argument the offending value arrived on,
+ * so `{locations: ["France"], exclude_locations: ["Paris"]}` produced `kept:
+ * []` and looked like a country-only request — and the write-stop then threw
+ * away a perfectly good Paris exclusion. Scope is a property of the REQUEST,
+ * not of one argument, so it is counted across all of them.
+ *
+ * A non-string member counts: a resolved numeric admin-area id is not
+ * classifiable here but is unmistakably a place the caller asked for.
+ */
+export function geoScopeSurvives(
+  params: ReadonlyArray<{ input: unknown; param: string }>,
+  region: GuardRegion
+): boolean {
+  for (const { input } of params) {
+    if (input === undefined || input === null) continue;
+    for (const value of Array.isArray(input) ? input : [input]) {
+      if (typeof value !== "string") return true;
+      if (countryKey(value) && classify(value, region) === null) return true;
+    }
+  }
+  return false;
+}
+
 const NARROW_EXAMPLES: Readonly<Record<GuardRegion, string>> = {
   us: `a city / county / state name ("Dallas, TX", "Texas", "Bay Area")`,
   fr: `a city / département / région name ("Limoges", "Indre-et-Loire", "Île-de-France")`,
@@ -395,7 +422,7 @@ function hintFor(
     // The argument empties, but the REQUEST does not: sectors, sizes or a
     // non-geo criterion carry real scope. Writing that is exactly what the user
     // asked for, so the country comes off and the call goes through once.
-    const carry = `Drop ${hit.param} from the call and re-call ONCE with the rest of the request intact — its non-geo criteria are real scope and must not be lost with it.`;
+    const carry = `Drop ${hit.param} from the call and re-call ONCE with the rest of the request intact — the rest of the request carries real scope and must not be lost with it.`;
     if (hit.kind === "home_country") {
       return hit.axis === "exclude"
         ? `${carry} Excluding ${hit.country} would empty the audience, so that part cannot be honoured at all — say so rather than silently ignoring it.`
@@ -549,7 +576,7 @@ function reconciledHint(
   }
 
   if (intent === "write" && kept.length === 0 && otherScope) {
-    return `${surgical} Then re-call ONCE with the rest of the request intact — its non-geo criteria are real scope and must not be lost with the geo argument. Say what the audience actually covers: ${[
+    return `${surgical} Then re-call ONCE with the rest of the request intact — the rest of the request carries real scope and must not be lost with this argument. Say what the audience actually covers: ${[
       homeCountry ? `it already spans all of ${homeCountry}` : undefined,
       foreign.length > 0 ? `this workspace ${holds}, so no ${foreign.join(", ")} audience can be added` : undefined,
       indeterminate.length > 0
@@ -814,7 +841,7 @@ export function detectCountryLocationsInSetFilter(
  * Only the absence of any non-location criterion makes the country the sole
  * scope, and only then does the write-stop apply.
  */
-export function filterCarriesOtherScope(filter: unknown): boolean {
+export function filterCarriesOtherScope(filter: unknown, region: GuardRegion): boolean {
   if (!filter || typeof filter !== "object") return false;
   const lensFilter = (filter as Record<string, unknown>).lens_filter as
     | Record<string, unknown>
@@ -826,7 +853,13 @@ export function filterCarriesOtherScope(filter: unknown): boolean {
     if (!Array.isArray(criteria)) continue;
     for (const criterion of criteria) {
       const record = criterion as Record<string, unknown> | null;
-      if (record && record.type !== "location_ids") return true;
+      if (!record) continue;
+      if (record.type !== "location_ids") return true;
+      // A location criterion still counts when it names a real place beside the
+      // country — the filter is replaced wholesale, so stopping loses it.
+      if (geoScopeSurvives([{ input: record.locations, param: "locations" }], region)) {
+        return true;
+      }
     }
   }
   return false;

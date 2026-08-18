@@ -11,6 +11,7 @@ import type {
 import { resolveLocations } from "./_geo-helpers.js";
 import {
   countryLocationStatus,
+  geoScopeSurvives,
   detectCountryLocationsIn,
 } from "./_country-guard.js";
 import { leadbay_adjust_audience as ADJUST_AUDIENCE_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -410,14 +411,12 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
     // value that got through would permanently add a village-sized fence to
     // the lens filter — bailing here means nothing is read and nothing is
     // written (product#3951).
-    const countryHits = detectCountryLocationsIn(
-      [
-        { input: params.locations, param: "locations" },
-        { input: params.location_ids, param: "location_ids" },
-        { input: params.exclude_locations, param: "exclude_locations", axis: "exclude" as const },
-      ],
-      client.region
-    );
+    const geoParams = [
+      { input: params.locations, param: "locations" },
+      { input: params.location_ids, param: "location_ids" },
+      { input: params.exclude_locations, param: "exclude_locations", axis: "exclude" as const },
+    ];
+    const countryHits = detectCountryLocationsIn(geoParams, client.region);
     if (countryHits.length > 0) {
       // Same narrowing as new_lens: a sector or size adjustment riding along
       // with a redundant country is a legitimate write, and only the
@@ -426,7 +425,8 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
         (params.sectors?.length ?? 0) > 0 ||
         (params.sector_ids?.length ?? 0) > 0 ||
         (params.exclude_sectors?.length ?? 0) > 0 ||
-        (params.sizes?.length ?? 0) > 0;
+        (params.sizes?.length ?? 0) > 0 ||
+        geoScopeSurvives(geoParams, client.region);
       return countryLocationStatus(countryHits, client.region, "write", otherScope);
     }
 

@@ -402,6 +402,27 @@ describe("audit: single-country-universe rule", () => {
     }
   );
 
+  it("the team-setup gate covers rep_split, not just audience", () => {
+    // Two free-text arguments reach the workspace by different routes:
+    // `audience` becomes the lens, `rep_split` becomes the campaigns. The gate
+    // classified only the first, so "split France to Alice and Germany to Bob"
+    // sailed through and PHASE 3 partitioned a single-country cohort along an
+    // axis that does not exist here — then persisted a campaign per rep.
+    const body = (Prompts as Record<string, string>).leadbay_setup_team_prospecting;
+    expect(body, "the gate must name both ingresses").toMatch(
+      /`audience`\s+AND\s+`rep_split`/
+    );
+    expect(
+      body,
+      "the home country is not a split — one rep would get everything and the rest nothing"
+      // Hard-wrapped prose: the phrase straddles a line break in the template.
+    ).toMatch(/home country\s+is not a split/i);
+    expect(
+      body,
+      "and PHASE 3 must partition by the sanitized split, not the raw argument"
+    ).toMatch(/SANITIZED split/);
+  });
+
   it("the team-setup prompt passes a SANITIZED audience, not the raw argument", () => {
     // Dropping the country in prose while still interpolating {{arg:audience}}
     // sent the country label to the lens anyway.

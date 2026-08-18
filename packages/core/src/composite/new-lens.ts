@@ -19,6 +19,7 @@ import { resolveSectors, mergeFilter, filterWriteBody } from "./adjust-audience.
 import { resolveLocations } from "./_geo-helpers.js";
 import {
   countryLocationStatus,
+  geoScopeSurvives,
   detectCountryLocationsIn,
 } from "./_country-guard.js";
 
@@ -153,13 +154,11 @@ export const newLens: Tool<NewLensParams> = {
     //    doomed lens costs neither a taxonomy fetch nor a /geo/search call.
     //    A country name would silently resolve to a same-named commune and
     //    leave a lens permanently fenced to one village (product#3951).
-    const countryHits = detectCountryLocationsIn(
-      [
-        { input: params.locations, param: "locations" },
-        { input: params.exclude_locations, param: "exclude_locations", axis: "exclude" as const },
-      ],
-      client.region
-    );
+    const geoParams = [
+      { input: params.locations, param: "locations" },
+      { input: params.exclude_locations, param: "exclude_locations", axis: "exclude" as const },
+    ];
+    const countryHits = detectCountryLocationsIn(geoParams, client.region);
     if (countryHits.length > 0) {
       // A lens built from sectors / sizes / a base lens is a real lens with a
       // redundant country attached — refusing to write it would discard the
@@ -169,7 +168,10 @@ export const newLens: Tool<NewLensParams> = {
         (params.sectors?.length ?? 0) > 0 ||
         (params.exclude_sectors?.length ?? 0) > 0 ||
         (params.sizes?.length ?? 0) > 0 ||
-        params.base !== undefined;
+        params.base !== undefined ||
+        // A real place on ANOTHER geo argument is scope too: `kept` only sees
+        // the argument its own value came from.
+        geoScopeSurvives(geoParams, client.region);
       return countryLocationStatus(countryHits, client.region, "write", otherScope);
     }
 

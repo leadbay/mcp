@@ -60,7 +60,7 @@ export const updateLensFilter: Tool<UpdateLensFilterParams> = {
         countryHits,
         client.region,
         "write",
-        filterCarriesOtherScope(params.filter)
+        filterCarriesOtherScope(params.filter, client.region)
       );
       throw {
         error: true,
