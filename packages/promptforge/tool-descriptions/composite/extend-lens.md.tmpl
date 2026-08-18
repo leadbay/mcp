@@ -20,6 +20,7 @@ routing:
       route_to: leadbay_pull_leads
     - phrase: "find me companies that <different profile than the lens>"
       route_to: leadbay_find_new_leads
+      gated: true
     - phrase: "narrow the audience"
       route_to: leadbay_adjust_audience
     - phrase: "stop showing me X"
@@ -72,5 +73,3 @@ Queue an additive extra-refill on a lens — more leads on the same criteria, wi
 ---
 
 {{include:next-steps/extend-lens}}
-
-{{include:gates/delivery-release-gate}}

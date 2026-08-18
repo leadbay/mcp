@@ -42,7 +42,8 @@ function httpsRequest(
   method: string,
   url: string,
   headers: Record<string, string>,
-  body?: string | Buffer
+  body?: string | Buffer,
+  signal?: AbortSignal
 ): Promise<HttpResult> {
   return new Promise((resolve, reject) => {
     const start = Date.now();
@@ -58,6 +59,11 @@ function httpsRequest(
         path: parsed.pathname + parsed.search,
         method,
         headers: reqHeaders,
+        // Node aborts the socket and emits an AbortError on `error`, which the
+        // handler below rejects with. Without this a cancelled tool call sat on
+        // an in-flight GET until the server answered — the polling loop cannot
+        // honour its advertised <=2s exit while blocked inside one.
+        signal,
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -441,9 +447,10 @@ export class LeadbayClient {
     method: string,
     url: string,
     headers: Record<string, string>,
-    body?: string | Buffer
+    body?: string | Buffer,
+    signal?: AbortSignal
   ): Promise<HttpResult> => {
-    const res = await httpsRequest(method, url, headers, body);
+    const res = await httpsRequest(method, url, headers, body, signal);
     if (res.status === 401 && method.toUpperCase() === "GET") {
       this.releaseSemaphore();
       try {
@@ -451,7 +458,10 @@ export class LeadbayClient {
       } finally {
         await this.acquireSemaphore();
       }
-      return httpsRequest(method, url, headers, body);
+      // Don't burn the retry on an already-cancelled call: the caller is gone,
+      // and the 250ms backoff above just made the wait longer.
+      if (signal?.aborted) return res;
+      return httpsRequest(method, url, headers, body, signal);
     }
     return res;
   };
@@ -460,7 +470,7 @@ export class LeadbayClient {
     method: string,
     path: string,
     body?: unknown,
-    opts?: { retryOn401?: boolean }
+    opts?: { retryOn401?: boolean; signal?: AbortSignal }
   ): Promise<T> {
     // Mock mode short-circuit (no auth required).
     if (process.env.LEADBAY_MOCK === "1") {
@@ -491,7 +501,8 @@ export class LeadbayClient {
         method,
         url,
         headers,
-        body ? JSON.stringify(body) : undefined
+        body ? JSON.stringify(body) : undefined,
+        opts?.signal
       );
 
       this._lastMeta = {

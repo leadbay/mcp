@@ -25,6 +25,12 @@ export const RoutingAntiTriggerSchema = z.object({
   route_to: z.string().regex(/^leadbay_[a-z0-9_]+$/, {
     message: "route_to must be a leadbay_* tool name",
   }),
+  // The target is release-gated, so it may be absent from tools/list on a
+  // default deployment. Marked HERE rather than explained in the body: the
+  // routing block is the part every host loads even when truncating, and a
+  // caveat further down the description is never read by the host that most
+  // needs it.
+  gated: z.boolean().optional(),
 });
 
 // Full-sentence examples — community best practice (Anthropic

@@ -24,7 +24,11 @@ function emitRoutingBlock(
   }
   if (routing.anti_triggers && routing.anti_triggers.length > 0) {
     const formatted = routing.anti_triggers
-      .map((a) => `"${a.phrase}" → \`${a.route_to}\``)
+      .map(
+        (a) =>
+          `"${a.phrase}" → \`${a.route_to}\`` +
+          (a.gated ? " (only if listed)" : "")
+      )
       .join("; ");
     lines.push(`Do NOT use for: ${formatted}.`);
   }

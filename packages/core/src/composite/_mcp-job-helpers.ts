@@ -145,7 +145,8 @@ export async function collectJobSnapshot(
   client: LeadbayClient,
   jobId: string,
   since?: string,
-  limit?: number
+  limit?: number,
+  signal?: AbortSignal
 ): Promise<McpJobSnapshot> {
   const pageLimit = Math.min(Math.max(limit ?? PAGE_LIMIT, 1), PAGE_LIMIT);
   // Escape the handle: job_id comes straight from user/agent input and the
@@ -157,7 +158,9 @@ export async function collectJobSnapshot(
     `/mcp/jobs/${safeJobId}?limit=${pageLimit}` +
     (cursor ? `&since=${encodeURIComponent(cursor)}` : "");
   const maxPages = maxPagesFor(pageLimit);
-  let page = await client.request<McpJobSnapshot>("GET", qs(since));
+  let page = await client.request<McpJobSnapshot>("GET", qs(since), undefined, {
+    signal,
+  });
   const items = [...page.items];
   // The resumption cursor must survive an empty drain page. Following
   // next_since into a page with no items used to overwrite the cursor with that
@@ -173,10 +176,17 @@ export async function collectJobSnapshot(
   // completed job with a short page — so following it whenever it is set adds
   // a wasted round-trip to every terminal poll. A short page means the cursor
   // is caught up; the caller keeps next_since for the next incremental poll.
-  while (page.items.length >= pageLimit && page.next_since && pages < maxPages) {
+  while (
+    page.items.length >= pageLimit &&
+    page.next_since &&
+    pages < maxPages &&
+    !signal?.aborted
+  ) {
     const next = await client.request<McpJobSnapshot>(
       "GET",
-      qs(page.next_since)
+      qs(page.next_since),
+      undefined,
+      { signal }
     );
     items.push(...next.items);
     pages += 1;
@@ -216,6 +226,17 @@ export function sleepUnlessAborted(
   });
 }
 
+/** A wait that was cancelled before it ever read the job. There is no snapshot
+ *  to return, and inventing one would report a state nobody observed. */
+function cancelledError(jobId: string): unknown {
+  return {
+    error: true,
+    code: "REQUEST_CANCELLED",
+    message: `The wait for job ${jobId} was cancelled before any status was read.`,
+    hint: "The job itself is backend-owned and keeps running. Poll leadbay_lead_job_status when you want its result.",
+  };
+}
+
 /** Poll until the job is terminal or `waitSeconds` elapse (0 = single poll).
  *  Fires ctx.progress per poll and respects ctx.signal cancellation.
  *  `since`/`limit` are forwarded to every snapshot so a caller that block-waits
@@ -231,7 +252,11 @@ export async function waitForJob(
   limit?: number
 ): Promise<McpJobSnapshot> {
   const startedAt = Date.now();
-  let snap = await collectJobSnapshot(client, jobId, since, limit);
+  // Cancellation can arrive BEFORE the first poll — the wait then has no reason
+  // to open a request at all. Checked here rather than only in the loop
+  // condition, which is not reached until after that request returns.
+  if (ctx?.signal?.aborted) throw cancelledError(jobId);
+  let snap = await collectJobSnapshot(client, jobId, since, limit, ctx?.signal);
   while (
     !TERMINAL_JOB_STATES.has(snap.job.state) &&
     (Date.now() - startedAt) / 1000 < waitSeconds &&
@@ -247,7 +272,15 @@ export async function waitForJob(
       ctx?.signal
     );
     if (ctx?.signal?.aborted) break;
-    snap = await collectJobSnapshot(client, jobId, since, limit);
+    // A cancel landing mid-flight rejects this request. We already hold a good
+    // snapshot, so return it instead of surfacing an AbortError: the user
+    // cancelled the WAIT, not the job, and the job keeps running backend-side.
+    try {
+      snap = await collectJobSnapshot(client, jobId, since, limit, ctx?.signal);
+    } catch (e) {
+      if (ctx?.signal?.aborted) break;
+      throw e;
+    }
     const f = snap.funnel;
     ctx?.progress?.({
       progress: f.delivered ?? 0,

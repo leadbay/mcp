@@ -597,7 +597,7 @@ Context: Leadbay auto-qualifies roughly the top 10 of each daily batch. Leads be
 
 WHEN TO USE: when the user wants more qualified leads than what's currently shown, or when a lead looks promising in leadbay_pull_leads but has an empty \`qualification_summary\`.
 
-WHEN NOT TO USE: to qualify a single specific lead — that's leadbay_qualify_lead (granular, advanced). And NOT for companies the user names or lists themselves (CRM rows, websites, prior deliveries) — that's leadbay_qualify_leads (server-side batch with per-item verdicts and contact matching); this tool only walks the ACTIVE LENS top-down.
+WHEN NOT TO USE: to qualify a single specific lead — that's leadbay_qualify_lead (granular, advanced). And NOT for companies the user names or lists themselves (CRM rows, websites, prior deliveries) — that's leadbay_qualify_leads (only if listed — it is release-gated; server-side batch with per-item verdicts and contact matching); this tool only walks the ACTIVE LENS top-down.
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
@@ -657,14 +657,6 @@ Exactly two offers — keep it terse, this is a status tool:
 |--------------------------------------|-----------------------------------------------|--------------------------------|
 | Qualification kicked off (async)     | "Check progress in ~30s"                      | leadbay_qualify_status         |
 | Job is done / blocking call returned | "Refresh leads view — the new qualifications should be on the top"  | leadbay_pull_leads(lensId = pinned) |
-
-
-**Before routing to net-new delivery, check your tool list.**
-\`leadbay_find_new_leads\` / \`leadbay_qualify_leads\` / \`leadbay_lead_job_status\`
-are release-gated: on a default deployment they are ABSENT from \`tools/list\`
-even though this description names them. Route there only if the tool is in
-your list — otherwise say net-new search isn't enabled here. Never call a name
-you cannot see.
 `;
 // endregion: leadbay_bulk_qualify_leads
 
@@ -1195,7 +1187,7 @@ Trigger phrases: "I want more leads on this lens", "extend the lens", "I need a 
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "find me companies that <different profile than the lens>" → \`leadbay_find_new_leads\`; "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me X" → \`leadbay_refine_prompt\`.
+Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "find me companies that <different profile than the lens>" → \`leadbay_find_new_leads\` (only if listed); "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me X" → \`leadbay_refine_prompt\`.
 
 Prefer when: user has bigger appetite than the daily lens fill delivers — additive refill on same criteria
 
@@ -1276,14 +1268,6 @@ Pick the row matching the response \`status\`. Seed-picking is internal; do NOT 
 | \`no_valid_seeds\`        | (silent retry — re-call \`leadbay_seed_candidates\` then \`leadbay_extend_lens\`) | internal — only surface if the second attempt also fails |
 
 If nothing matches cleanly, default to "pull leads now to see what's queued" — never invent a tool that doesn't exist.
-
-
-**Before routing to net-new delivery, check your tool list.**
-\`leadbay_find_new_leads\` / \`leadbay_qualify_leads\` / \`leadbay_lead_job_status\`
-are release-gated: on a default deployment they are ABSENT from \`tools/list\`
-even though this description names them. Route there only if the tool is in
-your list — otherwise say net-new search isn't enabled here. Never call a name
-you cannot see.
 `;
 // endregion: leadbay_extend_lens
 
@@ -3416,7 +3400,7 @@ Trigger phrases: "show me leads", "show me new leads", "show me today's leads", 
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "find me N companies that <specific profile>" → \`leadbay_find_new_leads\`; "new prospects like <company> with their emails" → \`leadbay_find_new_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "I'm going to <city>" → \`leadbay_tour_plan\`; "I'm in <city> next week — who's worth meeting" → \`leadbay_tour_plan\`; "who should I meet in <city>" → \`leadbay_tour_plan\`; "visiting <city> — who's worth meeting / seeing" → \`leadbay_tour_plan\`; "leads I should reach out to" → \`leadbay_pull_followups\`; "leads to get back to" → \`leadbay_pull_followups\`; "leads to contact today" → \`leadbay_pull_followups\`; "should I contact" → \`leadbay_pull_followups\`; "reconnect with" → \`leadbay_pull_followups\`; "re-engage" → \`leadbay_pull_followups\`.
+Do NOT use for: "find me N companies that <specific profile>" → \`leadbay_find_new_leads\` (only if listed); "new prospects like <company> with their emails" → \`leadbay_find_new_leads\` (only if listed); "leads I should follow up with" → \`leadbay_pull_followups\`; "I'm going to <city>" → \`leadbay_tour_plan\`; "I'm in <city> next week — who's worth meeting" → \`leadbay_tour_plan\`; "who should I meet in <city>" → \`leadbay_tour_plan\`; "visiting <city> — who's worth meeting / seeing" → \`leadbay_tour_plan\`; "leads I should reach out to" → \`leadbay_pull_followups\`; "leads to get back to" → \`leadbay_pull_followups\`; "leads to contact today" → \`leadbay_pull_followups\`; "should I contact" → \`leadbay_pull_followups\`; "reconnect with" → \`leadbay_pull_followups\`; "re-engage" → \`leadbay_pull_followups\`.
 
 Prefer when: fresh Discover leads; if a lens is named, pass \`lensId\` and pin it
 
@@ -3574,14 +3558,6 @@ Pick 2–3 items below based on what was actually observed in the response. The 
 | User wants a narrower / wider audience                     | "Adjust the lens filters (sector / size)"                    | leadbay_adjust_audience(...)                           |
 | Phase 4 research was run (\`research_lead_by_id\` called) AND top contacts lack direct email/phone | "Enrich contacts on [Lead1], [Lead2] to get direct emails and phone numbers" | leadbay_enrich_contacts(leadId, contactId) — ONE call per contact (the tool takes a single leadId + contactId, never a list) |
 If nothing in the menu applies cleanly, suggest only "pull next page" and "research a specific lead in depth" — never invent a tool that doesn't exist.
-
-
-**Before routing to net-new delivery, check your tool list.**
-\`leadbay_find_new_leads\` / \`leadbay_qualify_leads\` / \`leadbay_lead_job_status\`
-are release-gated: on a default deployment they are ABSENT from \`tools/list\`
-even though this description names them. Route there only if the tool is in
-your list — otherwise say net-new search isn't enabled here. Never call a name
-you cannot see.
 `;
 // endregion: leadbay_pull_leads
 
