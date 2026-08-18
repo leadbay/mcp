@@ -1527,15 +1527,16 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 
 
 
-Pick the 2-3 options that match what actually happened — never all six:
+Pick the 2-3 options that match what actually happened — never all seven:
 
 | Observation | Suggest | Calls |
 |---|---|---|
 | Job still running (\`still_running: true\`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
-| Free run delivered on-profile leads | "Qualify these N against your criteria (paid — quote \`dry_run\` estimate first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
+| Free run delivered on-profile leads | "Qualify these N against your criteria (paid — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
-| Delivered 0 or off-profile | "Reshape the example and retry" (state the specific fix from the funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
-| Stopped at cost cap / quota | "Raise the cap to $X and continue" | leadbay_find_new_leads (SAME request_id re-submits are dedup-safe only for live jobs — use a new request_id with higher max_cost) |
+| Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
+| Stopped at cost cap (\`stop_reason: max_cost\`) | "Raise the cap to X and continue" — X in the account's currency per the funnel-line rule, never a hard-coded \`$\` | leadbay_find_new_leads, NEW request_id + higher max_cost (a same-id re-submit only dedupes onto a LIVE job) |
+| Stopped on org quota (\`stop_reason: quota\`) | "Wait for the reset, or top up" — never a re-run: it cannot clear an org quota and burns a submit slot to stop in the same place | leadbay_account_status, then leadbay_create_topup_link |
 | User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |
 `;
 // endregion: leadbay_find_new_leads
@@ -2517,12 +2518,14 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 
 
 
-Exactly two offers — this is a status tool, keep it terse:
+Pick the ONE row matching the job's state and offer at most two options — this
+is a status tool, keep it terse:
 
 | Observation | Suggest | Calls |
 |---|---|---|
 | Still running | "Keep waiting (~1 min) or leave it — results are kept 30 days" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
 | Terminal (completed / partial / failed) | Render the delivery per the RENDERING block, then offer the matching find_new_leads / qualify_leads NEXT STEPS | — |
+| \`expired\` (past the 30-day window) | "Re-read the billed leads from your delivery ledger" — there is nothing left to render: the job terminalized and its items are no longer listed, so do NOT present an empty delivery as a result | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 `;
 // endregion: leadbay_lead_job_status
 

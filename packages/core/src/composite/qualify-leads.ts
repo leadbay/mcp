@@ -89,6 +89,29 @@ function normalizeLeadRefs(
   });
 }
 
+/** MCP args are not schema-validated before dispatch, so `lead_refs` can carry
+ *  `null`, a number, or an array where an object belongs. `normalizeLeadRefs`
+ *  deliberately passes non-strings through untouched, so those entries reached
+ *  `derivedRequestId`, where the first property access threw a raw TypeError —
+ *  BEFORE the spend gate could return a quote. A malformed ref is a caller
+ *  mistake, and the tool's contract is to answer with a named, actionable
+ *  error rather than a stack trace or a silent drop: dropping would qualify
+ *  and BILL a subset of the batch the user listed, without saying so. */
+function rejectMalformedLeadRefs(refs: QualifyLeadsParams["lead_refs"]): void {
+  if (!Array.isArray(refs)) return;
+  const bad: number[] = [];
+  refs.forEach((ref, i) => {
+    if (ref === null || typeof ref !== "object" || Array.isArray(ref)) bad.push(i);
+  });
+  if (bad.length === 0) return;
+  throw {
+    error: true,
+    code: "INVALID_LEAD_REF",
+    message: `lead_refs contains ${bad.length} entr${bad.length === 1 ? "y" : "ies"} that are not a reference object (index ${bad.join(", ")}).`,
+    hint: "Each ref is an object — {lead_id} | {website} | {name, location?} | {contact_id}. A bare string is accepted and reshaped; null, numbers and arrays are not. Drop the bad entries and re-call.",
+  };
+}
+
 function derivedRequestId(params: QualifyLeadsParams): string {
   // JSON-serialize each ref rather than joining raw values with delimiters.
   // Field names alone were not enough: a value CONTAINING the delimiters
@@ -277,6 +300,9 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     // the quote, the idempotency key and the posted body all describe the same
     // companies.
     params = { ...params, lead_refs: normalizeLeadRefs(params.lead_refs) };
+    // AFTER the string reshape (so a bare string is not called malformed) and
+    // BEFORE the spend gate and key derivation, both of which read ref fields.
+    rejectMalformedLeadRefs(params.lead_refs);
     // Spend gate. `qualify` defaults to TRUE on the backend (~94 cost_cents per
     // lead needing fresh research), so a bare call carrying only lead_refs is a
     // PAID submit — up to 500 refs — that the user never approved. Prose in the
