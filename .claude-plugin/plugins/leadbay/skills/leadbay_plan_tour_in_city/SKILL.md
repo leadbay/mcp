@@ -34,7 +34,7 @@ Map my answers to the `leadbay_tour_plan` call:
 
 `axis: "include"`:
 
-- `home_country`, or "nationwide" / "everywhere" → omit the geo argument (`city` / `locations` / `location_ids`) and say the result covers the whole workspace.
+- `home_country`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (`city` / `locations` / `location_ids`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
 - `foreign_country` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
 - `supranational` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
 - `country_indeterminate` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.

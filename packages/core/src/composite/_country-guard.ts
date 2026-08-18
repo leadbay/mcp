@@ -78,6 +78,17 @@ export interface CountryHit {
    * unsupported request.
    */
   axis: "include" | "exclude";
+  /**
+   * The OTHER values on the same argument that are perfectly usable.
+   *
+   * `locations: ["Paris", "France"]` on the FR backend flags only "France", and
+   * the tool returns before resolving anything — so an agent told to "omit
+   * locations" drops Paris along with the country and re-runs unfiltered,
+   * silently widening the very request it was fixing. The rule's own tiebreak
+   * is "keep the city, drop the country", so the recovery has to know what
+   * would survive. Empty for a scalar argument, which has no siblings to lose.
+   */
+  kept: readonly string[];
 }
 
 export interface CountryLocationEnvelope {
@@ -214,20 +225,33 @@ export function detectCountryLocations(
 ): CountryHit[] {
   if (input === undefined || input === null) return [];
   const list = Array.isArray(input) ? input : [input];
-  const hits: CountryHit[] = [];
+  const flagged: Array<{ value: string; verdict: NonNullable<ReturnType<typeof classify>> }> = [];
+  // Everything on this argument that is NOT country-level. Collected in the
+  // same pass so the recovery can say "drop the country, keep these" instead of
+  // "omit the argument" — see CountryHit.kept.
+  const kept: string[] = [];
   for (const value of list) {
-    if (typeof value !== "string") continue;
+    if (typeof value !== "string") {
+      // A resolved numeric id is not classifiable here, but it IS a value the
+      // caller asked for and must survive the recovery.
+      if (value !== undefined && value !== null) kept.push(String(value));
+      continue;
+    }
     const verdict = classify(value, region);
-    if (!verdict) continue;
-    hits.push({
-      value,
-      param,
-      kind: verdict.kind,
-      country: verdict.entry?.name ?? null,
-      axis,
-    });
+    if (!verdict) {
+      kept.push(value);
+      continue;
+    }
+    flagged.push({ value, verdict });
   }
-  return hits;
+  return flagged.map(({ value, verdict }) => ({
+    value,
+    param,
+    kind: verdict.kind,
+    country: verdict.entry?.name ?? null,
+    axis,
+    kept,
+  }));
 }
 
 /** Detect across several arguments in one pass, preserving order. */
@@ -293,6 +317,31 @@ function hintFor(hit: CountryHit, region: GuardRegion): string {
   const narrow = NARROW_EXAMPLES[region];
   const home = homeCountryName(region);
   const holds = home ? `holds ${home} companies only` : "covers a single country";
+
+  // MIXED ARRAY — the argument also carries values that are fine. Answered
+  // before anything else, because every hint below ends in some form of "drop
+  // the argument" and here that is destructive: the tool returned before
+  // resolving them, so "omit `locations`" on ["Paris", "France"] loses Paris
+  // and re-runs unfiltered — widening the request instead of correcting it.
+  // The rule's own tiebreak is "keep the city, drop the country". The kind
+  // still decides what to TELL the user, so each one keeps its own sentence.
+  if (hit.kept.length > 0) {
+    const rest = hit.kept.map((v) => `"${v}"`).join(", ");
+    const plural = hit.kept.length > 1 ? "are" : "is";
+    const surgical = `Do NOT omit ${hit.param} — ${rest} ${plural} valid and would be lost with it. Remove ONLY "${hit.value}" and re-call with the rest.`;
+    if (hit.kind === "home_country") {
+      return hit.axis === "exclude"
+        ? `${surgical} Excluding ${hit.country} would empty the entire workspace, so that part cannot be honoured at all; the other exclusions still apply.`
+        : `${surgical} The result then covers ${rest} — describe it as those places, NOT as the whole workspace.`;
+    }
+    if (hit.kind === "foreign_country") {
+      return `${surgical} And say this workspace ${holds}: there are no ${hit.country} leads in it either way, so the result speaks only for ${rest}.`;
+    }
+    if (hit.kind === "country_indeterminate") {
+      return `${surgical} This backend is custom-configured, so claim nothing about whether ${hit.country} is inside it — report the result as covering ${rest}.`;
+    }
+    return `${surgical} And say what the workspace actually covers rather than presenting the result as "${hit.value}" — it speaks only for ${rest}.`;
+  }
 
   // EXCLUDING a country inverts every recovery, so it is answered first. The
   // generic advice ("omit it and the result covers the whole workspace") is the

@@ -477,7 +477,7 @@ Restrict (or expand) the lens audience by sector / size. Free-text sectors are a
 
 \`axis: "include"\`:
 
-- \`home_country\`, or "nationwide" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
 - \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
 - \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
 - \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
@@ -1330,7 +1330,7 @@ Plot the user's follow-up leads on an interactive map — the canonical surface 
 
 \`axis: "include"\`:
 
-- \`home_country\`, or "nationwide" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
 - \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
 - \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
 - \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
@@ -2220,7 +2220,7 @@ The response has two arrays: \`results\` (top-10 prefix matches ranked by releva
 
 \`axis: "include"\`:
 
-- \`home_country\`, or "nationwide" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
 - \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
 - \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
 - \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
@@ -2481,7 +2481,7 @@ Create a brand-new lens (saved audience) and apply its sector/size criteria. Clo
 
 \`axis: "include"\`:
 
-- \`home_country\`, or "nationwide" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
 - \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
 - \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
 - \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
@@ -2888,7 +2888,7 @@ Geo filtering needs \`admin_area_id\` resolution — backend rejects free-text i
 
 \`axis: "include"\`:
 
-- \`home_country\`, or "nationwide" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
 - \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
 - \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
 - \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
@@ -3969,7 +3969,7 @@ as \`leadbay_pull_followups\` does (store-then-apply server-side filter).
 
 \`axis: "include"\`:
 
-- \`home_country\`, or "nationwide" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
 - \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
 - \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
 - \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
@@ -4489,7 +4489,7 @@ Build a single-call mixed-mode itinerary for a field sales tour. Combines \`lead
 
 \`axis: "include"\`:
 
-- \`home_country\`, or "nationwide" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
 - \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
 - \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
 - \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
@@ -4707,7 +4707,7 @@ export const leadbay_update_lens_filter: string = `Replace the audience filter (
 
 \`axis: "include"\`:
 
-- \`home_country\`, or "nationwide" / "everywhere" → omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) and say the result covers the whole workspace.
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
 - \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
 - \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
 - \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.

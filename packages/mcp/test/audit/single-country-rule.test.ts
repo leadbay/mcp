@@ -178,6 +178,21 @@ describe("audit: single-country-universe rule", () => {
     );
   });
 
+  it("the snippet's omit recovery is conditional on nothing else being there", () => {
+    // The rule opens with "City AND country named? Keep the city, drop the
+    // country", then the include-axis bullet said "omit the geo argument" flat.
+    // An agent holding both resolves them the destructive way: on
+    // ["Paris", "France"] it drops the argument and re-runs unfiltered, losing
+    // the city the user actually asked for. The runtime hint now names the
+    // survivors (CountryHit.kept); the prose has to agree with it.
+    expect(RULE, "the omit instruction must be conditional").toMatch(
+      /only if nothing else was on it/i
+    );
+    expect(RULE, "and it must say what to do when other values remain").toMatch(
+      /keep them/i
+    );
+  });
+
   it("the runtime error code is the one the snippet teaches", () => {
     // Imported from core rather than hardcoded: a rename there must not
     // silently leave the prose teaching a recovery for an error that no longer

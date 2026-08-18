@@ -534,6 +534,13 @@ export const SUPRANATIONAL_KEYS: ReadonlySet<string> = new Set(
  * match nothing, so ordinary place names are untouched.
  */
 export const SCOPE_WRAPPERS: readonly RegExp[] = [
+  // ORDER MATTERS: the stripper takes the FIRST wrapper that matches, so every
+  // longer form must precede the shorter one it contains. "the whole of France"
+  // hit the bare /^whole\s+/ first and was left as "of france", which matches no
+  // country — so the guard returned no hit and the caller went on to /geo/search
+  // and the same-named-town fence this module exists to prevent. There is no
+  // generic "of " strip: it belongs to this phrase, not to place names.
+  /^whole\s+of\s+/,
   /^whole\s+/,
   /^all\s+of\s+/,
   /^all\s+/,
