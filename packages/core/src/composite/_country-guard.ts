@@ -52,6 +52,12 @@ export type GuardRegion = "us" | "fr" | "custom";
  * lens or filter change that expresses no scope at all, to say something the
  * workspace already is. WORKFLOWS.md's "Country-wide scope" row forbids exactly
  * those three tools for exactly this ask, and requires that NOTHING be written.
+ *
+ * The stop is narrow on purpose. It fires only when the offending value was the
+ * request's ONLY scope — see the `otherScope` argument threaded alongside it.
+ * `newLens({sectors: ["Healthcare"], locations: ["France"]})` is a Healthcare
+ * lens with a redundant country attached, and refusing to write it would
+ * discard the criterion the user actually cared about.
  */
 export type GuardIntent = "read" | "write";
 
@@ -337,7 +343,12 @@ function messageFor(hit: CountryHit, region: GuardRegion): string {
  * and supra-national hints must NOT tell the agent to drop the argument and
  * retry; they tell it to report the workspace's scope instead.
  */
-function hintFor(hit: CountryHit, region: GuardRegion, intent: GuardIntent): string {
+function hintFor(
+  hit: CountryHit,
+  region: GuardRegion,
+  intent: GuardIntent,
+  otherScope: boolean
+): string {
   const narrow = NARROW_EXAMPLES[region];
   const home = homeCountryName(region);
   const holds = home ? `holds ${home} companies only` : "covers a single country";
@@ -348,6 +359,25 @@ function hintFor(hit: CountryHit, region: GuardRegion, intent: GuardIntent): str
   // forbidden outcome, not the fix for it. Only when the argument is left EMPTY
   // — `kept.length > 0` means a real place survives and writing it is exactly
   // what the user asked for.
+  if (intent === "write" && hit.kept.length === 0 && otherScope) {
+    // The argument empties, but the REQUEST does not: sectors, sizes or a
+    // non-geo criterion carry real scope. Writing that is exactly what the user
+    // asked for, so the country comes off and the call goes through once.
+    const carry = `Drop ${hit.param} from the call and re-call ONCE with the rest of the request intact — its non-geo criteria are real scope and must not be lost with it.`;
+    if (hit.kind === "home_country") {
+      return hit.axis === "exclude"
+        ? `${carry} Excluding ${hit.country} would empty the audience, so that part cannot be honoured at all — say so rather than silently ignoring it.`
+        : `${carry} The lens then carries no geo criterion, which is correct: the workspace already covers all of ${hit.country}.`;
+    }
+    if (hit.kind === "foreign_country") {
+      return `${carry} And say this workspace ${holds}, so there is no ${hit.country} audience to add — the result is scoped by the other criteria only.`;
+    }
+    if (hit.kind === "country_indeterminate") {
+      return `${carry} This backend is custom-configured, so claim nothing about whether ${hit.country} is inside it.`;
+    }
+    return `${carry} And say what the workspace covers rather than presenting the audience as "${hit.value}".`;
+  }
+
   if (intent === "write" && hit.kept.length === 0) {
     const stop = `A country-level value was the ONLY scope passed, so do NOT re-call this tool with ${hit.param} omitted: that persists a lens or filter change carrying no scope at all, to express something this workspace already is. Write NOTHING here.`;
     if (hit.kind === "home_country") {
@@ -445,7 +475,8 @@ function hintFor(hit: CountryHit, region: GuardRegion, intent: GuardIntent): str
 function reconciledHint(
   hits: readonly CountryHit[],
   region: GuardRegion,
-  intent: GuardIntent
+  intent: GuardIntent,
+  otherScope: boolean
 ): string {
   const { param, axis, kept } = hits[0];
   const narrow = NARROW_EXAMPLES[region];
@@ -478,6 +509,19 @@ function reconciledHint(
   // A WRITE tool with an argument that would be left empty. Same reason as in
   // hintFor: the re-call every branch below ends in is itself the forbidden
   // outcome. Stated once for the whole group, since the group is one argument.
+  if (intent === "write" && kept.length === 0 && otherScope) {
+    return `${surgical} Then re-call ONCE with the rest of the request intact — its non-geo criteria are real scope and must not be lost with the geo argument. Say what the audience actually covers: ${[
+      homeCountry ? `it already spans all of ${homeCountry}` : undefined,
+      foreign.length > 0 ? `this workspace ${holds}, so no ${foreign.join(", ")} audience can be added` : undefined,
+      indeterminate.length > 0
+        ? `this backend is custom-configured, so claim nothing about ${indeterminate.join(", ")}`
+        : undefined,
+      supra.length > 0 ? `${quoted(supra)} is a supra-national scope, not a place` : undefined,
+    ]
+      .filter(Boolean)
+      .join("; ")}.`;
+  }
+
   if (intent === "write" && kept.length === 0) {
     const cannot: string[] = [];
     if (homeCountry) {
@@ -564,7 +608,8 @@ function reconciledHint(
 export function countryLocationEnvelope(
   hits: readonly CountryHit[],
   region: GuardRegion,
-  intent: GuardIntent = "read"
+  intent: GuardIntent = "read",
+  otherScope = false
 ): CountryLocationEnvelope {
   const message = hits.map((hit) => messageFor(hit, region)).join(" ");
 
@@ -591,8 +636,8 @@ export function countryLocationEnvelope(
     // ONLY "Canada"` / `Remove ONLY "Germany"` and re-call, so following either
     // one literally leaves the other country in place, and "ONLY" made that
     // read as deliberate. One argument gets one instruction.
-    if (group.length === 1) push(hintFor(group[0], region, intent));
-    else push(reconciledHint(group, region, intent));
+    if (group.length === 1) push(hintFor(group[0], region, intent, otherScope));
+    else push(reconciledHint(group, region, intent, otherScope));
   }
   return { code: COUNTRY_LEVEL_LOCATION, message, hint: hints.join(" ") };
 }
@@ -608,11 +653,12 @@ export function countryLocationEnvelope(
 export function rejectCountryLocations(
   params: ReadonlyArray<{ input: unknown; param: string }>,
   region: GuardRegion,
-  intent: GuardIntent = "read"
+  intent: GuardIntent = "read",
+  otherScope = false
 ): void {
   const hits = detectCountryLocationsIn(params, region);
   if (hits.length === 0) return;
-  const envelope = countryLocationEnvelope(hits, region, intent);
+  const envelope = countryLocationEnvelope(hits, region, intent, otherScope);
   throw {
     error: true,
     code: envelope.code,
@@ -633,7 +679,8 @@ export function rejectCountryLocations(
 export function countryLocationStatus(
   hits: readonly CountryHit[],
   region: GuardRegion,
-  intent: GuardIntent = "read"
+  intent: GuardIntent = "read",
+  otherScope = false
 ): {
   status: typeof COUNTRY_LEVEL_STATUS;
   code: typeof COUNTRY_LEVEL_LOCATION;
@@ -641,7 +688,7 @@ export function countryLocationStatus(
   hint: string;
   country_locations: CountryHit[];
 } {
-  const envelope = countryLocationEnvelope(hits, region, intent);
+  const envelope = countryLocationEnvelope(hits, region, intent, otherScope);
   return {
     status: COUNTRY_LEVEL_STATUS,
     code: envelope.code,
@@ -719,6 +766,33 @@ export function detectCountryLocationsInSetFilter(
  * this client does not have. Narrowing the ingress is the most this layer can
  * do; the real fix is server-side (product#3939).
  */
+/**
+ * Does this lens-filter payload carry scope OUTSIDE its location criteria?
+ *
+ * A sector, keyword or size criterion is real audience scope, and
+ * `update_lens_filter` REPLACES the whole filter — so refusing to write when a
+ * country rode along beside one would discard the criterion the user meant.
+ * Only the absence of any non-location criterion makes the country the sole
+ * scope, and only then does the write-stop apply.
+ */
+export function filterCarriesOtherScope(filter: unknown): boolean {
+  if (!filter || typeof filter !== "object") return false;
+  const lensFilter = (filter as Record<string, unknown>).lens_filter as
+    | Record<string, unknown>
+    | undefined;
+  const items = lensFilter?.items;
+  if (!Array.isArray(items)) return false;
+  for (const item of items) {
+    const criteria = (item as Record<string, unknown> | null)?.criteria;
+    if (!Array.isArray(criteria)) continue;
+    for (const criterion of criteria) {
+      const record = criterion as Record<string, unknown> | null;
+      if (record && record.type !== "location_ids") return true;
+    }
+  }
+  return false;
+}
+
 export function detectCountryLocationsInFilter(
   filter: unknown,
   region: GuardRegion

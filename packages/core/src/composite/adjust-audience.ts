@@ -419,7 +419,15 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
       client.region
     );
     if (countryHits.length > 0) {
-      return countryLocationStatus(countryHits, client.region, "write");
+      // Same narrowing as new_lens: a sector or size adjustment riding along
+      // with a redundant country is a legitimate write, and only the
+      // country-ONLY request is the forbidden one.
+      const otherScope =
+        (params.sectors?.length ?? 0) > 0 ||
+        (params.sector_ids?.length ?? 0) > 0 ||
+        (params.exclude_sectors?.length ?? 0) > 0 ||
+        (params.sizes?.length ?? 0) > 0;
+      return countryLocationStatus(countryHits, client.region, "write", otherScope);
     }
 
     const me = await client.resolveMe();

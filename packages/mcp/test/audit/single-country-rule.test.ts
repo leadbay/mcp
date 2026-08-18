@@ -346,6 +346,30 @@ describe("audit: single-country-universe rule", () => {
     }
   });
 
+  it("the refine gate strips the country before deciding, not instead of deciding", () => {
+    // The first branch matched on "names this workspace's own country" and
+    // stopped the run outright. "Focus on hospitals running their own IT
+    // nationwide" hit it, and the hospitals half — the entire point of the
+    // instruction — was dropped along with the redundant country. The shared
+    // rule's own tiebreak is "keep the city, drop the country"; the gate has to
+    // strip first and classify the remainder, stopping only when nothing is
+    // left.
+    const body = (Prompts as Record<string, string>).leadbay_refine_audience;
+    expect(body, "the gate must strip before it classifies").toMatch(
+      /strip,? do not stop/i
+    );
+    expect(body, "and only stop when the country WAS the whole instruction").toMatch(
+      /nothing remains/i
+    );
+    expect(body, "a place plus a qualitative part must produce BOTH actions").toMatch(
+      /do not drop half the request/i
+    );
+    expect(
+      body,
+      "PHASE 1 must receive the stripped text, not the raw instruction — otherwise the country reaches refine_prompt anyway"
+    ).toMatch(/STRIPPED instruction/);
+  });
+
   it("the team-setup prompt passes a SANITIZED audience, not the raw argument", () => {
     // Dropping the country in prose while still interpolating {{arg:audience}}
     // sent the country label to the lens anyway.

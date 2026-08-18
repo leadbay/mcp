@@ -3,6 +3,7 @@ import type { Tool, FilterPayload } from "../types.js";
 import { leadbay_update_lens_filter as UPDATE_LENS_FILTER_DESCRIPTION } from "../tool-descriptions.generated.js";
 import {
   countryLocationEnvelope,
+  filterCarriesOtherScope,
   detectCountryLocationsInFilter,
 } from "../composite/_country-guard.js";
 
@@ -55,7 +56,12 @@ export const updateLensFilter: Tool<UpdateLensFilterParams> = {
       client.region
     );
     if (countryHits.length > 0) {
-      const envelope = countryLocationEnvelope(countryHits, client.region, "write");
+      const envelope = countryLocationEnvelope(
+        countryHits,
+        client.region,
+        "write",
+        filterCarriesOtherScope(params.filter)
+      );
       throw {
         error: true,
         code: envelope.code,

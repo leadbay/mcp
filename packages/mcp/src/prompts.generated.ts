@@ -1896,27 +1896,38 @@ Recommend the single most-promising lead from this batch and offer to research i
 export const leadbay_refine_audience: string = `
 Refine the Leadbay audience prompt to: {{arg:instruction}}
 
-# PHASE 0 — GATE: IS THIS A GEO ASK? (may end the run)
-A refine prompt shapes the KIND of company, never WHERE it is. Classify my instruction
-FIRST, before any tool call:
+# PHASE 0 — GATE: STRIP THE COUNTRY, THEN CLASSIFY WHAT IS LEFT (may end the run)
+A refine prompt shapes the KIND of company, never WHERE it is. Before any tool call:
 
-- **This workspace's own country** ("the whole US" on a US workspace, "nationwide") →
-  **STOP HERE. Call NOTHING.** Do not continue to PHASE 1: \`leadbay_refine_prompt\` would
-  overwrite my qualitative audience prompt and kick off an intelligence recompute to
-  express a scope this workspace already has. Tell me there is nothing to set because the
-  workspace already covers exactly that, offer the axes that do narrow an audience
-  (sector, size, or a sub-country region / state / county / city), and end your turn.
+**Step 1 — strip, do not stop.** If my instruction names this workspace's own country or
+a whole-country scope ("nationwide", "the whole US", "partout en France"), remove that
+phrase and KEEP THE REST. It is redundant, never a filter — but it is almost never the
+whole instruction. "Hospitals running their own IT nationwide" is a refinement about
+hospitals; "hospitals in Paris, France" is Paris plus hospitals. Losing the rest because
+a country rode along is the worse error of the two.
+
+**Step 2 — classify what REMAINS**, and act on every part of it:
+
+- **Nothing remains** (the country was the entire instruction) → **STOP HERE. Call
+  NOTHING.** Do not continue to PHASE 1: \`leadbay_refine_prompt\` would overwrite my
+  qualitative audience prompt and kick off an intelligence recompute to express a scope
+  this workspace already has. Tell me there is nothing to set because the workspace
+  already covers exactly that, offer the axes that do narrow an audience (sector, size,
+  or a sub-country region / state / county / city), and end your turn.
 - **A DIFFERENT country** ("partout en France" on a US workspace) → **STOP HERE too, but
   do not say "there is nothing to set" — that is false.** The ask is UNSUPPORTED, not
   already-satisfied: this workspace holds only its own country's companies, so there are
   no leads there to scope to. Say so plainly, do not offer an unfiltered view as if it
-  answered the request, and end your turn.
+  answered the request, and end your turn. If a qualitative part rode along with it, say
+  it cannot be applied to a country that is not here either.
 - **A supra-national scope** ("EU-wide", "EMEA") → stop as well: name what the workspace
   covers and ask whether I want that instead, rather than assuming it.
-- **A sub-country place** ("prospects in Texas", "restrict to Indre-et-Loire") → **do not
-  continue to PHASE 1 either.** A place is not a qualitative refinement: route it to
-  \`leadbay_adjust_audience({locations: [...]})\`, say why, and stop.
-- **Anything else** (a genuine qualitative refinement) → continue to PHASE 1.
+- **A sub-country place** ("prospects in Texas", "restrict to Indre-et-Loire") → a place
+  is not a qualitative refinement: route it to \`leadbay_adjust_audience({locations: [...]})\`
+  and say why. If a qualitative part ALSO remains, continue to PHASE 1 with that part —
+  do not drop half the request.
+- **A qualitative refinement** → continue to PHASE 1, passing the STRIPPED text and never
+  the raw instruction.
 
 **One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 
@@ -1937,7 +1948,7 @@ Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text 
 
 
 # PHASE 1 — REFINE (only when PHASE 0 classified the instruction as qualitative)
-Call \`leadbay_refine_prompt\` with \`prompt=<the instruction above>\`.
+Call \`leadbay_refine_prompt\` with \`prompt=<the STRIPPED instruction from PHASE 0>\` — the text with any country phrase removed, never the raw instruction.
 
 # PHASE 2 — CLARIFICATION ROUND-TRIP (if needed)
 

@@ -161,7 +161,16 @@ export const newLens: Tool<NewLensParams> = {
       client.region
     );
     if (countryHits.length > 0) {
-      return countryLocationStatus(countryHits, client.region, "write");
+      // A lens built from sectors / sizes / a base lens is a real lens with a
+      // redundant country attached — refusing to write it would discard the
+      // criteria the user actually asked for. Only a country-ONLY request is
+      // the one WORKFLOWS.md forbids writing.
+      const otherScope =
+        (params.sectors?.length ?? 0) > 0 ||
+        (params.exclude_sectors?.length ?? 0) > 0 ||
+        (params.sizes?.length ?? 0) > 0 ||
+        params.base !== undefined;
+      return countryLocationStatus(countryHits, client.region, "write", otherScope);
     }
 
     // 1. Resolve sectors FIRST — if any don't resolve, surface and bail before
