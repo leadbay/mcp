@@ -6,24 +6,81 @@
 // this file never imports the CLI entrypoint.
 
 
-import { createClient, REGIONS, type LeadbayClient, type LeadbayError, type ToolLogger } from "@leadbay/core";
+import { createClient, type LeadbayError, type ToolLogger, type UserMePayload } from "@leadbay/core";
 import { makeBrokenClient, type ResolvedClient } from "./broken-client.js";
 
 export interface ResolveTokenOptions {
-  // Optional region pin. Provided by the HTTP transport from a header
-  // (`X-Leadbay-Region: us|fr`) or query param. When omitted, we probe both
-  // backends in parallel — same trade-off as the stdio env path.
+  // Optional region pin. Normally unused — the region is decoded from the token's
+  // `_us`/`_fr` suffix (Stargate-centered flow). An explicit pin still wins and
+  // SKIPS validation (no probe).
   region?: "us" | "fr";
+  // Preferred region for the validation probe of an UNTAGGED (legacy, no-suffix)
+  // token: probe this region first, then fall back to the sibling. Unlike `region`
+  // it does NOT skip validation and does NOT pin — a valid token in EITHER region
+  // still resolves. The hosted `/fr/mcp` compat alias sets this to "fr" so legacy
+  // EU tokens probe FR first. Ignored for suffixed tokens (the suffix decides).
+  preferRegion?: "us" | "fr";
   // Optional baseUrl override. Mirrors $LEADBAY_BASE_URL in stdio.
   baseUrl?: string;
   logger?: ToolLogger;
+  // When true (the default for the hosted HTTP path), validate the bearer with a
+  // single lightweight `/users/me` probe against the region the suffix names, so
+  // an expired/revoked token yields authState:"expired" and the caller can emit
+  // the RFC 6750 `invalid_token` challenge that drives the host's silent refresh.
+  // Set false to skip the round-trip (e.g. an explicit region/baseUrl pin where
+  // the caller doesn't need the refresh signal).
+  validate?: boolean;
+  // Per-probe deadline in ms. Defaults to PROBE_TIMEOUT_MS; exposed so tests can
+  // drive the stalled-region path without waiting seconds.
+  probeTimeoutMs?: number;
+}
+
+/**
+ * Wall-clock budget for ONE region's `/users/me` validation probe.
+ *
+ * The probes run one after another (the outcome of the first decides whether the
+ * second is even meaningful), so without a deadline a single stalled region
+ * would hold the whole request open: node:https has no default socket timeout,
+ * and a backend that accepts the connection then goes silent never rejects. That
+ * would strand a caller whose token the SIBLING region would have accepted.
+ * A probe that overruns is treated exactly like a 5xx — a transient fault — so
+ * the resolver moves to the next candidate instead of forcing re-auth. Worst
+ * case for a request is therefore two deadlines (both regions dark), which is
+ * bounded — the previous behaviour was not bounded at all.
+ */
+export const PROBE_TIMEOUT_MS = 4000;
+
+/**
+ * Decode the region from a Stargate-issued access token's trailing suffix:
+ * `o.<token>_fr` / `o.<token>_us` → "fr" / "us". Returns undefined for an
+ * untagged/legacy token (caller falls back). The token body isn't otherwise
+ * inspected here — the backend validates it.
+ *
+ * The suffix is a routing HINT, not proof of provenance: a legacy opaque bearer
+ * can end in `_fr` by coincidence and it would be indistinguishable from a
+ * tagged one. So callers must not treat a match as a hard region pin — see the
+ * candidate list in resolveClientFromToken, which still probes the sibling
+ * region before declaring such a token expired.
+ */
+export function regionFromToken(token: string): "us" | "fr" | undefined {
+  const i = token.lastIndexOf("_");
+  if (i < 0) return undefined;
+  const tag = token.slice(i + 1).toLowerCase();
+  return tag === "us" || tag === "fr" ? tag : undefined;
 }
 
 export async function resolveClientFromToken(
   token: string | undefined,
   opts: ResolveTokenOptions = {}
 ): Promise<ResolvedClient> {
-  const { region, baseUrl, logger } = opts;
+  const {
+    region,
+    preferRegion,
+    baseUrl,
+    logger,
+    validate = true,
+    probeTimeoutMs = PROBE_TIMEOUT_MS,
+  } = opts;
 
   if (!token || token.length === 0) {
     // Same broken-client pattern as stdio: let the JSON-RPC handshake
@@ -53,51 +110,225 @@ export async function resolveClientFromToken(
     return { client: createClient(config), authState: "ok" };
   }
 
-  // Auto-probe path: token is sent to BOTH api-us and api-fr. Hosted callers
-  // should set the region header to avoid this; the warning here goes to
-  // server logs (the user can't see stderr on a hosted endpoint).
-  logger?.info?.("hosted MCP: region unpinned, probing api-us + api-fr in parallel");
+  // Stargate-issued tokens carry a `_us`/`_fr` region suffix, so we route directly
+  // to the owning backend. A legacy/untagged token has NO suffix — we must not pin
+  // it to one region, or an existing FR token validated only against US would 401
+  // and be falsely reported expired. So the suffix (else `preferRegion`, else US)
+  // decides which region is tried FIRST and which one the client binds to; it
+  // never decides that the sibling goes untried.
+  const suffixRegion = regionFromToken(token);
+  // Untagged token: probe `preferRegion` first (e.g. "fr" from the /fr/mcp alias),
+  // else default US-first. Suffixed token: the suffix is authoritative.
+  const primaryRegion: "us" | "fr" = suffixRegion ?? preferRegion ?? "us";
 
-  const probe = async (r: "us" | "fr"): Promise<LeadbayClient> => {
-    const c = createClient({ token, region: r });
-    // resolveMe() (not a bare request) so the winning client's /users/me cache
-    // is warm — the telemetry path (resolveIdentity) then reuses it instead of
-    // re-fetching, avoiding a second backend round trip per stateless HTTP
-    // request (Codex P2). Same error semantics: resolveMe wraps the same
-    // request("GET","/users/me") and rejects identically on a bad token.
-    await c.resolveMe();
-    return c;
-  };
+  if (!validate) {
+    return { client: createClient({ token, region: primaryRegion }), authState: "ok" };
+  }
 
-  try {
-    const client = await Promise.any([probe("us"), probe("fr")]);
-    return { client, authState: "ok" };
-  } catch (err: any) {
-    const errors: any[] = err?.errors ?? [];
-    const firstAuth = errors.find(
-      (e) => e?.code === "AUTH_EXPIRED" || e?.code === "NOT_AUTHENTICATED"
-    );
-    if (firstAuth) {
-      return {
-        client: makeBrokenClient(
-          {
-            error: true,
-            code: firstAuth.code,
-            message: firstAuth.message,
-            hint: "Verify the bearer token is valid. Pin the region with an `X-Leadbay-Region: us|fr` header to skip auto-probing. Authenticate again with `npx -y @leadbay/mcp login --oauth`.",
-          } satisfies LeadbayError,
-          "us"
-        ),
-        authState: "expired",
-      };
+  // Probe candidates: the primary region first, then the sibling. A candidate's
+  // outcome is one of: OK (return immediately), auth-reject (try the next), or
+  // non-auth fault (try the next — it might be a transient/backend error while
+  // the token is valid elsewhere).
+  //
+  // The sibling is a candidate even for a SUFFIXED token, because the suffix is
+  // only a hint: a legacy opaque bearer whose value happens to end in `_us`/`_fr`
+  // is byte-for-byte indistinguishable from a Stargate-tagged one. Probing only
+  // the named region would report such a token `expired` on its single 401 and
+  // push a user with a perfectly valid sibling-region token through reauth, over
+  // and over, until their token is rotated. The extra probe costs one round trip
+  // and ONLY on the failure path — a token the named region accepts still
+  // resolves on the first probe, which is the whole point of the suffix.
+  const candidates: ("us" | "fr")[] =
+    primaryRegion === "us" ? ["us", "fr"] : ["fr", "us"];
+
+  let sawAuthReject = false;
+  // Whether the PRIMARY (owning) region specifically auth-rejected. Distinct
+  // from sawAuthReject: the retry below is only meaningful for the region the
+  // token claims to belong to, and gating it on "no sibling faulted" was too
+  // narrow (see the mixed-outcome note there).
+  let primaryAuthRejected = false;
+  // Every region that auth-rejected, so the untagged last-chance pass below can
+  // give each of them (and only them) a second look.
+  const authRejectedRegions = new Set<"us" | "fr">();
+  // The first rejection, kept so the expired envelope carries the backend's own
+  // code and message rather than a generic stand-in.
+  let firstAuthError: LeadbayError | undefined;
+  // The region whose probe hit a transient (non-auth) fault, if any. When we
+  // suppress re-auth below we bind the client HERE, not to primaryRegion: the
+  // token is plausibly valid in this region (the fault was transient), whereas
+  // primaryRegion may be a region that already AUTH-REJECTED the token — sending
+  // the next tool call there would fail auth needlessly.
+  let nonAuthFaultRegion: "us" | "fr" | undefined;
+  for (const r of candidates) {
+    const client = createClient({ token, region: r });
+    try {
+      // Fail-fast validation: retryOn401:false. We must NOT retry a 401 here — the
+      // auto-retry would mask an auth rejection and prevent the dual-region fallback
+      // (a legacy FR token 401'ing on US must move to FR, not retry US and bind there).
+      // Cache-warming for telemetry is handled after success via seedMe(), so this
+      // still avoids the second /users/me round trip resolveIdentity would otherwise do.
+      // The deadline is what keeps the candidates independent: probes run in
+      // sequence, so an unbounded first probe against a stalled region would
+      // starve the sibling that could still accept this token.
+      const me = await client.request<UserMePayload>(
+        "GET",
+        "/users/me",
+        undefined,
+        { retryOn401: false, timeoutMs: probeTimeoutMs }
+      );
+      client.seedMe(me); // warm the /users/me cache so resolveIdentity reuses it
+      return { client, authState: "ok" };
+    } catch (e) {
+      const code = (e as LeadbayError)?.code;
+      if (code === "AUTH_EXPIRED" || code === "NOT_AUTHENTICATED") {
+        sawAuthReject = true;
+        if (r === primaryRegion) primaryAuthRejected = true;
+        authRejectedRegions.add(r);
+        firstAuthError ??= e as LeadbayError;
+      } else {
+        if (code === "TIMEOUT") {
+          logger?.warn?.(
+            `hosted MCP auth probe against ${r} exceeded ${probeTimeoutMs}ms — moving on to the next candidate region`
+          );
+        }
+        // Non-auth fault (5xx / network / timeout) on THIS region — do NOT bind here yet. The
+        // token may be valid in the sibling region (e.g. US 503 while FR is healthy
+        // on the shared /mcp URL), so keep probing the remaining candidates. Record
+        // the first such region so we can bind to it if nothing resolves cleanly.
+        nonAuthFaultRegion ??= r;
+      }
+      continue;
     }
-    // Non-auth failure (network, DNS) — fall back to us so the server can
-    // still answer tool calls with an error envelope rather than dying.
+  }
+
+  // Last chance before we force a re-auth: give the rejecting region(s) one more
+  // look.
+  //
+  // The probes above deliberately run with retryOn401:false so an auth rejection
+  // can't be masked and the dual-region fallback still happens. But a Leadbay 401
+  // is usually NOT expiry — LeadbayClient's own retry exists because "tokens don't
+  // expire, so a 401 is almost always a transient server-side blip" (client.ts
+  // httpsRequestWithRetry). Without this step a blip on the owning region cascades:
+  // the sibling 401s too (the token is region-scoped), both rejections look
+  // authoritative, and a perfectly valid token gets an invalid_token challenge —
+  // a regression against the previous resolveMe() probe, which inherited the
+  // client's one-retry policy.
+  //
+  // Placed AFTER the loop rather than inside it on purpose: retrying mid-loop
+  // would delay the sibling probe (which the sequential-probe deadline exists to
+  // protect) and would spend the extra round trip on the legacy-token path, where
+  // the 401 is expected and the sibling is the answer. Here the extra request is
+  // spent only on the path that was about to force re-auth, which is far more
+  // expensive for the user.
+  //
+  // Who gets that second look is decided by AMBIGUITY, not by the suffix.
+  //
+  // ABOUT TO EXPIRE (every candidate rejected, nothing faulted) — retry EVERY
+  // region that rejected, in candidate order, suffix or no suffix. This is the
+  // only path that emits a challenge, and on it we cannot tell which 401 was the
+  // blip and which was the region-scoped rejection: an FR token blipping on FR
+  // looks exactly like a US token blipping on US, and the suffix does not settle
+  // it — a legacy US bearer whose opaque value happens to end in `_fr` gets a
+  // legitimate rejection from FR and a blip from the US backend that actually
+  // owns it. Treating the suffix as ownership HERE would contradict the probe
+  // loop above, which deliberately treats it as a hint. So each rejecting region
+  // gets one extra request (`retryOn401:false`, so the client's internal double
+  // doesn't stack on top): four requests on the whole failure path, zero on the
+  // happy one.
+  //
+  // A FAULT OCCURRED — no challenge is coming either way, so the retry exists
+  // only to pick the right BIND region, and there the suffix does carry weight:
+  // retry the PRIMARY when it auth-rejected and the token names it. That is the
+  // mixed-outcome fix — owning region blips 401 while the sibling times out or
+  // 5xxs, so `nonAuthFaultRegion` is set and we would otherwise bind to the
+  // FAULTING SIBLING: the wrong backend for a region-scoped token, no challenge
+  // raised, and every later tool call 401s against a region the token was never
+  // scoped to. A recovered retry is positive evidence that this region accepts
+  // the token, so it outranks that fallback. `retryOn401:true` here hands the
+  // attempt to the client's own blip policy, which spaces the two requests out.
+  //
+  // For an UNTAGGED token on that same fault path there is nothing to prefer:
+  // `primaryRegion` is just preferRegion-or-US, so a 401 there is not evidence
+  // about the owning backend, and the sibling that merely faulted stays the
+  // better bind than the one that definitively rejected the token (see the
+  // "bind to the transient region, not the rejecting one" cases).
+  const aboutToExpire = sawAuthReject && nonAuthFaultRegion === undefined;
+  const retryPlan: Array<{ region: "us" | "fr"; retryOn401: boolean }> = aboutToExpire
+    ? candidates
+        .filter((r) => authRejectedRegions.has(r))
+        .map((r) => ({ region: r, retryOn401: false }))
+    : primaryAuthRejected && suffixRegion !== undefined
+    ? [{ region: primaryRegion, retryOn401: true }]
+    : [];
+
+  for (const step of retryPlan) {
+    const client = createClient({ token, region: step.region });
+    try {
+      const me = await client.request<UserMePayload>(
+        "GET",
+        "/users/me",
+        undefined,
+        { retryOn401: step.retryOn401, timeoutMs: probeTimeoutMs }
+      );
+      logger?.warn?.(
+        `hosted MCP auth probe against ${step.region} recovered on retry — the first 401 was a transient blip, not an expired token`
+      );
+      client.seedMe(me);
+      return { client, authState: "ok" };
+    } catch (e) {
+      const code = (e as LeadbayError)?.code;
+      if (code !== "AUTH_EXPIRED" && code !== "NOT_AUTHENTICATED") {
+        // The retry hit a transient fault instead. Same reasoning as in the loop:
+        // we can no longer be sure the token is bad, so don't force re-auth.
+        if (aboutToExpire) {
+          // Nothing had faulted before this pass (that's its entry condition), so
+          // this is the first fault: record it and STOP. The challenge is off the
+          // table now, and the remaining retries would only add latency to a
+          // request we are about to let through anyway.
+          nonAuthFaultRegion = step.region;
+          break;
+        }
+        // Mixed path: overwrites the sibling's recorded fault on purpose. Both
+        // regions are now unproven, and the primary is the one the token CLAIMS —
+        // so it is the better region to bind to than a sibling that merely
+        // faulted first.
+        nonAuthFaultRegion = step.region;
+      } else {
+        firstAuthError ??= e as LeadbayError;
+      }
+    }
+  }
+
+  // No candidate returned OK. If ANY candidate rejected on auth grounds AND none
+  // hit a transient fault that could be masking a valid token, treat as genuinely
+  // expired → invalid_token challenge (host silently refreshes).
+  if (sawAuthReject && nonAuthFaultRegion === undefined) {
+    logger?.warn?.("hosted MCP bearer rejected by all candidate regions — emitting invalid_token challenge");
+    // A broken client, not a live one holding a bearer every region just
+    // rejected. Both hosted call sites answer the 401 challenge without ever
+    // touching it, and the stdio resolver does the same (bin.ts), so this only
+    // matters for a caller that forgets to check authState — and that caller
+    // should get a render-able AUTH_EXPIRED envelope, not a request fired with a
+    // known-bad token.
     return {
-      client: createClient({ token, region: "us" }),
-      authState: "probe_failed",
+      client: makeBrokenClient(
+        {
+          error: true,
+          code: firstAuthError?.code ?? "AUTH_EXPIRED",
+          message: firstAuthError?.message ?? "The Leadbay access token was rejected.",
+          hint: "The token is invalid or expired. The 401 challenge carries `error=\"invalid_token\"` so a spec-compliant host refreshes silently; otherwise authenticate again with `npx -y @leadbay/mcp login --oauth`.",
+        },
+        primaryRegion
+      ),
+      authState: "expired",
     };
   }
+  // A non-auth fault occurred, so we can't be sure the token is invalid → proceed
+  // as ok (don't force spurious re-auth); a real fault re-surfaces on the tool call.
+  // Bind to the region that had the TRANSIENT fault (where the token is plausibly
+  // valid), NOT primaryRegion — which may be a region that already auth-rejected it.
+  const bindRegion = nonAuthFaultRegion ?? primaryRegion;
+  return { client: createClient({ token, region: bindRegion }), authState: "ok" };
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -107,16 +338,28 @@ export async function resolveClientFromToken(
 // remote client (Claude Desktop, ChatGPT) only runs its sign-in flow when the
 // server (a) returns 401 + a `WWW-Authenticate` header pointing at protected
 // resource metadata and (b) serves that metadata advertising the authorization
-// server. Without it the client never prompts — the reported bug. The Leadbay
-// regional backends already act as the OAuth authorization server (they serve
-// /.well-known/oauth-authorization-server + register/authorize/token); we just
-// point the client at the right one.
+// server. Without it the client never prompts.
+//
+// Stargate is the single, region-agnostic OAuth authority (it fronts both
+// regional backends and routes by the token/code region suffix). So discovery
+// advertises ONE authorization server for everyone — the shared connector URL
+// works regardless of the user's region, and the region rides in the token
+// suffix, not the connector path.
 
-/** Region → OAuth authorization server (the regional backend that serves the
- *  authorization-server metadata, registration, and token endpoints). */
-export function regionAuthServer(region: "us" | "fr"): string {
-  return region === "fr" ? REGIONS.fr : REGIONS.us;
-}
+/**
+ * The single OAuth authorization server (Stargate). Overridable for
+ * staging/tests via `LEADBAY_AUTH_SERVER` (staging is
+ * `https://staging.stargate.leadbay.app`).
+ *
+ * This is the deployed hostname, not an alias: `stargate.leadbay.app` serves
+ * `/.well-known/oauth-authorization-server` with `issuer:
+ * "https://stargate.leadbay.app"`, and a spec-compliant client rejects metadata
+ * whose issuer doesn't match the URL it discovered. An earlier draft advertised
+ * `auth.leadbay.app`, which was never deployed — discovery pointed at a host
+ * that doesn't resolve, so the sign-in prompt could never appear.
+ */
+export const STARGATE_AUTH_SERVER =
+  process.env.LEADBAY_AUTH_SERVER ?? "https://stargate.leadbay.app";
 
 export interface ProtectedResourceMetadata {
   resource: string;
@@ -126,14 +369,13 @@ export interface ProtectedResourceMetadata {
 
 /** RFC 9728 Protected Resource Metadata for a hosted MCP endpoint. `resourceUrl`
  *  is the canonical endpoint the client connected to (e.g.
- *  https://mcp.leadbay.app/mcp). */
+ *  https://mcp.leadbay.app/mcp). Advertises the single Stargate auth server. */
 export function protectedResourceMetadata(opts: {
   resourceUrl: string;
-  region: "us" | "fr";
 }): ProtectedResourceMetadata {
   return {
     resource: opts.resourceUrl,
-    authorization_servers: [regionAuthServer(opts.region)],
+    authorization_servers: [STARGATE_AUTH_SERVER],
     bearer_methods_supported: ["header"],
   };
 }
