@@ -68,7 +68,11 @@ describe("leadbay_qualify_leads — malformed lead_refs", () => {
       confirm: true,
     });
     expect(e!.code).toBe("INVALID_LEAD_REF");
-    expect(e!.message).toMatch(/index 1, 2/);
+    // Index-and-reason per bad entry, so the caller can fix the batch rather
+    // than bisect it. Ref 0 is well-formed and must not be listed.
+    expect(e!.message).toMatch(/1 \(not an object\)/);
+    expect(e!.message).toMatch(/2 \(not an object\)/);
+    expect(e!.message).not.toMatch(/\b0 \(/);
   });
 
   it("refuses on the FREE path too — a crash is not free-path-specific", async () => {

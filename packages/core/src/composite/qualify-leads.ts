@@ -97,19 +97,54 @@ function normalizeLeadRefs(
  *  mistake, and the tool's contract is to answer with a named, actionable
  *  error rather than a stack trace or a silent drop: dropping would qualify
  *  and BILL a subset of the batch the user listed, without saying so. */
+/** Every identifying field the ref shape declares. Validated as a set rather
+ *  than one-by-one so adding a field to `lead_refs` cannot silently reopen the
+ *  crash: a new field left off this list is caught by the typecheck below. */
+const LEAD_REF_FIELDS = [
+  "lead_id",
+  "website",
+  "name",
+  "location",
+  "contact_id",
+] as const satisfies ReadonlyArray<
+  keyof NonNullable<QualifyLeadsParams["lead_refs"]>[number]
+>;
+
 function rejectMalformedLeadRefs(refs: QualifyLeadsParams["lead_refs"]): void {
   if (!Array.isArray(refs)) return;
-  const bad: number[] = [];
+  const bad: string[] = [];
   refs.forEach((ref, i) => {
-    if (ref === null || typeof ref !== "object" || Array.isArray(ref)) bad.push(i);
+    if (ref === null || typeof ref !== "object" || Array.isArray(ref)) {
+      bad.push(`${i} (not an object)`);
+      return;
+    }
+    // Field TYPES, not just the container. `{website: 123}` cleared the object
+    // check and then died on `.trim()` while deriving the key — the same crash
+    // one level in. `undefined` and absent are both fine; anything present and
+    // non-string is not.
+    for (const field of LEAD_REF_FIELDS) {
+      const value = (ref as Record<string, unknown>)[field];
+      if (value !== undefined && typeof value !== "string") {
+        bad.push(`${i}.${field} (${value === null ? "null" : typeof value})`);
+      }
+    }
   });
   if (bad.length === 0) return;
   throw {
     error: true,
     code: "INVALID_LEAD_REF",
-    message: `lead_refs contains ${bad.length} entr${bad.length === 1 ? "y" : "ies"} that are not a reference object (index ${bad.join(", ")}).`,
-    hint: "Each ref is an object — {lead_id} | {website} | {name, location?} | {contact_id}. A bare string is accepted and reshaped; null, numbers and arrays are not. Drop the bad entries and re-call.",
+    message: `lead_refs has ${bad.length} invalid entr${bad.length === 1 ? "y" : "ies"}: ${bad.join(", ")}.`,
+    hint: "Each ref is an object whose fields are STRINGS — {lead_id} | {website} | {name, location?} | {contact_id}. A bare string is accepted and reshaped; null, numbers, arrays and non-string field values are not. Fix or drop those entries and re-call.",
   };
+}
+
+/** Trim + lowercase a value that SHOULD be a string, without trusting that it
+ *  is. Non-strings fold to null rather than throwing, so an unvalidated caller
+ *  cannot turn key derivation into a TypeError. */
+function text(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const v = value.trim().toLowerCase();
+  return v ? v : null;
 }
 
 function derivedRequestId(params: QualifyLeadsParams): string {
@@ -123,21 +158,26 @@ function derivedRequestId(params: QualifyLeadsParams): string {
   // once are the same approved work. Leaving duplicates in forked the key, and
   // a retry that happened to dedupe would then re-run the whole paid job.
   const refs = canonicalSet(
-    (params.lead_refs ?? []).map((r) => [
-      // UUIDs are case-insensitive to the backend, so an uppercase id and its
-      // lowercase form are the same lead and must share a key.
-      normalizeUuid(r.lead_id),
-      normalizeUuid(r.contact_id),
-      // Normalize the website the SAME way the resolver does, so a pasted
-      // "https://Acme.com/" and a retry's "acme.com" resolve to one company
-      // AND to one key. Fall back to the trimmed/lowercased raw value when it
-      // is not domain-shaped, rather than dropping the field.
-      r.website
-        ? normalizeDomain(r.website) ?? r.website.trim().toLowerCase()
-        : null,
-      r.name?.trim().toLowerCase() ?? null,
-      r.location?.trim().toLowerCase() ?? null,
-    ])
+    (params.lead_refs ?? []).map((r) => {
+      // Defence in depth: rejectMalformedLeadRefs already guarantees every
+      // field is a string, but key derivation must not be the thing that
+      // crashes if a future caller reaches it without that guard. `text()`
+      // folds a non-string to null instead of throwing on .trim().
+      const website = text(r.website);
+      return [
+        // UUIDs are case-insensitive to the backend, so an uppercase id and
+        // its lowercase form are the same lead and must share a key.
+        normalizeUuid(r.lead_id),
+        normalizeUuid(r.contact_id),
+        // Normalize the website the SAME way the resolver does, so a pasted
+        // "https://Acme.com/" and a retry's "acme.com" resolve to one company
+        // AND to one key. Fall back to the trimmed/lowercased raw value when
+        // it is not domain-shaped, rather than dropping the field.
+        website ? normalizeDomain(website) ?? website : null,
+        text(r.name),
+        text(r.location),
+      ];
+    })
   );
   // JSON the WHOLE shape for the same reason as the refs above: free-text
   // values (contact_titles, lang) must not be able to forge a field boundary
