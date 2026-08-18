@@ -32,6 +32,7 @@ import { dirname, resolve } from "node:path";
 import * as Generated from "@leadbay/core/dist/tool-descriptions.generated.js";
 import { COUNTRY_LEVEL_LOCATION } from "@leadbay/core/dist/composite/_country-guard.js";
 import * as Prompts from "../../src/prompts.generated.js";
+import { PROMPT_META } from "../../src/prompts.generated.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -279,6 +280,56 @@ describe("audit: single-country-universe rule", () => {
       ).toEqual([]);
     }
   );
+
+  /**
+   * The tour is the ONE geo tool whose country recovery is not "omit the
+   * argument". `leadbay_tour_plan` accepts a missing `city` and answers with
+   * unfiltered Monitor leads plus arbitrary Discover leads — a nationwide list
+   * presented as an itinerary. Its body says so, but the body is not what a
+   * truncating host reads: the routing block lands in the first ~500 chars
+   * (CLAUDE.md) and the prompt's argument description is surfaced on its own in
+   * `prompts/list`. Both of those shipped carrying the generic omit recovery,
+   * contradicting the override further down. Pinned per-surface so a later
+   * wording pass cannot reintroduce the shorter, more visible, wrong answer.
+   */
+  it("the tour's EARLY surfaces send the agent to ask, not to omit", () => {
+    const whenToUse = /## WHEN TO USE\n([\s\S]*?)(?=\n## |\n---)/.exec(
+      (Generated as Record<string, string>).leadbay_tour_plan
+    )?.[1];
+    const cityArg = PROMPT_META.leadbay_plan_tour_in_city.arguments?.find(
+      (a) => a.name === "city"
+    )?.description;
+
+    const surfaces: ReadonlyArray<{ where: string; text: string | undefined }> = [
+      { where: "leadbay_tour_plan routing block", text: whenToUse },
+      { where: "leadbay_plan_tour_in_city `city` argument", text: cityArg },
+    ];
+
+    // Each phrasing below shipped on one of these two surfaces, or is the
+    // shared snippet's include-recovery leaking into a place that overrides it.
+    const OMIT_RECOVERY: ReadonlyArray<{ pattern: RegExp; origin: string }> = [
+      { pattern: /means NO geo filter/i, origin: '"a whole-country ask means NO geo filter"' },
+      { pattern: /needs no geo filter/i, origin: '"a whole-country ask needs no geo filter at all"' },
+      { pattern: /omit the geo argument/i, origin: "the shared include-axis recovery" },
+    ];
+
+    for (const { where, text } of surfaces) {
+      expect(text, `${where} did not parse out of the generated file`).toBeTruthy();
+      const found = OMIT_RECOVERY.filter((c) => c.pattern.test(text as string));
+      expect(
+        found.map((c) => c.origin),
+        `${where} tells the agent to drop the geo filter on a country-wide ask. A city-less tour_plan returns arbitrary whole-workspace leads, not an itinerary — this surface must send the agent to ASK for a city or region (product#3951)`
+      ).toEqual([]);
+      expect(
+        text,
+        `${where} must state the tour exception explicitly: do NOT omit the argument`
+      ).toMatch(/do NOT omit/i);
+      expect(
+        text,
+        `${where} must name the recovery it replaces omission with: ask which city or region`
+      ).toMatch(/ask which city or region/i);
+    }
+  });
 
   it("the team-setup prompt passes a SANITIZED audience, not the raw argument", () => {
     // Dropping the country in prose while still interpolating {{arg:audience}}

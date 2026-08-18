@@ -4452,7 +4452,7 @@ Trigger phrases: "visiting <city> in <N> days", "I'm in <city> next week / Tuesd
 
 Do NOT use for: "follow-ups only, no new prospects" → \`leadbay_followups_map\`; "new leads only" → \`leadbay_pull_leads\`; "research one account" → \`leadbay_research_lead_by_id\`.
 
-Prefer when: user wants known accounts plus new discoveries in one geographic itinerary; NEVER a country name — a whole-country ask means NO geo filter
+Prefer when: user wants known accounts plus new discoveries in one geographic itinerary; NEVER a country name — unlike the Monitor tools, do NOT omit \`city\`; a city-less tour is arbitrary nationwide leads, so ask which city or region
 
 Examples that SHOULD invoke this tool:
 - "I'm flying to Limoges in 4 days — give me 3 customers, 3 qualified prospects, and 3 new high-potential."
