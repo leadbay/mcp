@@ -45,37 +45,36 @@ One short line narrating the delivery honestly, built from `funnel` + `cost` +
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
 > the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
 
-**Never hard-code `$`.** `cost` carries no currency, and the same job bills in
-euros on a France account — `$6.09` for a €6.09 charge misstates a paid
-operation. US → `$`, France → `€`; region unknown → write the bare amount.
+**Never hard-code `$`** — `cost` carries no currency and a France account
+bills in euros, so `$6.09` for a €6.09 charge misstates a paid operation.
+US → `$`, France → `€`; region unknown → bare amount.
 
 "of the Y asked" needs `summary.items_requested`, which submit results carry
 but a later `leadbay_lead_job_status` snapshot does not. Without it write
-**delivered X** and stop — never back-fill Y from `matched`/`examined` (those
-count candidates, not the target) and never guess it.
+**delivered X** and stop — never back-fill Y from `matched`/`examined` (they
+count candidates, not the target), never guess it.
 
 Plain-word stop reasons: `target_reached` → omit (success), `pool_exhausted` →
 "ran out of matching candidates", `max_cost` → "hit the cost cap", `quota` →
 "hit an org quota", `time_budget` → "hit the 30-min time budget".
 
 **When `delivered` is 0**: NEVER say just "no results". Render no table; give
-the funnel line plus the relevant `explain.scope_notes` (they carry the
-backend's own diagnosis, e.g. vendor-vocabulary queries or pre-screen
-rejections), then propose the concrete fix (reshape the seed per the
-example_lead craft rules, lower `min_ai_score`, raise `max_cost`, drop a
-filter) as NEXT STEPS options.
+the funnel line plus the relevant `explain.scope_notes` (the backend's own
+diagnosis — vendor-vocabulary queries, pre-screen rejections), then propose
+the concrete fix (reshape the seed per the craft rules, lower `min_ai_score`,
+raise `max_cost`, drop a filter) as NEXT STEPS options.
 
-**Weak batch**: when the BEST delivered `fit.score` is under 30, do not
-present the table as an answer — open with "weak matches only", show at most
-the top 3, and propose reshaping the seed/filters first. The count was
-filled with barely-better-than-random candidates, not good ones.
+**Weak batch**: when the BEST delivered `fit.score` is under 30, don't present
+the table as an answer — open with "weak matches only", show at most the top
+3, propose reshaping the seed/filters first. The count was filled with
+barely-better-than-random candidates.
 
-**Sanity-check every row before rendering**: (a) geo — `city`/`region` must
-sit inside any requested fence; drop and call out leaks (a same-named city
-in another state slips through). (b) When `explain.seed_strategy` is
-`text_match_exemplars` (the standard FR path), fit is calibrated for
-lead-to-lead distances, not exemplar centroids — treat high scores
-skeptically and verify each row's `description` actually matches the ask.
+**Sanity-check every row**: (a) geo — `city`/`region` must sit inside any
+requested fence; drop and call out leaks (a same-named city in another state
+slips through). (b) When `explain.seed_strategy` is `text_match_exemplars`
+(the standard FR path), fit is calibrated for lead-to-lead distances, not
+exemplar centroids — treat high scores skeptically and verify each row's
+`description` matches the ask.
 
 **Skipped items** (`skipped[]`, qualify jobs mostly): render a compact second
 table `Ref → Outcome` translating `status_reason` to plain words:

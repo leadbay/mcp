@@ -1304,10 +1304,10 @@ delivered. Full algorithm below.
 
 Submit a net-new lead search: the backend matches an ICP seed against the full
 company universe, applies hard filters, skips what the org already knows
-(\`novelty: org\`), optionally qualifies candidates against the org's own
-intelligence (questions, tags, ideal buyer profile — frozen at submit), and
-optionally purchases contact channels. The tool polls up to \`wait_seconds\`
-(default 45); a longer job returns \`still_running\` + \`next_poll\` — hand off to
+(\`novelty: org\`), optionally qualifies against the org's own intelligence
+(questions, tags, ideal buyer profile — frozen at submit), and optionally
+purchases contact channels. Polls up to \`wait_seconds\` (default 45); a longer
+job returns \`still_running\` + \`next_poll\` — hand off to
 \`leadbay_lead_job_status\`. Jobs run ≤30 min, results kept 30 days.
 
 **Free vs paid — never spend silently.** The default ask (\`qualify: false\`,
@@ -1319,10 +1319,9 @@ phone 250c, success-only). The gate is enforced in code: a paid call
 \`confirm: true\` — otherwise nothing is submitted and you get
 \`mode: "needs_confirmation"\` with a real quote to show the user. Re-call with
 \`confirm: true\` on their go-ahead ("spend / get their emails" counts).
-\`confirm: false\` vetoes. Free needs no consent.
-
-**Free preview first**: run FREE, eyeball fit, THEN pay — reshaping an
-off-profile seed is free, exploring it with \`qualify: true\` is not.
+\`confirm: false\` vetoes. Free needs no consent. **Preview free first** —
+reshaping an off-profile seed is free, exploring it with \`qualify: true\` is
+not.
 
 **Ad-hoc exclusions ("no chains") are enforced by NO tier** — \`filters\` has
 no exclusion key, and \`qualify\` scores against the org's FROZEN questions and
@@ -1333,22 +1332,21 @@ them yourself and say the tier didn't enforce it. Durable enforcement →
 
 ### Crafting the \`example_lead\` seed — the input that decides result quality
 
-The \`example_lead\` is a FICTIONAL typical ideal customer. Its text is embedded
-and matched against millions of real registry/website company descriptions,
-which state what a company **IS** — never what is happening. Write the seed
-the same way or the matcher drifts. Every rule below is measured:
+The \`example_lead\` is a FICTIONAL typical ideal customer, embedded and matched
+against real registry/website descriptions — which state what a company **IS**,
+never what is happening. Write it the same way or the matcher drifts. Every
+rule below is measured:
 
 1. **Describe the BUYER, never the seller.** Ask: "would this company write a
    check to my user?" A seed describing what the user SELLS surfaces their
-   *competitors and vendors*. Classic trap: if the product helps companies of
-   type X serve customers of type Y, the seed describes X — never Y.
+   *competitors and vendors*. If the product helps companies of type X serve
+   customers of type Y, the seed describes X — never Y.
 2. **Put everything in \`description\`; leave \`name\` unset.** An invented brand
    name pulls matching toward name-lookalikes — a seed named "Meridian
    Analytics" returned five unrelated "Meridian" companies.
-3. **Registry style, one sentence to ~250 chars.** State the business profile:
-   industry niche, business model, what they sell or operate, who they serve,
-   observable scale (sites, membership, fleet). Write it like the first
-   paragraph of the company's About-Us page.
+3. **Registry style, one sentence to ~250 chars.** Industry niche, business
+   model, what they sell or operate, who they serve, observable scale. Write
+   it like the first paragraph of their About-Us page.
    - STRONG: "Operator of full-service fitness centers offering strength
      training areas, group classes and personal training to individual members
      across multiple club locations."
@@ -1356,25 +1354,20 @@ the same way or the matcher drifts. Every rule below is measured:
    - WRONG (seller-side): "Supplier of durable modular flooring for gyms."
 4. **No event language.** "hiring", "expanding", "just raised" are not
    filters — registry descriptions never contain them, so they dilute the
-   profile. Purchase-trigger criteria belong in the org's qualification
-   questions, where the paid stage scores them from fresh research.
-5. **No meta-markers.** Never "(example)", "(fictional)", "(placeholder)" —
-   real descriptions don't carry them.
+   profile. Purchase triggers belong in the org's qualification questions,
+   which the paid stage scores from fresh research.
+5. **No meta-markers.** Never "(example)", "(fictional)", "(placeholder)".
 6. **Hard constraints go in \`filters\`, not prose — exact keys:**
    \`sectors: string[]\`, \`locations: string[]\`, \`employees_min: number\`,
-   \`employees_max: number\`. FLAT numbers — a nested \`employees: {min, max}\`
-   object exists only in RESULT payloads, never on input. \`locations\` take
-   city/state/region names ("Dallas, TX", "Texas", "Île-de-France"); NEVER
-   a country — each universe is single-country, so whole-country intent =
-   omit \`locations\` (a country name silently matches a same-named town:
-   measured, "France" → the village of Francs). \`example_lead.employees\`
-   does not filter; only \`filters.employees_min/max\` do.
-7. **Prefer \`example_lead\` over \`query\`.** Query matches topic *vocabulary* —
-   "gyms that need durable flooring" surfaces flooring VENDORS as strongly as
-   gym BUYERS (measured: 0 delivered vs on-profile from the example). Use
-   \`query\` only for signal an example can't express.
+   \`employees_max: number\`. FLAT numbers — nested \`employees: {min, max}\`
+   exists only in RESULT payloads. \`example_lead.employees\` does not filter.
+   \`locations\` take city/state/region names ("Dallas, TX", "Île-de-France");
+   a country name is refused in code — whole-country intent = omit it.
+7. **Prefer \`example_lead\` over \`query\`.** Query matches topic *vocabulary*:
+   "gyms that need durable flooring" surfaced flooring VENDORS, 0 delivered.
+   Use \`query\` only for signal an example can't express.
 8. **One seed per buyer archetype.** An ask spanning two segments ("gyms and
-   warehouses") needs one search each with its own description and
+   warehouses") needs one search each, with its own description and
    \`request_id\` — a blended seed lands between the clusters and matches
    neither.
 
@@ -1440,37 +1433,36 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
 > the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
 
-**Never hard-code \`$\`.** \`cost\` carries no currency, and the same job bills in
-euros on a France account — \`$6.09\` for a €6.09 charge misstates a paid
-operation. US → \`$\`, France → \`€\`; region unknown → write the bare amount.
+**Never hard-code \`$\`** — \`cost\` carries no currency and a France account
+bills in euros, so \`$6.09\` for a €6.09 charge misstates a paid operation.
+US → \`$\`, France → \`€\`; region unknown → bare amount.
 
 "of the Y asked" needs \`summary.items_requested\`, which submit results carry
 but a later \`leadbay_lead_job_status\` snapshot does not. Without it write
-**delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (those
-count candidates, not the target) and never guess it.
+**delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (they
+count candidates, not the target), never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
 "hit an org quota", \`time_budget\` → "hit the 30-min time budget".
 
 **When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
-the funnel line plus the relevant \`explain.scope_notes\` (they carry the
-backend's own diagnosis, e.g. vendor-vocabulary queries or pre-screen
-rejections), then propose the concrete fix (reshape the seed per the
-example_lead craft rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a
-filter) as NEXT STEPS options.
+the funnel line plus the relevant \`explain.scope_notes\` (the backend's own
+diagnosis — vendor-vocabulary queries, pre-screen rejections), then propose
+the concrete fix (reshape the seed per the craft rules, lower \`min_ai_score\`,
+raise \`max_cost\`, drop a filter) as NEXT STEPS options.
 
-**Weak batch**: when the BEST delivered \`fit.score\` is under 30, do not
-present the table as an answer — open with "weak matches only", show at most
-the top 3, and propose reshaping the seed/filters first. The count was
-filled with barely-better-than-random candidates, not good ones.
+**Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
+the table as an answer — open with "weak matches only", show at most the top
+3, propose reshaping the seed/filters first. The count was filled with
+barely-better-than-random candidates.
 
-**Sanity-check every row before rendering**: (a) geo — \`city\`/\`region\` must
-sit inside any requested fence; drop and call out leaks (a same-named city
-in another state slips through). (b) When \`explain.seed_strategy\` is
-\`text_match_exemplars\` (the standard FR path), fit is calibrated for
-lead-to-lead distances, not exemplar centroids — treat high scores
-skeptically and verify each row's \`description\` actually matches the ask.
+**Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
+requested fence; drop and call out leaks (a same-named city in another state
+slips through). (b) When \`explain.seed_strategy\` is \`text_match_exemplars\`
+(the standard FR path), fit is calibrated for lead-to-lead distances, not
+exemplar centroids — treat high scores skeptically and verify each row's
+\`description\` matches the ask.
 
 **Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
 table \`Ref → Outcome\` translating \`status_reason\` to plain words:
@@ -2431,37 +2423,36 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
 > the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
 
-**Never hard-code \`$\`.** \`cost\` carries no currency, and the same job bills in
-euros on a France account — \`$6.09\` for a €6.09 charge misstates a paid
-operation. US → \`$\`, France → \`€\`; region unknown → write the bare amount.
+**Never hard-code \`$\`** — \`cost\` carries no currency and a France account
+bills in euros, so \`$6.09\` for a €6.09 charge misstates a paid operation.
+US → \`$\`, France → \`€\`; region unknown → bare amount.
 
 "of the Y asked" needs \`summary.items_requested\`, which submit results carry
 but a later \`leadbay_lead_job_status\` snapshot does not. Without it write
-**delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (those
-count candidates, not the target) and never guess it.
+**delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (they
+count candidates, not the target), never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
 "hit an org quota", \`time_budget\` → "hit the 30-min time budget".
 
 **When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
-the funnel line plus the relevant \`explain.scope_notes\` (they carry the
-backend's own diagnosis, e.g. vendor-vocabulary queries or pre-screen
-rejections), then propose the concrete fix (reshape the seed per the
-example_lead craft rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a
-filter) as NEXT STEPS options.
+the funnel line plus the relevant \`explain.scope_notes\` (the backend's own
+diagnosis — vendor-vocabulary queries, pre-screen rejections), then propose
+the concrete fix (reshape the seed per the craft rules, lower \`min_ai_score\`,
+raise \`max_cost\`, drop a filter) as NEXT STEPS options.
 
-**Weak batch**: when the BEST delivered \`fit.score\` is under 30, do not
-present the table as an answer — open with "weak matches only", show at most
-the top 3, and propose reshaping the seed/filters first. The count was
-filled with barely-better-than-random candidates, not good ones.
+**Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
+the table as an answer — open with "weak matches only", show at most the top
+3, propose reshaping the seed/filters first. The count was filled with
+barely-better-than-random candidates.
 
-**Sanity-check every row before rendering**: (a) geo — \`city\`/\`region\` must
-sit inside any requested fence; drop and call out leaks (a same-named city
-in another state slips through). (b) When \`explain.seed_strategy\` is
-\`text_match_exemplars\` (the standard FR path), fit is calibrated for
-lead-to-lead distances, not exemplar centroids — treat high scores
-skeptically and verify each row's \`description\` actually matches the ask.
+**Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
+requested fence; drop and call out leaks (a same-named city in another state
+slips through). (b) When \`explain.seed_strategy\` is \`text_match_exemplars\`
+(the standard FR path), fit is calibrated for lead-to-lead distances, not
+exemplar centroids — treat high scores skeptically and verify each row's
+\`description\` matches the ask.
 
 **Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
 table \`Ref → Outcome\` translating \`status_reason\` to plain words:
@@ -3699,37 +3690,36 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
 > the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
 
-**Never hard-code \`$\`.** \`cost\` carries no currency, and the same job bills in
-euros on a France account — \`$6.09\` for a €6.09 charge misstates a paid
-operation. US → \`$\`, France → \`€\`; region unknown → write the bare amount.
+**Never hard-code \`$\`** — \`cost\` carries no currency and a France account
+bills in euros, so \`$6.09\` for a €6.09 charge misstates a paid operation.
+US → \`$\`, France → \`€\`; region unknown → bare amount.
 
 "of the Y asked" needs \`summary.items_requested\`, which submit results carry
 but a later \`leadbay_lead_job_status\` snapshot does not. Without it write
-**delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (those
-count candidates, not the target) and never guess it.
+**delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (they
+count candidates, not the target), never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
 "hit an org quota", \`time_budget\` → "hit the 30-min time budget".
 
 **When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
-the funnel line plus the relevant \`explain.scope_notes\` (they carry the
-backend's own diagnosis, e.g. vendor-vocabulary queries or pre-screen
-rejections), then propose the concrete fix (reshape the seed per the
-example_lead craft rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a
-filter) as NEXT STEPS options.
+the funnel line plus the relevant \`explain.scope_notes\` (the backend's own
+diagnosis — vendor-vocabulary queries, pre-screen rejections), then propose
+the concrete fix (reshape the seed per the craft rules, lower \`min_ai_score\`,
+raise \`max_cost\`, drop a filter) as NEXT STEPS options.
 
-**Weak batch**: when the BEST delivered \`fit.score\` is under 30, do not
-present the table as an answer — open with "weak matches only", show at most
-the top 3, and propose reshaping the seed/filters first. The count was
-filled with barely-better-than-random candidates, not good ones.
+**Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
+the table as an answer — open with "weak matches only", show at most the top
+3, propose reshaping the seed/filters first. The count was filled with
+barely-better-than-random candidates.
 
-**Sanity-check every row before rendering**: (a) geo — \`city\`/\`region\` must
-sit inside any requested fence; drop and call out leaks (a same-named city
-in another state slips through). (b) When \`explain.seed_strategy\` is
-\`text_match_exemplars\` (the standard FR path), fit is calibrated for
-lead-to-lead distances, not exemplar centroids — treat high scores
-skeptically and verify each row's \`description\` actually matches the ask.
+**Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
+requested fence; drop and call out leaks (a same-named city in another state
+slips through). (b) When \`explain.seed_strategy\` is \`text_match_exemplars\`
+(the standard FR path), fit is calibrated for lead-to-lead distances, not
+exemplar centroids — treat high scores skeptically and verify each row's
+\`description\` matches the ask.
 
 **Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
 table \`Ref → Outcome\` translating \`status_reason\` to plain words:
