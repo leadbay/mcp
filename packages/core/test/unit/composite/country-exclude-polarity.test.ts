@@ -150,11 +150,11 @@ describe("leadbay_new_lens — exclude_locations carries the exclude axis", () =
     expect(result.status).toBe("country_level_location");
     expect(result.country_locations[0].axis).toBe("exclude");
     expect(result.hint).not.toMatch(/OMIT `?exclude_locations/i);
-    // new_lens WRITES, and the country was the only scope passed, so the
-    // recovery is to stop rather than re-call — re-calling would create the
-    // lens WORKFLOWS.md forbids for this ask. It still has to say why the
-    // exclusion is impossible.
-    expect(result.hint).toMatch(/would empty the entire audience/i);
+    // new_lens WRITES, so the recovery stops rather than re-calls: dropping an
+    // exclusion of the home country and writing the rest persists the OPPOSITE
+    // of the request. It still has to say why the exclusion is impossible.
+    expect(result.hint).toMatch(/asks for an empty audience/i);
+    expect(result.hint).toMatch(/persists the opposite/i);
     expect(result.hint).toMatch(/Write NOTHING/);
   });
 

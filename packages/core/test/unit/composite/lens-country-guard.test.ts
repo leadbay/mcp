@@ -95,8 +95,9 @@ describe("leadbay_new_lens — country guard", () => {
     // country returns every company the user asked to remove. Exclusion-specific
     // wording is covered in country-exclude-polarity.test.ts.
     expect(result.hint).not.toMatch(/OMIT `?exclude_locations/i);
-    // And because new_lens WRITES, the recovery stops instead of re-calling.
-    expect(result.hint).toMatch(/would empty the entire audience/i);
+    // And because new_lens WRITES, the recovery stops instead of re-calling:
+    // re-calling without the exclusion writes what the user asked to remove.
+    expect(result.hint).toMatch(/asks for an empty audience/i);
     expect(result.hint).toMatch(/Write NOTHING/);
     expect(getHttpRequests()).toHaveLength(0);
   });

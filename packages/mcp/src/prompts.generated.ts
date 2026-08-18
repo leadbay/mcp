@@ -1906,7 +1906,17 @@ whole instruction. "Hospitals running their own IT nationwide" is a refinement a
 hospitals; "hospitals in Paris, France" is Paris plus hospitals. Losing the rest because
 a country rode along is the worse error of the two.
 
-**Step 2 — classify what REMAINS**, and act on every part of it:
+**Step 2 — if a COUNTRY is involved, find out which country this workspace serves
+before you branch.** You cannot tell from my message: "French hospitals across France"
+is a redundant clause on an FR backend and an unsupported ask on a US one, and the
+language I write in says nothing about it. Do NOT guess from the country I named, from
+my language, or from the fact that the request sounds plausible. Every Leadbay tool
+result carries it at \`_meta.region\` (\`us\` | \`fr\` | \`custom\`); if no call this session has
+returned one, call \`leadbay_account_status\` — read-only, writes nothing — and read
+\`_meta.region\` from it. \`custom\` means the backend's country is unknown: claim nothing
+about which country it holds. Only a place BELOW country level needs no such check.
+
+**Step 3 — classify what REMAINS**, and act on every part of it:
 
 - **Nothing remains** (the country was the entire instruction) → **STOP HERE. Call
   NOTHING.** Do not continue to PHASE 1: \`leadbay_refine_prompt\` would overwrite my
@@ -1948,7 +1958,7 @@ Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text 
 
 
 # PHASE 1 — REFINE (only when PHASE 0 classified the instruction as qualitative)
-Call \`leadbay_refine_prompt\` with \`prompt=<the STRIPPED instruction from PHASE 0>\` — the text with any country phrase removed, never the raw instruction.
+Call \`leadbay_refine_prompt\` with \`prompt=<the STRIPPED instruction from PHASE 0, Step 1>\` — the text with any country phrase removed, never the raw instruction.
 
 # PHASE 2 — CLARIFICATION ROUND-TRIP (if needed)
 
@@ -2109,7 +2119,17 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
 
-**Before calling, classify any country in my \`audience\` — the three cases do NOT get the same treatment:**
+**Before calling, find out which country this workspace serves.** You cannot tell from
+my \`audience\` argument: "plumbers across France" is a redundant clause on an FR backend
+and an unsupported ask on a US one, and this prompt hands you nothing that says which.
+Guessing here creates a lens plus per-rep campaigns in the wrong country. Every Leadbay
+tool result carries it at \`_meta.region\` (\`us\` | \`fr\` | \`custom\`); if no call this
+session has returned one, call \`leadbay_account_status\` first — read-only, writes
+nothing — and read \`_meta.region\` from it. On \`custom\` the backend's country is unknown,
+so claim nothing about it: ask me which country this workspace covers before creating
+anything.
+
+**Then classify any country in my \`audience\` — the three cases do NOT get the same treatment:**
 
 - **This workspace's own country** ("plumbers across the US" on a US workspace) → drop only that clause and keep everything else. Say you dropped it, then continue: the lens covers the whole workspace anyway.
 - **A different country** ("plumbers across France" on a US workspace) → **STOP. Create nothing.** Do NOT drop the country and build a lens for this workspace instead — that would hand me a US lens, plus campaigns, presented as the answer to a France request. Say this workspace holds only its own country's companies, so the ask cannot be filled here, and end your turn.

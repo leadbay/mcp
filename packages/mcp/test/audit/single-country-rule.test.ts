@@ -370,6 +370,38 @@ describe("audit: single-country-universe rule", () => {
     ).toMatch(/STRIPPED instruction/);
   });
 
+  /**
+   * A prompt gate that branches on home-vs-foreign needs a fact the prompt does
+   * not carry. On a fresh invocation the model sees my instruction and nothing
+   * else: "French hospitals across France" is a redundant clause on an FR
+   * backend and an unsupported ask on a US one, and the language of the request
+   * says nothing about which backend is connected. Both gates asked for that
+   * distinction before any tool call, so both were guessing — team-setup all
+   * the way to creating a lens plus per-rep campaigns in the wrong country.
+   */
+  it.each(["leadbay_refine_audience", "leadbay_setup_team_prospecting"] as const)(
+    "%s resolves the backend region before it branches on a country",
+    (promptName) => {
+      const body = (Prompts as Record<string, string>)[promptName];
+      expect(
+        body,
+        `${promptName} branches on whether a country is this workspace's own, so it must first say where that fact comes from`
+      ).toMatch(/_meta\.region/);
+      expect(
+        body,
+        `${promptName} must name the read-only call that returns it when no result this session has`
+      ).toMatch(/leadbay_account_status/);
+      expect(
+        body,
+        `${promptName} must forbid inferring the region — from the country named, the language used, or plausibility`
+      ).toMatch(/cannot tell/i);
+      expect(
+        body,
+        `${promptName} must say what to do on a custom backend, whose country is genuinely unknown`
+      ).toMatch(/custom/);
+    }
+  );
+
   it("the team-setup prompt passes a SANITIZED audience, not the raw argument", () => {
     // Dropping the country in prose while still interpolating {{arg:audience}}
     // sent the country label to the lens anyway.

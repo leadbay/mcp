@@ -343,6 +343,22 @@ function messageFor(hit: CountryHit, region: GuardRegion): string {
  * and supra-national hints must NOT tell the agent to drop the argument and
  * retry; they tell it to report the workspace's scope instead.
  */
+/**
+ * An exclusion a write must never be allowed to simply drop.
+ *
+ * Dropping an INCLUDE of a country widens the result, which is at worst
+ * imprecise. Dropping an EXCLUDE inverts it: `exclude_locations: ["France"]` on
+ * FR asks for an audience with nothing in it, and re-calling without the
+ * exclusion persists an audience containing every company the user wanted gone
+ * — the opposite of the request, written to the lens. Only a FOREIGN exclusion
+ * is provably a no-op (there is nothing here to remove), so only that one is
+ * safe to drop and carry on with. Supra-national and unknown-country
+ * exclusions may well cover this workspace, so they stop too.
+ */
+function excludeBlocksWrite(hit: CountryHit): boolean {
+  return hit.axis === "exclude" && hit.kind !== "foreign_country";
+}
+
 function hintFor(
   hit: CountryHit,
   region: GuardRegion,
@@ -352,6 +368,22 @@ function hintFor(
   const narrow = NARROW_EXAMPLES[region];
   const home = homeCountryName(region);
   const holds = home ? `holds ${home} companies only` : "covers a single country";
+
+  // A WRITE carrying an exclusion that cannot be dropped. First of everything,
+  // because both branches below end in a re-call and here any re-call writes
+  // the INVERSE of the request: the user asked for these companies gone, and
+  // the lens would be persisted containing them. True whatever else survives —
+  // a surviving sector or a surviving city does not make the inversion less
+  // wrong, it just decides how much gets written.
+  if (intent === "write" && excludeBlocksWrite(hit)) {
+    const why =
+      hit.kind === "home_country"
+        ? `${hit.country} is this entire workspace, so excluding it asks for an empty audience`
+        : hit.kind === "country_indeterminate"
+          ? `this backend is custom-configured, so whether ${hit.country} covers it is unknown and the exclusion may remove everything`
+          : `"${hit.value}" is a supra-national scope, which may well cover this whole workspace`;
+    return `Do NOT drop ${hit.param} and re-call: ${why}, and writing the request WITHOUT the exclusion persists the opposite — an audience holding exactly what was asked to be removed. Write NOTHING here. Ask what should actually be carved out — ${narrow} — and only then write.`;
+  }
 
   // A WRITE tool with nothing left to write. Ordered before everything else
   // because every recovery below ends in "re-call", and here the re-call is the
@@ -509,6 +541,13 @@ function reconciledHint(
   // A WRITE tool with an argument that would be left empty. Same reason as in
   // hintFor: the re-call every branch below ends in is itself the forbidden
   // outcome. Stated once for the whole group, since the group is one argument.
+  // Same rule as hintFor, at group level: one un-droppable exclusion in the
+  // group blocks the write, whatever else is in it.
+  if (intent === "write" && hits.some(excludeBlocksWrite)) {
+    const blocked = hits.filter(excludeBlocksWrite).map((h) => `"${h.value}"`).join(", ");
+    return `${surgical} Then STOP: do NOT re-call without ${blocked} — writing the request without ${blocked} persists the OPPOSITE of the exclusion, an audience holding exactly what was asked to be removed. Write NOTHING here. Ask what should actually be carved out — ${narrow} — and only then write.`;
+  }
+
   if (intent === "write" && kept.length === 0 && otherScope) {
     return `${surgical} Then re-call ONCE with the rest of the request intact — its non-geo criteria are real scope and must not be lost with the geo argument. Say what the audience actually covers: ${[
       homeCountry ? `it already spans all of ${homeCountry}` : undefined,

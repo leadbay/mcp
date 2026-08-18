@@ -16,7 +16,17 @@ whole instruction. "Hospitals running their own IT nationwide" is a refinement a
 hospitals; "hospitals in Paris, France" is Paris plus hospitals. Losing the rest because
 a country rode along is the worse error of the two.
 
-**Step 2 — classify what REMAINS**, and act on every part of it:
+**Step 2 — if a COUNTRY is involved, find out which country this workspace serves
+before you branch.** You cannot tell from my message: "French hospitals across France"
+is a redundant clause on an FR backend and an unsupported ask on a US one, and the
+language I write in says nothing about it. Do NOT guess from the country I named, from
+my language, or from the fact that the request sounds plausible. Every Leadbay tool
+result carries it at `_meta.region` (`us` | `fr` | `custom`); if no call this session has
+returned one, call `leadbay_account_status` — read-only, writes nothing — and read
+`_meta.region` from it. `custom` means the backend's country is unknown: claim nothing
+about which country it holds. Only a place BELOW country level needs no such check.
+
+**Step 3 — classify what REMAINS**, and act on every part of it:
 
 - **Nothing remains** (the country was the entire instruction) → **STOP HERE. Call
   NOTHING.** Do not continue to PHASE 1: `leadbay_refine_prompt` would overwrite my
@@ -58,7 +68,7 @@ Place names never go in `keywords`, `sectors` or `refine_prompt` — text matche
 
 
 # PHASE 1 — REFINE (only when PHASE 0 classified the instruction as qualitative)
-Call `leadbay_refine_prompt` with `prompt=<the STRIPPED instruction from PHASE 0>` — the text with any country phrase removed, never the raw instruction.
+Call `leadbay_refine_prompt` with `prompt=<the STRIPPED instruction from PHASE 0, Step 1>` — the text with any country phrase removed, never the raw instruction.
 
 # PHASE 2 — CLARIFICATION ROUND-TRIP (if needed)
 
