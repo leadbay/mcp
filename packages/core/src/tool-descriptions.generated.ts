@@ -657,6 +657,14 @@ Exactly two offers — keep it terse, this is a status tool:
 |--------------------------------------|-----------------------------------------------|--------------------------------|
 | Qualification kicked off (async)     | "Check progress in ~30s"                      | leadbay_qualify_status         |
 | Job is done / blocking call returned | "Refresh leads view — the new qualifications should be on the top"  | leadbay_pull_leads(lensId = pinned) |
+
+
+**Before routing to net-new delivery, check your tool list.**
+\`leadbay_find_new_leads\` / \`leadbay_qualify_leads\` / \`leadbay_lead_job_status\`
+are release-gated: on a default deployment they are ABSENT from \`tools/list\`
+even though this description names them. Route there only if the tool is in
+your list — otherwise say net-new search isn't enabled here. Never call a name
+you cannot see.
 `;
 // endregion: leadbay_bulk_qualify_leads
 
@@ -1268,6 +1276,14 @@ Pick the row matching the response \`status\`. Seed-picking is internal; do NOT 
 | \`no_valid_seeds\`        | (silent retry — re-call \`leadbay_seed_candidates\` then \`leadbay_extend_lens\`) | internal — only surface if the second attempt also fails |
 
 If nothing matches cleanly, default to "pull leads now to see what's queued" — never invent a tool that doesn't exist.
+
+
+**Before routing to net-new delivery, check your tool list.**
+\`leadbay_find_new_leads\` / \`leadbay_qualify_leads\` / \`leadbay_lead_job_status\`
+are release-gated: on a default deployment they are ABSENT from \`tools/list\`
+even though this description names them. Route there only if the tool is in
+your list — otherwise say net-new search isn't enabled here. Never call a name
+you cannot see.
 `;
 // endregion: leadbay_extend_lens
 
@@ -3555,6 +3571,14 @@ Pick 2–3 items below based on what was actually observed in the response. The 
 | User wants a narrower / wider audience                     | "Adjust the lens filters (sector / size)"                    | leadbay_adjust_audience(...)                           |
 | Phase 4 research was run (\`research_lead_by_id\` called) AND top contacts lack direct email/phone | "Enrich contacts on [Lead1], [Lead2] to get direct emails and phone numbers" | leadbay_enrich_contacts(leadId, contactId) — ONE call per contact (the tool takes a single leadId + contactId, never a list) |
 If nothing in the menu applies cleanly, suggest only "pull next page" and "research a specific lead in depth" — never invent a tool that doesn't exist.
+
+
+**Before routing to net-new delivery, check your tool list.**
+\`leadbay_find_new_leads\` / \`leadbay_qualify_leads\` / \`leadbay_lead_job_status\`
+are release-gated: on a default deployment they are ABSENT from \`tools/list\`
+even though this description names them. Route there only if the tool is in
+your list — otherwise say net-new search isn't enabled here. Never call a name
+you cannot see.
 `;
 // endregion: leadbay_pull_leads
 

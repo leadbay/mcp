@@ -139,7 +139,14 @@ function derivedRequestId(params: QualifyLeadsParams): string {
     qualify: params.qualify !== false,
     channels: canonicalSet(params.channels),
     contact_titles: canonicalLabelSet(params.contact_titles),
-    title_gate: params.title_gate ?? null,
+    // Same canonicalization as the search path: with contact_titles present
+    // the backend applies `prefer` when the field is omitted, so an approval
+    // that omits it and a retry that passes the materialized default describe
+    // identical work. Hashing the omission as null forked the key and let the
+    // retry escape dedupe into a second paid qualification / channel purchase.
+    title_gate:
+      params.title_gate ??
+      ((params.contact_titles?.length ?? 0) > 0 ? "prefer" : null),
     // The cap is part of the approval: raising it after a stop_reason:max_cost
     // is a NEW approved run, and must not dedupe onto the capped job.
     max_cost: params.max_cost ?? null,

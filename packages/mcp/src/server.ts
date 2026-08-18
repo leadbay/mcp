@@ -290,6 +290,19 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
     "qualify_leads",
     "lead_job_status",
   ].filter((n) => has(`leadbay_${n}`));
+  // Cancellation is NOT the same story for both families, so they get separate
+  // lists. The legacy bulk tools own a bulk-store entry that flips to
+  // 'cancelled' and makes later status polls return BULK_CANCELLED. The
+  // delivery jobs own no such record: cancelling stops OUR wait, while the
+  // backend job keeps running. Naming them in the bulk sentence promised a
+  // transition that never happens and told the agent to stop polling a job
+  // that was still live.
+  const bulkStoreRunners = longRunners.filter(
+    (n) => !["find_new_leads", "qualify_leads", "lead_job_status"].includes(n)
+  );
+  const deliveryRunners = longRunners.filter((n) =>
+    ["find_new_leads", "qualify_leads", "lead_job_status"].includes(n)
+  );
   const elicitTools = [
     "refine_prompt clarifications",
     "report_outreach.user_confirmed",
@@ -317,11 +330,28 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
     );
   }
 
-  if (longRunners.length > 0) {
+  if (bulkStoreRunners.length > 0 || deliveryRunners.length > 0) {
+    const clauses: string[] = [];
+    if (bulkStoreRunners.length > 0) {
+      clauses.push(
+        "On " +
+          bulkStoreRunners.map((n) => `leadbay_${n}`).join(", ") +
+          " the polling loop exits within \u22642 seconds AND the bulk-store entry transitions to " +
+          "'cancelled'; subsequent status polls return `BULK_CANCELLED` so the agent stops polling."
+      );
+    }
+    if (deliveryRunners.length > 0) {
+      clauses.push(
+        "On " +
+          deliveryRunners.map((n) => `leadbay_${n}`).join(", ") +
+          " the wait exits within \u22642 seconds but the job is BACKEND-owned and keeps running \u2014 " +
+          "there is no bulk-store entry and no `BULK_CANCELLED`. Any work already paid for still completes; " +
+          "poll `leadbay_lead_job_status` later to collect it."
+      );
+    }
     parts.push(
-      "(2) `notifications/cancelled` — when the user clicks Cancel in the host UI, the polling loop exits " +
-        "within ≤2 seconds AND the bulk-store entry transitions to 'cancelled'; subsequent status polls " +
-        "return `BULK_CANCELLED` so the agent stops polling."
+      "(2) `notifications/cancelled` — when the user clicks Cancel in the host UI. " +
+        clauses.join(" ")
     );
   } else {
     parts.push(

@@ -117,15 +117,23 @@ export const TERMINAL_JOB_STATES: ReadonlySet<string> = new Set([
 export const MCP_JOB_POLL = { intervalMs: 4000 };
 
 const PAGE_LIMIT = 100;
-// A qualify job carries at most 500 refs, so the drain is bounded by the page
-// SIZE, not by a flat page count: at limit=5 the worst case is 100 pages, and a
-// flat 20 would silently return the first 100 items while reporting done:true.
-// Derive the bound instead, with a floor so a large page size still gets a few
-// follow-ups and a ceiling that stays a runaway backstop.
-const MAX_JOB_ITEMS = 500;
+// The drain is bounded by the page SIZE, not by a flat page count: at limit=5
+// the worst case is 100 pages, and a flat 20 would silently return the first
+// 100 items while reporting done:true. Derive the bound instead, with a floor
+// so a large page size still gets a few follow-ups and a ceiling that stays a
+// runaway backstop.
+//
+// Size it for the LARGEST job either endpoint can produce, not just qualify:
+// a qualify job carries at most 500 refs, but a SEARCH may examine up to
+// `exploration_cap`'s ceiling of min(20n, 1000) candidates and emit an
+// outcome (delivered or skipped) for each. Bounding at 500 truncated a wide
+// paid search mid-drain and still reported done:true with no next_poll — so
+// deliveries the user paid for, and the rejected ids the top-up needs for
+// `exclude_lead_ids`, silently never reached the render.
+const MAX_JOB_ITEMS = 1000;
 const MIN_PAGES = 20;
 // The bound must let EVERY allowed page size reach MAX_JOB_ITEMS — at limit=1
-// that is 500 pages, and a lower flat cap would return a partial batch while
+// that is 1000 pages, and a lower flat cap would return a partial batch while
 // still reporting done:true, with no cursor on a terminal submit response to
 // fetch the rest. Capping below the drain would hide items, not just slow them.
 const maxPagesFor = (pageLimit: number) =>
