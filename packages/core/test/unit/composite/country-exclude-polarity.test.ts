@@ -236,12 +236,16 @@ describe("echoed resolved-areas block inherits the criterion's polarity", () => 
     expect(detectCountryLocationsInFilter(filter, "fr")[0].axis).toBe("exclude");
   });
 
-  it("defaults to include when no criterion references the echoed row", () => {
+  it("ignores an echoed row that no criterion references", () => {
+    // There is no polarity to inherit because there is no selection: the row is
+    // denormalized lookup data. This originally asserted a default of
+    // "include", which is how a parent breadcrumb came to be read as a filter
+    // value — see country-echoed-parents.test.ts.
     const filter = {
       lens_filter: { items: [] },
       locations: { results: [{ id: "27925", name: "France" }], parents: [] },
     };
-    expect(detectCountryLocationsInFilter(filter, "fr")[0].axis).toBe("include");
+    expect(detectCountryLocationsInFilter(filter, "fr")).toEqual([]);
   });
 
   it("lets the destructive reading win when both axes name the same id", () => {

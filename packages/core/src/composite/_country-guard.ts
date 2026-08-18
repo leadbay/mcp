@@ -912,6 +912,15 @@ export function detectCountryLocationsInFilter(
     }
   }
 
+  // The echoed blocks are consulted ONLY to put a name on an id the criteria
+  // already select. `results` and `parents` are both denormalized lookup data,
+  // and `parents` in particular is a breadcrumb: a filter legitimately scoped to
+  // Île-de-France echoes France as its ancestor, and reading that row as a
+  // selected value rejected a filter whose criteria never mentioned a country.
+  // So a row participates only when its id is actually referenced by a
+  // location_ids criterion — which is also the only case the id-only bypass
+  // needed it for. A country passed by NAME inside a criterion is caught by
+  // criteriaHits above and does not depend on this at all.
   const locations = asRecord.locations as Record<string, unknown> | undefined;
   for (const block of ["results", "parents"] as const) {
     const rows = locations?.[block];
@@ -921,10 +930,9 @@ export function detectCountryLocationsInFilter(
       const name = record?.name;
       if (typeof name !== "string") continue;
       const id = record?.id;
-      const axis =
-        (typeof id === "string" || typeof id === "number"
-          ? polarityById.get(String(id))
-          : undefined) ?? "include";
+      if (typeof id !== "string" && typeof id !== "number") continue;
+      const axis = polarityById.get(String(id));
+      if (axis === undefined) continue;
       hits.push(
         ...detectCountryLocations(
           name,

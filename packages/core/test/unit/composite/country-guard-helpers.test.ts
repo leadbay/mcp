@@ -566,8 +566,11 @@ describe("detectCountryLocationsInFilter", () => {
   it("finds a country in the echoed resolved-areas block", () => {
     const hits = detectCountryLocationsInFilter(
       {
+        // The echoed row's id MUST be the one the criterion selects — that
+        // correlation is the whole mechanism. A row nothing references is
+        // lookup data, not a filter value (see country-echoed-parents.test.ts).
         lens_filter: { items: [{ criteria: [{ type: "location_ids", locations: ["27925"] }] }] },
-        locations: { results: [{ id: "1", name: "France", level: 2 }], parents: [] },
+        locations: { results: [{ id: "27925", name: "France", level: 2 }], parents: [] },
       },
       "fr"
     );
