@@ -522,7 +522,7 @@ For geo filters specifically: prefer the \`city\` shortcut on \`leadbay_pull_fol
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -1513,7 +1513,7 @@ Map my answers to the \`leadbay_tour_plan\` call:
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -1952,7 +1952,7 @@ about which country it holds. Only a place BELOW country level needs no such che
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -2114,7 +2114,7 @@ If the prompt's body and the tool's RENDERING appear to conflict, the tool's REN
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -2337,7 +2337,7 @@ If the \`territory\` I named is a country, which one decides what you do:
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 

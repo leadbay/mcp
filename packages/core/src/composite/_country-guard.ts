@@ -396,22 +396,6 @@ function hintFor(
   const home = homeCountryName(region);
   const holds = home ? `holds ${home} companies only` : "covers a single country";
 
-  // A WRITE carrying an exclusion that cannot be dropped. First of everything,
-  // because both branches below end in a re-call and here any re-call writes
-  // the INVERSE of the request: the user asked for these companies gone, and
-  // the lens would be persisted containing them. True whatever else survives —
-  // a surviving sector or a surviving city does not make the inversion less
-  // wrong, it just decides how much gets written.
-  if (intent === "write" && excludeBlocksWrite(hit)) {
-    const why =
-      hit.kind === "home_country"
-        ? `${hit.country} is this entire workspace, so excluding it asks for an empty audience`
-        : hit.kind === "country_indeterminate"
-          ? `this backend is custom-configured, so whether ${hit.country} covers it is unknown and the exclusion may remove everything`
-          : `"${hit.value}" is a supra-national scope, which may well cover this whole workspace`;
-    return `Do NOT drop ${hit.param} and re-call: ${why}, and writing the request WITHOUT the exclusion persists the opposite — an audience holding exactly what was asked to be removed. Write NOTHING here. Ask what should actually be carved out — ${narrow} — and only then write.`;
-  }
-
   // A WRITE tool with nothing left to write. Ordered before everything else
   // because every recovery below ends in "re-call", and here the re-call is the
   // defect: a lens created or rewritten to express a country-wide scope is the
@@ -568,13 +552,6 @@ function reconciledHint(
   // A WRITE tool with an argument that would be left empty. Same reason as in
   // hintFor: the re-call every branch below ends in is itself the forbidden
   // outcome. Stated once for the whole group, since the group is one argument.
-  // Same rule as hintFor, at group level: one un-droppable exclusion in the
-  // group blocks the write, whatever else is in it.
-  if (intent === "write" && hits.some(excludeBlocksWrite)) {
-    const blocked = hits.filter(excludeBlocksWrite).map((h) => `"${h.value}"`).join(", ");
-    return `${surgical} Then STOP: do NOT re-call without ${blocked} — writing the request without ${blocked} persists the OPPOSITE of the exclusion, an audience holding exactly what was asked to be removed. Write NOTHING here. Ask what should actually be carved out — ${narrow} — and only then write.`;
-  }
-
   if (intent === "write" && kept.length === 0 && otherScope) {
     return `${surgical} Then re-call ONCE with the rest of the request intact — the rest of the request carries real scope and must not be lost with this argument. Say what the audience actually covers: ${[
       homeCountry ? `it already spans all of ${homeCountry}` : undefined,
@@ -667,6 +644,64 @@ function reconciledHint(
 }
 
 /**
+ * The whole write is fail-closed, in one instruction, when ANY exclusion in it
+ * cannot be dropped.
+ *
+ * This is deliberately not a per-argument hint. Hints are otherwise built per
+ * argument, and that produced two live instructions for one request:
+ * `{locations: ["France"], exclude_locations: ["France"]}` emitted "drop
+ * `locations` and re-call ONCE with the rest of the request intact" and then
+ * "write nothing" — and an agent that acts on the first has already persisted
+ * the inversion. The same contradiction appeared inside a single argument,
+ * where the surgical "remove these and re-call" was prepended to the STOP.
+ *
+ * So a blocked exclusion dominates the entire request and this text carries no
+ * re-call directive at all: nothing else can be written either, because it
+ * would be written under a scope that inverts what was asked.
+ */
+function blockedWriteHint(
+  hits: readonly CountryHit[],
+  region: GuardRegion
+): string {
+  const narrow = NARROW_EXAMPLES[region];
+  const blocked = hits.filter(excludeBlocksWrite);
+  const quoted = (values: readonly string[]) => values.map((v) => `"${v}"`).join(", ");
+  const names = quoted([...new Set(blocked.map((h) => h.value))]);
+
+  const why = [
+    ...new Set(
+      blocked.map((hit) =>
+        hit.kind === "home_country"
+          ? `"${hit.value}" is this entire workspace, so excluding it asks for an empty audience`
+          : hit.kind === "country_indeterminate"
+            ? `this backend is custom-configured, so whether "${hit.value}" covers it is unknown`
+            : `"${hit.value}" is a supra-national scope, which may well cover this whole workspace`
+      )
+    ),
+  ].join("; ");
+
+  // Country-level values that are NOT the blocker still have to come off
+  // whenever the corrected call is finally made, so they are named once here
+  // rather than in a second instruction that reads as an alternative.
+  // Minus the blockers themselves: the same value can arrive on both axes, and
+  // naming it twice reads as two different problems.
+  const blockedValues = new Set(blocked.map((h) => h.value));
+  const alsoBad = [
+    ...new Set(
+      hits
+        .filter((h) => !excludeBlocksWrite(h) && !blockedValues.has(h.value))
+        .map((h) => h.value)
+    ),
+  ];
+  const also =
+    alsoBad.length > 0
+      ? ` When a corrected call is eventually made, ${quoted(alsoBad)} must come off it too — country-level values are never usable.`
+      : "";
+
+  return `Write NOTHING, and do NOT re-call this tool in any form — not without ${names}, and not "with the rest of the request intact". ${why}. Any call that leaves ${names} out persists the OPPOSITE of the exclusion: an audience holding exactly what was asked to be removed. The rest of the request cannot be written either, because it would be written under that inverted scope.${also} Ask what should actually be carved out — ${narrow} — and write only once that is settled.`;
+}
+
+/**
  * The single source of truth for the code, message and hint. Every hit is
  * reported, not just the first, so an agent fixes one envelope instead of
  * discovering its bad values one turn at a time.
@@ -678,6 +713,18 @@ export function countryLocationEnvelope(
   otherScope = false
 ): CountryLocationEnvelope {
   const message = hits.map((hit) => messageFor(hit, region)).join(" ");
+
+  // Reconciled across the WHOLE request before anything per-argument is
+  // emitted: one un-droppable exclusion fails the entire write closed, and a
+  // per-argument hint sitting beside it would be a live instruction to perform
+  // the mutation it forbids.
+  if (intent === "write" && hits.some(excludeBlocksWrite)) {
+    return {
+      code: COUNTRY_LEVEL_LOCATION,
+      message,
+      hint: blockedWriteHint(hits, region),
+    };
+  }
 
   // Hints are built PER ARGUMENT+AXIS, not per value. Two arguments genuinely
   // need two instructions; two KINDS on one argument need one reconciled

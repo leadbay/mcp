@@ -484,7 +484,7 @@ Restrict (or expand) the lens audience by sector / size. Free-text sectors are a
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -1339,7 +1339,7 @@ Plot the user's follow-up leads on an interactive map — the canonical surface 
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -2231,7 +2231,7 @@ The response has two arrays: \`results\` (top-10 prefix matches ranked by releva
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -2494,7 +2494,7 @@ Create a brand-new lens (saved audience) and apply its sector/size criteria. Clo
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -2903,7 +2903,7 @@ Geo filtering needs \`admin_area_id\` resolution — backend rejects free-text i
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -3986,7 +3986,7 @@ as \`leadbay_pull_followups\` does (store-then-apply server-side filter).
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
  The
@@ -4508,7 +4508,7 @@ Build a single-call mixed-mode itinerary for a field sales tour. Combines \`lead
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -4728,7 +4728,7 @@ export const leadbay_update_lens_filter: string = `Replace the audience filter (
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 

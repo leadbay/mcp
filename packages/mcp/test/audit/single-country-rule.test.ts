@@ -193,6 +193,26 @@ describe("audit: single-country-universe rule", () => {
     );
   });
 
+  it("the snippet blocks a write on ANY non-foreign exclusion, not just a bare one", () => {
+    // The write guidance said "if the country was the only scope: write
+    // nothing", which reads as permission the moment anything else is in the
+    // request. `new_lens({sectors: ["Healthcare"], exclude_locations:
+    // ["France"]})` on FR then gets the sectors written and the exclusion
+    // dropped — a French healthcare audience, the opposite of the ask — and it
+    // bypasses the runtime guard entirely, because the offending argument is
+    // gone before the call is made. Prose is the only thing standing in front
+    // of that path.
+    expect(RULE, "the write rule must cover the exclusion axis").toMatch(
+      /non-`foreign_country` `exclude`/
+    );
+    expect(RULE, "and must not be conditional on there being no other scope").toMatch(
+      /however much else came with it/i
+    );
+    expect(RULE, "and must forbid the re-call, not just the argument").toMatch(
+      /no re-call in any form/i
+    );
+  });
+
   it("the runtime error code is the one the snippet teaches", () => {
     // Imported from core rather than hardcoded: a rename there must not
     // silently leave the prose teaching a recovery for an error that no longer

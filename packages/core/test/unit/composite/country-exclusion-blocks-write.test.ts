@@ -102,8 +102,15 @@ describe("a home-country exclusion stops the write, whatever else survives", () 
       exclude_locations: ["France", "Canada"],
       confirm: true,
     });
-    expect(result.hint).toMatch(/do NOT re-call without "France"/i);
+    // One instruction for the whole request, and it carries no re-call
+    // directive at all — a "remove these and re-call" prefix beside a STOP is
+    // an instruction to perform the mutation the STOP forbids.
+    expect(result.hint).toMatch(/do NOT re-call this tool in any form/i);
+    expect(result.hint).toMatch(/not without "France"/);
     expect(result.hint).toMatch(/Write NOTHING/);
+    expect(result.hint, "the foreign value still has to come off eventually").toMatch(
+      /"Canada" must come off it too/
+    );
   });
 
   it("a supra-national exclusion stops too — it may cover this workspace", () => {

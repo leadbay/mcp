@@ -11,6 +11,6 @@
 
 `axis: "exclude"` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (`new_lens`, `adjust_audience`, `update_lens_filter`), if the country was the only scope: write nothing, do not re-call without it.
+On a lens-WRITING tool (`new_lens`, `adjust_audience`, `update_lens_filter`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-`foreign_country` `exclude` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
 Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.
