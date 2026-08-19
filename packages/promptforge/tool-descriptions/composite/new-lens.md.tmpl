@@ -18,6 +18,8 @@ routing:
     - "create a lens for net-new accounts in <place>"
     - "a lens scoped to <territory>"
   anti_triggers:
+    - phrase: "companies anywhere in this workspace's OWN country / nationwide (a foreign country is unsupported, not unfiltered — call nothing)"
+      route_to: leadbay_pull_leads
     - phrase: "narrow the audience / add or remove a sector on an EXISTING lens"
       route_to: leadbay_adjust_audience
     - phrase: "add <sector> to my <name> lens"
@@ -28,8 +30,6 @@ routing:
       route_to: leadbay_my_lenses
     - phrase: "more leads on this lens"
       route_to: leadbay_extend_lens
-    - phrase: "companies anywhere in the <country> / nationwide"
-      route_to: leadbay_pull_leads
   prefer_when: "user wants a brand-new lens (create/make/set up, often 'specialized in <X>'). Editing an existing lens → leadbay_adjust_audience (use lensName). Qualitative refinement → refine_prompt (admin-only)."
   examples:
     positive:

@@ -888,6 +888,37 @@ export function detectCountryLocationsInSetFilter(
  * Only the absence of any non-location criterion makes the country the sole
  * scope, and only then does the write-stop apply.
  */
+/**
+ * Ids whose echoed name is country-level.
+ *
+ * An opaque id counts as real scope everywhere else in this module — nothing
+ * here can tell "416102" from a country, which is the documented limit
+ * (product#3939). But when the SAME payload echoes a name for it, that limit
+ * does not apply: the id is known to be a country, and treating it as surviving
+ * scope told update_lens_filter to "remove the country and re-call with the
+ * remainder" — where the remainder is nothing, so the corrected call replaces
+ * the lens with an empty filter. WORKFLOWS.md requires writing nothing.
+ */
+function echoedCountryIds(filter: unknown, region: GuardRegion): Set<string> {
+  const ids = new Set<string>();
+  const locations = (filter as Record<string, unknown> | null)?.locations as
+    | Record<string, unknown>
+    | undefined;
+  for (const block of ["results", "parents"] as const) {
+    const rows = locations?.[block];
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      const record = row as Record<string, unknown> | null;
+      const name = record?.name;
+      const id = record?.id;
+      if (typeof name !== "string") continue;
+      if (typeof id !== "string" && typeof id !== "number") continue;
+      if (classify(name, region) !== null) ids.add(String(id));
+    }
+  }
+  return ids;
+}
+
 export function filterCarriesOtherScope(filter: unknown, region: GuardRegion): boolean {
   if (!filter || typeof filter !== "object") return false;
   const lensFilter = (filter as Record<string, unknown>).lens_filter as
@@ -895,6 +926,7 @@ export function filterCarriesOtherScope(filter: unknown, region: GuardRegion): b
     | undefined;
   const items = lensFilter?.items;
   if (!Array.isArray(items)) return false;
+  const countryIds = echoedCountryIds(filter, region);
   for (const item of items) {
     const criteria = (item as Record<string, unknown> | null)?.criteria;
     if (!Array.isArray(criteria)) continue;
@@ -903,8 +935,12 @@ export function filterCarriesOtherScope(filter: unknown, region: GuardRegion): b
       if (!record) continue;
       if (record.type !== "location_ids") return true;
       // A location criterion still counts when it names a real place beside the
-      // country — the filter is replaced wholesale, so stopping loses it.
-      if (geoScopeSurvives([{ input: record.locations, param: "locations" }], region)) {
+      // country — the filter is replaced wholesale, so stopping loses it. Ids
+      // the echoed block has already named as countries are not such places.
+      const values = (Array.isArray(record.locations) ? record.locations : []).filter(
+        (value) => !countryIds.has(String(value))
+      );
+      if (geoScopeSurvives([{ input: values, param: "locations" }], region)) {
         return true;
       }
     }

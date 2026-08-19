@@ -443,6 +443,35 @@ describe("audit: single-country-universe rule", () => {
     ).toMatch(/SANITIZED split/);
   });
 
+  it.each(["leadbay_new_lens", "leadbay_adjust_audience"] as const)(
+    "%s does not route a FOREIGN country to an unfiltered pull",
+    (toolName) => {
+      // The anti-trigger read "companies anywhere in the <country> / nationwide
+      // → leadbay_pull_leads", unconditionally. On an FR workspace "companies
+      // anywhere in the US" then came back as French leads presented as the
+      // answer to a US question — the confidently-wrong-result failure this
+      // whole rule exists to prevent, produced by the routing hint itself.
+      const desc = (Generated as Record<string, string>)[toolName];
+      expect(
+        desc,
+        `${toolName} routes a bare "<country> / nationwide" to an unfiltered pull without saying whose country it is`
+      ).not.toMatch(/anywhere in the <country>/);
+      expect(
+        desc,
+        `${toolName} must scope that route to the workspace's OWN country`
+      ).toMatch(/anywhere in this workspace's OWN country/);
+      expect(
+        desc,
+        `${toolName} must say a foreign country is unsupported rather than unfiltered`
+      ).toMatch(/foreign country is unsupported, not unfiltered/);
+      // And it has to land where a truncating host still reads it.
+      expect(
+        desc.indexOf("foreign country is unsupported"),
+        `${toolName} carries the correction past the first 600 chars, where the wrong instruction is read and the right one is not`
+      ).toBeLessThan(600);
+    }
+  );
+
   it("the team-setup prompt passes a SANITIZED audience, not the raw argument", () => {
     // Dropping the country in prose while still interpolating {{arg:audience}}
     // sent the country label to the lens anyway.
