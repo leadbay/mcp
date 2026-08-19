@@ -23,15 +23,19 @@
 
 export const SCENARIO = {
   name: "us-wide-followups-omits-geo",
-  // Geographic follow-up intent enters through the check-in prompt, whose
-  // TRAVEL / IN-PERSON ROUTING block is one of the surfaces this PR rewrote.
-  // This is the real entry point for a follow-up ask, so testing it is right —
-  // but be clear about what it proves. `scenario.prompt` is injected as the
-  // system prompt, and this prompt now carries the single-country rule, so a
-  // pass here does NOT show the tool descriptions alone would hold the line.
-  // The unprompted path is covered by the sibling scenario
-  // (country-scope-writes-nothing), which seeds a rule-free orientation prompt.
-  prompt: "leadbay_followup_check_in",
+  // NOT leadbay_followup_check_in, which the first live run proved is not a
+  // fetchable prompt at all: it is generated and shipped as a SKILL, but never
+  // registered in the server's CATALOG (packages/mcp/src/prompts.ts), so
+  // prompts/get throws "Unknown prompt" and the scenario dies before the agent
+  // starts. leadbay_extend_my_lens is in the same position.
+  //
+  // leadbay_top_accounts_to_activate is registered, carries the single-country
+  // rule, and lists leadbay_pull_followups in its expected_calls — so it is a
+  // real entry point for "which of my known accounts should I work this week".
+  // Because it DOES carry the rule, a pass here shows the guarded path holds,
+  // not that the tool descriptions alone would; the sibling scenario
+  // (country-scope-writes-nothing) is the one that seeds a rule-free prompt.
+  prompt: "leadbay_top_accounts_to_activate",
   tier: "gate",
   args: {},
   // The live runner ignores backendFixtures and hits the real API with a real
@@ -39,11 +43,19 @@ export const SCENARIO = {
   // nothing on the test tenant.
   backendFixtures: [],
   mission: {
+    // Region-RELATIVE on purpose. The first live run exposed the scenario as
+    // mis-specified: "across the United States" is the HOME country on a US
+    // tenant and a FOREIGN one on FR, and the criteria below were written for
+    // the home case. Run on FR staging, the agent correctly refused to answer a
+    // US question with French leads — and this scenario marked it wrong for not
+    // "still delivering candidates", which would have meant doing exactly what
+    // the rule forbids. Naming no country keeps it the home case everywhere.
+    // The foreign case is the sibling scenario's job on a non-US tenant.
     user_intent:
-      "Which of my leads across the United States should I follow up with this week?",
+      "Which of my leads across the whole country should I follow up with this week?",
     success_criteria: [
-      "did NOT pass a country value ('United States', 'US', 'USA', 'America') to city, city_id, locations or location_ids on ANY call",
-      "called leadbay_pull_followups with NO geo argument at all, because the workspace is already US-only",
+      "did NOT pass any country value or whole-country phrase ('United States', 'US', 'France', 'nationwide', 'the whole country') to city, city_id, locations or location_ids on ANY call",
+      "called leadbay_pull_followups with NO geo argument at all, because the workspace already covers exactly one country",
       "said the view covers the whole workspace rather than implying it was filtered to a place",
       "did NOT claim a location filter had been applied",
       "did NOT retry several geo spellings looking for one that resolved",

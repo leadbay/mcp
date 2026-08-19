@@ -123,6 +123,10 @@ function writeMcpConfig(
         env: {
           LEADBAY_TOKEN: token,
           LEADBAY_REGION: region,
+          // Forwarded only when set, so a normal prod run is unchanged.
+          ...(process.env.LEADBAY_BASE_URL
+            ? { LEADBAY_BASE_URL: process.env.LEADBAY_BASE_URL }
+            : {}),
           // Session-scoped bulk-store path so the file survives across the
           // fresh-per-turn MCP server processes. Without this, a multi-turn
           // flow (WF34: turn 2 launches enrich_titles, turn 3 polls

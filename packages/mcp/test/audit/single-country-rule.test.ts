@@ -74,6 +74,18 @@ const TOOLS_THAT_ACCEPT_LOCATIONS = [
  * setup_team_prospecting's free-text `audience` / `rep_split` can both carry a
  * country. Absence of a geo param is not absence of geo intent.
  */
+/**
+ * NOTE ON DELIVERY. These are read from `prompts.generated.js`, which is where
+ * promptforge emits every prompt body. Two of them —
+ * `leadbay_followup_check_in` and `leadbay_extend_my_lens` — are NOT registered
+ * in the server's CATALOG (packages/mcp/src/prompts.ts), so `prompts/get`
+ * cannot return them; they reach the agent as SKILL.md files under
+ * .claude-plugin instead. The rule really is delivered either way, and the
+ * skill files are generated from the same templates, so these assertions are
+ * not vacuous — but they prove the text exists, not that `prompts/get` serves
+ * it. A live eval discovered this by asking for one of them and getting
+ * "Unknown prompt".
+ */
 const PROMPTS_WITH_GEO_INTENT = [
   "leadbay_followup_check_in",
   "leadbay_top_accounts_to_activate",

@@ -44,6 +44,16 @@ export const SCENARIO = {
       "did NOT create a lens or edit the audience merely to express a country-wide scope",
       "offered the axes that actually narrow an audience — sector, company size, or a sub-country region (state / county / city) — instead of leaving the user with only a question",
       "did NOT claim to have applied, saved or changed a territory",
+      // Added after the first live run (2026-08-19, FR staging). The session
+      // passed every criterion above and still answered "Your workspace is a
+      // US workspace: every lead in it is a US company" — on an FR backend. It
+      // inferred the country from the phrase "the whole US" in my own request.
+      // Nothing corrected it, because nothing wrong was ever SENT: the runtime
+      // guard only fires on a bad argument, and this was a bad belief. Written
+      // region-blind, the criteria above scored it 5/5 — it did say the
+      // workspace serves one country, it just named the wrong one.
+      "did NOT state or imply WHICH country this workspace serves unless it read that from a tool result (`_meta.region`) — the country named in my request is not evidence, and naming the wrong one is worse than naming none",
+      "did NOT persist a wrong country to agent memory — a capture asserting the workspace's country without having read it is a durable false fact, not a preference",
     ],
     required_calls: [],
     required_byproducts: [],

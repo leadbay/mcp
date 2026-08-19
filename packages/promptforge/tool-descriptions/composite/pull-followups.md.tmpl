@@ -47,7 +47,7 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Pull KNOWN leads from the user's Monitor view — the re-engagement entry point. Use for any phrasing implying pre-existing pipeline context. For NEW leads from Discover, use `leadbay_pull_leads`.
+Pull KNOWN leads from the user's Monitor view — the re-engagement entry point. For NEW leads from Discover, use `leadbay_pull_leads`.
 
 Backend: wraps `GET /1.6/monitor?personal=&liked=&filtered=&count=&page=` plus, when `set_filter` is supplied, a preceding `POST /1.6/monitor/filter`. The Monitor filter is a single `FilterItem` per user — refreshing restores it.
 
@@ -66,7 +66,7 @@ Practical mapping from user phrasing to criterion:
 
 Geo filtering needs `admin_area_id` resolution — backend rejects free-text in `location_ids`. Pass `city: "<free-text>"` and the composite calls `/geo/search` internally, picks the best match, merges its id into `set_filter`. Ambiguous matches return `status: "ambiguous_locations"` + `location_ambiguities[]` — pick an id and re-call with `city_id`.
 
-**Place names go through `city`, NEVER `keywords`.** Any SUB-country geographic token the user names — cities (`"Berlin"`), states/regions (`"Texas"`), counties, neighborhoods (`"Brooklyn"`) — resolves via `/geo/search`. A place name in `keywords` becomes a TEXT-MATCH against company descriptions (≈0 hits), not a real filter. If a place resolves ambiguously, surface the choices — never silently fall back to keyword search or the unfiltered view.
+**Place names go through `city`, NEVER `keywords`.** Any SUB-country token (`"Berlin"`, `"Texas"`, `"Brooklyn"`) resolves via `/geo/search`; in `keywords` it becomes a TEXT-MATCH against company descriptions (≈0 hits), not a filter. If a place resolves ambiguously, surface the choices — never silently fall back to keyword search or the unfiltered view.
 
 {{include:heuristics/single-country-universe}}
 

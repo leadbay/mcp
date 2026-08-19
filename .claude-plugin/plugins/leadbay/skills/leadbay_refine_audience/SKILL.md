@@ -64,6 +64,8 @@ about which country it holds. Only a place BELOW country level needs no such che
 
 On a lens-WRITING tool (`new_lens`, `adjust_audience`, `update_lens_filter`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-`foreign_country` `exclude` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read `_meta.region` on any tool result — it outranks any recalled memory; on `custom`, claim nothing.
+
 Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.
 
 

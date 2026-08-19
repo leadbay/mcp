@@ -486,6 +486,8 @@ Restrict (or expand) the lens audience by sector / size. Free-text sectors are a
 
 On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
 
@@ -502,6 +504,8 @@ export const leadbay_agent_memory_capture: string = `Capture a material taste si
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
+
+**NEVER capture which country this workspace serves.** It is a backend fact — \`_meta.region\` on every tool result — not a taste signal, and it cannot be learned from what the user says. A live eval captured \`preferred_region: "Sells nationwide across the US"\` from the phrase "the whole US" on an FR workspace; the next session recalled it at confidence 9/10 marked \`user_stated\`, believed it over the \`region:"fr"\` sitting in the same payload, and told the user their workspace was American. A wrong country here does not fade — it is replayed as remembered fact. Sub-country territory preferences ("mostly works the Bay Area") are fine; the country is not.
 
 Use \`source:"user_stated"\` with confidence 8-10 when the user literally said the preference. Use \`source:"inferred"\` with confidence <=6 only when the signal is a reasonable inference from context. Keep \`key\` stable and machine-readable (\`preferred_sector\`, \`preferred_region\`, \`deal_size\`, \`communication_style\`, \`qualification_rule\`), and keep \`insight\` human-readable.
 
@@ -1340,6 +1344,8 @@ Plot the user's follow-up leads on an interactive map — the canonical surface 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
 On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -2233,6 +2239,8 @@ The response has two arrays: \`results\` (top-10 prefix matches ranked by releva
 
 On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
 
@@ -2495,6 +2503,8 @@ Create a brand-new lens (saved audience) and apply its sector/size criteria. Clo
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
 On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -2869,7 +2879,7 @@ table. Detail + status priority below.
 
 ---
 
-Pull KNOWN leads from the user's Monitor view — the re-engagement entry point. Use for any phrasing implying pre-existing pipeline context. For NEW leads from Discover, use \`leadbay_pull_leads\`.
+Pull KNOWN leads from the user's Monitor view — the re-engagement entry point. For NEW leads from Discover, use \`leadbay_pull_leads\`.
 
 Backend: wraps \`GET /1.6/monitor?personal=&liked=&filtered=&count=&page=\` plus, when \`set_filter\` is supplied, a preceding \`POST /1.6/monitor/filter\`. The Monitor filter is a single \`FilterItem\` per user — refreshing restores it.
 
@@ -2888,7 +2898,7 @@ Practical mapping from user phrasing to criterion:
 
 Geo filtering needs \`admin_area_id\` resolution — backend rejects free-text in \`location_ids\`. Pass \`city: "<free-text>"\` and the composite calls \`/geo/search\` internally, picks the best match, merges its id into \`set_filter\`. Ambiguous matches return \`status: "ambiguous_locations"\` + \`location_ambiguities[]\` — pick an id and re-call with \`city_id\`.
 
-**Place names go through \`city\`, NEVER \`keywords\`.** Any SUB-country geographic token the user names — cities (\`"Berlin"\`), states/regions (\`"Texas"\`), counties, neighborhoods (\`"Brooklyn"\`) — resolves via \`/geo/search\`. A place name in \`keywords\` becomes a TEXT-MATCH against company descriptions (≈0 hits), not a real filter. If a place resolves ambiguously, surface the choices — never silently fall back to keyword search or the unfiltered view.
+**Place names go through \`city\`, NEVER \`keywords\`.** Any SUB-country token (\`"Berlin"\`, \`"Texas"\`, \`"Brooklyn"\`) resolves via \`/geo/search\`; in \`keywords\` it becomes a TEXT-MATCH against company descriptions (≈0 hits), not a filter. If a place resolves ambiguously, surface the choices — never silently fall back to keyword search or the unfiltered view.
 
 **One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 
@@ -2904,6 +2914,8 @@ Geo filtering needs \`admin_area_id\` resolution — backend rejects free-text i
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
 On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
@@ -3988,6 +4000,8 @@ as \`leadbay_pull_followups\` does (store-then-apply server-side filter).
 
 On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
  The
 scan is bounded by \`max_leads\` (default 200, hard cap 300); when the portfolio
@@ -4510,6 +4524,8 @@ Build a single-call mixed-mode itinerary for a field sales tour. Combines \`lead
 
 On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
 
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
 
@@ -4729,6 +4745,8 @@ export const leadbay_update_lens_filter: string = `Replace the audience filter (
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
 On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 

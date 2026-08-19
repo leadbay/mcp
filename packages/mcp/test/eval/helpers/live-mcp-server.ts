@@ -22,8 +22,14 @@ async function main(): Promise<void> {
   const token = process.env.LEADBAY_TOKEN;
   const region = process.env.LEADBAY_REGION ?? "us";
   if (!token) throw new Error("live-mcp-server: LEADBAY_TOKEN required");
-  const baseUrl = REGIONS[region] ?? REGIONS.us;
-  const client = new LeadbayClient(baseUrl, token);
+  // LEADBAY_BASE_URL lets a run target staging. The REGION is still passed
+  // explicitly, and that is load-bearing rather than cosmetic: without it the
+  // client derives "custom" from an unrecognised host, and the single-country
+  // guard then classifies every country as `country_indeterminate` instead of
+  // home vs foreign (product#3951) — so a staging run would silently exercise a
+  // different branch than the one under test.
+  const baseUrl = process.env.LEADBAY_BASE_URL || REGIONS[region] || REGIONS.us;
+  const client = new LeadbayClient(baseUrl, token, region as "us" | "fr");
 
   // NO-SPEND KILL SWITCH. Set by the runner for scenarios declaring
   // `no_paid_calls`. The previous guard inspected tool inputs AFTER the session
