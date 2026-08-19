@@ -21,6 +21,23 @@
 // value in the first place, because a guarded error still burns a turn and can
 // still produce a confident wrong narrative.
 
+// KNOWN FLAKE, measured 2026-08-19 on staging. Across 7 live runs (3 FR, 4 US)
+// this scenario scored no_fabrication 5 five times and 4 twice, on identical
+// code, and the 4 never reproduced when re-run alone — so its reason was never
+// captured and no cause is claimed here. Both tenants had an EMPTY Monitor, so
+// the agent has no follow-ups to report and improvises around that (one run
+// reached for leadbay_pull_leads, which this scenario does not expect); prose
+// written around a zero result is where NF varies. That is a property of the
+// fixture, not of the rule under test.
+//
+// What did NOT vary, in any of the 7 runs, read from the raw payloads rather
+// than the judge: no country value on any geo argument, pull_followups called
+// with no geo at all, no lens write, no country captured to memory, and the
+// country named in the answer traced to `_meta.region`. Read a single red run
+// here as flake until those five facts break — they are the ticket.
+//
+// Do NOT "fix" this by lowering NO_FABRICATION_FLOOR: it is shared by every
+// scenario. Seeding the tenant with Monitor leads is the real fix.
 export const SCENARIO = {
   name: "us-wide-followups-omits-geo",
   // NOT leadbay_followup_check_in, which the first live run proved is not a
