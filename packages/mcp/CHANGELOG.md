@@ -1,6 +1,6 @@
 # Changelog — @leadbay/mcp
 
-## 0.30.0 — 2026-08-17
+## 0.30.0 — 2026-08-19
 
 Encode the **single-country rule** across every location-accepting surface
 (product#3951). Each backend serves exactly ONE country, so a country name is
@@ -20,9 +20,14 @@ session burned six variants inside that fence before answering wrongly.
   argument accepts. (Their `"Bavaria"` examples went too — a German region on a
   US/FR-only product.)
 - **New shared snippet** `heuristics/single-country-universe.md`, included by 8
-  tool descriptions and 3 prompts, carrying the rule, the measured failure and
-  the recovery step (on `COUNTRY_LEVEL_LOCATION`, re-issue the same call
-  without the location argument — do not re-spell it).
+  tool descriptions and 5 prompts, carrying the rule, the measured failure and
+  a recovery that branches — because one recovery is wrong for most cases.
+  `country_locations[].axis` and `[].kind` decide it: only the HOME country on
+  the INCLUDE axis means "omit the argument". A foreign country is unsupported,
+  not unfiltered (re-running unfiltered answers a France question with US
+  leads). On the EXCLUDE axis omitting is the inverse of the request. And when
+  the argument carries a real place beside the country, only the country comes
+  off — "keep the city, drop the country".
 - **Mechanical rejection** in `_country-guard.ts` + `_country-names.ts` (full
   ISO 3166-1, English + French, no new dependency). Delivered in each tool's own
   idiom: composites return `status: "country_level_location"` and write nothing,
@@ -42,8 +47,23 @@ session burned six variants inside that fence before answering wrongly.
 - **`WORKFLOWS.md`**: row 39 gains the country-is-not-a-territory rule and a
   success criterion; new row 52 "Country-wide scope — omit the location filter"
   with its contract.
+- **Writes stop rather than retry.** On `new_lens` / `adjust_audience` /
+  `update_lens_filter`, "drop the country and re-call" persists a lens change
+  expressing a scope the workspace already has — the mutation WORKFLOWS.md
+  forbids for this ask. The guard stops instead, but only when the country was
+  the request's ONLY scope: a sector, a size or a real place elsewhere in the
+  request is written as asked. An exclusion that is not a foreign country
+  blocks the write outright whatever else survives, since dropping it persists
+  the opposite of what was asked.
+- **The country is read, never inferred.** `_meta.region` is the only evidence
+  of which country a workspace serves; the user's wording is not, and
+  `agent_memory_capture` must never store it — a wrong country there is
+  replayed as remembered fact.
 - **Two eval scenarios** under `test/eval/scenarios/country-scope/` (over- and
-  under-deliver). Gated behind `EVAL=1`; CI protection is the audit.
+  under-deliver). Gated behind `EVAL=1`; CI protection is the audit. Run live
+  on FR and US staging tenants: no country value reached a geo argument on any
+  call, no lens was written, no country was captured to memory, and the country
+  named in each answer traced to `_meta.region`.
 - Freed the budget for the snippet by de-padding the `pull-followups` NEXT
   STEPS table (1109 chars of markdown column alignment, no content change) —
   that tool was 52 chars from the 17000 cap.
