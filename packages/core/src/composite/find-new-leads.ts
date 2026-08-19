@@ -379,7 +379,13 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     const snapshot =
       waitSeconds > 0
         ? await waitForJob(client, submit.job_id, waitSeconds, ctx, params.count)
-        : await collectJobSnapshot(client, submit.job_id);
+        : await collectJobSnapshot(
+            client,
+            submit.job_id,
+            undefined,
+            undefined,
+            ctx?.signal
+          );
 
     const done = TERMINAL_JOB_STATES.has(snapshot.job.state);
     const { leads, skipped } = splitItems(snapshot);

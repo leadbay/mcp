@@ -448,7 +448,13 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
             ctx,
             submit.items_requested
           )
-        : await collectJobSnapshot(client, submit.job_id);
+        : await collectJobSnapshot(
+            client,
+            submit.job_id,
+            undefined,
+            undefined,
+            ctx?.signal
+          );
 
     const done = TERMINAL_JOB_STATES.has(snapshot.job.state);
 

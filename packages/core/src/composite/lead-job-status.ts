@@ -80,7 +80,8 @@ export const leadJobStatus: Tool<LeadJobStatusParams, any> = {
             client,
             params.job_id,
             params.since,
-            params.limit
+            params.limit,
+            ctx?.signal
           );
 
     const done = TERMINAL_JOB_STATES.has(snapshot.job.state);

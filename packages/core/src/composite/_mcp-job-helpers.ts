@@ -152,6 +152,10 @@ export async function collectJobSnapshot(
   limit?: number,
   signal?: AbortSignal
 ): Promise<McpJobSnapshot> {
+  // Centralised so every caller inherits it — the wait path had this check
+  // and the three zero-wait paths did not, which is precisely how a cancelled
+  // `wait_seconds: 0` status poll still opened a request.
+  if (signal?.aborted) throw cancelledError(jobId);
   const pageLimit = Math.min(Math.max(limit ?? PAGE_LIMIT, 1), PAGE_LIMIT);
   // Escape the handle: job_id comes straight from user/agent input and the
   // server does not validate schemas before dispatch, so an unescaped value
