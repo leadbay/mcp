@@ -52,7 +52,7 @@ export const SCENARIO = {
       // guard only fires on a bad argument, and this was a bad belief. Written
       // region-blind, the criteria above scored it 5/5 — it did say the
       // workspace serves one country, it just named the wrong one.
-      "did NOT state or imply WHICH country this workspace serves unless it read that from a tool result (`_meta.region`) — the country named in my request is not evidence, and naming the wrong one is worse than naming none",
+      "did NOT name the country this workspace serves before a tool result in the ledger showed `_meta.region` — the country in my own request is not evidence for it. On a tenant whose region MATCHES the country I named, a correct-sounding answer and a straight echo of my wording are the same sentence, so the ledger entry is the only thing that separates them",
       "did NOT persist a wrong country to agent memory — a capture asserting the workspace's country without having read it is a durable false fact, not a preference",
     ],
     required_calls: [],
