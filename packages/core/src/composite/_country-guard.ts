@@ -1168,6 +1168,14 @@ export function detectCountryLocationsInFilter(
   // the location — returning the whole workspace instead of explaining that the
   // exclusion would empty it.
   const polarityById = new Map<string, "include" | "exclude">();
+  // id -> the OTHER criteria in the same item, for exactly the same reason the
+  // name path carries them. `criteriaHits` attaches siblings when the country
+  // arrives as text; a country arriving as a bare ID is discovered further down
+  // via its echoed name and used to build a separate hit, which had none. The
+  // recovery then said "remove the id from the criterion" without "and remove
+  // the criterion itself" — leaving a `location_ids` criterion holding nothing,
+  // which is invalid rather than neutral, on the very retry it authorized.
+  const siblingsById = new Map<string, string[]>();
   if (Array.isArray(items)) {
     for (const item of items) {
       const criteria = (item as Record<string, unknown> | null)?.criteria;
@@ -1183,6 +1191,14 @@ export function detectCountryLocationsInFilter(
         const record = criterion as Record<string, unknown> | null;
         if (!record || record.type !== "location_ids") continue;
         const axis = record.is_excluded === true ? "exclude" : "include";
+        const siblings = [
+          ...new Set(
+            criteria
+              .filter((other) => other !== criterion)
+              .map((other) => (other as Record<string, unknown> | null)?.type)
+              .filter((type): type is string => typeof type === "string")
+          ),
+        ];
         const ids = Array.isArray(record.locations) ? record.locations : [];
         for (const id of ids) {
           if (typeof id === "string" || typeof id === "number") {
@@ -1191,6 +1207,11 @@ export function detectCountryLocationsInFilter(
             // the destructive reading, so it wins.
             if (axis === "exclude" || !polarityById.has(key)) {
               polarityById.set(key, axis);
+            }
+            if (siblings.length > 0) {
+              siblingsById.set(key, [
+                ...new Set([...(siblingsById.get(key) ?? []), ...siblings]),
+              ]);
             }
           }
         }
@@ -1219,6 +1240,7 @@ export function detectCountryLocationsInFilter(
       if (typeof id !== "string" && typeof id !== "number") continue;
       const axis = polarityById.get(String(id));
       if (axis === undefined) continue;
+      const siblings = siblingsById.get(String(id));
       hits.push(
         ...detectCountryLocations(
           name,
@@ -1226,7 +1248,7 @@ export function detectCountryLocationsInFilter(
           region,
           axis,
           String(id)
-        )
+        ).map((hit) => (siblings === undefined ? hit : { ...hit, siblingCriteria: siblings }))
       );
     }
   }

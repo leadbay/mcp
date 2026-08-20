@@ -241,19 +241,36 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
       ),
     ];
     if (countryHits.length > 0) {
+      // What the caller asked for that ISN'T the country. A criterion of any
+      // other type survives the recovery, and so does a `location_ids`
+      // criterion that still holds a real place once the country comes off.
+      const requestedCriteria = Array.isArray(params.set_filter?.criteria)
+        ? params.set_filter.criteria
+        : [];
+      const survivingCriteria = requestedCriteria.some(
+        (criterion) =>
+          (criterion as { type?: string } | null)?.type !== "location_ids"
+      ) || countryHits.some((hit) => hit.kept.length > 0);
+
+      // Two different recoveries, and giving the wrong one destroys data.
+      //
+      // With NOTHING else requested, omitting the geo argument is only half the
+      // fix: `filtered` defaults to true, so the Monitor view is still read
+      // through the filter persisted by an earlier call — an old Paris filter
+      // comes back looking like the whole workspace.
+      //
+      // But when the caller DID ask for other criteria, `filtered:false`
+      // bypasses them and `set_filter:{criteria:[]}` deletes them, turning a
+      // requested date-scoped read into an all-dates org-wide one. There the
+      // answer is to re-send the corrected filter, which overwrites the stale
+      // one anyway — so the stale-filter problem solves itself and the advice
+      // above would be actively destructive.
+      const omitCaveat = survivingCriteria
+        ? "Do NOT pass `filtered:false`, and do NOT send `set_filter:{criteria:[]}`: either one discards the other criteria in this request, turning a scoped read into an unscoped one. Re-call with `set_filter` carrying the SURVIVING criteria and the country criterion removed — that overwrites the stored filter with the corrected one, so no stale filter can leak in. Then describe the result by the criteria that remain, never as covering everything."
+        : "Omitting the geo argument is NOT enough here: `filtered` defaults to true, so the Monitor view is still read through the filter persisted from an earlier call. Nothing else was requested, so pass `filtered:false` as well (or clear the stored filter with `set_filter:{criteria:[]}`) — otherwise a stale cohort comes back looking like the whole workspace. `active_filters` in the response reports what was actually applied; check it before describing the scope.";
+
       return {
-        // `filtered` defaults to TRUE, so simply omitting `city` does not widen
-        // anything: the Monitor view is still read through whatever filter was
-        // persisted earlier — an old Paris filter, say — and that narrow cohort
-        // would come back described as the whole workspace. Omission is only
-        // half the recovery for this tool, so the other half rides with it.
-        ...countryLocationStatus(
-          countryHits,
-          client.region,
-          "read",
-          false,
-          "Omitting the geo argument is NOT enough here: `filtered` defaults to true, so the Monitor view is still read through the filter persisted from an earlier call. Pass `filtered:false` as well (or clear the stored filter with `set_filter:{criteria:[]}`), otherwise a stale cohort comes back looking like the whole workspace. `active_filters` in the response reports what was actually applied — check it before describing the scope."
-        ),
+        ...countryLocationStatus(countryHits, client.region, "read", false, omitCaveat),
         leads: [],
         active_filters: null,
         pagination: null,

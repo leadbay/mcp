@@ -164,15 +164,42 @@ export const newLens: Tool<NewLensParams> = {
       // redundant country attached — refusing to write it would discard the
       // criteria the user actually asked for. Only a country-ONLY request is
       // the one WORKFLOWS.md forbids writing.
+      //
+      //    A bare `base` id is NOT scope. It names a lens whose own geography
+      //    we have not read, and a criteria-less clone inherits it wholesale —
+      //    so `{name:"Nationwide", base:<a Paris lens>, locations:["France"]}`
+      //    would be told to drop the country and retry, and the retry writes a
+      //    Paris audience under the name "Nationwide". Counting an unread id as
+      //    valid remaining scope is what authorized that.
       const otherScope =
         (params.sectors?.length ?? 0) > 0 ||
         (params.exclude_sectors?.length ?? 0) > 0 ||
         (params.sizes?.length ?? 0) > 0 ||
-        params.base !== undefined ||
         // A real place on ANOTHER geo argument is scope too: `kept` only sees
         // the argument its own value came from.
         geoScopeSurvives(geoParams, client.region);
-      return countryLocationStatus(countryHits, client.region, "write", otherScope);
+      const envelope = countryLocationStatus(
+        countryHits,
+        client.region,
+        "write",
+        otherScope
+      );
+
+      // Every new lens is a CLONE — of `base` when given, of the active lens
+      // otherwise — so it starts with that lens's filter, geography included.
+      // Whenever the recovery authorizes a retry, the retry therefore inherits a
+      // geography nobody has looked at: "nationwide healthcare" on a Paris-
+      // scoped active lens writes Paris healthcare and calls it nationwide.
+      // Only attached when a re-call is actually on the table; the write-stop
+      // branches forbid one outright and must not read as though one existed.
+      const authorizesReCall = /re-call ONCE/.test(envelope.hint);
+      if (!authorizesReCall) return envelope;
+      return {
+        ...envelope,
+        hint: `${envelope.hint} Before that re-call, read the geography of the lens being cloned — \`lens://${
+          params.base ?? "<active lens id>"
+        }/definition\`, which is the only place a lens's \`location_ids\` are visible (\`leadbay_pull_leads\` returns only \`lens: {id}\`, and \`leadbay_my_lenses\` returns no filter at all). A clone INHERITS that geography, so if the base carries any, the new lens is scoped to it no matter that no location was passed — and calling the result whole-workspace would be false. If it does carry geography, either clear it on the new lens or say plainly which places it actually covers.`,
+      };
     }
 
     // 1. Resolve sectors FIRST — if any don't resolve, surface and bail before

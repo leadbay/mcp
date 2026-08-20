@@ -134,16 +134,21 @@ If I gave a `territory`, scope discovery to it now, and **make sure the scoping 
 If the `territory` I named is a country, which one decides what you do:
 
 - **This workspace's own country** → make no scope CHANGE, but do not claim national
-  coverage until you have checked. `leadbay_pull_leads` keeps applying my ACTIVE lens,
-  and this prompt already warns that lens may be scoped to a city, a sector or a rep
-  patch. On an FR tenant whose active lens is Paris-only, a `territory: "France"` plan is
-  a Paris plan — and "covers all of France" printed above it is exactly the confidently
-  wrong deliverable this whole gate exists to stop, this time in my own header rather
-  than in a filter. So read the lens's actual geography first (`response.lens` from the
-  pull, or `active_filters` on the Monitor side), then say ONE of: it really is
-  workspace-wide, or it is scoped to `<the places the lens names>` — offering to clear
-  that scope if national is what I meant. Then offer sector / size / sub-country region
-  as the axes that would actually narrow it.
+  coverage until you have READ the lens. `leadbay_pull_leads` keeps applying my ACTIVE
+  lens, and this prompt already warns that lens may be scoped to a city, a sector or a
+  rep patch. On an FR tenant whose active lens is Paris-only, a `territory: "France"`
+  plan is a Paris plan — and "covers all of France" printed above it is exactly the
+  confidently wrong deliverable this whole gate exists to stop, this time in my own
+  header rather than in a filter.
+  **Read the `lens://<id>/definition` resource** — that is the only place a lens's
+  `location_ids` are visible. `leadbay_pull_leads` returns only `lens: {id}`, not the
+  filter, and `active_filters` describes the separately-persisted MONITOR filter, not
+  the Discover lens; neither can settle this and neither is a substitute (same rule as
+  the Monitor-mirroring section below). Then say ONE of: the lens really is
+  workspace-wide, or it is scoped to `<the places its filter names>` — offering to clear
+  that scope if national is what I meant. If you genuinely cannot read the definition,
+  say the scope is unverified rather than calling it national. Then offer sector / size
+  / sub-country region as the axes that would actually narrow it.
 - **A different country, or a supra-national scope** → do NOT simply drop the scope and build the plan anyway. An unfiltered plan is this workspace's own accounts, which is not an answer to a request about somewhere else — delivering it under my heading would be a confidently wrong plan. Say the ask cannot be filled from this workspace and stop. **This is the one case that overrides DELIVER FIRST above**: shipping the plan anyway is the failure, not the fix.
 
 **One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so `"France"` matches the *commune of Francs* and `"United States"` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.

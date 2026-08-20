@@ -29,16 +29,28 @@ const REGIONS: Record<string, string> = {
 
 async function main(): Promise<void> {
   const token = process.env.LEADBAY_TOKEN;
-  const region = process.env.LEADBAY_REGION ?? "us";
   if (!token) throw new Error("live-mcp-server: LEADBAY_TOKEN required");
-  // LEADBAY_BASE_URL lets a run target staging. The REGION is still passed
-  // explicitly, and that is load-bearing rather than cosmetic: without it the
-  // client derives "custom" from an unrecognised host, and the single-country
-  // guard then classifies every country as `country_indeterminate` instead of
-  // home vs foreign (product#3951) — so a staging run would silently exercise a
-  // different branch than the one under test.
-  const baseUrl = process.env.LEADBAY_BASE_URL || REGIONS[region] || REGIONS.us;
-  const client = new LeadbayClient(baseUrl, token, region as "us" | "fr");
+
+  // LEADBAY_BASE_URL lets a run target staging. When LEADBAY_REGION is given,
+  // it is passed through, and that pin is load-bearing rather than cosmetic:
+  // without it the client derives "custom" from an unrecognised staging host,
+  // and the single-country guard classifies every country as
+  // `country_indeterminate` instead of home vs foreign (product#3951) — so the
+  // run would silently exercise a different branch than the one under test.
+  //
+  // What it must NOT do is invent one. A base URL with no region used to
+  // default to "us" and pass that explicitly, so the guard asserted "this
+  // workspace holds United States companies only" about a tenant nobody had
+  // identified, and the eval reported `_meta.region: "us"` for it. That is the
+  // same confidently-wrong-answer failure the scenarios exist to catch, coming
+  // from the harness itself. Undefined lets the client derive: a known regional
+  // URL still resolves to us/fr, anything else becomes "custom", which is the
+  // honest answer when nobody pinned one (mirrors client.ts:103-106).
+  const pinnedRegion = process.env.LEADBAY_REGION as "us" | "fr" | undefined;
+  const baseUrl =
+    process.env.LEADBAY_BASE_URL || (pinnedRegion && REGIONS[pinnedRegion]) || REGIONS.us;
+  const client = new LeadbayClient(baseUrl, token, pinnedRegion);
+  const region = client.region;
 
   // NO-SPEND KILL SWITCH. Set by the runner for scenarios declaring
   // `no_paid_calls`. The previous guard inspected tool inputs AFTER the session
