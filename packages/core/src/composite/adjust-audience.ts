@@ -427,7 +427,31 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
         (params.exclude_sectors?.length ?? 0) > 0 ||
         (params.sizes?.length ?? 0) > 0 ||
         geoScopeSurvives(geoParams, client.region);
-      return countryLocationStatus(countryHits, client.region, "write", otherScope);
+      const envelope = countryLocationStatus(
+        countryHits,
+        client.region,
+        "write",
+        otherScope
+      );
+
+      // This tool MERGES into the lens's existing filter rather than replacing
+      // it, so the shared recovery's "the lens then carries no geo criterion" is
+      // a claim about a filter nobody has read. On a lens already scoped to
+      // Paris, `{sectors:["Healthcare"], locations:["France"]}` drops the
+      // country, merges Healthcare into the Paris criterion, and the result is
+      // Paris healthcare described as nationwide — the same confidently-wrong
+      // deliverable as the fence this guard exists to prevent, reached through
+      // the guard's own advice.
+      //
+      // Attached only where a re-call is actually authorized; the write-stop
+      // branches forbid one and must not read as though one were on the table.
+      if (!/re-call ONCE/.test(envelope.hint)) return envelope;
+      const lensRef =
+        params.lensId !== undefined ? String(params.lensId) : "<the lens being edited>";
+      return {
+        ...envelope,
+        hint: `${envelope.hint} Before that re-call, read \`lens://${lensRef}/definition\` — location criteria MERGE here rather than replace, so any geography the lens already carries survives the re-call untouched. \`leadbay_pull_leads\` returns only \`lens: {id}\` and \`leadbay_my_lenses\` returns no filter, so neither can tell you what it is. If the lens is already scoped to a place, the edited audience stays scoped to it: say which places it actually covers, or clear those criteria first if whole-workspace is what was meant.`,
+      };
     }
 
     const me = await client.resolveMe();

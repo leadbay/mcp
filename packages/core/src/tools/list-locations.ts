@@ -55,7 +55,7 @@ export const listLocations: Tool<ListLocationsParams, GeoSearchResponse> = {
       country_locations: {
         type: "array",
         description:
-          "Per offending value: {value, param, kind, country}. Only present when `status === 'country_level_location'`.",
+          "Per offending value: {value, param, kind, country, axis, kept}. Only present when `status === 'country_level_location'`. Unlike the lead-reading tools, the recovery here is NOT to drop `q` and re-call: `q` is required and an empty lookup returns no results, not workspace-wide coverage. There is simply no country id to hand out — see `hint`.",
         items: { type: "object" },
       },
     },
@@ -72,10 +72,21 @@ export const listLocations: Tool<ListLocationsParams, GeoSearchResponse> = {
     // `q` already returns an envelope rather than throwing.
     const countryHits = detectCountryLocations(q, "q", client.region);
     if (countryHits.length > 0) {
+      const envelope = countryLocationStatus(countryHits, client.region);
       return {
         results: [],
         parents: [],
-        ...countryLocationStatus(countryHits, client.region),
+        ...envelope,
+        // The shared read recovery is "omit the geo argument and the result
+        // covers the whole workspace". That is right for a tool that READS
+        // leads and wrong here in both halves: `q` is required, so omitting it
+        // fails schema validation, and the empty-`q` branch above returns an
+        // empty envelope rather than workspace-wide data — so an agent that
+        // followed the advice would report "covers everything" over a lookup
+        // that found nothing. This tool hands out IDS; there is no country id
+        // to hand out and no wider lookup to fall back to, so there is nothing
+        // to retry. Overridden the same way tour_plan overrides it.
+        hint: `There is no country to look up: country nodes are absent from the admin-area index (product#3885), so no id exists to return and no spelling of "${q}" will produce one. Do NOT re-call this tool with \`q\` omitted — \`q\` is required, and an empty lookup is not a whole-workspace result. If the caller wanted somewhere INSIDE this workspace, look up that place instead; if they meant the workspace as a whole, no location id is needed at all — the tools that consume these ids simply omit the geo argument.`,
       };
     }
     const path = `/geo/search?q=${encodeURIComponent(q)}`;

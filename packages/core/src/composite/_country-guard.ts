@@ -885,10 +885,22 @@ export function countryLocationEnvelope(
   const siblings = [
     ...new Set(hits.flatMap((hit) => hit.siblingCriteria ?? [])),
   ];
+  // Whether removing the offending values actually EMPTIES the criterion. When
+  // a real place survives on it, "remove the whole criterion" would discard
+  // that place — the opposite mistake, and the same one the mixed-array branch
+  // exists to prevent. So the emptiness half is conditional; the surviving-scope
+  // half is not.
+  const emptiesCriterion = hits
+    .filter((hit) => (hit.siblingCriteria?.length ?? 0) > 0)
+    .every((hit) => hit.kept.length === 0);
   const siblingNote =
     siblings.length === 0
       ? ""
-      : ` Remove the WHOLE \`location_ids\` criterion, not just its \`locations\` property — a \`location_ids\` criterion with no locations is invalid, not neutral. The other criteria in this filter (${siblings
+      : `${
+          emptiesCriterion
+            ? " Removing it leaves that `location_ids` criterion holding nothing, so remove the WHOLE criterion rather than just its `locations` property — an empty `location_ids` criterion is invalid, not neutral."
+            : " Keep the `location_ids` criterion itself — it still selects a real place once the country comes off."
+        } The other criteria in this filter (${siblings
           .map((type) => `\`${type}\``)
           .join(", ")}) survive and keep scoping the result, so describe it by them and never as covering everything.`;
 
@@ -1176,6 +1188,14 @@ export function detectCountryLocationsInFilter(
   // the criterion itself" — leaving a `location_ids` criterion holding nothing,
   // which is invalid rather than neutral, on the very retry it authorized.
   const siblingsById = new Map<string, string[]>();
+  // id -> the other IDs selected by the SAME location_ids criterion. The echoed
+  // path rebuilds its hit from one country NAME, so `kept` came out empty even
+  // when the criterion also selected a real place: `locations: ["27925","99"]`
+  // (France, Paris) produced "omit the whole locations property" alongside an id
+  // note saying to remove only 27925. Following the first discards Paris;
+  // following it literally leaves an invalid criterion. Neither is recoverable
+  // from the text, so the sibling ids travel with the hit.
+  const criterionIdsById = new Map<string, string[]>();
   if (Array.isArray(items)) {
     for (const item of items) {
       const criteria = (item as Record<string, unknown> | null)?.criteria;
@@ -1213,6 +1233,15 @@ export function detectCountryLocationsInFilter(
                 ...new Set([...(siblingsById.get(key) ?? []), ...siblings]),
               ]);
             }
+            const others = ids
+              .filter((other) => typeof other === "string" || typeof other === "number")
+              .map((other) => String(other))
+              .filter((other) => other !== key);
+            if (others.length > 0) {
+              criterionIdsById.set(key, [
+                ...new Set([...(criterionIdsById.get(key) ?? []), ...others]),
+              ]);
+            }
           }
         }
       }
@@ -1229,6 +1258,7 @@ export function detectCountryLocationsInFilter(
   // needed it for. A country passed by NAME inside a criterion is caught by
   // criteriaHits above and does not depend on this at all.
   const locations = asRecord.locations as Record<string, unknown> | undefined;
+  const echoedRows: Array<{ id: string; name: string }> = [];
   for (const block of ["results", "parents"] as const) {
     const rows = locations?.[block];
     if (!Array.isArray(rows)) continue;
@@ -1238,19 +1268,57 @@ export function detectCountryLocationsInFilter(
       if (typeof name !== "string") continue;
       const id = record?.id;
       if (typeof id !== "string" && typeof id !== "number") continue;
-      const axis = polarityById.get(String(id));
-      if (axis === undefined) continue;
-      const siblings = siblingsById.get(String(id));
-      hits.push(
-        ...detectCountryLocations(
-          name,
-          `filter.lens_filter.items[].criteria[].locations`,
-          region,
-          axis,
-          String(id)
-        ).map((hit) => (siblings === undefined ? hit : { ...hit, siblingCriteria: siblings }))
-      );
+      echoedRows.push({ id: String(id), name });
     }
+  }
+
+  // Pass 1: which selected ids are themselves country-level. Needed before any
+  // hit is built, because a SECOND country in the same criterion must never be
+  // listed as a survivor to keep — that would tell the caller to preserve the
+  // very thing the other hit is telling them to remove.
+  const countryIds = new Set(
+    echoedRows
+      .filter(({ id, name }) => {
+        const axis = polarityById.get(id);
+        return (
+          axis !== undefined &&
+          detectCountryLocations(name, "probe", region, axis).length > 0
+        );
+      })
+      .map(({ id }) => id)
+  );
+
+  // Pass 2: build the hits, each carrying what survives beside it.
+  for (const { id, name } of echoedRows) {
+    const axis = polarityById.get(id);
+    if (axis === undefined) continue;
+    const siblings = siblingsById.get(id);
+    // An id with no echoed name is unclassifiable but still something the
+    // caller asked for, so it survives — same rule detectCountryLocations
+    // already applies to a raw numeric id on a plain argument.
+    // Named where the echo can name them: the caller edits the criterion BY id,
+    // so the id has to be the thing said — but "99" alone is not something a
+    // human can check the recovery against.
+    const nameById = new Map(echoedRows.map((row) => [row.id, row.name]));
+    const kept = (criterionIdsById.get(id) ?? [])
+      .filter((other) => !countryIds.has(other))
+      .map((other) => {
+        const label = nameById.get(other);
+        return label === undefined ? other : `${other} (${label})`;
+      });
+    hits.push(
+      ...detectCountryLocations(
+        name,
+        `filter.lens_filter.items[].criteria[].locations`,
+        region,
+        axis,
+        id
+      ).map((hit) => ({
+        ...hit,
+        ...(siblings === undefined ? {} : { siblingCriteria: siblings }),
+        ...(kept.length === 0 ? {} : { kept }),
+      }))
+    );
   }
 
   return hits;

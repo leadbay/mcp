@@ -62,7 +62,9 @@ describe("a country found by echoed ID carries its criterion's siblings", () => 
     // Both halves must be present: which id selects it, AND that the criterion
     // itself goes. Either alone leaves a broken or a still-filtered retry.
     expect(hint).toMatch(/remove "27925"/);
-    expect(hint).toMatch(/Remove the WHOLE `location_ids` criterion/);
+    // The criterion selects nothing else here, so removing the country empties
+    // it — and an empty `location_ids` criterion is invalid, not neutral.
+    expect(hint).toMatch(/remove the WHOLE criterion/);
     expect(hint).toMatch(/`size`/);
   });
 

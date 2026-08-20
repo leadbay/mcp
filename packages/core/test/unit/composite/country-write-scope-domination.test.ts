@@ -117,7 +117,7 @@ describe("sibling criteria survive the recovery and are named", () => {
   it("says to remove the whole criterion, not just its locations", () => {
     const hits = detectCountryLocationsInSetFilter(setFilter, "set_filter", "fr");
     const envelope = countryLocationEnvelope(hits, "fr");
-    expect(envelope.hint).toMatch(/Remove the WHOLE `location_ids` criterion/);
+    expect(envelope.hint).toMatch(/remove the WHOLE criterion/);
     expect(envelope.hint).toMatch(/invalid, not neutral/);
   });
 

@@ -317,8 +317,34 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
         ),
       ];
       if (countryHits.length > 0) {
+        // Same split as pull_followups. Where the caller asked for OTHER
+        // criteria, the shared "omit the locations" recovery contradicts the
+        // sibling note beside it, and acting on the omission sends a filter that
+        // either drops those criteria or fails validation — and a failed POST
+        // here falls back to an UNfiltered scan, so a requested date-scoped scan
+        // silently becomes an all-dates one.
+        //
+        // Unlike pull_followups there is no stale-filter half to add when
+        // nothing else was requested: this tool sends `filtered` only when it
+        // stored the filter itself, so dropping the geo argument really does
+        // scan unfiltered. That case needs no caveat at all.
+        const requestedCriteria = Array.isArray(params.set_filter?.criteria)
+          ? params.set_filter.criteria
+          : [];
+        const survivingCriteria =
+          requestedCriteria.some(
+            (criterion) => (criterion as { type?: string } | null)?.type !== "location_ids"
+          ) || countryHits.some((hit) => hit.kept.length > 0);
         return {
-          ...countryLocationStatus(countryHits, client.region),
+          ...countryLocationStatus(
+            countryHits,
+            client.region,
+            "read",
+            false,
+            survivingCriteria
+              ? "Re-call with `set_filter` carrying the SURVIVING criteria and the country criterion removed — do NOT send an empty `criteria` array and do NOT drop the other criteria, which are part of the request. A `set_filter` that fails validation is not a no-op here: the failed POST makes this tool scan UNFILTERED, so the criteria you were asked to keep would silently vanish from the scan. Describe the result by the criteria that remain, never as covering everything."
+              : undefined
+          ),
           matched: [],
           not_researched: [],
           scanned_count: 0,
