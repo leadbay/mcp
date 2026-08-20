@@ -124,6 +124,19 @@ export interface CountryHit {
    * the recovery names it.
    */
   selectedId?: string;
+  /**
+   * The OTHER criteria in the same filter, by `type`.
+   *
+   * `kept` only ever held survivors from the offending criterion's own
+   * `locations` array, so a `set_filter` of
+   * `[{location_ids: ["France"]}, {last_action_date: {last_days: 30}}]`
+   * looked, to the recovery, exactly like a country on its own. It then said
+   * "omit the criterion and the result covers everything" — but the date
+   * criterion survives and the result is still a 30-day window. It also implied
+   * deleting the `locations` property alone, which leaves a `location_ids`
+   * criterion with nothing in it: invalid, not neutral.
+   */
+  siblingCriteria?: readonly string[];
 }
 
 export interface CountryLocationEnvelope {
@@ -413,6 +426,33 @@ function excludeBlocksWrite(hit: CountryHit): boolean {
   return hit.axis === "exclude" && hit.kind !== "foreign_country";
 }
 
+/**
+ * An INCLUDE a write must never be allowed to simply drop either.
+ *
+ * `new_lens({sectors: ["Healthcare"], locations: ["Canada"]})` on a US
+ * workspace asked for CANADIAN healthcare. Dropping the country and writing the
+ * rest creates a US-healthcare lens — a real audience, persisted, that the user
+ * never asked for and will read as though it were what they requested. The
+ * sector is not independently valid scope once the territory it qualifies is
+ * unsupported; "healthcare" was an adjective on "Canada", not a second request.
+ *
+ * Only the HOME country is safely droppable: there the value really is
+ * redundant, so the remaining criteria ARE the whole request. A generic
+ * "nationwide" on a custom backend is home-equivalent for the same reason — it
+ * names no country, and every backend covers exactly one.
+ */
+function includeBlocksWrite(hit: CountryHit): boolean {
+  if (hit.axis !== "include") return false;
+  if (hit.kind === "home_country") return false;
+  if (hit.kind === "country_indeterminate" && hit.country === null) return false;
+  return true;
+}
+
+/** Either polarity, whichever way this particular value fails a write. */
+function blocksWrite(hit: CountryHit): boolean {
+  return excludeBlocksWrite(hit) || includeBlocksWrite(hit);
+}
+
 function hintFor(
   hit: CountryHit,
   region: GuardRegion,
@@ -492,10 +532,29 @@ function hintFor(
     const rest = hit.kept.map((v) => `"${v}"`).join(", ");
     const plural = hit.kept.length > 1 ? "are" : "is";
     const surgical = `Do NOT omit ${hit.param} — ${rest} ${plural} valid and would be lost with it. Remove ONLY "${hit.value}" and re-call with the rest.`;
+
+    // A mixed EXCLUSION is the one mixed case with no surgical answer. The
+    // country is the DOMINANT half of `exclude: ["France", "Paris"]` on FR: it
+    // asks for an empty result, and Paris is a detail inside it. "Remove only
+    // France and re-call with the rest" silently downgrades that to a
+    // Paris-only exclusion and hands back most of France as though it answered
+    // — a far narrower question than the one asked, with nothing to signal the
+    // substitution. Only a FOREIGN exclusion is a provable no-op and keeps its
+    // surgical recovery below.
+    if (hit.axis === "exclude" && hit.kind !== "foreign_country") {
+      const empties =
+        hit.kind === "home_country"
+          ? `Excluding ${hit.country} excludes this ENTIRE workspace`
+          : hit.kind === "country_indeterminate" && hit.country === null
+            ? `Excluding the whole workspace`
+            : hit.kind === "country_indeterminate"
+              ? `This backend is custom-configured, so whether excluding ${hit.country} empties the workspace is unknown, and`
+              : `A supra-national scope may well cover this whole workspace, so excluding it`;
+      return `${empties} — so the request as written cannot be honoured, and there is no partial version of it to run. Do NOT re-call with only ${rest} excluded: that answers a much narrower question than the one asked, and nothing in the result would show the substitution. Ask what was actually meant to be carved out — ${narrow} — before re-calling at all.`;
+    }
+
     if (hit.kind === "home_country") {
-      return hit.axis === "exclude"
-        ? `${surgical} Excluding ${hit.country} would empty the entire workspace, so that part cannot be honoured at all; the other exclusions still apply.`
-        : `${surgical} The result then covers ${rest} — describe it as those places, NOT as the whole workspace.`;
+      return `${surgical} The result then covers ${rest} — describe it as those places, NOT as the whole workspace.`;
     }
     if (hit.kind === "foreign_country") {
       return `${surgical} And say this workspace ${holds}: there are no ${hit.country} leads in it either way, so the result speaks only for ${rest}.`;
@@ -720,19 +779,29 @@ function blockedWriteHint(
   region: GuardRegion
 ): string {
   const narrow = NARROW_EXAMPLES[region];
-  const blocked = hits.filter(excludeBlocksWrite);
+  const blocked = hits.filter(blocksWrite);
   const quoted = (values: readonly string[]) => values.map((v) => `"${v}"`).join(", ");
   const names = quoted([...new Set(blocked.map((h) => h.value))]);
 
+  const inverts = blocked.some(excludeBlocksWrite);
+  const unsupported = blocked.some(includeBlocksWrite);
+
   const why = [
     ...new Set(
-      blocked.map((hit) =>
-        hit.kind === "home_country"
-          ? `"${hit.value}" is this entire workspace, so excluding it asks for an empty audience`
+      blocked.map((hit) => {
+        if (hit.axis === "exclude") {
+          return hit.kind === "home_country"
+            ? `"${hit.value}" is this entire workspace, so excluding it asks for an empty audience`
+            : hit.kind === "country_indeterminate"
+              ? `this backend is custom-configured, so whether "${hit.value}" covers it is unknown`
+              : `"${hit.value}" is a supra-national scope, which may well cover this whole workspace`;
+        }
+        return hit.kind === "foreign_country"
+          ? `"${hit.value}" is outside this workspace, so there is no such audience to create`
           : hit.kind === "country_indeterminate"
-            ? `this backend is custom-configured, so whether "${hit.value}" covers it is unknown`
-            : `"${hit.value}" is a supra-national scope, which may well cover this whole workspace`
-      )
+            ? `this backend is custom-configured, so whether "${hit.value}" is inside it is unknown`
+            : `"${hit.value}" is a supra-national scope, which no single workspace can be scoped to`;
+      })
     ),
   ].join("; ");
 
@@ -744,9 +813,7 @@ function blockedWriteHint(
   const blockedValues = new Set(blocked.map((h) => h.value));
   const alsoBad = [
     ...new Set(
-      hits
-        .filter((h) => !excludeBlocksWrite(h) && !blockedValues.has(h.value))
-        .map((h) => h.value)
+      hits.filter((h) => !blocksWrite(h) && !blockedValues.has(h.value)).map((h) => h.value)
     ),
   ];
   const also =
@@ -754,7 +821,26 @@ function blockedWriteHint(
       ? ` When a corrected call is eventually made, ${quoted(alsoBad)} must come off it too — country-level values are never usable.`
       : "";
 
-  return `Write NOTHING, and do NOT re-call this tool in any form — not without ${names}, and not "with the rest of the request intact". ${why}. Any call that leaves ${names} out persists the OPPOSITE of the exclusion: an audience holding exactly what was asked to be removed. The rest of the request cannot be written either, because it would be written under that inverted scope.${also} Ask what should actually be carved out — ${narrow} — and write only once that is settled.`;
+  // What a "corrected" re-call would actually persist. The two polarities fail
+  // differently and an agent needs the one that applies to ITS call.
+  const consequence = inverts
+    ? `Any call that leaves ${names} out persists the OPPOSITE of the exclusion: an audience holding exactly what was asked to be removed. The rest of the request cannot be written either, because it would be written under that inverted scope.`
+    : `Any call that leaves ${names} out persists an audience for THIS workspace instead — a real, saved audience for a territory nobody asked about. The rest of the request does not survive on its own: sectors, sizes and keywords were qualifying ${names}, not a second request to be written without it.`;
+
+  const bothNote =
+    inverts && unsupported
+      ? " Both failures are present in this one call, and neither is fixed by dropping the other."
+      : "";
+
+  // The verb has to match the polarity. An exclusion asked to REMOVE something,
+  // so "what should actually be carved out" is the question; an include asked to
+  // target something. Getting this backwards reads as a non-sequitur at exactly
+  // the moment the agent is deciding what to ask the user.
+  const ask = inverts
+    ? `Ask what should actually be carved out — ${narrow} — and write only once that is settled.`
+    : `Ask what should actually be targeted — ${narrow} — and write only once that is settled.`;
+
+  return `Write NOTHING, and do NOT re-call this tool in any form — not without ${names}, and not "with the rest of the request intact". ${why}. ${consequence}${bothNote}${also} ${ask}`;
 }
 
 /**
@@ -766,7 +852,15 @@ export function countryLocationEnvelope(
   hits: readonly CountryHit[],
   region: GuardRegion,
   intent: GuardIntent = "read",
-  otherScope = false
+  otherScope = false,
+  /**
+   * Appended ONLY when the recovery actually tells the caller to omit the
+   * argument. Some tools need more than the omission to genuinely widen:
+   * `pull_followups` defaults `filtered` to true, so a re-call without `city`
+   * still reads through whatever Monitor filter was persisted earlier and hands
+   * back that stale cohort as though it were the whole workspace.
+   */
+  omitCaveat?: string
 ): CountryLocationEnvelope {
   const message = hits.map((hit) => messageFor(hit, region)).join(" ");
 
@@ -783,6 +877,21 @@ export function countryLocationEnvelope(
         .map((hit) => `"${hit.selectedId}" (echoed as "${hit.value}")`)
     ),
   ];
+  // The offending value lives in a criterion that has siblings. Two things go
+  // wrong without this: the recovery reads as "omit and you cover everything"
+  // when the siblings still scope the result, and "remove the locations" leaves
+  // a `location_ids` criterion holding nothing, which is invalid rather than
+  // neutral.
+  const siblings = [
+    ...new Set(hits.flatMap((hit) => hit.siblingCriteria ?? [])),
+  ];
+  const siblingNote =
+    siblings.length === 0
+      ? ""
+      : ` Remove the WHOLE \`location_ids\` criterion, not just its \`locations\` property — a \`location_ids\` criterion with no locations is invalid, not neutral. The other criteria in this filter (${siblings
+          .map((type) => `\`${type}\``)
+          .join(", ")}) survive and keep scoping the result, so describe it by them and never as covering everything.`;
+
   const idNote =
     selectedIds.length === 0
       ? ""
@@ -792,8 +901,9 @@ export function countryLocationEnvelope(
   // emitted: one un-droppable exclusion fails the entire write closed, and a
   // per-argument hint sitting beside it would be a live instruction to perform
   // the mutation it forbids.
-  if (intent === "write" && hits.some(excludeBlocksWrite)) {
-    const blocked = blockedWriteHint(hits, region) + idNote;
+  if (intent === "write" && hits.some(blocksWrite)) {
+    // No omitCaveat here: this branch forbids the re-call outright.
+    const blocked = blockedWriteHint(hits, region) + siblingNote + idNote;
     return { code: COUNTRY_LEVEL_LOCATION, message, hint: blocked };
   }
 
@@ -823,7 +933,11 @@ export function countryLocationEnvelope(
     if (group.length === 1) push(hintFor(group[0], region, intent, otherScope));
     else push(reconciledHint(group, region, intent, otherScope));
   }
-  const hint = hints.join(" ") + idNote;
+  const joined = hints.join(" ");
+  // Conditioned on the assembled text rather than re-deriving the branch, so it
+  // cannot drift from what hintFor actually said.
+  const caveat = omitCaveat !== undefined && joined.includes("OMIT") ? ` ${omitCaveat}` : "";
+  const hint = joined + caveat + siblingNote + idNote;
   return { code: COUNTRY_LEVEL_LOCATION, message, hint };
 }
 
@@ -865,7 +979,9 @@ export function countryLocationStatus(
   hits: readonly CountryHit[],
   region: GuardRegion,
   intent: GuardIntent = "read",
-  otherScope = false
+  otherScope = false,
+  /** See `countryLocationEnvelope` — appended only to an OMIT recovery. */
+  omitCaveat?: string
 ): {
   status: typeof COUNTRY_LEVEL_STATUS;
   code: typeof COUNTRY_LEVEL_LOCATION;
@@ -873,7 +989,7 @@ export function countryLocationStatus(
   hint: string;
   country_locations: CountryHit[];
 } {
-  const envelope = countryLocationEnvelope(hits, region, intent, otherScope);
+  const envelope = countryLocationEnvelope(hits, region, intent, otherScope, omitCaveat);
   return {
     status: COUNTRY_LEVEL_STATUS,
     code: envelope.code,
@@ -905,7 +1021,22 @@ function criteriaHits(
     if (!record || record.type !== "location_ids") continue;
     // The criterion carries its own polarity, and the recovery reverses with it.
     const axis = record.is_excluded === true ? "exclude" : "include";
-    hits.push(...detectCountryLocations(record.locations, param, region, axis));
+    // Everything else in this filter survives the recovery and keeps scoping
+    // the result. Only visible here — a hit built from one criterion's
+    // `locations` array cannot see the array it came from.
+    const siblings = [
+      ...new Set(
+        criteria
+          .filter((other) => other !== criterion)
+          .map((other) => (other as Record<string, unknown> | null)?.type)
+          .filter((type): type is string => typeof type === "string")
+      ),
+    ];
+    hits.push(
+      ...detectCountryLocations(record.locations, param, region, axis).map((hit) =>
+        siblings.length === 0 ? hit : { ...hit, siblingCriteria: siblings }
+      )
+    );
   }
   return hits;
 }

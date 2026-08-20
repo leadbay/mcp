@@ -102,7 +102,10 @@ describe("lens-writing tools stop instead of re-calling", () => {
       confirm: true,
     });
     expect(result.hint).toMatch(/Write NOTHING/);
-    expect(result.hint).toMatch(/no Canada audience to scope to/);
+    // Reworded when the foreign INCLUDE was promoted to a request-level block:
+    // it now dominates the whole call rather than being one argument's verdict,
+    // so the reason is stated once for the request.
+    expect(result.hint).toMatch(/outside this workspace, so there is no such audience to create/);
     expect(getHttpRequests()).toHaveLength(0);
   });
 
@@ -114,7 +117,10 @@ describe("lens-writing tools stop instead of re-calling", () => {
       confirm: true,
     });
     expect((result.hint.match(/Write NOTHING/g) ?? []).length).toBe(1);
-    expect(result.hint).toMatch(/Then STOP/);
+    // One instruction for the request, and the droppable value still named so
+    // the eventual corrected call is right the first time.
+    expect(result.hint).toMatch(/"France" must come off it too/);
+    expect(result.hint).not.toMatch(/re-call ONCE/);
     expect(getHttpRequests()).toHaveLength(0);
   });
 });

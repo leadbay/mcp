@@ -148,9 +148,15 @@ describe("mixed arrays — the hint says remove, never omit", () => {
     expect(hint).not.toMatch(/OMIT locations entirely/);
   });
 
-  it("excluding the home country beside a real exclusion keeps that exclusion", () => {
-    // Dropping the whole argument here would ALSO stop excluding Paris, which
-    // the user did ask for and which is perfectly honourable.
+  it("excluding the home country beside a real exclusion fails closed", () => {
+    // This asserted "Remove ONLY France and re-call, the other exclusions still
+    // apply" until review caught what following that produces: a Paris-only
+    // exclusion, returning the rest of France. The user asked for an EMPTY
+    // result; Paris was a detail inside the thing being excluded, not a
+    // separable second request. Answering a much narrower question with nothing
+    // in the output to show the substitution is the failure mode this whole
+    // guard exists to prevent — so a mixed non-foreign exclusion has no partial
+    // version to run, and must ask instead of re-calling.
     const hits = detectCountryLocations(
       ["Paris", "France"],
       "exclude_locations",
@@ -159,10 +165,11 @@ describe("mixed arrays — the hint says remove, never omit", () => {
     );
     const { hint } = countryLocationEnvelope(hits, "fr");
     expect(hits[0].kept).toEqual(["Paris"]);
-    expect(hint).toMatch(/Do NOT omit exclude_locations/);
-    expect(hint).toMatch(/would empty the entire workspace/i);
-    expect(hint, "the surviving exclusion must be said to still apply").toMatch(
-      /other exclusions still apply/i
+    expect(hint).toMatch(/excludes this ENTIRE workspace/i);
+    expect(hint).toMatch(/Do NOT re-call with only "Paris" excluded/);
+    expect(hint).not.toMatch(/Remove ONLY/);
+    expect(hint, "and it must send the agent to ask what was really meant").toMatch(
+      /Ask what was actually meant to be carved out/i
     );
   });
 

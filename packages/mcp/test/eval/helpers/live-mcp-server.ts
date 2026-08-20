@@ -10,7 +10,16 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { LeadbayClient, LocalBulkStore, NotificationsInbox } from "@leadbay/core";
+import {
+  LeadbayClient,
+  LocalBulkStore,
+  NotificationsInbox,
+  agentMemoryTools,
+  compositeReadTools,
+  compositeWriteTools,
+  granularReadTools,
+  granularWriteTools,
+} from "@leadbay/core";
 import { buildServer } from "../../../src/server.js";
 
 const REGIONS: Record<string, string> = {
@@ -75,6 +84,56 @@ async function main(): Promise<void> {
       };
     }
   }
+  // FORBIDDEN-CALL KILL SWITCH. Set by the runner from the scenario's
+  // `mission.forbidden_calls`. Same lesson as the no-spend switch above, which
+  // was itself moved here after a post-hoc check let a real charge through:
+  // scenarios.eval.ts iterates the recorded calls only AFTER runSessionLive
+  // returns, so a regression that called leadbay_new_lens or
+  // leadbay_update_lens_filter had already written to the real tenant by the
+  // time the assertion failed. A scenario asserting "this must mutate nothing"
+  // cannot be the thing that mutates it.
+  //
+  // The tool stays LISTED and keeps its description — removing it would make
+  // the assertion vacuous, since an agent cannot call a tool it cannot see.
+  // What changes is that invoking it throws before any HTTP happens, so the
+  // call is still recorded in the transcript and the scenario still fails on
+  // the assertion it was written for.
+  const forbidden = new Set(
+    (process.env.LEADBAY_EVAL_FORBIDDEN_TOOLS ?? "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean),
+  );
+  if (forbidden.size > 0) {
+    const catalog = [
+      ...agentMemoryTools,
+      ...compositeReadTools,
+      ...compositeWriteTools,
+      ...granularReadTools,
+      ...granularWriteTools,
+    ];
+    const armed = new Set<string>();
+    for (const tool of catalog) {
+      if (!forbidden.has(tool.name)) continue;
+      armed.add(tool.name);
+      tool.execute = async () => {
+        throw new Error(
+          `EVAL_FORBIDDEN_CALL: ${tool.name} is on this scenario's forbidden_calls list. ` +
+            `The call was blocked before reaching the API, so the tenant is unchanged and the ` +
+            `eval fails on the assertion rather than on a real mutation.`,
+        );
+      };
+    }
+    // A typo in forbidden_calls would otherwise arm nothing and read as a pass.
+    const unmatched = [...forbidden].filter((name) => !armed.has(name));
+    if (unmatched.length > 0) {
+      throw new Error(
+        `live-mcp-server: forbidden_calls names unknown tools: ${unmatched.join(", ")}. ` +
+          `An unrecognised name protects nothing — fix the scenario.`,
+      );
+    }
+  }
+
   // Wire a bulk tracker + notifications inbox so the async-enrichment path is
   // fully exercised: leadbay_enrich_titles mints a bulk_id and
   // leadbay_bulk_enrich_status can poll it (Workflow 43 / product#3866). Without

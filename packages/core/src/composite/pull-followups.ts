@@ -242,7 +242,18 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
     ];
     if (countryHits.length > 0) {
       return {
-        ...countryLocationStatus(countryHits, client.region),
+        // `filtered` defaults to TRUE, so simply omitting `city` does not widen
+        // anything: the Monitor view is still read through whatever filter was
+        // persisted earlier — an old Paris filter, say — and that narrow cohort
+        // would come back described as the whole workspace. Omission is only
+        // half the recovery for this tool, so the other half rides with it.
+        ...countryLocationStatus(
+          countryHits,
+          client.region,
+          "read",
+          false,
+          "Omitting the geo argument is NOT enough here: `filtered` defaults to true, so the Monitor view is still read through the filter persisted from an earlier call. Pass `filtered:false` as well (or clear the stored filter with `set_filter:{criteria:[]}`), otherwise a stale cohort comes back looking like the whole workspace. `active_filters` in the response reports what was actually applied — check it before describing the scope."
+        ),
         leads: [],
         active_filters: null,
         pagination: null,

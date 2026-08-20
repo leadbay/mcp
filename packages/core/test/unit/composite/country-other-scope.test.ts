@@ -92,7 +92,14 @@ describe("new_lens — a real criterion beside the country is still written", ()
     expect(getHttpRequests()).toHaveLength(0);
   });
 
-  it("a foreign country beside a real criterion still writes the criterion", async () => {
+  it("a FOREIGN country beside a real criterion stops the write entirely", async () => {
+    // This asserted the opposite until review caught it. "Canadian healthcare"
+    // on an FR workspace does not decompose into a country half that fails and
+    // a sector half that succeeds: "Healthcare" was qualifying "Canada". Writing
+    // it alone persists a real, saved FRENCH-healthcare lens that nobody asked
+    // for — and it reads, in the product, exactly like the request being
+    // honoured. A sector is only independently valid scope when the territory
+    // it qualifies is one this workspace actually has.
     mockHttp([]);
     const result: any = await newLens.execute(frClient(), {
       name: "Canadian healthcare",
@@ -100,12 +107,15 @@ describe("new_lens — a real criterion beside the country is still written", ()
       locations: ["Canada"],
       confirm: true,
     });
-    expect(result.hint).toMatch(CARRY);
-    // …but it must still say the country half cannot be served.
-    expect(result.hint).toMatch(/no Canada audience to add/);
+    expect(result.hint).toMatch(STOP);
+    expect(result.hint).not.toMatch(CARRY);
+    expect(result.hint).toMatch(/no such audience to create/);
+    expect(getHttpRequests()).toHaveLength(0);
   });
 
-  it("several countries beside a real criterion get one re-call instruction", async () => {
+  it("a foreign country mixed with the home one stops on the foreign half", async () => {
+    // "France" alone would be droppable here; "Canada" is not, and the presence
+    // of a droppable value must not soften the verdict on the other.
     mockHttp([]);
     const result: any = await newLens.execute(frClient(), {
       name: "Both",
@@ -113,9 +123,12 @@ describe("new_lens — a real criterion beside the country is still written", ()
       locations: ["France", "Canada"],
       confirm: true,
     });
-    expect(result.hint).toMatch(/Remove every one of "France", "Canada"/);
-    expect(result.hint).toMatch(/re-call ONCE with the rest of the request intact/);
-    expect(result.hint).not.toMatch(STOP);
+    expect(result.hint).toMatch(STOP);
+    expect(result.hint).not.toMatch(/re-call ONCE with the rest of the request intact/);
+    // The droppable one is still named, so the eventual corrected call is right
+    // the first time rather than one value per turn.
+    expect(result.hint).toMatch(/"France"/);
+    expect(getHttpRequests()).toHaveLength(0);
   });
 });
 

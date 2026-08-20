@@ -93,9 +93,12 @@ describe("one instruction, no re-call directive", () => {
       { input: ["France"], param: "exclude_locations", axis: "exclude" },
     ]);
     expectFailClosed(hint);
-    // The other country still has to come off whenever a corrected call is
-    // made — named once, as a note, not as an alternative action.
-    expect(hint).toMatch(/"Canada" must come off it too/);
+    // "Canada" is no longer a mere note here: a foreign INCLUDE became a
+    // blocker in its own right, so both halves are named as blockers and
+    // neither is presented as fixable by dropping the other.
+    expect(hint).toMatch(/"Canada"/);
+    expect(hint).toMatch(/"France"/);
+    expect(hint).toMatch(/Both failures are present in this one call/);
   });
 
   it("does not name the blocker twice when it arrives on both axes", () => {
@@ -142,14 +145,29 @@ describe("what the global reconciliation must NOT swallow", () => {
     expect(hint).not.toMatch(/Write NOTHING/);
   });
 
-  it("an INCLUDE-only write keeps its per-argument instructions", () => {
+  it("a HOME-only include write keeps its per-argument instructions", () => {
+    // The global block is for values that cannot be dropped. The home country
+    // can: it is genuinely redundant, so each argument keeps its own recovery
+    // and the write goes through once corrected.
     const hint = writeHint([
       { input: ["France"], param: "locations" },
-      { input: ["Canada"], param: "location_ids" },
+      { input: ["France"], param: "location_ids" },
     ]);
     expect(hint).not.toMatch(/Write NOTHING/);
     expect(hint).toMatch(/locations/);
     expect(hint).toMatch(/location_ids/);
+  });
+
+  it("…but a FOREIGN include among them does block", () => {
+    // Previously this passed as an "include-only writes are safe" case. It is
+    // not: dropping "Canada" and writing the rest persists a French audience
+    // for a Canadian request.
+    const hint = writeHint([
+      { input: ["France"], param: "locations" },
+      { input: ["Canada"], param: "location_ids" },
+    ]);
+    expect(hint).toMatch(/Write NOTHING/);
+    expect(hint).toMatch(/no such audience to create/);
   });
 
   it("READS are untouched — nothing is being written there", () => {

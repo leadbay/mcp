@@ -2334,7 +2334,17 @@ If I gave a \`territory\`, scope discovery to it now, and **make sure the scopin
 
 If the \`territory\` I named is a country, which one decides what you do:
 
-- **This workspace's own country** → scope NOTHING and carry on: say the plan already covers the whole workspace, and offer sector / size / sub-country region as the axes that would actually narrow it.
+- **This workspace's own country** → make no scope CHANGE, but do not claim national
+  coverage until you have checked. \`leadbay_pull_leads\` keeps applying my ACTIVE lens,
+  and this prompt already warns that lens may be scoped to a city, a sector or a rep
+  patch. On an FR tenant whose active lens is Paris-only, a \`territory: "France"\` plan is
+  a Paris plan — and "covers all of France" printed above it is exactly the confidently
+  wrong deliverable this whole gate exists to stop, this time in my own header rather
+  than in a filter. So read the lens's actual geography first (\`response.lens\` from the
+  pull, or \`active_filters\` on the Monitor side), then say ONE of: it really is
+  workspace-wide, or it is scoped to \`<the places the lens names>\` — offering to clear
+  that scope if national is what I meant. Then offer sector / size / sub-country region
+  as the axes that would actually narrow it.
 - **A different country, or a supra-national scope** → do NOT simply drop the scope and build the plan anyway. An unfiltered plan is this workspace's own accounts, which is not an answer to a request about somewhere else — delivering it under my heading would be a confidently wrong plan. Say the ask cannot be filled from this workspace and stop. **This is the one case that overrides DELIVER FIRST above**: shipping the plan anyway is the failure, not the fix.
 
 **One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
