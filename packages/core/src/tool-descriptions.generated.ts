@@ -2851,7 +2851,7 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // region: leadbay_pull_followups
 export const leadbay_pull_followups: string = `## WHEN TO USE
 
-Trigger phrases: "what should I follow up on", "leads I've already worked", "what's overdue", "leads in <city / state / region>", "reach out to today", "should reach out to", "get back to", "contact today", "reconnect with", "re-engage", "leads to contact", "who should I ping".
+Trigger phrases: "what should I follow up on", "leads I've already worked", "what's overdue", "stale leads", "leads in <city / state / region>", "reach out to today", "should reach out to", "get back to", "contact today", "reconnect with", "re-engage", "leads to contact", "who should I ping".
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
@@ -2879,7 +2879,7 @@ table. Detail + status priority below.
 
 ---
 
-Pull KNOWN leads from the user's Monitor view — the re-engagement entry point. For NEW leads from Discover, use \`leadbay_pull_leads\`.
+Pull KNOWN leads from the user's Monitor view — the re-engagement entry point.
 
 Backend: wraps \`GET /1.6/monitor?personal=&liked=&filtered=&count=&page=\` plus, when \`set_filter\` is supplied, a preceding \`POST /1.6/monitor/filter\`. The Monitor filter is a single \`FilterItem\` per user — refreshing restores it.
 
@@ -2898,7 +2898,7 @@ Practical mapping from user phrasing to criterion:
 
 Geo filtering needs \`admin_area_id\` resolution — backend rejects free-text in \`location_ids\`. Pass \`city: "<free-text>"\` and the composite calls \`/geo/search\` internally, picks the best match, merges its id into \`set_filter\`. Ambiguous matches return \`status: "ambiguous_locations"\` + \`location_ambiguities[]\` — pick an id and re-call with \`city_id\`.
 
-**Place names go through \`city\`, NEVER \`keywords\`.** Any SUB-country token (\`"Berlin"\`, \`"Texas"\`, \`"Brooklyn"\`) resolves via \`/geo/search\`; in \`keywords\` it becomes a TEXT-MATCH against company descriptions (≈0 hits), not a filter. If a place resolves ambiguously, surface the choices — never silently fall back to keyword search or the unfiltered view.
+A SUB-country token (\`"Berlin"\`, \`"Texas"\`) resolves via \`/geo/search\` when passed as \`city\`; in \`keywords\` it is a TEXT-MATCH on company descriptions (≈0 hits), not a filter. If it resolves ambiguously, surface the choices — never fall back silently to keyword search or the unfiltered view.
 
 **One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 
@@ -2922,9 +2922,7 @@ Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text 
 
 **Pushback exclusion.** Leads with active pushback (\`pushback_status\` set, \`pushback_until > today\`) are excluded client-side; \`total_excluded_by_pushback\` reports how many rows were dropped.
 
-WHEN TO USE: re-engaging pipeline ("what should I follow up on", "stale leads"), filtering monitored leads by city / sector / recency / action type / liked. The canonical orchestrator is the \`leadbay_followup_check_in\` prompt.
-
-WHEN NOT TO USE: for NEW leads — that's \`leadbay_pull_leads\` (Discover).
+The canonical orchestrator for a re-engagement pass is the \`leadbay_followup_check_in\` prompt.
 
 **Anti-confusion guardrail.** Iterating \`pull_leads\` pages looking for \`prospecting_actions_count > 0\` or \`notes_count > 0\` rows is the wrong entry point — the two read different tables. Leads with follow-up history live in \`pull_followups\`.
 

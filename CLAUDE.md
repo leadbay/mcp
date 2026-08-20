@@ -276,8 +276,9 @@ if(n>16000)console.log(n,m[1],'headroom',17000-n);}"
 
 The tools closest to the cap today are `leadbay_prepare_outreach` (~7 chars
 of headroom), `leadbay_research_lead_by_id` (~27) and
-`leadbay_pull_followups` (~419). Check headroom before adding a shared
-snippet to any of them.
+`leadbay_pull_followups` (~332) — measure with the recipe above rather than
+trusting these numbers, which go stale on every description edit. Adding a
+shared snippet to any of the three needs a matching trim in the same commit.
 
 ## Workspace test invariant
 
