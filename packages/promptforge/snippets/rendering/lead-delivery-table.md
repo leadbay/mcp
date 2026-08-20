@@ -39,7 +39,7 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, built from `funnel` + `cost` +
+One short line narrating the delivery honestly, from `funnel` + `cost` +
 `explain.scope_notes`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
@@ -50,10 +50,10 @@ One short line narrating the delivery honestly, built from `funnel` + `cost` +
 so `165` renders `1.65`, NEVER `165.00`. Symbol from the account region: US
 `$`, France `€`, unknown → bare. Never hard-code `$`: it misstates a charge.
 
-"of the Y asked" needs `summary.items_requested`, which submit results carry
-but a later `leadbay_lead_job_status` snapshot does not. Without it write
-**delivered X** and stop — never back-fill Y from `matched`/`examined` (they
-count candidates), never guess it.
+"of the Y asked" needs `summary.items_requested`, which submits carry but a
+later `leadbay_lead_job_status` snapshot does not. Without it write **delivered
+X** and stop — never back-fill Y from `matched`/`examined` (they count
+candidates), never guess it.
 
 Plain-word stop reasons: `target_reached` → omit (success), `pool_exhausted` →
 "ran out of matching candidates", `max_cost` → "hit the cost cap", `quota` →
@@ -61,13 +61,12 @@ Plain-word stop reasons: `target_reached` → omit (success), `pool_exhausted` �
 
 **When `delivered` is 0**: NEVER say just "no results". Render no table; give
 the funnel line plus the relevant `explain.scope_notes` (the backend's own
-diagnosis — vendor-vocabulary queries, pre-screen rejections), then propose
-the concrete fix (reshape the seed per the craft rules, lower `min_ai_score`,
-raise `max_cost`, drop a filter) as NEXT STEPS options.
+diagnosis), then propose the concrete fix (reshape the seed per the craft
+rules, lower `min_ai_score`, raise `max_cost`, drop a filter) as NEXT STEPS.
 
 **Weak batch**: when the BEST delivered `fit.score` is under 30, don't present
-the table as an answer — open with "weak matches only", show at most the top
-3, propose reshaping the seed/filters first. The count was filled with
+the table as an answer — open with "weak matches only", show at most the top 3,
+propose reshaping the seed/filters first. The count was filled with
 barely-better-than-random candidates.
 
 **Sanity-check every row**: (a) geo — `city`/`region` must sit inside any

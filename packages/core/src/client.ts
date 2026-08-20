@@ -36,6 +36,15 @@ interface HttpResult {
   latency_ms: number;
 }
 
+// One shape for every deadline expiry — the socket one below and the queue one
+// in acquireSemaphore. Callers classify on `code`, so a second shape would make
+// a queued timeout look like an unrelated failure.
+function timeoutError(what: string): Error & { code?: string } {
+  const err = new Error(what) as Error & { code?: string };
+  err.code = "TIMEOUT"; // not an auth code — callers treat it as a transient fault
+  return err;
+}
+
 // Use node:https directly — the OpenClaw gateway patches globalThis.fetch
 // which intercepts outgoing requests and causes auth failures.
 function httpsRequest(
@@ -101,11 +110,9 @@ function httpsRequest(
         // promise. Optional-called because the node:https test double is a bare
         // EventEmitter with no destroy().
         (req as { destroy?: (e?: Error) => void }).destroy?.();
-        const err = new Error(
-          `Request timed out after ${timeoutMs}ms: ${method} ${url}`
-        ) as Error & { code?: string };
-        err.code = "TIMEOUT"; // not an auth code — callers treat it as a transient fault
-        reject(err);
+        reject(
+          timeoutError(`Request timed out after ${timeoutMs}ms: ${method} ${url}`)
+        );
       }, timeoutMs);
       // Never hold the process open on a probe deadline.
       (deadline as unknown as { unref?: () => void }).unref?.();
@@ -431,30 +438,59 @@ export class LeadbayClient {
   // to the socket, which this call had not reached yet. Against slow or stalled
   // peers that stranded the caller well past the <=2s exit the delivery tools
   // advertise.
-  private async acquireSemaphore(signal?: AbortSignal): Promise<void> {
+  // `deadlineAt` is an ABSOLUTE epoch-ms bound covering the queue wait itself.
+  // Without it a bounded call could still be stranded here without limit: the
+  // deadline was only handed to httpsRequest, which does not start until this
+  // resolves, so five slow peers let even `wait_seconds: 1` run unbounded. The
+  // wait a caller asked for is wall-clock, not socket time.
+  private async acquireSemaphore(
+    signal?: AbortSignal,
+    deadlineAt?: number
+  ): Promise<void> {
     if (signal?.aborted) throw this.cancelledBeforeSendError();
+    if (deadlineAt !== undefined && Date.now() >= deadlineAt) {
+      throw timeoutError("Request deadline expired before a request slot was free");
+    }
     if (this.activeRequests < MAX_CONCURRENT) {
       this.activeRequests++;
       return;
     }
     return new Promise<void>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const waiter = () => {
         cleanup();
         this.activeRequests++;
         resolve();
       };
-      const onAbort = () => {
-        // SPLICE the waiter out rather than flagging it dead: releaseSemaphore()
-        // shifts the queue blindly, so a tombstoned waiter would still take the
-        // ++ and resolve nothing — leaking one slot per cancellation until the
-        // client can serve no requests at all.
+      // SPLICE the waiter out rather than flagging it dead: releaseSemaphore()
+      // shifts the queue blindly, so a tombstoned waiter would still take the
+      // ++ and resolve nothing — leaking one slot per abandonment until the
+      // client can serve no requests at all.
+      const drop = () => {
         const i = this.waitQueue.indexOf(waiter);
         if (i !== -1) this.waitQueue.splice(i, 1);
         cleanup();
+      };
+      const onAbort = () => {
+        drop();
         reject(this.cancelledBeforeSendError());
       };
-      const cleanup = () => signal?.removeEventListener("abort", onAbort);
+      const onDeadline = () => {
+        drop();
+        reject(
+          timeoutError("Request deadline expired while queued for a request slot")
+        );
+      };
+      const cleanup = () => {
+        signal?.removeEventListener("abort", onAbort);
+        if (timer !== undefined) clearTimeout(timer);
+      };
       signal?.addEventListener("abort", onAbort, { once: true });
+      if (deadlineAt !== undefined) {
+        timer = setTimeout(onDeadline, Math.max(deadlineAt - Date.now(), 0));
+        // Never hold the process open on a queue deadline.
+        (timer as unknown as { unref?: () => void }).unref?.();
+      }
       this.waitQueue.push(waiter);
     });
   }
@@ -524,9 +560,22 @@ export class LeadbayClient {
     // box tells its `finally` whether there is anything to release; a caller
     // that omits it keeps the unconditional re-acquire, which is what preserves
     // the balance for the paths that do not track ownership.
-    held?: { value: boolean }
+    held?: { value: boolean },
+    // Absolute deadline shared by BOTH attempts and the re-acquisition between
+    // them. `timeoutMs` alone would give the retry a fresh full budget, so a
+    // 401 could double the wait the caller asked for.
+    deadlineAt?: number
   ): Promise<HttpResult> => {
-    const res = await httpsRequest(method, url, headers, body, timeoutMs, signal);
+    // Throws rather than returning 0: httpsRequest treats a non-positive
+    // timeoutMs as "no deadline", so passing the spent budget through would
+    // silently restore the unbounded behaviour this is here to remove.
+    const firstBudget = (): number | undefined => {
+      if (deadlineAt === undefined) return timeoutMs;
+      const left = deadlineAt - Date.now();
+      if (left <= 0) throw timeoutError(`Request deadline expired: ${method} ${url}`);
+      return left;
+    };
+    const res = await httpsRequest(method, url, headers, body, firstBudget(), signal);
     if (res.status === 401 && method.toUpperCase() === "GET") {
       // Check BEFORE letting go of the slot: an already-cancelled call that
       // releases here has to re-queue behind every other waiter just to hand
@@ -552,7 +601,15 @@ export class LeadbayClient {
         // here would leave that caller's `finally` decrementing a slot it never
         // obtained, drifting the counter permanently — so those paths keep the
         // unconditional re-acquire instead.
-        await this.acquireSemaphore(held ? signal : undefined);
+        // FRESH window, measured from here — after the backoff, not before it.
+        // `timeoutMs` is documented as bounding a single attempt, and the
+        // hosted auth probe depends on that: its 250ms 401-backoff alone
+        // outlasts a 200ms probe budget, so a deadline that started before the
+        // sleep would delete the retry rather than bound it.
+        await this.acquireSemaphore(
+          held ? signal : undefined,
+          timeoutMs !== undefined ? Date.now() + timeoutMs : undefined
+        );
         if (held) held.value = true;
       }
       // Don't burn the retry on a call cancelled during the backoff: the caller
@@ -607,7 +664,23 @@ export class LeadbayClient {
     // wait on unrelated in-flight requests to drain first. A pre-send-only
     // signal governs the queue wait too — that phase is exactly what it covers.
     const held = { value: true };
-    await this.acquireSemaphore(opts?.signal ?? opts?.preSendSignal);
+    // Start the clock BEFORE queueing. `timeoutMs` is the caller's total budget
+    // for this call, and time spent waiting for a slot is time they waited.
+    const deadlineAt =
+      opts?.timeoutMs !== undefined ? Date.now() + opts.timeoutMs : undefined;
+    const remainingBudget = (): number | undefined => {
+      if (deadlineAt === undefined) return undefined;
+      const left = deadlineAt - Date.now();
+      // Never hand back 0: httpsRequest reads a non-positive timeout as "no
+      // deadline at all", which would turn an exhausted budget into an
+      // unbounded request.
+      if (left <= 0) throw timeoutError(`Request deadline expired: ${method} ${path}`);
+      return left;
+    };
+    await this.acquireSemaphore(
+      opts?.signal ?? opts?.preSendSignal,
+      deadlineAt
+    );
     try {
       // Last point at which "nothing has been sent" is still true. A submit
       // cancelled here provably spent nothing; one cancelled a line later
@@ -632,14 +705,17 @@ export class LeadbayClient {
             payload,
             opts?.timeoutMs,
             opts?.signal,
-            held
+            held,
+            deadlineAt
           )
         : await httpsRequest(
             method,
             url,
             headers,
             payload,
-            opts?.timeoutMs,
+            // What is LEFT after queueing, not the original budget — otherwise
+            // the queue wait and the socket wait each get the full allowance.
+            remainingBudget(),
             opts?.signal
           );
 

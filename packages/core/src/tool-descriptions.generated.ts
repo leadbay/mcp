@@ -1305,10 +1305,10 @@ delivered. Full algorithm below.
 Submit a net-new lead search: the backend matches an ICP seed against the full
 company universe, applies hard filters, skips what the org already knows
 (\`novelty: org\`), optionally qualifies against the org's own intelligence
-(questions, tags, ideal buyer profile — frozen at submit), and optionally
-purchases contact channels. Polls up to \`wait_seconds\` (default 45); a longer
-job returns \`still_running\` + \`next_poll\` — hand off to
-\`leadbay_lead_job_status\`. Jobs run ≤30 min, results kept 30 days.
+(questions, tags, ideal buyer profile — frozen at submit), and optionally buys
+contact channels. Polls up to \`wait_seconds\` (default 45); a longer job returns
+\`still_running\` + \`next_poll\` — hand off to \`leadbay_lead_job_status\`. Jobs run
+≤30 min, results kept 30 days.
 
 **Free vs paid — never spend silently.** Default (\`qualify: false\`,
 \`channels: []\`) is FREE: company profile + fit score + cached research +
@@ -1331,10 +1331,10 @@ and say the tier didn't enforce it. Durable enforcement →
 
 ### Crafting the \`example_lead\` seed — the input that decides result quality
 
-The \`example_lead\` is a FICTIONAL typical ideal customer, embedded and matched
-against real registry/website descriptions — which state what a company **IS**,
-never what is happening. Write it the same way or the matcher drifts. Every
-rule below is measured:
+The \`example_lead\` is a FICTIONAL typical ideal customer, matched against real
+registry/website descriptions — which state what a company **IS**, never what
+is happening. Write it the same way or the matcher drifts. Every rule below is
+measured:
 
 1. **Describe the BUYER, never the seller.** Ask: "would this company write a
    check to my user?" A seed describing what the user SELLS surfaces their
@@ -1347,14 +1347,13 @@ rule below is measured:
    model, what they sell or operate, who they serve, observable scale. Write
    it like the first paragraph of their About-Us page.
    - STRONG: "Operator of full-service fitness centers offering strength
-     training areas, group classes and personal training to individual members
-     across multiple club locations."
+     areas, group classes and personal training to members across multiple
+     clubs."
    - WEAK (generic): "A gym in Texas."
    - WRONG (seller-side): "Supplier of durable modular flooring for gyms."
 4. **No event language.** "hiring", "expanding", "just raised" are not
    filters — registry descriptions never contain them, so they dilute the
-   profile. Purchase triggers belong in the org's qualification questions,
-   which the paid stage scores from fresh research.
+   profile. Purchase triggers belong in the org's qualification questions.
 5. **No meta-markers.** Never "(example)", "(fictional)", "(placeholder)".
 6. **Hard constraints go in \`filters\`, not prose — exact keys:**
    \`sectors: string[]\`, \`locations: string[]\`, \`employees_min: number\`,
@@ -1366,22 +1365,22 @@ rule below is measured:
    "gyms that need durable flooring" surfaced flooring VENDORS, 0 delivered.
    Use \`query\` only for signal an example can't express.
 8. **One seed per buyer archetype.** An ask spanning two segments ("gyms and
-   warehouses") needs one search each, with its own description and
+   warehouses") needs one search each with its own description and
    \`request_id\` — a blended seed lands between the clusters and matches
    neither.
 
 
 **Parameter notes**
 - \`request_id\` (REQUIRED) is the retry contract: SAME value retrying the same
-  ask (same live job, no double spend); NEW value for a changed ask. Derive
-  from ask + archetype + date: \`gyms-dallas-2026-07-28\`.
+  ask (same live job, no double spend); NEW for a changed ask. Derive from ask
+  + archetype + date: \`gyms-dallas-2026-07-28\`.
 - Never lower \`min_ai_score\` together with \`channels\` — that buys emails for
   leads the AI just scored as junk.
 - \`count\` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After —
   wait, don't hammer).
 
-**Read the result honestly** — \`funnel\` + \`explain.scope_notes\` tell the
-story; zero delivered gets a cause and a next move (rules in RENDERING).
+**Read the result honestly** — \`funnel\` + \`explain.scope_notes\` tell the story;
+zero delivered gets a cause and a next move (rules in RENDERING).
 
 ---
 
@@ -1426,7 +1425,7 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, built from \`funnel\` + \`cost\` +
+One short line narrating the delivery honestly, from \`funnel\` + \`cost\` +
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
@@ -1437,10 +1436,10 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
 \`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
 
-"of the Y asked" needs \`summary.items_requested\`, which submit results carry
-but a later \`leadbay_lead_job_status\` snapshot does not. Without it write
-**delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (they
-count candidates), never guess it.
+"of the Y asked" needs \`summary.items_requested\`, which submits carry but a
+later \`leadbay_lead_job_status\` snapshot does not. Without it write **delivered
+X** and stop — never back-fill Y from \`matched\`/\`examined\` (they count
+candidates), never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
@@ -1448,13 +1447,12 @@ Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted
 
 **When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
 the funnel line plus the relevant \`explain.scope_notes\` (the backend's own
-diagnosis — vendor-vocabulary queries, pre-screen rejections), then propose
-the concrete fix (reshape the seed per the craft rules, lower \`min_ai_score\`,
-raise \`max_cost\`, drop a filter) as NEXT STEPS options.
+diagnosis), then propose the concrete fix (reshape the seed per the craft
+rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a filter) as NEXT STEPS.
 
 **Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
-the table as an answer — open with "weak matches only", show at most the top
-3, propose reshaping the seed/filters first. The count was filled with
+the table as an answer — open with "weak matches only", show at most the top 3,
+propose reshaping the seed/filters first. The count was filled with
 barely-better-than-random candidates.
 
 **Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
@@ -1521,7 +1519,7 @@ Pick the 2-3 options that match what actually happened — never all seven:
 | Free run delivered on-profile leads | "Qualify these N against your criteria (paid — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
-| Stopped at cost cap (\`stop_reason: max_cost\`) | "Raise the cap to X and continue" — X in the account's currency per the funnel-line rule, never a hard-coded \`$\` | leadbay_find_new_leads, NEW request_id + higher max_cost (a same-id re-submit only dedupes onto a LIVE job) |
+| Stopped at cost cap (\`stop_reason: max_cost\`) | "Raise the cap to X and get the remaining N" — X in the account's currency per the funnel-line rule, never a hard-coded \`$\` | leadbay_find_new_leads, NEW request_id (same-id only dedupes onto a LIVE job) + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered), not the original + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered; these are what it misses — without them the rerun re-buys the same losers) |
 | Stopped on org quota (\`stop_reason: quota\`) | "Wait for the reset, or top up" — never a re-run: it cannot clear an org quota and burns a submit slot to stop in the same place | leadbay_account_status, then leadbay_create_topup_link |
 | User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |
 `;
@@ -2420,7 +2418,7 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, built from \`funnel\` + \`cost\` +
+One short line narrating the delivery honestly, from \`funnel\` + \`cost\` +
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
@@ -2431,10 +2429,10 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
 \`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
 
-"of the Y asked" needs \`summary.items_requested\`, which submit results carry
-but a later \`leadbay_lead_job_status\` snapshot does not. Without it write
-**delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (they
-count candidates), never guess it.
+"of the Y asked" needs \`summary.items_requested\`, which submits carry but a
+later \`leadbay_lead_job_status\` snapshot does not. Without it write **delivered
+X** and stop — never back-fill Y from \`matched\`/\`examined\` (they count
+candidates), never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
@@ -2442,13 +2440,12 @@ Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted
 
 **When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
 the funnel line plus the relevant \`explain.scope_notes\` (the backend's own
-diagnosis — vendor-vocabulary queries, pre-screen rejections), then propose
-the concrete fix (reshape the seed per the craft rules, lower \`min_ai_score\`,
-raise \`max_cost\`, drop a filter) as NEXT STEPS options.
+diagnosis), then propose the concrete fix (reshape the seed per the craft
+rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a filter) as NEXT STEPS.
 
 **Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
-the table as an answer — open with "weak matches only", show at most the top
-3, propose reshaping the seed/filters first. The count was filled with
+the table as an answer — open with "weak matches only", show at most the top 3,
+propose reshaping the seed/filters first. The count was filled with
 barely-better-than-random candidates.
 
 **Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
@@ -3708,7 +3705,7 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, built from \`funnel\` + \`cost\` +
+One short line narrating the delivery honestly, from \`funnel\` + \`cost\` +
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
@@ -3719,10 +3716,10 @@ One short line narrating the delivery honestly, built from \`funnel\` + \`cost\`
 so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
 \`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
 
-"of the Y asked" needs \`summary.items_requested\`, which submit results carry
-but a later \`leadbay_lead_job_status\` snapshot does not. Without it write
-**delivered X** and stop — never back-fill Y from \`matched\`/\`examined\` (they
-count candidates), never guess it.
+"of the Y asked" needs \`summary.items_requested\`, which submits carry but a
+later \`leadbay_lead_job_status\` snapshot does not. Without it write **delivered
+X** and stop — never back-fill Y from \`matched\`/\`examined\` (they count
+candidates), never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
@@ -3730,13 +3727,12 @@ Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted
 
 **When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
 the funnel line plus the relevant \`explain.scope_notes\` (the backend's own
-diagnosis — vendor-vocabulary queries, pre-screen rejections), then propose
-the concrete fix (reshape the seed per the craft rules, lower \`min_ai_score\`,
-raise \`max_cost\`, drop a filter) as NEXT STEPS options.
+diagnosis), then propose the concrete fix (reshape the seed per the craft
+rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a filter) as NEXT STEPS.
 
 **Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
-the table as an answer — open with "weak matches only", show at most the top
-3, propose reshaping the seed/filters first. The count was filled with
+the table as an answer — open with "weak matches only", show at most the top 3,
+propose reshaping the seed/filters first. The count was filled with
 barely-better-than-random candidates.
 
 **Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
