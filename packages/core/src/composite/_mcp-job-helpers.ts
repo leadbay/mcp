@@ -120,6 +120,14 @@ export const TERMINAL_JOB_STATES: ReadonlySet<string> = new Set([
 // Poll cadence seam — tests shrink this so wait loops don't sleep for real.
 export const MCP_JOB_POLL = { intervalMs: 4000 };
 
+// Per-request ceiling for a job snapshot. node:https sets NO socket timeout, so
+// without this a peer that completes the handshake and then stalls leaves the
+// read pending forever. A block-waiting caller narrows this further to whatever
+// is left of its own wait_seconds; a zero-wait caller ("one poll, now") has no
+// budget of its own to inherit, and this is what stops its single poll being
+// unbounded.
+export const SNAPSHOT_TIMEOUT_MS = 30_000;
+
 const PAGE_LIMIT = 100;
 // The drain is bounded by the page SIZE, not by a flat page count: at limit=5
 // the worst case is 100 pages, and a flat 20 would silently return the first
@@ -143,6 +151,36 @@ const MIN_PAGES = 20;
 const maxPagesFor = (pageLimit: number) =>
   Math.max(MIN_PAGES, Math.ceil(MAX_JOB_ITEMS / pageLimit) + 1);
 
+// A job handle is opaque, but it is always ONE path segment. Allowlisting the
+// RFC 3986 unreserved set accepts every handle the backend actually issues
+// (UUIDs, and the `search-auto-*` / `qualify-auto-*` derived keys) while
+// structurally excluding separators, query/fragment injection, and encoded
+// traversal. The dot-segment check is separate because `.` is unreserved and
+// therefore passes the charset test while still being a traversal token.
+const JOB_ID_CHARSET = /^[A-Za-z0-9._~-]+$/;
+const MAX_JOB_ID_LENGTH = 200;
+
+export function assertSafeJobId(jobId: unknown): string {
+  const reject = (why: string): never => {
+    throw {
+      error: true,
+      code: "INVALID_JOB_ID",
+      message: `job_id ${why}.`,
+      hint: "Pass the job_id exactly as leadbay_find_new_leads or leadbay_qualify_leads returned it — it is an opaque handle, not a path.",
+    };
+  };
+  if (typeof jobId !== "string" || jobId.length === 0)
+    return reject("must be a non-empty string");
+  if (jobId.length > MAX_JOB_ID_LENGTH)
+    return reject(`is ${jobId.length} chars — the maximum is ${MAX_JOB_ID_LENGTH}`);
+  // `.` and `..` are the two values that survive escaping and then get
+  // normalized AWAY by the URL parser, re-pointing the request at a parent path.
+  if (/^\.+$/.test(jobId)) return reject("cannot be a dot segment");
+  if (!JOB_ID_CHARSET.test(jobId))
+    return reject("contains characters that are not valid in a job handle");
+  return encodeURIComponent(jobId);
+}
+
 /** One cumulative snapshot of the job, paging the item cursor dry. Job/funnel/
  *  cost/explain come from the LAST page fetched (the freshest projection). */
 export async function collectJobSnapshot(
@@ -150,7 +188,8 @@ export async function collectJobSnapshot(
   jobId: string,
   since?: string,
   limit?: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  timeoutMs: number = SNAPSHOT_TIMEOUT_MS
 ): Promise<McpJobSnapshot> {
   // Centralised so every caller inherits it — the wait path had this check
   // and the three zero-wait paths did not, which is precisely how a cancelled
@@ -161,13 +200,22 @@ export async function collectJobSnapshot(
   // server does not validate schemas before dispatch, so an unescaped value
   // containing path separators (`../../users/me`) would normalize out of
   // /mcp/jobs and fire an AUTHENTICATED GET at an unintended endpoint.
-  const safeJobId = encodeURIComponent(jobId);
+  //
+  // Escaping ALONE is not enough, which is what this guard originally got
+  // wrong. encodeURIComponent() does not touch `.`, so a job_id of `..`
+  // survives it verbatim and `new URL()` then resolves
+  // `/1.6/mcp/jobs/..?limit=100` to `/1.6/mcp/?limit=100` — the bearer token
+  // goes to a different authenticated endpoint than the one this function
+  // claims to read. (`../..` and friends are already safe: their slashes DO
+  // get escaped.) So validate the shape first.
+  const safeJobId = assertSafeJobId(jobId);
   const qs = (cursor?: string) =>
     `/mcp/jobs/${safeJobId}?limit=${pageLimit}` +
     (cursor ? `&since=${encodeURIComponent(cursor)}` : "");
   const maxPages = maxPagesFor(pageLimit);
   let page = await client.request<McpJobSnapshot>("GET", qs(since), undefined, {
     signal,
+    timeoutMs,
   });
   const items = [...page.items];
   // The resumption cursor must survive an empty drain page. Following
@@ -194,7 +242,7 @@ export async function collectJobSnapshot(
       "GET",
       qs(page.next_since),
       undefined,
-      { signal }
+      { signal, timeoutMs }
     );
     items.push(...next.items);
     pages += 1;
@@ -245,6 +293,32 @@ function cancelledError(jobId: string): unknown {
   };
 }
 
+// Each snapshot gets whatever is LEFT of the caller's wait, capped by the
+// per-request ceiling. Floored at 1s so a nearly-spent budget still makes a
+// real attempt rather than a request born already expired; the loop condition
+// is what actually ends the wait, so this floor cannot extend it by more than
+// one in-flight read.
+function snapshotBudget(remainingMs: number): number {
+  return Math.min(SNAPSHOT_TIMEOUT_MS, Math.max(remainingMs, 1000));
+}
+
+function isTimeout(e: unknown): boolean {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { code?: unknown }).code === "TIMEOUT"
+  );
+}
+
+function jobReadTimedOutError(jobId: string, waitSeconds: number): unknown {
+  return {
+    error: true,
+    code: "JOB_READ_TIMEOUT",
+    message: `Job ${jobId} was submitted and is running, but its status could not be read within ${waitSeconds}s.`,
+    hint: `Pass job_id ${jobId} to leadbay_lead_job_status to read it — the job is backend-owned, still running, and its results are kept for 30 days.`,
+  };
+}
+
 /** Poll until the job is terminal or `waitSeconds` elapse (0 = single poll).
  *  Fires ctx.progress per poll and respects ctx.signal cancellation.
  *  `since`/`limit` are forwarded to every snapshot so a caller that block-waits
@@ -260,11 +334,32 @@ export async function waitForJob(
   limit?: number
 ): Promise<McpJobSnapshot> {
   const startedAt = Date.now();
+  const remainingMsOf = () => waitSeconds * 1000 - (Date.now() - startedAt);
   // Cancellation can arrive BEFORE the first poll — the wait then has no reason
   // to open a request at all. Checked here rather than only in the loop
   // condition, which is not reached until after that request returns.
   if (ctx?.signal?.aborted) throw cancelledError(jobId);
-  let snap = await collectJobSnapshot(client, jobId, since, limit, ctx?.signal);
+  // The FIRST snapshot needs the deadline as much as the later ones. Before
+  // this it had none: wait_seconds was enforced only by the loop condition,
+  // which is not evaluated until this call returns, so a stalled first GET made
+  // even `wait_seconds: 1` block indefinitely.
+  let snap: McpJobSnapshot;
+  try {
+    snap = await collectJobSnapshot(
+      client,
+      jobId,
+      since,
+      limit,
+      ctx?.signal,
+      snapshotBudget(remainingMsOf())
+    );
+  } catch (e) {
+    // We hold no snapshot yet, so there is nothing honest to return — but the
+    // job_id must survive, or a caller that just PAID for a submit loses the
+    // only handle to the job it bought.
+    if (isTimeout(e)) throw jobReadTimedOutError(jobId, waitSeconds);
+    throw e;
+  }
   while (
     !TERMINAL_JOB_STATES.has(snap.job.state) &&
     (Date.now() - startedAt) / 1000 < waitSeconds &&
@@ -284,9 +379,20 @@ export async function waitForJob(
     // snapshot, so return it instead of surfacing an AbortError: the user
     // cancelled the WAIT, not the job, and the job keeps running backend-side.
     try {
-      snap = await collectJobSnapshot(client, jobId, since, limit, ctx?.signal);
+      snap = await collectJobSnapshot(
+        client,
+        jobId,
+        since,
+        limit,
+        ctx?.signal,
+        snapshotBudget(remainingMsOf())
+      );
     } catch (e) {
       if (ctx?.signal?.aborted) break;
+      // A snapshot that outran the remaining wait is the wait expiring, not a
+      // failure: we already hold a good snapshot, so return it and let the
+      // caller poll on. Throwing here would discard a live job over a slow read.
+      if (isTimeout(e)) break;
       throw e;
     }
     const f = snap.funnel;

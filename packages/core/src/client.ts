@@ -425,17 +425,48 @@ export class LeadbayClient {
     return { active: this.activeRequests, queued: this.waitQueue.length };
   }
 
-  private async acquireSemaphore(): Promise<void> {
+  // `signal` makes a QUEUED acquisition abortable. Without it a cancelled call
+  // that arrived when all MAX_CONCURRENT slots were busy could not observe the
+  // abort until an unrelated request finished — the signal was only forwarded
+  // to the socket, which this call had not reached yet. Against slow or stalled
+  // peers that stranded the caller well past the <=2s exit the delivery tools
+  // advertise.
+  private async acquireSemaphore(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) throw this.cancelledBeforeSendError();
     if (this.activeRequests < MAX_CONCURRENT) {
       this.activeRequests++;
       return;
     }
-    return new Promise<void>((resolve) => {
-      this.waitQueue.push(() => {
+    return new Promise<void>((resolve, reject) => {
+      const waiter = () => {
+        cleanup();
         this.activeRequests++;
         resolve();
-      });
+      };
+      const onAbort = () => {
+        // SPLICE the waiter out rather than flagging it dead: releaseSemaphore()
+        // shifts the queue blindly, so a tombstoned waiter would still take the
+        // ++ and resolve nothing — leaking one slot per cancellation until the
+        // client can serve no requests at all.
+        const i = this.waitQueue.indexOf(waiter);
+        if (i !== -1) this.waitQueue.splice(i, 1);
+        cleanup();
+        reject(this.cancelledBeforeSendError());
+      };
+      const cleanup = () => signal?.removeEventListener("abort", onAbort);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      this.waitQueue.push(waiter);
     });
+  }
+
+  // Cancelled while queued — nothing was ever put on the wire, which is what
+  // makes this safe to report as "not sent" even for a write.
+  private cancelledBeforeSendError(): LeadbayError {
+    return this.makeError(
+      "REQUEST_CANCELLED",
+      "The request was cancelled before it was sent.",
+      "Re-call the tool if you still want the result — nothing reached the API, so nothing was charged."
+    );
   }
 
   private releaseSemaphore(): void {
@@ -489,14 +520,34 @@ export class LeadbayClient {
   ): Promise<HttpResult> => {
     const res = await httpsRequest(method, url, headers, body, timeoutMs, signal);
     if (res.status === 401 && method.toUpperCase() === "GET") {
+      // Check BEFORE letting go of the slot: an already-cancelled call that
+      // releases here has to re-queue behind every other waiter just to hand
+      // the slot straight back, which is the unbounded wait this whole path
+      // is trying to avoid.
+      if (signal?.aborted) return res;
       this.releaseSemaphore();
       try {
-        await new Promise((r) => setTimeout(r, 250));
+        // Abort-aware so a cancel landing mid-backoff doesn't sit out the full
+        // 250ms before anyone notices.
+        await new Promise<void>((resolve) => {
+          const t = setTimeout(done, 250);
+          function done() {
+            clearTimeout(t);
+            signal?.removeEventListener("abort", done);
+            resolve();
+          }
+          signal?.addEventListener("abort", done, { once: true });
+        });
       } finally {
+        // Deliberately NOT abort-aware. This request must return holding
+        // exactly one slot, because the caller's `finally` releases one
+        // unconditionally; throwing here would decrement a slot we never took
+        // and drift the counter permanently. The window it can block for is
+        // bounded by the check above plus the 250ms backoff.
         await this.acquireSemaphore();
       }
-      // Don't burn the retry on an already-cancelled call: the caller is gone,
-      // and the 250ms backoff above just made the wait longer.
+      // Don't burn the retry on a call cancelled during the backoff: the caller
+      // is gone, and the retry would only make the wait longer.
       if (signal?.aborted) return res;
       return httpsRequest(method, url, headers, body, timeoutMs, signal);
     }
@@ -528,7 +579,9 @@ export class LeadbayClient {
     // Auto-retry a transient 401 on normal calls; the startup auth-probe opts
     // out (retryOn401:false) so a bad token fails fast instead of double-probing.
     const retryOn401 = opts?.retryOn401 !== false;
-    await this.acquireSemaphore();
+    // Pass the signal: a cancel that lands while this call is QUEUED must not
+    // wait on unrelated in-flight requests to drain first.
+    await this.acquireSemaphore(opts?.signal);
     try {
       const url = `${this._baseUrl}${API_PREFIX}${path}`;
       const headers: Record<string, string> = {
