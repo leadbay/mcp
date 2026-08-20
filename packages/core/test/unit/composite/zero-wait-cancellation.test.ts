@@ -63,10 +63,14 @@ describe("leadbay_lead_job_status — wait_seconds: 0", () => {
 });
 
 describe("leadbay_find_new_leads — wait_seconds: 0", () => {
-  it("the submit still lands, then the snapshot is cancelled", async () => {
-    // The paid submit is deliberately NOT abortable — it may already have
-    // committed server-side. What must not happen is polling it afterwards
-    // on a call nobody is listening to.
+  it("a submit cancelled BEFORE dispatch never reaches the network", async () => {
+    // Superseded contract: this used to assert the POST still landed, on the
+    // reasoning that a paid submit may already have committed server-side. That
+    // is true only ONCE IT IS ON THE WIRE. A submit still queued behind the
+    // client's concurrency slots has provably spent nothing, so cancelling it
+    // there is free — and letting it through charged the user for a job they
+    // had already cancelled. The in-flight half of the rule is unchanged and is
+    // covered in paid-submit-presend-cancel.test.ts.
     mockHttp([
       {
         method: "POST",
@@ -88,7 +92,7 @@ describe("leadbay_find_new_leads — wait_seconds: 0", () => {
       )
     ).rejects.toMatchObject({ code: "REQUEST_CANCELLED" });
     const reqs = getHttpRequests();
-    expect(reqs.filter((r) => r.method === "POST")).toHaveLength(1);
+    expect(reqs.filter((r) => r.method === "POST")).toHaveLength(0);
     expect(reqs.filter((r) => r.method === "GET")).toHaveLength(0);
   });
 });

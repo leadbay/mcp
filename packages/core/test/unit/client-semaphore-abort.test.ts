@@ -105,3 +105,50 @@ describe("client — a cancelled call queued on the semaphore does not wait for 
     expect(client._semaphoreState.active).toBe(0);
   });
 });
+
+describe("client — the 401 retry gives its slot back safely", () => {
+  // The retry path is the only place a request hands its slot back mid-flight.
+  // That makes "does this call still hold a slot?" a variable, and getting it
+  // wrong drifts the counter permanently in one direction or the other.
+  it("does not surrender the slot for a call already cancelled", async () => {
+    const client = newClient();
+    const ac = new AbortController();
+    const p = client.request("GET", "/users/me", undefined, { signal: ac.signal });
+    await settled();
+
+    ac.abort();
+    open.forEach((finish) => finish());
+    await p.catch(() => {});
+
+    // Whatever happened, the accounting must balance: no slot left held, none
+    // released twice into a negative count.
+    expect(client._semaphoreState.active).toBe(0);
+    expect(client._semaphoreState.queued).toBe(0);
+  });
+
+  it("leaves the counter balanced across a burst of cancellations", async () => {
+    const client = newClient();
+    const stalled = Array.from({ length: MAX_CONCURRENT }, () =>
+      client.request("GET", "/stalled").catch(() => {})
+    );
+    await settled();
+
+    const controllers = Array.from({ length: 4 }, () => new AbortController());
+    const queued = controllers.map((ac) =>
+      client.request("GET", "/users/me", undefined, { signal: ac.signal }).catch(() => {})
+    );
+    await settled();
+    expect(client._semaphoreState.queued).toBe(4);
+
+    controllers.forEach((ac) => ac.abort());
+    await Promise.all(queued);
+    // A leaked slot per cancellation would show up here as a queue that never
+    // empties, and then as a client that can serve nothing.
+    expect(client._semaphoreState.queued).toBe(0);
+    expect(client._semaphoreState.active).toBe(MAX_CONCURRENT);
+
+    open.forEach((finish) => finish());
+    await Promise.all(stalled);
+    expect(client._semaphoreState.active).toBe(0);
+  });
+});

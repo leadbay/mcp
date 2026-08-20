@@ -516,7 +516,15 @@ export class LeadbayClient {
     headers: Record<string, string>,
     body?: string | Buffer,
     timeoutMs?: number,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    // Slot-ownership box shared with the caller. The 401 path is the only place
+    // that hands the semaphore slot back mid-request, so it is the only place
+    // where "does this call still hold a slot?" can stop being a constant. A
+    // caller that passes the box gets an ABORTABLE re-acquisition, because the
+    // box tells its `finally` whether there is anything to release; a caller
+    // that omits it keeps the unconditional re-acquire, which is what preserves
+    // the balance for the paths that do not track ownership.
+    held?: { value: boolean }
   ): Promise<HttpResult> => {
     const res = await httpsRequest(method, url, headers, body, timeoutMs, signal);
     if (res.status === 401 && method.toUpperCase() === "GET") {
@@ -526,6 +534,7 @@ export class LeadbayClient {
       // is trying to avoid.
       if (signal?.aborted) return res;
       this.releaseSemaphore();
+      if (held) held.value = false;
       try {
         // Abort-aware so a cancel landing mid-backoff doesn't sit out the full
         // 250ms before anyone notices.
@@ -539,12 +548,12 @@ export class LeadbayClient {
           signal?.addEventListener("abort", done, { once: true });
         });
       } finally {
-        // Deliberately NOT abort-aware. This request must return holding
-        // exactly one slot, because the caller's `finally` releases one
-        // unconditionally; throwing here would decrement a slot we never took
-        // and drift the counter permanently. The window it can block for is
-        // bounded by the check above plus the 250ms backoff.
-        await this.acquireSemaphore();
+        // Abortable ONLY when the caller tracks ownership. Otherwise a throw
+        // here would leave that caller's `finally` decrementing a slot it never
+        // obtained, drifting the counter permanently — so those paths keep the
+        // unconditional re-acquire instead.
+        await this.acquireSemaphore(held ? signal : undefined);
+        if (held) held.value = true;
       }
       // Don't burn the retry on a call cancelled during the backoff: the caller
       // is gone, and the retry would only make the wait longer.
@@ -560,9 +569,24 @@ export class LeadbayClient {
     body?: unknown,
     // `timeoutMs` bounds a single attempt (each retry gets its own deadline) and
     // surfaces as a `TIMEOUT`-coded Error — never an auth code, so a caller that
-    // classifies failures reads it as a transient fault. `signal` is the
-    // caller's own cancellation, forwarded to every attempt.
-    opts?: { retryOn401?: boolean; timeoutMs?: number; signal?: AbortSignal }
+    // classifies failures reads it as a transient fault.
+    //
+    // Two cancellation scopes, because a paid POST needs half of one:
+    //   `signal`        — full cancellation. Aborts the queue wait AND the
+    //                     in-flight socket. Right for reads.
+    //   `preSendSignal` — cancels ONLY up to the moment of dispatch. Aborts the
+    //                     queue wait, but once the request is on the wire it is
+    //                     left to finish. Right for a paid submit: while queued
+    //                     nothing has been sent so cancelling is free and
+    //                     honest, but tearing down an in-flight POST leaves the
+    //                     caller unable to say whether the backend already
+    //                     committed and charged for it.
+    opts?: {
+      retryOn401?: boolean;
+      timeoutMs?: number;
+      signal?: AbortSignal;
+      preSendSignal?: AbortSignal;
+    }
   ): Promise<T> {
     // Mock mode short-circuit (no auth required).
     if (process.env.LEADBAY_MOCK === "1") {
@@ -580,9 +604,15 @@ export class LeadbayClient {
     // out (retryOn401:false) so a bad token fails fast instead of double-probing.
     const retryOn401 = opts?.retryOn401 !== false;
     // Pass the signal: a cancel that lands while this call is QUEUED must not
-    // wait on unrelated in-flight requests to drain first.
-    await this.acquireSemaphore(opts?.signal);
+    // wait on unrelated in-flight requests to drain first. A pre-send-only
+    // signal governs the queue wait too — that phase is exactly what it covers.
+    const held = { value: true };
+    await this.acquireSemaphore(opts?.signal ?? opts?.preSendSignal);
     try {
+      // Last point at which "nothing has been sent" is still true. A submit
+      // cancelled here provably spent nothing; one cancelled a line later
+      // provably nothing — which is exactly why it is allowed to finish.
+      if (opts?.preSendSignal?.aborted) throw this.cancelledBeforeSendError();
       const url = `${this._baseUrl}${API_PREFIX}${path}`;
       const headers: Record<string, string> = {
         Authorization: `Bearer ${this.token}`,
@@ -591,14 +621,27 @@ export class LeadbayClient {
         headers["Content-Type"] = "application/json";
       }
 
-      const res = await (retryOn401 ? this.httpsRequestWithRetry : httpsRequest)(
-        method,
-        url,
-        headers,
-        body ? JSON.stringify(body) : undefined,
-        opts?.timeoutMs,
-        opts?.signal
-      );
+      const payload = body ? JSON.stringify(body) : undefined;
+      // Spelled out rather than a ternary over the two functions: only the
+      // retrying variant takes the ownership box, so their arities differ.
+      const res = retryOn401
+        ? await this.httpsRequestWithRetry(
+            method,
+            url,
+            headers,
+            payload,
+            opts?.timeoutMs,
+            opts?.signal,
+            held
+          )
+        : await httpsRequest(
+            method,
+            url,
+            headers,
+            payload,
+            opts?.timeoutMs,
+            opts?.signal
+          );
 
       this._lastMeta = {
         region: this._region,
@@ -617,7 +660,10 @@ export class LeadbayClient {
 
       return JSON.parse(res.body) as T;
     } finally {
-      this.releaseSemaphore();
+      // Only if we still hold one: the 401 path can hand the slot back and then
+      // fail to re-acquire on abort, and releasing unconditionally there would
+      // decrement a slot this call no longer owns.
+      if (held.value) this.releaseSemaphore();
     }
   }
 

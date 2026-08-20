@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { LeadbayClient } from "../../../src/client.js";
 import {
   waitForJob,
@@ -104,5 +104,76 @@ describe("job snapshots are bounded by the caller's wait budget", () => {
   it("propagates a non-timeout failure untouched", async () => {
     const { client } = stubClient(() => new Error("boom"));
     await expect(waitForJob(client, "job-1", 2)).rejects.toThrow("boom");
+  });
+});
+
+describe("the wait bounds the whole drain, not each page of it", () => {
+  const page = (n: number, full: boolean) => ({
+    job: { state: "completed" },
+    items: full ? Array.from({ length: 2 }, (_, i) => ({ id: `${n}-${i}` })) : [],
+    funnel: {},
+    cost: { spent: 0 },
+    next_since: full ? `cur-${n}` : null,
+  });
+
+  it("spends one budget across the pages instead of handing each page a fresh one", async () => {
+    // Every page comes back FULL with a cursor, so the drain would run until
+    // maxPages. Per-request timeouts let each of those pages claim the caller's
+    // whole wait_seconds — the budget multiplied by the page count.
+    //
+    // The clock MUST advance for this to mean anything: with a frozen clock
+    // `remaining()` and a per-page `timeoutMs` are indistinguishable, and the
+    // test passes against the very bug it is meant to catch.
+    let now = 0;
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const { client, opts } = stubClient((n) => {
+        now += 100;
+        return page(n, true);
+      });
+      await waitForJob(client, "job-1", 5, undefined, undefined, undefined, 2);
+
+      expect(opts.length).toBeGreaterThan(1);
+      const budgets = opts.map((o) => o.timeoutMs!);
+      // STRICTLY decreasing: each page is bounded by what is LEFT, so the drain
+      // as a whole cannot outlast the wait. A per-page budget would hold flat.
+      for (let i = 1; i < budgets.length; i++) {
+        expect(budgets[i]).toBeLessThan(budgets[i - 1]);
+      }
+      expect(Math.max(...budgets)).toBeLessThanOrEqual(5000);
+      // And the total handed out must not exceed the wait, which is precisely
+      // what "one budget per page" violated.
+      expect(budgets[budgets.length - 1]).toBeLessThanOrEqual(5000 - 100 * (budgets.length - 1));
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("stops paging once the budget is spent rather than starting a doomed page", async () => {
+    let now = 0;
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      // Each page consumes 400ms of a 1s budget.
+      const { client, opts } = stubClient((n) => {
+        now += 400;
+        return page(n, true);
+      });
+      const snap = await waitForJob(client, "job-1", 1, undefined, undefined, undefined, 2);
+      // 1000ms / 400ms — the drain must stop, not run to maxPages.
+      expect(opts.length).toBeLessThanOrEqual(3);
+      // And it must SAY it stopped early: a full last page plus a cursor is a
+      // prefix, not a finished read.
+      expect(snap.items_truncated).toBe(true);
+      expect(snap.next_since).toBeTruthy();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("does not flag a drain that finished naturally", async () => {
+    // Short page = the cursor ran dry.
+    const { client } = stubClient(() => page(0, false));
+    const snap = await waitForJob(client, "job-1", 5, undefined, undefined, undefined, 2);
+    expect(snap.items_truncated).toBeUndefined();
   });
 });

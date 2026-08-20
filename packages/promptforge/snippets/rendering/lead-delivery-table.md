@@ -84,6 +84,9 @@ table `Ref → Outcome` translating `status_reason` to plain words:
 `disqualified` → "evaluated: does not fit" (evidence is in the item when owned),
 `enrichment_failed` → "channel could not be sourced (not billed)".
 
+**`items_truncated`**: rows are a PREFIX, not the batch. Say so, and offer
+`leadbay_lead_job_status(job_id, since: next_since)` for the rest.
+
 **Hide from the user:** UUIDs (keep for tool calls, never render), cursors,
 `explain.model`/`intelligence_snapshot`, raw `distance`/`calibration`,
 `seq`/`from_cache`, empty arrays.

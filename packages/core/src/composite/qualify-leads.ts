@@ -424,10 +424,14 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
       };
     }
 
+    // preSendSignal, NOT signal — same reasoning as the /mcp/search submit: a
+    // cancel while QUEUED provably spent nothing, but an in-flight POST may
+    // already have committed and charged, so it is left to finish.
     const submit = await client.request<McpSubmitResponse>(
       "POST",
       "/mcp/qualify",
-      body
+      body,
+      { preSendSignal: ctx?.signal }
     );
     const mocked = mockedSubmitPreview(
       submit,
@@ -505,6 +509,7 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
       // two empty tables; the sibling tools (find_new_leads, lead_job_status)
       // both split. `items` stays for input-order per-ref mapping.
       ...splitItems(view),
+      items_truncated: snapshot.items_truncated ?? false,
       cost: snapshot.cost,
       estimated_cost: submit.estimated_cost,
       explain: snapshot.explain,

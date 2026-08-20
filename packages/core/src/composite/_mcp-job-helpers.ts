@@ -93,6 +93,10 @@ export interface McpJobSnapshot {
   funnel: McpFunnel;
   items: McpJobItem[];
   next_since?: string | null;
+  /** Set when the page drain stopped before the cursor ran dry, so `items` is a
+   *  prefix of what the job holds. Resume from `next_since`. Never set by the
+   *  backend — collectJobSnapshot adds it. */
+  items_truncated?: boolean;
   cost: {
     spent: number;
     unit: string;
@@ -213,9 +217,16 @@ export async function collectJobSnapshot(
     `/mcp/jobs/${safeJobId}?limit=${pageLimit}` +
     (cursor ? `&since=${encodeURIComponent(cursor)}` : "");
   const maxPages = maxPagesFor(pageLimit);
+  // ABSOLUTE deadline, computed once. Applying `timeoutMs` per request instead
+  // multiplies the caller's budget by the page count: at limit:1 over a
+  // 1000-item job that is 1000 sequential GETs each entitled to the full
+  // wait_seconds, and waitForJob cannot re-check its own deadline until the
+  // whole drain returns. The wait is a bound on the drain, not on each page.
+  const deadlineAt = Date.now() + timeoutMs;
+  const remaining = () => deadlineAt - Date.now();
   let page = await client.request<McpJobSnapshot>("GET", qs(since), undefined, {
     signal,
-    timeoutMs,
+    timeoutMs: remaining(),
   });
   const items = [...page.items];
   // The resumption cursor must survive an empty drain page. Following
@@ -238,11 +249,14 @@ export async function collectJobSnapshot(
     pages < maxPages &&
     !signal?.aborted
   ) {
+    // Out of budget mid-drain: stop with what we have rather than start a page
+    // that cannot finish in time. The cursor below makes it resumable.
+    if (remaining() <= 0) break;
     const next = await client.request<McpJobSnapshot>(
       "GET",
       qs(page.next_since),
       undefined,
-      { signal, timeoutMs }
+      { signal, timeoutMs: remaining() }
     );
     items.push(...next.items);
     pages += 1;
@@ -255,7 +269,19 @@ export async function collectJobSnapshot(
     }
     cursor = next.next_since ?? cursor;
   }
-  return { ...page, items, next_since: cursor };
+  // Truncation is REPORTED, never silent. A full last page that still carries a
+  // cursor means the drain stopped early — deadline spent, abort, or the
+  // maxPages backstop — and every one of those exits leaves items unread. The
+  // natural finish is a SHORT page, which fails this test. Without the flag a
+  // partial drain of a completed job is indistinguishable from a complete one,
+  // and the tools would render "delivered N" over fewer rows than N.
+  const itemsTruncated = page.items.length >= pageLimit && !!page.next_since;
+  return {
+    ...page,
+    items,
+    next_since: cursor,
+    ...(itemsTruncated ? { items_truncated: true } : {}),
+  };
 }
 
 /** Sleep, but wake immediately if the request is cancelled.

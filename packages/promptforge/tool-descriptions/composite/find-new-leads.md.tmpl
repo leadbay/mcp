@@ -64,24 +64,23 @@ purchases contact channels. Polls up to `wait_seconds` (default 45); a longer
 job returns `still_running` + `next_poll` — hand off to
 `leadbay_lead_job_status`. Jobs run ≤30 min, results kept 30 days.
 
-**Free vs paid — never spend silently.** The default ask (`qualify: false`,
+**Free vs paid — never spend silently.** Default (`qualify: false`,
 `channels: []`) is FREE: company profile + fit score + cached research +
 contact identity. Paid: `qualify: true` (~94 cost_cents per candidate
 EXAMINED, capped by `exploration_cap`/`max_cost`) and `channels` (email 25c /
-phone 250c, success-only). The gate is enforced in code: a paid call
-(`qualify: true` and/or `channels`) is WITHHELD unless it carries
-`confirm: true` — otherwise nothing is submitted and you get
+phone 250c, success-only). Enforced in code: a paid call is WITHHELD unless it
+carries `confirm: true` — nothing is submitted and you get
 `mode: "needs_confirmation"` with a real quote to show the user. Re-call with
 `confirm: true` on their go-ahead ("spend / get their emails" counts).
 `confirm: false` vetoes. Free needs no consent. **Preview free first** —
 reshaping an off-profile seed is free, exploring it with `qualify: true` is
 not.
 
-**Ad-hoc exclusions ("no chains") are enforced by NO tier** — `filters` has
-no exclusion key, and `qualify` scores against the org's FROZEN questions and
-IBP, which need not mention chains; the seed's positive inverse only shifts
-ranking. Violators can survive, be paid for and be delivered — post-filter
-them yourself and say the tier didn't enforce it. Durable enforcement →
+**Ad-hoc exclusions ("no chains") are enforced by NO tier** — `filters` has no
+exclusion key, and `qualify` scores against the org's FROZEN questions and IBP,
+which need not mention chains; the seed's inverse only shifts ranking.
+Violators can survive, be paid for and be delivered — post-filter them yourself
+and say the tier didn't enforce it. Durable enforcement →
 `leadbay_refine_prompt`.
 
 {{include:heuristics/example-lead-craft}}

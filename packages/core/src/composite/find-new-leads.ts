@@ -361,10 +361,17 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       };
     }
 
+    // preSendSignal, NOT signal. While this POST is queued behind the client's
+    // concurrency slots nothing has been sent, so a cancel there is free and
+    // provably spends nothing — that is the window this closes. Once it is on
+    // the wire it is deliberately left to finish: aborting mid-flight would
+    // leave us unable to say whether the backend already committed the job,
+    // charged for it, and claimed novelty on the leads.
     const submit = await client.request<McpSubmitResponse>(
       "POST",
       "/mcp/search",
-      body
+      body,
+      { preSendSignal: ctx?.signal }
     );
     const mocked = mockedSubmitPreview(
       submit,
@@ -409,6 +416,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       funnel: snapshot.funnel,
       leads,
       skipped,
+      items_truncated: snapshot.items_truncated ?? false,
       cost: snapshot.cost,
       estimated_cost: submit.estimated_cost,
       explain: snapshot.explain,

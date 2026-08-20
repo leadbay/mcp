@@ -93,6 +93,9 @@ export const leadJobStatus: Tool<LeadJobStatusParams, any> = {
       funnel: snapshot.funnel,
       leads,
       skipped,
+      // Surfaced so the renderer never presents a partial page set as the whole
+      // result: `leads` is a prefix, and next_since resumes it.
+      items_truncated: snapshot.items_truncated ?? false,
       next_since: snapshot.next_since ?? null,
       cost: snapshot.cost,
       explain: snapshot.explain,
