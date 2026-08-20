@@ -74,15 +74,11 @@ describe("resolveClientFromToken", () => {
     });
   });
 
-  it("auto-probe: both regions return network error → probe_failed with live client", async () => {
-    mockHttp([
-      { method: "GET", path: "/1.6/users/me", status: 500, body: { error: true, code: "SERVER_ERROR", message: "oops" } },
-      { method: "GET", path: "/1.6/users/me", status: 500, body: { error: true, code: "SERVER_ERROR", message: "oops" } },
-    ]);
-    const result = await resolveClientFromToken("tok");
-    expect(result.authState).toBe("probe_failed");
-    // Falls back to a live (non-broken) client — it should be able to make calls
-    // (whether they succeed depends on the backend, not our code)
-    expect(result.client).toBeDefined();
-  });
+  // NOTE: one "auto-probe" test that lived here could not be kept —
+  // "both regions network error → probe_failed" asserted the `probe_failed`
+  // authState, and this PR removes it: a transient fault now resolves as "ok" so
+  // a backend blip can't force a spurious re-auth. Nothing about that assertion
+  // survives the contract change. Its replacement, plus the region-from-token /
+  // single-probe / validate:false coverage, lives in the new file
+  // auth-http-single-region-probe.test.ts (repo rule: new tests in new files).
 });

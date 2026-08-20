@@ -43,6 +43,16 @@ function httpsRequest(
   url: string,
   headers: Record<string, string>,
   body?: string | Buffer,
+  // Optional wall-clock deadline. node:https sets NO socket timeout by default,
+  // so a peer that completes the TCP handshake and then stalls leaves this
+  // promise pending indefinitely. Callers that must bound their own latency —
+  // the hosted auth probe, which walks candidate regions one after another —
+  // pass this; every other call keeps the previous unbounded behaviour.
+  timeoutMs?: number,
+  // Caller-driven cancellation, orthogonal to the deadline above: `timeoutMs`
+  // bounds how long WE are willing to wait, `signal` says the caller stopped
+  // caring. Both end in the same `error` handler, which clears the deadline
+  // either way.
   signal?: AbortSignal
 ): Promise<HttpResult> {
   return new Promise((resolve, reject) => {
@@ -52,6 +62,10 @@ function httpsRequest(
     if (body !== undefined) {
       reqHeaders["Content-Length"] = Buffer.byteLength(body);
     }
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const clearDeadline = () => {
+      if (deadline !== undefined) clearTimeout(deadline);
+    };
     const req = https.request(
       {
         hostname: parsed.hostname,
@@ -69,6 +83,7 @@ function httpsRequest(
         const chunks: Buffer[] = [];
         res.on("data", (chunk) => chunks.push(chunk));
         res.on("end", () => {
+          clearDeadline();
           resolve({
             status: res.statusCode ?? 0,
             body: Buffer.concat(chunks).toString("utf8"),
@@ -78,7 +93,28 @@ function httpsRequest(
         });
       }
     );
-    req.on("error", reject);
+
+    if (timeoutMs !== undefined && timeoutMs > 0) {
+      deadline = setTimeout(() => {
+        // destroy() actually cancels — it aborts the request and frees the
+        // socket rather than leaving a stalled connection behind a raced
+        // promise. Optional-called because the node:https test double is a bare
+        // EventEmitter with no destroy().
+        (req as { destroy?: (e?: Error) => void }).destroy?.();
+        const err = new Error(
+          `Request timed out after ${timeoutMs}ms: ${method} ${url}`
+        ) as Error & { code?: string };
+        err.code = "TIMEOUT"; // not an auth code — callers treat it as a transient fault
+        reject(err);
+      }, timeoutMs);
+      // Never hold the process open on a probe deadline.
+      (deadline as unknown as { unref?: () => void }).unref?.();
+    }
+
+    req.on("error", (e) => {
+      clearDeadline();
+      reject(e);
+    });
     if (body !== undefined) req.write(body);
     req.end();
   });
@@ -448,9 +484,10 @@ export class LeadbayClient {
     url: string,
     headers: Record<string, string>,
     body?: string | Buffer,
+    timeoutMs?: number,
     signal?: AbortSignal
   ): Promise<HttpResult> => {
-    const res = await httpsRequest(method, url, headers, body, signal);
+    const res = await httpsRequest(method, url, headers, body, timeoutMs, signal);
     if (res.status === 401 && method.toUpperCase() === "GET") {
       this.releaseSemaphore();
       try {
@@ -461,7 +498,7 @@ export class LeadbayClient {
       // Don't burn the retry on an already-cancelled call: the caller is gone,
       // and the 250ms backoff above just made the wait longer.
       if (signal?.aborted) return res;
-      return httpsRequest(method, url, headers, body, signal);
+      return httpsRequest(method, url, headers, body, timeoutMs, signal);
     }
     return res;
   };
@@ -470,7 +507,11 @@ export class LeadbayClient {
     method: string,
     path: string,
     body?: unknown,
-    opts?: { retryOn401?: boolean; signal?: AbortSignal }
+    // `timeoutMs` bounds a single attempt (each retry gets its own deadline) and
+    // surfaces as a `TIMEOUT`-coded Error — never an auth code, so a caller that
+    // classifies failures reads it as a transient fault. `signal` is the
+    // caller's own cancellation, forwarded to every attempt.
+    opts?: { retryOn401?: boolean; timeoutMs?: number; signal?: AbortSignal }
   ): Promise<T> {
     // Mock mode short-circuit (no auth required).
     if (process.env.LEADBAY_MOCK === "1") {
@@ -502,6 +543,7 @@ export class LeadbayClient {
         url,
         headers,
         body ? JSON.stringify(body) : undefined,
+        opts?.timeoutMs,
         opts?.signal
       );
 
@@ -808,7 +850,14 @@ export class LeadbayClient {
 
   // /me cache (60s TTL). Separate from resolveOrgId() which still works for
   // legacy callers (it now delegates here).
-  async resolveMe(force = false): Promise<UserMePayload> {
+  //
+  // `opts.timeoutMs` bounds each underlying attempt and CANCELS it. Callers that
+  // give up on this read with their own `Promise.race` must pass it: abandoning
+  // the promise doesn't stop the request, so against a silent backend (handshake
+  // completes, nothing ever comes back) the socket and its API-semaphore slot
+  // stay held for the life of the process. Racing bounds the caller's wait; only
+  // the deadline bounds the resource.
+  async resolveMe(force = false, opts?: { timeoutMs?: number }): Promise<UserMePayload> {
     const now = Date.now();
     if (
       !force &&
@@ -824,7 +873,9 @@ export class LeadbayClient {
     // writes — cachedTelemetryEnabled() stays undefined and the caller's
     // fallback (resolve verdict / session flag) governs.
     const seqAtStart = ++this.telemetryStateSeq;
-    const me = await this.request<UserMePayload>("GET", "/users/me");
+    const me = await this.request<UserMePayload>("GET", "/users/me", undefined, {
+      timeoutMs: opts?.timeoutMs,
+    });
     this.mePayload = me;
     this.mePayloadCachedAt = now;
     if (this.telemetryStateSeq === seqAtStart && me.telemetry_enabled !== undefined) {
@@ -851,7 +902,12 @@ export class LeadbayClient {
   //
   // Returns the observed preference: true/false, or undefined when the backend
   // omitted the field (older backend → caller treats as enabled default).
-  async fetchTelemetryEnabled(): Promise<boolean | undefined> {
+  //
+  // `opts.timeoutMs` bounds and CANCELS each attempt — same reasoning as
+  // resolveMe(): the hosted SSE refresh fires this off behind its own timer and
+  // stops waiting, so without a deadline a dark region leaves the request (and
+  // the semaphore slot the caller is explicitly waiting on) held forever.
+  async fetchTelemetryEnabled(opts?: { timeoutMs?: number }): Promise<boolean | undefined> {
     const seqAtStart = ++this.telemetryStateSeq;
     if (process.env.LEADBAY_MOCK === "1") {
       const metaBefore = this._lastMeta;
@@ -883,7 +939,8 @@ export class LeadbayClient {
         "GET",
         `${this._baseUrl}${API_PREFIX}/users/me`,
         { Authorization: `Bearer ${this.token}` },
-        undefined
+        undefined,
+        opts?.timeoutMs
       );
       if (res.status < 200 || res.status >= 300) {
         throw this.mapErrorResponse(res.status, res.body, "/users/me", res.headers);
@@ -907,6 +964,15 @@ export class LeadbayClient {
   invalidateMe(): void {
     this.mePayload = null;
     this.mePayloadCachedAt = null;
+  }
+
+  // Warm the /users/me cache from a payload the caller already fetched, so the
+  // next resolveMe() is a cache hit (no extra round trip). Used by the hosted
+  // HTTP auth probe: it validates the token with a fail-fast /users/me request
+  // and seeds the result here, so the telemetry path's resolveMe() reuses it.
+  seedMe(me: UserMePayload): void {
+    this.mePayload = me;
+    this.mePayloadCachedAt = Date.now();
   }
 
   // Synchronous read of the last-cached telemetry preference, without a fetch.
