@@ -114,7 +114,7 @@ Call `leadbay_account_status` for my quota and active lens.
 
 Say that scope in one line up front, so nobody reads the ranking as a money sort. If I ask for a cash-ranked plan, tell me plainly that it needs my invoicing extract and that the MCP has no path to it today — then deliver this plan anyway rather than stopping.
 
-**DELIVER FIRST, ASK ALONGSIDE — never gate the plan on a missing input.** Only ONE thing can stop you before you have shipped a ranked list of real accounts: not knowing **whose** plan this is (a company-identity mismatch you genuinely cannot resolve). Everything else is a question you carry *next to* the delivered plan, not a reason to withhold it:
+**DELIVER FIRST, ASK ALONGSIDE — never gate the plan on a missing input.** Only TWO things can stop you before you have shipped a ranked list of real accounts: not knowing **whose** plan this is (a company-identity mismatch you genuinely cannot resolve), and a `territory` naming a country that is NOT this workspace's own — or a supra-national scope (see the country branch below, which overrides this rule for that one case). The second is an exception for the same reason as the first: both would ship a plan about the wrong companies. Delivering a whole-workspace plan under a "France" heading is not a partial answer, it is a wrong one. Everything else is a question you carry *next to* the delivered plan, not a reason to withhold it:
 
 - **No benchmark?** Costs nothing here — the money column is OMITTED regardless. Pull, qualify, rank by the Leadbay signal, deliver, and mention what a cash-ranked version would need.
 - **No Tier-1 threshold?** Not a blocker. Deliver, and ask alongside.
@@ -134,7 +134,7 @@ If I gave a `territory`, scope discovery to it now, and **make sure the scoping 
 If the `territory` I named is a country, which one decides what you do:
 
 - **This workspace's own country** → scope NOTHING and carry on: say the plan already covers the whole workspace, and offer sector / size / sub-country region as the axes that would actually narrow it.
-- **A different country, or a supra-national scope** → do NOT simply drop the scope and build the plan anyway. An unfiltered plan is this workspace's own accounts, which is not an answer to a request about somewhere else — delivering it under my heading would be a confidently wrong plan. Say the ask cannot be filled from this workspace and stop.
+- **A different country, or a supra-national scope** → do NOT simply drop the scope and build the plan anyway. An unfiltered plan is this workspace's own accounts, which is not an answer to a request about somewhere else — delivering it under my heading would be a confidently wrong plan. Say the ask cannot be filled from this workspace and stop. **This is the one case that overrides DELIVER FIRST above**: shipping the plan anyway is the failure, not the fix.
 
 **One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so `"France"` matches the *commune of Francs* and `"United States"` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 

@@ -375,6 +375,12 @@ export const COUNTRIES: readonly CountryEntry[] = [
  * the wrong advice (report the scope instead of just answering).
  */
 export const WHOLE_WORKSPACE_LABELS: readonly string[] = [
+  // The bare noun earns its place: it is what the wrapper strip REDUCES the
+  // common phrasings to. "country-wide" normalizes to "country wide" and loses
+  // its suffix to /\s+wide$/; "across the country" loses "across " and then
+  // the article. Both land on "country", and without this entry both missed
+  // every key and reached /geo/search — the exact fence this module prevents.
+  "Country",
   "Nationwide",
   "Nation-wide",
   "Countrywide",
@@ -614,3 +620,16 @@ export function embeddedSupranationalKey(key: string): string | undefined {
 export const WHOLE_WORKSPACE_KEYS: ReadonlySet<string> = new Set(
   WHOLE_WORKSPACE_LABELS.map((label) => countryKey(label)).filter(Boolean)
 );
+
+/**
+ * The same wrapper strip again, against the whole-workspace labels.
+ *
+ * These labels were the only one of the three vocabularies matched by EXACT
+ * key, so a wrapper around one of them defeated it: "across the country",
+ * "country-wide" and "across the whole country" all missed and went on to
+ * /geo/search. Consulted only after `embeddedCountryKey` comes up empty, so a
+ * named country inside a scope phrase still wins ("all of France" is France).
+ */
+export function embeddedWholeWorkspaceKey(key: string): string | undefined {
+  return embeddedKey(key, WHOLE_WORKSPACE_KEYS);
+}

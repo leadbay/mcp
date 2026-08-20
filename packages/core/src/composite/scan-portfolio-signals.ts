@@ -253,7 +253,7 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
       country_locations: {
         type: "array",
         description:
-          "Per offending value: {value, param, kind, country}. Only present when `status === 'country_level_location'`. This workspace serves exactly ONE country, so a whole-country ask needs NO geo argument at all — re-call without it. Do NOT retry with another spelling or a nearby city.",
+          "Per offending value: {value, param, kind, country, axis, kept}. Only present when `status === 'country_level_location'`. The recovery BRANCHES on `country_locations[].axis` and `[].kind`; `hint` states the one for THIS call — follow it verbatim. Dropping the argument is NOT the general answer: on an `exclude` axis it returns the very companies the user asked to remove, and for a `foreign_country` an unfiltered result is this workspace's own leads, which answer a different question. Never retry with another spelling or a nearby city.",
         items: { type: "object" },
       },
       _meta: {

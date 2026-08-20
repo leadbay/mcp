@@ -378,18 +378,35 @@ describe("audit: single-country-universe rule", () => {
     }
   });
 
-  it("the refine gate strips the country before deciding, not instead of deciding", () => {
-    // The first branch matched on "names this workspace's own country" and
+  it("the refine gate resolves the region, then strips, then decides", () => {
+    // Two defects, one after the other, both in the ORDER of this gate.
+    //
+    // First: the branch matched on "names this workspace's own country" and
     // stopped the run outright. "Focus on hospitals running their own IT
     // nationwide" hit it, and the hospitals half — the entire point of the
-    // instruction — was dropped along with the redundant country. The shared
-    // rule's own tiebreak is "keep the city, drop the country"; the gate has to
-    // strip first and classify the remainder, stopping only when nothing is
-    // left.
+    // instruction — was dropped with the redundant country. So: strip, then
+    // classify the remainder, stopping only when nothing is left.
+    //
+    // Then the fix inverted a different dependency. Stripping was Step 1 and
+    // resolving the region was Step 2, but "strip this workspace's OWN country"
+    // cannot be executed before you know which country that is. On "French
+    // hospitals across France" an agent following the numbers guesses, and a
+    // wrong guess strips a FOREIGN scope and applies the rest to the wrong
+    // country. The region has to be resolved first, so the numbered order is
+    // pinned here rather than left to the next wording pass.
     const body = (Prompts as Record<string, string>).leadbay_refine_audience;
-    expect(body, "the gate must strip before it classifies").toMatch(
-      /strip,? do not stop/i
-    );
+    const regionStep = body.search(/find out which country this workspace serves/i);
+    const stripStep = body.search(/now strip, and do not stop/i);
+    expect(regionStep, "the gate must say where the region comes from").toBeGreaterThan(-1);
+    expect(stripStep, "the gate must still strip rather than stop outright").toBeGreaterThan(-1);
+    expect(
+      regionStep,
+      "the region must be resolved BEFORE the country is stripped — otherwise the strip is a guess"
+    ).toBeLessThan(stripStep);
+    expect(
+      body,
+      "a foreign country must NOT be stripped — it is the whole answer, not a redundant clause"
+    ).toMatch(/is NOT this workspace's own is not stripped/i);
     expect(body, "and only stop when the country WAS the whole instruction").toMatch(
       /nothing remains/i
     );

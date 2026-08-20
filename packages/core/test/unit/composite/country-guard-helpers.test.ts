@@ -232,10 +232,23 @@ describe("whole-workspace phrasings are HOME intent, not supra-national", () => 
     expect(envelope.hint).toMatch(/OMIT/);
   });
 
-  it("falls back to report-the-scope when there is no home country", () => {
-    // A custom backend has an unknown universe, so "everywhere" cannot be
-    // claimed to mean "everything here".
-    expect(hitsFor("everywhere", "custom")[0]?.kind).toBe("supranational");
+  it("still means the whole workspace when there is no home country", () => {
+    // A custom backend's universe is unnamed, NOT unknown in size: every
+    // backend covers exactly one country, and "everywhere" names none, so the
+    // request is unambiguous and the unfiltered read answers it exactly.
+    // Classifying it supra-national produced a hint that FORBADE that read.
+    const hit = hitsFor("everywhere", "custom")[0];
+    expect(hit?.kind).toBe("country_indeterminate");
+    // No country is named, which is the only thing a custom backend withholds.
+    expect(hit?.country).toBeNull();
+  });
+
+  it("the no-home-country hint affirms the omit, and names no country", () => {
+    const envelope = countryLocationEnvelope(hitsFor("nationwide", "custom"), "custom");
+    expect(envelope.hint).toMatch(/OMIT/);
+    expect(envelope.hint).toMatch(/do NOT name which country/i);
+    // The supra-national hint's refusal must NOT appear here.
+    expect(envelope.hint).not.toMatch(/Do NOT drop/i);
   });
 });
 
@@ -575,7 +588,11 @@ describe("detectCountryLocationsInFilter", () => {
       "fr"
     );
     expect(hits).toHaveLength(1);
-    expect(hits[0].param).toContain("locations.results");
+    // Discovered through the echoed name, but attributed to the criterion that
+    // actually selects it — and carrying the id, because removing the name
+    // alone would leave "27925" selected and the country filter live.
+    expect(hits[0].param).toContain("lens_filter.items[].criteria[].locations");
+    expect(hits[0].selectedId).toBe("27925");
   });
 
   it("passes a clean filter through", () => {

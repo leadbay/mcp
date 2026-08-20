@@ -177,7 +177,7 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
       status: {
         type: "string",
         description:
-          "`ambiguous_locations` when a passed `city` matched multiple admin_areas; the agent picks an id from `location_ambiguities` and re-calls with `city_id`. `country_level_location` when `city` was a country name — drop the argument, do not re-call with a spelling variant. Absent on the happy path.",
+          "`ambiguous_locations` when a passed `city` matched multiple admin_areas; the agent picks an id from `location_ambiguities` and re-calls with `city_id`. `country_level_location` when `city`, `city_id` or a `set_filter` `location_ids` criterion carried a country-level value — nothing was read and no filter was persisted; read `hint` for the recovery, which differs per case. Absent on the happy path.",
       },
       location_ambiguities: {
         type: "array",
@@ -188,7 +188,7 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
       country_locations: {
         type: "array",
         description:
-          "Per offending value: {value, param, kind, country}. Only present when `status === 'country_level_location'`. This workspace serves exactly ONE country, so a whole-country ask needs NO `city` argument at all — re-call without it and say the view covers everything.",
+          "Per offending value: {value, param, kind, country, axis, kept}. Only present when `status === 'country_level_location'`. The recovery BRANCHES on `country_locations[].axis` and `[].kind`; `hint` states the one for THIS call — follow it verbatim. Dropping the argument is NOT the general answer: on an `exclude` axis it returns the very companies the user asked to remove, and for a `foreign_country` an unfiltered result is this workspace's own leads, which answer a different question. Never retry with another spelling or a nearby city.",
         items: { type: "object" },
       },
       _meta: {

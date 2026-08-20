@@ -6,25 +6,30 @@ description: "Refine the kind of leads Leadbay surfaces beyond firmographics, wi
 
 Refine the Leadbay audience prompt to: <The refinement (e.g. 'focus on hospitals running their own IT'). Set to plain English. If not provided in the user's most recent message, ask once before proceeding.>
 
-# PHASE 0 — GATE: STRIP THE COUNTRY, THEN CLASSIFY WHAT IS LEFT (may end the run)
+# PHASE 0 — GATE: RESOLVE THE REGION, STRIP THE COUNTRY, THEN CLASSIFY (may end the run)
 A refine prompt shapes the KIND of company, never WHERE it is. Before any tool call:
 
-**Step 1 — strip, do not stop.** If my instruction names this workspace's own country or
-a whole-country scope ("nationwide", "the whole US", "partout en France"), remove that
-phrase and KEEP THE REST. It is redundant, never a filter — but it is almost never the
-whole instruction. "Hospitals running their own IT nationwide" is a refinement about
-hospitals; "hospitals in Paris, France" is Paris plus hospitals. Losing the rest because
-a country rode along is the worse error of the two.
+**Step 1 — if a COUNTRY is named at all, find out which country this workspace serves,
+and do it FIRST.** Every later step turns on whether the country I named is this
+workspace's own, and you cannot tell that from my message: "French hospitals across
+France" is a redundant clause on an FR backend and an unsupported ask on a US one, and
+the language I write in says nothing about it. Do NOT guess from the country I named,
+from my language, or from the fact that the request sounds plausible — strip first and
+you will have already decided, silently and possibly wrongly, that the country was
+redundant. Every Leadbay tool result carries the fact at `_meta.region`
+(`us` | `fr` | `custom`); if no call this session has returned one, call
+`leadbay_account_status` — read-only, writes nothing — and read `_meta.region` from it.
+`custom` means the backend's country is unknown: claim nothing about which country it
+holds. Only a place BELOW country level ("in Paris", "Texas") skips this step.
 
-**Step 2 — if a COUNTRY is involved, find out which country this workspace serves
-before you branch.** You cannot tell from my message: "French hospitals across France"
-is a redundant clause on an FR backend and an unsupported ask on a US one, and the
-language I write in says nothing about it. Do NOT guess from the country I named, from
-my language, or from the fact that the request sounds plausible. Every Leadbay tool
-result carries it at `_meta.region` (`us` | `fr` | `custom`); if no call this session has
-returned one, call `leadbay_account_status` — read-only, writes nothing — and read
-`_meta.region` from it. `custom` means the backend's country is unknown: claim nothing
-about which country it holds. Only a place BELOW country level needs no such check.
+**Step 2 — now strip, and do not stop.** With the region known, if my instruction names
+this workspace's own country or a whole-country scope ("nationwide", "the whole US",
+"partout en France"), remove that phrase and KEEP THE REST. It is redundant, never a
+filter — but it is almost never the whole instruction. "Hospitals running their own IT
+nationwide" is a refinement about hospitals; "hospitals in Paris, France" is Paris plus
+hospitals. Losing the rest because a country rode along is the worse error of the two.
+A country that is NOT this workspace's own is not stripped — it is the whole answer, and
+Step 3 handles it.
 
 **Step 3 — classify what REMAINS**, and act on every part of it:
 

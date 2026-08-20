@@ -209,7 +209,11 @@ describe("echoed resolved-areas block inherits the criterion's polarity", () => 
   it("marks an echoed row as exclude when its criterion excludes it", () => {
     const hits = detectCountryLocationsInFilter(roundTripped(true), "fr");
     expect(hits).toHaveLength(1);
-    expect(hits[0].param).toContain("locations.results");
+    // The param points at the CRITERION, not at the echoed name that revealed
+    // it: the name is not what selects the country, so a recovery aimed at the
+    // name leaves the id in place and the filter in force.
+    expect(hits[0].param).toContain("lens_filter.items[].criteria[].locations");
+    expect(hits[0].selectedId).toBe("27925");
     expect(hits[0].axis).toBe("exclude");
   });
 
@@ -258,8 +262,8 @@ describe("echoed resolved-areas block inherits the criterion's polarity", () => 
       },
       locations: { results: [{ id: "27925", name: "France" }], parents: [] },
     };
-    const echoed = detectCountryLocationsInFilter(filter, "fr").filter((h) =>
-      h.param.includes("locations.results")
+    const echoed = detectCountryLocationsInFilter(filter, "fr").filter(
+      (h) => h.selectedId !== undefined
     );
     expect(echoed[0].axis).toBe("exclude");
   });

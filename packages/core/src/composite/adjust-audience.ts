@@ -345,7 +345,7 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
   outputSchema: {
     type: "object",
     description:
-      "Return shapes: 'applied' on success; 'ambiguous_sectors' when free-text sectors matched multiple candidates (re-call with sector_ids); 'ambiguous_locations' when free-text locations didn't resolve to one area — re-call with the chosen id via the SAME axis it came from (an include pick → location_ids; an EXCLUDE pick → exclude_locations, NOT location_ids, which would include it); 'country_level_location' when a country name was passed as a location (drop it — nothing was read or written); 'lens_not_found' / 'ambiguous_lens' when a lensName didn't resolve to exactly one lens (re-call with lensId or an exact lensName).",
+      "Return shapes: 'applied' on success; 'ambiguous_sectors' when free-text sectors matched multiple candidates (re-call with sector_ids); 'ambiguous_locations' when free-text locations didn't resolve to one area — re-call with the chosen id via the SAME axis it came from (an include pick → location_ids; an EXCLUDE pick → exclude_locations, NOT location_ids, which would include it); 'country_level_location' when a country-level value was passed as a location (nothing was read or written; read `hint` — re-calling without the value is often itself wrong); 'lens_not_found' / 'ambiguous_lens' when a lensName didn't resolve to exactly one lens (re-call with lensId or an exact lensName).",
     properties: {
       status: {
         type: "string",
@@ -355,7 +355,7 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
       country_locations: {
         type: "array",
         description:
-          "On 'country_level_location': per offending value {value, param, kind, country}. A country name is never a location criterion — each workspace serves exactly ONE country, so whole-country intent means passing no location at all. The lens was NOT modified. Do NOT retry with another spelling or a nearby city.",
+          "On 'country_level_location': per offending value {value, param, kind, country, axis, kept}. A country name is never a location criterion — each workspace serves exactly ONE country. The lens was NOT modified. The recovery BRANCHES on `country_locations[].axis` and `[].kind`; `hint` states the one for THIS call — follow it verbatim. When the country was the ONLY scope, or on ANY non-foreign `exclude`, the answer is to write NOTHING at all — re-calling with the value merely dropped persists a scope that inverts the request. Never retry with another spelling or a nearby city.",
         items: { type: "object" },
       },
       sector_ambiguities: {

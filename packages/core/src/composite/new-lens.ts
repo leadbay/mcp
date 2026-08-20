@@ -103,7 +103,7 @@ export const newLens: Tool<NewLensParams> = {
   outputSchema: {
     type: "object",
     description:
-      "'preview' (default, NOTHING created — confirm with the user then re-call with confirm:true); 'created' on success; 'ambiguous_sectors' / 'ambiguous_locations' when free-text sectors / locations didn't resolve (re-call with ids — the lens was NOT created); 'country_level_location' when a country name was passed as a location (drop it — the lens was NOT created).",
+      "'preview' (default, NOTHING created — confirm with the user then re-call with confirm:true); 'created' on success; 'ambiguous_sectors' / 'ambiguous_locations' when free-text sectors / locations didn't resolve (re-call with ids — the lens was NOT created); 'country_level_location' when a country-level value was passed as a location (the lens was NOT created; read `hint` — re-calling without the value is often itself wrong).",
     properties: {
       status: { type: "string", description: "'preview', 'created', 'ambiguous_sectors', 'ambiguous_locations', 'country_level_location', or 'orphan_created' (filter write failed + cleanup failed)." },
       will_create: {
@@ -131,7 +131,7 @@ export const newLens: Tool<NewLensParams> = {
       country_locations: {
         type: "array",
         description:
-          "On 'country_level_location': per offending value {value, param, kind, country}. A country name is never a location criterion — each workspace serves exactly ONE country, so whole-country intent means omitting `locations` entirely. Do NOT retry with another spelling or a nearby city.",
+          "On 'country_level_location': per offending value {value, param, kind, country, axis, kept}. A country name is never a location criterion — each workspace serves exactly ONE country. The recovery BRANCHES on `country_locations[].axis` and `[].kind`; `hint` states the one for THIS call — follow it verbatim. When the country was the ONLY scope, or on ANY non-foreign `exclude`, the answer is to write NOTHING at all — re-calling with the value merely dropped persists a scope that inverts the request. Never retry with another spelling or a nearby city.",
         items: { type: "object" },
       },
       filter_applied: { type: "object", description: "On 'created': the FilterPayload POSTed to the new lens." },

@@ -31,7 +31,7 @@ import {
   REGION_EXEMPT_KEYS,
   SUPRANATIONAL_KEYS,
   US_STATE_POSTAL_CODES,
-  WHOLE_WORKSPACE_KEYS,
+  embeddedWholeWorkspaceKey,
   embeddedCountryKey,
   embeddedSupranationalKey,
   countryKey,
@@ -110,6 +110,20 @@ export interface CountryHit {
    * would survive. Empty for a scalar argument, which has no siblings to lose.
    */
   kept: readonly string[];
+  /**
+   * The admin-area ID that actually SELECTS this country, when the value was
+   * discovered through an echoed name rather than passed as text.
+   *
+   * A lens filter carries `location_ids.locations: ["27925"]` and echoes
+   * `{id: "27925", name: "France"}` in its denormalized `locations.results`
+   * block. The guard can only recognize the country from that echoed NAME — but
+   * the name is not what selects it. A recovery that says "remove the name"
+   * leaves the id in the criterion, and because a bare numeric id is not
+   * classifiable (product#3939), the corrected re-call persists the country
+   * filter with the guard none the wiser. So the id travels with the hit and
+   * the recovery names it.
+   */
+  selectedId?: string;
 }
 
 export interface CountryLocationEnvelope {
@@ -168,11 +182,16 @@ function classify(
   // "everywhere") means this workspace, so the recovery is the home-country one
   // (omit and answer) rather than the supra-national one (report the scope).
   if (namedKey === undefined) {
-    if (WHOLE_WORKSPACE_KEYS.has(key)) {
+    if (embeddedWholeWorkspaceKey(key) !== undefined) {
       const homeIso2 = homeCountryIso2(region);
-      // No home country (custom backend) → we cannot claim it means "everything
-      // here", so fall back to the conservative report-the-scope treatment.
-      if (homeIso2 === undefined) return { kind: "supranational" };
+      // No home country (custom backend). NOT supra-national: "nationwide"
+      // names no country, and every backend covers exactly one, so the request
+      // is unambiguous and the unfiltered read answers it exactly. Calling it
+      // supra-national produced a hint that FORBADE that read, telling users on
+      // the documented LEADBAY_BASE_URL path their nationwide ask could not be
+      // answered. It routes to country_indeterminate with no entry: omit and
+      // answer, while naming no country we cannot actually identify.
+      if (homeIso2 === undefined) return { kind: "country_indeterminate" };
       const homeEntry = COUNTRY_BY_KEY.get(countryKey(homeIso2));
       return { kind: "home_country", entry: homeEntry };
     }
@@ -251,7 +270,8 @@ export function detectCountryLocations(
   input: unknown,
   param: string,
   region: GuardRegion,
-  axis: "include" | "exclude" = "include"
+  axis: "include" | "exclude" = "include",
+  selectedId?: string
 ): CountryHit[] {
   if (input === undefined || input === null) return [];
   const list = Array.isArray(input) ? input : [input];
@@ -281,6 +301,7 @@ export function detectCountryLocations(
     country: verdict.entry?.name ?? null,
     axis,
     kept,
+    ...(selectedId === undefined ? {} : { selectedId }),
   }));
 }
 
@@ -349,6 +370,12 @@ function messageFor(hit: CountryHit, region: GuardRegion): string {
         : `so filtering by it removes nothing`;
     return `${hit.param} value "${hit.value}" names this whole workspace, not a place inside it — this backend serves ${hit.country} and nothing else, ${effect}. Country names are absent from the admin-area index (product#3885), so the value silently trigram-matches a same-named town instead ("France" → the commune of Francs, "United States" → Statesboro) and fences the search to one village.`;
   }
+  if (hit.kind === "country_indeterminate" && hit.country === null) {
+    // A generic "whole of here" phrase on a backend we cannot name. Unlike a
+    // named country there is nothing to be uncertain ABOUT: it means this
+    // workspace entirely, whichever country that is.
+    return `${hit.param} value "${hit.value}" asks for this whole workspace, not a place inside it, so it is not a location filter — and no admin area is named "${hit.value}" either, so it would silently trigram-match a same-named town and fence the search to one village. This backend is custom-configured, so WHICH country the workspace covers is unknown.`;
+  }
   if (hit.kind === "country_indeterminate") {
     return `${hit.param} value "${hit.value}" is a country name, which is never a usable location filter: country names are absent from the admin-area index (product#3885), so the value silently trigram-matches a same-named town and fences the search to one village. This backend is custom-configured, so which country it serves is unknown — ${hit.country} may or may not be it.`;
   }
@@ -396,6 +423,13 @@ function hintFor(
   const home = homeCountryName(region);
   const holds = home ? `holds ${home} companies only` : "covers a single country";
 
+  // A GENERIC whole-of-here phrase ("nationwide", "partout") on a backend whose
+  // country we cannot name. Semantically this tracks home_country, NOT the
+  // named-country indeterminate case: the request is unambiguous and the
+  // unfiltered read answers it exactly. The only thing withheld is the name.
+  const anonymousWhole = hit.kind === "country_indeterminate" && hit.country === null;
+  const unnamed = "This backend is custom-configured, so do NOT name which country that is.";
+
   // A WRITE tool with nothing left to write. Ordered before everything else
   // because every recovery below ends in "re-call", and here the re-call is the
   // defect: a lens created or rewritten to express a country-wide scope is the
@@ -415,6 +449,11 @@ function hintFor(
     if (hit.kind === "foreign_country") {
       return `${carry} And say this workspace ${holds}, so there is no ${hit.country} audience to add — the result is scoped by the other criteria only.`;
     }
+    if (anonymousWhole) {
+      return hit.axis === "exclude"
+        ? `${carry} Excluding the workspace's own country would empty the audience, so that part cannot be honoured at all — say so rather than silently ignoring it. ${unnamed}`
+        : `${carry} The lens then carries no geo criterion, which is correct: the workspace already covers its entire country. ${unnamed}`;
+    }
     if (hit.kind === "country_indeterminate") {
       return `${carry} This backend is custom-configured, so claim nothing about whether ${hit.country} is inside it.`;
     }
@@ -430,6 +469,11 @@ function hintFor(
     }
     if (hit.kind === "foreign_country") {
       return `${stop} Say this workspace ${holds}, so there is no ${hit.country} audience to scope to and none can be created. Ask what to target inside it — ${narrow}.`;
+    }
+    if (anonymousWhole) {
+      return hit.axis === "exclude"
+        ? `${stop} Excluding the workspace's own country would empty the entire audience, so it cannot be written either. Ask what should actually be carved out — ${narrow} — and only then write. ${unnamed}`
+        : `${stop} Say the audience already covers the workspace entirely, then offer the axes that DO narrow it: sector, size, or ${narrow}. ${unnamed}`;
     }
     if (hit.kind === "country_indeterminate") {
       return `${stop} This backend is custom-configured, so claim nothing about whether ${hit.country} is inside it. Ask what should be targeted — ${narrow} — before writing anything.`;
@@ -456,6 +500,9 @@ function hintFor(
     if (hit.kind === "foreign_country") {
       return `${surgical} And say this workspace ${holds}: there are no ${hit.country} leads in it either way, so the result speaks only for ${rest}.`;
     }
+    if (anonymousWhole) {
+      return `${surgical} The result then covers ${rest} — describe it as those places, NOT as the whole workspace.`;
+    }
     if (hit.kind === "country_indeterminate") {
       return `${surgical} This backend is custom-configured, so claim nothing about whether ${hit.country} is inside it — report the result as covering ${rest}.`;
     }
@@ -472,6 +519,9 @@ function hintFor(
     if (hit.kind === "foreign_country") {
       return `Nothing in this workspace is in ${hit.country}, so this exclusion changes nothing — it is a no-op, not an unsupported request. Drop ${hit.param} and say the result is unaffected. To carve something out for real, exclude ${narrow}.`;
     }
+    if (anonymousWhole) {
+      return `Excluding the whole workspace leaves nothing, and dropping ${hit.param} does the reverse of what was asked, returning every company instead. Neither is what the user wants: ask what they actually meant to carve out, then exclude ${narrow} instead.`;
+    }
     if (hit.kind === "country_indeterminate") {
       return `This backend is custom-configured, so whether ${hit.country} is inside this workspace is unknown — the exclusion may remove everything or nothing. Do not guess: ask what should be carved out, then exclude ${narrow}.`;
     }
@@ -480,6 +530,12 @@ function hintFor(
 
   if (hit.kind === "home_country") {
     return `Whole-workspace intent = OMIT ${hit.param} entirely, then say the result covers everything. To narrow, pass ${narrow}. Do NOT retry with another spelling or a nearby city.`;
+  }
+
+  if (anonymousWhole) {
+    // The request names no country, so there is nothing to hedge: omitting the
+    // argument answers it exactly. Only the country's NAME is withheld.
+    return `Whole-workspace intent = OMIT ${hit.param} entirely, then say the result covers everything in this workspace. ${unnamed} To narrow, pass ${narrow}. Do NOT retry with another spelling or a nearby city.`;
   }
 
   if (hit.kind === "country_indeterminate") {
@@ -714,16 +770,31 @@ export function countryLocationEnvelope(
 ): CountryLocationEnvelope {
   const message = hits.map((hit) => messageFor(hit, region)).join(" ");
 
+  // Every recovery below is phrased as "remove the value". For a country the
+  // guard only saw through an echoed NAME, removing the value is not enough and
+  // not even the right edit: the criterion selects it by ID, and a bare id is
+  // not classifiable (product#3939), so a re-call that dropped only the echoed
+  // name would persist the country filter past a guard that could no longer see
+  // it. Appended once for the whole request, after whichever recovery applies.
+  const selectedIds = [
+    ...new Set(
+      hits
+        .filter((hit) => hit.selectedId !== undefined)
+        .map((hit) => `"${hit.selectedId}" (echoed as "${hit.value}")`)
+    ),
+  ];
+  const idNote =
+    selectedIds.length === 0
+      ? ""
+      : ` ${selectedIds.length > 1 ? "These are" : "This is"} selected by ID, not by name: remove ${selectedIds.join(", ")} from the \`location_ids\` criterion in \`lens_filter.items[].criteria[]\` itself. Deleting the echoed \`locations.results[].name\` row alone leaves the id selected and the country filter in force.`;
+
   // Reconciled across the WHOLE request before anything per-argument is
   // emitted: one un-droppable exclusion fails the entire write closed, and a
   // per-argument hint sitting beside it would be a live instruction to perform
   // the mutation it forbids.
   if (intent === "write" && hits.some(excludeBlocksWrite)) {
-    return {
-      code: COUNTRY_LEVEL_LOCATION,
-      message,
-      hint: blockedWriteHint(hits, region),
-    };
+    const blocked = blockedWriteHint(hits, region) + idNote;
+    return { code: COUNTRY_LEVEL_LOCATION, message, hint: blocked };
   }
 
   // Hints are built PER ARGUMENT+AXIS, not per value. Two arguments genuinely
@@ -752,7 +823,8 @@ export function countryLocationEnvelope(
     if (group.length === 1) push(hintFor(group[0], region, intent, otherScope));
     else push(reconciledHint(group, region, intent, otherScope));
   }
-  return { code: COUNTRY_LEVEL_LOCATION, message, hint: hints.join(" ") };
+  const hint = hints.join(" ") + idNote;
+  return { code: COUNTRY_LEVEL_LOCATION, message, hint };
 }
 
 /**
@@ -1019,9 +1091,10 @@ export function detectCountryLocationsInFilter(
       hits.push(
         ...detectCountryLocations(
           name,
-          `filter.locations.${block}[].name`,
+          `filter.lens_filter.items[].criteria[].locations`,
           region,
-          axis
+          axis,
+          String(id)
         )
       );
     }

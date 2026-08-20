@@ -9,7 +9,7 @@ short_description: |
   creator-scoped campaign visibility model).
 arguments:
   - name: audience
-    description: "Natural-language audience description (e.g. 'plumbing companies with 10-50 employees in Seine-Maritime'). The lens-creation step (`leadbay_refine_prompt` → `leadbay_create_lens`) interprets it."
+    description: "Natural-language audience description (e.g. 'plumbing companies with 10-50 employees in Seine-Maritime'). The lens-creation step (`leadbay_refine_prompt` → `leadbay_create_lens`) interprets it. A country name is not a scope here — this workspace already covers exactly one country, so drop it and keep the rest of the description; a DIFFERENT country cannot be targeted at all."
     required: true
   - name: rep_split
     description: "Optional: how to split the validated leads into per-rep campaigns. Free text — e.g. 'split by city' or 'one campaign per rep: John gets Tulsa, Sarah gets OKC'. Splitting by country is not a split — the workspace is single-country."
