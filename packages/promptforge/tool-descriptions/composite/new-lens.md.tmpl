@@ -66,6 +66,8 @@ Create a brand-new lens (saved audience) and apply its sector/size criteria. Clo
 
 {{include:heuristics/single-country-universe}}
 
+**A new lens is a CLONE, and inherits the base lens's geography.** `base` defaults to the ACTIVE lens, so this applies even when no base was named. A criteria-less clone inherits the base audience wholesale, and adding sectors does not clear the base's location criteria either — so "nationwide healthcare" built on a Paris-scoped active lens creates a Paris healthcare lens under a nationwide name. Omitting `locations` is therefore not the same as having no geography. Read `lens://<base>/definition` before describing a new lens as workspace-wide, and say the scope is unverified if you cannot.
+
 **Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer `leadbay_my_lenses(switchToLensId=<new id>)` as a next step if they want to start pulling from it.
 
 **Leads compute asynchronously.** When the lens has criteria, applying the filter kicks off a backend wishlist rebuild — the `created` result carries `computing_wishlist:true`. An immediate `leadbay_pull_leads` may read empty for a few seconds while it computes; that lens is *warming up*, not empty. Wait ~30s before the first pull (or offer the user a re-pull). A criteria-less clone inherits the base lens's leads right away (`computing_wishlist:false`).

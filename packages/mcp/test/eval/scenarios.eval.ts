@@ -195,7 +195,9 @@ describe.skipIf(missing.length > 0)("eval: live scenarios", () => {
         turns: sc.mission.turns?.map((t) => t.prompt),
         transcript_dir,
         token: TOKEN,
-        region: process.env.LEADBAY_REGION ?? "us",
+        // No "us" fallback: see LiveSessionOptions.region. A custom base URL
+        // with no pin must stay unpinned so the client derives "custom".
+        region: process.env.LEADBAY_REGION,
       });
       const called = live.evidence.tool_calls.map((c) => c.name);
 

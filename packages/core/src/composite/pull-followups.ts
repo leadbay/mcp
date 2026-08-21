@@ -6,6 +6,7 @@ import { leadbay_pull_followups as PULL_FOLLOWUPS_DESCRIPTION } from "../tool-de
 import { resolveLocations } from "./_geo-helpers.js";
 import {
   countryLocationStatus,
+  setFilterCarriesOtherScope,
   detectCountryLocationsIn,
   detectCountryLocationsInSetFilter,
 } from "./_country-guard.js";
@@ -244,13 +245,9 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
       // What the caller asked for that ISN'T the country. A criterion of any
       // other type survives the recovery, and so does a `location_ids`
       // criterion that still holds a real place once the country comes off.
-      const requestedCriteria = Array.isArray(params.set_filter?.criteria)
-        ? params.set_filter.criteria
-        : [];
-      const survivingCriteria = requestedCriteria.some(
-        (criterion) =>
-          (criterion as { type?: string } | null)?.type !== "location_ids"
-      ) || countryHits.some((hit) => hit.kept.length > 0);
+      const survivingCriteria =
+        setFilterCarriesOtherScope(params.set_filter, client.region) ||
+        countryHits.some((hit) => hit.kept.length > 0);
 
       // Two different recoveries, and giving the wrong one destroys data.
       //

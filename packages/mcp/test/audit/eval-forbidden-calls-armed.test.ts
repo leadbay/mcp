@@ -55,10 +55,24 @@ describe("audit: forbidden_calls are armed before the session", () => {
     ).toMatch(/tool\.execute = async/);
   });
 
-  it("an unknown tool name in forbidden_calls is a hard error", () => {
+  it("a name that arms nothing is a hard error", () => {
     // Otherwise a rename or typo arms nothing, and the scenario reads as a pass
     // while protecting the tenant from nothing at all.
     expect(MCP_SERVER).toMatch(/unmatched/);
-    expect(MCP_SERVER).toMatch(/forbidden_calls names unknown tools/);
+    expect(MCP_SERVER).toMatch(/unknown tools/);
+  });
+
+  it("a real but UNEXPOSED tool is rejected too, with its own reason", () => {
+    // The sharper half. buildServer runs with includeAdvanced:false, so a
+    // granular name like leadbay_update_lens_filter can never be offered to the
+    // agent — arming against the full catalog marked it protected and left the
+    // forbidden_calls assertion vacuous. The two author errors need different
+    // fixes, so they are reported separately rather than as "unknown tool".
+    expect(MCP_SERVER).toMatch(/does not expose/);
+    expect(MCP_SERVER).toMatch(/includeAdvanced:false/);
+    expect(
+      MCP_SERVER,
+      "the denylist must be armed from the catalog the server actually exposes"
+    ).toMatch(/exposedCatalog/);
   });
 });

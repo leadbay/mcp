@@ -1163,6 +1163,41 @@ export function filterCarriesOtherScope(filter: unknown, region: GuardRegion): b
   return false;
 }
 
+/**
+ * Whether a Monitor `set_filter` still carries usable scope once the
+ * country-level values come off it.
+ *
+ * The first version of this test lived inline in `pull_followups` and rejected
+ * every criterion of type `location_ids` outright — on the assumption that a
+ * location criterion holding a country holds nothing else. It can:
+ * `{city: "France", set_filter: {criteria: [{type: "location_ids",
+ * locations: ["99"]}]}}` puts the offender on `city`, so no hit knows about the
+ * Paris id, and a type-only test then reported "nothing else was requested" and
+ * advised `filtered:false` — discarding exactly the scope the caller asked for.
+ * So the VALUES decide, not the type.
+ *
+ * No echoed-id discount here, unlike `filterCarriesOtherScope`: a Monitor
+ * `set_filter` is the raw criteria array the caller sent, with no denormalized
+ * `locations` block to cross-reference.
+ */
+export function setFilterCarriesOtherScope(
+  setFilter: unknown,
+  region: GuardRegion
+): boolean {
+  if (!setFilter || typeof setFilter !== "object") return false;
+  const criteria = (setFilter as Record<string, unknown>).criteria;
+  if (!Array.isArray(criteria)) return false;
+  for (const criterion of criteria) {
+    const record = criterion as Record<string, unknown> | null;
+    if (!record) continue;
+    // Any non-geo criterion is scope the recovery must not discard.
+    if (record.type !== "location_ids") return true;
+    const values = Array.isArray(record.locations) ? record.locations : [];
+    if (geoScopeSurvives([{ input: values, param: "locations" }], region)) return true;
+  }
+  return false;
+}
+
 export function detectCountryLocationsInFilter(
   filter: unknown,
   region: GuardRegion

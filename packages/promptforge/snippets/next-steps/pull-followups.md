@@ -2,8 +2,6 @@
 
 {{include:next-steps/ask-user-input-routing}}
 
-Always include at least one filter-modification offer (users think in filters: by city, by recency, by action type). Filter modification goes through `set_filter: FilterItem` which the composite POSTs to `/monitor/filter` server-side.
-
 | Observation | Suggest | Calls |
 |---|---|---|
 | Always (top of menu) | "Prep outreach for [top row's contact]" | leadbay_prepare_outreach(leadId) |

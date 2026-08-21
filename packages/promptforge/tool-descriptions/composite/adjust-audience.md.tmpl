@@ -58,6 +58,8 @@ Restrict (or expand) the lens audience by sector / size. Free-text sectors are a
 
 {{include:heuristics/single-country-universe}}
 
+**Widening to the whole workspace is NOT "pass no locations".** Location criteria MERGE here rather than replace, so any geography the lens already carries survives an edit that simply omits `locations`. "Make this healthcare nationwide" on a lens scoped to Paris returns Paris healthcare — and calling that nationwide is the same confidently-wrong answer as the country fence itself, just in the header instead of the filter. Read `lens://<lensId>/definition` FIRST: it is the only place a lens's `location_ids` are visible (`leadbay_pull_leads` returns only `lens: {id}`, and `leadbay_my_lenses` returns no filter at all). Then either clear those criteria explicitly, or state which places the audience actually covers. If you cannot read the definition, say the scope is unverified rather than calling it workspace-wide.
+
 {{include:headers/tool-when-to-use}} when the user wants to see different kinds of leads (sector / size / geography / etc.).
 
 {{include:headers/tool-when-not-to-use}} to refine BEYOND firmographics — that's leadbay_refine_prompt.

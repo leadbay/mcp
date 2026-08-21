@@ -16,6 +16,8 @@ The response has two arrays: `results` (top-10 prefix matches ranked by relevanc
 
 {{include:heuristics/single-country-universe}}
 
+**The include-axis recovery above does NOT apply to this tool.** "Omit the geo argument and the result covers everything" describes a tool that READS leads and can widen. This one resolves names to ids: `q` is REQUIRED, and the empty-`q` path returns no matches rather than workspace-wide data — so re-calling without it either fails validation or produces an empty lookup that would then be reported as full coverage. There is no country id to hand out and nothing to retry. Look up a place INSIDE the workspace instead; or, if the whole workspace was meant, skip this tool entirely — the tools that consume these ids just omit their geo argument.
+
 {{include:headers/tool-when-to-use}} to resolve a free-text city/region name before passing it to a `location_ids` filter (e.g. on `leadbay_pull_followups({set_filter})` or `leadbay_adjust_audience`). The composite `leadbay_pull_followups` accepts `city: <free-text>` directly and runs this resolver internally — prefer that path; reach for this granular tool only when you need to surface candidates to the user before committing.
 
 {{include:headers/tool-when-not-to-use}} when you already have an admin_area id — pass it as `city_id` (composite path) or directly inside the FilterCriterion.

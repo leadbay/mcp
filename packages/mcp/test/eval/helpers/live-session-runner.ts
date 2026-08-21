@@ -70,7 +70,16 @@ export interface LiveSessionOpts {
   model?: string;
   /** Leadbay API token. Falls back to LEADBAY_TOKEN env var. */
   token?: string;
-  /** Leadbay region ("us" or "fr"). Falls back to LEADBAY_REGION env var, then "us". */
+  /**
+   * Leadbay region ("us" or "fr"). Falls back to the LEADBAY_REGION env var,
+   * and then to nothing at all — deliberately NOT to "us". With
+   * LEADBAY_BASE_URL naming a custom/staging endpoint and no region supplied,
+   * a synthesized "us" is a claim nobody made: the live server would pass it to
+   * LeadbayClient, the country guard would assert the tenant holds United
+   * States companies only, and the run would report `_meta.region: "us"` for a
+   * tenant nobody identified. Undefined lets the client derive — known regional
+   * URLs still map to us/fr, anything else to "custom" (product#3951).
+   */
   region?: string;
 }
 
@@ -110,7 +119,7 @@ function writeEvalSettings(tmpDir: string): string {
 function writeMcpConfig(
   tmpDir: string,
   token: string,
-  region: string,
+  region: string | undefined,
   bulkStorePath: string,
 ): string {
   const configPath = join(tmpDir, "mcp-config.json");
@@ -122,7 +131,10 @@ function writeMcpConfig(
         args: [LIVE_SERVER_SRC],
         env: {
           LEADBAY_TOKEN: token,
-          LEADBAY_REGION: region,
+          // Emitted only when a region was actually supplied. An always-present
+          // key re-introduced the invented "us" one layer out from the fix in
+          // live-mcp-server.ts, which reads this very variable.
+          ...(region ? { LEADBAY_REGION: region } : {}),
           // Forwarded only when set, so a normal prod run is unchanged.
           ...(process.env.LEADBAY_BASE_URL
             ? { LEADBAY_BASE_URL: process.env.LEADBAY_BASE_URL }
@@ -343,7 +355,7 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
   const max_turns = opts.max_turns ?? 25;
 
   const token = opts.token ?? process.env.LEADBAY_TOKEN ?? "";
-  const region = opts.region ?? process.env.LEADBAY_REGION ?? "us";
+  const region = opts.region ?? process.env.LEADBAY_REGION;
 
   if (!token) {
     throw new Error("live-session-runner: LEADBAY_TOKEN env var or opts.token is required");

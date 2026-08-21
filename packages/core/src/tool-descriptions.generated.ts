@@ -491,6 +491,8 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
 
+**Widening to the whole workspace is NOT "pass no locations".** Location criteria MERGE here rather than replace, so any geography the lens already carries survives an edit that simply omits \`locations\`. "Make this healthcare nationwide" on a lens scoped to Paris returns Paris healthcare — and calling that nationwide is the same confidently-wrong answer as the country fence itself, just in the header instead of the filter. Read \`lens://<lensId>/definition\` FIRST: it is the only place a lens's \`location_ids\` are visible (\`leadbay_pull_leads\` returns only \`lens: {id}\`, and \`leadbay_my_lenses\` returns no filter at all). Then either clear those criteria explicitly, or state which places the audience actually covers. If you cannot read the definition, say the scope is unverified rather than calling it workspace-wide.
+
 WHEN TO USE: when the user wants to see different kinds of leads (sector / size / geography / etc.).
 
 WHEN NOT TO USE: to refine BEYOND firmographics — that's leadbay_refine_prompt.
@@ -2244,6 +2246,8 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
 
+**The include-axis recovery above does NOT apply to this tool.** "Omit the geo argument and the result covers everything" describes a tool that READS leads and can widen. This one resolves names to ids: \`q\` is REQUIRED, and the empty-\`q\` path returns no matches rather than workspace-wide data — so re-calling without it either fails validation or produces an empty lookup that would then be reported as full coverage. There is no country id to hand out and nothing to retry. Look up a place INSIDE the workspace instead; or, if the whole workspace was meant, skip this tool entirely — the tools that consume these ids just omit their geo argument.
+
 WHEN TO USE: to resolve a free-text city/region name before passing it to a \`location_ids\` filter (e.g. on \`leadbay_pull_followups({set_filter})\` or \`leadbay_adjust_audience\`). The composite \`leadbay_pull_followups\` accepts \`city: <free-text>\` directly and runs this resolver internally — prefer that path; reach for this granular tool only when you need to surface candidates to the user before committing.
 
 WHEN NOT TO USE: when you already have an admin_area id — pass it as \`city_id\` (composite path) or directly inside the FilterCriterion.
@@ -2508,6 +2512,8 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
+
+**A new lens is a CLONE, and inherits the base lens's geography.** \`base\` defaults to the ACTIVE lens, so this applies even when no base was named. A criteria-less clone inherits the base audience wholesale, and adding sectors does not clear the base's location criteria either — so "nationwide healthcare" built on a Paris-scoped active lens creates a Paris healthcare lens under a nationwide name. Omitting \`locations\` is therefore not the same as having no geography. Read \`lens://<base>/definition\` before describing a new lens as workspace-wide, and say the scope is unverified if you cannot.
 
 **Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer \`leadbay_my_lenses(switchToLensId=<new id>)\` as a next step if they want to start pulling from it.
 
@@ -2898,7 +2904,7 @@ Practical mapping from user phrasing to criterion:
 
 Geo filtering needs \`admin_area_id\` resolution — backend rejects free-text in \`location_ids\`. Pass \`city: "<free-text>"\` and the composite calls \`/geo/search\` internally, picks the best match, merges its id into \`set_filter\`. Ambiguous matches return \`status: "ambiguous_locations"\` + \`location_ambiguities[]\` — pick an id and re-call with \`city_id\`.
 
-A SUB-country token (\`"Berlin"\`, \`"Texas"\`) resolves via \`/geo/search\` when passed as \`city\`; in \`keywords\` it is a TEXT-MATCH on company descriptions (≈0 hits), not a filter. If it resolves ambiguously, surface the choices — never fall back silently to keyword search or the unfiltered view.
+In \`keywords\` a place name is a TEXT-MATCH on company descriptions (≈0 hits), not a filter — never fall back to it, nor to the unfiltered view, when a place is ambiguous.
 
 **One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 
@@ -2919,6 +2925,8 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
+
+**A whole-workspace read also needs \`filtered:false\`.** Omitting \`city\` does not widen this tool — \`filtered\` defaults to true, so a filter persisted earlier still applies and its stale cohort reads as everything. If other criteria were requested, re-send them in \`set_filter\` instead; \`active_filters\` reports what applied.
 
 **Pushback exclusion.** Leads with active pushback (\`pushback_status\` set, \`pushback_until > today\`) are excluded client-side; \`total_excluded_by_pushback\` reports how many rows were dropped.
 
@@ -3039,8 +3047,6 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 ---
 
 
-
-Always include at least one filter-modification offer (users think in filters: by city, by recency, by action type). Filter modification goes through \`set_filter: FilterItem\` which the composite POSTs to \`/monitor/filter\` server-side.
 
 | Observation | Suggest | Calls |
 |---|---|---|

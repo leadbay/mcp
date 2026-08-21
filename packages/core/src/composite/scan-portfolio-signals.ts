@@ -11,6 +11,7 @@ import { reshapeWebFetchContent } from "./_web-fetch-helpers.js";
 import { resolveLocations } from "./_geo-helpers.js";
 import {
   countryLocationStatus,
+  setFilterCarriesOtherScope,
   detectCountryLocationsIn,
   detectCountryLocationsInSetFilter,
 } from "./_country-guard.js";
@@ -328,13 +329,9 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
         // nothing else was requested: this tool sends `filtered` only when it
         // stored the filter itself, so dropping the geo argument really does
         // scan unfiltered. That case needs no caveat at all.
-        const requestedCriteria = Array.isArray(params.set_filter?.criteria)
-          ? params.set_filter.criteria
-          : [];
         const survivingCriteria =
-          requestedCriteria.some(
-            (criterion) => (criterion as { type?: string } | null)?.type !== "location_ids"
-          ) || countryHits.some((hit) => hit.kept.length > 0);
+          setFilterCarriesOtherScope(params.set_filter, client.region) ||
+          countryHits.some((hit) => hit.kept.length > 0);
         return {
           ...countryLocationStatus(
             countryHits,

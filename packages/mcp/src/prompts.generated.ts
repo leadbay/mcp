@@ -529,6 +529,17 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
 
+⚠ **On this prompt, omitting the geo argument is only HALF of a whole-workspace read.**
+\`leadbay_pull_followups\` defaults \`filtered\` to true, so dropping the country still reads
+the Monitor view through whatever filter a previous session persisted — an old city
+filter comes back as a small, plausible cohort and you would report it as everything.
+When the ask covers the whole workspace and nothing else was requested, pass
+\`filtered:false\`. When other criteria WERE requested (a sector, a recency window, a real
+city), re-send those in \`set_filter\` instead — that overwrites the stored filter, so
+\`filtered:false\` would throw away the very scope I asked for. Either way, read
+\`active_filters\` off the response and describe the scope from THAT, not from what you
+intended to send.
+
 **TRAVEL / IN-PERSON ROUTING** — when the user's intent is geographic and visual ("I'm going to NYC next week", "leads I should visit in person", "this week's trip", "show me followups in <city>", "plan my itinerary", "trip itinerary", "show on a map", "leads in Texas / California", or any phrasing that asks for a map / geographic / trip-planning view — INCLUDING state- and region-level place names, but NEVER a country):
 
 1. Call **\`leadbay_followups_map\`** (same params as \`pull_followups\`: \`city\` / \`city_id\` / \`set_filter\`). Same response shape — just the explicit entry-point so the agent and the host know to route geographically.

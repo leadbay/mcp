@@ -117,15 +117,18 @@ async function main(): Promise<void> {
       .filter(Boolean),
   );
   if (forbidden.size > 0) {
-    const catalog = [
-      ...agentMemoryTools,
-      ...compositeReadTools,
-      ...compositeWriteTools,
-      ...granularReadTools,
-      ...granularWriteTools,
-    ];
+    // Armed against the catalog this server actually EXPOSES, which is what
+    // buildServer is called with below: write tools yes, advanced/granular no.
+    // Arming against the full catalog looked stricter and was the opposite —
+    // a granular name like leadbay_update_lens_filter is never listed to the
+    // agent, so marking it "armed" satisfied the unmatched check while the
+    // forbidden_calls assertion for it stayed vacuous. The agent could not have
+    // called it either way, so the scenario claimed a protection it never
+    // exercised.
+    const exposedCatalog = [...agentMemoryTools, ...compositeReadTools, ...compositeWriteTools];
+    const unexposedCatalog = [...granularReadTools, ...granularWriteTools];
     const armed = new Set<string>();
-    for (const tool of catalog) {
+    for (const tool of exposedCatalog) {
       if (!forbidden.has(tool.name)) continue;
       armed.add(tool.name);
       tool.execute = async () => {
@@ -136,13 +139,23 @@ async function main(): Promise<void> {
         );
       };
     }
-    // A typo in forbidden_calls would otherwise arm nothing and read as a pass.
+
     const unmatched = [...forbidden].filter((name) => !armed.has(name));
     if (unmatched.length > 0) {
-      throw new Error(
-        `live-mcp-server: forbidden_calls names unknown tools: ${unmatched.join(", ")}. ` +
-          `An unrecognised name protects nothing — fix the scenario.`,
-      );
+      const unexposed = new Set(unexposedCatalog.map((tool) => tool.name));
+      // Two different author errors, and the fix differs, so they are named
+      // separately rather than lumped into "unknown tool".
+      const notExposed = unmatched.filter((name) => unexposed.has(name));
+      const unknown = unmatched.filter((name) => !unexposed.has(name));
+      const problems = [
+        unknown.length > 0
+          ? `unknown tools: ${unknown.join(", ")} (a name that matches nothing protects nothing)`
+          : undefined,
+        notExposed.length > 0
+          ? `tools this server does not expose: ${notExposed.join(", ")} — buildServer runs with includeAdvanced:false, so the agent is never offered them and forbidding them asserts nothing. Drop them from forbidden_calls, or expose the advanced surface for this scenario if the path is meant to be covered`
+          : undefined,
+      ].filter(Boolean);
+      throw new Error(`live-mcp-server: forbidden_calls names ${problems.join("; ")}.`);
     }
   }
 

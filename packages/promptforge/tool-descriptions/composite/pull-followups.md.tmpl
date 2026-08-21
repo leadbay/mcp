@@ -67,9 +67,11 @@ Practical mapping from user phrasing to criterion:
 
 Geo filtering needs `admin_area_id` resolution — backend rejects free-text in `location_ids`. Pass `city: "<free-text>"` and the composite calls `/geo/search` internally, picks the best match, merges its id into `set_filter`. Ambiguous matches return `status: "ambiguous_locations"` + `location_ambiguities[]` — pick an id and re-call with `city_id`.
 
-A SUB-country token (`"Berlin"`, `"Texas"`) resolves via `/geo/search` when passed as `city`; in `keywords` it is a TEXT-MATCH on company descriptions (≈0 hits), not a filter. If it resolves ambiguously, surface the choices — never fall back silently to keyword search or the unfiltered view.
+In `keywords` a place name is a TEXT-MATCH on company descriptions (≈0 hits), not a filter — never fall back to it, nor to the unfiltered view, when a place is ambiguous.
 
 {{include:heuristics/single-country-universe}}
+
+**A whole-workspace read also needs `filtered:false`.** Omitting `city` does not widen this tool — `filtered` defaults to true, so a filter persisted earlier still applies and its stale cohort reads as everything. If other criteria were requested, re-send them in `set_filter` instead; `active_filters` reports what applied.
 
 **Pushback exclusion.** Leads with active pushback (`pushback_status` set, `pushback_until > today`) are excluded client-side; `total_excluded_by_pushback` reports how many rows were dropped.
 

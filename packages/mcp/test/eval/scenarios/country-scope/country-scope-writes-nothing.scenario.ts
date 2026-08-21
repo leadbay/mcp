@@ -61,7 +61,11 @@ export const SCENARIO = {
     forbidden_calls: [
       "leadbay_new_lens",
       "leadbay_adjust_audience",
-      "leadbay_update_lens_filter",
+      // leadbay_update_lens_filter is deliberately NOT here. It is a granular
+      // tool, and the live eval server runs with includeAdvanced:false, so the
+      // agent is never offered it — forbidding it asserted nothing while
+      // reading like coverage. Its country guard is proven by
+      // core/test/unit/tools/update-lens-filter-country-guard.test.ts instead.
       // PHASE 0 of leadbay_refine_audience terminates for a country-only ask:
       // rewriting the audience prompt would overwrite the user's qualitative
       // refinement and kick off an intelligence recompute to express a scope the
