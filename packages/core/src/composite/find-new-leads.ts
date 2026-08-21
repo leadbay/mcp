@@ -25,6 +25,7 @@ import {
   rejectCountryLocations,
   rejectMalformedExclusions,
   rejectOversizedExclusions,
+  snapshotAfterSubmit,
   splitItems,
   TERMINAL_JOB_STATES,
   waitForJob,
@@ -383,16 +384,15 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       params.wait_seconds,
       DEFAULT_WAIT_SECONDS
     );
-    const snapshot =
-      waitSeconds > 0
-        ? await waitForJob(client, submit.job_id, waitSeconds, ctx, params.count)
-        : await collectJobSnapshot(
-            client,
-            submit.job_id,
-            undefined,
-            undefined,
-            ctx?.signal
-          );
+    // Every failure past this point must carry submit.job_id: the job exists
+    // and may be spending, and this handle is the only way back to it.
+    const snapshot = await snapshotAfterSubmit(
+      client,
+      submit.job_id,
+      waitSeconds,
+      ctx,
+      params.count
+    );
 
     const done = TERMINAL_JOB_STATES.has(snapshot.job.state);
     const { leads, skipped } = splitItems(snapshot);
@@ -417,21 +417,31 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       leads,
       skipped,
       items_truncated: snapshot.items_truncated ?? false,
+      // Top-level, not only inside next_poll: on a TERMINAL job that truncated,
+      // next_poll used to be null, so the rendering rule telling the agent to
+      // fetch the rest with `since: next_since` named a cursor the response did
+      // not contain. The rows are paid for; the way to reach them cannot be
+      // conditional on the job still running.
+      next_since: snapshot.next_since ?? null,
       cost: snapshot.cost,
       estimated_cost: submit.estimated_cost,
       explain: snapshot.explain,
       still_running: !done,
-      next_poll: done
-        ? null
-        : {
-            tool: "leadbay_lead_job_status",
-            job_id: submit.job_id,
-            // Hand the cursor forward so the follow-up poll continues
-            // INCREMENTALLY instead of re-reading (and re-rendering) the
-            // rows already delivered in this response.
-            since: snapshot.next_since ?? null,
-            suggested_wait_seconds: 60,
-          },
+      // A finished job can still owe rows: truncation means the drain stopped
+      // early, so there is a follow-up action even when done is true. It is a
+      // page fetch, not a wait, hence suggested_wait_seconds 0.
+      next_poll:
+        done && !(snapshot.items_truncated ?? false)
+          ? null
+          : {
+              tool: "leadbay_lead_job_status",
+              job_id: submit.job_id,
+              // Hand the cursor forward so the follow-up poll continues
+              // INCREMENTALLY instead of re-reading (and re-rendering) the
+              // rows already delivered in this response.
+              since: snapshot.next_since ?? null,
+              suggested_wait_seconds: done ? 0 : 60,
+            },
       region: client.region,
     };
   },

@@ -7,7 +7,7 @@ import {
   MCP_JOB_POLL,
 } from "../../../src/composite/_mcp-job-helpers.js";
 
-type Opts = { signal?: AbortSignal; timeoutMs?: number };
+type Opts = { signal?: AbortSignal; timeoutMs?: number; totalTimeoutMs?: number };
 
 const snapshot = (state: string) => ({
   job: { state },
@@ -58,26 +58,26 @@ describe("job snapshots are bounded by the caller's wait budget", () => {
     expect(opts).toHaveLength(1);
     // Before the fix this was undefined: wait_seconds was enforced only by the
     // loop condition, which is not evaluated until the first GET has returned.
-    expect(opts[0].timeoutMs).toBeDefined();
-    expect(opts[0].timeoutMs!).toBeLessThanOrEqual(5000);
+    expect(opts[0].totalTimeoutMs).toBeDefined();
+    expect(opts[0].totalTimeoutMs!).toBeLessThanOrEqual(5000);
   });
 
   it("never lets a snapshot outlive the requested wait", async () => {
     const { client, opts } = stubClient(() => snapshot("completed"));
     await waitForJob(client, "job-1", 1);
-    expect(opts[0].timeoutMs!).toBeLessThanOrEqual(1000);
+    expect(opts[0].totalTimeoutMs!).toBeLessThanOrEqual(1000);
   });
 
   it("caps a generous wait at the per-request ceiling", async () => {
     const { client, opts } = stubClient(() => snapshot("completed"));
     await waitForJob(client, "job-1", 600);
-    expect(opts[0].timeoutMs).toBe(SNAPSHOT_TIMEOUT_MS);
+    expect(opts[0].totalTimeoutMs).toBe(SNAPSHOT_TIMEOUT_MS);
   });
 
   it("gives a zero-wait poll a bound of its own", async () => {
     const { client, opts } = stubClient(() => snapshot("running"));
     await collectJobSnapshot(client, "job-1");
-    expect(opts[0].timeoutMs).toBe(SNAPSHOT_TIMEOUT_MS);
+    expect(opts[0].totalTimeoutMs).toBe(SNAPSHOT_TIMEOUT_MS);
   });
 
   it("keeps the job_id when the first read times out, rather than losing a paid job", async () => {
@@ -134,7 +134,7 @@ describe("the wait bounds the whole drain, not each page of it", () => {
       await waitForJob(client, "job-1", 5, undefined, undefined, undefined, 2);
 
       expect(opts.length).toBeGreaterThan(1);
-      const budgets = opts.map((o) => o.timeoutMs!);
+      const budgets = opts.map((o) => o.totalTimeoutMs!);
       // STRICTLY decreasing: each page is bounded by what is LEFT, so the drain
       // as a whole cannot outlast the wait. A per-page budget would hold flat.
       for (let i = 1; i < budgets.length; i++) {

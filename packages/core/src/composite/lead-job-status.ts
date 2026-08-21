@@ -100,15 +100,18 @@ export const leadJobStatus: Tool<LeadJobStatusParams, any> = {
       cost: snapshot.cost,
       explain: snapshot.explain,
       still_running: !done,
-      next_poll: done
-        ? null
-        : {
+      // Truncation leaves rows unread even on a finished job, so the follow-up
+      // action survives `done` — same rule as the two submit tools.
+      next_poll:
+        done && !(snapshot.items_truncated ?? false)
+          ? null
+          : {
             tool: "leadbay_lead_job_status",
             job_id: params.job_id,
             // Same incremental handoff as the submit tools — following
             // next_poll without the cursor re-reads the rows just returned.
             since: snapshot.next_since ?? null,
-            suggested_wait_seconds: 60,
+            suggested_wait_seconds: done ? 0 : 60,
           },
       region: client.region,
     };

@@ -226,7 +226,9 @@ export async function collectJobSnapshot(
   const remaining = () => deadlineAt - Date.now();
   let page = await client.request<McpJobSnapshot>("GET", qs(since), undefined, {
     signal,
-    timeoutMs: remaining(),
+    // totalTimeoutMs, not timeoutMs: what is left of the wait must cover a 401
+    // backoff and its retry too, or a blip buys the poll a second full budget.
+    totalTimeoutMs: remaining(),
   });
   const items = [...page.items];
   // The resumption cursor must survive an empty drain page. Following
@@ -256,7 +258,7 @@ export async function collectJobSnapshot(
       "GET",
       qs(page.next_since),
       undefined,
-      { signal, timeoutMs: remaining() }
+      { signal, totalTimeoutMs: remaining() }
     );
     items.push(...next.items);
     pages += 1;
@@ -320,12 +322,13 @@ function cancelledError(jobId: string): unknown {
 }
 
 // Each snapshot gets whatever is LEFT of the caller's wait, capped by the
-// per-request ceiling. Floored at 1s so a nearly-spent budget still makes a
-// real attempt rather than a request born already expired; the loop condition
-// is what actually ends the wait, so this floor cannot extend it by more than
-// one in-flight read.
+// per-request ceiling. NOT floored: a 1s floor let a final poll run a full
+// second past an already-spent budget, so `wait_seconds: 1` took ~2s, and any
+// fractional wait overran on the very first snapshot. Callers guard against
+// polling at all once the budget is gone, so the only job left here is to
+// clamp a positive budget.
 function snapshotBudget(remainingMs: number): number {
-  return Math.min(SNAPSHOT_TIMEOUT_MS, Math.max(remainingMs, 1000));
+  return Math.min(SNAPSHOT_TIMEOUT_MS, Math.max(remainingMs, 1));
 }
 
 function isTimeout(e: unknown): boolean {
@@ -340,9 +343,56 @@ function jobReadTimedOutError(jobId: string, waitSeconds: number): unknown {
   return {
     error: true,
     code: "JOB_READ_TIMEOUT",
+    // Structured, not just interpolated: a caller recovering programmatically
+    // should not have to parse the message to find the handle.
+    job_id: jobId,
     message: `Job ${jobId} was submitted and is running, but its status could not be read within ${waitSeconds}s.`,
     hint: `Pass job_id ${jobId} to leadbay_lead_job_status to read it — the job is backend-owned, still running, and its results are kept for 30 days.`,
   };
+}
+
+/** Attach the job handle to ANY post-submit failure.
+ *
+ *  Once the submit has returned, a backend-owned job exists — it may be
+ *  spending right now — and the job_id is the only way back to it. A polling
+ *  failure that propagates bare (an abort, a connection reset, a 502 from the
+ *  status endpoint) therefore strands paid work: the caller sees an error with
+ *  no handle and cannot poll, cancel, or even find out what it bought. */
+export function jobHandleError(jobId: string, cause: unknown): unknown {
+  const c = cause as
+    | { code?: string; message?: string; job_id?: string; hint?: string }
+    | undefined;
+  if (c?.job_id === jobId) return cause; // already carries the handle
+  return {
+    error: true,
+    code: c?.code ?? "JOB_READ_FAILED",
+    job_id: jobId,
+    message: `Job ${jobId} was submitted and is running, but reading its status failed: ${
+      c?.message ?? String(cause)
+    }`,
+    hint: `Pass job_id ${jobId} to leadbay_lead_job_status to read it — the job is backend-owned, keeps running whatever happened to this call, and its results are kept for 30 days.`,
+  };
+}
+
+/** The post-submit read, for both submit tools.
+ *
+ *  Wraps the wait/zero-wait branch so no failure path can drop the handle —
+ *  previously only a TIMEOUT on the block-waiting branch preserved it, and the
+ *  zero-wait branch preserved nothing at all. */
+export async function snapshotAfterSubmit(
+  client: LeadbayClient,
+  jobId: string,
+  waitSeconds: number,
+  ctx?: ToolContext,
+  itemsRequested?: number
+): Promise<McpJobSnapshot> {
+  try {
+    return waitSeconds > 0
+      ? await waitForJob(client, jobId, waitSeconds, ctx, itemsRequested)
+      : await collectJobSnapshot(client, jobId, undefined, undefined, ctx?.signal);
+  } catch (e) {
+    throw jobHandleError(jobId, e);
+  }
 }
 
 /** Poll until the job is terminal or `waitSeconds` elapse (0 = single poll).
@@ -401,6 +451,10 @@ export async function waitForJob(
       ctx?.signal
     );
     if (ctx?.signal?.aborted) break;
+    // Re-check AFTER the sleep. The sleep above can consume the entire
+    // remainder, and polling anyway is how a bounded wait overran: the request
+    // that follows would be granted a budget the caller no longer has.
+    if (remainingMsOf() <= 0) break;
     // A cancel landing mid-flight rejects this request. We already hold a good
     // snapshot, so return it instead of surfacing an AbortError: the user
     // cancelled the WAIT, not the job, and the job keeps running backend-side.

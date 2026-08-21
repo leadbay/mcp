@@ -22,6 +22,7 @@ import {
   derivedKey,
   mockedSubmitPreview,
   compactBody,
+  snapshotAfterSubmit,
   splitItems,
   TERMINAL_JOB_STATES,
   waitForJob,
@@ -443,22 +444,15 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
       params.wait_seconds,
       DEFAULT_WAIT_SECONDS
     );
-    const snapshot =
-      waitSeconds > 0
-        ? await waitForJob(
-            client,
-            submit.job_id,
-            waitSeconds,
-            ctx,
-            submit.items_requested
-          )
-        : await collectJobSnapshot(
-            client,
-            submit.job_id,
-            undefined,
-            undefined,
-            ctx?.signal
-          );
+    // Every failure past this point must carry submit.job_id: the job exists
+    // and may be spending, and this handle is the only way back to it.
+    const snapshot = await snapshotAfterSubmit(
+      client,
+      submit.job_id,
+      waitSeconds,
+      ctx,
+      submit.items_requested
+    );
 
     const done = TERMINAL_JOB_STATES.has(snapshot.job.state);
 
@@ -510,21 +504,28 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
       // both split. `items` stays for input-order per-ref mapping.
       ...splitItems(view),
       items_truncated: snapshot.items_truncated ?? false,
+      // Top-level, not only inside next_poll: a TERMINAL job that truncated had
+      // next_poll null, so the rendering rule pointing at `since: next_since`
+      // named a cursor the response did not carry.
+      next_since: snapshot.next_since ?? null,
       cost: snapshot.cost,
       estimated_cost: submit.estimated_cost,
       explain: snapshot.explain,
       still_running: !done,
-      next_poll: done
-        ? null
-        : {
-            tool: "leadbay_lead_job_status",
-            job_id: submit.job_id,
-            // Hand the cursor forward so the follow-up poll continues
-            // INCREMENTALLY instead of re-reading (and re-rendering) the
-            // rows already delivered in this response.
-            since: snapshot.next_since ?? null,
-            suggested_wait_seconds: 60,
-          },
+      // A finished job can still owe rows: truncation means the drain stopped
+      // early, so there is a follow-up action even when done is true.
+      next_poll:
+        done && !(snapshot.items_truncated ?? false)
+          ? null
+          : {
+              tool: "leadbay_lead_job_status",
+              job_id: submit.job_id,
+              // Hand the cursor forward so the follow-up poll continues
+              // INCREMENTALLY instead of re-reading (and re-rendering) the
+              // rows already delivered in this response.
+              since: snapshot.next_since ?? null,
+              suggested_wait_seconds: done ? 0 : 60,
+            },
       region: client.region,
     };
   },

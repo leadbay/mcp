@@ -561,21 +561,38 @@ export class LeadbayClient {
     // that omits it keeps the unconditional re-acquire, which is what preserves
     // the balance for the paths that do not track ownership.
     held?: { value: boolean },
-    // Absolute deadline shared by BOTH attempts and the re-acquisition between
-    // them. `timeoutMs` alone would give the retry a fresh full budget, so a
-    // 401 could double the wait the caller asked for.
-    deadlineAt?: number
+    // Absolute ceiling for the WHOLE call — every phase, retry included. It is
+    // separate from `timeoutMs` because the two answer different questions:
+    // `timeoutMs` bounds one attempt (what the hosted auth probe needs, since
+    // its 250ms 401-backoff outlasts a 200ms probe budget), while this bounds
+    // what the caller waits in total (what a job snapshot needs, since a 401
+    // must not buy the poll a second full wait_seconds). A caller may set
+    // either, both, or neither.
+    totalDeadlineAt?: number
   ): Promise<HttpResult> => {
-    // Throws rather than returning 0: httpsRequest treats a non-positive
-    // timeoutMs as "no deadline", so passing the spent budget through would
-    // silently restore the unbounded behaviour this is here to remove.
-    const firstBudget = (): number | undefined => {
-      if (deadlineAt === undefined) return timeoutMs;
-      const left = deadlineAt - Date.now();
+    // Budget for a phase starting NOW: the earlier of "one more attempt" and
+    // "what is left of the whole call". Throws rather than returning 0 —
+    // httpsRequest reads a non-positive timeout as "no deadline", so passing a
+    // spent budget through would silently restore unbounded behaviour.
+    const phaseBudget = (): number | undefined => {
+      const now = Date.now();
+      const perAttempt = timeoutMs !== undefined ? now + timeoutMs : undefined;
+      const deadline =
+        totalDeadlineAt === undefined
+          ? perAttempt
+          : perAttempt === undefined
+          ? totalDeadlineAt
+          : Math.min(perAttempt, totalDeadlineAt);
+      if (deadline === undefined) return undefined;
+      const left = deadline - now;
       if (left <= 0) throw timeoutError(`Request deadline expired: ${method} ${url}`);
       return left;
     };
-    const res = await httpsRequest(method, url, headers, body, firstBudget(), signal);
+    const phaseDeadline = (): number | undefined => {
+      const b = phaseBudget();
+      return b === undefined ? undefined : Date.now() + b;
+    };
+    const res = await httpsRequest(method, url, headers, body, phaseBudget(), signal);
     if (res.status === 401 && method.toUpperCase() === "GET") {
       // Check BEFORE letting go of the slot: an already-cancelled call that
       // releases here has to re-queue behind every other waiter just to hand
@@ -601,21 +618,17 @@ export class LeadbayClient {
         // here would leave that caller's `finally` decrementing a slot it never
         // obtained, drifting the counter permanently — so those paths keep the
         // unconditional re-acquire instead.
-        // FRESH window, measured from here — after the backoff, not before it.
-        // `timeoutMs` is documented as bounding a single attempt, and the
-        // hosted auth probe depends on that: its 250ms 401-backoff alone
-        // outlasts a 200ms probe budget, so a deadline that started before the
-        // sleep would delete the retry rather than bound it.
-        await this.acquireSemaphore(
-          held ? signal : undefined,
-          timeoutMs !== undefined ? Date.now() + timeoutMs : undefined
-        );
+        // Measured from HERE — after the backoff, not before it. A per-attempt
+        // window that started before the 250ms sleep would already be spent,
+        // deleting the retry rather than bounding it. The total ceiling still
+        // applies on top, so a caller that asked for a hard total gets one.
+        await this.acquireSemaphore(held ? signal : undefined, phaseDeadline());
         if (held) held.value = true;
       }
       // Don't burn the retry on a call cancelled during the backoff: the caller
       // is gone, and the retry would only make the wait longer.
       if (signal?.aborted) return res;
-      return httpsRequest(method, url, headers, body, timeoutMs, signal);
+      return httpsRequest(method, url, headers, body, phaseBudget(), signal);
     }
     return res;
   };
@@ -624,9 +637,15 @@ export class LeadbayClient {
     method: string,
     path: string,
     body?: unknown,
-    // `timeoutMs` bounds a single attempt (each retry gets its own deadline) and
+    // `timeoutMs` bounds a single ATTEMPT (each retry gets its own window) and
     // surfaces as a `TIMEOUT`-coded Error — never an auth code, so a caller that
     // classifies failures reads it as a transient fault.
+    //
+    // `totalTimeoutMs` bounds the WHOLE call — queue wait, socket, 401 backoff
+    // and retry together. Callers whose own contract is a total (a job poll
+    // spending what is left of wait_seconds) pass this; callers that want each
+    // attempt to get a fair shot (the auth probe, whose backoff outlasts its
+    // per-attempt budget) pass timeoutMs. Setting both enforces both.
     //
     // Two cancellation scopes, because a paid POST needs half of one:
     //   `signal`        — full cancellation. Aborts the queue wait AND the
@@ -641,6 +660,7 @@ export class LeadbayClient {
     opts?: {
       retryOn401?: boolean;
       timeoutMs?: number;
+      totalTimeoutMs?: number;
       signal?: AbortSignal;
       preSendSignal?: AbortSignal;
     }
@@ -664,13 +684,25 @@ export class LeadbayClient {
     // wait on unrelated in-flight requests to drain first. A pre-send-only
     // signal governs the queue wait too — that phase is exactly what it covers.
     const held = { value: true };
-    // Start the clock BEFORE queueing. `timeoutMs` is the caller's total budget
-    // for this call, and time spent waiting for a slot is time they waited.
-    const deadlineAt =
-      opts?.timeoutMs !== undefined ? Date.now() + opts.timeoutMs : undefined;
+    // Start the clock BEFORE queueing: time spent waiting for a slot is time the
+    // caller waited, so both bounds must already be running here.
+    const startedAt = Date.now();
+    const totalDeadlineAt =
+      opts?.totalTimeoutMs !== undefined
+        ? startedAt + opts.totalTimeoutMs
+        : undefined;
+    const phaseDeadlineAt = (): number | undefined => {
+      const now = Date.now();
+      const perAttempt =
+        opts?.timeoutMs !== undefined ? now + opts.timeoutMs : undefined;
+      if (totalDeadlineAt === undefined) return perAttempt;
+      if (perAttempt === undefined) return totalDeadlineAt;
+      return Math.min(perAttempt, totalDeadlineAt);
+    };
     const remainingBudget = (): number | undefined => {
-      if (deadlineAt === undefined) return undefined;
-      const left = deadlineAt - Date.now();
+      const deadline = phaseDeadlineAt();
+      if (deadline === undefined) return undefined;
+      const left = deadline - Date.now();
       // Never hand back 0: httpsRequest reads a non-positive timeout as "no
       // deadline at all", which would turn an exhausted budget into an
       // unbounded request.
@@ -679,7 +711,7 @@ export class LeadbayClient {
     };
     await this.acquireSemaphore(
       opts?.signal ?? opts?.preSendSignal,
-      deadlineAt
+      phaseDeadlineAt()
     );
     try {
       // Last point at which "nothing has been sent" is still true. A submit
@@ -706,7 +738,7 @@ export class LeadbayClient {
             opts?.timeoutMs,
             opts?.signal,
             held,
-            deadlineAt
+            totalDeadlineAt
           )
         : await httpsRequest(
             method,
