@@ -1,0 +1,18 @@
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so `"France"` matches the *commune of Francs* and `"United States"` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On `code: "COUNTRY_LEVEL_LOCATION"` read `country_locations[].axis` and `[].kind` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+`axis: "include"`:
+
+- `home_country`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (`city` / `locations` / `location_ids`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- `foreign_country` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- `supranational` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- `country_indeterminate` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+`axis: "exclude"` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (`new_lens`, `adjust_audience`, `update_lens_filter`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY `foreign_country` or `supranational` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-`foreign_country` `exclude` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read `_meta.region` on any tool result — it outranks any recalled memory; on `custom`, claim nothing.
+
+Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.

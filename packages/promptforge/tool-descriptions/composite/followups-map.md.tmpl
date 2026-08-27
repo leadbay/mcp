@@ -18,7 +18,7 @@ routing:
       route_to: leadbay_pull_followups
     - phrase: "new prospects"
       route_to: leadbay_pull_leads
-  prefer_when: "geographic, travel, in-person, itinerary, or map intent"
+  prefer_when: "geographic, travel, in-person, itinerary, or map intent; NEVER a country name — a whole-country ask means NO geo filter"
   examples:
     positive:
       - "I'm flying to New York Thursday — who should I meet in person?"
@@ -44,7 +44,9 @@ Plot the user's follow-up leads on an interactive map — the canonical surface 
 
 **Common city aliases resolve automatically** — `NYC` / `New York` → City of New York, `SF` / `S.F.` → San Francisco, `LA` / `L.A.` → Los Angeles, `DC` / `Washington D.C.` → Washington, `Philly` → Philadelphia, `Vegas` → Las Vegas, `NOLA` → New Orleans. Pass either an abbreviation, a city name, or a pre-resolved `city_id`. Ambiguous matches surface as `status: "ambiguous_locations"` + `location_ambiguities[]` — pick an id and re-call with `city_id`.
 
-**`city` is the universal geo arg — it resolves any admin level.** Despite the name, pass any place name there: states (`"Texas"`, `"California"`, `"Bavaria"`), countries (`"France"`, `"United States"`), regions (`"New England"`, `"Bay Area"`), neighborhoods (`"Brooklyn"`, `"SoHo"`), or cities. The `/geo/search` resolver indexes all levels — level 4 (state), level 2 (country), level 5 (city) — and the composite picks the best match. **Never** put a place name into `keywords` instead — that's a text-match against company descriptions, not a real geo filter (e.g. `keywords: ["Texas"]` returns ≈0 hits even when the user has dozens of Texas leads). If `keywords: ["<PlaceName>"]` returned empty, the correct next call is `city: "<PlaceName>"`, NOT the unfiltered Monitor view.
+**`city` is the universal SUB-country geo arg.** Despite the name, pass any place name BELOW country level: states (`"Texas"`, `"California"`), regions (`"New England"`, `"Bay Area"`), counties, neighborhoods (`"Brooklyn"`, `"SoHo"`), or cities — the `/geo/search` resolver indexes every level it returns and the composite picks the best match. A COUNTRY name is the one thing it must never receive (rule below). And `keywords: ["Texas"]` returns ≈0 hits even when the user has dozens of Texas leads — that's a text-match against company descriptions, not a geo filter. If `keywords: ["<PlaceName>"]` returned empty, the correct next call is `city: "<PlaceName>"`, NOT the unfiltered Monitor view.
+
+{{include:heuristics/single-country-universe}}
 
 ---
 

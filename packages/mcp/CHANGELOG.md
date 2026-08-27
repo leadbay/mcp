@@ -1,5 +1,103 @@
 # Changelog — @leadbay/mcp
 
+## 0.30.0 — 2026-08-19
+
+Encode the **single-country rule** across every location-accepting surface
+(product#3951). Each backend serves exactly ONE country, so a country name is
+never a location criterion — whole-country intent means omitting the filter.
+It never failed loudly: the admin-area index excludes country nodes
+(product#3885), so the value trigram-matched a same-named town ("France" → the
+commune of Francs, "United States" → Statesboro) and silently fenced the search
+to one village. 3/3 sessions in the 2026-08-02 acceptance eval passed one; an FR
+session burned six variants inside that fence before answering wrongly.
+
+- **The descriptions were telling the agent to do it.** This was a
+  contradiction sweep, not a missing rule. `followups-map.md.tmpl:47` said to
+  pass `countries ("France", "United States")` and advertised
+  `level 2 (country)` as searchable; `pull-followups`, `adjust-audience`,
+  `new-lens`, `tour-plan` and the `leadbay_followup_check_in` prompt each
+  legitimized country-level values. All rewritten to enumerate the levels the
+  argument accepts. (Their `"Bavaria"` examples went too — a German region on a
+  US/FR-only product.)
+- **New shared snippet** `heuristics/single-country-universe.md`, included by 8
+  tool descriptions and 5 prompts, carrying the rule, the measured failure and
+  a recovery that branches — because one recovery is wrong for most cases.
+  `country_locations[].axis` and `[].kind` decide it: only the HOME country on
+  the INCLUDE axis means "omit the argument". A foreign country is unsupported,
+  not unfiltered (re-running unfiltered answers a France question with US
+  leads). On the EXCLUDE axis omitting is the inverse of the request. And when
+  the argument carries a real place beside the country, only the country comes
+  off — "keep the city, drop the country".
+- **Mechanical rejection** in `_country-guard.ts` + `_country-names.ts` (full
+  ISO 3166-1, English + French, no new dependency). Delivered in each tool's own
+  idiom: composites return `status: "country_level_location"` and write nothing,
+  `update_lens_filter` throws (including on `dry_run`), `list_locations` returns
+  its empty envelope. Always the first statement of `execute`, so a bad value
+  costs zero HTTP.
+- **Exemptions that keep real prospecting working:** a `sovereign` field
+  (Guadeloupe/Martinique/Réunion/Guyane valid on FR, Puerto Rico/Guam on US),
+  region homonyms (Georgia the state, Jersey), and no foreign alpha-2 rejection
+  on US, where 26 ISO codes double as state postal codes. Test sweeps over all
+  50 states + postal codes and all 13 régions + 101 départements hold the line.
+- **New audit** `test/audit/single-country-rule.test.ts` — asserts the rule is
+  present in all 11 surfaces AND that none of them still says a country is a
+  valid geo value, so the pre-fix state is unmergeable. It imports
+  `COUNTRY_LEVEL_LOCATION` from core so a rename cannot leave the prose
+  teaching a recovery for an error that no longer exists.
+- **`WORKFLOWS.md`**: row 39 gains the country-is-not-a-territory rule and a
+  success criterion; new row 52 "Country-wide scope — omit the location filter"
+  with its contract.
+- **Writes stop rather than retry.** On `new_lens` / `adjust_audience` /
+  `update_lens_filter`, "drop the country and re-call" persists a lens change
+  expressing a scope the workspace already has — the mutation WORKFLOWS.md
+  forbids for this ask. The guard stops instead, but only when the country was
+  the request's ONLY scope: a sector, a size or a real place elsewhere in the
+  request is written as asked. An exclusion that is not a foreign country
+  blocks the write outright whatever else survives, since dropping it persists
+  the opposite of what was asked.
+- **The country is read, never inferred.** `_meta.region` is the only evidence
+  of which country a workspace serves; the user's wording is not, and
+  `agent_memory_capture` must never store it — a wrong country there is
+  replayed as remembered fact.
+- **Two eval scenarios** under `test/eval/scenarios/country-scope/` (over- and
+  under-deliver). Gated behind `EVAL=1`; CI protection is the audit. Run live
+  on FR and US staging tenants: no country value reached a geo argument on any
+  call, no lens was written, no country was captured to memory, and the country
+  named in each answer traced to `_meta.region`.
+- Freed the budget for the snippet by de-padding the `pull-followups` NEXT
+  STEPS table (1109 chars of markdown column alignment, no content change) —
+  that tool was 52 chars from the 17000 cap.
+- **Closed four holes found reviewing the above.** (1) The wrapper list caught
+  "across the United States" and "dans toute la France" but not the bare
+  prepositions that carry most real traffic — `in the United States`,
+  `en France`, `aux États-Unis`, `dans la France` — so the plainest spelling of
+  the bug was the one that still reached `/geo/search`. (2) `EU` and
+  `European Union` were covered while **`UE` / `Union européenne`** were not, on
+  the one backend whose users write French; the French supra-national spellings
+  are in now. (3) A `set_filter` carrying a country BESIDE a real criterion
+  emitted one hint that said both "say the result covers everything" and "never
+  as covering everything" — the `otherScope` flag was consulted only for writes,
+  and both read call sites hardcoded `false` while computing the true value one
+  line above. The hint and its sibling caveat now derive from one fact.
+  (4) `leadbay_top_accounts_to_activate` rendered with `territory: "France"`
+  opened with "pass it as `locations` on the lens" — an instruction to make the
+  exact call the rest of the prompt forbids, ~35 lines above the branch that
+  would have corrected it. The substituted sentence now carries the country
+  caveat itself. The existing audit could not see any of this: it reads the
+  UNRENDERED body, where that sentence is still `{{arg:territory_block}}`, so
+  `test/audit/prompt-rendered-country-args.test.ts` renders each prompt with
+  hostile arguments instead.
+- The shared snippet documented a weaker rule than the code enforces: it named
+  the write-stop for a country-only scope and for non-foreign exclusions, but
+  not for a **foreign / supra-national INCLUDE carrying other criteria**, which
+  the guard does stop. An agent following the snippet could pre-strip the
+  country and save a home-country lens for a territory nobody asked about,
+  never reaching the guard at all.
+
+Known gap: a country passed as an already-resolved numeric admin-area id stays
+invisible client-side (deciding whether id "1234" is a country needs a lookup
+this client does not have). Tracked in product#3939; a test records it.
+
 ## 0.28.0 — 2026-07-31
 
 Add **`leadbay_top_accounts_to_activate`** — a prompt that builds a ranked

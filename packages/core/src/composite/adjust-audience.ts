@@ -9,6 +9,11 @@ import type {
 } from "../types.js";
 
 import { resolveLocations } from "./_geo-helpers.js";
+import {
+  countryLocationStatus,
+  geoScopeSurvives,
+  detectCountryLocationsIn,
+} from "./_country-guard.js";
 import { leadbay_adjust_audience as ADJUST_AUDIENCE_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface AdjustAudienceParams {
   sectors?: string[];           // free text or sector ids
@@ -306,17 +311,17 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
         type: "array",
         items: { type: "string" },
         description:
-          "Geographic scope — free text (e.g. ['Indre-et-Loire', 'Bavaria', 'Austin']) or admin-area ids. Auto-resolved via /geo/search across all admin levels (city / county / département / région / state / country). Place names go HERE, never in sectors/keywords.",
+          "Geographic scope — free text (e.g. ['Indre-et-Loire', 'Texas', 'Austin']) or admin-area ids. Resolved via /geo/search at any level from state down to city (state / région / département / county / city). NEVER a country name — this workspace serves exactly ONE country, so a whole-country ask means passing NO location at all (rejected with COUNTRY_LEVEL_LOCATION). Place names go HERE, never in sectors/keywords.",
       },
       location_ids: {
         type: "array",
         items: { type: "string" },
-        description: "Explicit admin-area ids (skips /geo/search resolution)",
+        description: "Explicit admin-area ids (skips /geo/search resolution). Sub-country areas only — a country name here is rejected with COUNTRY_LEVEL_LOCATION.",
       },
       exclude_locations: {
         type: "array",
         items: { type: "string" },
-        description: "Locations to exclude (free text or ids)",
+        description: "Locations to exclude (free text or ids). Sub-country areas only — excluding a country is meaningless on a single-country workspace and is rejected.",
       },
       lensId: { type: "number", description: "Lens id (escape hatch)" },
       lensName: {
@@ -340,12 +345,18 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
   outputSchema: {
     type: "object",
     description:
-      "Return shapes: 'applied' on success; 'ambiguous_sectors' when free-text sectors matched multiple candidates (re-call with sector_ids); 'ambiguous_locations' when free-text locations didn't resolve to one area — re-call with the chosen id via the SAME axis it came from (an include pick → location_ids; an EXCLUDE pick → exclude_locations, NOT location_ids, which would include it); 'lens_not_found' / 'ambiguous_lens' when a lensName didn't resolve to exactly one lens (re-call with lensId or an exact lensName).",
+      "Return shapes: 'applied' on success; 'ambiguous_sectors' when free-text sectors matched multiple candidates (re-call with sector_ids); 'ambiguous_locations' when free-text locations didn't resolve to one area — re-call with the chosen id via the SAME axis it came from (an include pick → location_ids; an EXCLUDE pick → exclude_locations, NOT location_ids, which would include it); 'country_level_location' when a country-level value was passed as a location (nothing was read or written; read `hint` — re-calling without the value is often itself wrong); 'lens_not_found' / 'ambiguous_lens' when a lensName didn't resolve to exactly one lens (re-call with lensId or an exact lensName).",
     properties: {
       status: {
         type: "string",
         description:
-          "'applied', 'ambiguous_sectors', 'ambiguous_locations', 'lens_not_found', or 'ambiguous_lens'.",
+          "'applied', 'ambiguous_sectors', 'ambiguous_locations', 'country_level_location', 'lens_not_found', or 'ambiguous_lens'.",
+      },
+      country_locations: {
+        type: "array",
+        description:
+          "On 'country_level_location': per offending value {value, param, kind, country, axis, kept}. A country name is never a location criterion — each workspace serves exactly ONE country. The lens was NOT modified. The recovery BRANCHES on `country_locations[].axis` and `[].kind`; `hint` states the one for THIS call — follow it verbatim. When the country was the ONLY scope, or on ANY non-foreign `exclude`, the answer is to write NOTHING at all — re-calling with the value merely dropped persists a scope that inverts the request. Never retry with another spelling or a nearby city.",
+        items: { type: "object" },
       },
       sector_ambiguities: {
         type: "array",
@@ -395,6 +406,54 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
     params: AdjustAudienceParams,
     ctx?: ToolContext
   ) => {
+    // Country-level geo values are rejected before the FIRST request. This
+    // tool MERGES criteria as a union rather than replacing them, so a bad
+    // value that got through would permanently add a village-sized fence to
+    // the lens filter — bailing here means nothing is read and nothing is
+    // written (product#3951).
+    const geoParams = [
+      { input: params.locations, param: "locations" },
+      { input: params.location_ids, param: "location_ids" },
+      { input: params.exclude_locations, param: "exclude_locations", axis: "exclude" as const },
+    ];
+    const countryHits = detectCountryLocationsIn(geoParams, client.region);
+    if (countryHits.length > 0) {
+      // Same narrowing as new_lens: a sector or size adjustment riding along
+      // with a redundant country is a legitimate write, and only the
+      // country-ONLY request is the forbidden one.
+      const otherScope =
+        (params.sectors?.length ?? 0) > 0 ||
+        (params.sector_ids?.length ?? 0) > 0 ||
+        (params.exclude_sectors?.length ?? 0) > 0 ||
+        (params.sizes?.length ?? 0) > 0 ||
+        geoScopeSurvives(geoParams, client.region);
+      const envelope = countryLocationStatus(
+        countryHits,
+        client.region,
+        "write",
+        otherScope
+      );
+
+      // This tool MERGES into the lens's existing filter rather than replacing
+      // it, so the shared recovery's "the lens then carries no geo criterion" is
+      // a claim about a filter nobody has read. On a lens already scoped to
+      // Paris, `{sectors:["Healthcare"], locations:["France"]}` drops the
+      // country, merges Healthcare into the Paris criterion, and the result is
+      // Paris healthcare described as nationwide — the same confidently-wrong
+      // deliverable as the fence this guard exists to prevent, reached through
+      // the guard's own advice.
+      //
+      // Attached only where a re-call is actually authorized; the write-stop
+      // branches forbid one and must not read as though one were on the table.
+      if (!/re-call ONCE/.test(envelope.hint)) return envelope;
+      const lensRef =
+        params.lensId !== undefined ? String(params.lensId) : "<the lens being edited>";
+      return {
+        ...envelope,
+        hint: `${envelope.hint} Before that re-call, read \`lens://${lensRef}/definition\` — location criteria MERGE here rather than replace, so any geography the lens already carries survives the re-call untouched. \`leadbay_pull_leads\` returns only \`lens: {id}\` and \`leadbay_my_lenses\` returns no filter, so neither can tell you what it is. If the lens is already scoped to a place, the edited audience stays scoped to it: say which places it actually covers, or clear those criteria first if whole-workspace is what was meant.`,
+      };
+    }
+
     const me = await client.resolveMe();
     const isAdmin = me.admin === true;
 

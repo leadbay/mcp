@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.30.0 — 2026-08-19 — Country-wide means country-wide
+
+- **Asking for leads "anywhere in the US" no longer searches one village.**
+  Your Leadbay covers exactly one country, so a whole-country ask now means
+  *everything* — no location filter — and the answer says so.
+- **Naming your own country used to quietly break the search.** There is no
+  "France" or "United States" to filter on, so the search fell through to the
+  nearest same-named town: France landed on the commune of Francs, the United
+  States on Statesboro. Every answer after that was drawn from one village,
+  with nothing on screen to show it. Country names are now refused up front,
+  with the reason and the fix.
+- **Asking to scope a lens to your own country now gets an explanation**, not a
+  silently-broken lens — plus the ways that do narrow an audience: sector,
+  company size, or a region, state, county or city. Nothing is saved to say
+  something your workspace already is.
+- **Asking for a country that isn't yours gets told so**, instead of quietly
+  handing back your own country's leads as if they answered. And asking to
+  EXCLUDE your own country stops rather than doing the opposite of what you
+  asked.
+- **The rest of your request survives.** Ask for healthcare companies in your
+  country and you get the healthcare lens; name a city alongside the country
+  and the city is kept.
+- **Regions inside your country still work exactly as before** — Texas,
+  Île-de-France, Indre-et-Loire, Guadeloupe, Puerto Rico, and every US state
+  by name or two-letter code.
+
 ## 0.29.0 — 2026-08-17 — Guided first-run walkthrough
 
 - **New: "Walk me through Leadbay."** A brand-new user now learns Leadbay by

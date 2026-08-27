@@ -67,30 +67,40 @@ function substitutePlaceholders(
   return out;
 }
 
+/**
+ * `prompts/list` argument metadata, sourced from the generated file.
+ *
+ * These used to be hand-copied into the catalog below, and they drifted: seven
+ * argument descriptions no longer matched their templates, including every one
+ * carrying the single-country warning (product#3951). The audit asserted the
+ * GENERATED text and passed, while `prompts/list` served the stale hand-written
+ * copy — so a guard the audit proved existed was never actually delivered to a
+ * client. Reading them here makes the .md.tmpl frontmatter the only place an
+ * argument description is written.
+ */
+function promptArguments(name: keyof typeof PROMPT_META): PromptArgument[] {
+  return PROMPT_META[name].arguments.map(
+    (argument: { name: string; description: string; required: boolean }) => ({ ...argument })
+  );
+}
+
 const CATALOG: CatalogEntry[] = [
   {
     name: "leadbay_daily_check_in",
     description: PROMPT_META.leadbay_daily_check_in.short_description,
-    arguments: [],
+    arguments: promptArguments("leadbay_daily_check_in"),
     render: () => [userMessage(leadbay_daily_check_in)],
   },
   {
     name: "leadbay_prospecting_overview",
     description: PROMPT_META.leadbay_prospecting_overview.short_description,
-    arguments: [],
+    arguments: promptArguments("leadbay_prospecting_overview"),
     render: () => [userMessage(leadbay_prospecting_overview)],
   },
   {
     name: "leadbay_research_a_domain",
     description: PROMPT_META.leadbay_research_a_domain.short_description,
-    arguments: [
-      {
-        name: "domain",
-        description:
-          "Company name or domain (for example 'Acme Corporation' or 'acme.com'). The legacy argument key remains `domain` for client compatibility.",
-        required: true,
-      },
-    ],
+    arguments: promptArguments("leadbay_research_a_domain"),
     render: (args) => [
       userMessage(
         substitutePlaceholders(leadbay_research_a_domain, {
@@ -102,20 +112,7 @@ const CATALOG: CatalogEntry[] = [
   {
     name: "leadbay_import_file",
     description: PROMPT_META.leadbay_import_file.short_description,
-    arguments: [
-      {
-        name: "file",
-        description:
-          "Path or user-visible name of the CSV/file to import. If omitted, use the file the user attached or referenced.",
-        required: false,
-      },
-      {
-        name: "instruction",
-        description:
-          "Additional user goal, e.g. 'then qualify the leads', 'preserve owner phone as a custom field', or 'only import restaurants in Manhattan'.",
-        required: false,
-      },
-    ],
+    arguments: promptArguments("leadbay_import_file"),
     render: (args) =>
       [
         userMessage(
@@ -131,14 +128,7 @@ const CATALOG: CatalogEntry[] = [
   {
     name: "leadbay_refine_audience",
     description: PROMPT_META.leadbay_refine_audience.short_description,
-    arguments: [
-      {
-        name: "instruction",
-        description:
-          "The refinement (e.g. 'focus on hospitals running their own IT'). Set to plain English.",
-        required: true,
-      },
-    ],
+    arguments: promptArguments("leadbay_refine_audience"),
     render: (args) => [
       userMessage(
         substitutePlaceholders(leadbay_refine_audience, {
@@ -150,19 +140,7 @@ const CATALOG: CatalogEntry[] = [
   {
     name: "leadbay_log_outreach",
     description: PROMPT_META.leadbay_log_outreach.short_description,
-    arguments: [
-      {
-        name: "lead_id",
-        description: "The lead UUID. Get it from leadbay_pull_leads or leadbay_research_lead_by_id.",
-        required: true,
-      },
-      {
-        name: "summary",
-        description:
-          "1-2 sentences describing what I did (e.g. 'Sent intro email to CTO citing recent Hornsea contract').",
-        required: true,
-      },
-    ],
+    arguments: promptArguments("leadbay_log_outreach"),
     render: (args) => [
       userMessage(
         substitutePlaceholders(leadbay_log_outreach, {
@@ -175,20 +153,7 @@ const CATALOG: CatalogEntry[] = [
   {
     name: "leadbay_plan_tour_in_city",
     description: PROMPT_META.leadbay_plan_tour_in_city.short_description,
-    arguments: [
-      {
-        name: "city",
-        description:
-          "City or region the user is visiting (e.g. 'Limoges', 'Bay Area'). Used as the geo filter for both Monitor and Discover lookups.",
-        required: true,
-      },
-      {
-        name: "date",
-        description:
-          "When the visit is (e.g. 'May 24', 'next Thursday'). Surfaced in the outreach drafts as 'I'll be in <city> on <date>'.",
-        required: false,
-      },
-    ],
+    arguments: promptArguments("leadbay_plan_tour_in_city"),
     render: (args) => [
       userMessage(
         substitutePlaceholders(leadbay_plan_tour_in_city, {
@@ -202,32 +167,7 @@ const CATALOG: CatalogEntry[] = [
   {
     name: "leadbay_build_campaign",
     description: PROMPT_META.leadbay_build_campaign.short_description,
-    arguments: [
-      {
-        name: "audience",
-        description:
-          "Optional: a fresh audience to target (e.g. 'dental clinics in Texas'). Omit to build from your ACTIVE lens — the default.",
-        required: false,
-      },
-      {
-        name: "campaign_name",
-        description:
-          "Optional: a name for the campaign. Omit and one is derived from the lens/audience + date (or the backend AI-names it).",
-        required: false,
-      },
-      {
-        name: "count",
-        description:
-          "Optional: how many fully-actionable leads to build (default 20). The loop keeps discovering, qualifying and enriching until this many in-ICP leads each have a reachable target-title contact — or the lens is exhausted. Higher counts take longer and consume more quota.",
-        required: false,
-      },
-      {
-        name: "job_titles",
-        description:
-          "Optional: the exact buyer job titles to enrich, comma-separated (e.g. 'VP Sales, Head of Growth, Director of Business Development'). Omit and the buyer persona is derived from what you sell. A lead only counts toward the target when it has a reachable contact matching one of these titles.",
-        required: false,
-      },
-    ],
+    arguments: promptArguments("leadbay_build_campaign"),
     render: (args) => {
       const n = args.count ?? "20";
       return [
@@ -251,20 +191,7 @@ const CATALOG: CatalogEntry[] = [
   {
     name: "leadbay_setup_team_prospecting",
     description: PROMPT_META.leadbay_setup_team_prospecting.short_description,
-    arguments: [
-      {
-        name: "audience",
-        description:
-          "Natural-language audience description (e.g. 'plumbing companies with 10-50 employees in Seine-Maritime').",
-        required: true,
-      },
-      {
-        name: "rep_split",
-        description:
-          "Optional: how to split validated leads into per-rep campaigns. Free text (e.g. 'split by city', 'one campaign per rep').",
-        required: false,
-      },
-    ],
+    arguments: promptArguments("leadbay_setup_team_prospecting"),
     render: (args) => [
       userMessage(
         substitutePlaceholders(leadbay_setup_team_prospecting, {
@@ -279,20 +206,7 @@ const CATALOG: CatalogEntry[] = [
   {
     name: "leadbay_work_campaign",
     description: PROMPT_META.leadbay_work_campaign.short_description,
-    arguments: [
-      {
-        name: "campaign",
-        description:
-          "Campaign name (fuzzy match) or campaign UUID. Omit to list and pick interactively.",
-        required: false,
-      },
-      {
-        name: "mode",
-        description:
-          "Optional: skip readiness proposal and jump to 'call_sheet', 'email_sheet', 'map', or 'enrich_first'. Omit to let the prompt propose based on campaign data.",
-        required: false,
-      },
-    ],
+    arguments: promptArguments("leadbay_work_campaign"),
     render: (args) => [
       userMessage(
         substitutePlaceholders(leadbay_work_campaign, {
@@ -305,14 +219,7 @@ const CATALOG: CatalogEntry[] = [
   {
     name: "leadbay_qualify_top_n",
     description: PROMPT_META.leadbay_qualify_top_n.short_description,
-    arguments: [
-      {
-        name: "count",
-        description:
-          "How many leads to qualify (default 10, max 25). Higher counts may take 5+ minutes.",
-        required: false,
-      },
-    ],
+    arguments: promptArguments("leadbay_qualify_top_n"),
     render: (args) => {
       const n = args.count ?? "10";
       return [
@@ -327,28 +234,23 @@ const CATALOG: CatalogEntry[] = [
   {
     name: "leadbay_top_accounts_to_activate",
     description: PROMPT_META.leadbay_top_accounts_to_activate.short_description,
-    arguments: [
-      {
-        name: "count",
-        description:
-          "Optional: how many accounts the plan should hold (default 50).",
-        required: false,
-      },
-      {
-        name: "territory",
-        description:
-          "Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire'). Sets geography on the Discover lens via `locations`.",
-        required: false,
-      },
-    ],
+    arguments: promptArguments("leadbay_top_accounts_to_activate"),
     render: (args) => {
       const n = args.count ?? "50";
       return [
         userMessage(
           substitutePlaceholders(leadbay_top_accounts_to_activate, {
             count_or_default: n,
+            // The country caveat is INSIDE the substituted string, not only in
+            // the prompt body, because this sentence is the FIRST instruction
+            // the agent reads and the body's country branch is ~35 lines below
+            // it. Rendered with `territory: "France"`, the old wording told the
+            // agent in its opening paragraph to pass a country as `locations` —
+            // the exact call this prompt later forbids (product#3951). The
+            // audit could not see it either: it reads prompts.generated.ts,
+            // where this is still an unexpanded `{{arg:territory_block}}`.
             territory_block: args.territory
-              ? `Scope the plan to **${args.territory}** — pass it as \`locations\` on the lens, never as a sector.`
+              ? `Scope the plan to **${args.territory}** — but ONLY if it names a place INSIDE this workspace's country (state / région / département / county / city): pass that as \`locations\` on the lens, never as a sector. If **${args.territory}** is a country or a supra-national area (EU, EMEA), it is NOT a location filter — do not pass it as \`locations\` at all; follow the country branch below instead.`
               : "",
           }),
         ),
@@ -361,7 +263,7 @@ const CATALOG: CatalogEntry[] = [
     // their own onboarding defeats the point.
     name: "leadbay_getting_started",
     description: PROMPT_META.leadbay_getting_started.short_description,
-    arguments: [],
+    arguments: promptArguments("leadbay_getting_started"),
     render: () => [userMessage(leadbay_getting_started)],
   },
 ];

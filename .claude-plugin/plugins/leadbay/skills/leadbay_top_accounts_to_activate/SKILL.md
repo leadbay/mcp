@@ -9,7 +9,7 @@ description: "Build a ranked account-conquest plan from Leadbay data — the acc
 Before responding, glance at any `_meta.agent_memory.summary` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call `leadbay_agent_memory_capture` to persist it: `source:"user_stated"` if literal, `source:"inferred"` with confidence <=6 if inferred.
 
 
-Build me a **top-<the user-supplied value if any; otherwise a sensible default. Source: Optional: how many accounts the plan should hold (default 50).> account-conquest plan** — the accounts worth activating, ranked, each one carrying a strategic motif, a phone pitch and a three-step checklist. <if the user supplied this argument, render the short block derived from it; otherwise empty. Source: Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire', 'Région Ouest'). Sets geography on the Discover lens.>
+Build me a **top-<the user-supplied value if any; otherwise a sensible default. Source: Optional: how many accounts the plan should hold (default 50).> account-conquest plan** — the accounts worth activating, ranked, each one carrying a strategic motif, a phone pitch and a three-step checklist. <if the user supplied this argument, render the short block derived from it; otherwise empty. Source: Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire', 'Région Ouest'). Sets geography on the Discover lens. A country is not a territory — this workspace already covers exactly one country.>
 
 This deliverable goes in front of a paying client, so **the honesty of the numbers matters more than their completeness**. Deliver the strongest plan the available data actually supports, and be explicit about what it doesn't.
 
@@ -114,7 +114,7 @@ Call `leadbay_account_status` for my quota and active lens.
 
 Say that scope in one line up front, so nobody reads the ranking as a money sort. If I ask for a cash-ranked plan, tell me plainly that it needs my invoicing extract and that the MCP has no path to it today — then deliver this plan anyway rather than stopping.
 
-**DELIVER FIRST, ASK ALONGSIDE — never gate the plan on a missing input.** Only ONE thing can stop you before you have shipped a ranked list of real accounts: not knowing **whose** plan this is (a company-identity mismatch you genuinely cannot resolve). Everything else is a question you carry *next to* the delivered plan, not a reason to withhold it:
+**DELIVER FIRST, ASK ALONGSIDE — never gate the plan on a missing input.** Only TWO things can stop you before you have shipped a ranked list of real accounts: not knowing **whose** plan this is (a company-identity mismatch you genuinely cannot resolve), and a `territory` naming a country that is NOT this workspace's own — or a supra-national scope (see the country branch below, which overrides this rule for that one case). The second is an exception for the same reason as the first: both would ship a plan about the wrong companies. Delivering a whole-workspace plan under a "France" heading is not a partial answer, it is a wrong one. Everything else is a question you carry *next to* the delivered plan, not a reason to withhold it:
 
 - **No benchmark?** Costs nothing here — the money column is OMITTED regardless. Pull, qualify, rank by the Leadbay signal, deliver, and mention what a cash-ranked version would need.
 - **No Tier-1 threshold?** Not a blocker. Deliver, and ask alongside.
@@ -131,7 +131,45 @@ If I gave a `territory`, scope discovery to it now, and **make sure the scoping 
   ⚠ **Location criteria MERGE — they do not replace.** `adjust_audience` unions the new `location_ids` into any existing include-location criterion (and `pull_followups` merges its `city` shortcut the same way). So asking for "Région Ouest" on a lens already scoped to Paris yields **Paris OR Région Ouest** while your header claims Région Ouest. Before adding a territory, check the current filter: if it already carries locations you were not asked to keep, clear or replace them (or build a fresh territory-only lens for this one-off plan) rather than stacking a union.
 - **If a new lens is genuinely warranted: `leadbay_new_lens` is a two-step call.** It returns `status:"preview"` and creates NOTHING unless you re-call the same args with `confirm:true`. So: preview → confirm → take `lens.id` from the `created` response → pass that id as `lensId` on every subsequent pull. Never continue on the previous active lens after previewing a new one; that delivers the old audience under a new heading.
 
-A place name goes to `locations`, never to `sectors` or a refine prompt.
+If the `territory` I named is a country, which one decides what you do:
+
+- **This workspace's own country** → make no scope CHANGE, but do not claim national
+  coverage until you have READ the lens. `leadbay_pull_leads` keeps applying my ACTIVE
+  lens, and this prompt already warns that lens may be scoped to a city, a sector or a
+  rep patch. On an FR tenant whose active lens is Paris-only, a `territory: "France"`
+  plan is a Paris plan — and "covers all of France" printed above it is exactly the
+  confidently wrong deliverable this whole gate exists to stop, this time in my own
+  header rather than in a filter.
+  **Read the `lens://<id>/definition` resource** — that is the only place a lens's
+  `location_ids` are visible. `leadbay_pull_leads` returns only `lens: {id}`, not the
+  filter, and `active_filters` describes the separately-persisted MONITOR filter, not
+  the Discover lens; neither can settle this and neither is a substitute (same rule as
+  the Monitor-mirroring section below). Then say ONE of: the lens really is
+  workspace-wide, or it is scoped to `<the places its filter names>` — offering to clear
+  that scope if national is what I meant. If you genuinely cannot read the definition,
+  say the scope is unverified rather than calling it national. Then offer sector / size
+  / sub-country region as the axes that would actually narrow it.
+- **A different country, or a supra-national scope** → do NOT simply drop the scope and build the plan anyway. An unfiltered plan is this workspace's own accounts, which is not an answer to a request about somewhere else — delivering it under my heading would be a confidently wrong plan. Say the ask cannot be filled from this workspace and stop. **This is the one case that overrides DELIVER FIRST above**: shipping the plan anyway is the failure, not the fix.
+
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so `"France"` matches the *commune of Francs* and `"United States"` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On `code: "COUNTRY_LEVEL_LOCATION"` read `country_locations[].axis` and `[].kind` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+`axis: "include"`:
+
+- `home_country`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (`city` / `locations` / `location_ids`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- `foreign_country` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- `supranational` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- `country_indeterminate` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+`axis: "exclude"` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (`new_lens`, `adjust_audience`, `update_lens_filter`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY `foreign_country` or `supranational` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-`foreign_country` `exclude` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read `_meta.region` on any tool result — it outranks any recalled memory; on `custom`, claim nothing.
+
+Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.
+
 
 # PHASE 1 — THE FIVE QUALIFICATION QUESTIONS
 

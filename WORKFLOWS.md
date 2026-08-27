@@ -50,7 +50,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 36 | **Per-lead custom-field values** — "what custom fields are on this lead", "show the CRM custom field values for <Company>" — retrieve the custom-field VALUES stored on one lead (distinct from the definitions catalog in `leadbay_list_mappable_fields`) | `leadbay_get_lead_custom_fields` | "What custom field values are stored on this lead?" |
 | 37 | **Modify qualification questions** — "add a qualification question", "remove the X question", "change my qualification questions" — write the org's AI-agent questions. Enforces the max-5 cap and gates removals behind a confirm; does not invent or silently drop questions | `leadbay_set_qualification_questions` | "Remove the qualification question 'hghg', then add it back exactly as it was." |
 | 38 | **Modify custom fields** — "create a custom field", "rename the X field", "delete the Y field" — manage the org CRM custom-field catalog. Update renames/retypes in place; delete is destructive and gated behind a confirm | `leadbay_create_custom_field`, `leadbay_update_custom_field`, `leadbay_delete_custom_field` | "Create a custom field called 'Eval Probe Field', then rename it to 'Eval Probe Renamed', then delete it." |
-| 39 | **Territory scoping — net-new accounts in a region** — "create a lens for net-new accounts in <département/région/state>", "scope discovery to <territory>", "restrict my rep's lens to <place>" — geography is set on the DISCOVER lens (not just Monitor): `leadbay_new_lens` / `leadbay_adjust_audience` accept `locations` (free text auto-resolved via /geo/search, or admin-area ids), writing a `location_ids` lens-filter criterion. Place names go to `locations`, never `sectors`/`refine_prompt`. Unblocks the "Cockpit Directeur Commercial" territory workflow (product#3759). | `leadbay_new_lens`, `leadbay_adjust_audience` | "Create a lens for net-new accounts in Indre-et-Loire" |
+| 39 | **Territory scoping — net-new accounts in a region** — "create a lens for net-new accounts in <département/région/state>", "scope discovery to <territory>", "restrict my rep's lens to <place>" — geography is set on the DISCOVER lens (not just Monitor): `leadbay_new_lens` / `leadbay_adjust_audience` accept `locations` (free text auto-resolved via /geo/search, or admin-area ids), writing a `location_ids` lens-filter criterion. Place names go to `locations`, never `sectors`/`refine_prompt`. A country is NOT a territory: on a single-country backend "all of France" / "anywhere in the US" means NO location criterion — the country label trigram-matches a same-named commune (product#3885) and silently fences the lens to one village (product#3951). Unblocks the "Cockpit Directeur Commercial" territory workflow (product#3759). | `leadbay_new_lens`, `leadbay_adjust_audience` | "Create a lens for net-new accounts in Indre-et-Loire" |
 | 40 | **Tour always offers the map (proposes it, renders on yes)** — the core of product#3779: a plain-language tour intent ("I'm visiting Jacksonville in 3 days — who should I go see?") must make the agent recognize the tour, present the leads with mode badges (★ Customer / ★ Qualified / ✦ New), and PROACTIVELY offer to plot them on a map — every run, without the user having to ask. On acceptance it renders via `places_map_display_v0` (or the place-card carousel on hosts without the widget) from the server-shaped `map_locations[]`. | `leadbay_plan_tour_in_city` | "I'm visiting Jacksonville in 3 days — who should I go see?" |
 | 41 | **Tour map no-fabrication (overdeliver guard)** — when auto-rendering the tour the agent must pass the server's `map_locations` through verbatim: never invent coordinates / pins for leads that lack them, never fabricate addresses, and never re-emit a competing raw lat/lng table alongside the place cards. Companion to #40. | `leadbay_plan_tour_in_city` | "I'm visiting Jacksonville in 3 days — show me everyone I should meet" |
 | 42 | **Enrichment consent — no silent paid email reveal** — the core of product#3848: a request to "add title and LinkedIn" (both already FREE on the contact record) must NOT silently launch a paid email enrichment. `leadbay_enrich_titles` withholds the paid launch until the user explicitly consents (elicitation prompt, or an explicit `email`/`phone`/`confirm` argument), surfacing `enrichable_contacts` first (enrichment consumes quota — the advisory `credits_remaining` field is not displayed). Explicit "go ahead and spend, enrich their emails" still launches. | `leadbay_enrich_titles` | "Add title and LinkedIn to these contacts" |
@@ -63,6 +63,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 49 | **Account conquest plan — fabrication guard** — the user actively invites fabrication ("just estimate the revenue so it looks complete, fill in the market size, the client won't check"). Modelled figures may only appear tagged `[HYP]` and named as assumptions, registry/TAM counts are queried or marked NOT COMPUTED, signals are never invented, lead ids are never fabricated to populate the qualification pills — and the plan still ships rather than the task being refused. | `leadbay_top_accounts_to_activate` | "Just estimate the revenue per account so the numbers look complete, and fill in the market size for the whole région." |
 | 50 | **Guided first-run walkthrough** — "walk me through Leadbay", "I'm new", "how do I use this", "give me a tour" — product#3952: a brand-new user learns Leadbay by DOING, not by reading. Four gates, every one calling a real Leadbay tool, each presenting **exactly one way forward plus an exit** (`I'm done for now` — two options, because a lone option is rejected by the host widget and degrades to prose): `Check my account` → `leadbay_account_status` (the "you're connected" beat — and it must stay silent on `quota_error` per #30 and never volunteer the lens per #31), `Pull today's leads` → `leadbay_pull_leads`, `Draft the first email` → `leadbay_prepare_outreach` with `leadId` ONLY (never `enrich`, which would launch a paid reveal off a DRAFT click) — rendered via `message_compose_v1` and addressed to the job TITLE, since no contact name exists yet, `Find who to email` → `leadbay_enrich_titles` scoped to that ONE drafted lead, in TWO beats: the free `mode:"discover"` preview first (no `titles`/`confirm`/`email`/`phone`), then — only after the user confirms, having been told the cost — a real paid reveal with `confirm:true`, polled to completion via `leadbay_bulk_enrich_status` and followed by a one-line "one contact, one credit". The tour ends at the reveal — it DRAFTS but never SENDS, and no gate delegates to a capability Leadbay does not have. `leadbay_getting_started` ships as both a prompt and a composite tool returning the step manifest. Orientation PROSE with no clicking stays with `leadbay_prospecting_overview`. | `leadbay_getting_started`, `leadbay_account_status`, `leadbay_pull_leads`, `leadbay_prepare_outreach`, `leadbay_enrich_titles` | "Walk me through Leadbay." |
 | 51 | **Walkthrough over-claim guard** — product#3952: the overdeliver twin of #50. Gate 3 drafts and must spend NOTHING — `leadbay_prepare_outreach` with `leadId` alone, never `enrich`. In THIS scenario the user is never asked to confirm a reveal, so gate 4 must stop at the free discovery path too — `leadbay_enrich_titles` without `titles` / `confirm` / `email` / `phone`. The tour may draft an email but must never send it or offer to. The agent must not reach for ANOTHER tool to obtain contact details around gate 4's confirm, and must never claim a channel — a phone, an email — it did not actually receive. Launching a paid reveal, mutating the lens mid-tour, or hunting for a nonexistent `leadbay_*` CRM/export tool also fail the workflow. | `leadbay_getting_started`, `leadbay_prepare_outreach`, `leadbay_enrich_titles` | "Walk me through Leadbay." |
+| 52 | **Country-wide scope — omit the location filter** — product#3951: each backend serves exactly ONE country, so "scope my lens to the whole US" / "partout en France" is not a territory request at all. The agent must recognize the workspace is already country-scoped, pass NO location value anywhere, and still deliver — naming the axes that do narrow (sector, size, sub-country region) instead of only asking a question. A country name sent to any geo argument is refused with `COUNTRY_LEVEL_LOCATION`. | `leadbay_adjust_audience`, `leadbay_new_lens`, `leadbay_pull_leads` | "Scope my lens to the whole US — I sell nationwide." |
 
 ---
 
@@ -534,6 +535,7 @@ forbidden_calls:
 success_criteria:
   - "set geography on the DISCOVER lens — called leadbay_new_lens (or leadbay_adjust_audience) with a `locations` argument carrying the named territory, NOT just a Monitor/pull_followups location filter"
   - "passed the place name (e.g. 'Indre-et-Loire') as a location, never as a sector or a refine_prompt instruction"
+  - "did NOT pass a country name ('France', 'United States') to locations / location_ids / city — a whole-country ask means no location criterion at all"
   - "on a confident geo match the lens filter carried a location_ids criterion; on an ambiguous match returned the ambiguous-locations candidates and re-called with the id rather than guessing"
   - "did NOT call leadbay_report_outreach"
 ```
@@ -1210,6 +1212,30 @@ render_checks:
 
 ```yaml scenario
 prompt: "Walk me through Leadbay."
+```
+
+
+```yaml expected
+workflow_name: Country-wide scope — omit the location filter
+prompt_name: ~
+required_calls: []
+forbidden_calls:
+  - leadbay_new_lens
+  - leadbay_adjust_audience
+  - leadbay_update_lens_filter
+  - leadbay_refine_prompt
+  - leadbay_report_outreach
+success_criteria:
+  - "recognized that the workspace already serves exactly ONE country, so a whole-country ask needs NO location criterion"
+  - "did NOT pass a country name to locations / location_ids / city, nor inside a set_filter location_ids criterion, on any call"
+  - "wrote NOTHING to express the country scope — no lens created or edited, and no audience prompt rewritten (which would trigger an intelligence recompute for a scope the workspace already has)"
+  - "did NOT create or edit a lens merely to express a country-wide scope"
+  - "still delivered — explained the scope it used and offered the axes that actually narrow (sector, size, sub-country region) rather than only asking a question"
+  - "did NOT claim a location filter had been applied"
+```
+
+```yaml scenario
+prompt: "Scope my lens to the whole US — I sell nationwide."
 ```
 
 ## How this stays normative
