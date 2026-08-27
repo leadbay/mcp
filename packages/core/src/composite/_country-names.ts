@@ -408,6 +408,12 @@ export const WHOLE_WORKSPACE_LABELS: readonly string[] = [
 export const SUPRANATIONAL_LABELS: readonly string[] = [
   "EU",
   "European Union",
+  // The FRENCH spellings, which shipped missing while their English twins were
+  // here — on the one backend whose users type French. "des leads dans l'UE"
+  // classified as nothing and went on to /geo/search, so the label the FR
+  // workspace is most likely to receive was the one label not covered.
+  "UE",
+  "Union européenne",
   "Europe",
   "EMEA",
   "DACH",
@@ -418,6 +424,10 @@ export const SUPRANATIONAL_LABELS: readonly string[] = [
   "South America",
   "Latin America",
   "LATAM",
+  "Amérique du Nord",
+  "Amérique du Sud",
+  "Amérique latine",
+  "Zone euro",
   "APAC",
   "Asia",
   "Africa",
@@ -563,6 +573,21 @@ export const SCOPE_WRAPPERS: readonly RegExp[] = [
   /^toute\s+l\s+/,
   /^dans\s+toute\s+la\s+/,
   /^dans\s+tout\s+le\s+/,
+  // BARE PREPOSITIONS, last in the prefix group so every longer form above
+  // still wins ("dans toute la France" must not be eaten by /^dans\s+/).
+  //
+  // These are the plainest way anyone names a country in a location argument —
+  // "in the United States", "en France", "aux États-Unis" — and they were the
+  // one shape the wrapper list missed, so those values reached /geo/search and
+  // hit the same-named-town fence this module exists to prevent. Safe despite
+  // how common the words are: a strip only counts when the REMAINDER is a
+  // recognized country / supra-national / whole-workspace key, so "In Salah"
+  // and "Aubervilliers" (no trailing space to match) are untouched.
+  /^in\s+/,
+  /^en\s+/,
+  /^aux\s+/,
+  /^au\s+/,
+  /^dans\s+/,
   /\s+wide$/,
   /\s+entier$/,
   /\s+entiere$/,
