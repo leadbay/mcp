@@ -267,7 +267,18 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
         : "Omitting the geo argument is NOT enough here: `filtered` defaults to true, so the Monitor view is still read through the filter persisted from an earlier call. Nothing else was requested, so pass `filtered:false` as well (or clear the stored filter with `set_filter:{criteria:[]}`) — otherwise a stale cohort comes back looking like the whole workspace. `active_filters` in the response reports what was actually applied; check it before describing the scope.";
 
       return {
-        ...countryLocationStatus(countryHits, client.region, "read", false, omitCaveat),
+        // `survivingCriteria` is passed, not `false`: it already decided the
+        // caveat above, and the hint has to agree with it. Hardcoding false let
+        // the hint say "OMIT it, then say the result covers everything" while
+        // the caveat it was concatenated with ended "never as covering
+        // everything" — one recovery telling the agent both.
+        ...countryLocationStatus(
+          countryHits,
+          client.region,
+          "read",
+          survivingCriteria,
+          omitCaveat
+        ),
         leads: [],
         active_filters: null,
         pagination: null,

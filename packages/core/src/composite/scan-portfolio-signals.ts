@@ -337,7 +337,10 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
             countryHits,
             client.region,
             "read",
-            false,
+            // Same flag that picks the caveat below, so the hint cannot claim
+            // the result "covers everything" while the caveat forbids saying
+            // exactly that.
+            survivingCriteria,
             survivingCriteria
               ? "Re-call with `set_filter` carrying the SURVIVING criteria and the country criterion removed — do NOT send an empty `criteria` array and do NOT drop the other criteria, which are part of the request. A `set_filter` that fails validation is not a no-op here: the failed POST makes this tool scan UNFILTERED, so the criteria you were asked to keep would silently vanish from the scan. Describe the result by the criteria that remain, never as covering everything."
               : undefined

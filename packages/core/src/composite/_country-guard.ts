@@ -587,14 +587,26 @@ function hintFor(
     return `A supra-national scope cannot be excluded as an admin area, and dropping ${hit.param} would instead include everything. Say what the workspace covers and ask what should be carved out, then exclude ${narrow}.`;
   }
 
+  // "Covers everything" is only true when the country was the whole scope. On a
+  // READ that carries other criteria — a `last_action_date` beside the country
+  // in the same `set_filter`, say — the geo argument comes off and the result
+  // is still scoped by what remains, so the generic sentence is false. It also
+  // contradicted the caveat the caller appends for exactly that case, which
+  // ends "never as covering everything": one hint, two opposite instructions.
+  const coversAll = !otherScope;
+
   if (hit.kind === "home_country") {
-    return `Whole-workspace intent = OMIT ${hit.param} entirely, then say the result covers everything. To narrow, pass ${narrow}. Do NOT retry with another spelling or a nearby city.`;
+    return coversAll
+      ? `Whole-workspace intent = OMIT ${hit.param} entirely, then say the result covers everything. To narrow, pass ${narrow}. Do NOT retry with another spelling or a nearby city.`
+      : `Whole-workspace intent = OMIT ${hit.param} entirely. The rest of the request still scopes the result, so describe it by those criteria — NOT as covering everything. To narrow further, pass ${narrow}. Do NOT retry with another spelling or a nearby city.`;
   }
 
   if (anonymousWhole) {
     // The request names no country, so there is nothing to hedge: omitting the
     // argument answers it exactly. Only the country's NAME is withheld.
-    return `Whole-workspace intent = OMIT ${hit.param} entirely, then say the result covers everything in this workspace. ${unnamed} To narrow, pass ${narrow}. Do NOT retry with another spelling or a nearby city.`;
+    return coversAll
+      ? `Whole-workspace intent = OMIT ${hit.param} entirely, then say the result covers everything in this workspace. ${unnamed} To narrow, pass ${narrow}. Do NOT retry with another spelling or a nearby city.`
+      : `Whole-workspace intent = OMIT ${hit.param} entirely. The rest of the request still scopes the result, so describe it by those criteria — NOT as covering this whole workspace. ${unnamed} To narrow further, pass ${narrow}. Do NOT retry with another spelling or a nearby city.`;
   }
 
   if (hit.kind === "country_indeterminate") {
@@ -933,6 +945,16 @@ export function countryLocationEnvelope(
     else groups.set(key, [hit]);
   }
 
+  // Sibling criteria ARE other scope, so they decide this the same way the
+  // caller's flag does. Derived here rather than trusted from the argument:
+  // `siblingNote` below is built from the very same `siblings`, and when the two
+  // were computed independently they disagreed — both read call sites passed a
+  // hardcoded `false` while siblings existed, so one string promised "the result
+  // covers everything" and then forbade saying it. Reading both halves off one
+  // fact makes that shape unrepresentable rather than merely fixed at the two
+  // call sites that happened to have it.
+  const scoped = otherScope || siblings.length > 0;
+
   const hints: string[] = [];
   const push = (hint: string) => hints.push(hint);
   for (const group of groups.values()) {
@@ -942,8 +964,8 @@ export function countryLocationEnvelope(
     // ONLY "Canada"` / `Remove ONLY "Germany"` and re-call, so following either
     // one literally leaves the other country in place, and "ONLY" made that
     // read as deliberate. One argument gets one instruction.
-    if (group.length === 1) push(hintFor(group[0], region, intent, otherScope));
-    else push(reconciledHint(group, region, intent, otherScope));
+    if (group.length === 1) push(hintFor(group[0], region, intent, scoped));
+    else push(reconciledHint(group, region, intent, scoped));
   }
   const joined = hints.join(" ");
   // Conditioned on the assembled text rather than re-deriving the branch, so it
