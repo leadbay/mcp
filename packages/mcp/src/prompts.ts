@@ -241,8 +241,16 @@ const CATALOG: CatalogEntry[] = [
         userMessage(
           substitutePlaceholders(leadbay_top_accounts_to_activate, {
             count_or_default: n,
+            // The country caveat is INSIDE the substituted string, not only in
+            // the prompt body, because this sentence is the FIRST instruction
+            // the agent reads and the body's country branch is ~35 lines below
+            // it. Rendered with `territory: "France"`, the old wording told the
+            // agent in its opening paragraph to pass a country as `locations` —
+            // the exact call this prompt later forbids (product#3951). The
+            // audit could not see it either: it reads prompts.generated.ts,
+            // where this is still an unexpanded `{{arg:territory_block}}`.
             territory_block: args.territory
-              ? `Scope the plan to **${args.territory}** — pass it as \`locations\` on the lens, never as a sector.`
+              ? `Scope the plan to **${args.territory}** — but ONLY if it names a place INSIDE this workspace's country (state / région / département / county / city): pass that as \`locations\` on the lens, never as a sector. If **${args.territory}** is a country or a supra-national area (EU, EMEA), it is NOT a location filter — do not pass it as \`locations\` at all; follow the country branch below instead.`
               : "",
           }),
         ),

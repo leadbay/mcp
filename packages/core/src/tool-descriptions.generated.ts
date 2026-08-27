@@ -484,7 +484,7 @@ Restrict (or expand) the lens audience by sector / size. Free-text sectors are a
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
@@ -1345,7 +1345,7 @@ Plot the user's follow-up leads on an interactive map — the canonical surface 
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
@@ -2239,7 +2239,7 @@ The response has two arrays: \`results\` (top-10 prefix matches ranked by releva
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
@@ -2506,7 +2506,7 @@ Create a brand-new lens (saved audience) and apply its sector/size criteria. Clo
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
@@ -2919,7 +2919,7 @@ In \`keywords\` a place name is a TEXT-MATCH on company descriptions (≈0 hits)
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
@@ -4002,7 +4002,7 @@ as \`leadbay_pull_followups\` does (store-then-apply server-side filter).
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
@@ -4526,7 +4526,7 @@ Build a single-call mixed-mode itinerary for a field sales tour. Combines \`lead
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
@@ -4748,7 +4748,7 @@ export const leadbay_update_lens_filter: string = `Replace the audience filter (
 
 \`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
 
-On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope, and for ANY non-\`foreign_country\` \`exclude\` hit however much else came with it — dropping it and writing the rest inverts the ask.
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 

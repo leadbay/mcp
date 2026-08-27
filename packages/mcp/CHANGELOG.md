@@ -67,6 +67,32 @@ session burned six variants inside that fence before answering wrongly.
 - Freed the budget for the snippet by de-padding the `pull-followups` NEXT
   STEPS table (1109 chars of markdown column alignment, no content change) —
   that tool was 52 chars from the 17000 cap.
+- **Closed four holes found reviewing the above.** (1) The wrapper list caught
+  "across the United States" and "dans toute la France" but not the bare
+  prepositions that carry most real traffic — `in the United States`,
+  `en France`, `aux États-Unis`, `dans la France` — so the plainest spelling of
+  the bug was the one that still reached `/geo/search`. (2) `EU` and
+  `European Union` were covered while **`UE` / `Union européenne`** were not, on
+  the one backend whose users write French; the French supra-national spellings
+  are in now. (3) A `set_filter` carrying a country BESIDE a real criterion
+  emitted one hint that said both "say the result covers everything" and "never
+  as covering everything" — the `otherScope` flag was consulted only for writes,
+  and both read call sites hardcoded `false` while computing the true value one
+  line above. The hint and its sibling caveat now derive from one fact.
+  (4) `leadbay_top_accounts_to_activate` rendered with `territory: "France"`
+  opened with "pass it as `locations` on the lens" — an instruction to make the
+  exact call the rest of the prompt forbids, ~35 lines above the branch that
+  would have corrected it. The substituted sentence now carries the country
+  caveat itself. The existing audit could not see any of this: it reads the
+  UNRENDERED body, where that sentence is still `{{arg:territory_block}}`, so
+  `test/audit/prompt-rendered-country-args.test.ts` renders each prompt with
+  hostile arguments instead.
+- The shared snippet documented a weaker rule than the code enforces: it named
+  the write-stop for a country-only scope and for non-foreign exclusions, but
+  not for a **foreign / supra-national INCLUDE carrying other criteria**, which
+  the guard does stop. An agent following the snippet could pre-strip the
+  country and save a home-country lens for a territory nobody asked about,
+  never reaching the guard at all.
 
 Known gap: a country passed as an already-resolved numeric admin-area id stays
 invisible client-side (deciding whether id "1234" is a country needs a lookup
