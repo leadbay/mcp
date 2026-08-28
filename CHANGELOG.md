@@ -1,24 +1,28 @@
 # Changelog
 
-<<<<<<< HEAD
-## 0.32.1 — 2026-09-01 — A stalled Leadbay now fails in a minute, not in two days
+=======
+## 0.32.1 — 2026-09-01 — A stalled Leadbay can no longer freeze your session
 
-- **A request that Leadbay never answers now gives up after 60 seconds.** Until
-  now it waited forever. One customer had 28 calls sit open for up to 57 hours,
-  and because the connection had been accepted, nothing anywhere reported a
-  problem — she just got silence for a day and a half.
-- **One stuck call no longer freezes everything else.** The server runs at most
-  five Leadbay requests at a time. Enough stuck ones filled every slot, so every
-  other tool queued behind them and the whole session went quiet. Nothing can
-  hold a slot past its deadline any more.
-- **When it does time out, you get told.** The agent receives a `TIMEOUT` it can
-  read out loud, along with the instruction to retry rather than change plan.
-- **Set `LEADBAY_TIMEOUT_MS` to change the deadline** (milliseconds; `0` turns it
-  off and restores the old unbounded wait — not recommended). This variable was
-  already documented; now it works.
-- **A stalled account can no longer distort our own latency numbers**, and a
-  timeout raises an alert instead of waiting to be found in a retrospective.
->>>>>>> 56b6cc4 (fix(mcp): a stalled Leadbay backend now fails in 60s, not 57 hours (product#4003))
+- **When you cancel, Leadbay actually stops.** Cancelling a tool call — or your
+  client giving up on one — used to stop the polling but leave the request
+  itself running, still holding one of the five slots the server has. Enough of
+  those and everything else queued behind them. Now cancelling closes the
+  connection and frees the slot immediately.
+- **This is what made a stalled backend a 36-hour outage.** One customer had 28
+  calls sit open for up to 57 hours. The connection had been accepted, so
+  nothing anywhere reported a problem — she just got silence for a day and a
+  half, on the only Leadbay surface she uses.
+- **Long jobs are untouched.** Enrichment, bulk qualification and imports launch
+  work and poll for it, and they keep their own budgets. Nothing now decides on
+  Leadbay's behalf how long its work is allowed to take.
+- **A last-resort backstop closes a connection nobody is waiting for any more**
+  after 10 minutes — longer than the longest job any tool runs — so an orphaned
+  request can't hold a slot forever. `LEADBAY_TIMEOUT_MS` changes it; `0` turns
+  it off. That variable was already documented; now it works.
+- **A timed-out call tells the agent to retry** instead of failing silently, a
+  stalled account can no longer distort our own latency numbers, and a timeout
+  now raises an alert instead of waiting to be found in a retrospective.
+
 ## 0.32.0 — 2026-09-01 — A slow import is no longer a failed import
 
 - **A slow import stops looking broken.** Leadbay's import sometimes takes a
@@ -37,7 +41,6 @@
 - **"Import budget exhausted" is gone.** It was never about money or credits —
   it meant the wait had run out. Nothing bills you for waiting.
 
-=======
 ## 0.31.1 — 2026-08-28 — Asking for more leads on an empty lens now says no
 
 - **Asking for more leads on a lens that has nothing left no longer looks like

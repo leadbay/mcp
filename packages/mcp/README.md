@@ -634,7 +634,7 @@ Use `dry_run: true` to validate domain formatting and wizard reachability withou
 | `LEADBAY_MOCK` | no | unset | `"1"` serves all reads from on-disk fixtures (dev only) |
 | `LEADBAY_MOCK_DIR` | no | `./.context/leadbay-live-shapes/` | Fixture dir for mock mode |
 | `LEADBAY_LOG_LEVEL` | no | `error` | `debug` \| `info` \| `error`, logs to stderr |
-| `LEADBAY_TIMEOUT_MS` | no | `60000` | Wall-clock deadline for each outbound Leadbay request. On expiry the socket is cancelled and the tool returns a `TIMEOUT` error. Set `0` to disable the deadline (a stalled backend will then hang tool calls indefinitely — not recommended). |
+| `LEADBAY_TIMEOUT_MS` | no | `600000` | Backstop deadline for a single outbound Leadbay request, for the case where nothing cancels it. Not a latency budget: long work (enrichment, bulk qualify, import) is launched and polled, and a cancelled tool call already closes its own requests. On expiry the socket is closed and the tool returns a `TIMEOUT` error. Set `0` to disable the backstop. |
 
 > ⚠️ **Set `LEADBAY_REGION` explicitly.** If you don't, the server probes BOTH `api-us.leadbay.app` and `api-fr.leadbay.app` in parallel with your bearer token attached, sending the token to a backend that doesn't own your account. The `install` and `login` subcommands enforce `--region` for exactly this reason; the runtime auto-probe is a backwards-compat fallback, not a recommended setting.
 

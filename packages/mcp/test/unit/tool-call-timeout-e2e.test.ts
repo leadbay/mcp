@@ -12,6 +12,13 @@
 // path. So this drives `buildServer` through an in-memory MCP client and calls
 // the tool by name against a node:https double that stalls on `/campaigns`
 // exactly the way the backend did.
+//
+// Two bounds are exercised here, and they are NOT the same thing:
+//   - the HOST's bound (the last test): the SDK sends notifications/cancelled
+//     on its own request timeout and on user cancel; the server must destroy the
+//     socket and free the slot. This is the primary mechanism, and it needs no
+//     opinion from us about how long Leadbay may take.
+//   - our BACKSTOP (the first three): for when nothing ever cancels.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -217,5 +224,47 @@ describe("leadbay_list_campaigns against a stalled backend (product#4003)", () =
     const after: any = await callCampaigns(mcpClient);
     expect(after.isError).toBeFalsy();
     expect(JSON.parse(after.content[0].text).campaigns).toEqual([]);
+  });
+});
+
+describe("a host cancellation reaches the socket through MCP dispatch", () => {
+  it("notifications/cancelled destroys the request and frees the slot", async () => {
+    // Kill the backstop: only the host's cancellation can settle this.
+    process.env.LEADBAY_TIMEOUT_MS = "0";
+    const { mcpClient, client } = await connect();
+
+    const ac = new AbortController();
+    // Twelve concurrent calls against five slots — burst 1 of the incident,
+    // but this time the host gives up rather than the deadline expiring.
+    const inflight = Promise.all(
+      Array.from({ length: 12 }, () =>
+        mcpClient
+          .callTool(
+            {
+              name: "leadbay_list_campaigns",
+              arguments: { _triggered_by: "tâche planifiée quotidienne" },
+            },
+            undefined,
+            { signal: ac.signal }
+          )
+          .catch(() => "cancelled")
+      )
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    expect(client._semaphoreState.active).toBe(5);
+
+    ac.abort();
+    await inflight;
+    // Give the cancelled notification a tick to land server-side.
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(h.state.destroyed).toBeGreaterThanOrEqual(5);
+    expect(client._semaphoreState).toEqual({ active: 0, queued: 0 });
+
+    // The session survives: the backend recovers and the next call works. Under
+    // the old behaviour those five slots stayed pinned for 57 hours.
+    h.state.stallCampaigns = false;
+    const after: any = await callCampaigns(mcpClient);
+    expect(after.isError).toBeFalsy();
   });
 });

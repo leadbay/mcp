@@ -332,7 +332,7 @@ You can also manage lenses directly from chat: `leadbay_my_lenses` lists them an
 | `LEADBAY_MCP_WRITE` | No | Set to `0` to disable write tools (default: on since 0.3.0) |
 | `LEADBAY_MCP_ADVANCED` | No | Set to `1` to expose granular tools (default: off) |
 | `LEADBAY_BASE_URL` | No | Override API URL (for staging/dev) |
-| `LEADBAY_TIMEOUT_MS` | No | Per-request wall-clock deadline in ms (default: 60000) |
+| `LEADBAY_TIMEOUT_MS` | No | Backstop deadline for one outbound request, in ms (default: 600000) |
 
 The full environment-variable reference (telemetry, mock mode, logging, timeouts) is in [`packages/mcp/README.md`](packages/mcp/README.md#environment-variables).
 

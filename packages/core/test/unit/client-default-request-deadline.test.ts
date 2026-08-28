@@ -8,12 +8,17 @@
 // MAX_CONCURRENT=5 slots and stalled EVERY tool on the client.
 //
 // This file pins the inverted contract:
-//   - no `timeoutMs` no longer means unbounded, it means the default;
+//   - no `timeoutMs` no longer means unbounded, it means the backstop;
 //   - expiry cancels the socket, releases the slot, and yields a TIMEOUT-coded
 //     LeadbayError envelope the agent can read out and retry;
 //   - more hung requests than there are slots cannot deadlock the client;
-//   - the deadline is still overridable, including all the way off, for the
+//   - the backstop is still overridable, including all the way off, for the
 //     operator who needs it.
+//
+// The backstop is the LAST line of defence, not the primary one — cancellation
+// is (see client-request-cancellation.test.ts). It exists for the case where
+// nothing ever cancels: a scheduled run, or a poll loop that already returned
+// and left its last request orphaned.
 //
 // The shared harness always answers, so it cannot express a stall. This file
 // ships a node:https double that can hang on demand.
@@ -200,10 +205,20 @@ describe("LeadbayClient — the request deadline is on by default", () => {
     expect(h.state.calls[0].destroyed).toBe(false);
   });
 
-  it("the shipped default is 60s — bounded, and above every observed single-request latency", () => {
-    // 120 days of `mcp tool called` put the slowest single-request tool
-    // (leadbay_list_mappable_fields) at a 13.3s max. Anything longer in that
-    // data is a poll loop or an elicitation, not one HTTP request.
-    expect(DEFAULT_REQUEST_TIMEOUT_MS).toBe(60_000);
+  it("the backstop outlives the longest budget any workflow grants itself", () => {
+    // Deliberately NOT derived from observed request latency. Leadbay LAUNCHES
+    // its AI work rather than awaiting it (a lens creation with wishlist is
+    // 148ms, a web_fetch AI launch 166ms, measured live 2026-08-28), but a
+    // number picked from that would encode "Leadbay never answers after N
+    // seconds" — a claim about a backend we do not own, and one an AI product
+    // will eventually break.
+    //
+    // Anchor it to OUR code instead: the longest budget any workflow in this
+    // repo grants itself is 300s (bulk_qualify total_budget_ms, import-leads
+    // DEFAULT_TOTAL_BUDGET_MS). A request that outlives the workflow that issued
+    // it is already abandoned, so cancelling it cannot lose an answer anyone is
+    // waiting for.
+    expect(DEFAULT_REQUEST_TIMEOUT_MS).toBe(600_000);
+    expect(DEFAULT_REQUEST_TIMEOUT_MS).toBeGreaterThanOrEqual(2 * 300_000);
   });
 });

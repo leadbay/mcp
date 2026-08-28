@@ -1,4 +1,5 @@
 import https from "node:https";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type {
@@ -19,24 +20,41 @@ const ME_CACHE_TTL_MS = 60 * 1000;
 const MAX_CONCURRENT = 5;
 
 /**
- * Wall-clock deadline applied to EVERY outbound request unless the caller names
- * its own. node:https sets no socket timeout, so before this a backend that
- * completed the TCP handshake and then went silent left the promise pending for
- * as long as the process lived — and since the API semaphore is only released in
- * request()'s `finally`, a handful of such calls pinned all MAX_CONCURRENT slots
- * and deadlocked every other tool on the client (product#4003: 28 of one
- * customer's calls hung for up to 57 hours, a 36-hour outage on her only
- * surface).
+ * Backstop deadline for a single outbound request. NOT a latency budget for
+ * Leadbay — three different layers answer three different questions, and this
+ * one is the last of them:
  *
- * 60s is ~4.5x the slowest single-request latency the fleet has ever recorded
- * (leadbay_list_mappable_fields max 13.3s; list_sectors 11.0s; account_status
- * 7.7s — 120 days of `mcp tool called`). The multi-minute tool durations in that
- * data belong to poll loops and elicitations, each of whose individual requests
- * is short: import-leads already caps a phase at 60s and the whole run at 300s,
- * bulk-qualify polls on a 5s interval, and report_outreach's flat 60s is the MCP
- * elicitation waiting on the human, not HTTP. So nothing legitimate is cut off.
+ *   how long does the USER wait?      the MCP host, via notifications/cancelled
+ *                                     (the SDK sends it on its own request
+ *                                     timeout AND when the user hits Cancel);
+ *                                     we honour it — see requestSignalStore.
+ *   how long does a WORKFLOW work?    the composite's own declared budgets —
+ *                                     bulk_qualify 90s/lead and 300s total,
+ *                                     import-leads 60s/phase and 300s total.
+ *   how long may one SOCKET sit       this constant.
+ *   unanswered?
+ *
+ * Leadbay's long work is launched, not awaited: `POST /leads/:id/web_fetch`
+ * starts the AI and returns (166 ms measured against staging 2026-08-28, along
+ * with 148 ms for a lens creation that computes a wishlist and 227 ms for
+ * /leads/resolve), then the tool polls. So no request is long TODAY — but
+ * picking a number from that measurement would encode "Leadbay never answers
+ * after N seconds", which is a claim about a backend we do not own and which an
+ * AI product will eventually break.
+ *
+ * So the number is anchored to OUR code instead: 10 minutes is 2x the longest
+ * budget any workflow in this repo grants itself (300s). A request that outlives
+ * the workflow that issued it has already been abandoned by its caller —
+ * cancelling it can't lose an answer anyone is still waiting for, and it frees
+ * the MAX_CONCURRENT slot it would otherwise hold forever.
+ *
+ * That last part is the whole point. node:https sets no socket timeout, so
+ * before this a backend that completed the TCP handshake and then went silent
+ * held its slot for the life of the process. With five slots, a handful of such
+ * requests deadlocked every other tool on the client — product#4003: 28 of one
+ * customer's calls hung up to 57 hours, a 36-hour outage on her only surface.
  */
-export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+export const DEFAULT_REQUEST_TIMEOUT_MS = 600_000;
 
 /**
  * `LEADBAY_TIMEOUT_MS` — the deployment-level override for
@@ -44,17 +62,61 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
  * "per-request timeout override" since before product#4003, but nothing read it;
  * this makes the documented knob real rather than introducing a second name.
  *
- * `0` (or a negative value) opts a deployment out of the deadline entirely and
- * restores the pre-product#4003 unbounded behaviour — the escape hatch exists so
- * an operator facing a genuinely slower backend isn't forced to ship a release,
- * not because unbounded is ever a good idea. Read per request, not at module
- * load, so a test or a restart-free config change takes effect immediately.
+ * `0` (or a negative value) opts a deployment out of the backstop entirely and
+ * restores the pre-product#4003 unbounded behaviour. Read per request, not at
+ * module load, so a test or a restart-free config change takes effect
+ * immediately.
  */
 function defaultTimeoutMs(): number {
   const raw = process.env.LEADBAY_TIMEOUT_MS;
   if (raw === undefined || raw.trim() === "") return DEFAULT_REQUEST_TIMEOUT_MS;
   const n = Number(raw);
   return Number.isFinite(n) ? n : DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
+/**
+ * Ambient cancellation for every request issued inside one tool call.
+ *
+ * The MCP SDK aborts the handler's AbortSignal on `notifications/cancelled`,
+ * which it sends both when the user cancels and when its OWN request timeout
+ * fires. server.ts already forwards that signal to `ToolContext.signal`, where
+ * composites use it to stop polling — but the HTTP request in flight at that
+ * moment kept running and kept its concurrency slot. So the host could give up
+ * on a call in 60 seconds and the socket behind it would still be holding a slot
+ * hours later. That, not the absence of a timeout, is what turned a stalled
+ * backend into a dead session.
+ *
+ * Threading a `signal` argument through all 174 `client.request(...)` call sites
+ * would be a far larger and more error-prone diff than this, and every one of
+ * them would have to remember it forever. AsyncLocalStorage carries it for them:
+ * server.ts wraps `tool.execute` once, and every request the tool makes — at any
+ * async depth — inherits the right signal. Concurrent tool calls each get their
+ * own store, so one tool's cancellation can never touch another's socket.
+ *
+ * Callers outside a tool invocation (telemetry identity, the hosted SSE refresh)
+ * simply have no ambient signal and fall back to the backstop.
+ */
+const requestSignalStore = new AsyncLocalStorage<AbortSignal | undefined>();
+
+export function runWithRequestSignal<T>(
+  signal: AbortSignal | undefined,
+  fn: () => T
+): T {
+  return requestSignalStore.run(signal, fn);
+}
+
+function makeCancelledError(method: string, url: string): Error & {
+  code?: string;
+} {
+  // name stays "AbortError" because composites already branch on it
+  // (_qualify-helpers, import-leads) to distinguish a user cancellation from a
+  // genuine failure. `code` is the new, more specific handle.
+  const err = new Error(`Request cancelled: ${method} ${url}`) as Error & {
+    code?: string;
+  };
+  err.name = "AbortError";
+  err.code = "CANCELLED";
+  return err;
 }
 
 const REGIONS: Record<string, string> = {
@@ -82,25 +144,40 @@ function httpsRequest(
   url: string,
   headers: Record<string, string>,
   body?: string | Buffer,
-  // Wall-clock deadline. node:https sets NO socket timeout by default, so a peer
+  // Backstop deadline. node:https sets NO socket timeout by default, so a peer
   // that completes the TCP handshake and then stalls would leave this promise
   // pending indefinitely. Omitting it does NOT mean "unbounded" — it means
   // DEFAULT_REQUEST_TIMEOUT_MS. Callers that need a tighter bound (the hosted
   // auth probe, which walks candidate regions one after another) pass their own;
-  // only an explicit `<= 0` disables the deadline.
-  timeoutMs?: number
+  // only an explicit `<= 0` disables it.
+  timeoutMs?: number,
+  // Explicit cancellation. Defaults to the ambient signal of the tool call this
+  // request belongs to (requestSignalStore), which is the bound that actually
+  // matters — the host's, not ours.
+  signal?: AbortSignal
 ): Promise<HttpResult> {
   const deadlineMs = timeoutMs ?? defaultTimeoutMs();
+  const abortSignal = signal ?? requestSignalStore.getStore();
   return new Promise((resolve, reject) => {
     const start = Date.now();
+    // Already cancelled before we opened a socket — don't open one.
+    if (abortSignal?.aborted) {
+      reject(makeCancelledError(method, url));
+      return;
+    }
     const parsed = new URL(url);
     const reqHeaders: Record<string, string | number> = { ...headers };
     if (body !== undefined) {
       reqHeaders["Content-Length"] = Buffer.byteLength(body);
     }
     let deadline: ReturnType<typeof setTimeout> | undefined;
+    let onAbort: (() => void) | undefined;
+    // One tool call can issue hundreds of requests against the SAME signal, so
+    // every listener must come off on settle or the signal accumulates them and
+    // Node warns about a leak.
     const clearDeadline = () => {
       if (deadline !== undefined) clearTimeout(deadline);
+      if (onAbort) abortSignal?.removeEventListener("abort", onAbort);
     };
     const req = https.request(
       {
@@ -141,6 +218,19 @@ function httpsRequest(
       }, deadlineMs);
       // Never hold the process open on a deadline timer.
       (deadline as unknown as { unref?: () => void }).unref?.();
+    }
+
+    if (abortSignal) {
+      onAbort = () => {
+        // Same destroy() as the deadline path: abort the request and free the
+        // socket. The caller's `finally` then releases the concurrency slot, so
+        // a cancelled tool call stops holding one immediately instead of at the
+        // backstop.
+        (req as { destroy?: (e?: Error) => void }).destroy?.();
+        clearDeadline();
+        reject(makeCancelledError(method, url));
+      };
+      abortSignal.addEventListener("abort", onAbort, { once: true });
     }
 
     req.on("error", (e) => {

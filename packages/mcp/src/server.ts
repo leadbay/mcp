@@ -36,7 +36,7 @@ import {
   type ToolContext,
   type ToolLogger,
 } from "@leadbay/core";
-import { NotificationsInbox } from "@leadbay/core";
+import { NotificationsInbox, runWithRequestSignal } from "@leadbay/core";
 import { NOOP_TELEMETRY, type TelemetryHandle } from "./telemetry.js";
 import type { UpdateStateStore } from "./update-state.js";
 import {
@@ -1285,11 +1285,17 @@ export function buildServer(
         };
       }
       // MCP 2025-11-25 §Cancellation: extra.signal is aborted by the SDK
-      // when the client sends `notifications/cancelled`. Plumbing it to
-      // ToolContext.signal lets long-running composites (bulk_qualify_leads,
-      // enrich_titles, import_and_qualify) actually stop polling when the
-      // user clicks Cancel in Claude Desktop / Cursor.
-      const result = await tool.execute(client, args, {
+      // when the client sends `notifications/cancelled` — which it does both
+      // when the user clicks Cancel and when its OWN request timeout fires.
+      //
+      // Two things consume it. ToolContext.signal lets long-running composites
+      // (bulk_qualify_leads, enrich_titles, import_and_qualify) stop polling.
+      // runWithRequestSignal makes it ambient for the HTTP layer, so the request
+      // in flight at that moment is destroyed and its concurrency slot released
+      // instead of surviving the call that wanted it (product#4003). That is
+      // what bounds a stalled backend — the host's own policy, not a wall-clock
+      // number we would have to guess on Leadbay's behalf.
+      const result = await runWithRequestSignal(extra.signal, () => tool.execute(client, args, {
         logger: opts.logger,
         bulkTracker: opts.bulkTracker,
         notificationsInbox: opts.notificationsInbox,
@@ -1327,7 +1333,7 @@ export function buildServer(
               ? { severity: report.severity as "low" | "medium" | "high" }
               : {}),
           }) === true,
-      });
+      }));
       // Inject `update_available` into account_status returns when an
       // upgrade is cached. Other tools pass through untouched. Done
       // BEFORE the error/markdown/json branching so the field appears
