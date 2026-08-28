@@ -634,7 +634,7 @@ Use `dry_run: true` to validate domain formatting and wizard reachability withou
 | `LEADBAY_MOCK` | no | unset | `"1"` serves all reads from on-disk fixtures (dev only) |
 | `LEADBAY_MOCK_DIR` | no | `./.context/leadbay-live-shapes/` | Fixture dir for mock mode |
 | `LEADBAY_LOG_LEVEL` | no | `error` | `debug` \| `info` \| `error`, logs to stderr |
-| `LEADBAY_TIMEOUT_MS` | no | (client default) | Per-request timeout override |
+| `LEADBAY_TIMEOUT_MS` | no | `60000` | Wall-clock deadline for each outbound Leadbay request. On expiry the socket is cancelled and the tool returns a `TIMEOUT` error. Set `0` to disable the deadline (a stalled backend will then hang tool calls indefinitely — not recommended). |
 
 > ⚠️ **Set `LEADBAY_REGION` explicitly.** If you don't, the server probes BOTH `api-us.leadbay.app` and `api-fr.leadbay.app` in parallel with your bearer token attached, sending the token to a backend that doesn't own your account. The `install` and `login` subcommands enforce `--region` for exactly this reason; the runtime auto-probe is a backwards-compat fallback, not a recommended setting.
 
@@ -657,6 +657,7 @@ Use `dry_run: true` to validate domain formatting and wizard reachability withou
 | `mcp tool called` | Every tool invocation | `tool`, `ok`, `duration_ms`, `format`, `bytes`, `error_code` (if failed) |
 | `mcp quota hit` | When the API returns `QUOTA_EXCEEDED` (HTTP 429/402) | `tool`, `retry_after_s`, `endpoint` |
 | `mcp topup link created` | When `leadbay_create_topup_link` returns a checkout URL | `tool` (the URL itself is **never** captured) |
+| `mcp tool timeout` | When an outbound Leadbay request exceeds `LEADBAY_TIMEOUT_MS` | `tool`, `timeout_ms`, `endpoint`, `region` |
 
 After your first authenticated call, your PostHog `distinctId` is set to your Leadbay account email so MCP events consolidate with web-app events for the same person. Events also carry `$groups.organization` so org-level rollups work.
 

@@ -16,6 +16,10 @@ export interface RequestMeta {
   // through the HTTP layer (NOT_AUTHENTICATED, MOCK_NOT_FOUND, composite-
   // synthesized codes like LEAD_NOT_FOUND).
   http_status?: number;
+  // The wall-clock deadline (ms) a TIMEOUT-coded error exceeded. Set only by
+  // the client's timeout path so telemetry can report which deadline expired
+  // without re-parsing the message (product#4003). Absent everywhere else.
+  timeout_ms?: number;
 }
 
 export interface LeadbayError {

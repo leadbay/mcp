@@ -1,4 +1,4 @@
-// LeadbayClient.request({ timeoutMs }) — the opt-in per-attempt deadline.
+// LeadbayClient.request({ timeoutMs }) — the explicit per-attempt deadline.
 //
 // node:https sets no socket timeout, so before this option a peer that completed
 // the TCP handshake and then went silent left the promise pending forever. The
@@ -7,7 +7,12 @@
 //   - the deadline rejects with a TIMEOUT code — deliberately NOT an auth code, so
 //     a caller classifying failures reads it as transient and keeps going;
 //   - it cancels the request rather than abandoning the socket behind a race;
-//   - it is opt-in — a call without `timeoutMs` behaves exactly as before.
+//   - a call that names no `timeoutMs` still succeeds normally.
+//
+// NOTE: since product#4003 the deadline is no longer opt-in — omitting
+// `timeoutMs` now means DEFAULT_REQUEST_TIMEOUT_MS, not "unbounded". That
+// inversion is covered by client-default-request-deadline.test.ts; this file
+// keeps testing the explicit-value path the auth probe depends on.
 //
 // The shared harness always answers, so it cannot express a stall. This file
 // ships a minimal node:https double that can hang on demand.

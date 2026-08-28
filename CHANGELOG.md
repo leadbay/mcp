@@ -1,5 +1,24 @@
 # Changelog
 
+<<<<<<< HEAD
+## 0.32.1 — 2026-09-01 — A stalled Leadbay now fails in a minute, not in two days
+
+- **A request that Leadbay never answers now gives up after 60 seconds.** Until
+  now it waited forever. One customer had 28 calls sit open for up to 57 hours,
+  and because the connection had been accepted, nothing anywhere reported a
+  problem — she just got silence for a day and a half.
+- **One stuck call no longer freezes everything else.** The server runs at most
+  five Leadbay requests at a time. Enough stuck ones filled every slot, so every
+  other tool queued behind them and the whole session went quiet. Nothing can
+  hold a slot past its deadline any more.
+- **When it does time out, you get told.** The agent receives a `TIMEOUT` it can
+  read out loud, along with the instruction to retry rather than change plan.
+- **Set `LEADBAY_TIMEOUT_MS` to change the deadline** (milliseconds; `0` turns it
+  off and restores the old unbounded wait — not recommended). This variable was
+  already documented; now it works.
+- **A stalled account can no longer distort our own latency numbers**, and a
+  timeout raises an alert instead of waiting to be found in a retrospective.
+>>>>>>> 56b6cc4 (fix(mcp): a stalled Leadbay backend now fails in 60s, not 57 hours (product#4003))
 ## 0.32.0 — 2026-09-01 — A slow import is no longer a failed import
 
 - **A slow import stops looking broken.** Leadbay's import sometimes takes a
@@ -18,6 +37,7 @@
 - **"Import budget exhausted" is gone.** It was never about money or credits —
   it meant the wait had run out. Nothing bills you for waiting.
 
+=======
 ## 0.31.1 — 2026-08-28 — Asking for more leads on an empty lens now says no
 
 - **Asking for more leads on a lens that has nothing left no longer looks like

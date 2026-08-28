@@ -18,6 +18,45 @@ const TASTE_CACHE_TTL_MS = 10 * 60 * 1000;
 const ME_CACHE_TTL_MS = 60 * 1000;
 const MAX_CONCURRENT = 5;
 
+/**
+ * Wall-clock deadline applied to EVERY outbound request unless the caller names
+ * its own. node:https sets no socket timeout, so before this a backend that
+ * completed the TCP handshake and then went silent left the promise pending for
+ * as long as the process lived — and since the API semaphore is only released in
+ * request()'s `finally`, a handful of such calls pinned all MAX_CONCURRENT slots
+ * and deadlocked every other tool on the client (product#4003: 28 of one
+ * customer's calls hung for up to 57 hours, a 36-hour outage on her only
+ * surface).
+ *
+ * 60s is ~4.5x the slowest single-request latency the fleet has ever recorded
+ * (leadbay_list_mappable_fields max 13.3s; list_sectors 11.0s; account_status
+ * 7.7s — 120 days of `mcp tool called`). The multi-minute tool durations in that
+ * data belong to poll loops and elicitations, each of whose individual requests
+ * is short: import-leads already caps a phase at 60s and the whole run at 300s,
+ * bulk-qualify polls on a 5s interval, and report_outreach's flat 60s is the MCP
+ * elicitation waiting on the human, not HTTP. So nothing legitimate is cut off.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+
+/**
+ * `LEADBAY_TIMEOUT_MS` — the deployment-level override for
+ * DEFAULT_REQUEST_TIMEOUT_MS. Documented in packages/mcp/README.md as the
+ * "per-request timeout override" since before product#4003, but nothing read it;
+ * this makes the documented knob real rather than introducing a second name.
+ *
+ * `0` (or a negative value) opts a deployment out of the deadline entirely and
+ * restores the pre-product#4003 unbounded behaviour — the escape hatch exists so
+ * an operator facing a genuinely slower backend isn't forced to ship a release,
+ * not because unbounded is ever a good idea. Read per request, not at module
+ * load, so a test or a restart-free config change takes effect immediately.
+ */
+function defaultTimeoutMs(): number {
+  const raw = process.env.LEADBAY_TIMEOUT_MS;
+  if (raw === undefined || raw.trim() === "") return DEFAULT_REQUEST_TIMEOUT_MS;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
 const REGIONS: Record<string, string> = {
   us: "https://api-us.leadbay.app",
   fr: "https://api-fr.leadbay.app",
@@ -43,13 +82,15 @@ function httpsRequest(
   url: string,
   headers: Record<string, string>,
   body?: string | Buffer,
-  // Optional wall-clock deadline. node:https sets NO socket timeout by default,
-  // so a peer that completes the TCP handshake and then stalls leaves this
-  // promise pending indefinitely. Callers that must bound their own latency —
-  // the hosted auth probe, which walks candidate regions one after another —
-  // pass this; every other call keeps the previous unbounded behaviour.
+  // Wall-clock deadline. node:https sets NO socket timeout by default, so a peer
+  // that completes the TCP handshake and then stalls would leave this promise
+  // pending indefinitely. Omitting it does NOT mean "unbounded" — it means
+  // DEFAULT_REQUEST_TIMEOUT_MS. Callers that need a tighter bound (the hosted
+  // auth probe, which walks candidate regions one after another) pass their own;
+  // only an explicit `<= 0` disables the deadline.
   timeoutMs?: number
 ): Promise<HttpResult> {
+  const deadlineMs = timeoutMs ?? defaultTimeoutMs();
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const parsed = new URL(url);
@@ -84,7 +125,7 @@ function httpsRequest(
       }
     );
 
-    if (timeoutMs !== undefined && timeoutMs > 0) {
+    if (deadlineMs > 0) {
       deadline = setTimeout(() => {
         // destroy() actually cancels — it aborts the request and frees the
         // socket rather than leaving a stalled connection behind a raced
@@ -92,12 +133,13 @@ function httpsRequest(
         // EventEmitter with no destroy().
         (req as { destroy?: (e?: Error) => void }).destroy?.();
         const err = new Error(
-          `Request timed out after ${timeoutMs}ms: ${method} ${url}`
-        ) as Error & { code?: string };
+          `Request timed out after ${deadlineMs}ms: ${method} ${url}`
+        ) as Error & { code?: string; timeout_ms?: number };
         err.code = "TIMEOUT"; // not an auth code — callers treat it as a transient fault
+        err.timeout_ms = deadlineMs;
         reject(err);
-      }, timeoutMs);
-      // Never hold the process open on a probe deadline.
+      }, deadlineMs);
+      // Never hold the process open on a deadline timer.
       (deadline as unknown as { unref?: () => void }).unref?.();
     }
 
@@ -573,6 +615,8 @@ export class LeadbayClient {
       }
 
       return JSON.parse(res.body) as T;
+    } catch (e) {
+      throw this.mapTransportError(e, `${method} ${path}`);
     } finally {
       this.releaseSemaphore();
     }
@@ -618,6 +662,8 @@ export class LeadbayClient {
       if (res.status < 200 || res.status >= 300) {
         throw this.mapErrorResponse(res.status, res.body, path, res.headers);
       }
+    } catch (e) {
+      throw this.mapTransportError(e, `${method} ${path}`);
     } finally {
       this.releaseSemaphore();
     }
@@ -671,6 +717,8 @@ export class LeadbayClient {
       }
 
       return JSON.parse(res.body) as T;
+    } catch (e) {
+      throw this.mapTransportError(e, `${method} ${path}`);
     } finally {
       this.releaseSemaphore();
     }
@@ -748,6 +796,37 @@ export class LeadbayClient {
       mocked: true,
       would_call: { method, path: fullPath, body: journalBody },
     } as unknown as T;
+  }
+
+  /**
+   * Turn httpsRequest's raw TIMEOUT rejection into the `{error:true, code, …}`
+   * envelope every other failure already speaks, so the agent gets something it
+   * can read out to the user and act on rather than a bare Error string. Any
+   * other rejection (ECONNRESET, DNS, a mapped 4xx/5xx) passes through untouched
+   * — this is a translation, not a catch-all.
+   *
+   * The code stays "TIMEOUT" so the hosted auth probe's existing branch
+   * (auth-http.ts) keeps classifying it as a transient fault and moves to the
+   * sibling region instead of declaring a live token expired.
+   */
+  private mapTransportError(e: unknown, endpoint: string): unknown {
+    const err = e as { code?: string; timeout_ms?: number } | null;
+    if (err?.code !== "TIMEOUT") return e;
+    const ms = err.timeout_ms ?? defaultTimeoutMs();
+    const envelope = this.makeError(
+      "TIMEOUT",
+      `Leadbay did not respond within ${ms}ms — the request was cancelled`,
+      "The connection was accepted but no response came back, so this is a Leadbay-side stall, not a bad request. It is transient: retry the same call once. If it times out again, tell the user Leadbay is not responding right now and offer to report it with leadbay_report_friction.",
+      endpoint
+    );
+    if (envelope._meta) {
+      envelope._meta.timeout_ms = ms;
+      // makeError fills latency_ms from _lastMeta, which for a timeout is a
+      // PREVIOUS request's latency — a number Sentry would show next to this
+      // failure as if it described it. The request ran for the deadline.
+      envelope._meta.latency_ms = ms;
+    }
+    return envelope;
   }
 
   private mapErrorResponse(
@@ -962,6 +1041,8 @@ export class LeadbayClient {
         this.telemetryEnabledFromStamp = false; // value came from a read, not a stamp
       }
       return observed;
+    } catch (e) {
+      throw this.mapTransportError(e, "GET /users/me");
     } finally {
       this.releaseSemaphore();
     }

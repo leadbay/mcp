@@ -1005,6 +1005,30 @@ export function buildServer(
     };
   };
 
+  // product#4003 alert signal. A tool call that died on the request deadline is
+  // the shape that produced a 36-hour silent outage: the customer sees nothing
+  // come back and nothing in our telemetry says "stalled backend" unless we say
+  // it. Fired from BOTH failure paths (thrown LeadbayError and returned error
+  // envelope) so a composite that catches and surfaces the envelope is still
+  // alertable. The deadline is read from `_meta.timeout_ms`, which the client
+  // stamps on the envelope, so the event reports the deadline that actually
+  // expired (a 4s probe and a 60s tool call must stay separable) without
+  // re-parsing the message text.
+  const captureTimeoutAlert = (
+    toolName: string,
+    envelope: { message?: string; _meta?: any },
+    triggeredBy: string | undefined
+  ): void => {
+    const ms = envelope._meta?.timeout_ms;
+    telemetry.captureToolTimeout({
+      tool: toolName,
+      ...(typeof ms === "number" ? { timeout_ms: ms } : {}),
+      ...(envelope._meta?.endpoint ? { endpoint: envelope._meta.endpoint } : {}),
+      ...(envelope._meta?.region ? { region: envelope._meta.region } : {}),
+      ...(triggeredBy !== undefined ? { triggered_by: triggeredBy } : {}),
+    });
+  };
+
   // NOTE: friction reporting is no longer captured post-hoc from the tool
   // result. It is threaded into ToolContext as a `reportFriction` transport
   // (see the ctx construction below) so the tool learns whether delivery
@@ -1342,6 +1366,9 @@ export function buildServer(
               endpoint: (result as any)._meta?.endpoint,
             });
           }
+          if (envCode === "TIMEOUT") {
+            captureTimeoutAlert(name, result as any, triggered_by);
+          }
           telemetry.captureToolCall({
             tool: name,
             ok: false,
@@ -1515,6 +1542,9 @@ export function buildServer(
             retry_after_s: err._meta?.retry_after,
             endpoint: err._meta?.endpoint,
           });
+        }
+        if (!skipAnalytics && err.code === "TIMEOUT") {
+          captureTimeoutAlert(name, err, triggered_by);
         }
         // Upstream HTTP status (set by client.ts mapErrorResponse at
         // _meta.http_status). Forward it onto the product-analytics events
