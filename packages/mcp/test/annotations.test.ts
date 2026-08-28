@@ -121,6 +121,21 @@ describe("tools/list annotations (MCP spec ToolAnnotations)", () => {
     });
   });
 
+  it("the Stripe tools are NOT readOnly — both mint Stripe sessions", async () => {
+    const { mcpClient } = await connect();
+    const listed = await mcpClient.listTools();
+    // Both were readOnlyHint:true, which is wrong: each one brings a Stripe
+    // session into existence, and for an org with no Stripe customer yet the
+    // shared getStripeCustomer path also creates the customer and persists
+    // organizations.stripe_customer_id. Clients read this hint to decide
+    // whether to ask the user to confirm (product#3998).
+    for (const name of ["leadbay_create_topup_link", "leadbay_open_billing_portal"]) {
+      const t = listed.tools.find((tool) => tool.name === name);
+      expect(t, `${name} not found`).toBeDefined();
+      expect(t!.annotations!.readOnlyHint, `${name} readOnlyHint`).toBe(false);
+    }
+  });
+
   it("research_lead is annotated readOnly + idempotent + openWorld (extended in iter 2)", async () => {
     const { mcpClient } = await connect();
     const listed = await mcpClient.listTools();
