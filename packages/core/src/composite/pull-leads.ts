@@ -7,7 +7,7 @@ import type {
   LeadPayload,
 } from "../types.js";
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
-import { LEAD_ORDERS, resolveLeadOrder } from "../lead-order.js";
+import { resolveLeadOrder } from "../lead-order.js";
 import { diagnoseEmptyLens } from "./_empty-lens-reason.js";
 
 import { leadbay_pull_leads as PULL_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -236,7 +236,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
       order: {
         type: "string",
         description:
-          `Optional sort, FIELD:ASC|DESC. Omit for the lens's own Discover ranking. One of: ${LEAD_ORDERS.join(", ")}. An unknown value is rejected — the backend would otherwise return an empty page.`,
+          "Optional sort, FIELD:ASC|DESC (SCORE, NAME, SIZE, SECTOR, STATUS, CONTACT_COUNT, LAST_PROSPECTING_ACTION_AT, LIKED). Omit for the lens's own Discover ranking. An unknown value is rejected and the error lists every accepted order.",
       },
       verbose: {
         type: "boolean",

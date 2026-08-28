@@ -1,7 +1,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, MonitorFilterItem } from "../types.js";
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
-import { LEAD_ORDERS, resolveLeadOrder } from "../lead-order.js";
+import { resolveLeadOrder } from "../lead-order.js";
 
 import { leadbay_pull_followups as PULL_FOLLOWUPS_DESCRIPTION } from "../tool-descriptions.generated.js";
 import { resolveLocations } from "./_geo-helpers.js";
@@ -130,7 +130,7 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
       order: {
         type: "string",
         description:
-          `Optional sort, FIELD:ASC|DESC. Omit for the Monitor's own ranking. One of: ${LEAD_ORDERS.join(", ")}. An unknown value is rejected — the backend would otherwise return an empty page.`,
+          "Optional sort, FIELD:ASC|DESC (SCORE, NAME, SIZE, SECTOR, STATUS, CONTACT_COUNT, LAST_PROSPECTING_ACTION_AT, LIKED). Omit for the Monitor's own ranking. An unknown value is rejected and the error lists every accepted order.",
       },
       page: {
         type: "number",
