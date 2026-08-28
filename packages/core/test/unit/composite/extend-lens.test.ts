@@ -4,6 +4,11 @@
  * Covers the queued happy path (with and without seeds) plus the three
  * documented error envelopes the composite translates so the agent can
  * route on `status`: quota_exceeded, refresh_in_progress, no_valid_seeds.
+ *
+ * The fourth envelope — `no_candidates`, the extendability pre-flight — is
+ * covered in extend-lens-no-candidates.test.ts. Every case here leaves the
+ * preview route unmocked on purpose: that read must soft-fail and let the
+ * refill through, so these tests double as the pre-flight's fail-open proof.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -63,9 +68,12 @@ describe("leadbay_extend_lens", () => {
     expect(out.accepted_seeds).toHaveLength(2);
     expect(out.message).toMatch(/queued/i);
 
+    // The extendability pre-flight (product#4000) reads the pool before the
+    // write, so the POST is no longer the only request — pin it the way the
+    // sibling test below already does.
     const reqs = getHttpRequests();
-    expect(reqs).toHaveLength(1);
-    const body = JSON.parse(reqs[0].body ?? "{}");
+    const postReq = reqs.find((r) => r.method === "POST");
+    const body = JSON.parse(postReq?.body ?? "{}");
     expect(body.seed_lead_ids).toHaveLength(2);
     expect(body.extra_count).toBe(20);
   });

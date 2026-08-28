@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.31.1 — 2026-08-28 — Asking for more leads on an empty lens now says no
+
+- **Asking for more leads on a lens that has nothing left no longer looks like
+  it worked.** Before, the request came back as "queued" whether or not there
+  was anything to add, and the leads simply never arrived. That is what one
+  customer's assistant kept doing: 49 requests over three weeks, every one
+  reported as accepted, none of them able to deliver.
+- **The check now happens before the request is sent.** Leadbay looks at how
+  many leads the lens could still take. If the answer is none, the request is
+  refused with the reason instead of accepted and quietly dropped.
+- **The refusal says which kind of empty it is** — an audience that matches
+  nothing at all, or one where everything matching has already been delivered —
+  and names the criteria in the way, so the next move is widening the audience
+  rather than asking again.
+- **A lens that can fill is unaffected**, and now also reports how many leads it
+  still has available.
+
 ## 0.31.0 — 2026-08-28 — An empty lens tells you why
 
 - **A lens with no leads now says what is wrong with it.** Before, asking for
