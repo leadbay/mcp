@@ -102,6 +102,21 @@ border-bottom:1px solid var(--lb-border);vertical-align:middle;font-size:0.8125r
 text-transform:uppercase;letter-spacing:.04em}
 .lb-link{color:var(--color-blue-foreground);text-decoration:none}
 .lb-link:hover{text-decoration:underline}
+/* Quiet text link out of the artifact. Button-height so it shares the row's
+   baseline; understated so it never competes with the actions beside it. The
+   arrow is a bare diagonal stroke — an escape-hatch marker, not an icon that
+   asks to be read. */
+.lb-link-out{display:inline-flex;align-items:center;gap:.3rem;
+font-size:0.75rem;line-height:1rem;min-height:2.125rem;
+color:var(--lb-fg);text-decoration:none;opacity:.65;transition:opacity .15s}
+.lb-link-out:hover{opacity:1;text-decoration:underline}
+.lb-link-out:focus-visible{outline:2px solid var(--color-blue-foreground);outline-offset:1px;
+border-radius:var(--lb-radius-sm)}
+.lb-link-out svg{width:.85em;height:.85em;flex-shrink:0}
+/* Pushes whatever follows it to the right edge of an .lb-row, so a trailing
+   link sits on the SAME baseline as the row's buttons instead of on its own
+   line below them. */
+.lb-spacer{flex:1 1 auto}
 .lb-spinner{display:inline-block;width:.7em;height:.7em;border:2px solid var(--lb-border);
 border-top-color:var(--color-blue-foreground);border-radius:50%;animation:lb-spin .8s linear infinite}
 @keyframes lb-spin{to{transform:rotate(1turn)}}

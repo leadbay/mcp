@@ -65,6 +65,47 @@ describe("lead-card contract in the usage guide", () => {
     expect(GUIDE).toMatch(/Never render the numeric `score`/);
   });
 
+  it("gives the real Leadbay deep-link for an Open-in-app affordance", () => {
+    // ?lead=<uuid> is LEAD_QUERY_PARAM in the web app, read on load.
+    expect(GUIDE).toContain("?lead=");
+    expect(GUIDE).toContain("encodeURIComponent(lead.id)");
+    // lead.id is otherwise on the hide-list — this is the single exception.
+    expect(GUIDE.replace(/\s+/g, " ")).toMatch(
+      /ONE place a card may use `lead.id`: as a link target, never as visible text/i,
+    );
+  });
+
+  it("keeps the link's text as its accessible name, arrow decorative", () => {
+    // Text carries the meaning, so the svg must not be announced as well.
+    expect(GUIDE).toContain("Open in Leadbay");
+    expect(GUIDE).toContain('aria-hidden="true"');
+    // A plain diagonal arrow, not the box-with-arrow glyph.
+    expect(GUIDE).toContain('<line x1="7" y1="17" x2="17" y2="7"/>');
+    expect(GUIDE.replace(/\s+/g, " ")).toMatch(/bare diagonal stroke/i);
+  });
+
+  it("selects the view the lead lives in, not always /discover", () => {
+    // Every pull_followups lead carries in_monitor:true — linking those to
+    // /app/discover lands the rep in a list that does not contain the lead.
+    for (const view of ["monitor", "discover", "campaign"]) {
+      expect(GUIDE).toContain(view);
+    }
+    expect(GUIDE).toContain("lead.in_monitor");
+    expect(GUIDE).toContain("/app/${view}?lead=");
+    // pull_leads omits both flags, so the default must be stated.
+    expect(GUIDE.replace(/\s+/g, " ")).toMatch(/omits both flags/i);
+  });
+
+  it("gives campaign cards BOTH params — campaign selects the list, lead the panel", () => {
+    expect(GUIDE).toContain("/app/campaign?campaign=");
+    expect(GUIDE).toContain("&lead=");
+    expect(GUIDE).toContain("CAMPAIGN_QUERY_PARAM");
+    // Dropping campaign= opens an empty campaign view, so say so.
+    expect(GUIDE.replace(/\s+/g, " ")).toMatch(
+      /Omitting `campaign=` opens an empty campaign view/i,
+    );
+  });
+
   it("carries a hide-list covering the internal fields", () => {
     for (const field of ["`id`", "`sector_id`", "`location.pos`", "`stale_at`", "`deal_insights`"]) {
       expect(GUIDE).toContain(field);

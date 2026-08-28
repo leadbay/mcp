@@ -71,7 +71,8 @@ lb.styles();   // idempotent — safe to call per row
 | Class | For |
 |---|---|
 | `lb-card` / `lb-card-head` / `lb-title` / `lb-sub` | a lead card + its header |
-| `lb-row` / `lb-stack` | horizontal control row / vertical spacing |
+| `lb-row` / `lb-stack` / `lb-spacer` | control row / vertical spacing / flex filler that right-aligns what follows |
+| `lb-link-out` | quiet external link (icon inherits currentColor) — "Open in Leadbay" |
 | `lb-select` / `lb-input` / `lb-btn` | form controls (state-aware, see below) |
 | `lb-msg` (`data-tone="error\|ok"`) | inline feedback |
 | `lb-chip` (`data-status="WON\|LOST"`) | a status pill |
@@ -127,6 +128,67 @@ tell *why* this lead is on screen. Four lines, in this order.
 
 1. **Company** — `name`, linked to `website` (prefix `https://` on a bare host).
    Never render the numeric `score`; use the `▰❖▱` bar if you want the signal.
+
+   Also give every card an **Open in Leadbay** link to the lead's panel in the
+   product. Put it at the **right-hand end of the card's last action row** —
+   same row as the buttons, pushed right by an `lb-spacer`, not on a line of
+   its own. Style it `lb-link-out`: quiet text plus a plain arrow-up-right,
+   never a filled button. It is an escape hatch, not a call to action.
+
+   ```html
+   <div class="lb-row">
+     <button class="lb-btn">Like</button>
+     <button class="lb-btn">Set status</button>
+     <span class="lb-spacer"></span>          <!-- pushes the link right -->
+     <a class="lb-link-out" data-k="open" target="_blank" rel="noopener">
+       Open in Leadbay
+       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+         <line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>
+       </svg>
+     </a>
+   </div>
+   ```
+
+   Keep the arrow a bare diagonal stroke — the text already says where the link
+   goes, so the glyph only has to mark "leaves this page". Mark the `<svg>`
+   `aria-hidden="true"`: it is decorative, and the link text is the accessible
+   name.
+   **Pick the view the lead actually lives in** — the URL is
+   `/app/<view>?lead=<uuid>`, and the three views are `discover`, `monitor`,
+   `campaign`. Landing a Monitor lead on Discover drops the rep into a list
+   that does not contain it:
+
+   ```js
+   function leadUrl(lead, campaignId) {
+     const id = encodeURIComponent(lead.id);
+     // A campaign card carries TWO params — the campaign selects the list, the
+     // lead opens the panel inside it. Campaign wins even when in_monitor is
+     // also true, because that is the list the rep is looking at.
+     if (campaignId) {
+       return `https://leadbay.app/app/campaign?campaign=${encodeURIComponent(campaignId)}&lead=${id}`;
+     }
+     const view = lead.in_monitor ? "monitor" : "discover";
+     return `https://leadbay.app/app/${view}?lead=${id}`;
+   }
+   openEl.href = leadUrl(lead, campaignId);
+   ```
+
+   `in_monitor` / `in_discover` are booleans on the `pull_followups` payload —
+   every follow-up carries `in_monitor: true`, so a call sheet must link to
+   `monitor`. `pull_leads` omits both flags entirely; its leads are the Discover
+   batch by definition, so `discover` is the default. A campaign card
+   (`lb.callList({source:"campaign", campaignId})`) needs `?campaign=<id>&lead=<id>`
+   — the param names are `CAMPAIGN_QUERY_PARAM` and `LEAD_QUERY_PARAM`, and the
+   app's own `useLeadPanel` preserves whatever params are already set, so the
+   two coexist by design. Omitting `campaign=` opens an empty campaign view.
+
+   Inline the glyph as SVG rather than an emoji or `↗` — it inherits
+   `currentColor` and scales with the text, so it stays legible in both themes.
+   `?lead=<uuid>` is the real deep-link (`LEAD_QUERY_PARAM` in the web app, read
+   on load; the panel is an overlay, so the view choice only decides what sits
+   behind it). This is the ONE place a card may use `lead.id`: as a link target,
+   never as visible text.
 2. **State chips** — taste (`data-taste`) and CRM status (`data-status`) are
    INDEPENDENT axes; render both, hide the empty one. Never collapse to one chip.
 3. **Firmographics** — sector of activity first, then city, then size, then the
