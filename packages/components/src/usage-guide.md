@@ -104,6 +104,59 @@ The product face is `Nikkei Maru`; the stack names it first and falls back to
 the system UI font. Do **not** add an `@font-face` — artifacts are inline-only
 and a remote font URL will silently fail.
 
+## What every lead card MUST carry
+
+A card is the artifact form of the `pull_leads` table, and it inherits that
+table's rules. A card with a name and a button is not enough: the rep cannot
+tell *why* this lead is on screen. Four lines, in this order.
+
+```html
+<div class="lb-card">
+  <div class="lb-card-head">
+    <span class="lb-title"></span>              <!-- 1. company -->
+    <span class="lb-chips">                     <!-- 2. state -->
+      <span class="lb-chip" data-taste hidden></span>
+      <span class="lb-chip" data-status hidden></span>
+    </span>
+  </div>
+  <div class="lb-sub"></div>                    <!-- 3. firmographics -->
+  <div class="lb-sub" data-why></div>           <!-- 4. why it fits -->
+  <div class="lb-row"><!-- actions --></div>
+</div>
+```
+
+1. **Company** — `name`, linked to `website` (prefix `https://` on a bare host).
+   Never render the numeric `score`; use the `▰❖▱` bar if you want the signal.
+2. **State chips** — taste (`data-taste`) and CRM status (`data-status`) are
+   INDEPENDENT axes; render both, hide the empty one. Never collapse to one chip.
+3. **Firmographics** — sector of activity first, then city, then size, then the
+   contact. `sector_id` is a RAW ID (`"5136"`), not a label: resolve it via
+   `leadbay_list_sectors` (1346 rows — fetch once, cache, never inline the lot)
+   or omit it. Never print the raw id.
+4. **Why it fits** — one sentence, ≤20 words. Priority: `short_description` →
+   top 2 `tags[].display_name` → the literal string *"No description yet — run
+   qualification to generate one"*. Never leave this line blank: a silent gap
+   reads as a rendering bug, whereas the fallback tells the rep the data is
+   missing and what fixes it.
+
+**Never show** on a card: `id`, `sector_id`, `location.pos`, `location.country`
+(unless city and state are both missing), `is_hq`, `*_in_progress`,
+`highlighted_fields`, `custom_fields`, `stale_at`, `deal_insights`,
+`need_attention*`, any count that is 0, any value that is the string `"null"`.
+
+**Minimum actions.** A card that only displays is a table row that costs more —
+if you are not wiring an action, render the markdown table instead. Wire at
+least one write, and prefer the set the rep actually needs:
+
+| Card is for | Wire |
+|---|---|
+| triage a discovery batch | `lb.like` / `lb.dislike` + `lb.setStatus` |
+| working a call list | `lb.outreach` (gated on a note) + `lb.leadHistory` |
+| pipeline review | `lb.setStatus` + `lb.note` |
+
+Always render the `.error` branch of every view-model — a control that cannot
+reach the host must say so, not sit silent.
+
 ## Recipe: cold-call sheet (one row per lead)
 
 ```js
