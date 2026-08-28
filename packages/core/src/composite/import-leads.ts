@@ -305,8 +305,21 @@ function stableStringify(value: unknown): string {
     .join(",")}}`;
 }
 
-function importFingerprint(params: ImportLeadsParams, prep: PreparedImport): string {
+// `organization_id` is part of the fingerprint because the idempotency key it
+// feeds has no other tenant component — unlike the enrich and qualify keys,
+// which both carry `lens_id`. On the hosted server one store is shared by every
+// organization, so without this two of them uploading identical rows inside the
+// 5-minute idempotency window would collide: the second caller would be handed
+// the first's handle, and `leadbay_import_status` would return the first's
+// imported leads. Local installs keep their own store, so this only ever
+// mattered once the store became shared.
+function importFingerprint(
+  params: ImportLeadsParams,
+  prep: PreparedImport,
+  organizationId: string
+): string {
   const payload = {
+    organization_id: organizationId,
     mode: prep.mode,
     rows: prep.validInputs.map((i) => ({
       domain: i.domain,
@@ -1679,7 +1692,9 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
         );
       }
       const reservation = await ctx.bulkTracker.findOrCreatePendingImport({
-        import_fingerprint: importFingerprint(params, prep),
+        // Cached /users/me — this composite has already read it for the admin
+        // gate, so it costs no round trip.
+        import_fingerprint: importFingerprint(params, prep, await client.resolveOrgId()),
         mode: prep.mode,
         dry_run: dryRun,
         records_total: prep.validInputs.length,
@@ -1909,11 +1924,23 @@ async function runImportInBackground(
           importIds: result.importIds,
         });
       } catch (err: any) {
-        await tracker.markImportFailed(
-          handleId,
-          err?.message ?? err?.code ?? "unknown"
-        );
+        // Best-effort: this is the LAST statement in a detached task. If it
+        // rejected it would be an unhandled rejection, and on the hosted
+        // multi-tenant server that ends the process for every tenant, not just
+        // this import.
+        await tracker
+          .markImportFailed(handleId, err?.message ?? err?.code ?? "unknown")
+          .catch((e: any) =>
+            ctx?.logger?.warn?.(
+              `import-leads: could not record background failure for ${handleId}: ${e?.message ?? e}`
+            )
+          );
       }
-    })();
+    })().catch((e: any) =>
+      // Terminal guard. Nothing above may escape a detached task.
+      ctx?.logger?.error?.(
+        `import-leads: background import ${handleId} crashed: ${e?.message ?? e}`
+      )
+    );
   }, 0);
 }

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.31.2 — 2026-08-28 — Bulk qualification works on the hosted server
+
+- **"Qualify these leads" now works when you connect through
+  mcp.leadbay.app.** Asking for qualification or an import without waiting for
+  it to finish returned an error instead of starting the job. It had been that
+  way since the hosted server launched. Local installs were never affected.
+- **Importing and qualifying in one step had never worked on the hosted
+  server.** Every attempt failed instantly. It now runs, and hands back a
+  reference you can use to check on it.
+- **Start something in the evening, check it in the morning.** Job references
+  now survive on the hosted server the way they always have locally — across
+  conversations, overnight, and across our own releases. They last 30 days.
+- **If storage is ever misconfigured, the server says so at startup** instead
+  of reporting healthy and failing every job afterwards.
 ## 0.31.1 — 2026-08-28 — Asking for more leads on an empty lens now says no
 
 - **Asking for more leads on a lens that has nothing left no longer looks like

@@ -25,7 +25,8 @@ import { serve } from "@hono/node-server";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import type { LeadbayClient, ToolLogger } from "@leadbay/core";
+import type { BulkTracker, LeadbayClient, ToolLogger } from "@leadbay/core";
+import { createDefaultBulkStore, LocalBulkStore } from "@leadbay/core";
 import { buildServer } from "./server.js";
 import {
   resolveClientFromToken,
@@ -329,7 +330,8 @@ function extractBearer(authHeader: string | undefined): string | undefined {
 // leaking through the LeadbayClient.
 function buildServerFromClient(
   client: LeadbayClient,
-  requestTelemetry: TelemetryHandle
+  requestTelemetry: TelemetryHandle,
+  bulkTracker?: BulkTracker
 ): Server {
   const includeWrite = parseWriteEnv();
   const includeAdvanced = process.env.LEADBAY_MCP_ADVANCED === "1";
@@ -339,7 +341,55 @@ function buildServerFromClient(
     includeAdvanced,
     logger,
     telemetry: requestTelemetry,
+    bulkTracker,
   });
+}
+
+// ── Bulk tracker ────────────────────────────────────────────────────────────
+//
+// One store for the process, exactly like the stdio server has one store for
+// its user. Handles have to outlive far more than a request: a user launches an
+// enrichment or an import in the evening and polls it the next morning, and the
+// status tools promise a 30-day TTL. That rules out anything scoped to a
+// request, a session, or process memory — the pod is replaced on every release.
+// So this is the same file-backed store bin.ts uses, pointed by
+// LEADBAY_BULK_STORE_PATH at a durable volume in the hosted deployment.
+//
+// If the store cannot be created — volume not mounted, path not writable — we
+// log loudly and fall back to memory rather than refusing to boot. A
+// misconfigured volume then costs handles across a restart, which is visible in
+// the boot line and in BULK_NOT_FOUND, instead of taking every tool down for
+// every user.
+//
+// Built lazily, on first use, and eagerly awaited by the entrypoint below so the
+// boot line still reports the real backend and a bad volume still fails loudly
+// at startup. NOT at module load: a dozen suites import this file for unrelated
+// reasons (SSE sessions, telemetry opt-out, auth challenges) and would otherwise
+// reach into the developer's real ~/.leadbay just by importing it. Keying that
+// off NODE_ENV was not enough — http-telemetry-optout.test.ts deliberately sets
+// NODE_ENV=development to exercise the real telemetry path, and had no way to
+// know that also un-gated the bulk store. Being the server is the honest
+// condition, not being in a test.
+let bulkTrackerPromise: Promise<LocalBulkStore> | undefined;
+function getBulkTracker(): Promise<LocalBulkStore> {
+  // Lazy is not enough on its own: any test that drives app.fetch past the auth
+  // branch reaches this, and several pre-existing ones do (the "does NOT force
+  // re-auth" cases in http-auth-challenge*.test.ts). So the same NODE_ENV guard
+  // initTelemetry uses lives HERE, at the one place that touches the disk,
+  // rather than at call sites that are easy to add without noticing.
+  if (process.env.NODE_ENV === "test" && !process.env.LEADBAY_BULK_STORE_PATH) {
+    bulkTrackerPromise ??= Promise.resolve(
+      new LocalBulkStore({ backend: "memory", logger })
+    );
+    return bulkTrackerPromise;
+  }
+  bulkTrackerPromise ??= createDefaultBulkStore({ logger }).catch((err: any) => {
+    logger.error?.(
+      `bulk_store.init_failed — falling back to memory, handles will NOT survive a restart: ${err?.message ?? err}`
+    );
+    return new LocalBulkStore({ backend: "memory", logger });
+  });
+  return bulkTrackerPromise;
 }
 
 // ── OAuth resource-server discovery (MCP authorization spec / RFC 9728) ──────
@@ -512,7 +562,8 @@ async function handleStreamable(
   // events are suppressed per-request — product#3879.
   const server = buildServerFromClient(
     resolved.client,
-    await telemetryHandleForRequest(resolved.client)
+    await telemetryHandleForRequest(resolved.client),
+    await getBulkTracker()
   );
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
@@ -627,7 +678,8 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
           sessionOptedOut: session.suppressed,
           fallbackEnabled: !session.suppressed,
         })
-    )
+    ),
+    await getBulkTracker()
   );
   await server.connect(transport);
 
@@ -810,9 +862,15 @@ const isEntrypoint = (() => {
 if (isEntrypoint) {
   // Stable boot log for Fly to surface in the dashboard.
   const _boot = randomUUID();
+  // Eager: the point of the boot line is that a misconfigured volume is visible
+  // before the first user request, not after it.
+  const bootTracker = await getBulkTracker();
   serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) => {
     process.stderr.write(
-      `leadbay-mcp-http ${VERSION} listening on http://${info.address}:${info.port} (boot=${_boot})\n`
+      `leadbay-mcp-http ${VERSION} listening on http://${info.address}:${info.port} ` +
+        `(boot=${_boot}, write=${parseWriteEnv()}, ` +
+        `advanced=${process.env.LEADBAY_MCP_ADVANCED === "1"}, ` +
+        `bulk_store=${bootTracker.durability})\n`
     );
     // Process-level boot signal (no per-user identity — no request yet). Lets us
     // correlate "events stopped" in PostHog with a Fly restart/redeploy. Pass an

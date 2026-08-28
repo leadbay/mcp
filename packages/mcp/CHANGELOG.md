@@ -1,5 +1,65 @@
 # Changelog — @leadbay/mcp
 
+## 0.31.2 — 2026-08-28
+
+Give the hosted HTTP server a bulk tracker (product#4005). It never had one.
+
+`buildServerFromClient()` built every hosted MCP server without a
+`bulkTracker`, and `BuildServerOptions.bulkTracker` is optional — so it compiled
+and failed silently. `ctx.bulkTracker` was `undefined` on 100% of hosted calls
+and all six `!ctx?.bulkTracker` guards fired. On the three hosted egress IPs
+over 28 Jun – 27 Aug: `leadbay_import_and_qualify` 13 failures against 1 success
+(a `dry_run:"preview"`, which short-circuits above the guard) — it had never once
+worked; `leadbay_bulk_qualify_leads` 37 failures, all of them the
+`wait_for_completion=false` branch; `leadbay_import_leads` 3. Nine external users,
+both regions, 0.24.2 through 0.29.0. Zero failures on local across the same tools.
+
+- **Not the ephemeral filesystem, but the remedy the issue asked for was right.**
+  `createDefaultBulkStore` is called from one place, `bin.ts` — the stdio
+  entrypoint. The container runs `dist/http-server.js`, which never referenced
+  the bulk store, so `~/.leadbay/bulks.json` was never opened there. The
+  diagnosis was wrong; the requirement — a durable store, pointed at by an
+  explicit `LEADBAY_BULK_STORE_PATH` — was not.
+- **One store for the process, file-backed, on a durable volume.** A handle has
+  to outlive far more than a request: a user launches an enrichment in the
+  evening and polls it the next morning, and the status tools promise a 30-day
+  TTL. Anything scoped to a request, a session, or process memory breaks that —
+  the pod is replaced on every release, and those releases land in the evening,
+  which is exactly the window being slept through. This is the same
+  `createDefaultBulkStore` the stdio server uses, so hosted and local now have
+  identical semantics.
+- **A misconfigured volume degrades, it does not take the server down.** If the
+  store can't be created we log an error naming the path and fall back to memory;
+  the boot line reports which backend is live.
+- **The store now proves it can write before reporting `durability: "file"`.**
+  The probe was `stat()` on the parent directory, which says nothing about
+  being able to write into it. Verified against the real image: a mount owned
+  `root:root 0755` — what a freshly provisioned Kubernetes PVC presents to a
+  container running as uid 1000 — passed that probe and reported `file`, while
+  a plain write to the same path returned EACCES. The hosted server would have
+  booted announcing `bulk_store=file` and then failed every bulk launch exactly
+  the way this issue failed, with the boot line insisting all was well. It now
+  writes and removes a probe file, so the reported durability is the real one.
+- **`notification_id` now survives a file read for `qualify` and `import`
+  records** (product#4010). `validateRecord` rebuilt those two kinds without the
+  field — only `enrich` kept it — so `leadbay_qualify_status` reported
+  `bulk_progress: null` and `notification_id: null` on every poll of a
+  file-backed record. The type check is hoisted to cover all three kinds
+  instead of just one. Note this restores the *data*, not a speedup:
+  `qualify_status` still runs its per-lead fan-out before reading the
+  notification, so the single-call progress path the notifications work built
+  is still not actually taken. Tracked separately — reordering that is a
+  behaviour change to the tool, not part of wiring up the hosted store.
+- **The import idempotency key carries the organization.** The enrich and
+  qualify keys both include `lens_id`, which is per-organization; the import key
+  had no tenant component at all. That never mattered while every install had
+  its own store. With one store shared by every tenant on the hosted server, two
+  organizations uploading identical rows inside the 5-minute window would have
+  had the second handed the first's handle — and its imported leads.
+- **The hosted boot line now reports `write`, `advanced` and `bulk_store`**, like
+  the stdio banner always has. This failure was invisible in the logs for two
+  months.
+
 ## 0.30.0 — 2026-08-19
 
 Encode the **single-country rule** across every location-accepting surface

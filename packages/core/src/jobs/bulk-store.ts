@@ -421,6 +421,16 @@ export class LocalBulkStore implements BulkTracker {
       throw new Error("invalid status");
     if (typeof r.idempotency_key !== "string") throw new Error("invalid idempotency_key");
 
+    // Shared by all three kinds. Every kind persists a server-minted
+    // notification_id and every kind's status tool reads it for the
+    // single-REST-call bulk_progress fast path, so validate it once here rather
+    // than per branch — the per-branch version only ever covered "enrich", and
+    // qualify/import silently dropped the field on every file read
+    // (product#4010). That was invisible while the hosted server had no store
+    // at all; a file-backed hosted store makes it a live regression.
+    if (r.notification_id != null && typeof r.notification_id !== "string")
+      throw new Error("invalid notification_id");
+
     // kind discriminator: default to "enrich" for backward compat with rows
     // written before 0.4.x. Any unknown kind is dropped (warned by readAll).
     const kind = (r.kind as BulkRecordKind | undefined) ?? "enrich";
@@ -441,6 +451,7 @@ export class LocalBulkStore implements BulkTracker {
       };
       if (typeof r.per_lead_budget_ms === "number") out.per_lead_budget_ms = r.per_lead_budget_ms;
       if (typeof r.total_budget_ms === "number") out.total_budget_ms = r.total_budget_ms;
+      if (r.notification_id != null) out.notification_id = r.notification_id as string;
       return out;
     }
     if (kind === "import") {
@@ -492,6 +503,7 @@ export class LocalBulkStore implements BulkTracker {
         }
       }
       if (typeof r.error === "string") out.error = r.error;
+      if (r.notification_id != null) out.notification_id = r.notification_id as string;
       return out;
     }
     if (kind === "enrich") {
@@ -502,11 +514,6 @@ export class LocalBulkStore implements BulkTracker {
       if (typeof r.lens_id !== "number") throw new Error("invalid lens_id");
       if (r.selection_source !== "explicit" && r.selection_source !== "wishlist")
         throw new Error("invalid selection_source");
-      if (
-        r.notification_id != null &&
-        typeof r.notification_id !== "string"
-      )
-        throw new Error("invalid notification_id");
       return {
         kind: "enrich",
         bulk_id: r.bulk_id,
@@ -986,8 +993,43 @@ export async function createDefaultBulkStore(
     });
     // Probe: ensure init doesn't throw, and the directory is usable.
     await (store as any).ensureInitialized();
-    // Probe a writable permission by attempting to stat the parent.
-    await stat(dirname(path));
+    // Probe writability by actually writing. `stat(dirname(path))` used to
+    // stand in for this, but statting a directory says nothing about being able
+    // to write into it: a freshly provisioned Kubernetes PVC mounts root-owned,
+    // a container running as a non-root uid stats it happily, and the first
+    // real launch then dies with EACCES inside writeAll. The store would report
+    // `durability: "file"` the whole time — a boot line claiming durability
+    // over a volume that has none is worse than no boot line, because it is the
+    // thing meant to catch exactly that misconfiguration (product#4005).
+    //
+    // Probe the REAL target first: a bulks.json that exists but is a directory,
+    // or is owned by another uid after a volume restore, would let a probe on a
+    // sibling path succeed and then fail every readAll() with EISDIR/EACCES.
+    await (store as any).readAll();
+    // Then prove we can create a file in the directory. O_EXCL under a unique
+    // name, never O_TRUNC on a fixed one: a fixed name would truncate whatever
+    // is already there, and if that were a symlink the truncation would land
+    // outside the store directory entirely.
+    const probeId = `.write-probe-${process.pid}-${randomUUID()}`;
+    const probeTmp = resolvePath(dirname(path), `${probeId}.tmp`);
+    const probe = resolvePath(dirname(path), probeId);
+    try {
+      const fh = await fsOpen(
+        probeTmp,
+        fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY,
+        0o600
+      );
+      await fh.close();
+      // Exercise the rename too, not just the create: writeAll() commits every
+      // mutation with tmp+rename, and a directory can allow creating a new file
+      // while refusing to replace one (a sticky bit, or an ACL over a store left
+      // by another uid). Creating a file alone would let startup report
+      // `durability: "file"` over a store that fails on first write.
+      await rename(probeTmp, probe);
+    } finally {
+      await unlink(probeTmp).catch(() => {});
+      await unlink(probe).catch(() => {});
+    }
     return store;
   } catch (err: any) {
     if (!allowMemory) {
