@@ -1230,8 +1230,10 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 \`queued\` → ✅ "Queued <N> extra leads on lens <id>. Pull in ~30s." Do NOT
 list \`accepted_seeds\`; they're internal.
-\`quota_exceeded\` → render three options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`) (smaller
-count / wait until reset / upgrade).
+\`no_candidates\` → ⛔ surface \`reason.message\`, name the criteria, offer
+\`leadbay_adjust_audience\`. Never re-call this tool on that lens.
+\`quota_exceeded\` → three options via the host's choice widget
+(smaller count / wait for reset / upgrade).
 \`refresh_in_progress\` → "lens is filling, retry in a minute".
 \`no_valid_seeds\` → silently re-call \`leadbay_seed_candidates\`, retry once.
 
@@ -1251,6 +1253,9 @@ Queue an additive extra-refill on a lens — more leads on the same criteria, wi
 - \`status: "quota_exceeded"\` — daily LENS_EXTRA_REFILL hit. Response carries \`quota: {used_today, resets_at}\` + a \`message\` to surface. **Render three options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`)**: (1) smaller \`extra_count\`, (2) wait until \`resets_at\`, (3) upgrade plan (TIER1=150, TIER2=1000). Do NOT silently retry.
 - \`status: "refresh_in_progress"\` — a refresh or extra-refill is already running. Tell the user to wait and call \`leadbay_pull_leads\` in ~30s.
 - \`status: "no_valid_seeds"\` — seeds went stale. Silently re-call \`leadbay_seed_candidates\` and retry once; only surface to the user if the second attempt also fails.
+- \`status: "no_candidates"\` — **the refill was NOT queued.** The lens's candidate pool is empty, so a refill would report success, consume no quota and deliver nothing. \`reason\` carries the same \`{code, message, retryable, criteria?, narrow_locations?}\` shape \`leadbay_pull_leads\` returns in \`empty_reason\`, with \`retryable: false\`. **Stop. Do not re-call this tool on this lens** — the outcome cannot change until the audience changes. Surface \`reason.message\`, name the criteria in play, and offer \`leadbay_adjust_audience\` (or \`leadbay_pull_followups\` when \`reason.code\` is \`no_new_leads\` and the lens already holds leads).
+
+**Extendability is checked before the write.** Every response carries \`available_count\` — how many leads a refill could still draw, read from the lens's own pool. \`0\` means the call was refused (\`no_candidates\`); \`null\` means the pool could not be read and the refill was queued anyway. An empty lens is NOT evidence of a broken refill: it is usually a lens that never had candidates. Reach for \`leadbay_adjust_audience\`, not another \`leadbay_extend_lens\`.
 
 WHEN TO USE: when the user has a bigger appetite than the daily lens fill delivers — they want MORE of the same kind of leads, on demand. Canonical phrasings: "I want more leads on this lens", "extend the lens", "give me a bigger batch today". The \`leadbay_extend_my_lens\` prompt is the user-facing entry point that orchestrates the whole flow.
 
@@ -1291,6 +1296,8 @@ Pick the row matching the response \`status\`. Seed-picking is internal; do NOT 
 | \`quota_exceeded\`        | "Upgrade plan for a higher daily limit"                       | (no call — direct user to contact account manager / sales) |
 | \`refresh_in_progress\`   | "Lens is already filling — pull leads in a minute"            | \`leadbay_pull_leads()\` (after a short wait)            |
 | \`no_valid_seeds\`        | (silent retry — re-call \`leadbay_seed_candidates\` then \`leadbay_extend_lens\`) | internal — only surface if the second attempt also fails |
+| \`no_candidates\`         | "Widen the audience — this lens has nothing left to add"       | \`leadbay_adjust_audience()\` — never \`leadbay_extend_lens\` again |
+| \`no_candidates\` (\`reason.code: no_new_leads\`) | "Work the leads already in the lens"        | \`leadbay_pull_followups()\`                             |
 
 If nothing matches cleanly, default to "pull leads now to see what's queued" — never invent a tool that doesn't exist.
 `;
@@ -3113,6 +3120,11 @@ WHEN TO USE: as the agent's default opening move when the user wants to see lead
 WHEN NOT TO USE: when the user has named a specific lens — pass \`lensId\` to override the auto-resolution. Replaces the older leadbay_find_prospects (removed in v0.2.0).
 
 The active lens can change between calls (5-min cache + backend \`last_requested_lens\`). If a multi-step workflow depends on staying on one lens, **capture \`response.lens.id\` from the first response and pass it as the \`lensId\` argument on every subsequent Leadbay call** — including re-pulls, bulk qualifies, and research. (Field-name caveat: response nests it as \`lens.id\`; the parameter is \`lensId\`.) Re-pulling without \`lensId\` after a long-running tool may silently switch to a different lens and discard prior work.
+
+**EMPTY BATCH — route on \`empty_reason\`, never loop.** When \`leads\` is empty the response carries \`empty_reason: {code, message, retryable, criteria?, narrow_locations?}\`. \`retryable\` is the only field that decides what you do next:
+
+- \`retryable: true\` (always \`code: "computing"\`) — the lens is still building. Say so, pull ONCE more in ~30s. Do not call it empty.
+- \`retryable: false\` — no amount of re-pulling, lens-switching or \`leadbay_extend_lens\` can produce leads on these criteria. **Stop calling tools.** Surface \`message\` to the user, name the criteria from \`criteria\` (and \`narrow_locations\` first when present — a city-scale geo scope is the usual culprit), and offer \`leadbay_adjust_audience\` to widen. A refill on a zero-candidate lens answers "queued", consumes no quota and delivers nothing, so retrying reads as progress while achieving none (product#3995).
 
 ---
 

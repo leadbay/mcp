@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.31.1 — 2026-08-28 — Asking for more leads on an empty lens now says no
+
+- **Asking for more leads on a lens that has nothing left no longer looks like
+  it worked.** Before, the request came back as "queued" whether or not there
+  was anything to add, and the leads simply never arrived. That is what one
+  customer's assistant kept doing: 49 requests over three weeks, every one
+  reported as accepted, none of them able to deliver.
+- **The check now happens before the request is sent.** Leadbay looks at how
+  many leads the lens could still take. If the answer is none, the request is
+  refused with the reason instead of accepted and quietly dropped.
+- **The refusal says which kind of empty it is** — an audience that matches
+  nothing at all, or one where everything matching has already been delivered —
+  and names the criteria in the way, so the next move is widening the audience
+  rather than asking again.
+- **A lens that can fill is unaffected**, and now also reports how many leads it
+  still has available.
+
+## 0.31.0 — 2026-08-28 — An empty lens tells you why
+
+- **A lens with no leads now says what is wrong with it.** Before, asking for
+  leads on a lens whose filters match nothing came back with an empty list and
+  no explanation, which looks exactly like a lens that is still loading. So the
+  assistant kept trying. One customer's agent asked for more leads 49 times over
+  three weeks on lenses that could never fill.
+- **The answer now names the criteria in the way, and says to stop retrying.**
+  If the geography is pinned to a single town, that town is named first, because
+  that is nearly always the thing to widen.
+- **"Still loading" and "genuinely empty" are finally different answers.** Only
+  the first one asks you to wait.
+- **Nothing is guessed.** A lens that is empty for a reason we cannot read says
+  so plainly, rather than inventing a cause.
+
 ## 0.30.0 — 2026-08-19 — Country-wide means country-wide
 
 - **Asking for leads "anywhere in the US" no longer searches one village.**
