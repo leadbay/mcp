@@ -657,6 +657,48 @@ export const EPILOGUE_STATUSES = [
   "NOT_INTERESTED_LOST",
 ] as const;
 
+// ─── Sort order ──────────────────────────────────────────────────────────────
+//
+// Mirrors the web app's TableSort: one <select> whose values are the backend's
+// `FIELD:ASC|DESC` LeadOrder strings, with an arrow marking the direction. The
+// app renders two entries per column (asc + desc); we do the same, but as a flat
+// list because an artifact has no column header to hang a toggle off.
+
+/** Sort options for a follow-up list, in the order a rep is most likely to
+ *  want them. Values are the backend LeadOrder enum — leadbay_pull_followups
+ *  rejects anything outside it, because the endpoint answers 200-with-no-rows
+ *  on an unknown order rather than erroring. */
+export const SORT_ORDERS: ReadonlyArray<Option> = [
+  { value: "", label: "Default ranking" },
+  { value: "SCORE:DESC", label: "Score ↓" },
+  { value: "SCORE:ASC", label: "Score ↑" },
+  { value: "NAME:ASC", label: "Name A→Z" },
+  { value: "NAME:DESC", label: "Name Z→A" },
+  { value: "SIZE:DESC", label: "Size ↓" },
+  { value: "SIZE:ASC", label: "Size ↑" },
+  { value: "SECTOR:ASC", label: "Sector A→Z" },
+  { value: "STATUS:ASC", label: "Status A→Z" },
+  { value: "CONTACT_COUNT:DESC", label: "Contacts ↓" },
+  { value: "LAST_PROSPECTING_ACTION_AT:DESC", label: "Last action ↓" },
+  { value: "LAST_PROSPECTING_ACTION_AT:ASC", label: "Last action ↑" },
+  { value: "EPILOGUE_STATUS_SET_AT:DESC", label: "Outcome set ↓" },
+  { value: "LIKED:DESC", label: "Liked first" },
+  { value: "DISLIKED:DESC", label: "Disliked first" },
+];
+
+/** Sort picker field. Static options, no API call — bind with lb.bindSelect.
+ *  The empty value means "no order param", i.e. the Monitor's own ranking,
+ *  which is what a rep working a list top-down expects by default. */
+function sortOrder(current?: string | null): Field {
+  const cur = String(current ?? "").trim().toUpperCase();
+  const known = SORT_ORDERS.some((o) => o.value === cur);
+  return new Field({
+    kind: "select",
+    value: known ? cur : "",
+    load: async () => SORT_ORDERS.slice(),
+  });
+}
+
 // ─── Lead status (org-wide CRM status) ───────────────────────────────────────
 //
 // NOT the epilogue statuses above. Two separate systems:
@@ -887,10 +929,48 @@ interface CallListOpts {
   city?: string;
   ask: string;
   pageSize?: number;
+  /** A Field holding a LeadOrder string (from `lb.sortOrder()`), or a literal.
+   *  Read at load time, so changing it and calling `.loadPage(0)` re-sorts. */
+  order?: Field | string;
+}
+export interface LeadListOpts {
+  lensId?: number;
+  ask: string;
+  pageSize?: number;
+  /** A Field holding a LeadOrder string (from `lb.sortOrder()`), or a literal.
+   *  Read at request time, so changing it and calling `.loadPage(0)` re-sorts. */
+  order?: Field | string;
+}
+/** A paginated DISCOVER list (leadbay_pull_leads), sortable via `order`.
+ *  Use this rather than re-sorting rows client-side: the backend sorts the WHOLE
+ *  lens and returns the requested page of that, so sorting one page in the
+ *  browser would silently show the wrong leads. The pull_leads RENDERING block
+ *  says never to re-order the rows it returns — `order` is the sanctioned way. */
+function leadList(opts: LeadListOpts): ListModel {
+  const orderValue = (): string =>
+    typeof opts.order === "string" ? opts.order : String(opts.order?.value ?? "");
+  return new ListModel({
+    pageSize: opts.pageSize ?? 20,
+    load: async ({ page, pageSize }) => {
+      const r = (await call("leadbay_pull_leads", {
+        page,
+        count: pageSize,
+        ...(opts.lensId ? { lensId: opts.lensId } : {}),
+        ...(orderValue() ? { order: orderValue() } : {}),
+        _triggered_by: opts.ask,
+      })) as { leads?: unknown[]; pagination?: { total?: number } };
+      const items = r.leads ?? [];
+      return { items, total: r.pagination?.total ?? items.length };
+    },
+  });
 }
 /** A paginated lead list for cold-calling — Monitor follow-ups or a campaign. */
 function callList(opts: CallListOpts): ListModel {
   const source = opts.source ?? "followups";
+  // Read at request time, not at build time, so a bound select re-sorts the
+  // list on the next loadPage without rebuilding the view-model.
+  const orderValue = (): string =>
+    typeof opts.order === "string" ? opts.order : String(opts.order?.value ?? "");
   return new ListModel({
     pageSize: opts.pageSize ?? 20,
     load: async ({ page, pageSize }) => {
@@ -906,6 +986,7 @@ function callList(opts: CallListOpts): ListModel {
               page,
               count: pageSize,
               ...(opts.city ? { city: opts.city } : {}),
+              ...(orderValue() ? { order: orderValue() } : {}),
               _triggered_by: opts.ask,
             });
       const o = r as {
@@ -951,13 +1032,16 @@ export const lb = {
   dislike,
   leadStatus,
   setStatus,
+  sortOrder,
   leadHistory,
   leadProfile,
   enrichment,
   callList,
+  leadList,
   teamActivity,
   EPILOGUE_STATUSES,
   LEAD_STATUSES,
+  SORT_ORDERS,
 };
 
 // Self-attach the global for inline-script artifacts (from inside the module

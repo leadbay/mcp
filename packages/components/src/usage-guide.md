@@ -35,6 +35,8 @@ then on every change — render your own DOM from it.
 | `lb.setStatus({leadId or leadIds, status, date?, ask})` | action | write the org CRM status → `set_lead_status` |
 | `lb.leadHistory(leadId, ask)` | resource (lazy) | notes + activities + engagement → `account_history` |
 | `lb.leadProfile(leadId, ask)` | resource (lazy) | full lead profile → `research_lead_by_id` |
+| `lb.sortOrder(current?)` | field | a sort `<select>` mirroring the app's TableSort |
+| `lb.leadList({lensId?, order?, ask})` | list | a sortable Discover batch → `pull_leads` |
 | `lb.callList({source:'followups'\|'campaign', campaignId?, city?, ask})` | list | a cold-call list (Monitor or a campaign) |
 | `lb.enrichment({leadIds, titles, ask, pollEvery?})` | resource (polling) | launch + watch contact enrichment |
 | `lb.teamActivity({weeks, ask})` | resource | manager leaderboard + activity trend → `leadbay_team_activity` |
@@ -42,6 +44,17 @@ then on every change — render your own DOM from it.
 `lb.EPILOGUE_STATUSES` = the 4 disposition values
 (`STILL_CHASING`, `COULD_NOT_REACH_STILL_TRYING`, `INTEREST_VALIDATED_OR_MEETING_PLANED`, `NOT_INTERESTED_LOST`).
 `lb.LEAD_STATUSES` = the 4 org CRM statuses as `{value,label}` (`WANTED`, `WON`, `LOST`, `UNWANTED`).
+`lb.SORT_ORDERS` = the sort options as `{value,label}`; values are the backend `FIELD:ASC|DESC` enum.
+
+**Sorting is a SERVER concern.** `lb.leadList` and `lb.callList` take an `order`
+(a `lb.sortOrder()` field or a literal) and send it upstream; the backend sorts
+the whole lens / Monitor and returns the requested page of that. Never re-sort
+rows in the browser — you would be reordering one page of a larger set, showing
+leads that do not belong at that position. The empty value means "no order
+param", i.e. the tab's own ranking, which is the right default. Changing the
+sort should reset to page 0. Campaign call sheets cannot sort:
+`leadbay_campaign_call_sheet` has no `order` param, and `lb.callList` drops it
+for that source rather than sending something the tool would reject.
 
 **Two different systems.** Epilogue = how one outreach attempt went (drives
 follow-up ranking). Lead status = the commercial outcome, org-wide — the same
