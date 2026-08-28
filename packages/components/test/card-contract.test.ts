@@ -61,6 +61,37 @@ describe("lead-card contract in the usage guide", () => {
     expect(GUIDE).toMatch(/Never leave this line blank/i);
   });
 
+  it("requires a reachability marker — phone / email, not contact counts", () => {
+    // A call sheet whose rows have no phone is a wish list; the rep must see
+    // that before clicking, not after.
+    expect(GUIDE.replace(/\s+/g, " ")).toMatch(
+      /Always show whether the lead is reachable/i,
+    );
+    expect(GUIDE).toContain("phone_numbers");
+    expect(GUIDE).toContain("lead.email");
+    expect(GUIDE).toContain("has_phone");
+    // The API returns the literal string "null" for a missing email.
+    expect(GUIDE).toContain('lead.email !== "null"');
+    // LinkedIn alone and contacts_count are NOT reachability.
+    expect(GUIDE.replace(/\s+/g, " ")).toMatch(/linkedin_page` alone/i);
+    expect(GUIDE).toContain("contacts_count");
+  });
+
+  it("keeps the contact and the company's channels on separate lines", () => {
+    // phone_numbers/email are COMPANY fields. Rendering them beside
+    // recommended_contact claims a direct line that does not exist — GASSER has
+    // a company phone but contacts.reachable is [] and
+    // _meta.has_reachable_contact is false.
+    // The guide uses a typographic apostrophe (’), not U+0027 — match either.
+    const flat = GUIDE.replace(/\s+/g, " ").replace(/[’]/g, "'");
+    expect(flat).toMatch(/never merge the person with the company's switchboard/i);
+    expect(flat).toContain("belong to the // COMPANY, not to `recommended_contact`");
+    expect(GUIDE).toContain("contacts.reachable");
+    expect(GUIDE).toContain("_meta.has_reachable_contact");
+    // job_title is usually null on list payloads — omit, never invent.
+    expect(flat).toMatch(/inventing one is worse than omitting it/i);
+  });
+
   it("forbids rendering the numeric score, matching the table spec", () => {
     expect(GUIDE).toMatch(/Never render the numeric `score`/);
   });

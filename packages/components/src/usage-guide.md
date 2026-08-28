@@ -208,6 +208,48 @@ tell *why* this lead is on screen. Four lines, in this order.
    contact. `sector_id` is a RAW ID (`"5136"`), not a label: resolve it via
    `leadbay_list_sectors` (1346 rows — fetch once, cache, never inline the lot)
    or omit it. Never print the raw id.
+
+   **Always show whether the lead is reachable — and never merge the person
+   with the company's switchboard.** These are two separate lines:
+
+   ```js
+   // WHO — recommended_contact. Name, and job_title ONLY when present; on list
+   // payloads it is usually null, and inventing one is worse than omitting it.
+   const rc = lead.recommended_contact;
+   const who = rc ? [rc.first_name, rc.last_name].filter(Boolean).join(" ") : null;
+   const whoLine = who ? who + (rc.job_title ? " · " + rc.job_title : "") : "No named contact";
+
+   // HOW — company-level channels. `phone_numbers` and `email` belong to the
+   // COMPANY, not to `recommended_contact`. Rendering "Jean · ☎ 0123…" claims a
+   // direct line that does not exist; it is the switchboard.
+   const phone = (lead.phone_numbers || [])[0] || null;
+   // The API returns the STRING "null" for a missing email — guard for it or
+   // you will print the word "null" as an address.
+   const email = lead.email && lead.email !== "null" ? lead.email : null;
+   const howLine = [phone && "☎ " + phone, email && "✉ " + email].filter(Boolean)
+     .join(" · ") || "No direct channel — enrich to reveal";
+   ```
+
+   ```html
+   <div class="lb-sub">Sector · City · Size</div>
+   <div class="lb-sub">👤 Jean-François Froemer · Gérant</div>   <!-- WHO -->
+   <div class="lb-sub">🏢 ☎ 01 23 45 67 89</div>                 <!-- HOW: company -->
+   ```
+
+   Label the channel line as the **company's**, so a rep reading fast cannot
+   mistake it for a direct line. A per-contact email or phone exists only after
+   enrichment — `research_lead_by_id` exposes it as `contacts.reachable[]`, and
+   `_meta.has_reachable_contact` is the authoritative flag. The list payloads
+   carry neither, so a card built from `pull_leads` / `pull_followups` can only
+   ever show company channels. Say "enrich to reveal" rather than implying the
+   contact is callable.
+
+   Two things that look like reachability and are not: a `linkedin_page` alone
+   (the rep cannot message a URL without leaving the artifact — same rule
+   `research_lead_by_id` applies), and `contacts_count > 0` (it counts known
+   people, not people you can contact; a lead can show 2518 contacts and zero
+   channels). `pull_followups` carries `has_phone` as a ready-made boolean;
+   `pull_leads` omits it, so derive from `phone_numbers` there.
 4. **Why it fits** — one sentence, ≤20 words. Walk this chain and stop at the
    first hit:
 
