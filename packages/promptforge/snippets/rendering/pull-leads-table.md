@@ -9,7 +9,7 @@ Present the response as a markdown table **in the exact order the tool returned 
 - Line 1: the 10-segment score bar in inline-code backticks (see the score-bar snippet above for the algorithm).
 - Insert `<br>` between lines.
 - Line 2: linked company name + ` · ` + short location + ` · ` + compact size.
-  - Link target: `website` (prefix `https://` if it's a bare hostname). Don't synthesize an app deep-link.
+  - Link target: `website` (prefix `https://` if it's a bare hostname). Don't point the company name at the Leadbay app — the app deep-link (`https://leadbay.app/app/<view>?lead=<id>`, view = `discover` | `monitor` | `campaign`) is a separate affordance, not the company link.
   - Location: shorten "City of New York" → "NYC"; otherwise "City ST"; state alone only when city missing.
   - Size: `"Xk+"` when `size.min >= 1000`, `"min–max"` otherwise.
 
