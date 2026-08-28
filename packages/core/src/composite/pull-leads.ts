@@ -7,6 +7,7 @@ import type {
   LeadPayload,
 } from "../types.js";
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
+import { LEAD_ORDERS, resolveLeadOrder } from "../lead-order.js";
 
 import { leadbay_pull_leads as PULL_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -25,6 +26,11 @@ interface PullLeadsParams {
   count?: number;
   page?: number;
   verbose?: boolean;
+  // Sort order, `FIELD:ASC|DESC`. Omit to keep the Discover-tab ranking the
+  // RENDERING block tells the agent never to re-sort client-side — this is the
+  // only correct way to change it, because the backend sorts the whole lens
+  // and returns the requested page of THAT, not a reshuffle of one page.
+  order?: string;
 }
 
 interface QualificationSummary {
@@ -226,6 +232,11 @@ export const pullLeads: Tool<PullLeadsParams> = {
       },
       count: { type: "number", description: "Leads per page, max 50 (default 20)" },
       page: { type: "number", description: "Page number, 0-indexed (default 0)" },
+      order: {
+        type: "string",
+        description:
+          `Optional sort, FIELD:ASC|DESC. Omit for the lens's own Discover ranking. One of: ${LEAD_ORDERS.join(", ")}. An unknown value is rejected — the backend would otherwise return an empty page.`,
+      },
       verbose: {
         type: "boolean",
         description:
@@ -314,9 +325,15 @@ export const pullLeads: Tool<PullLeadsParams> = {
     const count = Math.min(params.count ?? 20, 50);
     const verbose = params.verbose ?? false;
 
+    const resolvedOrder = resolveLeadOrder(params.order, "leadbay_pull_leads");
+    if (resolvedOrder.error) return resolvedOrder.error;
+    const orderQs = resolvedOrder.order
+      ? `&order=${encodeURIComponent(resolvedOrder.order)}`
+      : "";
+
     const res = await client.request<WishlistResponse>(
       "GET",
-      `/lenses/${lensId}/leads/wishlist?count=${count}&page=${page}&contacts=true`
+      `/lenses/${lensId}/leads/wishlist?count=${count}&page=${page}&contacts=true${orderQs}`
     );
 
     // Fan-out qualification reads. Concurrency is capped by the client's
