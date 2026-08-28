@@ -137,7 +137,10 @@ The org-wide CRM status, as a `<select>` + Apply button. You write the markup;
 <div class="lb-card">
   <div class="lb-card-head">
     <span class="lb-title">Acme Corp</span>
-    <span class="lb-chip" data-status="WANTED">Wanted</span>
+    <span class="lb-chips">
+      <span id="taste" class="lb-chip" data-taste="liked">Liked</span>
+      <span id="crm"   class="lb-chip" data-status="WANTED">Wanted</span>
+    </span>
   </div>
   <div class="lb-row">
     <select id="st" class="lb-select"></select>
@@ -146,6 +149,13 @@ The org-wide CRM status, as a `<select>` + Apply button. You write the markup;
   </div>
 </div>
 ```
+
+**Two badges, never one.** Taste (`liked`/`disliked`, from `lb.like`/`lb.dislike`)
+and CRM status (`WANTED`/`WON`/`LOST`/`UNWANTED`, from `lb.setStatus`) are
+independent axes — a lead can be liked *and* lost. Collapsing them into a single
+chip destroys information: the rep can no longer see that a lead they liked went
+nowhere. Render `data-taste` and `data-status` as separate chips inside
+`lb-chips`, and hide the one that has no value rather than reusing it.
 
 ```js
 lb.styles();                                          // once per artifact — see below

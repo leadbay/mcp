@@ -86,6 +86,21 @@ describe("the sheet itself", () => {
     }
   });
 
+  it("styles taste and CRM status as SEPARATE chip axes", () => {
+    // A lead can be liked AND lost. If these ever share one attribute the two
+    // facts overwrite each other and the rep loses the "liked but went nowhere"
+    // signal, so the skin must keep data-taste and data-status independent.
+    for (const s of ["WANTED", "WON", "LOST", "UNWANTED"]) {
+      expect(STYLES).toContain(`[data-status=${s}]`);
+    }
+    for (const t of ["liked", "disliked"]) {
+      expect(STYLES).toContain(`[data-taste=${t}]`);
+    }
+    // liked uses the product's own like colour, not a generic red
+    expect(STYLES).toContain("--color-red-like:var(--color-cherry-foreground)");
+    expect(STYLES).toContain(".lb-chips{");
+  });
+
   it("uses the frontend's radii + squircle corners", () => {
     expect(STYLES).toContain("--lb-radius:1rem");
     expect(STYLES).toContain("--lb-radius-sm:0.625rem");

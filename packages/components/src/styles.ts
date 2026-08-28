@@ -38,6 +38,7 @@ export const STYLES = `
 --color-red-background:oklch(0.947 0.029 26);--color-red-foreground:oklch(0.564 0.191 26);
 --color-gold-background:oklch(0.972 0.049 91);--color-gold-foreground:oklch(0.667 0.177 91);
 --color-cherry-background:oklch(0.947 0.029 15);--color-cherry-foreground:oklch(0.44 0.146 15);
+--color-red-like:var(--color-cherry-foreground);
 --lb-font:"Nikkei Maru",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 --lb-radius:1rem;--lb-radius-sm:0.625rem;--lb-gap:0.75rem;
 --lb-surface:var(--color-gray-1);--lb-border:var(--color-gray-3);
@@ -90,6 +91,10 @@ background-color:var(--color-gray-2);color:var(--lb-muted)}
 .lb-chip[data-status=WON]{background-color:var(--color-green-background);color:var(--color-green-foreground)}
 .lb-chip[data-status=LOST]{background-color:var(--color-red-background);color:var(--color-red-foreground)}
 .lb-chip[data-status=UNWANTED]{background-color:var(--color-gray-2);color:var(--color-gray-7)}
+.lb-chip[data-taste=liked]{background-color:var(--color-cherry-background);color:var(--color-red-like)}
+.lb-chip[data-taste=disliked]{background-color:var(--color-gray-2);color:var(--color-gray-7)}
+.lb-chips{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}
+.lb-chip[hidden]{display:none}
 .lb-table{width:100%;border-collapse:collapse;font-family:var(--lb-font);color:var(--lb-fg)}
 .lb-table th,.lb-table td{text-align:left;padding:0.5rem 0.4rem;
 border-bottom:1px solid var(--lb-border);vertical-align:middle;font-size:0.8125rem}
