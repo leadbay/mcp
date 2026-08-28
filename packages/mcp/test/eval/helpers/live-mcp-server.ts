@@ -10,7 +10,16 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { LeadbayClient, LocalBulkStore, NotificationsInbox } from "@leadbay/core";
+import {
+  LeadbayClient,
+  LocalBulkStore,
+  NotificationsInbox,
+  agentMemoryTools,
+  compositeReadTools,
+  compositeWriteTools,
+  granularReadTools,
+  granularWriteTools,
+} from "@leadbay/core";
 import { buildServer } from "../../../src/server.js";
 
 const REGIONS: Record<string, string> = {
@@ -20,10 +29,28 @@ const REGIONS: Record<string, string> = {
 
 async function main(): Promise<void> {
   const token = process.env.LEADBAY_TOKEN;
-  const region = process.env.LEADBAY_REGION ?? "us";
   if (!token) throw new Error("live-mcp-server: LEADBAY_TOKEN required");
-  const baseUrl = REGIONS[region] ?? REGIONS.us;
-  const client = new LeadbayClient(baseUrl, token);
+
+  // LEADBAY_BASE_URL lets a run target staging. When LEADBAY_REGION is given,
+  // it is passed through, and that pin is load-bearing rather than cosmetic:
+  // without it the client derives "custom" from an unrecognised staging host,
+  // and the single-country guard classifies every country as
+  // `country_indeterminate` instead of home vs foreign (product#3951) — so the
+  // run would silently exercise a different branch than the one under test.
+  //
+  // What it must NOT do is invent one. A base URL with no region used to
+  // default to "us" and pass that explicitly, so the guard asserted "this
+  // workspace holds United States companies only" about a tenant nobody had
+  // identified, and the eval reported `_meta.region: "us"` for it. That is the
+  // same confidently-wrong-answer failure the scenarios exist to catch, coming
+  // from the harness itself. Undefined lets the client derive: a known regional
+  // URL still resolves to us/fr, anything else becomes "custom", which is the
+  // honest answer when nobody pinned one (mirrors client.ts:103-106).
+  const pinnedRegion = process.env.LEADBAY_REGION as "us" | "fr" | undefined;
+  const baseUrl =
+    process.env.LEADBAY_BASE_URL || (pinnedRegion && REGIONS[pinnedRegion]) || REGIONS.us;
+  const client = new LeadbayClient(baseUrl, token, pinnedRegion);
+  const region = client.region;
 
   // NO-SPEND KILL SWITCH. Set by the runner for scenarios declaring
   // `no_paid_calls`. The previous guard inspected tool inputs AFTER the session
@@ -69,6 +96,69 @@ async function main(): Promise<void> {
       };
     }
   }
+  // FORBIDDEN-CALL KILL SWITCH. Set by the runner from the scenario's
+  // `mission.forbidden_calls`. Same lesson as the no-spend switch above, which
+  // was itself moved here after a post-hoc check let a real charge through:
+  // scenarios.eval.ts iterates the recorded calls only AFTER runSessionLive
+  // returns, so a regression that called leadbay_new_lens or
+  // leadbay_update_lens_filter had already written to the real tenant by the
+  // time the assertion failed. A scenario asserting "this must mutate nothing"
+  // cannot be the thing that mutates it.
+  //
+  // The tool stays LISTED and keeps its description — removing it would make
+  // the assertion vacuous, since an agent cannot call a tool it cannot see.
+  // What changes is that invoking it throws before any HTTP happens, so the
+  // call is still recorded in the transcript and the scenario still fails on
+  // the assertion it was written for.
+  const forbidden = new Set(
+    (process.env.LEADBAY_EVAL_FORBIDDEN_TOOLS ?? "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean),
+  );
+  if (forbidden.size > 0) {
+    // Armed against the catalog this server actually EXPOSES, which is what
+    // buildServer is called with below: write tools yes, advanced/granular no.
+    // Arming against the full catalog looked stricter and was the opposite —
+    // a granular name like leadbay_update_lens_filter is never listed to the
+    // agent, so marking it "armed" satisfied the unmatched check while the
+    // forbidden_calls assertion for it stayed vacuous. The agent could not have
+    // called it either way, so the scenario claimed a protection it never
+    // exercised.
+    const exposedCatalog = [...agentMemoryTools, ...compositeReadTools, ...compositeWriteTools];
+    const unexposedCatalog = [...granularReadTools, ...granularWriteTools];
+    const armed = new Set<string>();
+    for (const tool of exposedCatalog) {
+      if (!forbidden.has(tool.name)) continue;
+      armed.add(tool.name);
+      tool.execute = async () => {
+        throw new Error(
+          `EVAL_FORBIDDEN_CALL: ${tool.name} is on this scenario's forbidden_calls list. ` +
+            `The call was blocked before reaching the API, so the tenant is unchanged and the ` +
+            `eval fails on the assertion rather than on a real mutation.`,
+        );
+      };
+    }
+
+    const unmatched = [...forbidden].filter((name) => !armed.has(name));
+    if (unmatched.length > 0) {
+      const unexposed = new Set(unexposedCatalog.map((tool) => tool.name));
+      // Two different author errors, and the fix differs, so they are named
+      // separately rather than lumped into "unknown tool".
+      const notExposed = unmatched.filter((name) => unexposed.has(name));
+      const unknown = unmatched.filter((name) => !unexposed.has(name));
+      const problems = [
+        unknown.length > 0
+          ? `unknown tools: ${unknown.join(", ")} (a name that matches nothing protects nothing)`
+          : undefined,
+        notExposed.length > 0
+          ? `tools this server does not expose: ${notExposed.join(", ")} — buildServer runs with includeAdvanced:false, so the agent is never offered them and forbidding them asserts nothing. Drop them from forbidden_calls, or expose the advanced surface for this scenario if the path is meant to be covered`
+          : undefined,
+      ].filter(Boolean);
+      throw new Error(`live-mcp-server: forbidden_calls names ${problems.join("; ")}.`);
+    }
+  }
+
   // Wire a bulk tracker + notifications inbox so the async-enrichment path is
   // fully exercised: leadbay_enrich_titles mints a bulk_id and
   // leadbay_bulk_enrich_status can poll it (Workflow 43 / product#3866). Without

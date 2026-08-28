@@ -50,7 +50,38 @@ Call `leadbay_pull_followups` (NOT `leadbay_pull_leads` — those are different 
 
 For geo filters specifically: prefer the `city` shortcut on `leadbay_pull_followups({city: "Berlin"})` — the composite resolves the free-text city via `/geo/search`, returns ambiguities to disambiguate when needed (status: "ambiguous_locations" → pick an id → re-call with `city_id`), then merges the resolved admin_area into the Monitor filter as `location_ids`. If the user has already given you a numeric id, pass it as `city_id`. Don't guess admin_area ids — let the resolver do it.
 
-**TRAVEL / IN-PERSON ROUTING** — when the user's intent is geographic and visual ("I'm going to NYC next week", "leads I should visit in person", "this week's trip", "show me followups in <city>", "plan my itinerary", "trip itinerary", "show on a map", "leads in Texas / California / France", or any phrasing that asks for a map / geographic / trip-planning view — INCLUDING state-, country-, and region-level place names):
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so `"France"` matches the *commune of Francs* and `"United States"` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On `code: "COUNTRY_LEVEL_LOCATION"` read `country_locations[].axis` and `[].kind` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+`axis: "include"`:
+
+- `home_country`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (`city` / `locations` / `location_ids`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- `foreign_country` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- `supranational` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- `country_indeterminate` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+`axis: "exclude"` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (`new_lens`, `adjust_audience`, `update_lens_filter`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY `foreign_country` or `supranational` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-`foreign_country` `exclude` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read `_meta.region` on any tool result — it outranks any recalled memory; on `custom`, claim nothing.
+
+Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.
+
+
+⚠ **On this prompt, omitting the geo argument is only HALF of a whole-workspace read.**
+`leadbay_pull_followups` defaults `filtered` to true, so dropping the country still reads
+the Monitor view through whatever filter a previous session persisted — an old city
+filter comes back as a small, plausible cohort and you would report it as everything.
+When the ask covers the whole workspace and nothing else was requested, pass
+`filtered:false`. When other criteria WERE requested (a sector, a recency window, a real
+city), re-send those in `set_filter` instead — that overwrites the stored filter, so
+`filtered:false` would throw away the very scope I asked for. Either way, read
+`active_filters` off the response and describe the scope from THAT, not from what you
+intended to send.
+
+**TRAVEL / IN-PERSON ROUTING** — when the user's intent is geographic and visual ("I'm going to NYC next week", "leads I should visit in person", "this week's trip", "show me followups in <city>", "plan my itinerary", "trip itinerary", "show on a map", "leads in Texas / California", or any phrasing that asks for a map / geographic / trip-planning view — INCLUDING state- and region-level place names, but NEVER a country):
 
 1. Call **`leadbay_followups_map`** (same params as `pull_followups`: `city` / `city_id` / `set_filter`). Same response shape — just the explicit entry-point so the agent and the host know to route geographically.
 2. Output a **per-lead place-card block** for each top follow-up, in this exact format — modern chat hosts (Claude / cowork) detect addresses + company names and surface them as a beautiful Google-Place-card carousel with our notes as the "Notes from Claude" section. Lean INTO that surface; don't fight it.
@@ -84,16 +115,16 @@ Markdown table with FOUR columns, sorted by `last_monitor_action_at` desc. **NO 
 
 **Active-filters line** ABOVE the table, ` · `-separated chips from `active_filters.criteria`:
 
-| Criterion type        | Chip                       |
-|-----------------------|----------------------------|
-| `location_ids`        | 📍 \<resolved name\>       |
-| `sector_ids`          | 🏷 \<sector name\>         |
-| `keywords`            | 🔍 \<keyword\>             |
-| `size`                | 👥 \<min\>–\<max\>         |
-| `last_action_date`    | 📅 \<window\>              |
-| `last_action`         | 🎯 \<action types\>        |
-| `liked` / `yc`        | ⭐ liked / 🏅 YC           |
-| `custom_field*`       | ⚙ \<field name\>          |
+| Criterion type | Chip |
+| --- | --- |
+| `location_ids` | 📍 \<resolved name\> |
+| `sector_ids` | 🏷 \<sector name\> |
+| `keywords` | 🔍 \<keyword\> |
+| `size` | 👥 \<min\>–\<max\> |
+| `last_action_date` | 📅 \<window\> |
+| `last_action` | 🎯 \<action types\> |
+| `liked` / `yc` | ⭐ liked / 🏅 YC |
+| `custom_field*` | ⚙ \<field name\> |
 
 Render `*No filters applied.*` when empty.
 

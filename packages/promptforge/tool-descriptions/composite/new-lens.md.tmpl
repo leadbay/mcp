@@ -18,6 +18,8 @@ routing:
     - "create a lens for net-new accounts in <place>"
     - "a lens scoped to <territory>"
   anti_triggers:
+    - phrase: "companies anywhere in this workspace's OWN country / nationwide (a foreign country is unsupported, not unfiltered — call nothing)"
+      route_to: leadbay_pull_leads
     - phrase: "narrow the audience / add or remove a sector on an EXISTING lens"
       route_to: leadbay_adjust_audience
     - phrase: "add <sector> to my <name> lens"
@@ -38,6 +40,7 @@ routing:
       - "Add fintech to my Joinery lens."
       - "Show me my lenses."
       - "I want more leads on this lens."
+      - "Show me companies anywhere in the US."
 rendering_hint: |
   On `preview` (default — NOTHING created yet): show the lens that WILL be
   created (name + resolved sectors/sizes as chips) and ASK the user to confirm
@@ -59,7 +62,11 @@ Create a brand-new lens (saved audience) and apply its sector/size criteria. Clo
 
 **Sectors resolve first.** Free-text `sectors`/`exclude_sectors` are auto-resolved against the taxonomy. If any don't resolve, the tool returns `status:"ambiguous_sectors"` with the candidates and **does NOT create the lens** — so re-calling after picking the right sector won't leave orphan half-built lenses. To discover valid sector labels up front, use `leadbay_list_sectors`.
 
-**Geography — scope a territory.** Pass `locations` (free text like `["Indre-et-Loire"]`, `["Bavaria"]`, or admin-area ids) to scope the lens to a sales territory, and `exclude_locations` to carve one out. Free text auto-resolves via `/geo/search` across every admin level (city / county / *département* / *région* / state / country). Like sectors, locations resolve BEFORE the lens is created — unresolved/ambiguous text returns `status:"ambiguous_locations"` with candidates and **does NOT create the lens**. Re-call the chosen id via the SAME axis it came from: an INCLUDE pick → `locations`; an EXCLUDE pick → `exclude_locations` (**NOT** `locations`, which would include the area the user asked to exclude). This is how a director spins up a lens for a rep's zone to surface net-new accounts there.
+**Geography — scope a territory.** Pass `locations` (free text like `["Indre-et-Loire"]`, `["Texas"]`, or admin-area ids) to scope the lens to a sales territory, and `exclude_locations` to carve one out. Free text auto-resolves via `/geo/search` at any level from state down to city (state / *région* / *département* / county / city). Like sectors, locations resolve BEFORE the lens is created — unresolved/ambiguous text returns `status:"ambiguous_locations"` with candidates and **does NOT create the lens**. Re-call the chosen id via the SAME axis it came from: an INCLUDE pick → `locations`; an EXCLUDE pick → `exclude_locations` (**NOT** `locations`, which would include the area the user asked to exclude). This is how a director spins up a lens for a rep's zone to surface net-new accounts there.
+
+{{include:heuristics/single-country-universe}}
+
+**A new lens is a CLONE, and inherits the base lens's geography.** `base` defaults to the ACTIVE lens, so this applies even when no base was named. A criteria-less clone inherits the base audience wholesale, and adding sectors does not clear the base's location criteria either — so "nationwide healthcare" built on a Paris-scoped active lens creates a Paris healthcare lens under a nationwide name. Omitting `locations` is therefore not the same as having no geography. Read `lens://<base>/definition` before describing a new lens as workspace-wide, and say the scope is unverified if you cannot.
 
 **Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer `leadbay_my_lenses(switchToLensId=<new id>)` as a next step if they want to start pulling from it.
 

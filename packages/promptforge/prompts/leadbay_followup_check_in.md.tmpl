@@ -38,7 +38,20 @@ Call `leadbay_pull_followups` (NOT `leadbay_pull_leads` — those are different 
 
 For geo filters specifically: prefer the `city` shortcut on `leadbay_pull_followups({city: "Berlin"})` — the composite resolves the free-text city via `/geo/search`, returns ambiguities to disambiguate when needed (status: "ambiguous_locations" → pick an id → re-call with `city_id`), then merges the resolved admin_area into the Monitor filter as `location_ids`. If the user has already given you a numeric id, pass it as `city_id`. Don't guess admin_area ids — let the resolver do it.
 
-**TRAVEL / IN-PERSON ROUTING** — when the user's intent is geographic and visual ("I'm going to NYC next week", "leads I should visit in person", "this week's trip", "show me followups in <city>", "plan my itinerary", "trip itinerary", "show on a map", "leads in Texas / California / France", or any phrasing that asks for a map / geographic / trip-planning view — INCLUDING state-, country-, and region-level place names):
+{{include:heuristics/single-country-universe}}
+
+⚠ **On this prompt, omitting the geo argument is only HALF of a whole-workspace read.**
+`leadbay_pull_followups` defaults `filtered` to true, so dropping the country still reads
+the Monitor view through whatever filter a previous session persisted — an old city
+filter comes back as a small, plausible cohort and you would report it as everything.
+When the ask covers the whole workspace and nothing else was requested, pass
+`filtered:false`. When other criteria WERE requested (a sector, a recency window, a real
+city), re-send those in `set_filter` instead — that overwrites the stored filter, so
+`filtered:false` would throw away the very scope I asked for. Either way, read
+`active_filters` off the response and describe the scope from THAT, not from what you
+intended to send.
+
+**TRAVEL / IN-PERSON ROUTING** — when the user's intent is geographic and visual ("I'm going to NYC next week", "leads I should visit in person", "this week's trip", "show me followups in <city>", "plan my itinerary", "trip itinerary", "show on a map", "leads in Texas / California", or any phrasing that asks for a map / geographic / trip-planning view — INCLUDING state- and region-level place names, but NEVER a country):
 
 1. Call **`leadbay_followups_map`** (same params as `pull_followups`: `city` / `city_id` / `set_filter`). Same response shape — just the explicit entry-point so the agent and the host know to route geographically.
 2. Output a **per-lead place-card block** for each top follow-up, in this exact format — modern chat hosts (Claude / cowork) detect addresses + company names and surface them as a beautiful Google-Place-card carousel with our notes as the "Notes from Claude" section. Lean INTO that surface; don't fight it.

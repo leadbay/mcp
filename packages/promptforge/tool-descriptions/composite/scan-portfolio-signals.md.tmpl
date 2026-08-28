@@ -26,7 +26,7 @@ routing:
       route_to: leadbay_bulk_qualify_leads
     - phrase: "just list my follow-ups"
       route_to: leadbay_pull_followups
-  prefer_when: "user wants to FILTER a known portfolio by a web-research signal in bulk — pass `query`, optionally `since`, `city`/`set_filter`, or `leadIds`"
+  prefer_when: "user wants to FILTER a known portfolio by a web-research signal in bulk — pass `query`, optionally `since`, `city`/`set_filter`, or `leadIds`; NEVER a country name in `city` — a whole-country ask means NO geo filter"
   examples:
     positive:
       - "Which of my leads acquired a company since 2025?"
@@ -64,7 +64,9 @@ match". Qualify them with `leadbay_bulk_qualify_leads`, then re-scan.
 
 **Scope.** Pass `leadIds` for an explicit cohort, or omit it to scan the
 Monitor portfolio. Narrow the Monitor scope with `city` / `set_filter` exactly
-as `leadbay_pull_followups` does (store-then-apply server-side filter). The
+as `leadbay_pull_followups` does (store-then-apply server-side filter).
+
+{{include:heuristics/single-country-universe}} The
 scan is bounded by `max_leads` (default 200, hard cap 300); when the portfolio
 is larger, `truncated_at` is set and coverage is partial — say so.
 

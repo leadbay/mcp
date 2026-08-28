@@ -70,7 +70,16 @@ export interface LiveSessionOpts {
   model?: string;
   /** Leadbay API token. Falls back to LEADBAY_TOKEN env var. */
   token?: string;
-  /** Leadbay region ("us" or "fr"). Falls back to LEADBAY_REGION env var, then "us". */
+  /**
+   * Leadbay region ("us" or "fr"). Falls back to the LEADBAY_REGION env var,
+   * and then to nothing at all — deliberately NOT to "us". With
+   * LEADBAY_BASE_URL naming a custom/staging endpoint and no region supplied,
+   * a synthesized "us" is a claim nobody made: the live server would pass it to
+   * LeadbayClient, the country guard would assert the tenant holds United
+   * States companies only, and the run would report `_meta.region: "us"` for a
+   * tenant nobody identified. Undefined lets the client derive — known regional
+   * URLs still map to us/fr, anything else to "custom" (product#3951).
+   */
   region?: string;
 }
 
@@ -110,7 +119,7 @@ function writeEvalSettings(tmpDir: string): string {
 function writeMcpConfig(
   tmpDir: string,
   token: string,
-  region: string,
+  region: string | undefined,
   bulkStorePath: string,
 ): string {
   const configPath = join(tmpDir, "mcp-config.json");
@@ -122,7 +131,14 @@ function writeMcpConfig(
         args: [LIVE_SERVER_SRC],
         env: {
           LEADBAY_TOKEN: token,
-          LEADBAY_REGION: region,
+          // Emitted only when a region was actually supplied. An always-present
+          // key re-introduced the invented "us" one layer out from the fix in
+          // live-mcp-server.ts, which reads this very variable.
+          ...(region ? { LEADBAY_REGION: region } : {}),
+          // Forwarded only when set, so a normal prod run is unchanged.
+          ...(process.env.LEADBAY_BASE_URL
+            ? { LEADBAY_BASE_URL: process.env.LEADBAY_BASE_URL }
+            : {}),
           // Session-scoped bulk-store path so the file survives across the
           // fresh-per-turn MCP server processes. Without this, a multi-turn
           // flow (WF34: turn 2 launches enrich_titles, turn 3 polls
@@ -339,7 +355,7 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
   const max_turns = opts.max_turns ?? 25;
 
   const token = opts.token ?? process.env.LEADBAY_TOKEN ?? "";
-  const region = opts.region ?? process.env.LEADBAY_REGION ?? "us";
+  const region = opts.region ?? process.env.LEADBAY_REGION;
 
   if (!token) {
     throw new Error("live-session-runner: LEADBAY_TOKEN env var or opts.token is required");
@@ -550,6 +566,14 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
                 // which would have failed required_calls on a healthy session.
                 const flagged = blk["is_error"] === true;
                 let enveloped = false;
+                // `_meta.region` is the ONLY evidence of which country this
+                // workspace serves, and it sits at the end of a large payload —
+                // outside `sample`, which keeps the first 240 chars. Without it
+                // in the ledger, a judge cannot tell an agent that READ the
+                // region from one that echoed the country back out of the
+                // user's question. On a US tenant asked about "the whole US"
+                // those two are word-for-word identical (product#3951).
+                let region: string | undefined;
                 try {
                   const body = JSON.parse(text) as Record<string, unknown> | unknown;
                   if (body && typeof body === "object" && !Array.isArray(body)) {
@@ -558,6 +582,8 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
                       top.error !== undefined ||
                       top.isError === true ||
                       top.ok === false;
+                    const meta = top._meta as Record<string, unknown> | undefined;
+                    if (meta && typeof meta.region === "string") region = meta.region;
                   }
                 } catch {
                   // Not JSON — fall back to the host flag alone. A plain-text
@@ -568,6 +594,7 @@ export async function runSessionLive(opts: LiveSessionOpts): Promise<LiveSession
                   ok: !flagged && !enveloped,
                   output_len: text.length,
                   sample: text.slice(0, 240),
+                  ...(region ? { region } : {}),
                 };
                 pendingToolCalls.delete(blk["tool_use_id"] as string);
               }
