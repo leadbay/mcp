@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.31.0 — 2026-08-28 — An empty lens tells you why
+
+- **A lens with no leads now says what is wrong with it.** Before, asking for
+  leads on a lens whose filters match nothing came back with an empty list and
+  no explanation, which looks exactly like a lens that is still loading. So the
+  assistant kept trying. One customer's agent asked for more leads 49 times over
+  three weeks on lenses that could never fill.
+- **The answer now names the criteria in the way, and says to stop retrying.**
+  If the geography is pinned to a single town, that town is named first, because
+  that is nearly always the thing to widen.
+- **"Still loading" and "genuinely empty" are finally different answers.** Only
+  the first one asks you to wait.
+- **Nothing is guessed.** A lens that is empty for a reason we cannot read says
+  so plainly, rather than inventing a cause.
+
 ## 0.30.0 — 2026-08-19 — Country-wide means country-wide
 
 - **Asking for leads "anywhere in the US" no longer searches one village.**
