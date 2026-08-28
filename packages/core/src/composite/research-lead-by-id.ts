@@ -34,9 +34,15 @@ export interface ResearchLeadByIdParams {
   // _meta carries resolved_from/resolved_query/match_candidates. Not exposed
   // in the public inputSchema.
   _resolved?: {
-    from: "companyName";
+    // "companyName" = matched inside the user's own corpus via /search/suggest.
+    // "resolver"    = matched in the Leadbay registry via POST /leads/resolve,
+    //                 i.e. a company the user does not own yet.
+    from: "companyName" | "resolver";
     query: string;
     candidates: Array<{ leadId: string; name: string; score: number | null }>;
+    // Which fields the registry resolver matched on (website_exact, name_exact,
+    // registry_number, name_fuzzy, …). Only set on the "resolver" path.
+    matched_on?: string[];
   };
 }
 
@@ -397,7 +403,7 @@ export const researchLeadById: Tool<ResearchLeadByIdParams> = {
       _meta: {
         type: "object",
         description:
-          "Operator context: region (us/fr/custom), lens_id (the lens used for the lead-by-id fetch), web_fetch_in_progress (true if the backend is still hydrating signals), has_reachable_contact (true if at least one contact or recommended_contact has email or phone — drives NEXT STEPS routing between enrichment vs outreach). When the call was routed via leadbay_research_lead_by_name_fuzzy, also: resolved_from='companyName', resolved_query='<needle>', match_candidates=[{leadId,name,score}].",
+          "Operator context: region (us/fr/custom), lens_id (the lens used for the lead-by-id fetch), web_fetch_in_progress (true if the backend is still hydrating signals), has_reachable_contact (true if at least one contact or recommended_contact has email or phone — drives NEXT STEPS routing between enrichment vs outreach). When the call was routed via leadbay_research_lead_by_name_fuzzy, also: resolved_from='companyName' (matched in the user's own leads) or 'resolver' (matched in the Leadbay company registry), resolved_query='<needle>', resolved_matched_on=['website_exact',…] on the resolver path, match_candidates=[{leadId,name,score}].",
         properties: {
           region: { type: "string" },
           lens_id: { type: "number" },
@@ -408,6 +414,10 @@ export const researchLeadById: Tool<ResearchLeadByIdParams> = {
           match_candidates: {
             type: ["array", "null"],
             items: { type: "object" },
+          },
+          resolved_matched_on: {
+            type: ["array", "null"],
+            items: { type: "string" },
           },
           agent_memory: { type: "object" },
         },
@@ -656,6 +666,7 @@ export const researchLeadById: Tool<ResearchLeadByIdParams> = {
         resolved_from: params._resolved?.from ?? null,
         resolved_query: params._resolved?.query ?? null,
         match_candidates: params._resolved?.candidates ?? null,
+        resolved_matched_on: params._resolved?.matched_on ?? null,
       },
     }, _ctx);
   },

@@ -1,15 +1,16 @@
 /**
- * leadbay_research_lead_by_name_fuzzy — fuzzy resolution + delegation.
+ * leadbay_research_lead_by_name_fuzzy — corpus resolution + delegation.
  *
  * Verifies:
- *   - happy path: single fuzzy match → delegates to _by_id, populates
+ *   - happy path: single corpus match → delegates to _by_id, populates
  *     _meta.resolved_from / resolved_query.
- *   - multiple matches → primary is highest-score, rest land in
- *     _meta.match_candidates (up to 4).
- *   - zero matches → LEAD_NOT_FOUND with nearest_names hint in message.
+ *   - multiple matches → primary is the backend's first suggestion, rest land
+ *     in _meta.match_candidates (up to 4).
  *
- * The ranking helper is unit-tested directly to pin the substring +
- * descending-score behavior.
+ * Every case mocks /search/suggest explicitly. Before product#4006 these
+ * tests omitted it, so the unmatched-script transport error silently pushed
+ * them onto the (now removed) active-lens fallback — they passed while
+ * testing a path other than the one they named.
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -23,10 +24,7 @@ import {
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import {
-  researchLeadByNameFuzzy,
-  rankSubstringMatches,
-} from "../../../src/composite/research-lead-by-name-fuzzy.js";
+import { researchLeadByNameFuzzy } from "../../../src/composite/research-lead-by-name-fuzzy.js";
 
 const BASE = "https://api-us.leadbay.app";
 const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
@@ -82,38 +80,21 @@ function mockByIdSubResources(leadId: string) {
 }
 
 describe("research_lead_by_name_fuzzy", () => {
-  it("ranks substring matches by descending score", () => {
-    const ranked = rankSubstringMatches("acme", [
-      { id: "1", name: "Acme Corp", score: 50 },
-      { id: "2", name: "Acme Health", score: 90 },
-      { id: "3", name: "Globex", score: 100 },
-      { id: "4", name: "Old Acme", score: null },
-    ]);
-    expect(ranked.map((m) => m.id)).toEqual(["2", "1", "4"]);
-  });
-
-  it("happy path — single fuzzy match delegates to _by_id with resolved_from", async () => {
+  it("happy path — single corpus match delegates to _by_id with resolved_from", async () => {
     mockHttp([
-      // resolveDefaultLens
+      // cross-tab corpus search
       {
         method: "GET",
-        path: "/1.6/users/me",
+        path: "/1.6/search/suggest?q=acme",
         status: 200,
-        body: {
-          id: "u",
-          organization: { id: "org-1", name: "X" },
-          last_requested_lens: 42,
-        },
-      },
-      // wishlist for fuzzy resolution
-      {
-        method: "GET",
-        path: /\/1\.6\/lenses\/42\/leads\/wishlist/,
-        status: 200,
-        body: {
-          items: [{ id: "lead-1", name: "Acme Corp", score: 80 }],
-          pagination: { page: 0, pages: 1, total: 1 },
-        },
+        body: [
+          {
+            text: "Acme Corp",
+            match_type: "COMPANY",
+            lead_id: "lead-1",
+            lens_id: "42",
+          },
+        ],
       },
       ...mockByIdSubResources("lead-1"),
     ]);
@@ -128,34 +109,20 @@ describe("research_lead_by_name_fuzzy", () => {
     expect(res.firmographics.id).toBe("lead-1");
   });
 
-  it("multiple matches — primary is highest-score; rest populate match_candidates (≤4)", async () => {
+  it("multiple matches — primary is the backend's first suggestion; rest populate match_candidates (≤4)", async () => {
     mockHttp([
       {
         method: "GET",
-        path: "/1.6/users/me",
+        path: "/1.6/search/suggest?q=acme",
         status: 200,
-        body: {
-          id: "u",
-          organization: { id: "org-1", name: "X" },
-          last_requested_lens: 42,
-        },
-      },
-      {
-        method: "GET",
-        path: /\/1\.6\/lenses\/42\/leads\/wishlist/,
-        status: 200,
-        body: {
-          items: [
-            { id: "lead-a", name: "Acme Health", score: 50 },
-            { id: "lead-b", name: "Acme Corp", score: 90 },
-            { id: "lead-c", name: "Old Acme", score: 70 },
-            { id: "lead-d", name: "Acme Labs", score: 60 },
-            { id: "lead-e", name: "Acme Robotics", score: 55 },
-            { id: "lead-f", name: "Acme Studios", score: 40 },
-            { id: "lead-g", name: "Globex", score: 100 },
-          ],
-          pagination: { page: 0, pages: 1, total: 7 },
-        },
+        body: [
+          { text: "Acme Corp", lead_id: "lead-b", lens_id: "42" },
+          { text: "Old Acme", lead_id: "lead-c", lens_id: "42" },
+          { text: "Acme Labs", lead_id: "lead-d", lens_id: "42" },
+          { text: "Acme Robotics", lead_id: "lead-e", lens_id: "42" },
+          { text: "Acme Health", lead_id: "lead-a", lens_id: "42" },
+          { text: "Acme Studios", lead_id: "lead-f", lens_id: "42" },
+        ],
       },
       ...mockByIdSubResources("lead-b"),
     ]);
@@ -166,35 +133,20 @@ describe("research_lead_by_name_fuzzy", () => {
     );
     expect(res.firmographics.id).toBe("lead-b");
     expect(res._meta.match_candidates).toHaveLength(4);
-    // candidates ordered by descending score, primary excluded
+    // Suggest ordering is the backend's relevance ranking — preserve it.
     expect(res._meta.match_candidates.map((m: any) => m.leadId)).toEqual([
       "lead-c", "lead-d", "lead-e", "lead-a",
     ]);
   });
 
-  it("zero matches — throws LEAD_NOT_FOUND with nearest names in the hint", async () => {
+  it("zero matches in corpus AND registry — throws LEAD_NOT_FOUND", async () => {
     mockHttp([
+      { method: "GET", path: "/1.6/search/suggest?q=Acme", status: 200, body: [] },
       {
-        method: "GET",
-        path: "/1.6/users/me",
+        method: "POST",
+        path: "/1.6/leads/resolve",
         status: 200,
-        body: {
-          id: "u",
-          organization: { id: "org-1", name: "X" },
-          last_requested_lens: 42,
-        },
-      },
-      {
-        method: "GET",
-        path: /\/1\.6\/lenses\/42\/leads\/wishlist/,
-        status: 200,
-        body: {
-          items: [
-            { id: "lead-x", name: "Initech", score: 90 },
-            { id: "lead-y", name: "Globex", score: 80 },
-          ],
-          pagination: { page: 0, pages: 1, total: 2 },
-        },
+        body: { type: "none", would_help: ["website", "registry_number"] },
       },
     ]);
 

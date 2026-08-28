@@ -119,7 +119,7 @@ describe("research_lead_by_name_fuzzy review regressions", () => {
     expect(result._meta.lens_id).toBe(55);
   });
 
-  it("falls back on Node transport errors even when they have a code", async () => {
+  it("falls through to the registry on Node transport errors, not to a lens scan", async () => {
     const reset = Object.assign(new Error("socket reset"), {
       code: "ECONNRESET",
     });
@@ -130,16 +130,13 @@ describe("research_lead_by_name_fuzzy review regressions", () => {
         status: 0,
         error: reset,
       },
-      activeLensScript(),
       {
-        method: "GET",
-        path: "/1.6/lenses/42/leads/wishlist?q=Acme&count=50&page=0&contacts=false",
+        method: "POST",
+        path: "/1.6/leads/resolve",
         status: 200,
-        body: {
-          items: [{ id: "lead-acme", name: "Acme Corp", score: 80 }],
-          pagination: { page: 0, pages: 1, total: 1 },
-        },
+        body: { type: "matched", lead_id: "lead-acme", matched_on: ["name_exact"] },
       },
+      activeLensScript(),
       ...profileScripts("lead-acme", 42, "Acme Corp"),
     ]);
 
@@ -148,11 +145,15 @@ describe("research_lead_by_name_fuzzy review regressions", () => {
     });
 
     expect(result.firmographics.id).toBe("lead-acme");
+    expect(result._meta.resolved_from).toBe("resolver");
     expect(getHttpRequests().map((request) => request.path).slice(0, 3)).toEqual([
       "/1.6/search/suggest?q=Acme",
+      "/1.6/leads/resolve",
       "/1.6/users/me",
-      "/1.6/lenses/42/leads/wishlist?q=Acme&count=50&page=0&contacts=false",
     ]);
+    expect(
+      getHttpRequests().some((request) => request.path.includes("/wishlist"))
+    ).toBe(false);
   });
 
   it("keeps structured Leadbay API errors visible instead of falling back", async () => {
@@ -171,7 +172,7 @@ describe("research_lead_by_name_fuzzy review regressions", () => {
     expect(getHttpRequests()).toHaveLength(1);
   });
 
-  it("reports a degraded active-lens miss without claiming a corpus search", async () => {
+  it("still reports the registry verdict when the corpus search is unreachable", async () => {
     const unavailable = Object.assign(new Error("dns unavailable"), {
       code: "ENOTFOUND",
     });
@@ -182,15 +183,11 @@ describe("research_lead_by_name_fuzzy review regressions", () => {
         status: 0,
         error: unavailable,
       },
-      activeLensScript(),
       {
-        method: "GET",
-        path: "/1.6/lenses/42/leads/wishlist?q=Missing&count=50&page=0&contacts=false",
+        method: "POST",
+        path: "/1.6/leads/resolve",
         status: 200,
-        body: {
-          items: [{ id: "lead-other", name: "Initech", score: 90 }],
-          pagination: { page: 0, pages: 1, total: 1 },
-        },
+        body: { type: "unidentifiable", reason: "no identifying fields supplied" },
       },
     ]);
 
@@ -198,8 +195,11 @@ describe("research_lead_by_name_fuzzy review regressions", () => {
       researchLeadByNameFuzzy.execute(newClient(), { companyName: "Missing" })
     ).rejects.toMatchObject({
       code: "LEAD_NOT_FOUND",
-      message: expect.stringContaining("cross-tab search was unavailable"),
-      hint: expect.stringContaining("Only active lens 42 was checked"),
+      message: expect.stringContaining("Leadbay company registry"),
+      hint: expect.stringContaining("no identifying fields supplied"),
     });
+    expect(
+      getHttpRequests().some((request) => request.path.includes("/wishlist"))
+    ).toBe(false);
   });
 });

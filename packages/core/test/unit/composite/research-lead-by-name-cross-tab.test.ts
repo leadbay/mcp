@@ -218,13 +218,19 @@ describe("research_lead_by_name_fuzzy cross-tab resolution", () => {
     ).toBe(false);
   });
 
-  it("reports a cross-tab miss without resolving or scanning an active lens", async () => {
+  it("falls through to the registry on a corpus miss, never to a lens scan", async () => {
     mockHttp([
       {
         method: "GET",
         path: "/1.6/search/suggest?q=Definitely%20Missing",
         status: 200,
         body: [],
+      },
+      {
+        method: "POST",
+        path: "/1.6/leads/resolve",
+        status: 200,
+        body: { type: "none", would_help: ["website", "registry_number"] },
       },
     ]);
 
@@ -234,8 +240,12 @@ describe("research_lead_by_name_fuzzy cross-tab resolution", () => {
       })
     ).rejects.toMatchObject({
       code: "LEAD_NOT_FOUND",
-      message: expect.stringContaining("visible Leadbay leads"),
+      message: expect.stringContaining("Leadbay company registry"),
+      hint: expect.stringContaining("website"),
     });
-    expect(getHttpRequests()).toHaveLength(1);
+    expect(getHttpRequests().map((r) => r.path)).toEqual([
+      "/1.6/search/suggest?q=Definitely%20Missing",
+      "/1.6/leads/resolve",
+    ]);
   });
 });

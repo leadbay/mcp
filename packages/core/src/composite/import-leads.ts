@@ -153,7 +153,7 @@ export function customFieldIdOf(v: string): string | null {
 // can label `no_match` records that are mailbox-y as `no_match`, while
 // genuinely unknown company domains get `uncrawled`. This is a *labeling*
 // distinction, not a *gating* one — the wizard sees every domain.
-const PUBLIC_MAILBOX_DOMAINS = new Set([
+export const PUBLIC_MAILBOX_DOMAINS = new Set([
   "gmail.com",
   "googlemail.com",
   "yahoo.com",
