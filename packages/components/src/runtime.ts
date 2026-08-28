@@ -20,7 +20,9 @@
 // Consumed two ways: ES import (tests) and the IIFE bundle that self-attaches
 // window.LeadbayArtifacts (see build.ts).
 
-export const VERSION = "0.3.1";
+import { STYLES, STYLE_ELEMENT_ID } from "./styles.js";
+
+export const VERSION = "0.5.0";
 
 // ─── Bridge to the host (window.cowork.callMcpTool) ──────────────────────────
 
@@ -98,6 +100,22 @@ function errState(e: unknown): LbErrorState {
 export function configure(opts: { call?: CallFn; timeoutMs?: number } = {}): void {
   configuredCall = opts.call ?? null;
   timeoutMs = opts.timeoutMs ?? 30_000;
+}
+
+/** Inject the optional `lb-*` stylesheet (see styles.ts). OPT-IN: the library
+ *  still renders no markup, and an artifact that never calls this gets exactly
+ *  the unstyled HTML it wrote. Idempotent — calling it twice injects once, so
+ *  per-row wiring can call it freely. Returns the <style> element, or null when
+ *  there is no document (a non-DOM host); never throws. */
+export function styles(): HTMLStyleElement | null {
+  if (typeof document === "undefined" || !document.head) return null;
+  const existing = document.getElementById(STYLE_ELEMENT_ID);
+  if (existing) return existing as HTMLStyleElement;
+  const el = document.createElement("style");
+  el.id = STYLE_ELEMENT_ID;
+  el.textContent = STYLES;
+  document.head.appendChild(el);
+  return el;
 }
 
 // A bridge call that never settles would hang a view-model in `loading` forever
@@ -292,8 +310,26 @@ export interface ActionConfig {
   fields?: Field[];
   /** Confirm gesture before firing (destructive calls). */
   confirm?: string;
+  /** Inspect a RESOLVED tool result and return a message to treat it as a
+   *  failure, or null to accept. Leadbay tools answer HTTP-200 with an
+   *  `{error:true,code,message}` envelope for input/quota problems, and some
+   *  report partial writes (`failed:[…]`) — without this the button would flip
+   *  to data-lb-state="success" on both. Runs IN ADDITION to the built-in
+   *  `{error:true}` check, which needs no configuration. */
+  checkResult?: (result: unknown) => string | null;
   onSuccess?: (result: unknown) => void;
   onError?: (error: LbErrorState) => void;
+}
+
+/** Leadbay's HTTP-200 failure envelope: { error: true, code?, message?, hint? }.
+ *  Returns a human message when the result is one, else null. */
+function envelopeError(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null;
+  const o = result as Record<string, unknown>;
+  if (o.error !== true) return null;
+  const msg = typeof o.message === "string" && o.message ? o.message : "tool call failed";
+  const hint = typeof o.hint === "string" && o.hint ? ` — ${o.hint}` : "";
+  return `${msg}${hint}`;
 }
 
 export class Action extends Store<Action> {
@@ -341,6 +377,19 @@ export class Action extends Store<Action> {
       this.cfg.onError?.(this.error);
       return undefined;
     }
+    // A resolved call is not necessarily a successful one: Leadbay answers
+    // HTTP 200 with { error: true, code, message } for BAD_INPUT / quota /
+    // permission problems. Treat that envelope as a failure so bindAction
+    // reflects data-lb-state="error", not "success".
+    const problem = envelopeError(result) ?? this.cfg.checkResult?.(result) ?? null;
+    if (problem != null) {
+      this.error = { message: problem, unavailable: false };
+      this.loading = false;
+      this.emit();
+      this.cfg.onError?.(this.error);
+      return undefined;
+    }
+
     // Success path — settle state BEFORE the user callback, and run the callback
     // OUTSIDE the try so a throw inside onSuccess isn't mis-caught as a tool error
     // (which would emit success then error for one call).
@@ -608,6 +657,92 @@ export const EPILOGUE_STATUSES = [
   "NOT_INTERESTED_LOST",
 ] as const;
 
+// ─── Lead status (org-wide CRM status) ───────────────────────────────────────
+//
+// NOT the epilogue statuses above. Two separate systems:
+//   lead status     — WANTED/WON/LOST/UNWANTED, org-wide, a commercial outcome
+//   epilogue status — the disposition of one outreach attempt, drives followups
+// Setting one never sets the other. See leadbay_set_lead_status's description.
+
+/** The statuses a human picks, in dropdown order. DEFAULT and INBOUND are set
+ *  by Leadbay itself and are deliberately absent. */
+export const LEAD_STATUSES: ReadonlyArray<Option> = [
+  { value: "WANTED", label: "Wanted" },
+  { value: "WON", label: "Won" },
+  { value: "LOST", label: "Lost" },
+  { value: "UNWANTED", label: "Unwanted" },
+];
+
+const UNSET_OPTION: Option = { value: "", label: "— Not set —" };
+
+/** Lead-status picker field. Static options (no API call), so bind it with
+ *  `lb.bindSelect` — the options land on the first emit.
+ *
+ *  Seed `current` with the lead's existing status (`org_lead_status` on a
+ *  seed-candidates row) so the select opens on the true value. When the lead has
+ *  no settable status yet, a leading "— Not set —" option is prepended and
+ *  selected: the dropdown must not imply "Wanted" for a lead nobody has touched.
+ *  That placeholder fails validation, so a save can't fire until a real choice
+ *  is made. */
+function leadStatus(current?: string | null): Field {
+  const cur = String(current ?? "").trim().toUpperCase();
+  const known = LEAD_STATUSES.some((o) => o.value === cur);
+  return new Field({
+    kind: "select",
+    value: known ? cur : "",
+    validate: (v) => (String(v ?? "") === "" ? "Pick a status" : null),
+    // Resolves immediately — this is the emit/ready bookkeeping path, not I/O.
+    load: async () => (known ? LEAD_STATUSES.slice() : [UNSET_OPTION, ...LEAD_STATUSES]),
+  });
+}
+
+export interface SetStatusOpts {
+  /** One lead, or use `leadIds` for a bulk apply across selected rows.
+   *  `leadIds` may be a thunk, evaluated at run() time — pass one when the
+   *  selection is live (checkboxes the user is still ticking). */
+  leadId?: string;
+  leadIds?: string[] | (() => string[]);
+  /** The field holding the chosen status (from `lb.leadStatus()`). */
+  status: Field;
+  /** Optional field holding a YYYY-MM-DD close date → `set_status_date`. */
+  date?: Field;
+  /** The user request this artifact serves — recorded as `_triggered_by`. */
+  ask?: string;
+  confirm?: string;
+}
+
+/** set_lead_status action. Bakes in the arg shape and the partial-write check:
+ *  the tool writes each lead individually, so some can fail while the call as a
+ *  whole resolves 200. `checkResult` turns any `failed[]` entry into an error
+ *  state rather than a green button that wrote nothing. */
+function setStatus(opts: SetStatusOpts): Action {
+  const ids = (): string[] => {
+    const v = typeof opts.leadIds === "function" ? opts.leadIds() : opts.leadIds;
+    if (Array.isArray(v)) return v;
+    return opts.leadId ? [opts.leadId] : [];
+  };
+  return new Action({
+    tool: "leadbay_set_lead_status",
+    fields: opts.date ? [opts.status, opts.date] : [opts.status],
+    confirm: opts.confirm,
+    args: () => ({
+      lead_ids: ids(),
+      status: opts.status.value,
+      ...(opts.date && opts.date.value ? { status_date: opts.date.value } : {}),
+      ...(opts.ask ? { _triggered_by: opts.ask } : {}),
+    }),
+    checkResult: (r) => {
+      const failed = (r as { failed?: Array<{ lead_id?: string; message?: string }> })?.failed;
+      if (!Array.isArray(failed) || failed.length === 0) return null;
+      const total = ids().length;
+      const first = failed[0]?.message ?? "write rejected";
+      return failed.length === total
+        ? `Status not applied: ${first}`
+        : `${failed.length} of ${total} leads failed: ${first}`;
+    },
+  });
+}
+
 /** Campaign picker field — options populated from leadbay_list_campaigns. */
 function campaigns(ask: string): Field {
   return new Field({
@@ -797,6 +932,7 @@ function teamActivity(opts: { weeks?: number; ask: string }): Resource {
 export const lb = {
   VERSION,
   configure,
+  styles,
   call,
   // primitives
   field: (cfg?: FieldConfig) => new Field(cfg),
@@ -813,12 +949,15 @@ export const lb = {
   note: noteAction,
   like,
   dislike,
+  leadStatus,
+  setStatus,
   leadHistory,
   leadProfile,
   enrichment,
   callList,
   teamActivity,
   EPILOGUE_STATUSES,
+  LEAD_STATUSES,
 };
 
 // Self-attach the global for inline-script artifacts (from inside the module
