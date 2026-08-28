@@ -235,7 +235,7 @@ describe("research_lead_by_name_fuzzy — registry resolution", () => {
       researchLeadByNameFuzzy.execute(newClient(), { companyName: "Hugo Flusin" })
     ).rejects.toMatchObject({
       code: "LEAD_NOT_FOUND",
-      hint: expect.stringContaining("website, registry_number"),
+      hint: expect.stringContaining("company website for `website`"),
     });
   });
 
@@ -298,8 +298,70 @@ describe("research_lead_by_name_fuzzy — registry resolution", () => {
     expect(res.firmographics).toBeUndefined();
   });
 
-  it("a corpus hit never touches the resolver", async () => {
+  it("a corpus hit never touches the resolver when no exact key was supplied", async () => {
     mockHttp([
+      {
+        method: "GET",
+        path: "/1.6/search/suggest?q=Wink%20Lab",
+        status: 200,
+        body: [{ text: "WINK", lead_id: WINK, lens_id: "6202" }],
+      },
+      ...profileScripts(WINK, 6202, "WINK"),
+    ]);
+
+    const res: any = await researchLeadByNameFuzzy.execute(newClient(), {
+      companyName: "Wink Lab",
+    });
+
+    expect(res._meta.resolved_from).toBe("companyName");
+    expect(
+      getHttpRequests().some((r) => r.path === "/1.6/leads/resolve")
+    ).toBe(false);
+  });
+
+  it("a supplied website outranks the name typeahead (codex P1, mcp#188)", async () => {
+    // Live repro on FR staging: companyName:"MAISON" + website:"lesmaisonsdelea.com"
+    // makes /search/suggest answer MA MAISON BLEUE — a different company —
+    // because suggest fuzzy-matches names and ignores the domain outright.
+    mockHttp([
+      {
+        method: "POST",
+        path: "/1.6/leads/resolve",
+        status: 200,
+        body: {
+          type: "matched",
+          lead_id: "les-maisons-de-lea",
+          matched_on: ["website_exact"],
+        },
+      },
+      activeLens(),
+      ...profileScripts("les-maisons-de-lea", 6202, "LES MAISONS DE LEA"),
+    ]);
+
+    const res: any = await researchLeadByNameFuzzy.execute(newClient(), {
+      companyName: "MAISON",
+      website: "lesmaisonsdelea.com",
+    });
+
+    expect(res.firmographics.id).toBe("les-maisons-de-lea");
+    expect(res._meta.resolved_from).toBe("resolver");
+    // The typeahead is never consulted first — its top hit would be wrong.
+    expect(getHttpRequests()[0].path).toBe("/1.6/leads/resolve");
+    expect(
+      getHttpRequests().some((r) => r.path.includes("/search/suggest"))
+    ).toBe(false);
+  });
+
+  it("a registry miss still checks the user's own leads before declaring one", async () => {
+    // A lead the user owns whose record carries no website is invisible to the
+    // resolver but findable by name. Leading with the registry must not lose it.
+    mockHttp([
+      {
+        method: "POST",
+        path: "/1.6/leads/resolve",
+        status: 200,
+        body: { type: "none", would_help: ["registry_number"] },
+      },
       {
         method: "GET",
         path: "/1.6/search/suggest?q=Wink%20Lab",
@@ -314,10 +376,55 @@ describe("research_lead_by_name_fuzzy — registry resolution", () => {
       website: "wink-lab.com",
     });
 
+    expect(res.firmographics.id).toBe(WINK);
     expect(res._meta.resolved_from).toBe("companyName");
-    expect(
-      getHttpRequests().some((r) => r.path === "/1.6/leads/resolve")
-    ).toBe(false);
+  });
+
+  it("never claims the corpus was searched when the search route was down", async () => {
+    const down = Object.assign(new Error("dns"), { code: "ENOTFOUND" });
+    mockHttp([
+      {
+        method: "POST",
+        path: "/1.6/leads/resolve",
+        status: 200,
+        body: { type: "none", would_help: ["registry_number"] },
+      },
+      { method: "GET", path: "/1.6/search/suggest?q=Wink%20Lab", status: 0, error: down },
+    ]);
+
+    await expect(
+      researchLeadByNameFuzzy.execute(newClient(), {
+        companyName: "Wink Lab",
+        website: "wink-lab.com",
+      })
+    ).rejects.toMatchObject({
+      code: "LEAD_NOT_FOUND",
+      message: expect.stringContaining("could NOT be searched"),
+    });
+  });
+
+  it("asks for a registry number only through a param that exists", async () => {
+    mockHttp([
+      {
+        method: "POST",
+        path: "/1.6/leads/resolve",
+        status: 200,
+        body: { type: "matched", lead_id: WINK, matched_on: ["registry_number"] },
+      },
+      activeLens(),
+      ...profileScripts(WINK, 6202, "WINK"),
+    ]);
+
+    const res: any = await researchLeadByNameFuzzy.execute(newClient(), {
+      companyName: "Wink Lab",
+      registry_number: "843946278",
+    });
+
+    expect(res.firmographics.id).toBe(WINK);
+    expect(JSON.parse(getHttpRequests()[0].body ?? "{}")).toEqual({
+      name: "Wink Lab",
+      registry_number: "843946278",
+    });
   });
 
   it("an explicit lensId stays a strict scope and skips the registry", async () => {

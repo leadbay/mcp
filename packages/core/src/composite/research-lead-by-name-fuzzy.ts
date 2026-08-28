@@ -30,6 +30,7 @@ interface ResearchLeadByNameFuzzyParams {
   companyName: string;
   website?: string;
   email?: string;
+  registry_number?: string;
   lensId?: number;
   concise?: boolean;
   response_format?: "json" | "markdown";
@@ -121,6 +122,7 @@ export function buildResolvePayload(params: {
   query: string;
   website?: string;
   email?: string;
+  registry_number?: string;
 }): ResolvePayload {
   const queryDomain = normalizeDomain(params.query);
   const website =
@@ -134,7 +136,19 @@ export function buildResolvePayload(params: {
   if (!queryDomain) payload.name = params.query;
   if (website) payload.website = website;
   if (params.email) payload.email = params.email;
+  if (params.registry_number) payload.registry_number = params.registry_number;
   return payload;
+}
+
+// Does this payload carry an identity assertion strong enough to outrank the
+// corpus typeahead? /search/suggest fuzzy-matches names and ignores domains
+// entirely, so taking its top hit while holding a domain returns the wrong
+// company: on FR staging, companyName:"MAISON" + website:"lesmaisonsdelea.com"
+// makes suggest answer MA MAISON BLEUE. The resolver returns ids from the same
+// space as suggest (verified: an owned lead resolves to its own lead id), so
+// leading with it costs nothing and honours the key the agent supplied.
+export function hasStrongIdentityKey(payload: ResolvePayload): boolean {
+  return Boolean(payload.website || payload.registry_number);
 }
 
 async function resolveWithinLens(
@@ -239,7 +253,7 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
       companyName: {
         type: "string",
         description:
-          "Company name, domain, or contact name. Searched first across the user's own Discover/Monitor/Activate leads, then against the Leadbay company registry.",
+          "Company name, domain, or contact name. Resolved against the user's own Discover/Monitor/Activate leads and the Leadbay company registry.",
       },
       website: {
         type: "string",
@@ -249,7 +263,12 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
       email: {
         type: "string",
         description:
-          "A contact email at the company. Used to derive the company domain when `website` is absent; consumer mailboxes (gmail, outlook, …) are ignored.",
+          "A contact email at the company. Used to derive the company domain when `website` is absent; consumer mailboxes (gmail, orange.fr, …) are ignored.",
+      },
+      registry_number: {
+        type: "string",
+        description:
+          "Company registry number (SIREN/SIRET in France, company number elsewhere). The other exact match key — pass it when the user supplies one, or when a previous LEAD_NOT_FOUND hint asked for it.",
       },
       lensId: {
         type: "number",
@@ -303,31 +322,24 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
     const query = params.companyName.trim();
     let lensId = params.lensId;
 
-    // ── Step 1: the user's own corpus. Fast (170-270 ms) and the right answer
-    // whenever the company is already a lead, which is most re-lookups.
-    let ranked: ResolvedMatch[] = [];
-    if (lensId !== undefined) {
-      ranked = await resolveWithinLens(client, query, lensId);
-    } else {
-      try {
-        ranked = await resolveAcrossVisibleCorpus(client, query);
-      } catch (error) {
-        // A structured API response is authoritative and stays visible.
-        // A transport/parser failure just means the corpus fast path is
-        // unavailable — the registry below answers the same question and
-        // answers it more broadly, so fall through rather than degrade to a
-        // substring scan of one lens.
-        if (isLeadbayError(error)) throw error;
-        ctx?.logger?.warn?.(
-          "Cross-tab company search was unavailable; resolving against the Leadbay registry instead."
-        );
+    // An explicit lensId is a deliberate scope restriction, not a starting
+    // point. Search it, and stop there either way.
+    if (params.lensId !== undefined) {
+      const scoped = await resolveWithinLens(client, query, params.lensId);
+      if (scoped.length > 0) {
+        return await delegate(scoped, params.lensId);
       }
+      throw client.makeError(
+        "LEAD_NOT_FOUND",
+        `No lead matching "${query}" in lens ${params.lensId}`,
+        "This lookup was intentionally restricted to the supplied lens. Omit lensId to search your visible leads across Discover, Monitor, and Activate and then the Leadbay company registry."
+      );
     }
 
-    if (ranked.length > 0) {
-      const [primary, ...rest] = ranked;
+    async function delegate(matches: ResolvedMatch[], fallbackLens?: number) {
+      const [primary, ...rest] = matches;
       const resolvedLens =
-        primary.lensId ?? lensId ?? (await client.resolveDefaultLens());
+        primary.lensId ?? fallbackLens ?? (await client.resolveDefaultLens());
       return await researchLeadById.execute(
         client,
         {
@@ -349,24 +361,57 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
       );
     }
 
-    // An explicit lensId is a deliberate scope restriction, not a starting
-    // point. Honour it and stop.
-    if (params.lensId !== undefined) {
-      throw client.makeError(
-        "LEAD_NOT_FOUND",
-        `No lead matching "${query}" in lens ${params.lensId}`,
-        "This lookup was intentionally restricted to the supplied lens. Omit lensId to search your visible leads across Discover, Monitor, and Activate and then the Leadbay company registry."
-      );
-    }
-
-    // ── Step 2: the Leadbay company registry. This is what makes a company
-    // the user does not own yet findable at all.
     const payload = buildResolvePayload({
       query,
       website: params.website,
       email: params.email,
+      registry_number: params.registry_number,
     });
 
+    // Whether /search/suggest actually returned an answer. A transport failure
+    // leaves this false, and the miss message must not then claim the user's
+    // own leads were searched — that would falsely rule out an owned lead
+    // during a search-route outage.
+    let corpusSearched = false;
+    let ranked: ResolvedMatch[] = [];
+
+    // `strict` distinguishes the two callers below. On the corpus-FIRST path a
+    // structured API error is the authoritative answer and stays visible. On
+    // the late-fallback path the registry has already given its verdict, so a
+    // corpus outage must not mask it.
+    const searchCorpus = async (strict: boolean) => {
+      try {
+        ranked = await resolveAcrossVisibleCorpus(client, query);
+        corpusSearched = true;
+      } catch (error) {
+        if (strict && isLeadbayError(error)) throw error;
+        ctx?.logger?.warn?.(
+          "Cross-tab company search was unavailable; resolving against the Leadbay registry instead."
+        );
+      }
+    };
+
+    // ── Order of resolution.
+    //
+    // With no exact key, the corpus typeahead goes first: it is fast
+    // (170-270 ms) and it is the right answer for the common case of
+    // re-looking-up a lead the user already owns.
+    //
+    // With a website or registry number in hand, the registry goes first.
+    // /search/suggest fuzzy-matches NAMES and ignores the domain entirely, so
+    // trusting its top hit would discard the strongest key the agent supplied
+    // and can answer with a different company outright (see
+    // hasStrongIdentityKey). The resolver shares suggest's id space, so an
+    // owned lead still resolves to its own id and still renders as its own
+    // research card.
+    const registryFirst = hasStrongIdentityKey(payload);
+    if (!registryFirst) {
+      await searchCorpus(true);
+      if (ranked.length > 0) return await delegate(ranked);
+    }
+
+    // ── The Leadbay company registry. This is what makes a company the user
+    // does not own yet findable at all.
     let resolved: ResolveResult;
     try {
       resolved = await client.request<ResolveResult>(
@@ -428,20 +473,42 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
       };
     }
 
+    // The registry has no answer. If we led with it because a domain was
+    // supplied, the user's own leads have not been looked at yet — a lead they
+    // own whose record carries no website would be invisible to the resolver
+    // but findable by name. Check before declaring a miss.
+    if (!corpusSearched) {
+      await searchCorpus(false);
+      if (ranked.length > 0) return await delegate(ranked);
+    }
+
     // `none` and `unidentifiable` are both genuine misses, but they fail for
     // different reasons and the resolver says which. Carry its own vocabulary
     // into the hint so the agent asks for the missing field instead of
-    // declaring the company absent.
-    const searched = payload.website
-      ? `in your visible Leadbay leads and in the Leadbay company registry (domain ${payload.website})`
-      : "in your visible Leadbay leads and in the Leadbay company registry";
+    // declaring the company absent. Never claim a search that did not run.
+    const registryScope = payload.website
+      ? `the Leadbay company registry (domain ${payload.website})`
+      : "the Leadbay company registry";
+    const searched = corpusSearched
+      ? `in your visible Leadbay leads and in ${registryScope}`
+      : `in ${registryScope} — your own leads could NOT be searched, the search route was unreachable`;
+    const wanted =
+      resolved.type === "none" && resolved.would_help.length > 0
+        ? resolved.would_help
+        : ["website", "registry_number"];
+    const asks = wanted
+      .map((f) =>
+        f === "registry_number"
+          ? "a registry number (SIREN/SIRET) for `registry_number`"
+          : f === "website"
+            ? "the company website for `website`"
+            : `\`${f}\``
+      )
+      .join(" or ");
     const hint =
       resolved.type === "unidentifiable"
-        ? `The registry could not identify a company from this input (${resolved.reason}). Ask the user for the company's website or registry number, then call this tool again with \`website\`.`
-        : `The registry found no company for what was supplied. It would match on: ${
-            (resolved.type === "none" ? resolved.would_help : []).join(", ") ||
-            "website, registry_number"
-          }. Ask the user for that — "what's their website?" usually settles it — and call this tool again with \`website\`. Do not offer an import before asking.`;
+        ? `The registry could not identify a company from this input (${resolved.reason}). Ask the user for ${asks}, then call this tool again with it.`
+        : `The registry found no company for what was supplied. It would match on ${asks}. Ask the user for that — "what's their website?" usually settles it — then call this tool again. Do not offer an import before asking.`;
 
     throw client.makeError(
       "LEAD_NOT_FOUND",

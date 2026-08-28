@@ -3739,7 +3739,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ---
 
-Resolves against the user's visible Discover/Monitor/Activate leads, then the
+Resolves across the user's visible Discover/Monitor/Activate leads AND the
 **Leadbay company registry** — so a company they do not own yet is still
 findable — then delegates to **leadbay_research_lead_by_id**.
 
@@ -3752,9 +3752,9 @@ When the registry cannot pick one company it returns \`{resolution:
 "ambiguous", query, candidates:[{leadId, name, website, location, …}]}\`
 instead of a card. Ask which one; never guess from \`score\`.
 
-\`LEAD_NOT_FOUND\` is not a dead end: its hint carries the resolver's
-\`would_help\` list (usually \`website\`). Ask for that field and call again. Do
-not offer an import before asking.
+\`LEAD_NOT_FOUND\` is not a dead end: its hint names the field that would have
+found it — \`website\` or \`registry_number\`, both params. Ask for it and call
+again. Do not offer an import before asking.
 
 Offer \`_meta.match_candidates\` when present.
 
