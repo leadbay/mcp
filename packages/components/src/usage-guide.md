@@ -133,11 +133,29 @@ tell *why* this lead is on screen. Four lines, in this order.
    contact. `sector_id` is a RAW ID (`"5136"`), not a label: resolve it via
    `leadbay_list_sectors` (1346 rows — fetch once, cache, never inline the lot)
    or omit it. Never print the raw id.
-4. **Why it fits** — one sentence, ≤20 words. Priority: `short_description` →
-   top 2 `tags[].display_name` → the literal string *"No description yet — run
-   qualification to generate one"*. Never leave this line blank: a silent gap
-   reads as a rendering bug, whereas the fallback tells the rep the data is
-   missing and what fixes it.
+4. **Why it fits** — one sentence, ≤20 words. Walk this chain and stop at the
+   first hit:
+
+   1. `short_description`
+   2. `description` (longer; only on `research_lead_by_id` /
+      `research_lead_by_name_fuzzy` — the trim payloads omit it)
+   3. top 2 `tags[].display_name`
+   4. `qualification_summary.best_response_excerpt`, trimmed to one sentence
+   5. `keywords`, first 3, joined with ` · `
+   6. the resolved sector label — better than nothing, and if step 3 already
+      printed the sector on the firmographics line, skip to step 7
+   7. the literal *"No description yet — run qualification to generate one"*
+
+   Never leave this line blank: a silent gap reads as a rendering bug, whereas
+   the fallback tells the rep the data is missing and what fixes it.
+
+   **The two list payloads are complementary, so the chain must span both.**
+   `pull_leads` returns `short_description` on every lead but no `sector_id`;
+   `pull_followups` returns `sector_id` but no `short_description` at all. A
+   card fed by one will fall through to a different step than the same card fed
+   by the other — that is expected, not a bug. Never call
+   `research_lead_by_id` per row just to fill this line: it is one request per
+   lead. Fetch it lazily when the rep expands a card.
 
 **Never show** on a card: `id`, `sector_id`, `location.pos`, `location.country`
 (unless city and state are both missing), `is_hq`, `*_in_progress`,

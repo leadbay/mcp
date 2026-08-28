@@ -36,8 +36,23 @@ describe("lead-card contract in the usage guide", () => {
   });
 
   it("specifies the why-it-fits fallback chain and forbids a blank line", () => {
-    expect(GUIDE).toContain("short_description");
-    expect(GUIDE).toContain("tags[].display_name");
+    // The chain must span both list payloads: pull_leads has short_description
+    // but no sector_id; pull_followups has sector_id but no short_description.
+    for (const step of [
+      "short_description",
+      "`description`",
+      "tags[].display_name",
+      "qualification_summary.best_response_excerpt",
+      "`keywords`",
+    ]) {
+      expect(GUIDE).toContain(step);
+    }
+    expect(GUIDE).toMatch(/complementary/i);
+    // A per-row research call to fill one line is a request per lead.
+    // Prose wraps, so match against whitespace-collapsed text.
+    expect(GUIDE.replace(/\s+/g, " ")).toMatch(
+      /Never call `research_lead_by_id` per row/i,
+    );
     // The literal wraps across a line in the guide's prose, so match it
     // whitespace-insensitively rather than asserting a contiguous string.
     expect(GUIDE.replace(/\s+/g, " ")).toContain(
