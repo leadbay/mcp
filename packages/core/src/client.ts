@@ -968,18 +968,19 @@ export class LeadbayClient {
       // both causes and assert neither. Don't claim the login is fine, and don't
       // push re-login as the default fix either.
       //
-      // [retried] says whether the auto-retry actually ran. It only runs for
-      // GETs (retriesOn401), so on a write this is the FIRST 401 — the hint used
-      // to claim a retry that never happened, which read as "we already tried
-      // twice, it's hopeless" on a path that had simply never been attempted
-      // more than once (product#3998).
+      // [retried] says whether the auto-retry actually ran — false on a write
+      // (retriesOn401) and also on a GET whose caller passed retryOn401:false,
+      // e.g. the startup auth probe. The hint states only that fact and not the
+      // reason, so it can't misdescribe either path: it used to claim a retry
+      // that never happened, which read as "we already tried twice, it's
+      // hopeless" on a call attempted exactly once (product#3998).
       // (Code stays AUTH_EXPIRED for backward compat with the MCP auth handlers.)
       return this.makeError(
         "AUTH_EXPIRED",
         "Leadbay rejected this request (401)",
         retried
           ? "Tokens don't expire on a timer, so this isn't stale. Already auto-retried once and it 401'd again — usually a Leadbay-side hiccup, but can also mean the user logged out. Try again shortly, else report it."
-          : "Tokens don't expire on a timer, so this isn't stale. Writes are never auto-retried, so this is the first attempt — a Leadbay-side hiccup, or the user logged out. Try again once, else report it.",
+          : "Tokens don't expire on a timer, so this isn't stale. This call wasn't auto-retried, so it's the first attempt — a Leadbay-side hiccup, or the user logged out. Try again once, else report it.",
         endpoint,
         null,
         status
