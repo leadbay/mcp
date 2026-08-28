@@ -94,7 +94,7 @@ If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is nul
 - Line 1: the 10-segment score bar in inline-code backticks (see the score-bar snippet above for the algorithm).
 - Insert \`<br>\` between lines.
 - Line 2: linked company name + \` · \` + short location + \` · \` + compact size.
-  - Link target: \`website\` (prefix \`https://\` if it's a bare hostname). Don't point the company name at the Leadbay app — the app deep-link (\`https://leadbay.app/app/<view>?lead=<id>\`, view = \`discover\` | \`monitor\` | \`campaign\`) is a separate affordance, not the company link.
+  - Link target: \`website\` (prefix \`https://\` if it's a bare hostname). Don't synthesize an app deep-link.
   - Location: shorten "City of New York" → "NYC"; otherwise "City ST"; state alone only when city missing.
   - Size: \`"Xk+"\` when \`size.min >= 1000\`, \`"min–max"\` otherwise.
 
@@ -124,9 +124,7 @@ Never link a person's name to the company's LinkedIn page (and vice versa) — t
 
 ## Linking the company
 
-Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname.
-
-Separately, the lead's own page in the Leadbay app IS linkable: \`https://leadbay.app/app/<view>?lead=<lead.id>\`, where \`<view>\` is \`discover\`, \`monitor\`, or \`campaign\`. Pick the view the lead lives in — \`in_monitor\` / \`in_discover\` are booleans on the \`pull_followups\` payload (every follow-up is \`in_monitor: true\`); \`pull_leads\` omits both flags and its leads are the Discover batch, so default to \`discover\` there. Linking a Monitor lead to \`/app/discover\` opens a list that does not contain it. A CAMPAIGN card needs two params — \`https://leadbay.app/app/campaign?campaign=<campaign.id>&lead=<lead.id>\` — the campaign selects the list and the lead opens the panel inside it; omitting \`campaign=\` opens an empty campaign view. The \`lead\` query param (\`LEAD_QUERY_PARAM\` in the web app) is read on load and opens the lead panel as an overlay. Use it for an explicit "Open in Leadbay" affordance — never as the company-name target, which stays \`website\`.
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
 
 When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
 
@@ -295,7 +293,7 @@ If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is nul
 - Line 1: the 10-segment score bar in inline-code backticks (see the score-bar snippet above for the algorithm).
 - Insert \`<br>\` between lines.
 - Line 2: linked company name + \` · \` + short location + \` · \` + compact size.
-  - Link target: \`website\` (prefix \`https://\` if it's a bare hostname). Don't point the company name at the Leadbay app — the app deep-link (\`https://leadbay.app/app/<view>?lead=<id>\`, view = \`discover\` | \`monitor\` | \`campaign\`) is a separate affordance, not the company link.
+  - Link target: \`website\` (prefix \`https://\` if it's a bare hostname). Don't synthesize an app deep-link.
   - Location: shorten "City of New York" → "NYC"; otherwise "City ST"; state alone only when city missing.
   - Size: \`"Xk+"\` when \`size.min >= 1000\`, \`"min–max"\` otherwise.
 
@@ -325,9 +323,7 @@ Never link a person's name to the company's LinkedIn page (and vice versa) — t
 
 ## Linking the company
 
-Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname.
-
-Separately, the lead's own page in the Leadbay app IS linkable: \`https://leadbay.app/app/<view>?lead=<lead.id>\`, where \`<view>\` is \`discover\`, \`monitor\`, or \`campaign\`. Pick the view the lead lives in — \`in_monitor\` / \`in_discover\` are booleans on the \`pull_followups\` payload (every follow-up is \`in_monitor: true\`); \`pull_leads\` omits both flags and its leads are the Discover batch, so default to \`discover\` there. Linking a Monitor lead to \`/app/discover\` opens a list that does not contain it. A CAMPAIGN card needs two params — \`https://leadbay.app/app/campaign?campaign=<campaign.id>&lead=<lead.id>\` — the campaign selects the list and the lead opens the panel inside it; omitting \`campaign=\` opens an empty campaign view. The \`lead\` query param (\`LEAD_QUERY_PARAM\` in the web app) is read on load and opens the lead panel as an overlay. Use it for an explicit "Open in Leadbay" affordance — never as the company-name target, which stays \`website\`.
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
 
 When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
 
@@ -390,7 +386,6 @@ Pick 2–3 items below based on what was actually observed in the response. The 
 | \`has_more == true\`                                         | "Pull the next page (page N+1 of M)"                         | leadbay_pull_leads(page = current + 1, lensId = pinned)|
 | ≥ 3 rows have \`qualification_summary.answered == 0\`        | "Deepen AI qualification on the rows without ❖ caps"         | leadbay_bulk_qualify_leads(leadIds=[…])                |
 | User points at a single row                                | "Research [Company] in depth"                                | leadbay_research_lead_by_id(leadId)                    |
-| User states a commercial outcome on a shown row ("we won them", "that one's dead", "they're a target") | "Set the CRM status on [Company]" — offer Wanted / Won / Lost as an \`ask_user_input_v0\` single_select when the outcome is ambiguous | leadbay_set_lead_status({ lead_ids: [row.id], status, status_date? }) — pass \`status_date\` whenever the user names a date. NOT leadbay_report_outreach: that records an outreach attempt, not a deal outcome |
 | User only has a name (no leadId in context)                | "Look up [Company] by name"                                  | leadbay_research_lead_by_name_fuzzy(companyName)       |
 | Top row has phone AND email                                | "Prepare an outreach for [Contact] — call + email"           | leadbay_prepare_outreach(leadId)                       |
 | Top row has email but no phone                             | "Draft an outreach email for [Contact]"                      | leadbay_prepare_outreach(leadId)                       |
@@ -645,9 +640,7 @@ Never link a person's name to the company's LinkedIn page (and vice versa) — t
 
 ## Linking the company
 
-Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname.
-
-Separately, the lead's own page in the Leadbay app IS linkable: \`https://leadbay.app/app/<view>?lead=<lead.id>\`, where \`<view>\` is \`discover\`, \`monitor\`, or \`campaign\`. Pick the view the lead lives in — \`in_monitor\` / \`in_discover\` are booleans on the \`pull_followups\` payload (every follow-up is \`in_monitor: true\`); \`pull_leads\` omits both flags and its leads are the Discover batch, so default to \`discover\` there. Linking a Monitor lead to \`/app/discover\` opens a list that does not contain it. A CAMPAIGN card needs two params — \`https://leadbay.app/app/campaign?campaign=<campaign.id>&lead=<lead.id>\` — the campaign selects the list and the lead opens the panel inside it; omitting \`campaign=\` opens an empty campaign view. The \`lead\` query param (\`LEAD_QUERY_PARAM\` in the web app) is read on load and opens the lead panel as an overlay. Use it for an explicit "Open in Leadbay" affordance — never as the company-name target, which stays \`website\`.
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
 
 When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
 
@@ -1042,7 +1035,7 @@ If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is nul
 - Line 1: the 10-segment score bar in inline-code backticks (see the score-bar snippet above for the algorithm).
 - Insert \`<br>\` between lines.
 - Line 2: linked company name + \` · \` + short location + \` · \` + compact size.
-  - Link target: \`website\` (prefix \`https://\` if it's a bare hostname). Don't point the company name at the Leadbay app — the app deep-link (\`https://leadbay.app/app/<view>?lead=<id>\`, view = \`discover\` | \`monitor\` | \`campaign\`) is a separate affordance, not the company link.
+  - Link target: \`website\` (prefix \`https://\` if it's a bare hostname). Don't synthesize an app deep-link.
   - Location: shorten "City of New York" → "NYC"; otherwise "City ST"; state alone only when city missing.
   - Size: \`"Xk+"\` when \`size.min >= 1000\`, \`"min–max"\` otherwise.
 
@@ -1072,9 +1065,7 @@ Never link a person's name to the company's LinkedIn page (and vice versa) — t
 
 ## Linking the company
 
-Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname.
-
-Separately, the lead's own page in the Leadbay app IS linkable: \`https://leadbay.app/app/<view>?lead=<lead.id>\`, where \`<view>\` is \`discover\`, \`monitor\`, or \`campaign\`. Pick the view the lead lives in — \`in_monitor\` / \`in_discover\` are booleans on the \`pull_followups\` payload (every follow-up is \`in_monitor: true\`); \`pull_leads\` omits both flags and its leads are the Discover batch, so default to \`discover\` there. Linking a Monitor lead to \`/app/discover\` opens a list that does not contain it. A CAMPAIGN card needs two params — \`https://leadbay.app/app/campaign?campaign=<campaign.id>&lead=<lead.id>\` — the campaign selects the list and the lead opens the panel inside it; omitting \`campaign=\` opens an empty campaign view. The \`lead\` query param (\`LEAD_QUERY_PARAM\` in the web app) is read on load and opens the lead panel as an overlay. Use it for an explicit "Open in Leadbay" affordance — never as the company-name target, which stays \`website\`.
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
 
 When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
 
@@ -1871,7 +1862,7 @@ If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is nul
 - Line 1: the 10-segment score bar in inline-code backticks (see the score-bar snippet above for the algorithm).
 - Insert \`<br>\` between lines.
 - Line 2: linked company name + \` · \` + short location + \` · \` + compact size.
-  - Link target: \`website\` (prefix \`https://\` if it's a bare hostname). Don't point the company name at the Leadbay app — the app deep-link (\`https://leadbay.app/app/<view>?lead=<id>\`, view = \`discover\` | \`monitor\` | \`campaign\`) is a separate affordance, not the company link.
+  - Link target: \`website\` (prefix \`https://\` if it's a bare hostname). Don't synthesize an app deep-link.
   - Location: shorten "City of New York" → "NYC"; otherwise "City ST"; state alone only when city missing.
   - Size: \`"Xk+"\` when \`size.min >= 1000\`, \`"min–max"\` otherwise.
 
@@ -1901,9 +1892,7 @@ Never link a person's name to the company's LinkedIn page (and vice versa) — t
 
 ## Linking the company
 
-Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname.
-
-Separately, the lead's own page in the Leadbay app IS linkable: \`https://leadbay.app/app/<view>?lead=<lead.id>\`, where \`<view>\` is \`discover\`, \`monitor\`, or \`campaign\`. Pick the view the lead lives in — \`in_monitor\` / \`in_discover\` are booleans on the \`pull_followups\` payload (every follow-up is \`in_monitor: true\`); \`pull_leads\` omits both flags and its leads are the Discover batch, so default to \`discover\` there. Linking a Monitor lead to \`/app/discover\` opens a list that does not contain it. A CAMPAIGN card needs two params — \`https://leadbay.app/app/campaign?campaign=<campaign.id>&lead=<lead.id>\` — the campaign selects the list and the lead opens the panel inside it; omitting \`campaign=\` opens an empty campaign view. The \`lead\` query param (\`LEAD_QUERY_PARAM\` in the web app) is read on load and opens the lead panel as an overlay. Use it for an explicit "Open in Leadbay" affordance — never as the company-name target, which stays \`website\`.
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
 
 When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
 
@@ -2096,9 +2085,7 @@ Never link a person's name to the company's LinkedIn page (and vice versa) — t
 
 ## Linking the company
 
-Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname.
-
-Separately, the lead's own page in the Leadbay app IS linkable: \`https://leadbay.app/app/<view>?lead=<lead.id>\`, where \`<view>\` is \`discover\`, \`monitor\`, or \`campaign\`. Pick the view the lead lives in — \`in_monitor\` / \`in_discover\` are booleans on the \`pull_followups\` payload (every follow-up is \`in_monitor: true\`); \`pull_leads\` omits both flags and its leads are the Discover batch, so default to \`discover\` there. Linking a Monitor lead to \`/app/discover\` opens a list that does not contain it. A CAMPAIGN card needs two params — \`https://leadbay.app/app/campaign?campaign=<campaign.id>&lead=<lead.id>\` — the campaign selects the list and the lead opens the panel inside it; omitting \`campaign=\` opens an empty campaign view. The \`lead\` query param (\`LEAD_QUERY_PARAM\` in the web app) is read on load and opens the lead panel as an overlay. Use it for an explicit "Open in Leadbay" affordance — never as the company-name target, which stays \`website\`.
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
 
 When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
 

@@ -92,7 +92,7 @@ If `qualification_summary.answered == 0` or `avg_qualification_boost` is null, s
 - Line 1: the 10-segment score bar in inline-code backticks (see the score-bar snippet above for the algorithm).
 - Insert `<br>` between lines.
 - Line 2: linked company name + ` · ` + short location + ` · ` + compact size.
-  - Link target: `website` (prefix `https://` if it's a bare hostname). Don't point the company name at the Leadbay app — the app deep-link (`https://leadbay.app/app/<view>?lead=<id>`, view = `discover` | `monitor` | `campaign`) is a separate affordance, not the company link.
+  - Link target: `website` (prefix `https://` if it's a bare hostname). Don't synthesize an app deep-link.
   - Location: shorten "City of New York" → "NYC"; otherwise "City ST"; state alone only when city missing.
   - Size: `"Xk+"` when `size.min >= 1000`, `"min–max"` otherwise.
 
@@ -122,9 +122,7 @@ Never link a person's name to the company's LinkedIn page (and vice versa) — t
 
 ## Linking the company
 
-Use the lead's `website` as the company-name link target — prefix `https://` if the value is a bare hostname.
-
-Separately, the lead's own page in the Leadbay app IS linkable: `https://leadbay.app/app/<view>?lead=<lead.id>`, where `<view>` is `discover`, `monitor`, or `campaign`. Pick the view the lead lives in — `in_monitor` / `in_discover` are booleans on the `pull_followups` payload (every follow-up is `in_monitor: true`); `pull_leads` omits both flags and its leads are the Discover batch, so default to `discover` there. Linking a Monitor lead to `/app/discover` opens a list that does not contain it. A CAMPAIGN card needs two params — `https://leadbay.app/app/campaign?campaign=<campaign.id>&lead=<lead.id>` — the campaign selects the list and the lead opens the panel inside it; omitting `campaign=` opens an empty campaign view. The `lead` query param (`LEAD_QUERY_PARAM` in the web app) is read on load and opens the lead panel as an overlay. Use it for an explicit "Open in Leadbay" affordance — never as the company-name target, which stays `website`.
+Use the lead's `website` as the company-name link target — prefix `https://` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to `website` is always real data.)
 
 When the response carries `social_urls` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over `social_urls`'s keys — never hardcode a fixed list — and emit each as `[<platform-label>](<url>)`. Skip platforms whose URL is null.
 
