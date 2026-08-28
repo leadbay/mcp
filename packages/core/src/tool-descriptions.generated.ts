@@ -3114,6 +3114,11 @@ WHEN NOT TO USE: when the user has named a specific lens — pass \`lensId\` to 
 
 The active lens can change between calls (5-min cache + backend \`last_requested_lens\`). If a multi-step workflow depends on staying on one lens, **capture \`response.lens.id\` from the first response and pass it as the \`lensId\` argument on every subsequent Leadbay call** — including re-pulls, bulk qualifies, and research. (Field-name caveat: response nests it as \`lens.id\`; the parameter is \`lensId\`.) Re-pulling without \`lensId\` after a long-running tool may silently switch to a different lens and discard prior work.
 
+**EMPTY BATCH — route on \`empty_reason\`, never loop.** When \`leads\` is empty the response carries \`empty_reason: {code, message, retryable, criteria?, narrow_locations?}\`. \`retryable\` is the only field that decides what you do next:
+
+- \`retryable: true\` (always \`code: "computing"\`) — the lens is still building. Say so, pull ONCE more in ~30s. Do not call it empty.
+- \`retryable: false\` — no amount of re-pulling, lens-switching or \`leadbay_extend_lens\` can produce leads on these criteria. **Stop calling tools.** Surface \`message\` to the user, name the criteria from \`criteria\` (and \`narrow_locations\` first when present — a city-scale geo scope is the usual culprit), and offer \`leadbay_adjust_audience\` to widen. A refill on a zero-candidate lens answers "queued", consumes no quota and delivers nothing, so retrying reads as progress while achieving none (product#3995).
+
 ---
 
 ## RENDERING — markdown table, three columns, score-bar driven

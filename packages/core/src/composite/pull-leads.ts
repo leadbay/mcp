@@ -7,6 +7,7 @@ import type {
   LeadPayload,
 } from "../types.js";
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
+import { diagnoseEmptyLens } from "./_empty-lens-reason.js";
 
 import { leadbay_pull_leads as PULL_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -273,6 +274,39 @@ export const pullLeads: Tool<PullLeadsParams> = {
         type: "boolean",
         description: "True if scoring is still running.",
       },
+      empty_reason: {
+        type: ["object", "null"],
+        description:
+          "Why this page came back with zero leads. null whenever leads were returned. `retryable` is the field to route on: true ONLY on code=computing (pull again in ~30s). On every other code re-pulling and leadbay_extend_lens are both futile — a refill on a zero-candidate lens answers 'queued', consumes no quota and delivers nothing — so surface `message` to the user and offer leadbay_adjust_audience instead of retrying.",
+        properties: {
+          code: {
+            type: "string",
+            description:
+              "computing | no_candidates | no_new_leads | audience_too_narrow | unknown",
+          },
+          message: {
+            type: "string",
+            description: "The line to surface to the user.",
+          },
+          retryable: {
+            type: "boolean",
+            description:
+              "True only while the lens is still computing. False means no amount of re-pulling or extending can produce leads.",
+          },
+          criteria: {
+            type: "object",
+            description:
+              "The lens criteria in play — what the user would have to relax. Present when the lens carries any.",
+          },
+          narrow_locations: {
+            type: "array",
+            description:
+              "Include-locations that resolved to a city-scale area or smaller ({id, name, level}). On an empty lens, name these first: this is the fingerprint of a whole-country location that fell through to a same-named village (product#3951).",
+            items: { type: "object" },
+          },
+        },
+        required: ["code", "message", "retryable"],
+      },
       next_steps: {
         type: ["object", "null"],
         description:
@@ -420,6 +454,16 @@ export const pullLeads: Tool<PullLeadsParams> = {
       computingScores: res.computing_scores,
     });
 
+    // Why is it empty? Only asked when it IS empty — the diagnosis costs two
+    // reads and the happy path must not pay them (product#3995).
+    const emptyReason =
+      leadCount === 0
+        ? await diagnoseEmptyLens(client, lensId, {
+            wishlist: res.computing_wishlist,
+            scores: res.computing_scores,
+          })
+        : null;
+
     return withAgentMemoryMeta(client, {
       lens: { id: lensId },
       leads: res.items.map((lead) => ({
@@ -431,6 +475,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
       next_page: nextPage,
       computing_wishlist: res.computing_wishlist,
       computing_scores: res.computing_scores,
+      empty_reason: emptyReason,
       next_steps: nextSteps,
       _meta: {
         region: client.region,
