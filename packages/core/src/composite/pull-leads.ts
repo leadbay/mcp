@@ -277,7 +277,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
       empty_reason: {
         type: ["object", "null"],
         description:
-          "Why this page came back with zero leads. null whenever leads were returned. `retryable` is the field to route on: true ONLY on code=computing (pull again in ~30s). On every other code re-pulling and leadbay_extend_lens are both futile — a refill on a zero-candidate lens answers 'queued', consumes no quota and delivers nothing — so surface `message` to the user and offer leadbay_adjust_audience instead of retrying.",
+          "Why this LENS holds zero leads. null whenever leads were returned, and null when this page is empty only because it is past the end of a non-empty lens. `retryable` is the field to route on: true ONLY on code=computing (pull again in ~30s). On every other code re-pulling and leadbay_extend_lens are both futile — a refill on a zero-candidate lens answers 'queued', consumes no quota and delivers nothing — so surface `message` to the user and offer leadbay_adjust_audience instead of retrying.",
         properties: {
           code: {
             type: "string",
@@ -454,15 +454,18 @@ export const pullLeads: Tool<PullLeadsParams> = {
       computingScores: res.computing_scores,
     });
 
-    // Why is it empty? Only asked when it IS empty — the diagnosis costs two
-    // reads and the happy path must not pay them (product#3995).
-    const emptyReason =
-      leadCount === 0
-        ? await diagnoseEmptyLens(client, lensId, {
-            wishlist: res.computing_wishlist,
-            scores: res.computing_scores,
-          })
-        : null;
+    // Why is it empty? Only asked when the LENS is empty, not merely this
+    // page: paging past the end of a healthy 160-lead lens also yields zero
+    // items, and calling that "audience_too_narrow" would be a lie. The
+    // diagnosis costs two reads, and neither the happy path nor an
+    // over-shot pager should pay them (product#3995).
+    const lensIsEmpty = leadCount === 0 && (res.pagination?.total ?? 0) === 0;
+    const emptyReason = lensIsEmpty
+      ? await diagnoseEmptyLens(client, lensId, {
+          wishlist: res.computing_wishlist,
+          scores: res.computing_scores,
+        })
+      : null;
 
     return withAgentMemoryMeta(client, {
       lens: { id: lensId },

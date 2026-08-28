@@ -147,6 +147,32 @@ describe("leadbay_pull_leads — empty_reason (product#3995)", () => {
     expect(paths.some((p) => p.endsWith("/filter"))).toBe(false);
   });
 
+  it("paging past the end of a healthy lens is not diagnosed as empty", async () => {
+    mockHttp([
+      {
+        method: "GET",
+        path: /\/lenses\/48101\/leads\/wishlist/,
+        status: 200,
+        body: {
+          items: [],
+          // The lens holds 160 leads; page 9 is simply past the end.
+          pagination: { page: 9, pages: 8, total: 160 },
+          computing_wishlist: false,
+          computing_scores: false,
+        },
+      },
+    ]);
+
+    const res: any = await pullLeads.execute(newClient(), {
+      lensId: 48101,
+      page: 9,
+    });
+
+    expect(res.empty_reason).toBeNull();
+    const paths = getHttpRequests().map((r) => r.path);
+    expect(paths.some((p) => p.endsWith("/filter"))).toBe(false);
+  });
+
   it("still computing → retryable, and no diagnostic reads are spent", async () => {
     mockHttp([
       {
