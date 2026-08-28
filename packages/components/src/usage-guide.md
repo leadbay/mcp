@@ -31,6 +31,8 @@ then on every change — render your own DOM from it.
 | `lb.outreach({leadId, ask, status?, note?})` | action | log a call → `report_outreach` (verification + `_triggered_by` baked in) |
 | `lb.note({leadId, note})` | action | add a note → `add_note` |
 | `lb.like(leadId)` / `lb.dislike(leadId)` | action | taste signal |
+| `lb.leadStatus(current?)` | field | a status `<select>` (Wanted/Won/Lost/Unwanted) |
+| `lb.setStatus({leadId or leadIds, status, date?, ask})` | action | write the org CRM status → `set_lead_status` |
 | `lb.leadHistory(leadId, ask)` | resource (lazy) | notes + activities + engagement → `account_history` |
 | `lb.leadProfile(leadId, ask)` | resource (lazy) | full lead profile → `research_lead_by_id` |
 | `lb.callList({source:'followups'\|'campaign', campaignId?, city?, ask})` | list | a cold-call list (Monitor or a campaign) |
@@ -39,6 +41,13 @@ then on every change — render your own DOM from it.
 
 `lb.EPILOGUE_STATUSES` = the 4 disposition values
 (`STILL_CHASING`, `COULD_NOT_REACH_STILL_TRYING`, `INTEREST_VALIDATED_OR_MEETING_PLANED`, `NOT_INTERESTED_LOST`).
+`lb.LEAD_STATUSES` = the 4 org CRM statuses as `{value,label}` (`WANTED`, `WON`, `LOST`, `UNWANTED`).
+
+**Two different systems.** Epilogue = how one outreach attempt went (drives
+follow-up ranking). Lead status = the commercial outcome, org-wide — the same
+field the website's status selector writes. A won deal is a LEAD STATUS;
+"she didn't pick up" is an EPILOGUE. Setting one never sets the other, so when
+the user reports both in one breath, fire both actions.
 
 **Binding sugar** (optional; binds a view-model to YOUR native element, no style):
 `lb.bindSelect(selectEl, field)` (populates options + value), `lb.bindValue(inputEl, field)`,
@@ -47,6 +56,53 @@ then on every change — render your own DOM from it.
 styling hooks. For lists/resources, use `.subscribe()` and render yourself.
 
 `ask` is the user's request this artifact serves — it becomes `_triggered_by`.
+
+## The skin (optional) — `lb.styles()`
+
+Call it once and you get a small `lb-*` stylesheet, so every artifact you build
+shares one visual language instead of re-inventing padding and colours. It is
+**opt-in**: skip it and you get exactly the unstyled HTML you wrote. It injects
+no markup and never touches your `class` attributes.
+
+```js
+lb.styles();   // idempotent — safe to call per row
+```
+
+| Class | For |
+|---|---|
+| `lb-card` / `lb-card-head` / `lb-title` / `lb-sub` | a lead card + its header |
+| `lb-row` / `lb-stack` | horizontal control row / vertical spacing |
+| `lb-select` / `lb-input` / `lb-btn` | form controls (state-aware, see below) |
+| `lb-msg` (`data-tone="error\|ok"`) | inline feedback |
+| `lb-chip` (`data-status="WON\|LOST"`) | a status pill |
+| `lb-table` | leads table |
+| `lb-spinner` | inline busy indicator |
+
+Controls react to the `data-lb-state` the bind helpers already set — a bound
+`lb-btn` dims while loading, goes green on success, red on error, all with no
+extra CSS from you.
+
+The palette is the **product design system**, ported from
+`frontend/packages/style/color.css` — same `--color-gray-1…9` ramp, same
+semantic `--color-{green,red,blue,gold}-{background,foreground}` pairs, same
+`1rem` / `0.625rem` radii and `corner-shape: squircle` as the app's components.
+An artifact therefore looks like Leadbay, not like a generic page.
+
+Use the tokens rather than hardcoded colours — the same rule the style package
+enforces. Re-theme by overriding them; don't fight specificity:
+
+```css
+:root { --lb-surface: var(--color-gray-2); --lb-radius: 0.5rem; }
+```
+
+Dark mode works two ways: `data-theme="dark"` on `<html>` (the frontend's own
+hook) **and** `prefers-color-scheme`, because an artifact renders inside a host
+whose theme attribute it cannot set. Never hardcode a light background over the
+skin.
+
+The product face is `Nikkei Maru`; the stack names it first and falls back to
+the system UI font. Do **not** add an `@font-face` — artifacts are inline-only
+and a remote font URL will silently fail.
 
 ## Recipe: cold-call sheet (one row per lead)
 
@@ -71,6 +127,73 @@ function wireRow(lead, els) {
   els.expand.onclick = () => history.load();             // load on click
 }
 ```
+
+## Recipe: lead-status dropdown (Wanted / Won / Lost)
+
+The org-wide CRM status, as a `<select>` + Apply button. You write the markup;
+`lb.leadStatus` fills the options and holds the value, `lb.setStatus` does the write.
+
+```html
+<div class="lb-card">
+  <div class="lb-card-head">
+    <span class="lb-title">Acme Corp</span>
+    <span class="lb-chip" data-status="WANTED">Wanted</span>
+  </div>
+  <div class="lb-row">
+    <select id="st" class="lb-select"></select>
+    <button id="go" class="lb-btn">Apply</button>
+    <span id="msg" class="lb-msg"></span>
+  </div>
+</div>
+```
+
+```js
+lb.styles();                                          // once per artifact — see below
+
+const status = lb.leadStatus(lead.org_lead_status);   // seed with the CURRENT value
+const save   = lb.setStatus({ leadId: lead.id, status, ask: ASK });
+
+lb.bindSelect(document.getElementById("st"), status); // populates the 4 options
+lb.bindAction(document.getElementById("go"), save);   // click → write
+
+save.subscribe((a) => {                               // render your own feedback
+  msg.textContent = a.loading ? "Saving…"
+    : a.error ? a.error.message                       // includes partial failures
+    : a.lastResult ? `Set to ${a.lastResult.status}` : "";
+  msg.dataset.tone = a.error ? "error" : a.lastResult ? "ok" : "";
+});
+```
+
+Loading / success / error styling comes free: `bindAction` and `bindSelect` set
+`data-lb-state` (`ready|loading|error|success|unavailable`) and the skin already
+targets those attributes. No extra wiring.
+
+Save-on-change instead of an Apply button — drop `bindAction` and run it yourself:
+
+```js
+document.getElementById("st").addEventListener("change", () => save.run());
+```
+
+**Bulk apply** across checked rows — pass `leadIds` and a `confirm`, since one
+click rewrites a field every rep in the org sees:
+
+```js
+const bulk = lb.setStatus({
+  leadIds: () => checkedIds,        // ← read at run() time, not at build time
+  status, ask: ASK,
+  confirm: "Set this status on every selected lead?",
+});
+```
+
+`leadIds` is read when the action runs, so a live selection works — but pass the
+array itself if your selection is fixed. A partial write (some leads rejected)
+surfaces as `.error`, never as a green button: `setStatus` checks the `failed[]`
+the tool returns.
+
+The backend stamps the status date as "now" on every write, which is what a rep
+clicking a dropdown means. Don't add a date picker unless the user asks to
+backdate — then pass an optional `date` field holding `YYYY-MM-DD`:
+`lb.setStatus({ leadId, status, date, ask })`.
 
 ## Recipe: manager dashboard
 
@@ -104,8 +227,12 @@ The domain factories handle these for you. If you hand-roll an action:
 `leadbay_report_outreach` args MUST include `verification:{source:"user_confirmed", ref}`
 AND `_triggered_by`; `leadbay_add_leads_to_campaign` needs `_triggered_by`;
 `add_note`/`like_lead`/`dislike_lead` take only their own args. `epilogue_status` is
-one of `lb.EPILOGUE_STATUSES`. Snoozing (pushback) and org WON/LOST status are
-advanced-gated — not callable from a default artifact; use the epilogue values.
+one of `lb.EPILOGUE_STATUSES`. Snoozing (pushback) is advanced-gated — not
+callable from a default artifact. Org lead status IS on the default surface:
+use `lb.setStatus`, which owns the arg shape AND the partial-write check —
+`leadbay_set_lead_status` writes each lead separately, so it can resolve 200
+with a non-empty `failed[]`. Hand-rolling that action will report a green
+button over a write that never landed.
 
 ## Degradation + live updates
 
