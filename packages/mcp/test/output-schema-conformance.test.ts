@@ -1254,6 +1254,80 @@ const CASES: ConformanceCase[] = [
       ]);
     },
   },
+  {
+    // product#4004. Payloads are the shapes observed live on FR staging
+    // (lead 22187575, contact 9276add2) after a real email reveal: the PAID
+    // record keeps enrichment {done:true, credits_used:1} and carries NO
+    // email key at all, while the resolved channel lands on a freshly
+    // materialized ORG twin that carries no enrichment block. Both halves
+    // must conform, because the schema now documents exactly that split.
+    toolName: "leadbay_get_contacts",
+    arguments: { leadId: "lead-1" },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.6/leads/lead-1/contacts?IncludeEnriched=true",
+          status: 200,
+          body: [
+            {
+              id: "org-c1",
+              first_name: "Emilie",
+              last_name: "Debise",
+              email: "emilie@19-degres.fr",
+              job_title: "Gérant",
+              paid_contact_id: "paid-c1",
+              can_enrich: true,
+              recommended: true,
+            },
+          ],
+        },
+        {
+          method: "GET",
+          path: "/1.6/leads/lead-1/enrich/contacts?IncludeEnriched=true",
+          status: 200,
+          body: [
+            {
+              id: "paid-c1",
+              first_name: "EMILIE",
+              last_name: "DEBISE",
+              job_title: "Gérant",
+              recommended: true,
+              enrichment: {
+                done: true,
+                credits_used: 1,
+                email_requested: true,
+                phone_requested: false,
+              },
+            },
+            {
+              // The terminal-empty state the schema exists to name.
+              id: "paid-c2",
+              first_name: "JEAN",
+              last_name: "MARTIN",
+              job_title: "Directeur",
+              recommended: false,
+              enrichment: {
+                done: true,
+                credits_used: 0,
+                email_requested: true,
+                phone_requested: false,
+              },
+            },
+            {
+              // Never requested — enrichment is null, not {done:false}.
+              id: "paid-c3",
+              first_name: "SOPHIE",
+              last_name: "BERNARD",
+              job_title: "Responsable",
+              recommended: false,
+              enrichment: null,
+            },
+          ],
+        },
+      ]);
+    },
+  },
 ];
 
 // -----------------------------------------------------------------------

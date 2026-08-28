@@ -28,6 +28,57 @@ export const getContacts: Tool<GetContactsParams> = {
     required: ["leadId"],
     additionalProperties: false,
   },
+  outputSchema: {
+    type: "object",
+    properties: {
+      contacts: {
+        type: "array",
+        description:
+          "Merged org+paid contacts. Each: {id, first_name, last_name, email, phone_number, linkedin_page, job_title, recommended, enrichment, source:'org'|'paid'}.",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            first_name: { type: ["string", "null"] },
+            last_name: { type: ["string", "null"] },
+            email: { type: ["string", "null"] },
+            phone_number: { type: ["string", "null"] },
+            linkedin_page: { type: ["string", "null"] },
+            job_title: { type: ["string", "null"] },
+            recommended: { type: "boolean" },
+            source: { type: "string", enum: ["org", "paid"] },
+            enrichment: {
+              type: ["object", "null"],
+              description:
+                "Per-contact reveal record. Missing or null = the contact was NEVER requested (enrichable — not the same as done:false). Read `done` and `credits_used` TOGETHER: done:false = reservation in flight, poll and do not re-launch; done:true with credits_used:0 = the reveal SETTLED and found nothing, which is TERMINAL — do not re-attempt it on a later run; done:true with credits_used>0 = resolved, but the revealed channel lands on the source:'org' twin of this person, not on the source:'paid' record itself, so a null email here is not a failure. credits_used:0 on its own is NOT a verdict (an in-flight reservation reports 0 too), and an ABSENT credits_used means the cost is unknown, not zero.",
+              properties: {
+                done: {
+                  type: "boolean",
+                  description:
+                    "False = reservation in flight. True = settled, either with a result (credits_used>0) or empty (credits_used:0). Per-contact, not per-channel.",
+                },
+                credits_used: {
+                  type: "number",
+                  description:
+                    "Credits charged for this reveal. Only meaningful when done:true. An explicit 0 alongside done:true means the provider returned nothing. Optional — when absent the cost is unknown and terminal-empty must NOT be inferred.",
+                },
+                email_requested: { type: "boolean" },
+                phone_requested: { type: "boolean" },
+              },
+            },
+          },
+          required: ["id", "source"],
+        },
+      },
+      _fetch_errors: {
+        type: "array",
+        description:
+          "Present only when one of the two contact endpoints failed. Each: {endpoint:'org'|'paid', code?, retry_after?}. A rejected endpoint contributes no contacts, so an empty `contacts` alongside this field is a fetch failure, NOT 'no contacts'.",
+        items: { type: "object" },
+      },
+    },
+    required: ["contacts"],
+  },
   execute: async (client: LeadbayClient, params: GetContactsParams) => {
     const [orgResult, paidResult] = await Promise.allSettled([
       client.request<ContactPayload[]>(

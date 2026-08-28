@@ -54,6 +54,7 @@ import {
   AGENT_MEMORY,
   TRIGGERED_BY,
   TRANSIENT_401,
+  ENRICHMENT_TERMINAL,
 } from "./server-instructions.generated.js";
 
 // SERVER_INSTRUCTIONS is now BUILT from the actual exposed tool set (see
@@ -64,7 +65,7 @@ import {
 // underlying tool is exposed.
 //
 // The static paragraphs (VERIFICATION, FRICTION, MENTAL_MODEL, QUOTA_TOPUP,
-// AGENT_MEMORY, TRIGGERED_BY, TRANSIENT_401) are sourced from packages/promptforge/snippets/server-instructions/*.md
+// AGENT_MEMORY, TRIGGERED_BY, TRANSIENT_401, ENRICHMENT_TERMINAL) are sourced from packages/promptforge/snippets/server-instructions/*.md
 // and emitted into ./server-instructions.generated.ts by promptforge build.
 // Edit the snippet files, not this one. The dynamic builders (scoring,
 // start-here, rhythm, etc.) remain inline below because they conditionally
@@ -354,6 +355,15 @@ export function buildServerInstructions(exposed: Set<string>): string {
   parts.push(TRIGGERED_BY);
   parts.push(MENTAL_MODEL);
   parts.push(QUOTA_TOPUP);
+  // Sits next to QUOTA_TOPUP because both govern the enrichment lifecycle: that
+  // one says when to refresh the quota, this one says when to STOP enriching.
+  // Gated on enrich_titles because it names that tool (#3504: never instruct the
+  // agent to call a tool the server did not register). A settled-empty reveal is
+  // terminal; without this line a scheduled task re-attempts it forever
+  // (product#4004).
+  if (has("leadbay_enrich_titles")) {
+    parts.push(ENRICHMENT_TERMINAL);
+  }
   // Always emitted: a one-off 401 must not become a "reconnect Leadbay" message
   // to the user (product#3761). The error is transient and already auto-retried.
   parts.push(TRANSIENT_401);
