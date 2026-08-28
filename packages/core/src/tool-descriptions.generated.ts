@@ -563,7 +563,7 @@ The model — two layers. Primitives: \`lb.field\` (value + API-populated option
 
 Canonical uses: a cold-call sheet (\`lb.callList\` + per-row \`lb.outreach\`/\`lb.leadHistory\`); a manager dashboard (\`lb.teamActivity\` → leaderboard table + Chart.js trend); a live enrichment view (\`lb.enrichment\` → progress + refresh). Live auto-poll is host-dependent — always wire a Refresh.
 
-Write-call footguns (in the guide, repeated because they bite): for \`leadbay_report_outreach\` (status/disposition) the \`args\` MUST include \`verification:{source:"user_confirmed",ref:"…"}\` AND \`_triggered_by:"<the user's request>"\`, or the call is rejected. \`leadbay_add_leads_to_campaign\` needs \`_triggered_by\` too. \`leadbay_add_note\`/\`leadbay_like_lead\`/\`leadbay_dislike_lead\` need only their own args. Snoozing (pushback) and standalone status are advanced-gated — not callable from a default artifact; use \`report_outreach\`'s \`epilogue_status\` for outcomes.
+Write-call footguns (in the guide, repeated because they bite): for \`leadbay_report_outreach\` (status/disposition) the \`args\` MUST include \`verification:{source:"user_confirmed",ref:"…"}\` AND \`_triggered_by:"<the user's request>"\`, or the call is rejected. \`leadbay_add_leads_to_campaign\` needs \`_triggered_by\` too. \`leadbay_add_note\`/\`leadbay_like_lead\`/\`leadbay_dislike_lead\` need only their own args. Snoozing (pushback) is advanced-gated — not callable from a default artifact. Org CRM status IS available: \`lb.leadStatus()\` gives the Wanted/Won/Lost/Unwanted picker field and \`lb.setStatus()\` the write (\`leadbay_set_lead_status\`), with the partial-write check baked in. Keep it distinct from \`report_outreach\`'s \`epilogue_status\`, which records how one outreach ATTEMPT went.
 
 WHEN TO USE: the user asks for a clickable / interactive artifact, dashboard, or call sheet that DOES things (not just displays data).
 
@@ -3113,6 +3113,7 @@ Pick 2–3 items below based on what was actually observed in the response. The 
 | \`has_more == true\`                                         | "Pull the next page (page N+1 of M)"                         | leadbay_pull_leads(page = current + 1, lensId = pinned)|
 | ≥ 3 rows have \`qualification_summary.answered == 0\`        | "Deepen AI qualification on the rows without ❖ caps"         | leadbay_bulk_qualify_leads(leadIds=[…])                |
 | User points at a single row                                | "Research [Company] in depth"                                | leadbay_research_lead_by_id(leadId)                    |
+| User states a commercial outcome on a shown row ("we won them", "that one's dead", "they're a target") | "Set the CRM status on [Company]" — offer Wanted / Won / Lost as an \`ask_user_input_v0\` single_select when the outcome is ambiguous | leadbay_set_lead_status({ lead_ids: [row.id], status, status_date? }) — pass \`status_date\` whenever the user names a date. NOT leadbay_report_outreach: that records an outreach attempt, not a deal outcome |
 | User only has a name (no leadId in context)                | "Look up [Company] by name"                                  | leadbay_research_lead_by_name_fuzzy(companyName)       |
 | Top row has phone AND email                                | "Prepare an outreach for [Contact] — call + email"           | leadbay_prepare_outreach(leadId)                       |
 | Top row has email but no phone                             | "Draft an outreach email for [Contact]"                      | leadbay_prepare_outreach(leadId)                       |
@@ -4185,6 +4186,87 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 `;
 // endregion: leadbay_set_epilogue_status
 
+// region: leadbay_set_lead_status
+export const leadbay_set_lead_status: string = `## WHEN TO USE
+
+Trigger phrases: "we won this deal", "mark this lead as won", "we lost them", "mark as lost", "this one is a target", "add them to my wanted list", "set the status on these leads", "closed the deal with", "they signed", "not a target anymore".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "I sent the email / left a voicemail — log the outcome" → \`leadbay_report_outreach\`; "thumbs up, I like this lead" → \`leadbay_like_lead\`; "remind me about this lead next week / snooze it" → \`leadbay_set_pushback\`.
+
+Prefer when: user states a COMMERCIAL outcome or pipeline stage, not an outreach event; pass \`lead_ids\` + the uppercase \`status\`, and \`status_date\` when they name a close date
+
+Examples that SHOULD invoke this tool:
+- "We just signed Acme Corp — mark them as won."
+- "Mark these three as lost, they went with a competitor."
+- "Add Northwind to my wanted list, they're a priority target."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "I emailed the CTO this morning, log it."
+- "Thumbs up on this one, show me more like it."
+- "Snooze this lead until next quarter."
+
+## RENDER (quick)
+
+One short confirmation line per status applied ("✅ **Acme Corp** → WON
+(closed 2026-03-14)"). If \`failed\` is non-empty, list those leads with
+their error underneath. Don't re-render the full lead card.
+
+---
+
+Set the **org-wide CRM lead status** — the same field the Leadbay website's status
+selector writes, and the one a CSV import maps via \`mappings.statuses\`. It is shared
+across the whole organization: every rep sees the value this call sets.
+
+Two distinct status systems exist in Leadbay. Do not confuse them:
+
+| System | Values | Written by | Means |
+|---|---|---|---|
+| **Lead status** (this tool) | \`WANTED\` \`WON\` \`LOST\` \`UNWANTED\` (plus system-set \`DEFAULT\`, \`INBOUND\`) | this tool, CSV import | Commercial/pipeline outcome, org-wide |
+| **Epilogue status** | \`STILL_CHASING\` \`COULD_NOT_REACH_STILL_TRYING\` \`INTEREST_VALIDATED_OR_MEETING_PLANED\` \`NOT_INTERESTED_LOST\` | \`leadbay_report_outreach\`, \`leadbay_set_epilogue_status\` | Disposition of a specific outreach attempt; drives \`leadbay_pull_followups\` ranking |
+
+A deal outcome is a **lead status**. "She didn't pick up" is an **epilogue status**.
+Setting one never sets the other — when the user reports both in one breath ("called
+them, they signed"), make both calls.
+
+## Parameters
+
+- \`lead_ids\` (required) — 1–200 lead UUIDs. Every lead gets the same status.
+- \`status\` (required) — one of \`WANTED\`, \`WON\`, \`LOST\`, \`UNWANTED\`. Accepted
+  case-insensitively (\`won\` → \`WON\`); no synonyms are guessed, so "closed-won"
+  or "dead" are rejected rather than silently mapped. \`DEFAULT\` and \`INBOUND\`
+  are accepted but are normally set by Leadbay itself — don't offer them as
+  user choices.
+- \`status_date\` (optional) — \`YYYY-MM-DD\`, the date the status was actually
+  reached (a close date, the day the deal was lost). Omit it and the backend
+  stamps now. Pass it whenever the user names a date; a deal closed last month
+  stamped as today distorts every pipeline report.
+
+## Behaviour
+
+Each lead is written individually (\`POST /leads/{leadId}/set_status\`, then
+\`POST /leads/{leadId}/set_status_date\` when \`status_date\` is given), so a partial
+failure is possible. The return is
+\`{ applied, count, status, status_date?, failed: [{lead_id, message}] }\` —
+**always check \`failed\`** and report those leads to the user rather than claiming
+a clean sweep. \`applied\` is \`false\` when every lead failed.
+
+Re-sending the same status is idempotent — no error, no duplicate entry.
+
+WHEN TO USE: the user states a commercial outcome or pipeline
+position for specific leads: "we won them", "that one's dead", "these are my targets
+this quarter". Also use it from an artifact's status dropdown.
+
+WHEN NOT TO USE: the user is reporting that an outreach
+*happened* (use \`leadbay_report_outreach\` — its \`epilogue_status\` covers the
+follow-up disposition), expressing taste rather than an outcome (\`leadbay_like_lead\`
+/ \`leadbay_dislike_lead\`), or temporarily deferring a lead (\`leadbay_set_pushback\`).
+
+This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+`;
+// endregion: leadbay_set_lead_status
+
 // region: leadbay_set_pushback
 export const leadbay_set_pushback: string = `Snooze (pushback) one or more leads for 3, 6, or 12 months. The leads remain in the user's pipeline but are excluded from \`leadbay_pull_followups\` until the pushback window expires. Use this when the user says "not now", "next quarter", "follow up in 3 months", "6 months out", "next year", or any equivalent deferral.
 
@@ -4681,6 +4763,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_send_feedback,
   leadbay_set_active_lens,
   leadbay_set_epilogue_status,
+  leadbay_set_lead_status,
   leadbay_set_pushback,
   leadbay_set_qualification_questions,
   leadbay_set_telemetry,

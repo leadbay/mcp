@@ -76,6 +76,7 @@ import { updateCustomField } from "./composite/update-custom-field.js";
 import { deleteCustomField } from "./composite/delete-custom-field.js";
 import { likeLead } from "./tools/like-lead.js";
 import { dislikeLead } from "./tools/dislike-lead.js";
+import { setLeadStatus } from "./tools/set-lead-status.js";
 import { setTelemetry } from "./tools/set-telemetry.js";
 // Contact management — single-call relay tools (granular-shaped); registered
 // in compositeWriteTools below so they stay on the default surface.
@@ -176,7 +177,7 @@ export {
   updateLens, updateLensFilter, createLensDraft, promoteLens, setUserPrompt,
   clearUserPrompt, pickClarification, dismissClarification, setEpilogueStatus,
   removeEpilogue, setPushback, removePushback, previewBulkEnrichment,
-  launchBulkEnrichment, likeLead, dislikeLead, setTelemetry,
+  launchBulkEnrichment, likeLead, dislikeLead, setLeadStatus, setTelemetry,
   createCustomField, updateCustomField, deleteCustomField,
   // existing composite
   prepareOutreach,
@@ -416,6 +417,13 @@ export const compositeWriteTools: Tool[] = [
   // to the agent without requiring LEADBAY_MCP_ADVANCED=1.
   likeLead,
   dislikeLead,
+  // Org-wide CRM status (WANTED/WON/LOST/UNWANTED). Granular-shaped but
+  // registered HERE, not in granularWriteTools: reps state deal outcomes in
+  // ordinary conversation, and the artifact-kit status dropdown calls it —
+  // both need it on the default surface without LEADBAY_MCP_ADVANCED=1.
+  // Distinct from setEpilogueStatus (outreach disposition), which stays
+  // advanced-gated.
+  setLeadStatus,
   // Campaign write composites — persist a hand-picked cohort of leads.
   // Backend POST endpoints; gated behind LEADBAY_MCP_WRITE=1 in MCP.
   createCampaign,

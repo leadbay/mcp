@@ -1,0 +1,97 @@
+---
+name: leadbay_set_lead_status
+kind: tool-description
+short_description: |
+  Set the org-wide CRM status on one or more leads — WANTED, WON, LOST,
+  or UNWANTED — optionally stamping the date the status was reached. Use
+  when the user states a commercial outcome ("we won Acme", "mark these
+  as lost"). Don't use it for post-outreach disposition — that's
+  `leadbay_report_outreach`'s `epilogue_status`.
+routing:
+  triggers:
+    - "we won this deal"
+    - "mark this lead as won"
+    - "we lost them"
+    - "mark as lost"
+    - "this one is a target"
+    - "add them to my wanted list"
+    - "set the status on these leads"
+    - "closed the deal with"
+    - "they signed"
+    - "not a target anymore"
+  anti_triggers:
+    - phrase: "I sent the email / left a voicemail — log the outcome"
+      route_to: leadbay_report_outreach
+    - phrase: "thumbs up, I like this lead"
+      route_to: leadbay_like_lead
+    - phrase: "remind me about this lead next week / snooze it"
+      route_to: leadbay_set_pushback
+  prefer_when: "user states a COMMERCIAL outcome or pipeline stage, not an outreach event; pass `lead_ids` + the uppercase `status`, and `status_date` when they name a close date"
+  examples:
+    positive:
+      - "We just signed Acme Corp — mark them as won."
+      - "Mark these three as lost, they went with a competitor."
+      - "Add Northwind to my wanted list, they're a priority target."
+    negative:
+      - "I emailed the CTO this morning, log it."
+      - "Thumbs up on this one, show me more like it."
+      - "Snooze this lead until next quarter."
+rendering_hint: |
+  One short confirmation line per status applied ("✅ **Acme Corp** → WON
+  (closed 2026-03-14)"). If `failed` is non-empty, list those leads with
+  their error underneath. Don't re-render the full lead card.
+annotations:
+  readOnlyHint: false
+  destructiveHint: true
+  idempotentHint: true
+  openWorldHint: true
+---
+Set the **org-wide CRM lead status** — the same field the Leadbay website's status
+selector writes, and the one a CSV import maps via `mappings.statuses`. It is shared
+across the whole organization: every rep sees the value this call sets.
+
+Two distinct status systems exist in Leadbay. Do not confuse them:
+
+| System | Values | Written by | Means |
+|---|---|---|---|
+| **Lead status** (this tool) | `WANTED` `WON` `LOST` `UNWANTED` (plus system-set `DEFAULT`, `INBOUND`) | this tool, CSV import | Commercial/pipeline outcome, org-wide |
+| **Epilogue status** | `STILL_CHASING` `COULD_NOT_REACH_STILL_TRYING` `INTEREST_VALIDATED_OR_MEETING_PLANED` `NOT_INTERESTED_LOST` | `leadbay_report_outreach`, `leadbay_set_epilogue_status` | Disposition of a specific outreach attempt; drives `leadbay_pull_followups` ranking |
+
+A deal outcome is a **lead status**. "She didn't pick up" is an **epilogue status**.
+Setting one never sets the other — when the user reports both in one breath ("called
+them, they signed"), make both calls.
+
+## Parameters
+
+- `lead_ids` (required) — 1–200 lead UUIDs. Every lead gets the same status.
+- `status` (required) — one of `WANTED`, `WON`, `LOST`, `UNWANTED`. Accepted
+  case-insensitively (`won` → `WON`); no synonyms are guessed, so "closed-won"
+  or "dead" are rejected rather than silently mapped. `DEFAULT` and `INBOUND`
+  are accepted but are normally set by Leadbay itself — don't offer them as
+  user choices.
+- `status_date` (optional) — `YYYY-MM-DD`, the date the status was actually
+  reached (a close date, the day the deal was lost). Omit it and the backend
+  stamps now. Pass it whenever the user names a date; a deal closed last month
+  stamped as today distorts every pipeline report.
+
+## Behaviour
+
+Each lead is written individually (`POST /leads/{leadId}/set_status`, then
+`POST /leads/{leadId}/set_status_date` when `status_date` is given), so a partial
+failure is possible. The return is
+`{ applied, count, status, status_date?, failed: [{lead_id, message}] }` —
+**always check `failed`** and report those leads to the user rather than claiming
+a clean sweep. `applied` is `false` when every lead failed.
+
+Re-sending the same status is idempotent — no error, no duplicate entry.
+
+{{include:headers/tool-when-to-use}} the user states a commercial outcome or pipeline
+position for specific leads: "we won them", "that one's dead", "these are my targets
+this quarter". Also use it from an artifact's status dropdown.
+
+{{include:headers/tool-when-not-to-use}} the user is reporting that an outreach
+*happened* (use `leadbay_report_outreach` — its `epilogue_status` covers the
+follow-up disposition), expressing taste rather than an outcome (`leadbay_like_lead`
+/ `leadbay_dislike_lead`), or temporarily deferring a lead (`leadbay_set_pushback`).
+
+{{include:headers/verification-required-if-write}}
