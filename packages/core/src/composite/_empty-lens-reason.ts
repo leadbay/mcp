@@ -139,6 +139,47 @@ function narrowGeoSentence(narrow: NarrowLocation[]): string {
 }
 
 /**
+ * What the lens's audience actually is, in the two forms an agent can act on:
+ * the criteria to relax, and the include-locations that are too tight to hold
+ * one. Shared by every caller that has to explain "nothing here" — the empty
+ * `pull_leads` page and the blocked `extend_lens` pre-flight — so the two
+ * speak with one vocabulary rather than two parallel parsers (product#4000).
+ *
+ * Soft-fails to an empty shape: an unreadable filter degrades the explanation,
+ * never the caller's decision.
+ */
+export interface AudienceShape {
+  criteria?: EmptyReason["criteria"];
+  narrow_locations?: NarrowLocation[];
+  /** Ready-to-concatenate sentence naming the too-tight geography, or "". */
+  geoSentence: string;
+}
+
+export async function readAudienceShape(
+  client: LeadbayClient,
+  lensId: number
+): Promise<AudienceShape> {
+  let filter: FilterPayload | null = null;
+  try {
+    filter = await client.request<FilterPayload>(
+      "GET",
+      `/lenses/${lensId}/filter`
+    );
+  } catch {
+    // Soft-fail — see the doc comment.
+  }
+
+  const criteria = criteriaOf(filter);
+  const summary = summariseCriteria(criteria);
+  const narrow = narrowLocationsOf(filter, criteria);
+  return {
+    ...(summary ? { criteria: summary } : {}),
+    ...(narrow.length > 0 ? { narrow_locations: narrow } : {}),
+    geoSentence: narrowGeoSentence(narrow),
+  };
+}
+
+/**
  * Diagnose an empty `pull_leads` page.
  *
  * `computing` short-circuits before any HTTP — a warming lens needs no
@@ -172,24 +213,11 @@ export async function diagnoseEmptyLens(
     // Soft-fail — the reason degrades, the anti-loop guarantee does not.
   }
 
-  let filter: FilterPayload | null = null;
-  try {
-    filter = await client.request<FilterPayload>(
-      "GET",
-      `/lenses/${lensId}/filter`
-    );
-  } catch {
-    // Same.
-  }
-
-  const criteria = criteriaOf(filter);
-  const summary = summariseCriteria(criteria);
-  const narrow = narrowLocationsOf(filter, criteria);
-  const geo = narrowGeoSentence(narrow);
-  const extras = {
-    ...(summary ? { criteria: summary } : {}),
-    ...(narrow.length > 0 ? { narrow_locations: narrow } : {}),
-  };
+  const { geoSentence: geo, ...extras } = await readAudienceShape(
+    client,
+    lensId
+  );
+  const summary = extras.criteria;
 
   if (row?.not_enough_lead_candidates) {
     return {
