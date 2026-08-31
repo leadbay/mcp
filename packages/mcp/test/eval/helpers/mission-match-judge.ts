@@ -216,7 +216,7 @@ function buildJudgePrompt(
   const toolLedger = evidence.tool_calls
     .map(
       (c) =>
-        `turn ${c.turn}: ${c.name}(${JSON.stringify(c.input).slice(0, 200)}) → ok=${c.output_summary.ok} len=${c.output_summary.output_len}`,
+        `turn ${c.turn}: ${c.name}(${JSON.stringify(c.input).slice(0, 200)}) → ok=${c.output_summary.ok} len=${c.output_summary.output_len}${c.output_summary.region ? ` _meta.region=${c.output_summary.region}` : ""}`,
     )
     .join("\n");
 

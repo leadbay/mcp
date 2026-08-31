@@ -16,6 +16,10 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 import { pullFollowups } from "./pull-followups.js";
 import { pullLeads } from "./pull-leads.js";
+import {
+  countryLocationStatus,
+  detectCountryLocationsIn,
+} from "./_country-guard.js";
 
 import { leadbay_tour_plan as TOUR_PLAN_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -164,7 +168,7 @@ export const tourPlan: Tool<TourPlanParams> = {
       city: {
         type: "string",
         description:
-          "Free-text city or region (e.g. 'Limoges', 'Bay Area'). Resolved via the same /geo/search the followups_map uses. Ambiguous matches surface as `status: ambiguous_locations` with location_ambiguities[]; pick a location id and re-call with city_id.",
+          "Free-text city or region (e.g. 'Limoges', 'Bay Area'). Resolved via the same /geo/search the followups_map uses. Ambiguous matches surface as `status: ambiguous_locations` with location_ambiguities[]; pick a location id and re-call with city_id. NEVER a country name — and unlike the Monitor tools the fix is NOT to omit this argument: a tour with no city returns arbitrary leads from the whole workspace, which is not an itinerary. Ask which city or region the user is visiting and pass that.",
       },
       city_id: {
         type: "string",
@@ -223,10 +227,16 @@ export const tourPlan: Tool<TourPlanParams> = {
       status: {
         type: "string",
         description:
-          "'ambiguous_locations' when the passed `city` matched multiple admin areas — pick an id from location_ambiguities and re-call with city_id.",
+          "'ambiguous_locations' when the passed `city` matched multiple admin areas — pick an id from location_ambiguities and re-call with city_id. 'country_level_location' when `city` was a country name — do NOT drop the argument (a city-less tour is arbitrary nationwide leads); ask which city or region to use. The itinerary arrays are empty and nothing was fetched.",
       },
       location_ambiguities: {
         type: "array",
+        items: { type: "object" },
+      },
+      country_locations: {
+        type: "array",
+        description:
+          "Per offending value: {value, param, kind, country}. Only present when `status === 'country_level_location'`. Unlike the Monitor tools, the recovery here is NOT to drop `city`: a tour with no city returns arbitrary leads from the whole workspace, which is not an itinerary. Ask which city or region the user is visiting and re-call with that — see `hint`.",
         items: { type: "object" },
       },
       _meta: {
@@ -244,6 +254,50 @@ export const tourPlan: Tool<TourPlanParams> = {
     params: TourPlanParams,
     ctx?: ToolContext,
   ) => {
+    // Guard here rather than relying on the delegated pullFollowups call:
+    // the two pulls run in parallel, so leaving it to the delegate would
+    // still spend the pullLeads request on a doomed tour. A country in `city`
+    // would silently fence the itinerary to a same-named commune
+    // (product#3951).
+    const countryHits = detectCountryLocationsIn(
+      [
+        { input: params.city, param: "city" },
+        { input: params.city_id, param: "city_id" },
+      ],
+      client.region
+    );
+    if (countryHits.length > 0) {
+      const envelope = countryLocationStatus(countryHits, client.region);
+      return {
+        ...envelope,
+        // The shared hint says "omit the geo argument and the result covers the
+        // whole workspace" — right for a Monitor pull, WRONG here. tour_plan
+        // accepts no city and then returns arbitrary nationwide leads, which is
+        // not an itinerary; the prompt contract requires asking which city or
+        // region the user is visiting (prompts/leadbay_plan_tour_in_city.md.tmpl).
+        // So this tool overrides the recovery rather than forwarding advice that
+        // would produce a confident, useless tour.
+        hint:
+          "A tour needs a place to walk around in, so there is nothing to omit here: do NOT re-call without `city`, which would return arbitrary leads from across the whole workspace as an itinerary. Ask which city or region the user is actually visiting, then re-call with that. Do NOT retry another spelling of the country.",
+        monitor_leads: [],
+        discover_leads: [],
+        // A STRING, not null: the declared schema allows only a string, and a
+        // client that validates structuredContent would reject the whole
+        // rejection payload — hiding the very recovery hint it carries.
+        discover_filter_note:
+          "No Discover leads were fetched: the request named a country, which cannot scope an itinerary.",
+        map_locations: [],
+        map_summary: {
+          total_leads: 0,
+          leads_with_coords: 0,
+          leads_without_coords: 0,
+        },
+        city: params.city ?? null,
+        city_id: params.city_id ?? null,
+        _meta: { region: client.region },
+      };
+    }
+
     const followupsCount = params.followups_count ?? DEFAULT_FOLLOWUPS_COUNT;
     const discoverCount = params.discover_count ?? DEFAULT_DISCOVER_COUNT;
 

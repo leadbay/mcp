@@ -17,9 +17,9 @@ name: pr-sync-on-release
 #       * conflict includes CHANGELOG.md → never auto-edit prose. Label
 #         `needs-manual-rebase` + comment the target version for a human.
 #
-# Codex (the external chatgpt-codex-connector review bot) CANNOT do this — it
-# only comments and cannot push to a branch. This workflow owns version sync;
-# AGENTS.md points the reviewer here.
+# The PR review bot (claude-code-review.yml) CANNOT do this — it only comments
+# and cannot push to a branch. This workflow owns version sync; CLAUDE.md's
+# "Review guidelines" section points the reviewer here.
 #
 # Anti-loop: a push to a PR head made with GITHUB_TOKEN does NOT re-trigger
 # ci.yml's pull_request/push runs (GitHub suppresses GITHUB_TOKEN-triggered

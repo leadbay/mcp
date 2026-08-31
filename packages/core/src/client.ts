@@ -140,8 +140,20 @@ export interface CreateClientConfig {
 }
 
 export function createClient(config: CreateClientConfig = {}): LeadbayClient {
-  const region = config.region ?? "us";
-  const baseUrl = config.baseUrl ?? REGIONS[region];
+  // A supplied baseUrl must NOT inherit the US default. LEADBAY_BASE_URL is the
+  // documented staging/dev escape hatch and is routinely set WITHOUT
+  // LEADBAY_REGION (bin.ts: "If the user pinned a baseUrl or region, honor it
+  // exactly"), so defaulting to "us" here labelled every custom endpoint a US
+  // tenant. That is not cosmetic: the single-country guard reads client.region
+  // to decide whether a country is this workspace's own, so a French staging
+  // backend reported France as a FOREIGN country and told the user it holds no
+  // French leads (product#3951).
+  //
+  // Passing region undefined lets the constructor derive it — known regional
+  // URLs still map to "us"/"fr", anything else becomes "custom", which is the
+  // honest answer when nobody pinned one. setBaseUrl() already derives this way.
+  const region = config.baseUrl ? config.region : (config.region ?? "us");
+  const baseUrl = config.baseUrl ?? REGIONS[region ?? "us"];
   if (!baseUrl) {
     throw new Error(
       `Leadbay: unknown region "${region}". Supported: ${Object.keys(REGIONS).join(", ")}. Or pass an explicit baseUrl.`
@@ -361,16 +373,33 @@ export class LeadbayClient {
   // surface latency/region/retry_after to the agent in their `_meta` block.
   private _lastMeta: RequestMeta | null = null;
 
+  /**
+   * Derive the region from a base URL, comparing the NORMALIZED form.
+   *
+   * The trailing slash matters: `LEADBAY_BASE_URL=https://api-fr.leadbay.app/`
+   * is an ordinary way to spell an env var, and comparing it raw labelled that
+   * tenant "custom". Since createClient stopped forcing "us" onto a supplied
+   * baseUrl, that mislabel reaches the single-country guard, which then reports
+   * country_indeterminate instead of correctly classifying France as this
+   * workspace's own country (product#3951).
+   */
+  private static regionFromBaseUrl(baseUrl: string): "us" | "fr" | "custom" {
+    const normalized = baseUrl.replace(/\/+$/, "");
+    if (normalized === REGIONS.us.replace(/\/+$/, "")) return "us";
+    if (normalized === REGIONS.fr.replace(/\/+$/, "")) return "fr";
+    return "custom";
+  }
+
   constructor(baseUrl: string | { baseUrl: string; bearer?: string; region?: "us" | "fr" }, token?: string, region?: "us" | "fr") {
     if (typeof baseUrl === "object") {
       const opts = baseUrl;
       this._baseUrl = opts.baseUrl.replace(/\/+$/, "");
       this.token = opts.bearer ?? null;
-      this._region = opts.region ?? (opts.baseUrl === REGIONS.us ? "us" : opts.baseUrl === REGIONS.fr ? "fr" : "custom");
+      this._region = opts.region ?? LeadbayClient.regionFromBaseUrl(opts.baseUrl);
     } else {
       this._baseUrl = baseUrl.replace(/\/+$/, "");
       this.token = token ?? null;
-      this._region = region ?? (baseUrl === REGIONS.us ? "us" : baseUrl === REGIONS.fr ? "fr" : "custom");
+      this._region = region ?? LeadbayClient.regionFromBaseUrl(baseUrl);
     }
   }
 
@@ -408,10 +437,7 @@ export class LeadbayClient {
   // one the client was constructed with.
   setBaseUrl(baseUrl: string, region?: "us" | "fr"): void {
     this._baseUrl = baseUrl.replace(/\/+$/, "");
-    this._region = region ?? (
-      baseUrl === REGIONS.us ? "us" :
-      baseUrl === REGIONS.fr ? "fr" : "custom"
-    );
+    this._region = region ?? LeadbayClient.regionFromBaseUrl(baseUrl);
     // Region change invalidates everything — different tenant.
     this.clearTenantScopedCaches();
   }

@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.31.1 — 2026-08-28 — Asking for more leads on an empty lens now says no
+
+- **Asking for more leads on a lens that has nothing left no longer looks like
+  it worked.** Before, the request came back as "queued" whether or not there
+  was anything to add, and the leads simply never arrived. That is what one
+  customer's assistant kept doing: 49 requests over three weeks, every one
+  reported as accepted, none of them able to deliver.
+- **The check now happens before the request is sent.** Leadbay looks at how
+  many leads the lens could still take. If the answer is none, the request is
+  refused with the reason instead of accepted and quietly dropped.
+- **The refusal says which kind of empty it is** — an audience that matches
+  nothing at all, or one where everything matching has already been delivered —
+  and names the criteria in the way, so the next move is widening the audience
+  rather than asking again.
+- **A lens that can fill is unaffected**, and now also reports how many leads it
+  still has available.
+
+## 0.31.0 — 2026-08-28 — An empty lens tells you why
+
+- **A lens with no leads now says what is wrong with it.** Before, asking for
+  leads on a lens whose filters match nothing came back with an empty list and
+  no explanation, which looks exactly like a lens that is still loading. So the
+  assistant kept trying. One customer's agent asked for more leads 49 times over
+  three weeks on lenses that could never fill.
+- **The answer now names the criteria in the way, and says to stop retrying.**
+  If the geography is pinned to a single town, that town is named first, because
+  that is nearly always the thing to widen.
+- **"Still loading" and "genuinely empty" are finally different answers.** Only
+  the first one asks you to wait.
+- **Nothing is guessed.** A lens that is empty for a reason we cannot read says
+  so plainly, rather than inventing a cause.
+
+## 0.30.0 — 2026-08-19 — Country-wide means country-wide
+
+- **Asking for leads "anywhere in the US" no longer searches one village.**
+  Your Leadbay covers exactly one country, so a whole-country ask now means
+  *everything* — no location filter — and the answer says so.
+- **Naming your own country used to quietly break the search.** There is no
+  "France" or "United States" to filter on, so the search fell through to the
+  nearest same-named town: France landed on the commune of Francs, the United
+  States on Statesboro. Every answer after that was drawn from one village,
+  with nothing on screen to show it. Country names are now refused up front,
+  with the reason and the fix.
+- **Asking to scope a lens to your own country now gets an explanation**, not a
+  silently-broken lens — plus the ways that do narrow an audience: sector,
+  company size, or a region, state, county or city. Nothing is saved to say
+  something your workspace already is.
+- **Asking for a country that isn't yours gets told so**, instead of quietly
+  handing back your own country's leads as if they answered. And asking to
+  EXCLUDE your own country stops rather than doing the opposite of what you
+  asked.
+- **The rest of your request survives.** Ask for healthcare companies in your
+  country and you get the healthcare lens; name a city alongside the country
+  and the city is kept.
+- **Regions inside your country still work exactly as before** — Texas,
+  Île-de-France, Indre-et-Loire, Guadeloupe, Puerto Rico, and every US state
+  by name or two-letter code.
+
 ## 0.29.0 — 2026-08-17 — Guided first-run walkthrough
 
 - **New: "Walk me through Leadbay."** A brand-new user now learns Leadbay by

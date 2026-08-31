@@ -11,7 +11,7 @@ short_description: |
   on yes), then offers outreach drafts + campaign persistence.
 arguments:
   - name: city
-    description: "City or region the user is visiting (e.g. 'Limoges', 'Bay Area'). Used as the geo filter for both Monitor and Discover lookups."
+    description: "City or region the user is visiting (e.g. 'Limoges', 'Bay Area'). Used as the geo filter for both Monitor and Discover lookups. A country is not a city: this workspace already covers exactly one country, and a country name here silently fences the tour to a same-named village. Do NOT omit the argument to recover — a city-less tour returns arbitrary leads from across the whole workspace, which is not an itinerary. Ask which city or region the visit is to."
     required: true
   - name: date
     description: "When the visit is (e.g. 'May 24', 'next Thursday'). Surfaced in the outreach drafts as 'I'll be in <city> on <date>'."
@@ -50,7 +50,11 @@ Map my answers to the `leadbay_tour_plan` call:
 
 # PHASE 2 — BUILD THE ITINERARY
 
-Call `leadbay_tour_plan({city: "{{arg:city}}", …scope from PHASE 1})`. If the response is `status: "ambiguous_locations"`, surface the candidates and ask me to pick one, then re-call with `city_id`.
+{{include:heuristics/single-country-universe}}
+
+**Gate before calling.** If `{{arg:city}}` is a country name or a supra-national scope rather than a city, do NOT call `leadbay_tour_plan` with it — a tour of an entire country is not an itinerary, and the value would resolve to a same-named village. Tell me the workspace already covers one country and ask which city or region I'm actually visiting. Otherwise:
+
+Call `leadbay_tour_plan({city: "{{arg:city}}", …scope from PHASE 1})`. If the response is `status: "ambiguous_locations"`, surface the candidates and ask me to pick one, then re-call with `city_id`. If it is `status: "country_level_location"`, do NOT retry with a spelling variant and do NOT re-call without `city` — a tour with no city is arbitrary nationwide leads, not an itinerary. Ask me which city or region I am visiting.
 
 Split the returned `monitor_leads` into two buckets client-side using their engagement-history fields:
 

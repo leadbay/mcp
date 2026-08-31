@@ -441,7 +441,7 @@ Trigger phrases: "narrow the audience to <sector>", "add <sector> to my <name> l
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "create a new lens called X" → \`leadbay_new_lens\`; "make a new audience for Y" → \`leadbay_new_lens\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`; "focus on a kind of company beyond sector/size (e.g. 'hospitals running their own IT')" → \`leadbay_refine_prompt\`.
+Do NOT use for: "companies anywhere in this workspace's OWN country / nationwide (a foreign country is unsupported, not unfiltered — call nothing)" → \`leadbay_pull_leads\`; "create a new lens called X" → \`leadbay_new_lens\`; "make a new audience for Y" → \`leadbay_new_lens\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`; "focus on a kind of company beyond sector/size (e.g. 'hospitals running their own IT')" → \`leadbay_refine_prompt\`.
 
 Prefer when: user wants to change an EXISTING lens's sectors/sizes. If the user NAMES a lens ('my Joinery lens'), you MUST pass lensName with that name — do NOT edit the active lens. To create a brand-new lens use leadbay_new_lens instead.
 
@@ -454,6 +454,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Create a lens called Joinery for fintech."
 - "Show me my lenses."
 - "Focus on hospitals that run their own IT."
+- "Show me companies anywhere in the US."
 
 ## RENDER (quick)
 
@@ -468,7 +469,29 @@ Restrict (or expand) the lens audience by sector / size. Free-text sectors are a
 
 **Targeting a lens — READ THIS.** By default this edits the user's ACTIVE lens. **If the user names a lens** ("add fintech to my **Joinery** lens", "in my Nordics lens, exclude retail"), you MUST pass \`lensName\` with that name (\`lensName:"Joinery"\`). Do NOT silently edit the active lens when a different one was named — that corrupts the wrong audience and is a top friction source. The name resolves against the user's lenses (case-insensitive, exact then unique-substring); it is edit-only and does NOT change which lens is active. An unmatched name returns \`status:"lens_not_found"\` with the lens list, and a name matching several returns \`status:"ambiguous_lens"\` with the candidates — surface them and re-call with the exact \`lensName\` or a \`lensId\`. Use \`leadbay_my_lenses\` if the user first wants to SEE or SWITCH lenses. To CREATE a brand-new lens, use \`leadbay_new_lens\` — not this tool.
 
-**Geography — scope a sales territory.** Pass \`locations\` (free text like \`["Indre-et-Loire"]\`, \`["Bavaria"]\`, \`["Austin"]\`, or admin-area ids) to restrict the lens to a region, and \`exclude_locations\` to carve one out. Free text auto-resolves via \`/geo/search\` across every admin level — city, county, *département*, *région*, state, country. Place names go in \`locations\`, **never** in \`sectors\` or \`refine_prompt\`. Unresolved/ambiguous text returns \`status:"ambiguous_locations"\` with candidates — surface them and re-call the chosen id via the SAME axis it came from: an INCLUDE pick → \`location_ids\`; an EXCLUDE pick → \`exclude_locations\` (**NOT** \`location_ids\`, which would include the area the user asked to exclude). The returned \`message\` names the right param per text. This is how a director scopes a rep's territory and then asks for net-new accounts there.
+**Geography — scope a sales territory.** Pass \`locations\` (free text like \`["Indre-et-Loire"]\`, \`["Texas"]\`, \`["Austin"]\`, or admin-area ids) to restrict the lens to a region, and \`exclude_locations\` to carve one out. Free text auto-resolves via \`/geo/search\` at any level from state down to city — state, *région*, *département*, county, city. Unresolved/ambiguous text returns \`status:"ambiguous_locations"\` with candidates — surface them and re-call the chosen id via the SAME axis it came from: an INCLUDE pick → \`location_ids\`; an EXCLUDE pick → \`exclude_locations\` (**NOT** \`location_ids\`, which would include the area the user asked to exclude). The returned \`message\` names the right param per text. This is how a director scopes a rep's territory and then asks for net-new accounts there.
+
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+\`axis: "include"\`:
+
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+
+
+**Widening to the whole workspace is NOT "pass no locations".** Location criteria MERGE here rather than replace, so any geography the lens already carries survives an edit that simply omits \`locations\`. "Make this healthcare nationwide" on a lens scoped to Paris returns Paris healthcare — and calling that nationwide is the same confidently-wrong answer as the country fence itself, just in the header instead of the filter. Read \`lens://<lensId>/definition\` FIRST: it is the only place a lens's \`location_ids\` are visible (\`leadbay_pull_leads\` returns only \`lens: {id}\`, and \`leadbay_my_lenses\` returns no filter at all). Then either clear those criteria explicitly, or state which places the audience actually covers. If you cannot read the definition, say the scope is unverified rather than calling it workspace-wide.
 
 WHEN TO USE: when the user wants to see different kinds of leads (sector / size / geography / etc.).
 
@@ -483,6 +506,8 @@ export const leadbay_agent_memory_capture: string = `Capture a material taste si
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
+
+**NEVER capture which country this workspace serves.** It is a backend fact — \`_meta.region\` on every tool result — not a taste signal, and it cannot be learned from what the user says. A live eval captured \`preferred_region: "Sells nationwide across the US"\` from the phrase "the whole US" on an FR workspace; the next session recalled it at confidence 9/10 marked \`user_stated\`, believed it over the \`region:"fr"\` sitting in the same payload, and told the user their workspace was American. A wrong country here does not fade — it is replayed as remembered fact. Sub-country territory preferences ("mostly works the Bay Area") are fine; the country is not.
 
 Use \`source:"user_stated"\` with confidence 8-10 when the user literally said the preference. Use \`source:"inferred"\` with confidence <=6 only when the signal is a reasonable inference from context. Keep \`key\` stable and machine-readable (\`preferred_sector\`, \`preferred_region\`, \`deal_size\`, \`communication_style\`, \`qualification_rule\`), and keep \`insight\` human-readable.
 
@@ -563,7 +588,7 @@ The model — two layers. Primitives: \`lb.field\` (value + API-populated option
 
 Canonical uses: a cold-call sheet (\`lb.callList\` + per-row \`lb.outreach\`/\`lb.leadHistory\`); a manager dashboard (\`lb.teamActivity\` → leaderboard table + Chart.js trend); a live enrichment view (\`lb.enrichment\` → progress + refresh). Live auto-poll is host-dependent — always wire a Refresh.
 
-Write-call footguns (in the guide, repeated because they bite): for \`leadbay_report_outreach\` (status/disposition) the \`args\` MUST include \`verification:{source:"user_confirmed",ref:"…"}\` AND \`_triggered_by:"<the user's request>"\`, or the call is rejected. \`leadbay_add_leads_to_campaign\` needs \`_triggered_by\` too. \`leadbay_add_note\`/\`leadbay_like_lead\`/\`leadbay_dislike_lead\` need only their own args. Snoozing (pushback) and standalone status are advanced-gated — not callable from a default artifact; use \`report_outreach\`'s \`epilogue_status\` for outcomes.
+Write-call footguns (in the guide, repeated because they bite): for \`leadbay_report_outreach\` (status/disposition) the \`args\` MUST include \`verification:{source:"user_confirmed",ref:"…"}\` AND \`_triggered_by:"<the user's request>"\`, or the call is rejected. \`leadbay_add_leads_to_campaign\` needs \`_triggered_by\` too. \`leadbay_add_note\`/\`leadbay_like_lead\`/\`leadbay_dislike_lead\` need only their own args. Snoozing (pushback) is advanced-gated — not callable from a default artifact. Org CRM status IS available: \`lb.leadStatus()\` gives the Wanted/Won/Lost/Unwanted picker field and \`lb.setStatus()\` the write (\`leadbay_set_lead_status\`), with the partial-write check baked in. Keep it distinct from \`report_outreach\`'s \`epilogue_status\`, which records how one outreach ATTEMPT went.
 
 WHEN TO USE: the user asks for a clickable / interactive artifact, dashboard, or call sheet that DOES things (not just displays data).
 
@@ -1205,8 +1230,10 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 \`queued\` → ✅ "Queued <N> extra leads on lens <id>. Pull in ~30s." Do NOT
 list \`accepted_seeds\`; they're internal.
-\`quota_exceeded\` → render three options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`) (smaller
-count / wait until reset / upgrade).
+\`no_candidates\` → ⛔ surface \`reason.message\`, name the criteria, offer
+\`leadbay_adjust_audience\`. Never re-call this tool on that lens.
+\`quota_exceeded\` → three options via the host's choice widget
+(smaller count / wait for reset / upgrade).
 \`refresh_in_progress\` → "lens is filling, retry in a minute".
 \`no_valid_seeds\` → silently re-call \`leadbay_seed_candidates\`, retry once.
 
@@ -1226,6 +1253,9 @@ Queue an additive extra-refill on a lens — more leads on the same criteria, wi
 - \`status: "quota_exceeded"\` — daily LENS_EXTRA_REFILL hit. Response carries \`quota: {used_today, resets_at}\` + a \`message\` to surface. **Render three options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`)**: (1) smaller \`extra_count\`, (2) wait until \`resets_at\`, (3) upgrade plan (TIER1=150, TIER2=1000). Do NOT silently retry.
 - \`status: "refresh_in_progress"\` — a refresh or extra-refill is already running. Tell the user to wait and call \`leadbay_pull_leads\` in ~30s.
 - \`status: "no_valid_seeds"\` — seeds went stale. Silently re-call \`leadbay_seed_candidates\` and retry once; only surface to the user if the second attempt also fails.
+- \`status: "no_candidates"\` — **the refill was NOT queued.** The lens's candidate pool is empty, so a refill would report success, consume no quota and deliver nothing. \`reason\` carries the same \`{code, message, retryable, criteria?, narrow_locations?}\` shape \`leadbay_pull_leads\` returns in \`empty_reason\`, with \`retryable: false\`. **Stop. Do not re-call this tool on this lens** — the outcome cannot change until the audience changes. Surface \`reason.message\`, name the criteria in play, and offer \`leadbay_adjust_audience\` (or \`leadbay_pull_followups\` when \`reason.code\` is \`no_new_leads\` and the lens already holds leads).
+
+**Extendability is checked before the write.** Every response carries \`available_count\` — how many leads a refill could still draw, read from the lens's own pool. \`0\` means the call was refused (\`no_candidates\`); \`null\` means the pool could not be read and the refill was queued anyway. An empty lens is NOT evidence of a broken refill: it is usually a lens that never had candidates. Reach for \`leadbay_adjust_audience\`, not another \`leadbay_extend_lens\`.
 
 WHEN TO USE: when the user has a bigger appetite than the daily lens fill delivers — they want MORE of the same kind of leads, on demand. Canonical phrasings: "I want more leads on this lens", "extend the lens", "give me a bigger batch today". The \`leadbay_extend_my_lens\` prompt is the user-facing entry point that orchestrates the whole flow.
 
@@ -1266,6 +1296,8 @@ Pick the row matching the response \`status\`. Seed-picking is internal; do NOT 
 | \`quota_exceeded\`        | "Upgrade plan for a higher daily limit"                       | (no call — direct user to contact account manager / sales) |
 | \`refresh_in_progress\`   | "Lens is already filling — pull leads in a minute"            | \`leadbay_pull_leads()\` (after a short wait)            |
 | \`no_valid_seeds\`        | (silent retry — re-call \`leadbay_seed_candidates\` then \`leadbay_extend_lens\`) | internal — only surface if the second attempt also fails |
+| \`no_candidates\`         | "Widen the audience — this lens has nothing left to add"       | \`leadbay_adjust_audience()\` — never \`leadbay_extend_lens\` again |
+| \`no_candidates\` (\`reason.code: no_new_leads\`) | "Work the leads already in the lens"        | \`leadbay_pull_followups()\`                             |
 
 If nothing matches cleanly, default to "pull leads now to see what's queued" — never invent a tool that doesn't exist.
 `;
@@ -1534,7 +1566,7 @@ Trigger phrases: "I'm going to <city>", "visit in person", "map of leads", "plan
 
 Do NOT use for: "default follow-up table" → \`leadbay_pull_followups\`; "new prospects" → \`leadbay_pull_leads\`.
 
-Prefer when: geographic, travel, in-person, itinerary, or map intent
+Prefer when: geographic, travel, in-person, itinerary, or map intent; NEVER a country name — a whole-country ask means NO geo filter
 
 Examples that SHOULD invoke this tool:
 - "I'm flying to New York Thursday — who should I meet in person?"
@@ -1559,7 +1591,27 @@ Plot the user's follow-up leads on an interactive map — the canonical surface 
 
 **Common city aliases resolve automatically** — \`NYC\` / \`New York\` → City of New York, \`SF\` / \`S.F.\` → San Francisco, \`LA\` / \`L.A.\` → Los Angeles, \`DC\` / \`Washington D.C.\` → Washington, \`Philly\` → Philadelphia, \`Vegas\` → Las Vegas, \`NOLA\` → New Orleans. Pass either an abbreviation, a city name, or a pre-resolved \`city_id\`. Ambiguous matches surface as \`status: "ambiguous_locations"\` + \`location_ambiguities[]\` — pick an id and re-call with \`city_id\`.
 
-**\`city\` is the universal geo arg — it resolves any admin level.** Despite the name, pass any place name there: states (\`"Texas"\`, \`"California"\`, \`"Bavaria"\`), countries (\`"France"\`, \`"United States"\`), regions (\`"New England"\`, \`"Bay Area"\`), neighborhoods (\`"Brooklyn"\`, \`"SoHo"\`), or cities. The \`/geo/search\` resolver indexes all levels — level 4 (state), level 2 (country), level 5 (city) — and the composite picks the best match. **Never** put a place name into \`keywords\` instead — that's a text-match against company descriptions, not a real geo filter (e.g. \`keywords: ["Texas"]\` returns ≈0 hits even when the user has dozens of Texas leads). If \`keywords: ["<PlaceName>"]\` returned empty, the correct next call is \`city: "<PlaceName>"\`, NOT the unfiltered Monitor view.
+**\`city\` is the universal SUB-country geo arg.** Despite the name, pass any place name BELOW country level: states (\`"Texas"\`, \`"California"\`), regions (\`"New England"\`, \`"Bay Area"\`), counties, neighborhoods (\`"Brooklyn"\`, \`"SoHo"\`), or cities — the \`/geo/search\` resolver indexes every level it returns and the composite picks the best match. A COUNTRY name is the one thing it must never receive (rule below). And \`keywords: ["Texas"]\` returns ≈0 hits even when the user has dozens of Texas leads — that's a text-match against company descriptions, not a geo filter. If \`keywords: ["<PlaceName>"]\` returned empty, the correct next call is \`city: "<PlaceName>"\`, NOT the unfiltered Monitor view.
+
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+\`axis: "include"\`:
+
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+
 
 ---
 
@@ -1714,9 +1766,31 @@ WHEN NOT TO USE: to answer the question — use leadbay_answer_clarification.
 // region: leadbay_get_contacts
 export const leadbay_get_contacts: string = `Get contacts for a lead, including enriched email and phone data. Returns both organization contacts and enrichable contacts with IDs, tagged with \`source:'org'|'paid'\`.
 
-WHEN TO USE: to check enrichment status (\`contact.enrichment.done\`) on individual leads after a bulk enrichment was launched, or to find the \`contact_id\` needed by leadbay_enrich_contacts.
+WHEN TO USE: to check enrichment status (\`contact.enrichment\`) on individual leads after a bulk enrichment was launched, or to find the \`contact_id\` needed by leadbay_enrich_contacts.
 
 WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id, which already includes enriched contacts in its return.
+
+## Reading \`contact.enrichment\`
+
+\`enrichment\` is the per-contact reveal record. Four states. Read \`done\` and \`credits_used\` **together** — neither is a verdict on its own.
+
+| \`enrichment\` | \`done\` | \`credits_used\` | Meaning | What to do |
+|---|---|---|---|---|
+| missing / \`null\` | — | — | Never requested. | Enrichable — launch it. |
+| present | \`false\` | any | Reservation in flight. | Poll. Do NOT re-launch. |
+| present | \`true\` | \`0\` | Settled, found nothing. | **Terminal. Stop.** |
+| present | \`true\` | \`> 0\` | Resolved. | The channel is on the org-source twin, not here — see below. |
+
+**\`done: true\` with \`credits_used: 0\` is terminal for that contact.** The enrichment completed and the provider returned nothing. Do not re-attempt it on a later run — the answer will not change. Roughly 29% of all enrichments land here, so it is an ordinary outcome, not an anomaly. Tell the user plainly that there is no reachable contact rather than reporting it as still pending. The one exception: a launch that errored in this same session settles its reservation as a zero-credit failure, so retry that one once, then treat it as terminal.
+
+Two ways to misread the pair:
+
+- **\`credits_used: 0\` alone means nothing.** An in-flight reservation also reports \`0\` (with \`done: false\`). Gate every read of \`credits_used\` on \`done: true\`.
+- **An absent \`credits_used\` is unknown, not zero.** The field is optional. When it is missing you cannot conclude terminal-empty — only an explicit \`0\` alongside \`done: true\` means "we looked and found nothing".
+
+A missing or \`null\` \`enrichment\` is not the same as \`done: false\`. It means the contact was never requested, so \`enrichment?.done\` reading falsy does NOT mean a reveal is running. Treat missing/\`null\` as enrichable and \`done: false\` as in-flight.
+
+**Where a resolved channel lands.** A \`source:'paid'\` contact keeps its \`enrichment\` record but never carries the revealed \`email\` / \`phone_number\` itself — the reveal materializes a \`source:'org'\` twin of the same person, and the channel is on that entry. So a paid contact reading \`done: true, credits_used: 1\` with a null \`email\` is RESOLVED, not failed: find the org-source entry with the same name and read the channel there. Judge success by the channel you can actually see across both entries, never by \`enrichment\` on the paid record alone.
 `;
 // endregion: leadbay_get_contacts
 
@@ -2631,7 +2705,29 @@ WHEN NOT TO USE: in normal flow — composites auto-resolve the active lens via 
 // region: leadbay_list_locations
 export const leadbay_list_locations: string = `Search the geo / admin-area taxonomy by free-text name and return the matching admin_area ids. This is the primary way to turn a user's "leads in Berlin" / "filter to Lyon" intent into the \`{type: "location_ids", locations: [<id>]}\` shape that the backend filter expects.
 
-The response has two arrays: \`results\` (top-10 prefix matches ranked by relevance) and \`parents\` (the admin-area chain referenced by \`results[].parent_ids\`, useful for disambiguation breadcrumbs). Each entry: \`{id, country, level, name, parent_ids}\`. The \`level\` is the admin depth — **5** = region, **6** = county, **7** = township-area, **8** = city/town.
+The response has two arrays: \`results\` (top-10 prefix matches ranked by relevance) and \`parents\` (the admin-area chain referenced by \`results[].parent_ids\`, useful for disambiguation breadcrumbs). Each entry: \`{id, country, level, name, parent_ids}\`. The \`level\` is the admin depth — **5** = region, **6** = county, **7** = township-area, **8** = city/town. Country nodes are NOT in this index, so searching a country name cannot return that country — it returns whatever same-named town the trigram matcher finds (measured: \`France\` → the commune of Francs, \`United States\` → Statesboro). Passing such an id onward fences the caller to one village, so this tool refuses a country query outright and returns \`status: "country_level_location"\` with an empty \`results\`.
+
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+\`axis: "include"\`:
+
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+
+
+**The include-axis recovery above does NOT apply to this tool.** "Omit the geo argument and the result covers everything" describes a tool that READS leads and can widen. This one resolves names to ids: \`q\` is REQUIRED, and the empty-\`q\` path returns no matches rather than workspace-wide data — so re-calling without it either fails validation or produces an empty lookup that would then be reported as full coverage. There is no country id to hand out and nothing to retry. Look up a place INSIDE the workspace instead; or, if the whole workspace was meant, skip this tool entirely — the tools that consume these ids just omit their geo argument.
 
 WHEN TO USE: to resolve a free-text city/region name before passing it to a \`location_ids\` filter (e.g. on \`leadbay_pull_followups({set_filter})\` or \`leadbay_adjust_audience\`). The composite \`leadbay_pull_followups\` accepts \`city: <free-text>\` directly and runs this resolver internally — prefer that path; reach for this granular tool only when you need to surface candidates to the user before committing.
 
@@ -2843,7 +2939,7 @@ Trigger phrases: "create a lens", "create a new lens called <name>", "create a l
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "narrow the audience / add or remove a sector on an EXISTING lens" → \`leadbay_adjust_audience\`; "add <sector> to my <name> lens" → \`leadbay_adjust_audience\`; "focus on a qualitative trait beyond sector/size" → \`leadbay_refine_prompt\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`; "more leads on this lens" → \`leadbay_extend_lens\`.
+Do NOT use for: "companies anywhere in this workspace's OWN country / nationwide (a foreign country is unsupported, not unfiltered — call nothing)" → \`leadbay_pull_leads\`; "narrow the audience / add or remove a sector on an EXISTING lens" → \`leadbay_adjust_audience\`; "add <sector> to my <name> lens" → \`leadbay_adjust_audience\`; "focus on a qualitative trait beyond sector/size" → \`leadbay_refine_prompt\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`; "more leads on this lens" → \`leadbay_extend_lens\`.
 
 Prefer when: user wants a brand-new lens (create/make/set up, often 'specialized in <X>'). Editing an existing lens → leadbay_adjust_audience (use lensName). Qualitative refinement → refine_prompt (admin-only).
 
@@ -2856,6 +2952,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Add fintech to my Joinery lens."
 - "Show me my lenses."
 - "I want more leads on this lens."
+- "Show me companies anywhere in the US."
 
 ## RENDER (quick)
 
@@ -2875,7 +2972,29 @@ Create a brand-new lens (saved audience) and apply its sector/size criteria. Clo
 
 **Sectors resolve first.** Free-text \`sectors\`/\`exclude_sectors\` are auto-resolved against the taxonomy. If any don't resolve, the tool returns \`status:"ambiguous_sectors"\` with the candidates and **does NOT create the lens** — so re-calling after picking the right sector won't leave orphan half-built lenses. To discover valid sector labels up front, use \`leadbay_list_sectors\`.
 
-**Geography — scope a territory.** Pass \`locations\` (free text like \`["Indre-et-Loire"]\`, \`["Bavaria"]\`, or admin-area ids) to scope the lens to a sales territory, and \`exclude_locations\` to carve one out. Free text auto-resolves via \`/geo/search\` across every admin level (city / county / *département* / *région* / state / country). Like sectors, locations resolve BEFORE the lens is created — unresolved/ambiguous text returns \`status:"ambiguous_locations"\` with candidates and **does NOT create the lens**. Re-call the chosen id via the SAME axis it came from: an INCLUDE pick → \`locations\`; an EXCLUDE pick → \`exclude_locations\` (**NOT** \`locations\`, which would include the area the user asked to exclude). This is how a director spins up a lens for a rep's zone to surface net-new accounts there.
+**Geography — scope a territory.** Pass \`locations\` (free text like \`["Indre-et-Loire"]\`, \`["Texas"]\`, or admin-area ids) to scope the lens to a sales territory, and \`exclude_locations\` to carve one out. Free text auto-resolves via \`/geo/search\` at any level from state down to city (state / *région* / *département* / county / city). Like sectors, locations resolve BEFORE the lens is created — unresolved/ambiguous text returns \`status:"ambiguous_locations"\` with candidates and **does NOT create the lens**. Re-call the chosen id via the SAME axis it came from: an INCLUDE pick → \`locations\`; an EXCLUDE pick → \`exclude_locations\` (**NOT** \`locations\`, which would include the area the user asked to exclude). This is how a director spins up a lens for a rep's zone to surface net-new accounts there.
+
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+\`axis: "include"\`:
+
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+
+
+**A new lens is a CLONE, and inherits the base lens's geography.** \`base\` defaults to the ACTIVE lens, so this applies even when no base was named. A criteria-less clone inherits the base audience wholesale, and adding sectors does not clear the base's location criteria either — so "nationwide healthcare" built on a Paris-scoped active lens creates a Paris healthcare lens under a nationwide name. Omitting \`locations\` is therefore not the same as having no geography. Read \`lens://<base>/definition\` before describing a new lens as workspace-wide, and say the scope is unverified if you cannot.
 
 **Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer \`leadbay_my_lenses(switchToLensId=<new id>)\` as a next step if they want to start pulling from it.
 
@@ -3219,20 +3338,18 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // region: leadbay_pull_followups
 export const leadbay_pull_followups: string = `## WHEN TO USE
 
-Trigger phrases: "what should I follow up on", "leads I've already worked", "what's overdue", "leads in <city / state / country>", "reach out to today", "should reach out to", "get back to", "contact today", "reconnect with", "re-engage", "leads to contact", "who should I ping".
+Trigger phrases: "what should I follow up on", "leads I've already worked", "what's overdue", "stale leads", "leads in <city / state / region>", "reach out to today", "should reach out to", "get back to", "contact today", "reconnect with", "re-engage", "leads to contact", "who should I ping".
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
 Do NOT use for: "new leads / today's prospects" → \`leadbay_pull_leads\`; "map / trip / in person" → \`leadbay_followups_map\`.
 
-Prefer when: known Monitor leads; pass \`city\` or \`set_filter\` for geo/sector/recency
+Prefer when: known Monitor leads; pass \`city\` or \`set_filter\` for geo/sector/recency; NEVER a country name — a whole-country ask means NO geo filter
 
 Examples that SHOULD invoke this tool:
 - "What should I follow up on this week?"
 - "What's overdue in my pipeline?"
 - "Show me leads I should reach out to today."
-- "Who should I get back to today?"
-- "Leads I should contact today."
 
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Show me today's new leads."
@@ -3249,7 +3366,7 @@ table. Detail + status priority below.
 
 ---
 
-Pull KNOWN leads from the user's Monitor view — the re-engagement entry point. Use when the user asks "what should I follow up on", "leads I haven't contacted", "leads in [city]", "before my trip", or any phrasing implying pre-existing pipeline context. For NEW leads from Discover, use \`leadbay_pull_leads\`.
+Pull KNOWN leads from the user's Monitor view — the re-engagement entry point.
 
 Backend: wraps \`GET /1.6/monitor?personal=&liked=&filtered=&count=&page=\` plus, when \`set_filter\` is supplied, a preceding \`POST /1.6/monitor/filter\`. The Monitor filter is a single \`FilterItem\` per user — refreshing restores it.
 
@@ -3257,24 +3374,44 @@ Backend: wraps \`GET /1.6/monitor?personal=&liked=&filtered=&count=&page=\` plus
 
 Practical mapping from user phrasing to criterion:
 
-| User phrase                          | Criterion                                                            |
-|--------------------------------------|----------------------------------------------------------------------|
-| "leads in Lyon"                      | \`{type: "location_ids", locations: [<admin_area_id>]}\`               |
-| "healthcare staffing"                | \`{type: "keywords", keywords: ["healthcare", "staffing"]}\`           |
-| "leads I haven't touched in 30 days" | \`{type: "last_action_date", last_days: 30}\`                          |
-| "leads I liked"                      | \`{type: "liked"}\`                                                    |
-| "leads 50–200 employees"             | \`{type: "size", sizes: [{min: 50, max: 200}]}\`                       |
-| "Y Combinator companies"             | \`{type: "yc"}\`                                                       |
+| User phrase | Criterion |
+|---|---|
+| "leads in Lyon" | \`{type: "location_ids", locations: [<admin_area_id>]}\` |
+| "healthcare staffing" | \`{type: "keywords", keywords: ["healthcare", "staffing"]}\` |
+| "leads I haven't touched in 30 days" | \`{type: "last_action_date", last_days: 30}\` |
+| "leads I liked" | \`{type: "liked"}\` |
+| "leads 50–200 employees" | \`{type: "size", sizes: [{min: 50, max: 200}]}\` |
+| "Y Combinator companies" | \`{type: "yc"}\` |
 
 Geo filtering needs \`admin_area_id\` resolution — backend rejects free-text in \`location_ids\`. Pass \`city: "<free-text>"\` and the composite calls \`/geo/search\` internally, picks the best match, merges its id into \`set_filter\`. Ambiguous matches return \`status: "ambiguous_locations"\` + \`location_ambiguities[]\` — pick an id and re-call with \`city_id\`.
 
-**Place names go through \`city\`, NEVER \`keywords\`.** Any geographic token the user names — cities (\`"Berlin"\`), states/regions (\`"Texas"\`, \`"Bavaria"\`), countries (\`"France"\`), neighborhoods (\`"Brooklyn"\`) — resolves via \`/geo/search\` (all admin levels). A place name in \`keywords\` becomes a TEXT-MATCH against company descriptions (≈0 hits), not a real filter. If a place resolves ambiguously, surface the choices — never silently fall back to keyword search or the unfiltered view.
+In \`keywords\` a place name is a TEXT-MATCH on company descriptions (≈0 hits), not a filter — never fall back to it, nor to the unfiltered view, when a place is ambiguous.
+
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+\`axis: "include"\`:
+
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+
+
+**A whole-workspace read also needs \`filtered:false\`.** Omitting \`city\` does not widen this tool — \`filtered\` defaults to true, so a filter persisted earlier still applies and its stale cohort reads as everything. If other criteria were requested, re-send them in \`set_filter\` instead; \`active_filters\` reports what applied.
 
 **Pushback exclusion.** Leads with active pushback (\`pushback_status\` set, \`pushback_until > today\`) are excluded client-side; \`total_excluded_by_pushback\` reports how many rows were dropped.
 
-WHEN TO USE: re-engaging pipeline ("what should I follow up on", "stale leads"), filtering monitored leads by city / sector / recency / action type / liked. The canonical orchestrator is the \`leadbay_followup_check_in\` prompt.
-
-WHEN NOT TO USE: for NEW leads — that's \`leadbay_pull_leads\` (Discover).
+The canonical orchestrator for a re-engagement pass is the \`leadbay_followup_check_in\` prompt.
 
 **Anti-confusion guardrail.** Iterating \`pull_leads\` pages looking for \`prospecting_actions_count > 0\` or \`notes_count > 0\` rows is the wrong entry point — the two read different tables. Leads with follow-up history live in \`pull_followups\`.
 
@@ -3296,16 +3433,16 @@ Markdown table with FOUR columns, sorted by \`last_monitor_action_at\` desc. **N
 
 **Active-filters line** ABOVE the table, \` · \`-separated chips from \`active_filters.criteria\`:
 
-| Criterion type        | Chip                       |
-|-----------------------|----------------------------|
-| \`location_ids\`        | 📍 \\<resolved name\\>       |
-| \`sector_ids\`          | 🏷 \\<sector name\\>         |
-| \`keywords\`            | 🔍 \\<keyword\\>             |
-| \`size\`                | 👥 \\<min\\>–\\<max\\>         |
-| \`last_action_date\`    | 📅 \\<window\\>              |
-| \`last_action\`         | 🎯 \\<action types\\>        |
-| \`liked\` / \`yc\`        | ⭐ liked / 🏅 YC           |
-| \`custom_field*\`       | ⚙ \\<field name\\>          |
+| Criterion type | Chip |
+| --- | --- |
+| \`location_ids\` | 📍 \\<resolved name\\> |
+| \`sector_ids\` | 🏷 \\<sector name\\> |
+| \`keywords\` | 🔍 \\<keyword\\> |
+| \`size\` | 👥 \\<min\\>–\\<max\\> |
+| \`last_action_date\` | 📅 \\<window\\> |
+| \`last_action\` | 🎯 \\<action types\\> |
+| \`liked\` / \`yc\` | ⭐ liked / 🏅 YC |
+| \`custom_field*\` | ⚙ \\<field name\\> |
 
 Render \`*No filters applied.*\` when empty.
 
@@ -3392,21 +3529,19 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 
 
 
-Always include at least one filter-modification offer (users think in filters: by city, by recency, by action type). Filter modification goes through \`set_filter: FilterItem\` which the composite POSTs to \`/monitor/filter\` server-side.
-
-| Observation                                   | Suggest                                                  | Calls                                                                                              |
-|-----------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------------------------------------------|
-| Always (top of menu)                          | "Prep outreach for [top row's contact]"                  | leadbay_prepare_outreach(leadId)                                                                   |
-| User named a city / sector / timeframe        | "Refilter by [their phrase]"                             | leadbay_pull_followups(set_filter: { criteria: [...] })                                            |
-| \`pagination.has_more == true\`                 | "Pull the next page"                                     | leadbay_pull_followups(page = current + 1)                                                         |
-| ≥3 rows ✨ (never-touched)                    | "Surface only never-touched leads"                       | set_filter with \`last_action_date.last_days = 0\`                                                   |
-| ≥3 rows ⚡ (Trying to reach)                  | "Focus on overdue commitments"                           | set_filter with \`last_action.types = ["EPILOGUE_COULD_NOT_REACH_STILL_TRYING"]\`                    |
-| User planning a trip / in a city              | "Group by city for trip planning"                        | leadbay_pull_followups({city: "<their city>"}) — composite resolves admin_area_id via /geo/search  |
-| All rows last action > 60d                    | "Re-qualify — context may have changed"                  | leadbay_bulk_qualify_leads([leadId, ...])                                                          |
-| One obvious priority row                      | "Take me to that lead's full brief"                      | leadbay_prepare_outreach(leadId) / leadbay_research_lead_by_id(leadId)                                   |
-| User wants to defer a lead                    | "Snooze [Company] for 3 / 6 / 12 months"                 | leadbay_set_pushback({ lead_ids:[leadId], status:"3" })                                            |
-| User completed outreach mid-flow              | "Log the outreach + record the outcome"                  | leadbay_report_outreach                                                                            |
-| Discovery mode might fit better               | "Looking for NEW leads instead? Switch to discovery."    | leadbay_pull_leads                                                                                 |
+| Observation | Suggest | Calls |
+|---|---|---|
+| Always (top of menu) | "Prep outreach for [top row's contact]" | leadbay_prepare_outreach(leadId) |
+| User named a city / sector / timeframe | "Refilter by [their phrase]" | leadbay_pull_followups(set_filter: { criteria: [...] }) |
+| \`pagination.has_more == true\` | "Pull the next page" | leadbay_pull_followups(page = current + 1) |
+| ≥3 rows ✨ (never-touched) | "Surface only never-touched leads" | set_filter with \`last_action_date.last_days = 0\` |
+| ≥3 rows ⚡ (Trying to reach) | "Focus on overdue commitments" | set_filter with \`last_action.types = ["EPILOGUE_COULD_NOT_REACH_STILL_TRYING"]\` |
+| User planning a trip / in a city | "Group by city for trip planning" | leadbay_pull_followups({city: "<their city>"}) — composite resolves admin_area_id via /geo/search |
+| All rows last action > 60d | "Re-qualify — context may have changed" | leadbay_bulk_qualify_leads([leadId, ...]) |
+| One obvious priority row | "Take me to that lead's full brief" | leadbay_prepare_outreach(leadId) / leadbay_research_lead_by_id(leadId) |
+| User wants to defer a lead | "Snooze [Company] for 3 / 6 / 12 months" | leadbay_set_pushback({ lead_ids:[leadId], status:"3" }) |
+| User completed outreach mid-flow | "Log the outreach + record the outcome" | leadbay_report_outreach |
+| Discovery mode might fit better | "Looking for NEW leads instead? Switch to discovery." | leadbay_pull_leads |
 Always offer at least one of: prep outreach, refilter, pushback. Pushback is the canonical way to honor "not now" / "next quarter" — leads with active pushback are excluded from this view until expiry.
 `;
 // endregion: leadbay_pull_followups
@@ -3460,6 +3595,11 @@ WHEN TO USE: as the agent's default opening move when the user wants to see lead
 WHEN NOT TO USE: when the user has named a specific lens — pass \`lensId\` to override the auto-resolution. Replaces the older leadbay_find_prospects (removed in v0.2.0).
 
 The active lens can change between calls (5-min cache + backend \`last_requested_lens\`). If a multi-step workflow depends on staying on one lens, **capture \`response.lens.id\` from the first response and pass it as the \`lensId\` argument on every subsequent Leadbay call** — including re-pulls, bulk qualifies, and research. (Field-name caveat: response nests it as \`lens.id\`; the parameter is \`lensId\`.) Re-pulling without \`lensId\` after a long-running tool may silently switch to a different lens and discard prior work.
+
+**EMPTY BATCH — route on \`empty_reason\`, never loop.** When \`leads\` is empty the response carries \`empty_reason: {code, message, retryable, criteria?, narrow_locations?}\`. \`retryable\` is the only field that decides what you do next:
+
+- \`retryable: true\` (always \`code: "computing"\`) — the lens is still building. Say so, pull ONCE more in ~30s. Do not call it empty.
+- \`retryable: false\` — no amount of re-pulling, lens-switching or \`leadbay_extend_lens\` can produce leads on these criteria. **Stop calling tools.** Surface \`message\` to the user, name the criteria from \`criteria\` (and \`narrow_locations\` first when present — a city-scale geo scope is the usual culprit), and offer \`leadbay_adjust_audience\` to widen. A refill on a zero-candidate lens answers "queued", consumes no quota and delivers nothing, so retrying reads as progress while achieving none (product#3995).
 
 ---
 
@@ -4527,7 +4667,7 @@ Trigger phrases: "which of my leads <did X>", "find leads that <raised / acquire
 
 Do NOT use for: "research one named company" → \`leadbay_research_lead_by_name_fuzzy\`; "everything about lead <UUID>" → \`leadbay_research_lead_by_id\`; "qualify my next N leads (they aren't researched yet)" → \`leadbay_bulk_qualify_leads\`; "just list my follow-ups" → \`leadbay_pull_followups\`.
 
-Prefer when: user wants to FILTER a known portfolio by a web-research signal in bulk — pass \`query\`, optionally \`since\`, \`city\`/\`set_filter\`, or \`leadIds\`
+Prefer when: user wants to FILTER a known portfolio by a web-research signal in bulk — pass \`query\`, optionally \`since\`, \`city\`/\`set_filter\`, or \`leadIds\`; NEVER a country name in \`city\` — a whole-country ask means NO geo filter
 
 Examples that SHOULD invoke this tool:
 - "Which of my leads acquired a company since 2025?"
@@ -4564,7 +4704,27 @@ match". Qualify them with \`leadbay_bulk_qualify_leads\`, then re-scan.
 
 **Scope.** Pass \`leadIds\` for an explicit cohort, or omit it to scan the
 Monitor portfolio. Narrow the Monitor scope with \`city\` / \`set_filter\` exactly
-as \`leadbay_pull_followups\` does (store-then-apply server-side filter). The
+as \`leadbay_pull_followups\` does (store-then-apply server-side filter).
+
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+\`axis: "include"\`:
+
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+ The
 scan is bounded by \`max_leads\` (default 200, hard cap 300); when the portfolio
 is larger, \`truncated_at\` is set and coverage is partial — say so.
 
@@ -4868,6 +5028,87 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 `;
 // endregion: leadbay_set_epilogue_status
 
+// region: leadbay_set_lead_status
+export const leadbay_set_lead_status: string = `## WHEN TO USE
+
+Trigger phrases: "we won this deal", "mark this lead as won", "we lost them", "mark as lost", "this one is a target", "add them to my wanted list", "set the status on these leads", "closed the deal with", "they signed", "not a target anymore".
+
+**Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
+
+Do NOT use for: "I sent the email / left a voicemail — log the outcome" → \`leadbay_report_outreach\`; "thumbs up, I like this lead" → \`leadbay_like_lead\`; "remind me about this lead next week / snooze it" → \`leadbay_set_pushback\`.
+
+Prefer when: user states a COMMERCIAL outcome or pipeline stage, not an outreach event; pass \`lead_ids\` + the uppercase \`status\`, and \`status_date\` when they name a close date
+
+Examples that SHOULD invoke this tool:
+- "We just signed Acme Corp — mark them as won."
+- "Mark these three as lost, they went with a competitor."
+- "Add Northwind to my wanted list, they're a priority target."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "I emailed the CTO this morning, log it."
+- "Thumbs up on this one, show me more like it."
+- "Snooze this lead until next quarter."
+
+## RENDER (quick)
+
+One short confirmation line per status applied ("✅ **Acme Corp** → WON
+(closed 2026-03-14)"). If \`failed\` is non-empty, list those leads with
+their error underneath. Don't re-render the full lead card.
+
+---
+
+Set the **org-wide CRM lead status** — the same field the Leadbay website's status
+selector writes, and the one a CSV import maps via \`mappings.statuses\`. It is shared
+across the whole organization: every rep sees the value this call sets.
+
+Two distinct status systems exist in Leadbay. Do not confuse them:
+
+| System | Values | Written by | Means |
+|---|---|---|---|
+| **Lead status** (this tool) | \`WANTED\` \`WON\` \`LOST\` \`UNWANTED\` (plus system-set \`DEFAULT\`, \`INBOUND\`) | this tool, CSV import | Commercial/pipeline outcome, org-wide |
+| **Epilogue status** | \`STILL_CHASING\` \`COULD_NOT_REACH_STILL_TRYING\` \`INTEREST_VALIDATED_OR_MEETING_PLANED\` \`NOT_INTERESTED_LOST\` | \`leadbay_report_outreach\`, \`leadbay_set_epilogue_status\` | Disposition of a specific outreach attempt; drives \`leadbay_pull_followups\` ranking |
+
+A deal outcome is a **lead status**. "She didn't pick up" is an **epilogue status**.
+Setting one never sets the other — when the user reports both in one breath ("called
+them, they signed"), make both calls.
+
+## Parameters
+
+- \`lead_ids\` (required) — 1–200 lead UUIDs. Every lead gets the same status.
+- \`status\` (required) — one of \`WANTED\`, \`WON\`, \`LOST\`, \`UNWANTED\`. Accepted
+  case-insensitively (\`won\` → \`WON\`); no synonyms are guessed, so "closed-won"
+  or "dead" are rejected rather than silently mapped. \`DEFAULT\` and \`INBOUND\`
+  are accepted but are normally set by Leadbay itself — don't offer them as
+  user choices.
+- \`status_date\` (optional) — \`YYYY-MM-DD\`, the date the status was actually
+  reached (a close date, the day the deal was lost). Omit it and the backend
+  stamps now. Pass it whenever the user names a date; a deal closed last month
+  stamped as today distorts every pipeline report.
+
+## Behaviour
+
+Each lead is written individually (\`POST /leads/{leadId}/set_status\`, then
+\`POST /leads/{leadId}/set_status_date\` when \`status_date\` is given), so a partial
+failure is possible. The return is
+\`{ applied, count, status, status_date?, failed: [{lead_id, message}] }\` —
+**always check \`failed\`** and report those leads to the user rather than claiming
+a clean sweep. \`applied\` is \`false\` when every lead failed.
+
+Re-sending the same status is idempotent — no error, no duplicate entry.
+
+WHEN TO USE: the user states a commercial outcome or pipeline
+position for specific leads: "we won them", "that one's dead", "these are my targets
+this quarter". Also use it from an artifact's status dropdown.
+
+WHEN NOT TO USE: the user is reporting that an outreach
+*happened* (use \`leadbay_report_outreach\` — its \`epilogue_status\` covers the
+follow-up disposition), expressing taste rather than an outcome (\`leadbay_like_lead\`
+/ \`leadbay_dislike_lead\`), or temporarily deferring a lead (\`leadbay_set_pushback\`).
+
+This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+`;
+// endregion: leadbay_set_lead_status
+
 // region: leadbay_set_pushback
 export const leadbay_set_pushback: string = `Snooze (pushback) one or more leads for 3, 6, or 12 months. The leads remain in the user's pipeline but are excluded from \`leadbay_pull_followups\` until the pushback window expires. Use this when the user says "not now", "next quarter", "follow up in 3 months", "6 months out", "next year", or any equivalent deferral.
 
@@ -5039,7 +5280,7 @@ Trigger phrases: "visiting <city> in <N> days", "I'm in <city> next week / Tuesd
 
 Do NOT use for: "follow-ups only, no new prospects" → \`leadbay_followups_map\`; "new leads only" → \`leadbay_pull_leads\`; "research one account" → \`leadbay_research_lead_by_id\`.
 
-Prefer when: user wants known accounts plus new discoveries in one geographic itinerary
+Prefer when: user wants known accounts plus new discoveries in one geographic itinerary; NEVER a country name — unlike the Monitor tools, do NOT omit \`city\`; a city-less tour is arbitrary nationwide leads, so ask which city or region
 
 Examples that SHOULD invoke this tool:
 - "I'm flying to Limoges in 4 days — give me 3 customers, 3 qualified prospects, and 3 new high-potential."
@@ -5068,7 +5309,35 @@ prose paragraph. Full recipe below.
 
 Build a single-call mixed-mode itinerary for a field sales tour. Combines \`leadbay_pull_followups\` (Monitor leads in the city — known accounts) with \`leadbay_pull_leads\` (Discover wishlist — new prospects, then client-side filtered by city) so the agent can answer the canonical #3630 US1 ask: *"I'm visiting Limoges in 4 days — propose 3 customers + 3 qualified prospects + 3 new high-potential discoveries."*
 
-**Geo resolution** is identical to \`leadbay_followups_map\`: pass \`city\` (any admin level — city, state, country, region — the \`/geo/search\` resolver picks the best match), or a pre-resolved \`city_id\`. Ambiguous matches surface as \`status: "ambiguous_locations"\` + \`location_ambiguities[]\`; pick an id and re-call with \`city_id\`.
+**Geo resolution** is identical to \`leadbay_followups_map\`: pass \`city\` (any level from state down to neighborhood — state, *région*, county, city — the \`/geo/search\` resolver picks the best match), or a pre-resolved \`city_id\`. Ambiguous matches surface as \`status: "ambiguous_locations"\` + \`location_ambiguities[]\`; pick an id and re-call with \`city_id\`.
+
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+\`axis: "include"\`:
+
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+
+
+**Tour-specific override of the rule above.** For a tour, the home-country
+recovery ("omit the geo argument") does NOT apply: this tool accepts a missing
+\`city\` and then returns arbitrary leads from across the whole workspace, which is
+not an itinerary. So for ANY country-level \`city\` — this workspace's own included
+— do not drop the argument. Ask which city or region the user is actually
+visiting and re-call with that. \`status: "country_level_location"\` carries the
+same instruction in its \`hint\`.
 
 **Counts**: \`followups_count\` (default 6 — generous so the agent can split into "customers + qualified" client-side) and \`discover_count\` (default 6 after client-side geo filter). The composite over-pulls Discover (30 raw) because the wishlist endpoint has no server-side geo filter — it then filters by \`location.city/state/country/full\` substring match against the requested city. The \`discover_filter_note\` string in the response tells the agent the match ratio so it can be honest about coverage ("matched 3/30 by city/state" vs. "matched 12/30").
 
@@ -5262,7 +5531,27 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_update_lens
 
 // region: leadbay_update_lens_filter
-export const leadbay_update_lens_filter: string = `Replace the audience filter (sectors, sizes, locations) on a lens. Body is the full \`Filter\` object — this is a REPLACE, not a merge. Returns 400 \`default_lens\` if applied to the org default lens (clone it first). \`dry_run:true\` returns the call shape without contacting the backend.
+export const leadbay_update_lens_filter: string = `Replace the audience filter (sectors, sizes, locations) on a lens. Body is the full \`Filter\` object — this is a REPLACE, not a merge. Returns 400 \`default_lens\` if applied to the org default lens (clone it first). \`dry_run:true\` returns the call shape without contacting the backend. A country name anywhere in the payload's \`location_ids\` criteria (or in the echoed \`locations.results[]\` block) is rejected with \`code: "COUNTRY_LEVEL_LOCATION"\` — including on a dry run, so a preview can never suggest such a body is valid.
+
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+\`axis: "include"\`:
+
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+
 
 WHEN TO USE: low-level mutation when you've already prepared the merged filter.
 
@@ -5367,6 +5656,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_send_feedback,
   leadbay_set_active_lens,
   leadbay_set_epilogue_status,
+  leadbay_set_lead_status,
   leadbay_set_pushback,
   leadbay_set_qualification_questions,
   leadbay_set_telemetry,

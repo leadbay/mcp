@@ -38,6 +38,7 @@ const TOOLS_WITH_ROUTING = new Set([
   "leadbay_dislike_lead",
   "leadbay_followups_map",
   "leadbay_like_lead",
+  "leadbay_set_lead_status",
   "leadbay_list_campaigns",
   "leadbay_pull_followups",
   "leadbay_pull_leads",

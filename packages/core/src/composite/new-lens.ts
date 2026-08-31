@@ -17,6 +17,11 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, LensPayload, FilterPayload } from "../types.js";
 import { resolveSectors, mergeFilter, filterWriteBody } from "./adjust-audience.js";
 import { resolveLocations } from "./_geo-helpers.js";
+import {
+  countryLocationStatus,
+  geoScopeSurvives,
+  detectCountryLocationsIn,
+} from "./_country-guard.js";
 
 import { leadbay_new_lens as NEW_LENS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -73,12 +78,12 @@ export const newLens: Tool<NewLensParams> = {
         type: "array",
         items: { type: "string" },
         description:
-          "Geographic scope — free text (e.g. ['Indre-et-Loire', 'Bavaria']) or admin-area ids. Auto-resolved via /geo/search across all admin levels (city / county / département / région / state / country). Scopes the lens to a sales territory.",
+          "Geographic scope — free text (e.g. ['Indre-et-Loire', 'Texas']) or admin-area ids. Resolved via /geo/search at any level from state down to city (state / région / département / county / city). NEVER a country name — this workspace serves exactly ONE country, so a whole-country ask means passing NO location at all (rejected with COUNTRY_LEVEL_LOCATION). Scopes the lens to a sales territory.",
       },
       exclude_locations: {
         type: "array",
         items: { type: "string" },
-        description: "Locations to exclude — free text or ids.",
+        description: "Locations to exclude — free text or ids. Sub-country areas only — excluding a country is meaningless on a single-country workspace and is rejected.",
       },
       base: {
         type: "number",
@@ -98,9 +103,9 @@ export const newLens: Tool<NewLensParams> = {
   outputSchema: {
     type: "object",
     description:
-      "'preview' (default, NOTHING created — confirm with the user then re-call with confirm:true); 'created' on success; 'ambiguous_sectors' / 'ambiguous_locations' when free-text sectors / locations didn't resolve (re-call with ids — the lens was NOT created).",
+      "'preview' (default, NOTHING created — confirm with the user then re-call with confirm:true); 'created' on success; 'ambiguous_sectors' / 'ambiguous_locations' when free-text sectors / locations didn't resolve (re-call with ids — the lens was NOT created); 'country_level_location' when a country-level value was passed as a location (the lens was NOT created; read `hint` — re-calling without the value is often itself wrong).",
     properties: {
-      status: { type: "string", description: "'preview', 'created', 'ambiguous_sectors', 'ambiguous_locations', or 'orphan_created' (filter write failed + cleanup failed)." },
+      status: { type: "string", description: "'preview', 'created', 'ambiguous_sectors', 'ambiguous_locations', 'country_level_location', or 'orphan_created' (filter write failed + cleanup failed)." },
       will_create: {
         type: "object",
         description:
@@ -123,6 +128,12 @@ export const newLens: Tool<NewLensParams> = {
           "On 'ambiguous_locations': per text {location_text, matches:[{id,name,country,level,score}]}. Re-call the chosen id via the SAME axis the text came from — an include text → locations; a text from exclude_locations → exclude_locations (NOT locations, which would include the area the user asked to exclude). The `message` field names the correct param per text.",
         items: { type: "object" },
       },
+      country_locations: {
+        type: "array",
+        description:
+          "On 'country_level_location': per offending value {value, param, kind, country, axis, kept}. A country name is never a location criterion — each workspace serves exactly ONE country. The recovery BRANCHES on `country_locations[].axis` and `[].kind`; `hint` states the one for THIS call — follow it verbatim. When the country was the ONLY scope, or on ANY non-foreign `exclude`, the answer is to write NOTHING at all — re-calling with the value merely dropped persists a scope that inverts the request. Never retry with another spelling or a nearby city.",
+        items: { type: "object" },
+      },
       filter_applied: { type: "object", description: "On 'created': the FilterPayload POSTed to the new lens." },
       computing_wishlist: {
         type: "boolean",
@@ -139,6 +150,58 @@ export const newLens: Tool<NewLensParams> = {
     params: NewLensParams,
     ctx?: ToolContext
   ) => {
+    // 0. Country-level geo values are rejected BEFORE anything else, so a
+    //    doomed lens costs neither a taxonomy fetch nor a /geo/search call.
+    //    A country name would silently resolve to a same-named commune and
+    //    leave a lens permanently fenced to one village (product#3951).
+    const geoParams = [
+      { input: params.locations, param: "locations" },
+      { input: params.exclude_locations, param: "exclude_locations", axis: "exclude" as const },
+    ];
+    const countryHits = detectCountryLocationsIn(geoParams, client.region);
+    if (countryHits.length > 0) {
+      // A lens built from sectors / sizes / a base lens is a real lens with a
+      // redundant country attached — refusing to write it would discard the
+      // criteria the user actually asked for. Only a country-ONLY request is
+      // the one WORKFLOWS.md forbids writing.
+      //
+      //    A bare `base` id is NOT scope. It names a lens whose own geography
+      //    we have not read, and a criteria-less clone inherits it wholesale —
+      //    so `{name:"Nationwide", base:<a Paris lens>, locations:["France"]}`
+      //    would be told to drop the country and retry, and the retry writes a
+      //    Paris audience under the name "Nationwide". Counting an unread id as
+      //    valid remaining scope is what authorized that.
+      const otherScope =
+        (params.sectors?.length ?? 0) > 0 ||
+        (params.exclude_sectors?.length ?? 0) > 0 ||
+        (params.sizes?.length ?? 0) > 0 ||
+        // A real place on ANOTHER geo argument is scope too: `kept` only sees
+        // the argument its own value came from.
+        geoScopeSurvives(geoParams, client.region);
+      const envelope = countryLocationStatus(
+        countryHits,
+        client.region,
+        "write",
+        otherScope
+      );
+
+      // Every new lens is a CLONE — of `base` when given, of the active lens
+      // otherwise — so it starts with that lens's filter, geography included.
+      // Whenever the recovery authorizes a retry, the retry therefore inherits a
+      // geography nobody has looked at: "nationwide healthcare" on a Paris-
+      // scoped active lens writes Paris healthcare and calls it nationwide.
+      // Only attached when a re-call is actually on the table; the write-stop
+      // branches forbid one outright and must not read as though one existed.
+      const authorizesReCall = /re-call ONCE/.test(envelope.hint);
+      if (!authorizesReCall) return envelope;
+      return {
+        ...envelope,
+        hint: `${envelope.hint} Before that re-call, read the geography of the lens being cloned — \`lens://${
+          params.base ?? "<active lens id>"
+        }/definition\`, which is the only place a lens's \`location_ids\` are visible (\`leadbay_pull_leads\` returns only \`lens: {id}\`, and \`leadbay_my_lenses\` returns no filter at all). A clone INHERITS that geography, so if the base carries any, the new lens is scoped to it no matter that no location was passed — and calling the result whole-workspace would be false. If it does carry geography, either clear it on the new lens or say plainly which places it actually covers.`,
+      };
+    }
+
     // 1. Resolve sectors FIRST — if any don't resolve, surface and bail before
     //    creating a lens, so we never leave a half-built lens behind.
     const includeRes = await resolveSectors(

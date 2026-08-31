@@ -24,7 +24,9 @@ export interface ToolCallRecord {
   turn: number;
   name: string;
   input: unknown;
-  output_summary: { ok: boolean; output_len: number; sample?: string };
+  /** `region` is `_meta.region` from the tool result — the backend's own
+   *  country. Carried so a judge can tell a read fact from an echoed one. */
+  output_summary: { ok: boolean; output_len: number; sample?: string; region?: string };
   duration_ms: number;
 }
 

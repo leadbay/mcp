@@ -252,6 +252,11 @@ Common shared blocks live in `packages/promptforge/snippets/`:
 | `next-steps/*.md` | Per-tool NEXT STEPS tables — every one includes the `ask_user_input_v0` routing at the top |
 | `gates/builtin-widgets.md` | The three-host-widget table |
 | `gates/defer-to-tool-rendering.md` | Reminder that prompts defer layout to tool RENDERING blocks |
+| `heuristics/single-country-universe.md` | The single-country rule — a country name is never a location filter (product#3951) |
+| `heuristics/*.md` | Judgement aids (address matching, consumer email domains, long-running tools, …) |
+| `iron-laws/*.md` | Non-negotiables (no fabrication, verification required, outcome after outreach) |
+| `headers/*.md` | The tiny shared header fragments promptforge stitches in |
+| `server-instructions/*.md` | Server-instruction blocks — emitted as consts by `emitServerInstructions`, NOT resolved via `{{include:}}` |
 
 Include them via `{{include:rendering/score-bar}}` etc. Don't duplicate
 content across templates — extract a snippet if you find yourself
@@ -259,16 +264,78 @@ copy-pasting.
 
 ## Tool description budget
 
-Each tool description has a per-class char budget (currently 16,000 for
-composites). Enforced by
+Every generated tool description is capped at **17,000 chars** — one cap
+for all classes, not per-class. Enforced by
+`MIGRATED_TOOL_DESCRIPTION_MAX_CHARS` in
 `packages/mcp/test/audit/tool-description-source.test.ts`. If your edit
 pushes a description over budget, trim verbose paragraphs **within the
-template** — don't disable the audit.
+template** — don't disable the audit and don't raise the cap.
+
+Measure the REAL length before you draft: a naive `wc` over the generated
+file over-reports by 70–360 chars per tool, because `\``, `\${` and `\\`
+are escapes in the template literal. Unescape first:
+
+```bash
+node -e "const s=require('fs').readFileSync('packages/core/src/tool-descriptions.generated.ts','utf8');
+const re=/export const (leadbay_[a-z_0-9]+): string = \`([\s\S]*?)\`;\n/g;let m;
+while((m=re.exec(s))){const n=m[2].replace(/\\\\([\`\$\\\\])/g,'\$1').length;
+if(n>16000)console.log(n,m[1],'headroom',17000-n);}"
+```
+
+The tools closest to the cap today are `leadbay_prepare_outreach` (~7 chars
+of headroom), `leadbay_research_lead_by_id` (~27) and
+`leadbay_pull_followups` (~332) — measure with the recipe above rather than
+trusting these numbers, which go stale on every description edit. Adding a
+shared snippet to any of the three needs a matching trim in the same commit.
 
 ## Workspace test invariant
 
 `pnpm -r test` and `pnpm -r typecheck` must be green on every PR.
 Before committing, run the full workspace pass.
+
+## Review guidelines
+
+The Claude review bot
+(`.github/workflows/claude-code-review.yml`) reads this section. Flag the
+following as high-priority (P0/P1) issues:
+
+- **Never hand-edit generated files.** `*.generated.*` under
+  `packages/core/src/` and `packages/mcp/src/` is emitted by
+  `@leadbay/promptforge` — point at the `.md.tmpl` template instead. See
+  *Tool descriptions are generated, not hand-edited* above.
+
+- **Do not re-introduce `Tool.ui` bindings or MCP-Apps iframe widgets.**
+  Removed in 0.10.0-dev.12. See *Rendering surface* above.
+
+- **Respect the tool-description char budget** (~16k soft, 17k hard). Never
+  "fix" a failing audit by disabling or weakening it; trim the template body.
+  See *Tool description budget* above.
+
+- **New user-facing tools must be wired completely** — `routing` +
+  `rendering_hint` frontmatter (plus `next_steps` when the tool has a NEXT
+  STEPS table), the routing contract asserted in a **new** audit file (never by
+  appending to `TOOLS_WITH_ROUTING` in the existing
+  `packages/mcp/test/audit/routing-block.test.ts` — the new-coverage-in-new-files
+  rule wins; see `packages/mcp/test/audit/lead-delivery-routing-block.test.ts`),
+  ≥2 positive AND ≥2 negative routing examples, every `route_to` resolving to a
+  registered tool name.
+
+- **`WORKFLOWS.md` is normative.** A new user story needs a row, and every
+  backtick-wrapped `leadbay_*` identifier must resolve.
+
+- **Tests.** New tests go in **new** files — do not modify existing test
+  files. Flag unit tests that make real network calls: the `node:https`
+  harness throws on any undeclared endpoint, so tests must declare their HTTP
+  responses via `mockHttp([...])`.
+
+- **Secrets & credentials.** Flag secrets or PII written to logs. Do not
+  rotate the expendable test-account credentials defensively.
+
+- **Version sync on release is automated — don't tell authors to hand-match
+  it.** When a version bump lands on `main`, the `pr-sync-on-release` workflow
+  renumbers `packages/mcp/{package.json,server.json}` on the open PRs and
+  flags a CHANGELOG collision with the `needs-manual-rebase` label. A stale
+  version number vs. `main` is expected on an open PR and is not a defect.
 
 ## Live exploration when the user asks
 
@@ -303,7 +370,7 @@ graph TD
 
     subgraph promptforge["packages/promptforge  (build-time)"]
         PF_TMPL["tool-descriptions/**/*.md.tmpl\nprompts/**/*.md.tmpl"]
-        PF_SNIP["snippets/\n  rendering/ · next-steps/\n  linking/ · gates/"]
+        PF_SNIP["snippets/\n  rendering/ · next-steps/ · linking/\n  gates/ · heuristics/ · iron-laws/\n  headers/ · server-instructions/"]
         PF_BUILD["pnpm prompts:build"]
     end
 

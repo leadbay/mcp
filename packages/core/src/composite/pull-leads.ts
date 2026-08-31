@@ -7,6 +7,8 @@ import type {
   LeadPayload,
 } from "../types.js";
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
+import { resolveLeadOrder } from "../lead-order.js";
+import { diagnoseEmptyLens } from "./_empty-lens-reason.js";
 
 import { leadbay_pull_leads as PULL_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -25,6 +27,11 @@ interface PullLeadsParams {
   count?: number;
   page?: number;
   verbose?: boolean;
+  // Sort order, `FIELD:ASC|DESC`. Omit to keep the Discover-tab ranking the
+  // RENDERING block tells the agent never to re-sort client-side — this is the
+  // only correct way to change it, because the backend sorts the whole lens
+  // and returns the requested page of THAT, not a reshuffle of one page.
+  order?: string;
 }
 
 interface QualificationSummary {
@@ -226,6 +233,11 @@ export const pullLeads: Tool<PullLeadsParams> = {
       },
       count: { type: "number", description: "Leads per page, max 50 (default 20)" },
       page: { type: "number", description: "Page number, 0-indexed (default 0)" },
+      order: {
+        type: "string",
+        description:
+          "Optional sort, FIELD:ASC|DESC (SCORE, NAME, SIZE, SECTOR, STATUS, CONTACT_COUNT, LAST_PROSPECTING_ACTION_AT, LIKED). Omit for the lens's own Discover ranking. An unknown value is rejected and the error lists every accepted order.",
+      },
       verbose: {
         type: "boolean",
         description:
@@ -273,6 +285,39 @@ export const pullLeads: Tool<PullLeadsParams> = {
         type: "boolean",
         description: "True if scoring is still running.",
       },
+      empty_reason: {
+        type: ["object", "null"],
+        description:
+          "Why this LENS holds zero leads. null whenever leads were returned, and null when this page is empty only because it is past the end of a non-empty lens. `retryable` is the field to route on: true ONLY on code=computing (pull again in ~30s). On every other code re-pulling and leadbay_extend_lens are both futile — a refill on a zero-candidate lens answers 'queued', consumes no quota and delivers nothing — so surface `message` to the user and offer leadbay_adjust_audience instead of retrying.",
+        properties: {
+          code: {
+            type: "string",
+            description:
+              "computing | no_candidates | no_new_leads | audience_too_narrow | unknown",
+          },
+          message: {
+            type: "string",
+            description: "The line to surface to the user.",
+          },
+          retryable: {
+            type: "boolean",
+            description:
+              "True only while the lens is still computing. False means no amount of re-pulling or extending can produce leads.",
+          },
+          criteria: {
+            type: "object",
+            description:
+              "The lens criteria in play — what the user would have to relax. Present when the lens carries any.",
+          },
+          narrow_locations: {
+            type: "array",
+            description:
+              "Include-locations that resolved to a city-scale area or smaller ({id, name, level}). On an empty lens, name these first: this is the fingerprint of a whole-country location that fell through to a same-named village (product#3951).",
+            items: { type: "object" },
+          },
+        },
+        required: ["code", "message", "retryable"],
+      },
       next_steps: {
         type: ["object", "null"],
         description:
@@ -314,9 +359,15 @@ export const pullLeads: Tool<PullLeadsParams> = {
     const count = Math.min(params.count ?? 20, 50);
     const verbose = params.verbose ?? false;
 
+    const resolvedOrder = resolveLeadOrder(params.order, "leadbay_pull_leads");
+    if (resolvedOrder.error) return resolvedOrder.error;
+    const orderQs = resolvedOrder.order
+      ? `&order=${encodeURIComponent(resolvedOrder.order)}`
+      : "";
+
     const res = await client.request<WishlistResponse>(
       "GET",
-      `/lenses/${lensId}/leads/wishlist?count=${count}&page=${page}&contacts=true`
+      `/lenses/${lensId}/leads/wishlist?count=${count}&page=${page}&contacts=true${orderQs}`
     );
 
     // Fan-out qualification reads. Concurrency is capped by the client's
@@ -420,6 +471,19 @@ export const pullLeads: Tool<PullLeadsParams> = {
       computingScores: res.computing_scores,
     });
 
+    // Why is it empty? Only asked when the LENS is empty, not merely this
+    // page: paging past the end of a healthy 160-lead lens also yields zero
+    // items, and calling that "audience_too_narrow" would be a lie. The
+    // diagnosis costs two reads, and neither the happy path nor an
+    // over-shot pager should pay them (product#3995).
+    const lensIsEmpty = leadCount === 0 && (res.pagination?.total ?? 0) === 0;
+    const emptyReason = lensIsEmpty
+      ? await diagnoseEmptyLens(client, lensId, {
+          wishlist: res.computing_wishlist,
+          scores: res.computing_scores,
+        })
+      : null;
+
     return withAgentMemoryMeta(client, {
       lens: { id: lensId },
       leads: res.items.map((lead) => ({
@@ -431,6 +495,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
       next_page: nextPage,
       computing_wishlist: res.computing_wishlist,
       computing_scores: res.computing_scores,
+      empty_reason: emptyReason,
       next_steps: nextSteps,
       _meta: {
         region: client.region,

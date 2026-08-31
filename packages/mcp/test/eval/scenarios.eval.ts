@@ -176,13 +176,28 @@ describe.skipIf(missing.length > 0)("eval: live scenarios", () => {
       if (noSpend) process.env.LEADBAY_EVAL_NO_PAID_CALLS = "1";
       else delete process.env.LEADBAY_EVAL_NO_PAID_CALLS;
 
+      // Armed BEFORE the session, not asserted after it. The forbidden-call
+      // check further down iterates calls that have already happened — on a
+      // live tenant with write tools enabled, that is an assertion about a
+      // mutation it failed to prevent. live-mcp-server.ts makes the listed
+      // tools throw before any HTTP, so the recorded call still fails the
+      // assertion below while the tenant stays untouched.
+      const forbidden = sc.mission.forbidden_calls ?? [];
+      if (forbidden.length > 0) {
+        process.env.LEADBAY_EVAL_FORBIDDEN_TOOLS = forbidden.join(",");
+      } else {
+        delete process.env.LEADBAY_EVAL_FORBIDDEN_TOOLS;
+      }
+
       const live = await runSessionLive({
         prompt: { name: sc.prompt, body: sc.mission.user_intent, args: sc.args ?? {} },
         systemPrompt: buildSystemPrompt(sc.prompt),
         turns: sc.mission.turns?.map((t) => t.prompt),
         transcript_dir,
         token: TOKEN,
-        region: process.env.LEADBAY_REGION ?? "us",
+        // No "us" fallback: see LiveSessionOptions.region. A custom base URL
+        // with no pin must stay unpinned so the client derives "custom".
+        region: process.env.LEADBAY_REGION,
       });
       const called = live.evidence.tool_calls.map((c) => c.name);
 

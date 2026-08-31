@@ -9,6 +9,12 @@ import type {
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
 import { reshapeWebFetchContent } from "./_web-fetch-helpers.js";
 import { resolveLocations } from "./_geo-helpers.js";
+import {
+  countryLocationStatus,
+  setFilterCarriesOtherScope,
+  detectCountryLocationsIn,
+  detectCountryLocationsInSetFilter,
+} from "./_country-guard.js";
 
 import { leadbay_scan_portfolio_signals as SCAN_PORTFOLIO_SIGNALS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -177,7 +183,7 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
       city: {
         type: "string",
         description:
-          "Free-text city / region to scope the Monitor portfolio before scanning (resolved via /geo/search, same as leadbay_pull_followups). Ignored when `leadIds` is given.",
+          "Free-text city / region to scope the Monitor portfolio before scanning (resolved via /geo/search, same as leadbay_pull_followups). Ignored when `leadIds` is given. NEVER a country name: this workspace serves exactly ONE country, so a whole-country ask means omitting `city` entirely.",
       },
       city_id: {
         type: "string",
@@ -187,7 +193,7 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
       set_filter: {
         type: "object",
         description:
-          "Optional Monitor FilterItem ({criteria: FilterCriterion[]}) to scope the portfolio before scanning. Persisted server-side then applied, mirroring leadbay_pull_followups. Ignored when `leadIds` is given.",
+          "Optional Monitor FilterItem ({criteria: FilterCriterion[]}) to scope the portfolio before scanning. Persisted server-side then applied, mirroring leadbay_pull_followups. Ignored when `leadIds` is given. A `location_ids` criterion must carry sub-country admin areas only — a country name here is rejected with COUNTRY_LEVEL_LOCATION before anything is persisted.",
         properties: {
           criteria: { type: "array", items: { type: "object" } },
         },
@@ -238,11 +244,17 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
       status: {
         type: "string",
         description:
-          "`ambiguous_locations` when a passed `city` matched multiple admin_areas; pick an id from `location_ambiguities` and re-call with `city_id`. Absent on the happy path.",
+          "`ambiguous_locations` when a passed `city` matched multiple admin_areas; pick an id from `location_ambiguities` and re-call with `city_id`. `country_level_location` when `city`, `city_id` or a `set_filter` `location_ids` criterion carried a country name — nothing was scanned and no filter was persisted. Absent on the happy path.",
       },
       location_ambiguities: {
         type: "array",
         description: "Only present when status === 'ambiguous_locations'.",
+        items: { type: "object" },
+      },
+      country_locations: {
+        type: "array",
+        description:
+          "Per offending value: {value, param, kind, country, axis, kept}. Only present when `status === 'country_level_location'`. The recovery BRANCHES on `country_locations[].axis` and `[].kind`; `hint` states the one for THIS call — follow it verbatim. Dropping the argument is NOT the general answer: on an `exclude` axis it returns the very companies the user asked to remove, and for a `foreign_country` an unfiltered result is this workspace's own leads, which answer a different question. Never retry with another spelling or a nearby city.",
         items: { type: "object" },
       },
       _meta: {
@@ -282,6 +294,66 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
       if (params.leadIds.length > maxLeads) truncatedAt = maxLeads;
       portfolio = sliced.map((id) => ({ id, name: null, location: null }));
     } else {
+      // A country in `city` is refused before any request — it would resolve
+      // to a same-named commune and silently scan one village (product#3951).
+      // Deliberately inside this branch: when `leadIds` is supplied the schema
+      // documents `city` as ignored, so failing on it would be a false alarm.
+      // Unwrapped by withAgentMemoryMeta, which would cost a resolveMe() call.
+      // Includes `set_filter`: geography can arrive as a raw `location_ids`
+      // criterion that never touches `city`/`city_id`, and that criterion would
+      // be persisted server-side by the store-then-apply POST below — scanning
+      // a village, or falling back to a stale filter, either way silently.
+      const countryHits = [
+        ...detectCountryLocationsIn(
+          [
+            { input: params.city, param: "city" },
+            { input: params.city_id, param: "city_id" },
+          ],
+          client.region
+        ),
+        ...detectCountryLocationsInSetFilter(
+          params.set_filter,
+          "set_filter",
+          client.region
+        ),
+      ];
+      if (countryHits.length > 0) {
+        // Same split as pull_followups. Where the caller asked for OTHER
+        // criteria, the shared "omit the locations" recovery contradicts the
+        // sibling note beside it, and acting on the omission sends a filter that
+        // either drops those criteria or fails validation — and a failed POST
+        // here falls back to an UNfiltered scan, so a requested date-scoped scan
+        // silently becomes an all-dates one.
+        //
+        // Unlike pull_followups there is no stale-filter half to add when
+        // nothing else was requested: this tool sends `filtered` only when it
+        // stored the filter itself, so dropping the geo argument really does
+        // scan unfiltered. That case needs no caveat at all.
+        const survivingCriteria =
+          setFilterCarriesOtherScope(params.set_filter, client.region) ||
+          countryHits.some((hit) => hit.kept.length > 0);
+        return {
+          ...countryLocationStatus(
+            countryHits,
+            client.region,
+            "read",
+            // Same flag that picks the caveat below, so the hint cannot claim
+            // the result "covers everything" while the caveat forbids saying
+            // exactly that.
+            survivingCriteria,
+            survivingCriteria
+              ? "Re-call with `set_filter` carrying the SURVIVING criteria and the country criterion removed — do NOT send an empty `criteria` array and do NOT drop the other criteria, which are part of the request. A `set_filter` that fails validation is not a no-op here: the failed POST makes this tool scan UNFILTERED, so the criteria you were asked to keep would silently vanish from the scan. Describe the result by the criteria that remain, never as covering everything."
+              : undefined
+          ),
+          matched: [],
+          not_researched: [],
+          scanned_count: 0,
+          matched_count: 0,
+          quota_exceeded: false,
+          _meta: { region: client.region },
+        };
+      }
+
       // Geo / filter scope, then paginate /monitor (same store-then-apply
       // mechanism as leadbay_pull_followups).
       let effectiveSetFilter: MonitorFilterItem | undefined = params.set_filter;

@@ -4,16 +4,16 @@ Markdown table with FOUR columns, sorted by `last_monitor_action_at` desc. **NO 
 
 **Active-filters line** ABOVE the table, ` · `-separated chips from `active_filters.criteria`:
 
-| Criterion type        | Chip                       |
-|-----------------------|----------------------------|
-| `location_ids`        | 📍 \<resolved name\>       |
-| `sector_ids`          | 🏷 \<sector name\>         |
-| `keywords`            | 🔍 \<keyword\>             |
-| `size`                | 👥 \<min\>–\<max\>         |
-| `last_action_date`    | 📅 \<window\>              |
-| `last_action`         | 🎯 \<action types\>        |
-| `liked` / `yc`        | ⭐ liked / 🏅 YC           |
-| `custom_field*`       | ⚙ \<field name\>          |
+| Criterion type | Chip |
+| --- | --- |
+| `location_ids` | 📍 \<resolved name\> |
+| `sector_ids` | 🏷 \<sector name\> |
+| `keywords` | 🔍 \<keyword\> |
+| `size` | 👥 \<min\>–\<max\> |
+| `last_action_date` | 📅 \<window\> |
+| `last_action` | 🎯 \<action types\> |
+| `liked` / `yc` | ⭐ liked / 🏅 YC |
+| `custom_field*` | ⚙ \<field name\> |
 
 Render `*No filters applied.*` when empty.
 
