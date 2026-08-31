@@ -12,6 +12,28 @@ annotations:
 ---
 Get contacts for a lead, including enriched email and phone data. Returns both organization contacts and enrichable contacts with IDs, tagged with `source:'org'|'paid'`.
 
-{{include:headers/tool-when-to-use}} to check enrichment status (`contact.enrichment.done`) on individual leads after a bulk enrichment was launched, or to find the `contact_id` needed by leadbay_enrich_contacts.
+{{include:headers/tool-when-to-use}} to check enrichment status (`contact.enrichment`) on individual leads after a bulk enrichment was launched, or to find the `contact_id` needed by leadbay_enrich_contacts.
 
 {{include:headers/tool-when-not-to-use}} as a substitute for leadbay_research_lead_by_id, which already includes enriched contacts in its return.
+
+## Reading `contact.enrichment`
+
+`enrichment` is the per-contact reveal record. Four states. Read `done` and `credits_used` **together** — neither is a verdict on its own.
+
+| `enrichment` | `done` | `credits_used` | Meaning | What to do |
+|---|---|---|---|---|
+| missing / `null` | — | — | Never requested. | Enrichable — launch it. |
+| present | `false` | any | Reservation in flight. | Poll. Do NOT re-launch. |
+| present | `true` | `0` | Settled, found nothing. | **Terminal. Stop.** |
+| present | `true` | `> 0` | Resolved. | The channel is on the org-source twin, not here — see below. |
+
+**`done: true` with `credits_used: 0` is terminal for that contact.** The enrichment completed and the provider returned nothing. Do not re-attempt it on a later run — the answer will not change. Roughly 29% of all enrichments land here, so it is an ordinary outcome, not an anomaly. Tell the user plainly that there is no reachable contact rather than reporting it as still pending. The one exception: a launch that errored in this same session settles its reservation as a zero-credit failure, so retry that one once, then treat it as terminal.
+
+Two ways to misread the pair:
+
+- **`credits_used: 0` alone means nothing.** An in-flight reservation also reports `0` (with `done: false`). Gate every read of `credits_used` on `done: true`.
+- **An absent `credits_used` is unknown, not zero.** The field is optional. When it is missing you cannot conclude terminal-empty — only an explicit `0` alongside `done: true` means "we looked and found nothing".
+
+A missing or `null` `enrichment` is not the same as `done: false`. It means the contact was never requested, so `enrichment?.done` reading falsy does NOT mean a reveal is running. Treat missing/`null` as enrichable and `done: false` as in-flight.
+
+**Where a resolved channel lands.** A `source:'paid'` contact keeps its `enrichment` record but never carries the revealed `email` / `phone_number` itself — the reveal materializes a `source:'org'` twin of the same person, and the channel is on that entry. So a paid contact reading `done: true, credits_used: 1` with a null `email` is RESOLVED, not failed: find the org-source entry with the same name and read the channel there. Judge success by the channel you can actually see across both entries, never by `enrichment` on the paid record alone.
