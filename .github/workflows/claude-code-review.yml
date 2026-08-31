@@ -1,0 +1,135 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: pr-${{ github.event.number }}-claude-code-review
+  cancel-in-progress: true
+
+jobs:
+  # This repo is PUBLIC. GitHub never passes secrets to a `pull_request` run
+  # from a fork, so a fork PR would start this job and then fail on an empty
+  # CLAUDE_CODE_OAUTH_TOKEN. Skip forks outright rather than show a red X.
+  claude-review:
+    if: >-
+      github.event.pull_request.draft == false
+      && github.event.pull_request.user.login != 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find last reviewed commit
+        id: last-review
+        if: github.event.action == 'synchronize'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LAST_REVIEW=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews \
+            --jq '[.[] | select(.user.login == "claude[bot]")] | last')
+          echo "base_commit=$(echo "$LAST_REVIEW" | jq -r '.commit_id // ""')" >> $GITHUB_OUTPUT
+          echo "last_event=$(echo "$LAST_REVIEW" | jq -r '.state // ""')" >> $GITHUB_OUTPUT
+          echo "last_review_id=$(echo "$LAST_REVIEW" | jq -r '.id // ""')" >> $GITHUB_OUTPUT
+
+      - name: Run Claude Code Review (initial)
+        if: github.event.action != 'synchronize' || steps.last-review.outputs.base_commit == ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this pull request. The PR branch is already checked out.
+
+            Use `gh pr diff ${{ github.event.pull_request.number }}` to see changes and `gh pr view ${{ github.event.pull_request.number }}` for context.
+            Read `CLAUDE.md` — its `## Review guidelines` section is the canonical P0/P1 rubric for this repo. `WORKFLOWS.md` is normative for user-story rows.
+
+            Focus on: bugs, logic errors, security issues, CLAUDE.md § Review guidelines compliance.
+            Only flag high-confidence, significant issues — not nitpicks or style concerns.
+
+            Do NOT raise findings about `packages/mcp/package.json` / `server.json` version numbers being behind `main` — the `pr-sync-on-release` workflow owns that reconciliation. A stale version on an open PR is expected, not a defect.
+
+            Be concise: keep all comments short and to the point.
+            The overall body and inline comments must not repeat each other — the body should be a brief summary of the review as a whole, and each inline comment should cover its specific issue only.
+
+            Submit a single GitHub review using the API:
+            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews \
+              --method POST \
+              --field body="<overall summary>" \
+              --field event="COMMENT" \
+              --field "comments[][path]=<file>" \
+              --field "comments[][line]=<line number>" \
+              --field "comments[][body]=<issue description>"
+
+            Use event=REQUEST_CHANGES if there are critical issues, COMMENT otherwise.
+            Omit the comments array if there are no specific line-level issues.
+            Each inline comment should reference a line from the diff (right side / new file).
+          claude_args: '--allowedTools mcp__github__*,mcp__github_inline_comment__*,Bash(gh pr:*),Bash(gh api:*),Read,Glob,Grep'
+          show_full_output: 'true'
+
+      - name: Run Claude Code Review (follow-up)
+        if: github.event.action == 'synchronize' && steps.last-review.outputs.base_commit != ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            This is a FOLLOW-UP review. A previous review was already submitted at commit ${{ steps.last-review.outputs.base_commit }}.
+
+            Only review the NEW changes pushed since the last review:
+            git diff ${{ steps.last-review.outputs.base_commit }}..${{ github.event.pull_request.head.sha }}
+
+            Use `gh pr view ${{ github.event.pull_request.number }}` for PR context.
+            Read `CLAUDE.md` — its `## Review guidelines` section is the canonical P0/P1 rubric for this repo. `WORKFLOWS.md` is normative for user-story rows.
+
+            Focus ONLY on new code introduced in this diff: bugs, logic errors, security issues, CLAUDE.md § Review guidelines compliance.
+            Do NOT re-review or re-comment on code already present before commit ${{ steps.last-review.outputs.base_commit }}.
+            Only flag high-confidence, significant issues — not nitpicks or style concerns.
+
+            Do NOT raise findings about `packages/mcp/package.json` / `server.json` version numbers being behind `main` — the `pr-sync-on-release` workflow owns that reconciliation. A stale version on an open PR is expected, not a defect.
+
+            Be concise: keep all comments short and to the point.
+            The overall body and inline comments must not repeat each other — the body should be a brief summary of the review as a whole, and each inline comment should cover its specific issue only.
+
+            Previous review state: ${{ steps.last-review.outputs.last_event }}
+            Previous review ID: ${{ steps.last-review.outputs.last_review_id }}
+
+            If the previous review was not a CHANGES_REQUESTED and there are no new significant issues, do not post anything — silence is preferred over a pointless "looks good" comment.
+            If the previous review was a CHANGES_REQUESTED:
+            - First, fetch its content to know what issues were raised:
+              gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews/${{ steps.last-review.outputs.last_review_id }}
+              Also fetch its inline comments:
+              gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews/${{ steps.last-review.outputs.last_review_id }}/comments
+            - If the issues it raised have been addressed, dismiss that review using:
+              gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews/${{ steps.last-review.outputs.last_review_id }}/dismissals --method PUT --field message="Issues addressed."
+              Do not post a new review in this case.
+            - If the issues have NOT been addressed, post a new REQUEST_CHANGES review noting what is still outstanding.
+
+            Submit a single GitHub review using the API:
+            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews \
+              --method POST \
+              --field body="<overall summary>" \
+              --field event="COMMENT" \
+              --field "comments[][path]=<file>" \
+              --field "comments[][line]=<line number>" \
+              --field "comments[][body]=<issue description>"
+
+            Use event=REQUEST_CHANGES if there are critical issues, COMMENT otherwise.
+            Omit the comments array if there are no specific line-level issues.
+            Each inline comment should reference a line from the diff (right side / new file).
+          claude_args: '--allowedTools mcp__github__*,mcp__github_inline_comment__*,Bash(gh pr:*),Bash(gh api:*),Bash(git diff:*),Read,Glob,Grep'
+          show_full_output: 'true'

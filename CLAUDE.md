@@ -285,6 +285,47 @@ shared snippet to any of the three needs a matching trim in the same commit.
 `pnpm -r test` and `pnpm -r typecheck` must be green on every PR.
 Before committing, run the full workspace pass.
 
+## Review guidelines
+
+The Claude review bot
+(`.github/workflows/claude-code-review.yml`) reads this section. Flag the
+following as high-priority (P0/P1) issues:
+
+- **Never hand-edit generated files.** `*.generated.*` under
+  `packages/core/src/` and `packages/mcp/src/` is emitted by
+  `@leadbay/promptforge` — point at the `.md.tmpl` template instead. See
+  *Tool descriptions are generated, not hand-edited* above.
+
+- **Do not re-introduce `Tool.ui` bindings or MCP-Apps iframe widgets.**
+  Removed in 0.10.0-dev.12. See *Rendering surface* above.
+
+- **Respect the tool-description char budget** (~16k soft, 17k hard). Never
+  "fix" a failing audit by disabling or weakening it; trim the template body.
+  See *Tool description budget* above.
+
+- **New user-facing tools must be wired completely** — `routing` +
+  `rendering_hint` frontmatter (plus `next_steps` when the tool has a NEXT
+  STEPS table), added to `TOOLS_WITH_ROUTING` in
+  `packages/mcp/test/audit/routing-block.test.ts`, ≥2 positive AND ≥2 negative
+  routing examples, every `route_to` resolving to a registered tool name.
+
+- **`WORKFLOWS.md` is normative.** A new user story needs a row, and every
+  backtick-wrapped `leadbay_*` identifier must resolve.
+
+- **Tests.** New tests go in **new** files — do not modify existing test
+  files. Flag unit tests that make real network calls: the `node:https`
+  harness throws on any undeclared endpoint, so tests must declare their HTTP
+  responses via `mockHttp([...])`.
+
+- **Secrets & credentials.** Flag secrets or PII written to logs. Do not
+  rotate the expendable test-account credentials defensively.
+
+- **Version sync on release is automated — don't tell authors to hand-match
+  it.** When a version bump lands on `main`, the `pr-sync-on-release` workflow
+  renumbers `packages/mcp/{package.json,server.json}` on the open PRs and
+  flags a CHANGELOG collision with the `needs-manual-rebase` label. A stale
+  version number vs. `main` is expected on an open PR and is not a defect.
+
 ## Live exploration when the user asks
 
 When the user says "actually fetch", "probe the API", "query live", run
