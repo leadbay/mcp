@@ -1,6 +1,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, MonitorFilterItem } from "../types.js";
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
+import { resolveLeadOrder } from "../lead-order.js";
 
 import { leadbay_pull_followups as PULL_FOLLOWUPS_DESCRIPTION } from "../tool-descriptions.generated.js";
 import { resolveLocations } from "./_geo-helpers.js";
@@ -35,6 +36,10 @@ interface PullFollowupsParams {
   liked?: boolean;
   count?: number;
   page?: number;
+  // Sort order, `FIELD:ASC|DESC`. Omit to keep the backend's default ranking
+  // (the order the Monitor tab shows), which is what a rep working top-down
+  // expects — only pass this when the user asks for a different sort.
+  order?: string;
   // Modify-filter mode: when set, the composite first POSTs this filter to
   // `/monitor/filter` (server-persisted), then re-pulls `/monitor` with
   // `?filtered=true`. Mirrors the app's store-then-apply mechanism.
@@ -121,6 +126,11 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
       count: {
         type: "number",
         description: "Leads per page, max 200 (default 20).",
+      },
+      order: {
+        type: "string",
+        description:
+          "Optional sort, FIELD:ASC|DESC (SCORE, NAME, SIZE, SECTOR, STATUS, CONTACT_COUNT, LAST_PROSPECTING_ACTION_AT, LIKED). Omit for the Monitor's own ranking. An unknown value is rejected and the error lists every accepted order.",
       },
       page: {
         type: "number",
@@ -332,12 +342,19 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
 
     // Fetch the stored filter (so we can surface it as `active_filters`) and
     // the Monitor view in parallel.
+    // Canonicalize before validating: the enum is uppercase, but a caller
+    // typing "name:asc" means the same thing.
+    const resolved = resolveLeadOrder(params.order, "leadbay_pull_followups");
+    if (resolved.error) return resolved.error;
+    const order = resolved.order;
+
     const qs = new URLSearchParams({
       personal: String(personal),
       liked: String(liked),
       filtered: String(filtered),
       count: String(count),
       page: String(page),
+      ...(order ? { order } : {}),
     }).toString();
 
     const [filterR, monitorR] = await Promise.allSettled([
