@@ -101,14 +101,7 @@ const CATALOG: CatalogEntry[] = [
   {
     name: "leadbay_new_leads",
     description: PROMPT_META.leadbay_new_leads.short_description,
-    arguments: [
-      {
-        name: "need",
-        description:
-          "What you're looking for, in your own words (e.g. '10 gyms around Dallas that would buy modular flooring, with phone numbers'). Optional — the session starts by asking when absent.",
-        required: false,
-      },
-    ],
+    arguments: promptArguments("leadbay_new_leads"),
     render: (args) => [
       userMessage(
         substitutePlaceholders(leadbay_new_leads, {
