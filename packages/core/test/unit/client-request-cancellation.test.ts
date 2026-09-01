@@ -15,6 +15,11 @@
 //
 // `runWithRequestSignal` makes the signal ambient, so all 174 existing
 // `client.request(...)` call sites inherit it without an argument.
+//
+// Mid-flight abort is GET-ONLY, reusing the predicate httpsRequestWithRetry
+// already applies to replay. A write may have committed server-side before we
+// destroyed the socket, so reporting CANCELLED on it makes the agent tell the
+// user their note wasn't sent when it IS in the CRM, or write it twice.
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { vi } from "vitest";
@@ -181,6 +186,46 @@ describe("cancellation reaches the socket", () => {
     await expect(
       newClient().request<{ id: string }>("GET", "/users/me")
     ).resolves.toMatchObject({ id: "u1" });
+  });
+
+  it("an in-flight WRITE is NOT aborted — it may already have committed", async () => {
+    h.state.hang = true;
+    const ac = new AbortController();
+    const client = newClient();
+
+    let settled = false;
+    void runWithRequestSignal(ac.signal, () =>
+      client
+        .requestVoid("POST", "/leads/l1/notes", { note: "called them" })
+        .then(
+          () => (settled = true),
+          () => (settled = true)
+        )
+    );
+    await new Promise((r) => setTimeout(r, 10));
+
+    ac.abort();
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Still running, socket intact, slot still held — deliberately. Telling the
+    // agent CANCELLED here would misreport a note that may already be written.
+    expect(settled).toBe(false);
+    expect(h.state.calls[0].destroyed).toBe(false);
+    expect(client._semaphoreState.active).toBe(1);
+  });
+
+  it("a write cancelled BEFORE it is sent is still refused — nothing committed yet", async () => {
+    const ac = new AbortController();
+    ac.abort();
+
+    const err: any = await runWithRequestSignal(ac.signal, () =>
+      newClient()
+        .requestVoid("POST", "/leads/l1/notes", { note: "x" })
+        .catch((e) => e)
+    );
+
+    expect(err.code).toBe("CANCELLED");
+    expect(h.state.calls).toHaveLength(0);
   });
 
   it("a settled request leaves no abort listener behind on a long-lived signal", async () => {

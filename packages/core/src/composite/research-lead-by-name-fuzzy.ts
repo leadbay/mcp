@@ -15,10 +15,13 @@ import {
 
 import { leadbay_research_lead_by_name_fuzzy as RESEARCH_LEAD_BY_NAME_FUZZY_DESCRIPTION } from "../tool-descriptions.generated.js";
 
-// The registry resolver answers in 100-650 ms in every shape we measured, but
-// `client.request` sets no socket deadline by default, so an upstream stall
-// would hang the whole tool call indefinitely. Bound it well above the
-// observed ceiling and degrade to a normal miss instead.
+// The registry resolver answers in 100-650 ms in every shape we measured,
+// EXCEPT one: a domain-shaped string in `name` costs a hard ~61.7 s in the
+// backend's fuzzy matcher before returning a miss. `client.request` now applies
+// a 600 s backstop of its own (product#4003), but that is resource hygiene for
+// an orphaned socket, not a latency budget for this call — waiting a minute to
+// be told "no match" is a broken tool. Bound it well above the observed ceiling
+// and degrade to a normal miss instead.
 const RESOLVE_TIMEOUT_MS = 10_000;
 
 // How many ambiguous candidates we hydrate into a user-presentable choice.

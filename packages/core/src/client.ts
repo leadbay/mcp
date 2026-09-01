@@ -158,9 +158,22 @@ function httpsRequest(
 ): Promise<HttpResult> {
   const deadlineMs = timeoutMs ?? defaultTimeoutMs();
   const abortSignal = signal ?? requestSignalStore.getStore();
+  // Only a GET is safe to abort MID-FLIGHT. This is the same predicate
+  // httpsRequestWithRetry already uses to decide what may be replayed, and for
+  // the mirror-image reason: a write may have committed server-side before we
+  // destroyed the socket. Reporting CANCELLED on a note that IS in the CRM makes
+  // the agent tell the user it wasn't sent, or write it a second time — worse
+  // than the stall this whole change exists to fix. A read has no side effect to
+  // misreport, so aborting one is free.
+  //
+  // An in-flight write therefore runs to completion and releases its slot then;
+  // the backstop still bounds it. Writes are a small minority of calls, so this
+  // costs almost nothing against the deadlock it protects.
+  const abortSafe = method.toUpperCase() === "GET";
   return new Promise((resolve, reject) => {
     const start = Date.now();
-    // Already cancelled before we opened a socket — don't open one.
+    // Already cancelled BEFORE we opened a socket — nothing has been sent, so
+    // there is no committed write to misreport. Safe for every method.
     if (abortSignal?.aborted) {
       reject(makeCancelledError(method, url));
       return;
@@ -220,7 +233,7 @@ function httpsRequest(
       (deadline as unknown as { unref?: () => void }).unref?.();
     }
 
-    if (abortSignal) {
+    if (abortSignal && abortSafe) {
       onAbort = () => {
         // Same destroy() as the deadline path: abort the request and free the
         // socket. The caller's `finally` then releases the concurrency slot, so

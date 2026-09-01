@@ -15,6 +15,9 @@
 - **Long jobs are untouched.** Enrichment, bulk qualification and imports launch
   work and poll for it, and they keep their own budgets. Nothing now decides on
   Leadbay's behalf how long its work is allowed to take.
+- **Cancelling never loses track of something you already saved.** Only reads
+  are dropped mid-flight. A note or an import already on its way to Leadbay is
+  allowed to finish, so you are never told it wasn't saved when it was.
 - **A last-resort backstop closes a connection nobody is waiting for any more**
   after 10 minutes — longer than the longest job any tool runs — so an orphaned
   request can't hold a slot forever. `LEADBAY_TIMEOUT_MS` changes it; `0` turns
