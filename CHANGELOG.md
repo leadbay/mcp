@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.33.1 — 2026-09-02 — A slow import is not a broken one
+
+- **A slow import no longer gets reported as failed.** The recent fix taught the
+  assistant to hand back a receipt instead of an error when an import takes a
+  while. One case was still wrong: if the import stayed slow for a long time,
+  the assistant would eventually call it failed, even though Leadbay was still
+  working on it and would have finished. It now keeps saying it's in progress.
+
 ## 0.33.0 — 2026-09-01 — Your assistant remembers; Leadbay stops pretending to
 
 - **Leadbay no longer keeps its own notebook about you.** The three

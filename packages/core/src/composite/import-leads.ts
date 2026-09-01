@@ -1874,7 +1874,16 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
 //
 // Deliberately NOT tracker-backed: the hosted MCP has no BulkTracker, and the
 // caller's resumable handle is the importId either way.
-const RESUME_COMMIT_BUDGET_MS = 10 * 60_000;
+const DEFAULT_RESUME_COMMIT_BUDGET_MS = 10 * 60_000;
+let resumeCommitBudgetMs = DEFAULT_RESUME_COMMIT_BUDGET_MS;
+
+// Test-only seam, mirroring `clearCommitFailures`. The finisher's window is
+// deliberately NOT caller-controllable — a caller shrinking it is the bug this
+// budget exists to prevent — so there is no parameter to reach it through, and
+// a ten-minute wait is not a test.
+export function __setResumeCommitBudgetMsForTests(ms: number | null): void {
+  resumeCommitBudgetMs = ms ?? DEFAULT_RESUME_COMMIT_BUDGET_MS;
+}
 
 function resumeParkedUpload(
   client: LeadbayClient,
@@ -1886,7 +1895,22 @@ function resumeParkedUpload(
   const { importId } = upload;
   setTimeout(() => {
     void (async () => {
-      await pollPreprocess(client, importId, RESUME_COMMIT_BUDGET_MS, bgCtx, undefined);
+      // A budget timeout HERE is not a rejection — preprocess is merely still
+      // slow, and the backend may yet finish on its own. Only a refusal from
+      // `commitMappings` is terminal, so keep the two apart: the timeout
+      // leaves the status at `committing`, which is the honest reading, while
+      // a rejection is recorded and reported as `failed`.
+      try {
+        await pollPreprocess(client, importId, resumeCommitBudgetMs, bgCtx, undefined);
+      } catch (err: any) {
+        if (err instanceof ImportPhaseTimeout) {
+          bgCtx.logger?.warn?.(
+            `import-leads: parked upload ${importId} still preprocessing after ${resumeCommitBudgetMs}ms; leaving it to the backend`
+          );
+          return;
+        }
+        throw err;
+      }
       await commitMappings(client, importId, mappings, bgCtx);
     })().then(
       () =>
