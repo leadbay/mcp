@@ -4695,7 +4695,7 @@ Trigger phrases: "update this contact", "fix this contact's title", "change thei
 
 Do NOT use for: "add a new contact to this company" → \`leadbay_add_contact\`; "remove / delete this contact" → \`leadbay_remove_contact\`; "get email/phone for a contact (enrichment)" → \`leadbay_enrich_titles\`; "fix an enriched contact's details" → \`leadbay_add_contact\`.
 
-Prefer when: user wants to change details on a contact that is in their own directory (\`source: "org"\`) — pass that contact's own \`contact_id\` plus first_name + last_name (required) and the fields to change
+Prefer when: user wants to change details on a contact that is in their own directory (\`source: "org"\`) — read the contact first, then pass its \`contact_id\` plus EVERY field, because an omitted field is deleted
 
 Examples that SHOULD invoke this tool:
 - "Update Jane's title to SVP Engineering."
@@ -4728,11 +4728,23 @@ Pass the contact's **own** \`contact_id\` — **not** the parent lead id.
 
 A 404 from this tool almost always means a \`"paid"\` id was passed. Re-read the contact, check \`source\`, and do not retry the same id.
 
-**\`first_name\` + \`last_name\` are required even on an edit.** The backend validates the full contact identity and rejects a partial body (\`invalid contact\`). So pass the contact's *current* first/last name even when you're only changing the title — read the current values via \`leadbay_research_lead_by_id\` first if you don't have them.
+## PASS EVERY FIELD, ALWAYS — a field you leave out is DELETED
+
+This endpoint **replaces** the contact. It does not patch it. Any field absent from your call is erased, silently, and the call still returns \`updated: true\`.
+
+Verified in production: sending only \`contact_id\` + \`first_name\` + \`last_name\` + \`job_title\` — the contact's own current values, changing nothing — **deleted that contact's email**. The lead stopped being contactable.
+
+So, every time, even to change one field:
+
+1. Read the contact first with \`leadbay_research_lead_by_id\` (or \`leadbay_campaign_call_sheet\`).
+2. Send **all** of \`first_name\`, \`last_name\`, \`job_title\`, \`email\`, \`phone_number\`, \`linkedin_page\` — current value for the ones you are not changing, new value for the one you are.
+3. Only pass \`null\` for a field when the user actually asked you to remove it.
+
+If you do not have the contact's current values, **do not guess and do not omit** — read them first. \`first_name\` and \`last_name\` are additionally rejected outright when missing (\`invalid contact\`), which is the one case that fails loudly; every other field fails silently by disappearing.
 
 Backend: \`POST /contacts/{contact_id}/update\` (snake_case body) → 200 with the updated contact. Edits in place (same id). Camel-case bodies are rejected.
 
-Returns \`{ updated: true, contact_id, contact: { id, first_name, last_name, job_title, linkedin_page, email, phone_number } }\`.
+Returns \`{ updated: true, contact_id, contact: { id, first_name, last_name, job_title, linkedin_page, email, phone_number } }\`. **Compare that echo against what you meant to send** — a field missing from it was deleted by this call.
 
 Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw).
 `;

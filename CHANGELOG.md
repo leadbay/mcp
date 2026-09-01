@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.33.2 — 2026-09-02 — Correcting a contact no longer wipes their email
+
+- **Fixing one detail on a contact used to delete the others.** Asking the
+  assistant to correct someone's job title erased their email and phone,
+  silently, and reported success. Leadbay replaces the whole contact on an edit,
+  so anything the assistant did not send was removed. The assistant is now told
+  to send every field, every time.
+
 ## 0.33.1 — 2026-09-02 — A slow import is not a broken one
 
 - **A slow import no longer gets reported as failed.** The recent fix taught the

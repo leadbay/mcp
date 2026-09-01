@@ -76,19 +76,19 @@ export const updateContact: Tool<UpdateContactParams, UpdateContactResult> = {
       // new value. execute forwards null verbatim; the backend accepts it.
       job_title: {
         type: ["string", "null"],
-        description: "Contact job title. Pass null to clear it.",
+        description: "Contact job title. REQUIRED IN PRACTICE: omitting this field DELETES it — this endpoint replaces the contact rather than patching it. Always send the current value. Pass null only to deliberately clear it.",
       },
       linkedin_page: {
         type: ["string", "null"],
-        description: "Contact LinkedIn URL. Pass null to clear it.",
+        description: "Contact LinkedIn URL. REQUIRED IN PRACTICE: omitting this field DELETES it — this endpoint replaces the contact rather than patching it. Always send the current value. Pass null only to deliberately clear it.",
       },
       email: {
         type: ["string", "null"],
-        description: "Contact email. Pass null to clear it.",
+        description: "Contact email. REQUIRED IN PRACTICE: omitting this field DELETES it — this endpoint replaces the contact rather than patching it. Always send the current value. Pass null only to deliberately clear it.",
       },
       phone_number: {
         type: ["string", "null"],
-        description: "Contact phone (free-form). Pass null to clear it.",
+        description: "Contact phone (free-form). REQUIRED IN PRACTICE: omitting this field DELETES it — this endpoint replaces the contact rather than patching it. Always send the current value. Pass null only to deliberately clear it.",
       },
     },
     required: ["contact_id", "first_name", "last_name"],
