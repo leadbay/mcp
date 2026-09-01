@@ -141,9 +141,13 @@ async function fetchReconciledRecords(
       for (const id of res?.lead_ids ?? []) canonicalLeadIds.add(id);
     } catch (err: any) {
       if (isInProgress(err)) throw new ImportNotReady();
-      // 404 on a backend that predates the endpoint: fall back to records-only.
+      // 404 is the one benign case: a backend predating the endpoint. Anything
+      // else (500, auth, network) means the canonical set is unknown, and a
+      // records-only `result` would silently omit whatever /leads would have
+      // added. Fail the reconciliation instead — the caller still gets status.
+      if (err?.code !== "NOT_FOUND" && err?._meta?.http_status !== 404) throw err;
       ctx?.logger?.warn?.(
-        `import-status: /imports/${importId}/leads unavailable (${err?.code ?? err?.message ?? "unknown"}) — using records only`
+        `import-status: /imports/${importId}/leads not available on this backend (404) — using records only`
       );
     }
   }
@@ -178,22 +182,31 @@ async function fetchReconciledRecords(
       }
     }
   }
-  const { leads, not_imported, pending } = reconcileRecords(all);
+  const { leads, not_imported, pending, distinct, pendingLeadIds } =
+    reconcileRecords(all);
 
-  // Union the canonical ids over the annotated ones. Anything /leads knows
-  // about that no record row exposed is still reported, id only.
-  const annotated = new Map(leads.map((l) => [l.leadId, l]));
+  // Append the canonical ids no record row exposed. Records-mode imports
+  // deliberately let several rows target one lead (separate contacts on the
+  // same company), so keep EVERY reconciled row — keying a map by leadId here
+  // would collapse them and lose the per-row rowId/domain the caller needs.
+  const seenLeadIds = new Set(leads.map((l) => l.leadId));
+  const merged = [...leads];
   for (const id of canonicalLeadIds) {
-    if (!annotated.has(id)) annotated.set(id, { leadId: id, name: null });
+    if (seenLeadIds.has(id)) continue;
+    // A lead id belonging to a record that is still MATCHING / IMPORTING is
+    // not an answer yet. `reconcileRecords` deliberately held it back; adding
+    // it here as an id-only lead would undo that.
+    if (pendingLeadIds.has(id)) continue;
+    merged.push({ leadId: id, name: null });
   }
 
   return {
-    leads: [...annotated.values()],
+    leads: merged,
     not_imported,
     // A snapshot short of the declared row count is not final — see
-    // `settlingDeficit`. Counting only the rows we could see would let a
-    // partial snapshot read as a complete answer.
-    still_settling: pending + settlingDeficit(declaredTotal, all.length),
+    // `settlingDeficit`. Measured on DISTINCT rows: `all.length` counts a
+    // re-paged row twice and would mask a genuine shortfall.
+    still_settling: pending + settlingDeficit(declaredTotal, distinct),
   };
 }
 

@@ -187,6 +187,14 @@ export interface ReconciledNotImported {
 export interface ReconciledRecords {
   leads: ReconciledLead[];
   not_imported: ReconciledNotImported[];
+  // Rows actually considered, AFTER the MCP_ROW_ID dedupe below. The raw
+  // fetched length would over-count a re-page and hide a genuine shortfall
+  // from `settlingDeficit`.
+  distinct: number;
+  // Lead ids carried by records that are NOT yet terminal. The wizard can
+  // still re-match these, so a caller unioning in another source of lead ids
+  // must not let them back in through the side door.
+  pendingLeadIds: Set<string>;
   // Records the wizard is still working on. They are deliberately in NEITHER
   // bucket: `import-leads`'s reconciler can call an unresolved record an
   // `internal_error` because it only runs after the records settled, but a
@@ -212,7 +220,9 @@ export function settlingDeficit(declaredTotal: number, fetched: number): number 
 export function reconcileRecords(records: ImportRecordPayload[]): ReconciledRecords {
   const leads: ReconciledLead[] = [];
   const not_imported: ReconciledNotImported[] = [];
+  const pendingLeadIds = new Set<string>();
   let pending = 0;
+  let distinct = 0;
   const seenRowIds = new Set<string>();
 
   for (const rec of records) {
@@ -223,6 +233,7 @@ export function reconcileRecords(records: ImportRecordPayload[]): ReconciledReco
       if (seenRowIds.has(rowId)) continue;
       seenRowIds.add(rowId);
     }
+    distinct++;
     const websiteCell = readCell(rec, "LEAD_WEBSITE");
     const domain =
       normalizeDomain(websiteCell ?? "") ??
@@ -236,6 +247,7 @@ export function reconcileRecords(records: ImportRecordPayload[]): ReconciledReco
     // than as a final answer the caller acts on.
     if (!isRecordTerminal(rec)) {
       pending++;
+      if (rec.lead?.id) pendingLeadIds.add(rec.lead.id);
       continue;
     }
     if (rec.lead?.id) {
@@ -258,5 +270,5 @@ export function reconcileRecords(records: ImportRecordPayload[]): ReconciledReco
     pending++;
   }
 
-  return { leads, not_imported, pending };
+  return { leads, not_imported, pending, distinct, pendingLeadIds };
 }

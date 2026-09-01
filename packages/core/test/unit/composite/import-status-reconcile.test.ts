@@ -198,6 +198,120 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
     ]);
   });
 
+  it("records-mode: several rows on one lead all survive the canonical merge", async () => {
+    // Records mode deliberately lets multiple rows target the same lead —
+    // separate contacts on one company. Keying the merge by leadId would
+    // collapse them and lose each row's rowId.
+    mockHttp([
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow({ total_records: 2 }) },
+      { method: "GET", path: LEADS_PATH, status: 200, body: { lead_ids: ["lead-1"] } },
+      {
+        method: "GET",
+        path: RECORDS_RE,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: 1,
+              records: [cell("MCP_ROW_ID", "r1"), cell("LEAD_WEBSITE", "acme-imports.fr")],
+              match_type: "AUTOMATIC_MATCH",
+              status: "IMPORTED",
+              lead: { id: "lead-1", name: "Acme Imports" },
+            },
+            {
+              id: 2,
+              records: [cell("MCP_ROW_ID", "r2"), cell("LEAD_WEBSITE", "acme-imports.fr")],
+              match_type: "AUTOMATIC_MATCH",
+              status: "IMPORTED",
+              lead: { id: "lead-1", name: "Acme Imports" },
+            },
+          ],
+          pagination: { page: 0, pages: 1, total: 2 },
+        },
+      },
+    ]);
+    const out: any = await importStatus.execute(newClient(), { importIds: [IMPORT_ID] });
+    expect(out.result.leads).toEqual([
+      { rowId: "r1", domain: "acme-imports.fr", leadId: "lead-1", name: "Acme Imports" },
+      { rowId: "r2", domain: "acme-imports.fr", leadId: "lead-1", name: "Acme Imports" },
+    ]);
+    expect(out.result.still_settling).toBeUndefined();
+  });
+
+  it("a canonical id belonging to a non-terminal record does NOT come back in", async () => {
+    // /leads reports every lead the import touched, including one whose record
+    // is still MATCHING. Adding it as an id-only lead would undo the terminal
+    // gate and hand the caller an answer that can still change.
+    mockHttp([
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow({ total_records: 1 }) },
+      { method: "GET", path: LEADS_PATH, status: 200, body: { lead_ids: ["lead-mid-flight"] } },
+      {
+        method: "GET",
+        path: RECORDS_RE,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: 1,
+              records: [cell("MCP_ROW_ID", "r1")],
+              match_type: "AUTOMATIC_MATCH",
+              status: "MATCHING",
+              lead: { id: "lead-mid-flight", name: "Acme Imports" },
+            },
+          ],
+          pagination: { page: 0, pages: 1, total: 1 },
+        },
+      },
+    ]);
+    const out: any = await importStatus.execute(newClient(), { importIds: [IMPORT_ID] });
+    expect(out.result.leads).toEqual([]);
+    expect(out.result.still_settling).toBe(1);
+  });
+
+  it("a re-paged duplicate row does not mask a real shortfall", async () => {
+    // The same MCP_ROW_ID can appear twice across a re-page. Measuring the
+    // deficit on raw fetched length would count it twice and report the
+    // 3-row import as fully seen.
+    const row = (n: string) => ({
+      id: n,
+      records: [cell("MCP_ROW_ID", n)],
+      match_type: "AUTOMATIC_MATCH",
+      status: "IMPORTED",
+      lead: { id: `lead-${n}`, name: "Acme Imports" },
+    });
+    mockHttp([
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow() },
+      { method: "GET", path: LEADS_PATH, status: 200, body: { lead_ids: [] } },
+      {
+        method: "GET",
+        path: RECORDS_RE,
+        status: 200,
+        body: {
+          items: [row("r1"), row("r1"), row("r2")],
+          pagination: { page: 0, pages: 1, total: 3 },
+        },
+      },
+    ]);
+    const out: any = await importStatus.execute(newClient(), { importIds: [IMPORT_ID] });
+    // 2 distinct rows out of a declared 3 → one still settling, not zero.
+    expect(out.result.leads).toHaveLength(2);
+    expect(out.result.still_settling).toBe(1);
+  });
+
+  it("a transient /leads 500 downgrades to status-only, never to a short result", async () => {
+    // Only a 404 (backend predates the endpoint) is benign. Anything else
+    // means the canonical set is unknown, and a records-only `result` would
+    // silently omit whatever /leads would have added.
+    mockHttp([
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow({ total_records: 1 }) },
+      { method: "GET", path: LEADS_PATH, status: 500, body: { message: "boom" } },
+    ]);
+    const out: any = await importStatus.execute(newClient(), { importIds: [IMPORT_ID] });
+    expect(out.status).toBe("complete");
+    expect(out.result).toBeUndefined();
+    expect(getHttpRequests().some((r) => r.path.includes("/records"))).toBe(false);
+  });
+
   it("/leads 404 on an older backend falls back to records-only", async () => {
     mockHttp([
       { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow({ total_records: 1 }) },

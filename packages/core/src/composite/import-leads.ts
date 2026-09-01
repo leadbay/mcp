@@ -1065,6 +1065,44 @@ async function uploadOneChunk(
   return { importId, chunk, chunkIdx, totalChunks };
 }
 
+// POST /imports/{id}/update_mappings — the step that actually launches
+// processing. Nothing on the backend does this for us, so an import whose
+// mappings were never committed stays parked forever.
+//
+// Backend ADR docs/adr/notifications.md: update_mappings creates a progress
+// notification and returns BulkLaunchResponse { notification_id }. Captured so
+// the WS listener can correlate the eventual completion event.
+async function commitMappings(
+  client: LeadbayClient,
+  importId: string,
+  mappings: MappingsPayload,
+  ctx: ToolContext | undefined
+): Promise<string | null> {
+  try {
+    const resp = await client.request<{ notification_id: string | null }>(
+      "POST",
+      `/imports/${importId}/update_mappings`,
+      mappings
+    );
+    return resp?.notification_id ?? null;
+  } catch (err: any) {
+    // Fall back to void semantics if backend hasn't been rolled out yet
+    // (the call may have already succeeded; we just lose the notification id).
+    if (err?.code === "API_ERROR" || err?.code === "NOT_FOUND") {
+      ctx?.logger?.warn?.(
+        `import-leads: update_mappings raw error (${err?.code}); retrying void`
+      );
+      await client.requestVoid(
+        "POST",
+        `/imports/${importId}/update_mappings`,
+        mappings
+      );
+      return null;
+    }
+    throw err;
+  }
+}
+
 async function completeUploadedChunk(
   client: LeadbayClient,
   upload: UploadedChunk,
@@ -1086,35 +1124,7 @@ async function completeUploadedChunk(
     return { importId, records: [], notification_id: null };
   }
 
-  // Backend ADR docs/adr/notifications.md: update_mappings now creates a
-  // progress notification and returns BulkLaunchResponse { notification_id }.
-  // Capture and persist so the WS listener can correlate the eventual
-  // completion event, and the next agent turn can see the import is done
-  // via `_meta.notifications`.
-  let updateMappingsResp: { notification_id: string | null } | null = null;
-  try {
-    updateMappingsResp = await client.request<{ notification_id: string | null }>(
-      "POST",
-      `/imports/${importId}/update_mappings`,
-      mappings
-    );
-  } catch (err: any) {
-    // Fall back to void semantics if backend hasn't been rolled out yet
-    // (the call may have already succeeded; we just lose the notification id).
-    if (err?.code === "API_ERROR" || err?.code === "NOT_FOUND") {
-      ctx?.logger?.warn?.(
-        `import-leads: update_mappings raw error (${err?.code}); retrying void`
-      );
-      await client.requestVoid(
-        "POST",
-        `/imports/${importId}/update_mappings`,
-        mappings
-      );
-    } else {
-      throw err;
-    }
-  }
-  const importNotificationId = updateMappingsResp?.notification_id ?? null;
+  const importNotificationId = await commitMappings(client, importId, mappings, ctx);
   if (importNotificationId) {
     onNotificationId?.(importNotificationId);
     ctx?.logger?.info?.(
@@ -1784,17 +1794,13 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
       // Process/reconcile timeouts need nothing: the backend is already working.
       if (
         timedOut.phase === "preprocess" &&
+        // A dry run is SUPPOSED to stop after preprocess — committing its
+        // mappings would turn a validation pass into a real import.
+        !dryRun &&
         lastUpload.current &&
         lastUpload.current.importId === timedOut.importId
       ) {
-        resumeParkedUpload(
-          client,
-          lastUpload.current,
-          prep.mappings,
-          dryRun,
-          totalBudget,
-          ctx
-        );
+        resumeParkedUpload(client, lastUpload.current, prep.mappings, ctx);
       }
       const rowsPendingUpload = prep.validInputs.length - rowsStarted;
       const malformed = prep.malformedDomains.map(
@@ -1836,39 +1842,43 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
   },
 };
 
-// Detached continuation for an upload that timed out during preprocess.
+// Detached finisher for an upload that timed out during preprocess.
+//
+// Its whole job is to get `update_mappings` sent, because that POST is the
+// MCP's own and nothing on the backend will do it for us — an import parked
+// before it never starts processing, and `status:"running"` would be a lie.
+// Once the mappings land the backend runs on its own, so this deliberately
+// does NOT go on to poll process/records.
+//
+// The budget is its own, floored well above the caller's: a caller who passed
+// a short `total_budget_ms` is exactly the caller most likely to time out, and
+// giving the finisher that same short window would let it fail the one job it
+// exists to do. Nobody is waiting on it, so a generous window costs nothing.
+//
 // Deliberately NOT tracker-backed: the hosted MCP has no BulkTracker, and the
-// caller's resumable handle is the importId either way. All this has to do is
-// get `update_mappings` sent so the backend actually starts processing —
-// after that `leadbay_import_status(importIds)` sees real progress and, on
-// completion, reconciles the leads.
+// caller's resumable handle is the importId either way.
+const RESUME_COMMIT_BUDGET_MS = 10 * 60_000;
+
 function resumeParkedUpload(
   client: LeadbayClient,
   upload: UploadedChunk,
   mappings: MappingsPayload,
-  dryRun: boolean,
-  totalBudgetMs: number,
   ctx: ToolContext | undefined
 ): void {
   const bgCtx: ToolContext = { logger: ctx?.logger };
+  const { importId } = upload;
   setTimeout(() => {
-    void completeUploadedChunk(
-      client,
-      upload,
-      mappings,
-      dryRun,
-      totalBudgetMs,
-      Date.now() + totalBudgetMs,
-      bgCtx,
-      undefined
-    ).then(
+    void (async () => {
+      await pollPreprocess(client, importId, RESUME_COMMIT_BUDGET_MS, bgCtx, undefined);
+      await commitMappings(client, importId, mappings, bgCtx);
+    })().then(
       () =>
         ctx?.logger?.info?.(
-          `import-leads: parked upload ${upload.importId} resumed to completion`
+          `import-leads: parked upload ${importId} committed; backend is processing`
         ),
       (err: any) =>
         ctx?.logger?.warn?.(
-          `import-leads: parked upload ${upload.importId} could not be resumed (${err?.code ?? err?.message ?? "unknown"})`
+          `import-leads: parked upload ${importId} could not be committed (${err?.code ?? err?.message ?? "unknown"})`
         )
     );
   }, 0);

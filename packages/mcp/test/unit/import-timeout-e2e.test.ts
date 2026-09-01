@@ -152,6 +152,15 @@ describe("product#4007 — a slow import returns a handle, not an error", () => 
     mockHttp([
       ME,
       { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: FINISHED_IMPORT },
+      // The canonical lead-id set. Reconciliation asks for this FIRST and
+      // treats anything but a 404 as fatal, so it must be scripted — a silent
+      // fallback here would let a short `result` read as the whole answer.
+      {
+        method: "GET",
+        path: `/1.6/imports/${IMPORT_ID}/leads`,
+        status: 200,
+        body: { lead_ids: ["lead-777"] },
+      },
       {
         method: "GET",
         path: new RegExp(`^/1\\.6/imports/${IMPORT_ID}/records\\?`),

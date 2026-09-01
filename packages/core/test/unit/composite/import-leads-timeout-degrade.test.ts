@@ -108,8 +108,6 @@ const ZERO_BUDGET = { per_phase_budget_ms: 0, total_budget_ms: 0 };
 const RESUME_SCRIPTS = [
   { method: "GET" as const, path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow() },
   { method: "POST" as const, path: `/1.6/imports/${IMPORT_ID}/update_mappings`, status: 200, body: { notification_id: "n-resumed" } },
-  { method: "GET" as const, path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow() },
-  { method: "GET" as const, path: RECORDS_RE, status: 200, body: TRANSIENT_RECORDS },
 ];
 
 // Let the detached finisher drain before the test ends.
@@ -237,8 +235,9 @@ describe("leadbay_import_leads — timeout degrades to a resumable running resul
       ME,
       { method: "POST", path: /^\/1\.6\/imports\?file_name=/, status: 200, body: PREPROCESS_STALLED },
       { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: PREPROCESS_STALLED },
-      // The dry-run finisher stops after preprocess — it never commits mappings.
-      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow() },
+      // No finisher scripts: a dry run is SUPPOSED to stop after preprocess,
+      // so nothing may run on behind it. Committing its mappings would turn a
+      // validation pass into a real import.
     ]);
     const out = await importLeads.execute(newClient(), {
       domains: [{ domain: "acme-imports.fr" }],
@@ -253,6 +252,32 @@ describe("leadbay_import_leads — timeout degrades to a resumable running resul
     expect(
       getHttpRequests().some((r) => r.path.includes("/update_mappings"))
     ).toBe(false);
+  });
+
+  it("the finisher does not inherit a short caller budget", async () => {
+    // A caller who passed a tiny total_budget_ms is exactly the caller most
+    // likely to time out. Handing the finisher that same window would let it
+    // fail the one job it exists to do, leaving the import parked — so it
+    // carries its own generous budget and keeps polling preprocess.
+    mockHttp([
+      ME,
+      { method: "POST", path: /^\/1\.6\/imports\?file_name=/, status: 200, body: PREPROCESS_STALLED },
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: PREPROCESS_STALLED },
+      // The finisher's FIRST poll still shows preprocess unfinished — with the
+      // caller's 0ms budget it would give up right here.
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: PREPROCESS_STALLED },
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow() },
+      { method: "POST", path: `/1.6/imports/${IMPORT_ID}/update_mappings`, status: 200, body: { notification_id: "n-late" } },
+    ]);
+    await importLeads.execute(newClient(), {
+      domains: [{ domain: "acme-imports.fr" }],
+      ...ZERO_BUDGET,
+    });
+    // One POLL_INTERVAL_MS (2s) plus slack: the finisher must still be going.
+    await new Promise((r) => setTimeout(r, 2_200));
+    expect(
+      getHttpRequests().some((r) => r.path.includes("/update_mappings"))
+    ).toBe(true);
   });
 
   it("a real preprocess ERROR still throws — degradation is timeout-only", async () => {

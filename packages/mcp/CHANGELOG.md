@@ -107,6 +107,31 @@ real, all fixed:
 - **No customer identity in this file.** It ships in the package's npm `files`
   list; incident details belong in product#4007, not on npm.
 
+**Review round 3** — seven more findings on the round-2 code, all real:
+
+- **A transient `/leads` failure was being swallowed as "endpoint missing".**
+  Only a 404 is benign; a 500 or auth error means the canonical set is unknown,
+  and a records-only `result` would silently omit whatever `/leads` would have
+  added. Now only 404 falls back — and fixing it immediately surfaced a missing
+  `/leads` mock in the MCP E2E test that the old catch had been hiding.
+- **The canonical merge keyed a map by `leadId`,** which collapsed the several
+  rows records-mode deliberately allows on one lead (separate contacts on one
+  company) and lost each row's `rowId`. Every reconciled row is kept; only ids
+  `/leads` knows and no record exposed are appended.
+- **A canonical id could resurrect a non-terminal record** through the union,
+  undoing the terminal gate added in round 2. Ids belonging to a record that is
+  still MATCHING / IMPORTING are held back.
+- **The settling deficit counted raw fetched rows,** so a re-paged duplicate
+  masked a genuine shortfall. Measured on distinct rows now.
+- **The detached finisher inherited the caller's budget.** A caller who passed
+  a short `total_budget_ms` is exactly the caller most likely to time out;
+  giving the finisher that same window let it fail the one job it exists to do
+  and leave the import parked. It now carries its own 10-minute budget, does
+  only what it must — poll preprocess, commit the mappings — and is skipped
+  entirely for a dry run, which is *supposed* to stop after preprocess.
+- **Two tool descriptions still said `leadbay_import_status` returns
+  status/progress only**, contradicting the recovery path this release adds.
+
 **Not shipped, deliberately:** the issue's criterion 6 asks to flip
 `wait_for_completion` to default `false`. `http-server.ts:336` never passes a
 `bulkTracker`, so on hosted that path throws `BULK_TRACKER_UNAVAILABLE` today
