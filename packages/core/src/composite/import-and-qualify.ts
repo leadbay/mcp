@@ -98,6 +98,13 @@ interface ImportAndQualifyResult {
   kind: "result";
   status?: "running";
   handle_id?: string;
+  // Set when the underlying import ran out of poll budget rather than being
+  // launched async on purpose. The import is still running server-side —
+  // poll leadbay_import_status(import_ids); do NOT re-issue the import.
+  timed_out?: boolean;
+  // Rows from later chunks that never reached the backend. These DO need a
+  // fresh import for that subset.
+  rows_pending_upload?: number;
   // True when the call was a dry_run input-validation (`dry_run: true`).
   // Top-level signal so the agent doesn't have to decode `not_imported[].reason`.
   dry_run?: boolean;
@@ -462,6 +469,16 @@ export const importAndQualify: Tool<
         type: "string",
         description: "Import handle to pass to leadbay_import_status when wait_for_completion=false.",
       },
+      timed_out: {
+        type: "boolean",
+        description:
+          "True when the underlying import ran out of poll budget. Still running server-side — poll leadbay_import_status(import_ids). Do NOT re-issue the import.",
+      },
+      rows_pending_upload: {
+        type: "number",
+        description:
+          "Rows from later chunks that never reached the backend. These are NOT running anywhere; re-import just those rows.",
+      },
       // preview-shape keys
       mapping_hints: {
         type: "array",
@@ -634,7 +651,7 @@ export const importAndQualify: Tool<
       return {
         kind: "result",
         status: "running",
-        handle_id: queued.handle_id,
+        ...(queued.handle_id ? { handle_id: queued.handle_id } : {}),
         ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
         qualify_id: null,
         import_ids: queued.importIds,
@@ -676,12 +693,40 @@ export const importAndQualify: Tool<
       ctx
     );
     if (isImportLeadsRunningResult(importResultRaw)) {
-      throw client.makeError(
-        "IMPORT_ASYNC_UNEXPECTED",
-        "Import returned an async handle while import_and_qualify was waiting for completion",
-        "Retry with wait_for_completion=false and poll leadbay_import_status, or retry the blocking call.",
-        "POST /imports"
-      );
+      // product#4007: the import ran out of poll budget. It is still running
+      // server-side, so surface the same running shape this tool already
+      // returns for wait_for_completion=false. Qualification can't start
+      // without leadIds, so qualify_id stays null and the agent polls.
+      return {
+        kind: "result",
+        status: "running",
+        ...(importResultRaw.handle_id ? { handle_id: importResultRaw.handle_id } : {}),
+        // Everything the rendering contract keys off has to survive the
+        // wrapper. Without `timed_out` the agent can't tell this from a
+        // deliberate async launch; without `rows_pending_upload` a >100-row
+        // batch silently loses every unuploaded chunk; without `dry_run`
+        // leadbay_import_status can't tell a validation pass from a real
+        // import still committing.
+        ...(importResultRaw.timed_out ? { timed_out: true } : {}),
+        ...(importResultRaw.rows_pending_upload !== undefined
+          ? { rows_pending_upload: importResultRaw.rows_pending_upload }
+          : {}),
+        ...(importResultRaw.dry_run ? { dry_run: true } : {}),
+        ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
+        qualify_id: null,
+        import_ids: importResultRaw.importIds,
+        notification_ids: importResultRaw.notification_ids ?? [],
+        imported: [],
+        not_imported: (importResultRaw.not_imported ?? []).map(toNotImportedEntry),
+        qualified: [],
+        still_running: [],
+        failed: [],
+        quota_exceeded: false,
+        skipped_already_qualified: [],
+        not_in_lens: [],
+        region: client.region,
+        _meta: importResultRaw._meta,
+      };
     }
     const importResult = importResultRaw;
 
@@ -1073,9 +1118,9 @@ async function runPreview(
   }
   if (!fileImport) {
     throw client.makeError(
-      "IMPORT_BUDGET_EXHAUSTED",
+      "IMPORT_TIMEOUT",
       `Preview preprocess did not finish within ${perPhaseBudget}ms`,
-      "Increase per_phase_budget_ms or shrink the input. The wizard row will eventually be cleaned up.",
+      `Raise per_phase_budget_ms above ${perPhaseBudget} or send fewer rows — re-running the identical call will not help. The wizard row will eventually be cleaned up.`,
       `GET /imports/${importId}`
     );
   }

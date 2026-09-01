@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.32.0 — 2026-09-01 — A slow import is no longer a failed import
+
+- **A slow import stops looking broken.** Leadbay's import sometimes takes a
+  minute or more. The assistant used to wait sixty seconds, give up, and report
+  an error — even though the import was still running perfectly well on our
+  side. It now says the import is running and comes back for the result.
+- **No more re-uploading the same file.** Because the old answer looked like a
+  failure, the assistant would try the whole import again. One customer's file
+  went up nine times in eleven minutes on a single request. It now checks
+  progress instead of re-importing.
+- **You still get your leads.** Checking an import's progress now returns the
+  imported leads themselves, so the assistant can qualify them or write to them
+  straight away — no second import just to find out which leads it created.
+- **Rows that are still being placed are counted as "in progress", never as
+  failures.**
+- **"Import budget exhausted" is gone.** It was never about money or credits —
+  it meant the wait had run out. Nothing bills you for waiting.
+
 ## 0.31.1 — 2026-08-28 — Asking for more leads on an empty lens now says no
 
 - **Asking for more leads on a lens that has nothing left no longer looks like

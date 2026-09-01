@@ -1,11 +1,26 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool, ToolContext, RequestMeta, FileImportPayloadV15 } from "../types.js";
+import type {
+  Tool,
+  ToolContext,
+  RequestMeta,
+  FileImportPayloadV15,
+  ImportLeadsResponse,
+  ImportRecordPayload,
+  PaginatedResponse,
+} from "../types.js";
 import { isValidBulkId } from "../jobs/bulk-store.js";
+import {
+  reconcileRecords,
+  settlingDeficit,
+  type ReconciledLead,
+  type ReconciledNotImported,
+} from "./_import-records.js";
 
 import { leadbay_import_status as IMPORT_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface ImportStatusParams {
   handle_id?: string;
   importIds?: string[];
+  dry_run?: boolean;
 }
 
 interface ImportStatusResult {
@@ -21,6 +36,9 @@ interface ImportStatusResult {
     leads: unknown[];
     not_imported: unknown[];
     importIds: string[];
+    // Only on the records-reconciled path: rows the wizard is still working
+    // on. They are in NEITHER bucket — a pending row is not a failed row.
+    still_settling?: number;
   };
   error?: string;
   region: "us" | "fr" | "custom";
@@ -74,6 +92,111 @@ function summarizeImports(
   };
 }
 
+// Bound the records fan-out. MCP-created imports are chunked at 100 rows, but
+// `importIds` can also name a wizard row created in the web UI with an
+// arbitrary file behind it. Stop reading rather than paginate forever; the
+// caller still gets status + progress, just no reconciled leads.
+const RECORDS_PAGE_SIZE = 100;
+const RECORDS_MAX_PAGES = 20;
+
+// product#4007: `leadbay_import_status` used to return progress only on the
+// `importIds[]` path, so an import that timed out mid-poll could be observed
+// as "complete" but never yielded its leadIds — and the agent's only way to
+// get them was to re-run the whole import. The wizard already holds the
+// mapping (MCP_ROW_ID round-trips through the synthesized CSV), so read it.
+// Raised when the wizard answers `400 in_progress`. Probed on us-staging
+// 2026-09-01: an import whose mappings have NOT been committed answers that on
+// BOTH /leads and /records, and its row is byte-identical to a finished dry
+// run — total_records 0, pre_processing.finished true, `processing` absent.
+// So the row alone cannot say whether an import is done; the endpoint can.
+class ImportNotReady extends Error {}
+
+function isInProgress(err: any): boolean {
+  return /in_progress/i.test(String(err?.message ?? ""));
+}
+
+async function fetchReconciledRecords(
+  client: LeadbayClient,
+  importIds: string[],
+  declaredTotal: number,
+  ctx: ToolContext | undefined
+): Promise<{
+  leads: ReconciledLead[];
+  not_imported: ReconciledNotImported[];
+  still_settling: number;
+} | null> {
+  // GET /imports/{id}/leads is the canonical set of leads an import touched —
+  // matched-existing AND newly-created — per the imports-mcp wrapper spec, and
+  // it is what import-and-qualify already trusts (import-and-qualify.ts).
+  // Records only annotate those ids with rowId / domain / name, so a lead the
+  // wizard created without attaching it to a visible record row is still
+  // reported instead of silently dropped.
+  const canonicalLeadIds = new Set<string>();
+  for (const importId of importIds) {
+    try {
+      const res = await client.request<ImportLeadsResponse>(
+        "GET",
+        `/imports/${importId}/leads`
+      );
+      for (const id of res?.lead_ids ?? []) canonicalLeadIds.add(id);
+    } catch (err: any) {
+      if (isInProgress(err)) throw new ImportNotReady();
+      // 404 on a backend that predates the endpoint: fall back to records-only.
+      ctx?.logger?.warn?.(
+        `import-status: /imports/${importId}/leads unavailable (${err?.code ?? err?.message ?? "unknown"}) — using records only`
+      );
+    }
+  }
+
+  const all: ImportRecordPayload[] = [];
+  for (const importId of importIds) {
+    for (let page = 0; page < RECORDS_MAX_PAGES; page++) {
+      const qs =
+        `count=${RECORDS_PAGE_SIZE}&page=${page}` +
+        `&automatic_match=true&manual_match=true&no_match=true` +
+        `&matching=true&importing=true&imported=true`;
+      let res: PaginatedResponse<ImportRecordPayload>;
+      try {
+        res = await client.request<PaginatedResponse<ImportRecordPayload>>(
+          "GET",
+          `/imports/${importId}/records?${qs}`
+        );
+      } catch (err: any) {
+        if (isInProgress(err)) throw new ImportNotReady();
+        throw err;
+      }
+      all.push(...res.items);
+      const totalPages = res.pagination.pages ?? 0;
+      if (page + 1 >= totalPages) break;
+      if (page + 1 === RECORDS_MAX_PAGES) {
+        // More pages exist than we will read. Returning a partial `leads[]`
+        // would read as "these are all of them" — say nothing instead.
+        ctx?.logger?.warn?.(
+          `import-status: importId=${importId} has >${RECORDS_MAX_PAGES} record pages; skipping reconciliation`
+        );
+        return null;
+      }
+    }
+  }
+  const { leads, not_imported, pending } = reconcileRecords(all);
+
+  // Union the canonical ids over the annotated ones. Anything /leads knows
+  // about that no record row exposed is still reported, id only.
+  const annotated = new Map(leads.map((l) => [l.leadId, l]));
+  for (const id of canonicalLeadIds) {
+    if (!annotated.has(id)) annotated.set(id, { leadId: id, name: null });
+  }
+
+  return {
+    leads: [...annotated.values()],
+    not_imported,
+    // A snapshot short of the declared row count is not final — see
+    // `settlingDeficit`. Counting only the rows we could see would let a
+    // partial snapshot read as a complete answer.
+    still_settling: pending + settlingDeficit(declaredTotal, all.length),
+  };
+}
+
 export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
   name: "leadbay_import_status",
   annotations: {
@@ -93,8 +216,14 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
       },
       importIds: {
         type: "array",
-        description: "Legacy backend file-import ids to inspect directly.",
+        description:
+          "Backend file-import ids to inspect directly — from a completed import's `importIds`, or from a `{status:'running', timed_out:true}` result.",
         items: { type: "string" },
+      },
+      dry_run: {
+        type: "boolean",
+        description:
+          "Pass true when the importIds came from a dry run. A dry run and an import still committing its mappings look identical on the wire, so without this the tool reports the dry run as still running rather than risk rendering it as a real import.",
       },
     },
     additionalProperties: false,
@@ -108,7 +237,8 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
       progress: { type: "object" },
       result: {
         type: "object",
-        description: "Final import result when the handle has completed in this MCP instance.",
+        description:
+          "Final import result: {leads, not_imported, importIds, still_settling?}. Present when a handle_id resolves a completed run in this MCP instance, OR when the importIds[] path finds every import complete and reconciles the wizard's records.",
       },
       error: { type: "string" },
       region: { type: "string" },
@@ -123,7 +253,11 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
   ): Promise<ImportStatusResult> => {
     let handleId = params.handle_id;
     let importIds = params.importIds ?? [];
-    let handleDryRun: boolean | undefined;
+    // A dry run and an import parked mid-commit are indistinguishable on the
+    // wire (probed us-staging 2026-09-01), so the caller has to tell us. The
+    // running result from a timed-out `leadbay_import_leads` carries
+    // `dry_run`; pass it straight back here.
+    let handleDryRun: boolean | undefined = params.dry_run;
 
     if (handleId) {
       if (!isValidBulkId(handleId)) {
@@ -161,7 +295,7 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
         );
       }
       importIds = record.import_ids;
-      handleDryRun = record.dry_run;
+      handleDryRun = record.dry_run ?? handleDryRun;
       if (record.status === "complete" && record.result) {
         return {
           status: "complete",
@@ -247,11 +381,67 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
       if (handleDryRun === false) return Boolean(i.processing?.finished);
       return Boolean(i.processing?.finished || (i.pre_processing?.finished && !i.processing));
     });
+    // A complete, non-dry-run import can hand back the leadIds the caller
+    // came for — without any client-side state, which is what makes this
+    // work on the hosted MCP (no BulkTracker there). Only on the terminal
+    // branch: polling records mid-flight would report pending rows.
+    let reconciled: Awaited<ReturnType<typeof fetchReconciledRecords>> = null;
+    // The wizard row cannot distinguish "finished" from "mappings never
+    // committed": a real import that timed out during preprocess and a
+    // completed dry run have identical payloads. The endpoints CAN — they
+    // answer `400 in_progress` until the import is genuinely done. So when the
+    // row looks complete, ask, and demote to `running` if the answer is no.
+    // Getting this wrong reports `complete` with no leads and the agent stops
+    // polling — the failure this whole change exists to prevent.
+    let notReady = false;
+    const declaredTotal = imports.reduce(
+      (n, i) => n + Number(i.total_records ?? 0),
+      0
+    );
+    if (!failed && complete && handleDryRun !== true && importIds.length > 0) {
+      try {
+        reconciled = await fetchReconciledRecords(
+          client,
+          importIds,
+          declaredTotal,
+          ctx
+        );
+      } catch (err: any) {
+        if (err instanceof ImportNotReady) {
+          notReady = true;
+          ctx?.logger?.info?.(
+            `import-status: wizard reports in_progress; mappings not committed yet — reporting running`
+          );
+        } else {
+          // Status is the answer the caller asked for; leads are the bonus.
+          // Never turn a readable status into an error over the bonus.
+          ctx?.logger?.warn?.(
+            `import-status: records reconciliation failed (${err?.code ?? err?.message ?? "unknown"}); returning status only`
+          );
+        }
+      }
+    }
+    const settled = complete && !notReady;
+
     return {
-      status: failed ? "failed" : complete ? "complete" : "running",
+      status: failed ? "failed" : settled ? "complete" : "running",
       ...(handleId ? { handle_id: handleId } : {}),
       importIds,
-      progress,
+      progress: notReady
+        ? { ...progress, phase: "committing" }
+        : progress,
+      ...(reconciled
+        ? {
+            result: {
+              leads: reconciled.leads,
+              not_imported: reconciled.not_imported,
+              importIds,
+              ...(reconciled.still_settling > 0
+                ? { still_settling: reconciled.still_settling }
+                : {}),
+            },
+          }
+        : {}),
       ...(failed
         ? {
             error:

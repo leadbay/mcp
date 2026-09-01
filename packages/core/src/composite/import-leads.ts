@@ -13,6 +13,20 @@ import type {
 } from "../types.js";
 
 import { leadbay_import_leads as IMPORT_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
+import {
+  PUBLIC_MAILBOX_DOMAINS,
+  isRecordTerminal,
+  normalizeDomain,
+  readCell,
+  recordMatchType,
+} from "./_import-records.js";
+
+// Re-exported for backward compatibility: these lived here before product#4007
+// split the record-reading primitives into _import-records.ts so
+// leadbay_import_status could reconcile without importing the import tool.
+// `research-lead-by-name-fuzzy.ts` imports PUBLIC_MAILBOX_DOMAINS from here.
+export { normalizeDomain, PUBLIC_MAILBOX_DOMAINS };
+
 interface DomainInput {
   domain: string;
   name?: string;
@@ -102,13 +116,32 @@ export interface ImportLeadsResult {
 
 export interface ImportLeadsRunningResult {
   status: "running";
-  handle_id: string;
+  // Present on the `wait_for_completion:false` path, which reserves a
+  // BulkTracker record. ABSENT when a blocking call degraded on a poll
+  // timeout (product#4007): the hosted MCP has no BulkTracker at all, so
+  // `importIds` — not `handle_id` — is the handle that always resumes.
+  handle_id?: string;
   importIds: string[];
   notification_ids: string[];
   progress: { phase: string; records_processed: number; records_total: number };
   region: "us" | "fr" | "custom";
   reused?: boolean;
   seconds_since_original?: number;
+  // True when the caller asked to wait and we ran out of poll budget. The
+  // import is NOT failed and MUST NOT be re-issued — poll leadbay_import_status.
+  timed_out?: boolean;
+  // Rows in chunks we never got to upload before the budget ran out. They are
+  // not running anywhere and need a fresh import.
+  rows_pending_upload?: number;
+  // Inputs rejected before the wizard ever saw them (malformed domains).
+  // They exist only client-side, so if the degraded result dropped them
+  // nothing downstream could ever recover them and the caller would read the
+  // batch as fully accounted for.
+  not_imported?: Array<DomainsNotImportedEntry | RecordsNotImportedEntry>;
+  // Carried so the caller can hand it back to leadbay_import_status. A dry run
+  // and an import still committing its mappings are identical on the wire, so
+  // this bit is the only thing that tells them apart.
+  dry_run?: boolean;
   _meta: RequestMeta;
 }
 
@@ -146,106 +179,6 @@ export function isCustomFieldMappingValue(v: string): v is `CUSTOM.${number}` {
 export function customFieldIdOf(v: string): string | null {
   const m = CUSTOM_FIELD_RE.exec(v);
   return m ? m[1] : null;
-}
-
-// Public mailbox / generic domains. We do NOT denylist these (per user
-// decision in /autoplan CEO phase). The list lives here so the reconciler
-// can label `no_match` records that are mailbox-y as `no_match`, while
-// genuinely unknown company domains get `uncrawled`. This is a *labeling*
-// distinction, not a *gating* one — the wizard sees every domain.
-export const PUBLIC_MAILBOX_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "ymail.com",
-  "outlook.com",
-  "hotmail.com",
-  "live.com",
-  "icloud.com",
-  "me.com",
-  "mac.com",
-  "aol.com",
-  "proton.me",
-  "protonmail.com",
-  "tutanota.com",
-  "gmx.com",
-  "gmx.net",
-  "gmx.de",
-  "mail.com",
-  "yandex.com",
-  "yandex.ru",
-  "qq.com",
-  "163.com",
-  "126.com",
-  // Regional aliases of the same providers, plus the consumer ISP mailboxes
-  // that dominate a French user base. Without these, `orange.fr` or
-  // `yahoo.fr` reads as a company domain (codex review, mcp#188).
-  "yahoo.fr",
-  "yahoo.co.uk",
-  "yahoo.es",
-  "yahoo.it",
-  "yahoo.de",
-  "yahoo.ca",
-  "yahoo.com.br",
-  "yahoo.co.jp",
-  "hotmail.fr",
-  "hotmail.co.uk",
-  "hotmail.es",
-  "hotmail.it",
-  "hotmail.de",
-  "hotmail.be",
-  "outlook.fr",
-  "outlook.es",
-  "outlook.de",
-  "outlook.it",
-  "live.fr",
-  "live.be",
-  "live.co.uk",
-  "msn.com",
-  "orange.fr",
-  "wanadoo.fr",
-  "free.fr",
-  "sfr.fr",
-  "laposte.net",
-  "bbox.fr",
-  "neuf.fr",
-  "aliceadsl.fr",
-  "numericable.fr",
-  "club-internet.fr",
-  "gmx.fr",
-  "gmx.at",
-  "gmx.ch",
-  "web.de",
-  "t-online.de",
-  "libero.it",
-  "wp.pl",
-  "seznam.cz",
-]);
-
-// Strip protocol/path/trailing slash; lowercase. Returns null for clearly
-// malformed input. The TLD shape check is intentionally loose — Leadbay
-// supports unusual TLDs (.io, .ai, .gov.uk, etc.) so we only require: at
-// least one dot, at least 2 chars on each side of the rightmost dot, no
-// whitespace, no scheme leftovers.
-export function normalizeDomain(input: string): string | null {
-  if (!input || typeof input !== "string") return null;
-  let v = input.trim().toLowerCase();
-  if (!v) return null;
-  v = v.replace(/^https?:\/\//, "");
-  v = v.replace(/^www\./, "");
-  v = v.split("/")[0].split("?")[0].split("#")[0];
-  v = v.replace(/\.+$/, "");
-  if (!v) return null;
-  if (/\s/.test(v)) return null;
-  if (!v.includes(".")) return null;
-  if (v.startsWith(".") || v.endsWith(".")) return null;
-  const parts = v.split(".");
-  if (parts.length < 2) return null;
-  if (parts.some((p) => p.length === 0)) return null;
-  const tld = parts[parts.length - 1];
-  if (!/^[a-z]{2,}$/.test(tld) && !tld.startsWith("xn--")) return null;
-  if (!/^[a-z0-9-]+$/.test(parts[parts.length - 2])) return null;
-  return v;
 }
 
 // CSV cell escaping: RFC 4180 + formula-injection guard.
@@ -321,6 +254,27 @@ function importFingerprint(params: ImportLeadsParams, prep: PreparedImport): str
   return createHash("sha256").update(stableStringify(payload)).digest("hex");
 }
 
+// product#4007: a poll budget running out is NOT a failure — the wizard is
+// still working server-side and `importIds` is enough to resume. The poll
+// helpers raise this internally; `execute` turns it into a `status:"running"`
+// result rather than an error, so the agent polls leadbay_import_status
+// instead of re-issuing the identical import (nine times, in the reported
+// incident). Only the async/background path still treats it as terminal.
+export class ImportPhaseTimeout extends Error {
+  readonly code = "IMPORT_TIMEOUT";
+  constructor(
+    readonly phase: "preprocess" | "process" | "reconcile",
+    readonly importId: string,
+    readonly budgetMs: number
+  ) {
+    super(
+      `Import ${phase} phase did not finish within ${budgetMs}ms; the wizard is still running server-side. ` +
+        `Poll leadbay_import_status with importIds=["${importId}"].`
+    );
+    this.name = "ImportPhaseTimeout";
+  }
+}
+
 function checkAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw Object.assign(new Error("aborted"), { name: "AbortError" });
@@ -347,42 +301,6 @@ async function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
     };
     signal.addEventListener("abort", onAbort, { once: true });
   });
-}
-
-// Pull a column value by name (case-insensitive) from a record's records[]
-// array. Live wire format (probed 2026-04-28): each entry is
-// { column_name, value, field? }. Some test mocks use the older
-// { cells: { ColumnName: value } } shape; tolerate both.
-function readCell(record: ImportRecordPayload, key: string): string | null {
-  const want = key.toLowerCase();
-  const arr: any = (record as any).records;
-  if (Array.isArray(arr)) {
-    for (const c of arr) {
-      const k = (c?.column_name ?? c?.key ?? c?.field ?? "").toString().toLowerCase();
-      if (k === want) {
-        const v = c?.value ?? null;
-        return v != null ? String(v) : null;
-      }
-    }
-  }
-  const cells = (record as any).cells;
-  if (cells && typeof cells === "object" && !Array.isArray(cells)) {
-    for (const [k, v] of Object.entries(cells)) {
-      if (k.toLowerCase() === want) {
-        return v != null ? String(v) : null;
-      }
-    }
-  }
-  if (Array.isArray(cells)) {
-    for (const c of cells) {
-      const k = (c?.key ?? c?.field ?? c?.column_name ?? "").toString().toLowerCase();
-      if (k === want) {
-        const v = c?.value ?? null;
-        return v != null ? String(v) : null;
-      }
-    }
-  }
-  return null;
 }
 
 // ─── input prep ────────────────────────────────────────────────────────────
@@ -946,12 +864,7 @@ async function pollPreprocess(
     "preprocess"
   );
   if (!result.pre_processing?.finished) {
-    throw client.makeError(
-      "IMPORT_BUDGET_EXHAUSTED",
-      `Preprocess phase did not finish within ${budgetMs}ms`,
-      `Increase per_phase_budget_ms (current: ${budgetMs}) or split the batch. importId=${importId}.`,
-      `GET /imports/${importId}`
-    );
+    throw new ImportPhaseTimeout("preprocess", importId, budgetMs);
   }
   if (result.pre_processing.error) {
     throw client.makeError(
@@ -980,12 +893,7 @@ async function pollProcess(
     "process"
   );
   if (!result.processing?.finished) {
-    throw client.makeError(
-      "IMPORT_BUDGET_EXHAUSTED",
-      `Process phase did not finish within ${budgetMs}ms`,
-      `Increase per_phase_budget_ms (current: ${budgetMs}) or split the batch. importId=${importId}.`,
-      `GET /imports/${importId}`
-    );
+    throw new ImportPhaseTimeout("process", importId, budgetMs);
   }
   if (result.processing.error != null) {
     throw client.makeError(
@@ -1033,11 +941,7 @@ async function pollRecordsToTerminal(
       records.push(...res.items);
       total = res.pagination.total ?? records.length;
       for (const r of res.items) {
-        const status = (r.status ?? "").toString().toUpperCase();
-        const matchType =
-          ((r as any).match_type ?? (r as any).matchType ?? "").toString().toUpperCase();
-        const isTerminal = matchType === "NO_MATCH" || status === "IMPORTED";
-        if (!isTerminal) transient++;
+        if (!isRecordTerminal(r)) transient++;
       }
       const totalPages = res.pagination.pages ?? 0;
       if (page + 1 >= totalPages) {
@@ -1076,12 +980,7 @@ async function pollRecordsToTerminal(
       ctx?.logger?.warn?.(
         `import-leads: records did not stabilize (transient=${transient}, total=${total}); returning best-effort`
       );
-      throw client.makeError(
-        "IMPORT_NOT_TERMINAL",
-        `Backend hasn't fully settled records within ${budgetMs}ms`,
-        `Retry leadbay_import_leads with the same input in 30s, or split the batch. importId=${importId}.`,
-        `GET /imports/${importId}/records`
-      );
+      throw new ImportPhaseTimeout("reconcile", importId, budgetMs);
     }
     await sleepWithAbort(POLL_INTERVAL_MS, signal);
   }
@@ -1102,7 +1001,16 @@ async function runOneChunk(
   // Called the moment POST /imports succeeds, so the caller can record the
   // importId before any polling happens. If polling later throws (abort,
   // budget, etc.) the caller still has the importId for diagnostics + retry.
-  onImportId: (id: string) => void
+  onImportId: (id: string) => void,
+  // Same reasoning one phase later: update_mappings mints the progress
+  // notification, and a call that then runs out of poll budget is exactly the
+  // one whose caller needs that notification to learn the import finished.
+  onNotificationId?: (id: string) => void,
+  // Called once the CSV is up but before any polling. A preprocess timeout
+  // leaves this upload parked — `update_mappings` is the MCP's own step, so
+  // nothing on the backend will ever launch it — and the caller needs the
+  // handle to resume it. See `resumeParkedUpload`.
+  onUploaded?: (upload: UploadedChunk) => void
 ): Promise<ChunkRunOutput> {
   const upload = await uploadOneChunk(
     client,
@@ -1113,6 +1021,7 @@ async function runOneChunk(
     ctx,
     onImportId
   );
+  onUploaded?.(upload);
   return completeUploadedChunk(
     client,
     upload,
@@ -1121,7 +1030,8 @@ async function runOneChunk(
     perPhaseBudgetMs,
     totalDeadline,
     ctx,
-    signal
+    signal,
+    onNotificationId
   );
 }
 
@@ -1163,7 +1073,8 @@ async function completeUploadedChunk(
   perPhaseBudgetMs: number,
   totalDeadline: number,
   ctx: ToolContext | undefined,
-  signal: AbortSignal | undefined
+  signal: AbortSignal | undefined,
+  onNotificationId?: (id: string) => void
 ): Promise<ChunkRunOutput> {
   const { importId, chunk } = upload;
   const phaseBudget = Math.min(perPhaseBudgetMs, Math.max(1, totalDeadline - Date.now()));
@@ -1205,6 +1116,7 @@ async function completeUploadedChunk(
   }
   const importNotificationId = updateMappingsResp?.notification_id ?? null;
   if (importNotificationId) {
+    onNotificationId?.(importNotificationId);
     ctx?.logger?.info?.(
       `import-leads: notification_id=${importNotificationId} importId=${importId}`
     );
@@ -1291,8 +1203,7 @@ function reconcileOneChunk(
     seenInputIndex.add(inputIdx);
 
     const inp = prep.validInputs[inputIdx];
-    const matchType =
-      ((rec as any).match_type ?? (rec as any).matchType ?? "").toString();
+    const matchType = recordMatchType(rec);
     if (rec.lead?.id) {
       matched.set(inputIdx, {
         domain: inp.outputDomain,
@@ -1530,7 +1441,18 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
       },
       handle_id: {
         type: "string",
-        description: "Persisted UUID handle to pass to leadbay_import_status.",
+        description:
+          "Persisted UUID handle to pass to leadbay_import_status. Only on the wait_for_completion=false path; absent when a blocking call timed out (use importIds then).",
+      },
+      timed_out: {
+        type: "boolean",
+        description:
+          "True when a blocking call ran out of poll budget. The import is still running server-side — poll leadbay_import_status(importIds). Do NOT re-issue the import.",
+      },
+      rows_pending_upload: {
+        type: "number",
+        description:
+          "Rows from later chunks that were never uploaded before the budget ran out. These are NOT running anywhere; re-import just those rows.",
       },
       progress: {
         type: "object",
@@ -1561,7 +1483,7 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
     required: ["importIds", "region", "_meta"],
     anyOf: [
       { required: ["leads", "not_imported", "importIds", "region", "_meta"] },
-      { required: ["status", "handle_id", "importIds", "progress", "region", "_meta"] },
+      { required: ["status", "importIds", "progress", "region", "_meta"] },
     ],
   },
   execute: async (
@@ -1778,12 +1700,22 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
     const notImported = new Map<number, NotImportedEntry>();
 
     let cancelled = false;
+    let timedOut: ImportPhaseTimeout | null = null;
+    // Rows in chunks we actually started. A timeout on chunk 2 of 3 leaves
+    // chunk 3 unsent — the caller has to know that, so we count it rather
+    // than silently dropping those rows from the report.
+    let rowsStarted = 0;
+    const lastUpload: { current: UploadedChunk | null } = { current: null };
     const recordImportId = (id: string) => {
       if (!importIds.includes(id)) importIds.push(id);
+    };
+    const recordNotificationId = (id: string) => {
+      if (!notificationIds.includes(id)) notificationIds.push(id);
     };
     try {
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
+        rowsStarted += chunk.length;
         const out = await runOneChunk(
           client,
           chunk,
@@ -1796,17 +1728,27 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
           totalDeadline,
           ctx,
           signal,
-          recordImportId
+          recordImportId,
+          recordNotificationId,
+          (u) => {
+            lastUpload.current = u;
+          }
         );
-        if (out.notification_id && !notificationIds.includes(out.notification_id)) {
-          notificationIds.push(out.notification_id);
-        }
         if (!dryRun) {
           reconcileOneChunk(prep, out, matched, notImported);
         }
       }
     } catch (err: any) {
-      if (err?.name === "AbortError") {
+      if (err instanceof ImportPhaseTimeout) {
+        // product#4007: the wizard is still running server-side. Returning an
+        // error here is what made the agent re-issue the identical import nine
+        // times; hand back the resumable importIds instead.
+        timedOut = err;
+        ctx?.logger?.warn?.(
+          `import-leads: ${err.phase} budget exhausted after ${err.budgetMs}ms; ` +
+            `returning status=running importIds=${importIds.join(",")}`
+        );
+      } else if (err?.name === "AbortError") {
         cancelled = true;
         ctx?.logger?.info?.(`import-leads: aborted via signal; importIds=${importIds.join(",")}`);
       } else if (err?.error === true) {
@@ -1832,6 +1774,55 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
       }
     }
 
+    if (timedOut) {
+      // Only the preprocess phase parks the import: the mapping commit is the
+      // MCP's own POST, so if we walk away before sending it the wizard row
+      // sits inert forever and `status:"running"` would be a lie. Live probe
+      // on us-staging 2026-09-01 confirmed the shape — pre_processing.finished
+      // true, `processing` absent, total_records 0, and /records 400s
+      // `in_progress`. Hand it to a detached finisher so the claim is true.
+      // Process/reconcile timeouts need nothing: the backend is already working.
+      if (
+        timedOut.phase === "preprocess" &&
+        lastUpload.current &&
+        lastUpload.current.importId === timedOut.importId
+      ) {
+        resumeParkedUpload(
+          client,
+          lastUpload.current,
+          prep.mappings,
+          dryRun,
+          totalBudget,
+          ctx
+        );
+      }
+      const rowsPendingUpload = prep.validInputs.length - rowsStarted;
+      const malformed = prep.malformedDomains.map(
+        (d) => ({ domain: d, reason: "malformed" }) as DomainsNotImportedEntry
+      );
+      return {
+        status: "running",
+        timed_out: true,
+        importIds,
+        notification_ids: notificationIds,
+        ...(malformed.length > 0 ? { not_imported: malformed } : {}),
+        ...(dryRun ? { dry_run: true } : {}),
+        progress: {
+          phase: timedOut.phase,
+          records_processed: matched.size,
+          records_total: prep.validInputs.length,
+        },
+        ...(rowsPendingUpload > 0 ? { rows_pending_upload: rowsPendingUpload } : {}),
+        region: client.region,
+        _meta: client.lastMeta ?? {
+          region: client.region,
+          endpoint: `GET /imports/${timedOut.importId}`,
+          latency_ms: null,
+          retry_after: null,
+        },
+      };
+    }
+
     return buildImportLeadsResult(
       client,
       prep,
@@ -1844,6 +1835,44 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
     );
   },
 };
+
+// Detached continuation for an upload that timed out during preprocess.
+// Deliberately NOT tracker-backed: the hosted MCP has no BulkTracker, and the
+// caller's resumable handle is the importId either way. All this has to do is
+// get `update_mappings` sent so the backend actually starts processing —
+// after that `leadbay_import_status(importIds)` sees real progress and, on
+// completion, reconciles the leads.
+function resumeParkedUpload(
+  client: LeadbayClient,
+  upload: UploadedChunk,
+  mappings: MappingsPayload,
+  dryRun: boolean,
+  totalBudgetMs: number,
+  ctx: ToolContext | undefined
+): void {
+  const bgCtx: ToolContext = { logger: ctx?.logger };
+  setTimeout(() => {
+    void completeUploadedChunk(
+      client,
+      upload,
+      mappings,
+      dryRun,
+      totalBudgetMs,
+      Date.now() + totalBudgetMs,
+      bgCtx,
+      undefined
+    ).then(
+      () =>
+        ctx?.logger?.info?.(
+          `import-leads: parked upload ${upload.importId} resumed to completion`
+        ),
+      (err: any) =>
+        ctx?.logger?.warn?.(
+          `import-leads: parked upload ${upload.importId} could not be resumed (${err?.code ?? err?.message ?? "unknown"})`
+        )
+    );
+  }, 0);
+}
 
 async function runImportInBackground(
   client: LeadbayClient,
