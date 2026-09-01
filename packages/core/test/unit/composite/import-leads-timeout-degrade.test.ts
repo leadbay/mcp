@@ -280,6 +280,43 @@ describe("leadbay_import_leads — timeout degrades to a resumable running resul
     ).toBe(true);
   });
 
+  it("records mode returns row_ids so recovered leads map back to source rows", async () => {
+    // MCP_ROW_ID is a UUID minted inside this tool; the caller has never seen
+    // it. leadbay_import_status reports recovered leads keyed by it, so a row
+    // identified only by CRM_ID — no website to correlate on — would otherwise
+    // be untraceable back to the leadId it produced.
+    mockHttp([
+      ME,
+      { method: "POST", path: /^\/1\.6\/imports\?file_name=/, status: 200, body: PREPROCESS_STALLED },
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: PREPROCESS_STALLED },
+      ...RESUME_SCRIPTS,
+    ]);
+    const out = await importLeads.execute(newClient(), {
+      records: [{ Ref: "CRM-1" }, { Ref: "CRM-2" }],
+      mappings: { fields: { Ref: "CRM_ID" } },
+      ...ZERO_BUDGET,
+    });
+    const running = out as ImportLeadsRunningResult;
+    expect(running.row_ids).toHaveLength(2);
+    expect(new Set(running.row_ids)).toHaveProperty("size", 2);
+    await drain();
+  });
+
+  it("domains mode omits row_ids — `domain` already correlates", async () => {
+    mockHttp([
+      ME,
+      { method: "POST", path: /^\/1\.6\/imports\?file_name=/, status: 200, body: PREPROCESS_STALLED },
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: PREPROCESS_STALLED },
+      ...RESUME_SCRIPTS,
+    ]);
+    const out = await importLeads.execute(newClient(), {
+      domains: [{ domain: "acme-imports.fr" }],
+      ...ZERO_BUDGET,
+    });
+    expect((out as ImportLeadsRunningResult).row_ids).toBeUndefined();
+    await drain();
+  });
+
   it("a real preprocess ERROR still throws — degradation is timeout-only", async () => {
     const broken = importRow({
       pre_processing: { finished: true, error: "bad encoding", hints: null, samples: [], status_samples: null },

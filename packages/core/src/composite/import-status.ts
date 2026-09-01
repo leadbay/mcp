@@ -370,6 +370,11 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
       }
     }
 
+    // The same id passed twice would double-fetch it AND double-count its
+    // declared rows against a record set that dedupes, pinning
+    // `still_settling` above zero forever.
+    importIds = [...new Set(importIds)];
+
     if (importIds.length === 0) {
       throw client.makeError(
         "IMPORT_STATUS_INPUT_REQUIRED",

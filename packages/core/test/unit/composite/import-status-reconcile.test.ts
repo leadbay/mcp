@@ -329,6 +329,75 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
     expect(out.result.still_settling).toBe(1);
   });
 
+  it("a mapped CSV header resolves the domain via the cell's `field` name", async () => {
+    // A records-mode import that maps the header `Web` to LEAD_WEBSITE comes
+    // back as { column_name: "Web", field: "LEAD_WEBSITE" }. Reading only the
+    // first present name let `column_name` shadow `field`, so an unmatched row
+    // lost its domain and got rendered as "needs attention" instead of
+    // "pending crawl" — and the caller lost the domain needed to retry.
+    mockHttp([
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow({ total_records: 1 }) },
+      { method: "GET", path: LEADS_PATH, status: 200, body: { lead_ids: [] } },
+      {
+        method: "GET",
+        path: RECORDS_RE,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: 1,
+              records: [
+                cell("MCP_ROW_ID", "r1"),
+                { column_name: "Web", field: "LEAD_WEBSITE", value: "acme-corp.fr" },
+              ],
+              match_type: "NO_MATCH",
+              status: "MATCHING",
+              lead: null,
+            },
+          ],
+          pagination: { page: 0, pages: 1, total: 1 },
+        },
+      },
+    ]);
+    const out: any = await importStatus.execute(newClient(), { importIds: [IMPORT_ID] });
+    expect(out.result.not_imported).toEqual([
+      { rowId: "r1", domain: "acme-corp.fr", reason: "uncrawled" },
+    ]);
+  });
+
+  it("the same importId passed twice does not pin still_settling above zero", async () => {
+    // Duplicated handles would double the declared row count while
+    // reconciliation dedupes the records, so every poll would report rows
+    // outstanding on an import that is entirely finished.
+    mockHttp([
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow({ total_records: 1 }) },
+      { method: "GET", path: LEADS_PATH, status: 200, body: { lead_ids: ["lead-1"] } },
+      {
+        method: "GET",
+        path: RECORDS_RE,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: 1,
+              records: [cell("MCP_ROW_ID", "r1")],
+              match_type: "AUTOMATIC_MATCH",
+              status: "IMPORTED",
+              lead: { id: "lead-1", name: "Acme Imports" },
+            },
+          ],
+          pagination: { page: 0, pages: 1, total: 1 },
+        },
+      },
+    ]);
+    const out: any = await importStatus.execute(newClient(), {
+      importIds: [IMPORT_ID, IMPORT_ID],
+    });
+    expect(out.importIds).toEqual([IMPORT_ID]);
+    expect(out.result.leads).toHaveLength(1);
+    expect(out.result.still_settling).toBeUndefined();
+  });
+
   it("a transient /leads 500 downgrades to status-only, never to a short result", async () => {
     // Only a 404 (backend predates the endpoint) is benign. Anything else
     // means the canonical set is unknown, and a records-only `result` would

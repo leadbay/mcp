@@ -131,6 +131,20 @@ real, all fixed:
   entirely for a dry run, which is *supposed* to stop after preprocess.
 - **Two tool descriptions still said `leadbay_import_status` returns
   status/progress only**, contradicting the recovery path this release adds.
+- **`readCell` never looked at a cell's `field` name.** A records-mode import
+  that maps the header `Web` to LEAD_WEBSITE returns
+  `{column_name: "Web", field: "LEAD_WEBSITE"}`, and coalescing to the first
+  present name let `column_name` shadow `field` — so an unmatched row lost its
+  domain and rendered as "needs attention" instead of "pending crawl", without
+  the domain needed to retry. Pre-existing, but the stateless recovery path is
+  what made it bite.
+- **`importIds` is deduped.** The same handle twice doubled the declared row
+  count against a record set that dedupes, pinning `still_settling` above zero
+  on an import that had entirely finished.
+- **Records mode returns `row_ids`.** `MCP_ROW_ID` is a UUID minted inside the
+  tool; the caller has never seen it, yet `leadbay_import_status` reports
+  recovered leads keyed by it. A row identified only by `CRM_ID` — no website
+  to correlate on — was untraceable back to the leadId it produced.
 - **Record dedupe falls back to the backend record id.** `importIds` need not
   name an MCP-created import; a web-UI one carries no `MCP_ROW_ID`, so keying
   only on that let a re-paged row count twice while another went missing — and

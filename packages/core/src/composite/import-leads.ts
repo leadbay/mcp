@@ -142,6 +142,13 @@ export interface ImportLeadsRunningResult {
   // and an import still committing its mappings are identical on the wire, so
   // this bit is the only thing that tells them apart.
   dry_run?: boolean;
+  // Records mode only: the synthetic MCP_ROW_ID minted for each input row, in
+  // the caller's `records[]` order. `leadbay_import_status` reports recovered
+  // leads keyed by that UUID, and the caller has never seen it otherwise — so
+  // without this, a row identified only by CRM_ID (no website to match on)
+  // could not be tied back to the leadId it produced. Domains mode doesn't
+  // need it; `domain` already correlates.
+  row_ids?: string[];
   _meta: RequestMeta;
 }
 
@@ -1464,6 +1471,12 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
         description:
           "Rows from later chunks that were never uploaded before the budget ran out. These are NOT running anywhere; re-import just those rows.",
       },
+      row_ids: {
+        type: "array",
+        description:
+          "Records mode only: the synthetic MCP_ROW_ID of each input row, in the order you passed `records[]`. leadbay_import_status reports recovered leads by that id — use this to map them back to your source rows.",
+        items: { type: "string" },
+      },
       progress: {
         type: "object",
         description: "Current async import progress when wait_for_completion=false.",
@@ -1813,6 +1826,9 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
         notification_ids: notificationIds,
         ...(malformed.length > 0 ? { not_imported: malformed } : {}),
         ...(dryRun ? { dry_run: true } : {}),
+        ...(prep.mode === "records"
+          ? { row_ids: prep.validInputs.map((i) => i.rowId) }
+          : {}),
         progress: {
           phase: timedOut.phase,
           records_processed: matched.size,

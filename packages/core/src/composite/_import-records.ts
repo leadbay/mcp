@@ -125,13 +125,25 @@ export const MCP_ROW_ID_COLUMN = "MCP_ROW_ID";
 // array. Live wire format (probed 2026-04-28): each entry is
 // { column_name, value, field? }. Some test mocks use the older
 // { cells: { ColumnName: value } } shape; tolerate both.
+//
+// A cell can carry BOTH names: a records-mode import that maps the CSV header
+// `Web` to LEAD_WEBSITE comes back as { column_name: "Web", field:
+// "LEAD_WEBSITE" }. Match against every name a cell exposes — coalescing to
+// the first present one meant `column_name` (always set) shadowed `field`, so
+// looking up "LEAD_WEBSITE" missed, and an unmatched row lost its domain and
+// got rendered as "needs attention" instead of "pending crawl".
+function cellNames(c: any): string[] {
+  return [c?.column_name, c?.key, c?.field]
+    .filter((n) => n != null && n !== "")
+    .map((n) => String(n).toLowerCase());
+}
+
 export function readCell(record: ImportRecordPayload, key: string): string | null {
   const want = key.toLowerCase();
   const arr: any = (record as any).records;
   if (Array.isArray(arr)) {
     for (const c of arr) {
-      const k = (c?.column_name ?? c?.key ?? c?.field ?? "").toString().toLowerCase();
-      if (k === want) {
+      if (cellNames(c).includes(want)) {
         const v = c?.value ?? null;
         return v != null ? String(v) : null;
       }
@@ -147,8 +159,7 @@ export function readCell(record: ImportRecordPayload, key: string): string | nul
   }
   if (Array.isArray(cells)) {
     for (const c of cells) {
-      const k = (c?.key ?? c?.field ?? c?.column_name ?? "").toString().toLowerCase();
-      if (k === want) {
+      if (cellNames(c).includes(want)) {
         const v = c?.value ?? null;
         return v != null ? String(v) : null;
       }
