@@ -3759,35 +3759,38 @@ Trigger phrases: "look up <Company>", "research <Company>", "what do we know abo
 
 Do NOT use for: "picked row with leadId" → \`leadbay_research_lead_by_id\`; "draft outreach for <Contact>" → \`leadbay_prepare_outreach\`.
 
-Prefer when: company name in prose and no Leadbay id yet
+Prefer when: a company name or domain in prose, no Leadbay id yet — always pass \`website\` if a domain was mentioned
 
 Examples that SHOULD invoke this tool:
 - "Look up Acme Corp for me."
 - "Find Initech in my pipeline."
+- "Who is Wink Lab? Their email is at @wink-lab.com."
 
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Tell me about that lead I just picked."
 - "Draft outreach to Acme's CTO."
+- "Show me today's leads."
 
 ---
 
-Resolves \`companyName\` across visible Discover, Monitor, and Activate leads,
-then delegates to **leadbay_research_lead_by_id**. Supplying \`lensId\`
-deliberately restricts the backend search to that lens. The result matches
-\`_by_id\`, plus:
+Resolves across the user's visible Discover/Monitor/Activate leads AND the
+**Leadbay company registry** — so a company they do not own yet is still
+findable — then delegates to **leadbay_research_lead_by_id**.
 
-- \`_meta.resolved_from\`: \`"companyName"\`
-- \`_meta.resolved_query\`: the original query
-- \`_meta.match_candidates[]\`: up to 4 \`{leadId, name, score}\` alternatives
+**Pass \`website\` whenever the user mentioned a domain** — the strongest match
+key. It survives a misspelled company name and is what turns "not in your
+list" into an answer. With only a contact email, pass \`email\`: the company
+domain is derived from it, consumer mailboxes ignored.
 
-\`LEAD_NOT_FOUND\` identifies whether the complete visible corpus, an explicit
-lens, or only a degraded active-lens fallback was searched.
+When the registry cannot pick one company it returns \`{resolution:
+"ambiguous", query, candidates:[{leadId, name, website, location, …}]}\`
+instead of a card. Ask which one; never guess from \`score\`.
 
-WHEN TO USE: for a company/domain/contact reference
-without a \`lead_id\`. Offer \`_meta.match_candidates\` when present.
+\`LEAD_NOT_FOUND\` is not a dead end: its hint names the field that would have
+found it — \`website\` or \`registry_number\`, both params. Ask for it and call
+again. Do not offer an import before asking.
 
-WHEN NOT TO USE: with a UUID; call
-leadbay_research_lead_by_id directly.
+Offer \`_meta.match_candidates\` when present.
 
 ---
 
@@ -3925,6 +3928,10 @@ out?"\`
 | Lead is clearly not a fit (wrong industry, too small)  | "Dislike this lead"                                      | leadbay_dislike_lead({ leadId })                               |
 | User is done with this lead                            | "Back to the inbox"                                      | leadbay_pull_leads                                             |
 
+
+When \`resolution\` is \`"ambiguous"\`, render no card: use \`ask_user_input_v0\`,
+ONE \`single_select\` question ("Which one?"), one short label per candidate
+combining \`name\` and \`location\`.
 
 When \`_meta.match_candidates\` is non-empty, prepend one extra NEXT STEPS row:
 

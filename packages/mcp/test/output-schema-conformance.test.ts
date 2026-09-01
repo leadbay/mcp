@@ -817,6 +817,16 @@ const CASES: ConformanceCase[] = [
     arguments: { companyName: "Acme" },
     setupMocks: () => {
       mockHttp([
+        // Cross-tab corpus search — the primary resolution path. Before
+        // product#4006 this mock was missing, so the tool silently took the
+        // (now removed) active-lens fallback and this fixture validated a
+        // path it did not name.
+        {
+          method: "GET",
+          path: "/1.6/search/suggest?q=Acme",
+          status: 200,
+          body: [{ text: "Acme Corp", lead_id: "lead-1", lens_id: "42" }],
+        },
         // resolveDefaultLens → /me
         {
           method: "GET",

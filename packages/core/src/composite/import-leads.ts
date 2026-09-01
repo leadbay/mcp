@@ -153,7 +153,7 @@ export function customFieldIdOf(v: string): string | null {
 // can label `no_match` records that are mailbox-y as `no_match`, while
 // genuinely unknown company domains get `uncrawled`. This is a *labeling*
 // distinction, not a *gating* one — the wizard sees every domain.
-const PUBLIC_MAILBOX_DOMAINS = new Set([
+export const PUBLIC_MAILBOX_DOMAINS = new Set([
   "gmail.com",
   "googlemail.com",
   "yahoo.com",
@@ -177,6 +177,49 @@ const PUBLIC_MAILBOX_DOMAINS = new Set([
   "qq.com",
   "163.com",
   "126.com",
+  // Regional aliases of the same providers, plus the consumer ISP mailboxes
+  // that dominate a French user base. Without these, `orange.fr` or
+  // `yahoo.fr` reads as a company domain (codex review, mcp#188).
+  "yahoo.fr",
+  "yahoo.co.uk",
+  "yahoo.es",
+  "yahoo.it",
+  "yahoo.de",
+  "yahoo.ca",
+  "yahoo.com.br",
+  "yahoo.co.jp",
+  "hotmail.fr",
+  "hotmail.co.uk",
+  "hotmail.es",
+  "hotmail.it",
+  "hotmail.de",
+  "hotmail.be",
+  "outlook.fr",
+  "outlook.es",
+  "outlook.de",
+  "outlook.it",
+  "live.fr",
+  "live.be",
+  "live.co.uk",
+  "msn.com",
+  "orange.fr",
+  "wanadoo.fr",
+  "free.fr",
+  "sfr.fr",
+  "laposte.net",
+  "bbox.fr",
+  "neuf.fr",
+  "aliceadsl.fr",
+  "numericable.fr",
+  "club-internet.fr",
+  "gmx.fr",
+  "gmx.at",
+  "gmx.ch",
+  "web.de",
+  "t-online.de",
+  "libero.it",
+  "wp.pl",
+  "seznam.cz",
 ]);
 
 // Strip protocol/path/trailing slash; lowercase. Returns null for clearly
