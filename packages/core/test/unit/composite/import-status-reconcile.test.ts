@@ -298,6 +298,37 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
     expect(out.result.still_settling).toBe(1);
   });
 
+  it("a web-UI import (no MCP_ROW_ID) still dedupes, on the backend record id", async () => {
+    // Nothing forces `importIds` to name an MCP-created import. A web-UI one
+    // carries no MCP_ROW_ID, so keying the dedupe only on that would let a
+    // re-paged row be counted twice while another went missing — and a raw
+    // count matching `total_records` would then read as a complete snapshot.
+    const row = (id: number, domain: string) => ({
+      id,
+      records: [cell("Company site", domain)],
+      match_type: "MANUAL_MATCH",
+      status: "IMPORTED",
+      lead: { id: `lead-${id}`, name: "Acme Imports", website: domain },
+    });
+    mockHttp([
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow() },
+      { method: "GET", path: LEADS_PATH, status: 200, body: { lead_ids: [] } },
+      {
+        method: "GET",
+        path: RECORDS_RE,
+        status: 200,
+        body: {
+          items: [row(1, "acme-imports.fr"), row(1, "acme-imports.fr"), row(2, "acme-corp.fr")],
+          pagination: { page: 0, pages: 1, total: 3 },
+        },
+      },
+    ]);
+    const out: any = await importStatus.execute(newClient(), { importIds: [IMPORT_ID] });
+    expect(out.result.leads.map((l: any) => l.leadId)).toEqual(["lead-1", "lead-2"]);
+    // 2 distinct rows against a declared 3 — the third is late, not absent.
+    expect(out.result.still_settling).toBe(1);
+  });
+
   it("a transient /leads 500 downgrades to status-only, never to a short result", async () => {
     // Only a 404 (backend predates the endpoint) is benign. Anything else
     // means the canonical set is unknown, and a records-only `result` would

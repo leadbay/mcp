@@ -131,6 +131,10 @@ real, all fixed:
   entirely for a dry run, which is *supposed* to stop after preprocess.
 - **Two tool descriptions still said `leadbay_import_status` returns
   status/progress only**, contradicting the recovery path this release adds.
+- **Record dedupe falls back to the backend record id.** `importIds` need not
+  name an MCP-created import; a web-UI one carries no `MCP_ROW_ID`, so keying
+  only on that let a re-paged row count twice while another went missing — and
+  a raw count matching `total_records` then read as a complete snapshot.
 
 **Not shipped, deliberately:** the issue's criterion 6 asks to flip
 `wait_for_completion` to default `false`. `http-server.ts:336` never passes a

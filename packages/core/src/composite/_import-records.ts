@@ -227,11 +227,21 @@ export function reconcileRecords(records: ImportRecordPayload[]): ReconciledReco
 
   for (const rec of records) {
     const rowId = readCell(rec, MCP_ROW_ID_COLUMN) ?? undefined;
-    // The wizard can return the same row across pages during a re-page; dedupe
-    // on the synthetic id when we have one.
-    if (rowId) {
-      if (seenRowIds.has(rowId)) continue;
-      seenRowIds.add(rowId);
+    // The wizard can return the same row twice across a re-page. Dedupe on the
+    // synthetic MCP_ROW_ID when this import came through the MCP, and fall back
+    // to the backend's own record id otherwise — an import created in the web
+    // UI carries no MCP_ROW_ID, so keying only on that would let a re-paged row
+    // be counted twice while another went missing, and a raw count that happens
+    // to match `total_records` would then read as a complete snapshot.
+    const dedupeKey =
+      rowId !== undefined
+        ? `row:${rowId}`
+        : rec.id != null
+          ? `rec:${String(rec.id)}`
+          : null;
+    if (dedupeKey !== null) {
+      if (seenRowIds.has(dedupeKey)) continue;
+      seenRowIds.add(dedupeKey);
     }
     distinct++;
     const websiteCell = readCell(rec, "LEAD_WEBSITE");
