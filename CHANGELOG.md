@@ -1,5 +1,31 @@
 # Changelog
 
+=======
+## 0.32.1 — 2026-09-01 — A stalled Leadbay can no longer freeze your session
+
+- **When you cancel, Leadbay actually stops.** Cancelling a tool call — or your
+  client giving up on one — used to stop the polling but leave the request
+  itself running, still holding one of the five slots the server has. Enough of
+  those and everything else queued behind them. Now cancelling closes the
+  connection and frees the slot immediately.
+- **This is what made a stalled backend a 36-hour outage.** One customer had 28
+  calls sit open for up to 57 hours. The connection had been accepted, so
+  nothing anywhere reported a problem — she just got silence for a day and a
+  half, on the only Leadbay surface she uses.
+- **Long jobs are untouched.** Enrichment, bulk qualification and imports launch
+  work and poll for it, and they keep their own budgets. Nothing now decides on
+  Leadbay's behalf how long its work is allowed to take.
+- **Cancelling never loses track of something you already saved.** Only reads
+  are dropped mid-flight. A note or an import already on its way to Leadbay is
+  allowed to finish, so you are never told it wasn't saved when it was.
+- **A last-resort backstop closes a connection nobody is waiting for any more**
+  after 10 minutes — longer than the longest job any tool runs — so an orphaned
+  request can't hold a slot forever. `LEADBAY_TIMEOUT_MS` changes it; `0` turns
+  it off. That variable was already documented; now it works.
+- **A timed-out call tells the agent to retry** instead of failing silently, a
+  stalled account can no longer distort our own latency numbers, and a timeout
+  now raises an alert instead of waiting to be found in a retrospective.
+
 ## 0.32.0 — 2026-09-01 — A slow import is no longer a failed import
 
 - **A slow import stops looking broken.** Leadbay's import sometimes takes a

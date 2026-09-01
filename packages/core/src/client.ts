@@ -1,4 +1,5 @@
 import https from "node:https";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type {
@@ -17,6 +18,106 @@ const LENS_CACHE_TTL_MS = 5 * 60 * 1000;
 const TASTE_CACHE_TTL_MS = 10 * 60 * 1000;
 const ME_CACHE_TTL_MS = 60 * 1000;
 const MAX_CONCURRENT = 5;
+
+/**
+ * Backstop deadline for a single outbound request. NOT a latency budget for
+ * Leadbay — three different layers answer three different questions, and this
+ * one is the last of them:
+ *
+ *   how long does the USER wait?      the MCP host, via notifications/cancelled
+ *                                     (the SDK sends it on its own request
+ *                                     timeout AND when the user hits Cancel);
+ *                                     we honour it — see requestSignalStore.
+ *   how long does a WORKFLOW work?    the composite's own declared budgets —
+ *                                     bulk_qualify 90s/lead and 300s total,
+ *                                     import-leads 60s/phase and 300s total.
+ *   how long may one SOCKET sit       this constant.
+ *   unanswered?
+ *
+ * Leadbay's long work is launched, not awaited: `POST /leads/:id/web_fetch`
+ * starts the AI and returns (166 ms measured against staging 2026-08-28, along
+ * with 148 ms for a lens creation that computes a wishlist and 227 ms for
+ * /leads/resolve), then the tool polls. So no request is long TODAY — but
+ * picking a number from that measurement would encode "Leadbay never answers
+ * after N seconds", which is a claim about a backend we do not own and which an
+ * AI product will eventually break.
+ *
+ * So the number is anchored to OUR code instead: 10 minutes is 2x the longest
+ * budget any workflow in this repo grants itself (300s). A request that outlives
+ * the workflow that issued it has already been abandoned by its caller —
+ * cancelling it can't lose an answer anyone is still waiting for, and it frees
+ * the MAX_CONCURRENT slot it would otherwise hold forever.
+ *
+ * That last part is the whole point. node:https sets no socket timeout, so
+ * before this a backend that completed the TCP handshake and then went silent
+ * held its slot for the life of the process. With five slots, a handful of such
+ * requests deadlocked every other tool on the client — product#4003: 28 of one
+ * customer's calls hung up to 57 hours, a 36-hour outage on her only surface.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 600_000;
+
+/**
+ * `LEADBAY_TIMEOUT_MS` — the deployment-level override for
+ * DEFAULT_REQUEST_TIMEOUT_MS. Documented in packages/mcp/README.md as the
+ * "per-request timeout override" since before product#4003, but nothing read it;
+ * this makes the documented knob real rather than introducing a second name.
+ *
+ * `0` (or a negative value) opts a deployment out of the backstop entirely and
+ * restores the pre-product#4003 unbounded behaviour. Read per request, not at
+ * module load, so a test or a restart-free config change takes effect
+ * immediately.
+ */
+function defaultTimeoutMs(): number {
+  const raw = process.env.LEADBAY_TIMEOUT_MS;
+  if (raw === undefined || raw.trim() === "") return DEFAULT_REQUEST_TIMEOUT_MS;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
+/**
+ * Ambient cancellation for every request issued inside one tool call.
+ *
+ * The MCP SDK aborts the handler's AbortSignal on `notifications/cancelled`,
+ * which it sends both when the user cancels and when its OWN request timeout
+ * fires. server.ts already forwards that signal to `ToolContext.signal`, where
+ * composites use it to stop polling — but the HTTP request in flight at that
+ * moment kept running and kept its concurrency slot. So the host could give up
+ * on a call in 60 seconds and the socket behind it would still be holding a slot
+ * hours later. That, not the absence of a timeout, is what turned a stalled
+ * backend into a dead session.
+ *
+ * Threading a `signal` argument through all 174 `client.request(...)` call sites
+ * would be a far larger and more error-prone diff than this, and every one of
+ * them would have to remember it forever. AsyncLocalStorage carries it for them:
+ * server.ts wraps `tool.execute` once, and every request the tool makes — at any
+ * async depth — inherits the right signal. Concurrent tool calls each get their
+ * own store, so one tool's cancellation can never touch another's socket.
+ *
+ * Callers outside a tool invocation (telemetry identity, the hosted SSE refresh)
+ * simply have no ambient signal and fall back to the backstop.
+ */
+const requestSignalStore = new AsyncLocalStorage<AbortSignal | undefined>();
+
+export function runWithRequestSignal<T>(
+  signal: AbortSignal | undefined,
+  fn: () => T
+): T {
+  return requestSignalStore.run(signal, fn);
+}
+
+function makeCancelledError(method: string, url: string): Error & {
+  code?: string;
+} {
+  // name stays "AbortError" because composites already branch on it
+  // (_qualify-helpers, import-leads) to distinguish a user cancellation from a
+  // genuine failure. `code` is the new, more specific handle.
+  const err = new Error(`Request cancelled: ${method} ${url}`) as Error & {
+    code?: string;
+  };
+  err.name = "AbortError";
+  err.code = "CANCELLED";
+  return err;
+}
 
 const REGIONS: Record<string, string> = {
   us: "https://api-us.leadbay.app",
@@ -43,23 +144,53 @@ function httpsRequest(
   url: string,
   headers: Record<string, string>,
   body?: string | Buffer,
-  // Optional wall-clock deadline. node:https sets NO socket timeout by default,
-  // so a peer that completes the TCP handshake and then stalls leaves this
-  // promise pending indefinitely. Callers that must bound their own latency —
-  // the hosted auth probe, which walks candidate regions one after another —
-  // pass this; every other call keeps the previous unbounded behaviour.
-  timeoutMs?: number
+  // Backstop deadline. node:https sets NO socket timeout by default, so a peer
+  // that completes the TCP handshake and then stalls would leave this promise
+  // pending indefinitely. Omitting it does NOT mean "unbounded" — it means
+  // DEFAULT_REQUEST_TIMEOUT_MS. Callers that need a tighter bound (the hosted
+  // auth probe, which walks candidate regions one after another) pass their own;
+  // only an explicit `<= 0` disables it.
+  timeoutMs?: number,
+  // Explicit cancellation. Defaults to the ambient signal of the tool call this
+  // request belongs to (requestSignalStore), which is the bound that actually
+  // matters — the host's, not ours.
+  signal?: AbortSignal
 ): Promise<HttpResult> {
+  const deadlineMs = timeoutMs ?? defaultTimeoutMs();
+  const abortSignal = signal ?? requestSignalStore.getStore();
+  // Only a GET is safe to abort MID-FLIGHT. This is the same predicate
+  // httpsRequestWithRetry already uses to decide what may be replayed, and for
+  // the mirror-image reason: a write may have committed server-side before we
+  // destroyed the socket. Reporting CANCELLED on a note that IS in the CRM makes
+  // the agent tell the user it wasn't sent, or write it a second time — worse
+  // than the stall this whole change exists to fix. A read has no side effect to
+  // misreport, so aborting one is free.
+  //
+  // An in-flight write therefore runs to completion and releases its slot then;
+  // the backstop still bounds it. Writes are a small minority of calls, so this
+  // costs almost nothing against the deadlock it protects.
+  const abortSafe = method.toUpperCase() === "GET";
   return new Promise((resolve, reject) => {
     const start = Date.now();
+    // Already cancelled BEFORE we opened a socket — nothing has been sent, so
+    // there is no committed write to misreport. Safe for every method.
+    if (abortSignal?.aborted) {
+      reject(makeCancelledError(method, url));
+      return;
+    }
     const parsed = new URL(url);
     const reqHeaders: Record<string, string | number> = { ...headers };
     if (body !== undefined) {
       reqHeaders["Content-Length"] = Buffer.byteLength(body);
     }
     let deadline: ReturnType<typeof setTimeout> | undefined;
+    let onAbort: (() => void) | undefined;
+    // One tool call can issue hundreds of requests against the SAME signal, so
+    // every listener must come off on settle or the signal accumulates them and
+    // Node warns about a leak.
     const clearDeadline = () => {
       if (deadline !== undefined) clearTimeout(deadline);
+      if (onAbort) abortSignal?.removeEventListener("abort", onAbort);
     };
     const req = https.request(
       {
@@ -84,7 +215,7 @@ function httpsRequest(
       }
     );
 
-    if (timeoutMs !== undefined && timeoutMs > 0) {
+    if (deadlineMs > 0) {
       deadline = setTimeout(() => {
         // destroy() actually cancels — it aborts the request and frees the
         // socket rather than leaving a stalled connection behind a raced
@@ -92,13 +223,27 @@ function httpsRequest(
         // EventEmitter with no destroy().
         (req as { destroy?: (e?: Error) => void }).destroy?.();
         const err = new Error(
-          `Request timed out after ${timeoutMs}ms: ${method} ${url}`
-        ) as Error & { code?: string };
+          `Request timed out after ${deadlineMs}ms: ${method} ${url}`
+        ) as Error & { code?: string; timeout_ms?: number };
         err.code = "TIMEOUT"; // not an auth code — callers treat it as a transient fault
+        err.timeout_ms = deadlineMs;
         reject(err);
-      }, timeoutMs);
-      // Never hold the process open on a probe deadline.
+      }, deadlineMs);
+      // Never hold the process open on a deadline timer.
       (deadline as unknown as { unref?: () => void }).unref?.();
+    }
+
+    if (abortSignal && abortSafe) {
+      onAbort = () => {
+        // Same destroy() as the deadline path: abort the request and free the
+        // socket. The caller's `finally` then releases the concurrency slot, so
+        // a cancelled tool call stops holding one immediately instead of at the
+        // backstop.
+        (req as { destroy?: (e?: Error) => void }).destroy?.();
+        clearDeadline();
+        reject(makeCancelledError(method, url));
+      };
+      abortSignal.addEventListener("abort", onAbort, { once: true });
     }
 
     req.on("error", (e) => {
@@ -573,6 +718,8 @@ export class LeadbayClient {
       }
 
       return JSON.parse(res.body) as T;
+    } catch (e) {
+      throw this.mapTransportError(e, `${method} ${path}`);
     } finally {
       this.releaseSemaphore();
     }
@@ -618,6 +765,8 @@ export class LeadbayClient {
       if (res.status < 200 || res.status >= 300) {
         throw this.mapErrorResponse(res.status, res.body, path, res.headers);
       }
+    } catch (e) {
+      throw this.mapTransportError(e, `${method} ${path}`);
     } finally {
       this.releaseSemaphore();
     }
@@ -671,6 +820,8 @@ export class LeadbayClient {
       }
 
       return JSON.parse(res.body) as T;
+    } catch (e) {
+      throw this.mapTransportError(e, `${method} ${path}`);
     } finally {
       this.releaseSemaphore();
     }
@@ -748,6 +899,37 @@ export class LeadbayClient {
       mocked: true,
       would_call: { method, path: fullPath, body: journalBody },
     } as unknown as T;
+  }
+
+  /**
+   * Turn httpsRequest's raw TIMEOUT rejection into the `{error:true, code, …}`
+   * envelope every other failure already speaks, so the agent gets something it
+   * can read out to the user and act on rather than a bare Error string. Any
+   * other rejection (ECONNRESET, DNS, a mapped 4xx/5xx) passes through untouched
+   * — this is a translation, not a catch-all.
+   *
+   * The code stays "TIMEOUT" so the hosted auth probe's existing branch
+   * (auth-http.ts) keeps classifying it as a transient fault and moves to the
+   * sibling region instead of declaring a live token expired.
+   */
+  private mapTransportError(e: unknown, endpoint: string): unknown {
+    const err = e as { code?: string; timeout_ms?: number } | null;
+    if (err?.code !== "TIMEOUT") return e;
+    const ms = err.timeout_ms ?? defaultTimeoutMs();
+    const envelope = this.makeError(
+      "TIMEOUT",
+      `Leadbay did not respond within ${ms}ms — the request was cancelled`,
+      "The connection was accepted but no response came back, so this is a Leadbay-side stall, not a bad request. It is transient: retry the same call once. If it times out again, tell the user Leadbay is not responding right now and offer to report it with leadbay_report_friction.",
+      endpoint
+    );
+    if (envelope._meta) {
+      envelope._meta.timeout_ms = ms;
+      // makeError fills latency_ms from _lastMeta, which for a timeout is a
+      // PREVIOUS request's latency — a number Sentry would show next to this
+      // failure as if it described it. The request ran for the deadline.
+      envelope._meta.latency_ms = ms;
+    }
+    return envelope;
   }
 
   private mapErrorResponse(
@@ -962,6 +1144,8 @@ export class LeadbayClient {
         this.telemetryEnabledFromStamp = false; // value came from a read, not a stamp
       }
       return observed;
+    } catch (e) {
+      throw this.mapTransportError(e, "GET /users/me");
     } finally {
       this.releaseSemaphore();
     }

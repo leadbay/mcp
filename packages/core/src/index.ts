@@ -8,6 +8,8 @@ export {
   REGIONS,
   API_VERSION,
   API_PREFIX,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  runWithRequestSignal,
 } from "./client.js";
 export type { CreateClientConfig, TasteProfileResult } from "./client.js";
 export * from "./types.js";
