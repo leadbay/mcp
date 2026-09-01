@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.32.6 — 2026-09-01 — An honest word when a Leadbay call is refused
+
+- **The assistant stops saying it already retried when it didn't.** When Leadbay
+  refuses a call, the assistant explains what happened. For anything that writes
+  — adding a top-up, opening billing — it never retries on its own, because
+  replaying a write can do the same thing twice. The explanation said otherwise,
+  so you were told a second attempt had been made when there had only ever been
+  one.
+- **Paying is treated as an action, not a lookup.** Creating a top-up link or
+  opening the billing portal now asks you first, like any other action that
+  changes something.
+
 ## 0.32.5 — 2026-09-01 — Editing a contact stops failing
 
 - **Fixing a contact's details now works.** Asking the assistant to correct a
