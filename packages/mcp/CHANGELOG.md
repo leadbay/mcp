@@ -145,6 +145,11 @@ real, all fixed:
   tool; the caller has never seen it, yet `leadbay_import_status` reports
   recovered leads keyed by it. A row identified only by `CRM_ID` — no website
   to correlate on — was untraceable back to the leadId it produced.
+- **A canonical id is only published when the snapshot is complete.**
+  `pendingLeadIds` can only speak for rows that were actually fetched, so while
+  rows are missing an unvouched id might belong to one of them and still be
+  MATCHING — downstream qualification would then act on a lead the wizard may
+  yet re-match. `row_ids` propagates through `import_and_qualify` too.
 - **Record dedupe falls back to the backend record id.** `importIds` need not
   name an MCP-created import; a web-UI one carries no `MCP_ROW_ID`, so keying
   only on that let a re-paged row count twice while another went missing — and

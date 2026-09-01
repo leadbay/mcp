@@ -189,15 +189,24 @@ async function fetchReconciledRecords(
   // deliberately let several rows target one lead (separate contacts on the
   // same company), so keep EVERY reconciled row — keying a map by leadId here
   // would collapse them and lose the per-row rowId/domain the caller needs.
+  const deficit = settlingDeficit(declaredTotal, distinct);
   const seenLeadIds = new Set(leads.map((l) => l.leadId));
   const merged = [...leads];
-  for (const id of canonicalLeadIds) {
-    if (seenLeadIds.has(id)) continue;
-    // A lead id belonging to a record that is still MATCHING / IMPORTING is
-    // not an answer yet. `reconcileRecords` deliberately held it back; adding
-    // it here as an id-only lead would undo that.
-    if (pendingLeadIds.has(id)) continue;
-    merged.push({ leadId: id, name: null });
+  // Only publish an id no record vouched for when the snapshot is COMPLETE.
+  // `pendingLeadIds` can only speak for rows we actually fetched, so while
+  // rows are missing an unvouched canonical id might belong to one of them and
+  // still be MATCHING — publishing it would hand downstream qualification or
+  // outreach a lead the wizard may yet re-match. When rows are missing the
+  // caller is told to poll again anyway.
+  if (deficit === 0) {
+    for (const id of canonicalLeadIds) {
+      if (seenLeadIds.has(id)) continue;
+      // A lead id belonging to a record that is still MATCHING / IMPORTING is
+      // not an answer yet. `reconcileRecords` deliberately held it back;
+      // adding it here as an id-only lead would undo that.
+      if (pendingLeadIds.has(id)) continue;
+      merged.push({ leadId: id, name: null });
+    }
   }
 
   return {
@@ -206,7 +215,7 @@ async function fetchReconciledRecords(
     // A snapshot short of the declared row count is not final — see
     // `settlingDeficit`. Measured on DISTINCT rows: `all.length` counts a
     // re-paged row twice and would mask a genuine shortfall.
-    still_settling: pending + settlingDeficit(declaredTotal, distinct),
+    still_settling: pending + deficit,
   };
 }
 

@@ -171,6 +171,8 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
     // Records only annotate. A lead the wizard created without a visible record
     // row must not silently vanish from downstream qualification.
     mockHttp([
+      // total_records 1 and one row fetched ⇒ a COMPLETE snapshot, which is
+      // what licenses publishing an id no record row exposed.
       { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow({ total_records: 1 }) },
       { method: "GET", path: LEADS_PATH, status: 200, body: { lead_ids: ["lead-1", "lead-created-late"] } },
       {
@@ -396,6 +398,38 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
     expect(out.importIds).toEqual([IMPORT_ID]);
     expect(out.result.leads).toHaveLength(1);
     expect(out.result.still_settling).toBeUndefined();
+  });
+
+  it("an incomplete snapshot holds back canonical ids no record vouched for", async () => {
+    // `pendingLeadIds` can only speak for rows we actually fetched. While rows
+    // are missing, an unvouched canonical id might belong to one of them and
+    // still be MATCHING — publishing it would hand downstream qualification a
+    // lead the wizard may yet re-match.
+    mockHttp([
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow() },
+      { method: "GET", path: LEADS_PATH, status: 200, body: { lead_ids: ["lead-1", "lead-unvouched"] } },
+      {
+        method: "GET",
+        path: RECORDS_RE,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: 1,
+              records: [cell("MCP_ROW_ID", "r1")],
+              match_type: "AUTOMATIC_MATCH",
+              status: "IMPORTED",
+              lead: { id: "lead-1", name: "Acme Imports" },
+            },
+          ],
+          pagination: { page: 0, pages: 1, total: 1 },
+        },
+      },
+    ]);
+    // Declared 3 rows, snapshot exposed 1 → 2 missing.
+    const out: any = await importStatus.execute(newClient(), { importIds: [IMPORT_ID] });
+    expect(out.result.leads.map((l: any) => l.leadId)).toEqual(["lead-1"]);
+    expect(out.result.still_settling).toBe(2);
   });
 
   it("a transient /leads 500 downgrades to status-only, never to a short result", async () => {

@@ -105,6 +105,10 @@ interface ImportAndQualifyResult {
   // Rows from later chunks that never reached the backend. These DO need a
   // fresh import for that subset.
   rows_pending_upload?: number;
+  // Records mode only: the synthetic row id of each input row, in the caller's
+  // `records[]` order. leadbay_import_status reports recovered leads keyed by
+  // it, and the caller has never seen it otherwise.
+  row_ids?: string[];
   // True when the call was a dry_run input-validation (`dry_run: true`).
   // Top-level signal so the agent doesn't have to decode `not_imported[].reason`.
   dry_run?: boolean;
@@ -479,6 +483,12 @@ export const importAndQualify: Tool<
         description:
           "Rows from later chunks that never reached the backend. These are NOT running anywhere; re-import just those rows.",
       },
+      row_ids: {
+        type: "array",
+        description:
+          "Records mode only: the synthetic row id of each input row, in the order you passed `records[]`. leadbay_import_status reports recovered leads by that id — use this to map them back to your source rows.",
+        items: { type: "string" },
+      },
       // preview-shape keys
       mapping_hints: {
         type: "array",
@@ -712,6 +722,7 @@ export const importAndQualify: Tool<
           ? { rows_pending_upload: importResultRaw.rows_pending_upload }
           : {}),
         ...(importResultRaw.dry_run ? { dry_run: true } : {}),
+        ...(importResultRaw.row_ids ? { row_ids: importResultRaw.row_ids } : {}),
         ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
         qualify_id: null,
         import_ids: importResultRaw.importIds,

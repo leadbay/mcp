@@ -121,6 +121,39 @@ describe("leadbay_import_and_qualify — import timeout passes through as runnin
     ]);
     await new Promise((r) => setTimeout(r, 20));
   });
+
+  it("records mode: row_ids survive the wrapper too", async () => {
+    // leadbay_import_status keys recovered leads by these synthetic ids; if the
+    // wrapper drops the mapping, a CRM_ID-only row can never be tied back to
+    // the leadId it produced.
+    mockHttp([
+      {
+        method: "GET",
+        path: "/1.6/users/me",
+        status: 200,
+        body: { id: "u-1", email: "milstan@leadbay.ai", admin: true },
+      },
+      { method: "POST", path: /^\/1\.6\/imports\?file_name=/, status: 200, body: STALLED },
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: STALLED },
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: { ...STALLED, pre_processing: { ...STALLED.pre_processing, finished: true } } },
+      { method: "POST", path: `/1.6/imports/${IMPORT_ID}/update_mappings`, status: 200, body: { notification_id: null } },
+    ]);
+    const out: any = await importAndQualify.execute(
+      newClient(),
+      {
+        records: [{ Ref: "CRM-1" }, { Ref: "CRM-2" }],
+        mappings: { fields: { Ref: "CRM_ID" } },
+        lensId: 42,
+        per_phase_budget_ms: 0,
+        total_budget_ms: 0,
+        per_lead_budget_ms: 30_000,
+      },
+      { bulkTracker: new InMemoryBulkStore() }
+    );
+    expect(out.status).toBe("running");
+    expect(out.row_ids).toHaveLength(2);
+    await new Promise((r) => setTimeout(r, 20));
+  });
 });
 
 function newClient() {
