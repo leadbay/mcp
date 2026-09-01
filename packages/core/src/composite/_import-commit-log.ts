@@ -14,6 +14,11 @@
  * failure here and `leadbay_import_status` reports it as `failed` with the
  * backend's own message.
  *
+ * Only a REFUSAL is recorded. A finisher that runs out of its own budget while
+ * preprocess is merely still slow is not a rejection — the backend may yet
+ * finish — so that case is left reading as "still committing" rather than
+ * pinned to `failed` with no expiry.
+ *
  * Deliberately memory-only and best-effort: a restart loses it and the caller
  * simply falls back to the pre-existing "still committing" reading. It is NOT
  * a job store — the BulkTracker is, and the hosted MCP has none, which is

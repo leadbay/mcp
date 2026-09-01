@@ -1,5 +1,24 @@
 # Changelog — @leadbay/mcp
 
+## 0.33.1 — 2026-09-02
+
+Follow-up to 0.32.0 (product#4007). A review finding landed after the merge.
+
+- **Only a REFUSAL counts as a commit failure.** The detached finisher's catch
+  recorded ANY rejection from the `pollPreprocess` → `commitMappings` chain as a
+  permanent commit failure — including the `ImportPhaseTimeout` raised when
+  preprocess still hasn't finished after the finisher's own 10-minute window.
+  That is not a backend refusal; the import is merely slow and may yet finish.
+  The registry has no expiry, so `leadbay_import_status` would have answered
+  `failed` for ever on a healthy import — worse than the forever-polling 0.32.0
+  set out to remove. A budget timeout now leaves the status at `committing`,
+  which is the honest reading; only an error from `commitMappings` itself is
+  recorded.
+- The finisher's window is deliberately not caller-controllable — a caller
+  shrinking it is the bug that budget exists to prevent — so the test reaches it
+  through a named module seam beside the existing `clearCommitFailures`, rather
+  than a parameter that would leak into the tool's public schema.
+
 ## 0.33.0 — 2026-09-01
 
 Agent memory is removed (product#3996). The three `leadbay_agent_memory_*`
