@@ -35,7 +35,7 @@ failure_modes:
   - Calls leadbay_pull_leads (Discover wishlist) for a follow-up query, or leadbay_pull_followups (Monitor view) for a discovery query — the two entry points read from different backend tables; the right orchestrators are leadbay_daily_check_in (discovery) and leadbay_followup_check_in (follow-up)
 ---
 
-{{include:headers/agent-memory-preamble}}
+{{include:headers/durable-preferences}}
 
 # Leadbay Prospecting — Orientation
 
@@ -151,7 +151,7 @@ After reporting account state, you MAY propose a concrete next step — but only
 
 **Skip it when** there's no clear unfinished thread, the user only wanted the status (a bare "where do I stand?"), or the work they asked for is plainly done. A status read that ends cleanly is a complete answer — don't manufacture a next step just to have one.
 
-**Lean on memory.** Check the `_meta.agent_memory.summary` for prior signal on how this user reacts to next-step offers. If the memory shows they routinely dismiss them, default to NOT proposing (let them ask). If they routinely act on them, lean toward proposing. When the user dismisses or accepts a proposal this turn, that's a material signal — call `leadbay_agent_memory_capture` (`source:"inferred"`, low confidence) so the preference compounds across sessions.
+**Read the room.** If this user has been dismissing next-step offers, stop making them and let them ask. If they keep acting on them, keep offering. That is your own read of the conversation, not something Leadbay stores for you.
 
 **When you do propose, the proposal IS a native choice dialog — never a prose "let me know if…".** Route 2–4 mutually-exclusive next moves into your host's next-step widget (`ask_user_input_v0` on Claude chat / ChatGPT, `AskUserQuestion` on Claude cowork / Claude Code). The widget is the question; do not also list the same options as prose.
 

@@ -1,6 +1,5 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, AiAgentQuestionPayload } from "../types.js";
-import { withAgentMemoryMeta } from "../agent-memory/index.js";
 
 import { leadbay_get_qualification_questions as GET_QUALIFICATION_QUESTIONS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -82,9 +81,7 @@ export const getQualificationQuestions: Tool<Record<string, never>> = {
         "You're an org admin — use leadbay_set_qualification_questions to add, remove, or replace these questions.";
     }
 
-    return withAgentMemoryMeta(
-      client,
-      {
+    return {
         qualification_questions: questions.map((q) => ({
           question: q.question,
           created_at: q.created_at,
@@ -94,8 +91,6 @@ export const getQualificationQuestions: Tool<Record<string, never>> = {
         is_admin: isAdmin,
         region: client.region,
         ...(hint ? { hint } : {}),
-      },
-      ctx
-    );
+      };
   },
 };

@@ -508,7 +508,7 @@ Rule: multiple API calls or business logic → composite. Single relay call → 
 
 | Tools exposed | Condition |
 |---|---|
-| `agentMemoryTools` + `compositeReadTools` | always |
+| `compositeReadTools` | always |
 | `compositeWriteTools` | `LEADBAY_MCP_WRITE=1` (default ON since 0.3.0) |
 | `granularReadTools` + `granularWriteTools` | `LEADBAY_MCP_ADVANCED=1` |
 

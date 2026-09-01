@@ -167,16 +167,6 @@ Opens the uninstall wizard — only shows clients that already have Leadbay MCP 
 
 Your assistant calls these on your behalf — you never call them directly. You ask in plain language ("show me today's leads", "research acme.com", "log that I emailed Jane") and the agent picks the right tool. The default surface below is always exposed; the [full per-tool reference](https://docs.leadbay.ai/leadbay-mcp/tools-reference) lives in the user guide.
 
-### Always on — agent memory
-
-A local, per-account memory of your taste signals (preferred sectors, deal size, communication style). It never leaves your machine.
-
-| Tool | Description |
-|------|-------------|
-| `leadbay_agent_memory_recall` | Read the consolidated top taste signals |
-| `leadbay_agent_memory_capture` | Record a new learning after you reveal a preference |
-| `leadbay_agent_memory_review` | List entries; gate retractions / org promotion behind confirmation |
-
 ### Read-only (always on)
 
 These never modify your account, so they're always safe to allow.

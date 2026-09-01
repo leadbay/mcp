@@ -135,11 +135,13 @@ describe("audit: eval runner guards", () => {
     expect(RUNNER).toMatch(/c\.turn === i \+ 1/);
   });
 
-  it("exempts memory tools by catalog, not by a guessed prefix", () => {
-    // The old exception matched "leadbay_get_agent_memory", which is not what
-    // any of the memory tools are called — so a run following the memory
-    // protocol was reported as a stray.
-    expect(RUNNER).toMatch(/agentMemoryTools\.map/);
+  it("has no memory-tool exemption left to get wrong", () => {
+    // The exemption existed because the server instructions told the agent to
+    // capture and recall on its own initiative, so memory traffic was protocol
+    // rather than scope. With the memory tools retired (product#3996) there is
+    // no such traffic, and an exemption for tools that no longer exist would
+    // silently widen what counts as in-scope.
+    expect(RUNNER).not.toMatch(/agentMemory/);
     expect(RUNNER).not.toMatch(/leadbay_get_agent_memory/);
   });
 

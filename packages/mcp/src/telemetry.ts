@@ -39,13 +39,7 @@ import {
   EV_TOOL_TIMEOUT,
   EV_TOPUP_LINK,
   DURATION_PLAUSIBILITY_CEILING_MS,
-  EV_AGENT_MEMORY_CAPTURED,
-  EV_AGENT_MEMORY_RECALLED,
-  EV_AGENT_MEMORY_PRUNED,
   EV_FRICTION_REPORTED,
-  type AgentMemoryCapturedProps,
-  type AgentMemoryPrunedProps,
-  type AgentMemoryRecalledProps,
   type CompositeCallProps,
   type ExceptionCtx,
   type FrictionReportedProps,
@@ -101,9 +95,6 @@ export interface TelemetryHandle {
   captureToolTimeout(props: ToolTimeoutProps, identity?: CaptureIdentity): void;
   captureTopupLink(props: TopupLinkProps, identity?: CaptureIdentity): void;
   captureStartup(props: StartupProps, identity?: CaptureIdentity): void;
-  captureAgentMemoryCaptured(props: AgentMemoryCapturedProps, identity?: CaptureIdentity): void;
-  captureAgentMemoryRecalled(props: AgentMemoryRecalledProps, identity?: CaptureIdentity): void;
-  captureAgentMemoryPruned(props: AgentMemoryPrunedProps, identity?: CaptureIdentity): void;
   // Returns whether the report was actually accepted for delivery (sent to
   // PostHog, or buffered pending identity resolution). Returns FALSE when there
   // is no PostHog sink at all — e.g. a Sentry-only handle, a failed PostHog
@@ -141,9 +132,6 @@ export const NOOP_TELEMETRY: TelemetryHandle = {
   captureToolTimeout: (_props?, _identity?) => {},
   captureTopupLink: (_props?, _identity?) => {},
   captureStartup: (_props?, _identity?) => {},
-  captureAgentMemoryCaptured: () => {},
-  captureAgentMemoryRecalled: () => {},
-  captureAgentMemoryPruned: () => {},
   // NOOP delivers nothing — say so, so the tool never claims a false send.
   captureFrictionReported: () => false,
   captureException: () => {},
@@ -453,15 +441,6 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
     },
     captureStartup(props, identity) {
       emit(EV_STARTUP, { ...props }, identity);
-    },
-    captureAgentMemoryCaptured(props, identity) {
-      emit(EV_AGENT_MEMORY_CAPTURED, { ...props }, identity);
-    },
-    captureAgentMemoryRecalled(props, identity) {
-      emit(EV_AGENT_MEMORY_RECALLED, { ...props }, identity);
-    },
-    captureAgentMemoryPruned(props, identity) {
-      emit(EV_AGENT_MEMORY_PRUNED, { ...props }, identity);
     },
     captureFrictionReported(props, identity) {
       // `emit` silently no-ops without a PostHog sink, which for this event

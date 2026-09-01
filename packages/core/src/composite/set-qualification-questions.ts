@@ -1,6 +1,5 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, AiAgentQuestionPayload } from "../types.js";
-import { withAgentMemoryMeta } from "../agent-memory/index.js";
 
 import { leadbay_set_qualification_questions as SET_QUALIFICATION_QUESTIONS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -170,18 +169,14 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
       next.every((q, i) => norm(q) === norm(currentQs[i] ?? ""));
 
     if (noChange) {
-      return withAgentMemoryMeta(
-        client,
-        {
+      return {
           qualification_questions: currentQs.map((q) => ({ question: q })),
           count: currentQs.length,
           previous_count: previousCount,
           changed: false,
           region: client.region,
           hint: "No change — the resulting list is identical to the current one. Pass different `add`/`remove` entries, or call leadbay_get_qualification_questions to review the current questions.",
-        },
-        ctx
-      );
+        };
     }
 
     // Dropping ANY existing question is destructive — require confirm. Gate on
@@ -191,9 +186,7 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
     // would wrongly let it through without confirm.
     const removed = currentQs.filter((q) => !next.some((n) => norm(n) === norm(q)));
     if (removed.length > 0 && params.confirm !== true) {
-      return withAgentMemoryMeta(
-        client,
-        {
+      return {
           qualification_questions: currentQs.map((q) => ({ question: q })),
           count: currentQs.length,
           previous_count: previousCount,
@@ -202,9 +195,7 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
           hint: `Re-call with confirm:true to apply. This would remove ${removed.length} question(s): ${removed
             .map((q) => `"${q}"`)
             .join(", ")}. Removing a question changes how every lead is scored.`,
-        },
-        ctx
-      );
+        };
     }
 
     // 204 No Content on success.
@@ -215,16 +206,12 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
     // read reflects the change.
     client.invalidateTasteProfile();
 
-    return withAgentMemoryMeta(
-      client,
-      {
+    return {
         qualification_questions: next.map((q) => ({ question: q })),
         count: next.length,
         previous_count: previousCount,
         changed: true,
         region: client.region,
-      },
-      ctx
-    );
+      };
   },
 };

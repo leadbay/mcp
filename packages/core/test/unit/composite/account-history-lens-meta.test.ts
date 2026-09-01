@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   mockHttp,
   resetHttpMock,
@@ -17,11 +17,6 @@ const OTHER_LENS = 99; // a lens other than the active default
 
 beforeEach(() => {
   resetHttpMock();
-  // Keep these tests deterministic + offline: no agent-memory summary fetch.
-  process.env.LEADBAY_AGENT_MEMORY = "off";
-});
-afterEach(() => {
-  delete process.env.LEADBAY_AGENT_MEMORY;
 });
 
 // research_lead_by_id's sub-resources, keyed to an EXPLICIT lens id so we can

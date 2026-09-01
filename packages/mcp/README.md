@@ -22,26 +22,18 @@ A Model Context Protocol server that lets Claude Desktop, Cursor, Claude Code, a
 
 > **Upgrading?** See [CHANGELOG](../../CHANGELOG.md) and [MIGRATION.md](./MIGRATION.md) for version-specific behavior changes. Key callout: composite write tools are **ON by default** since 0.3.0 — set `LEADBAY_MCP_WRITE=0` to restore read-only behavior.
 
-## Agent memory
+## What Leadbay remembers
 
-Leadbay MCP keeps a local, per-account agent memory at
-`~/.leadbay/memory/{account_id}/`. It stores append-only JSONL learnings
-about user taste signals such as preferred sectors, regions, deal size,
-communication style, and qualification rules.
+Leadbay stores nothing about how you like to work. Your assistant already does
+that — Claude, ChatGPT and Codex each keep their own memory of your tone,
+naming and habits, and it survives across conversations without us.
 
-The memory tools are always exposed:
-
-- `leadbay_agent_memory_recall` reads the consolidated top signals.
-- `leadbay_agent_memory_capture` appends a new learning after the user reveals
-  a material preference.
-- `leadbay_agent_memory_review` lists entries and gates retractions or org
-  promotion through user confirmation.
-
-The main leads-touching tools (`leadbay_account_status`,
-`leadbay_pull_leads`, `leadbay_pull_followups`,
-`leadbay_prepare_outreach`, `leadbay_research_lead_by_id`) also attach
-`_meta.agent_memory.summary` automatically. Set `LEADBAY_AGENT_MEMORY=off`
-to suppress this ambient metadata.
+What Leadbay stores is what changes **who it finds for you**. When you tell the
+agent something about your market ("I target fleets over 100 vehicles",
+"carriers are a bad fit unless they do last-mile"), it calls
+`leadbay_refine_prompt`, and that reshapes your recommendations for your whole
+organization — in the web app too, on every refresh. A lead you reject is
+recorded as a dislike, which feeds the recommender the same way.
 
 ## 1. Install
 

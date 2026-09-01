@@ -6,7 +6,6 @@ import type {
   LeadCustomFieldEntry,
   CustomFieldDef,
 } from "../types.js";
-import { withAgentMemoryMeta } from "../agent-memory/index.js";
 
 import { leadbay_get_lead_custom_fields as GET_LEAD_CUSTOM_FIELDS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -143,16 +142,12 @@ export const getLeadCustomFields: Tool<GetLeadCustomFieldsParams> = {
         "Some custom fields could not be named (the lead payload omitted definitions and the catalog fetch failed). Retry, or check leadbay_list_mappable_fields.";
     }
 
-    return withAgentMemoryMeta(
-      client,
-      {
+    return {
         lead_id: params.leadId,
         custom_fields: rows,
         count: rows.length,
         region: client.region,
         ...(hint ? { hint } : {}),
-      },
-      ctx
-    );
+      };
   },
 };

@@ -9,18 +9,12 @@ import { resolveSnippets } from "./snippets.js";
  * sees routing BEFORE the body and well within the first ~600 chars
  * (the chunk every host reads even on truncation). See /CLAUDE.md.
  */
-function emitRoutingBlock(
-  routing: Routing | undefined,
-  memoryPointer?: string
-): string {
+function emitRoutingBlock(routing: Routing | undefined): string {
   if (!routing) return "";
   const lines: string[] = ["## WHEN TO USE"];
   if (routing.triggers && routing.triggers.length > 0) {
     const phrases = routing.triggers.map((t) => `"${t}"`).join(", ");
     lines.push(`Trigger phrases: ${phrases}.`);
-  }
-  if (memoryPointer) {
-    lines.push(memoryPointer.trim());
   }
   if (routing.anti_triggers && routing.anti_triggers.length > 0) {
     const formatted = routing.anti_triggers
@@ -62,18 +56,9 @@ function emitRenderHintBlock(hint: string | undefined): string {
  * body. If neither is set, returns the body unchanged so existing
  * templates that don't use the new frontmatter fields are unaffected.
  */
-export function applyDescriptionHeader(
-  fm: Frontmatter,
-  body: string,
-  opts: { memoryPointer?: string } = {}
-): string {
+export function applyDescriptionHeader(fm: Frontmatter, body: string): string {
   const blocks: string[] = [];
-  const memoryProtocol =
-    fm.memory_protocol ?? (fm.routing ? "enabled" : "disabled");
-  const routing = emitRoutingBlock(
-    fm.routing,
-    memoryProtocol === "enabled" ? opts.memoryPointer : undefined
-  );
+  const routing = emitRoutingBlock(fm.routing);
   if (routing) blocks.push(routing);
   const renderHint = emitRenderHintBlock(fm.rendering_hint);
   if (renderHint) blocks.push(renderHint);
@@ -208,11 +193,6 @@ export function assemble(opts: AssembleOptions): AssembleResult {
   const snippetsRoot = join(root, "snippets");
   const promptDir = join(root, "prompts");
   const toolDir = join(root, "tool-descriptions");
-  const memoryPointerPath = join(snippetsRoot, "headers", "agent-memory-pointer.md");
-  const memoryPointer = existsSync(memoryPointerPath)
-    ? readFileSync(memoryPointerPath, "utf8").trim()
-    : "";
-
   // Mutating tools = anything with destructiveHint:true OR readOnlyHint:false in its annotations.
   // For now we pass it as registeredToolNames; calling code may pass a sub-set explicitly later.
   // The simplest signal: a tool whose name starts with leadbay_import_/leadbay_create_/leadbay_set_/
@@ -256,7 +236,7 @@ export function assemble(opts: AssembleOptions): AssembleResult {
     // their body verbatim — no auto-emitted blocks.
     const finalBody =
       expectedKind === "tool-description"
-        ? applyDescriptionHeader(parsed.frontmatter, resolved, { memoryPointer })
+        ? applyDescriptionHeader(parsed.frontmatter, resolved)
         : resolved;
 
     const artifact: AssembledArtifact = {
