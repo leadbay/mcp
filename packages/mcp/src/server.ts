@@ -29,7 +29,6 @@ import {
   granularWriteTools,
   NO_COMMERCE_TOOL_DESCRIPTIONS,
   COMPOSITE_FILE_TOOL_NAMES,
-  type BulkTracker,
   type LeadbayClient,
   type NotificationInboxEntry,
   type Tool,
@@ -435,7 +434,6 @@ interface BuildServerOptions {
    */
   includeCommerce?: boolean;
   logger?: ToolLogger;
-  bulkTracker?: BulkTracker;
   // Server version reported on `initialize`. The CLI passes the build-time
   // package.json#version (via tsup's __LEADBAY_MCP_VERSION__ define) so this
   // stays in lock-step with the published package. Tests omit it and fall
@@ -1312,7 +1310,6 @@ export function buildServer(
       // number we would have to guess on Leadbay's behalf.
       const result = await runWithRequestSignal(extra.signal, () => tool.execute(client, args, {
         logger: opts.logger,
-        bulkTracker: opts.bulkTracker,
         notificationsInbox: opts.notificationsInbox,
         signal: extra.signal,
         progress,

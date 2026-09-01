@@ -23,7 +23,7 @@ After your first `leadbay_pull_leads` call, capture `response.lens.id` into your
 
 ## Rule 2 — Prefer async for bulk operations
 
-`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false`, which returns `{status:'running', qualify_id}` immediately. Then poll `leadbay_qualify_status` (or `leadbay_import_status`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
+`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false`, which returns `{status:'running', notification_id}` immediately. Then poll `leadbay_qualify_status` (or `leadbay_import_status`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
 
 ## Rule 3 — Serialize `leadbay_research_lead_by_id` fan-out
 
@@ -133,7 +133,7 @@ When the response carries `social_urls` (the post-fix multi-platform URL block o
 
 ABOVE the table, add a 2–4 sentence "Today's nudges" paragraph for the 3 most-promising rows. The nudges speak to urgency / opportunity / freshness — what makes acting on these RIGHT NOW the right call. Do NOT repeat the "why it fits" column from the table; the nudges should add fresh framing the table doesn't carry (e.g., recent news from the `qualification_summary` excerpt, a window closing, a competitor activity the user mentioned earlier in the session). One sentence per nudge, salesperson voice, not coachspeak.
 
-If the batch returns fewer than 10 qualified leads, top it up: call `leadbay_bulk_qualify_leads` with `lensId:<captured>`, `count:<1.5x deficit, capped at 25>`, and **`wait_for_completion:false`**. Capture `qualify_id` from the response and poll `leadbay_qualify_status` every ~10s until `status:'done'`. Then re-pull with the same `lensId` to pick up the newly qualified leads. **Never re-pull without `lensId` — you will lose your batch to a lens shift.** (The `leadbay_qualify_top_n` slash-prompt wraps this same tool with a friendlier surface for users; agents should call the underlying tool directly here.)
+If the batch returns fewer than 10 qualified leads, top it up: call `leadbay_bulk_qualify_leads` with `lensId:<captured>`, `count:<1.5x deficit, capped at 25>`, and **`wait_for_completion:false`**. Capture `notification_id` from the response and poll `leadbay_qualify_status` every ~10s until `status:'done'`. Then re-pull with the same `lensId` to pick up the newly qualified leads. **Never re-pull without `lensId` — you will lose your batch to a lens shift.** (The `leadbay_qualify_top_n` slash-prompt wraps this same tool with a friendlier surface for users; agents should call the underlying tool directly here.)
 
 # PHASE 4 — DEEP DIVE (every promising lead)
 

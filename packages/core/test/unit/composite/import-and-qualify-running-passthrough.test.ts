@@ -11,6 +11,7 @@
  * wait_for_completion:false.
  */
 
+import { resetLaunchGuard } from "../../../src/jobs/launch-guard.js";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockHttp, resetHttpMock, httpsMockFactory } from "../../harness.js";
 
@@ -18,7 +19,6 @@ vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
 import { importAndQualify } from "../../../src/composite/import-and-qualify.js";
-import { InMemoryBulkStore } from "../../../src/jobs/bulk-store.js";
 
 const BASE = "https://api-us.leadbay.app";
 const IMPORT_ID = "imp-1";
@@ -35,7 +35,10 @@ const STALLED = {
   processing: null,
 };
 
-beforeEach(() => resetHttpMock());
+beforeEach(() => {
+  resetHttpMock();
+  resetLaunchGuard();
+});
 
 describe("leadbay_import_and_qualify — import timeout passes through as running", () => {
   it("returns {status:'running', import_ids} instead of IMPORT_ASYNC_UNEXPECTED", async () => {
@@ -65,14 +68,14 @@ describe("leadbay_import_and_qualify — import timeout passes through as runnin
         total_budget_ms: 0,
         per_lead_budget_ms: 30_000,
       },
-      { bulkTracker: new InMemoryBulkStore() }
+      {}
     );
 
     expect(out.kind).toBe("result");
     expect(out.status).toBe("running");
     expect(out.import_ids).toEqual([IMPORT_ID]);
     // Nothing to qualify yet — there are no leadIds until the import lands.
-    expect(out.qualify_id).toBeNull();
+    // No client-minted handle any more: import_ids above IS the handle.
     expect(out.qualified).toEqual([]);
     // The rendering contract keys off `timed_out`; without it the agent can't
     // tell this from a deliberate async launch and has no cue to poll.
@@ -110,7 +113,7 @@ describe("leadbay_import_and_qualify — import timeout passes through as runnin
         total_budget_ms: 0,
         per_lead_budget_ms: 30_000,
       },
-      { bulkTracker: new InMemoryBulkStore() }
+      {}
     );
 
     expect(out.status).toBe("running");
@@ -148,7 +151,7 @@ describe("leadbay_import_and_qualify — import timeout passes through as runnin
         total_budget_ms: 0,
         per_lead_budget_ms: 30_000,
       },
-      { bulkTracker: new InMemoryBulkStore() }
+      {}
     );
     expect(out.status).toBe("running");
     expect(out.row_ids).toHaveLength(2);
