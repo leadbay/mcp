@@ -1,5 +1,189 @@
 # Changelog — @leadbay/mcp
 
+## 0.32.0 — 2026-09-01
+
+A poll-budget timeout stops being an error (product#4007). The import wizard's
+phases are bimodal — ~7s or ~85s, essentially nothing in between — and
+`DEFAULT_PER_PHASE_BUDGET_MS` (60s) sat squarely in the gap, so the same input
+randomly succeeded or threw. One reported session: 21 successful imports and 9
+timeouts on a single spreadsheet, all nine timeouts issued from one user
+instruction. The agent re-issued the identical call nine times over eleven
+minutes, because an error is a thing you retry. Account details are in
+product#4007; this file is published to npm, so they stay there.
+
+- **`IMPORT_BUDGET_EXHAUSTED` → `IMPORT_TIMEOUT`.** No alias. "Budget" meant
+  milliseconds and every reader — customer, support, engineer — parsed it as
+  money. There is no import billing cap. Keeping the old string alive in
+  telemetry would preserve the exact confusion the rename exists to end.
+- **The blocking path returns `{status:"running", timed_out:true, importIds}`
+  instead of throwing.** `ImportPhaseTimeout` is now an internal signal raised by
+  the three poll sites (preprocess / process / records-terminal) and converted to
+  a result in `execute`. A real backend error — `IMPORT_PREPROCESS_FAILED`,
+  `IMPORT_PROCESSING_FAILED` — still throws; degradation is timeout-only.
+- **A preprocess timeout parks the import, so it gets a detached finisher.**
+  Found by probing us-staging rather than by reading the code: `update_mappings`
+  is the MCP's *own* POST, and it only fires after preprocess. Walk away before
+  sending it and the wizard row sits inert forever — `pre_processing.finished`
+  true, `processing` absent, `total_records` 0, and `GET /records` answering
+  `400 in_progress` indefinitely. `summarizeImports` reads that shape as
+  **complete**, so without this the fix would have converted a loud error into a
+  silent "running… complete… no leads", which is worse than what it replaced.
+  `resumeParkedUpload` hands the uploaded chunk to a detached continuation that
+  commits the mappings, so `status:"running"` is a true statement. Process and
+  reconcile timeouts need nothing — the backend is already working. Verified
+  live on us-staging 2026-09-01: forced timeout → running at t+0, three real
+  leadIds out of `leadbay_import_status(importIds)` at t+10s.
+- **`IMPORT_NOT_TERMINAL` is retired.** Its hint said *"Retry
+  leadbay_import_leads with the same input in 30s"* — our own contract asking
+  for the loop. That path degrades like the other two now.
+- **`leadbay_import_status` returns leads on the `importIds[]` path.** It used
+  to carry `result` only when resolving a `handle_id` against the BulkTracker,
+  so an import that timed out mid-poll could be observed as `complete` and still
+  leave the agent with no leadIds — whose only route to them was re-running the
+  whole import. It now reads `GET /imports/{id}/records` once every named import
+  is complete. `MCP_ROW_ID` round-trips through the synthesized CSV, so this
+  needs no client-side state — which is what makes it work on the hosted MCP,
+  where there is no BulkTracker at all (`http-server.ts` never passes one).
+  A records read that fails downgrades to status-only; it never turns a readable
+  status into an error.
+- **A still-settling record is in neither bucket.** `reconcileOneChunk` can call
+  an unresolved record `internal_error` because it only runs after the records
+  settled; a status poll has no such guarantee. The status-side reconciler
+  counts them as `result.still_settling` instead. Calling a pending row "failed"
+  is what sends an agent back into the loop.
+- **`notification_id` survives a timeout.** It was collected from
+  `runOneChunk`'s return value, so a call that timed out after `update_mappings`
+  threw away the very notification that would have told the agent the import
+  finished. Threaded out at mint time, mirroring `onImportId`.
+- **`import_and_qualify` passes the running shape through** rather than throwing
+  `IMPORT_ASYNC_UNEXPECTED`, which would otherwise fire on exactly the incident
+  being fixed. Reuses the literal its `wait_for_completion:false` branch already
+  returns; `handle_id` is now optional on both.
+- **Multi-chunk honesty:** a timeout on chunk 1 of 3 leaves chunks 2-3 unsent.
+  Those rows are reported as `rows_pending_upload`, and the description says
+  they DO need a fresh call for that subset — the one case where re-importing is
+  right.
+- Shared record-reading primitives (`normalizeDomain`, `readCell`,
+  `PUBLIC_MAILBOX_DOMAINS`, `reconcileRecords`) moved to
+  `composite/_import-records.ts`. `import-leads.ts` re-exports `normalizeDomain`
+  for backward compatibility.
+
+**Review round 2** — nine findings from the Codex and Claude reviewers, all
+real, all fixed:
+
+- **A dry run and an import parked mid-commit are byte-identical on the wire.**
+  Probed on us-staging: both answer `total_records: 0`,
+  `pre_processing.finished: true`, `processing` absent, `mappings` populated by
+  the backend's own AI hints, and `400 in_progress` on BOTH `/leads` and
+  `/records`. So the row cannot decide completion — the endpoints can.
+  `leadbay_import_status` now asks, and demotes a row that merely *looks*
+  finished to `status:"running"`, `phase:"committing"`. Without that, the window
+  between preprocess finishing and the detached finisher committing reported
+  `complete` with no leads and the agent stopped polling — the exact failure
+  this release exists to prevent.
+- **`dry_run` is carried by the caller**, because nothing else can carry it.
+  The timed-out running result sets it; `leadbay_import_status` takes it as a
+  parameter. Absent it, a validation pass reads as `committing` rather than
+  risking a "N leads imported" render of an import that committed nothing.
+- **`GET /imports/{id}/leads` is the source of truth for lead ids**, unioned
+  over the records-derived set, which now only annotates them with
+  rowId/domain/name. It is what `import_and_qualify` already trusts and it
+  includes leads the import created rather than matched; records-only would
+  drop those silently.
+- **A snapshot short of the declared `total_records` reports the shortfall as
+  `still_settling`.** `processing.finished` can flip before every row is
+  exposed; counting only visible rows let a partial snapshot read as final.
+- **A record carrying `lead.id` while still `MATCHING`/`IMPORTING` stays
+  pending.** The module's own `isRecordTerminal` says settled means `IMPORTED`
+  or `NO_MATCH`; the leads bucket now honours it instead of trusting a
+  lead id that the wizard may yet re-match.
+- **`import_and_qualify` propagates `timed_out`, `rows_pending_upload`,
+  `dry_run` and the malformed rows.** Dropping them meant a >100-row batch
+  silently lost every unuploaded chunk and the agent had no cue to poll.
+- **Malformed rows survive the degraded result.** They are rejected
+  client-side and never reach the backend, so `leadbay_import_status` could
+  never reconstruct them — dropping them let the caller read the batch as fully
+  accounted for.
+- **No customer identity in this file.** It ships in the package's npm `files`
+  list; incident details belong in product#4007, not on npm.
+
+**Review round 3** — seven more findings on the round-2 code, all real:
+
+- **A transient `/leads` failure was being swallowed as "endpoint missing".**
+  Only a 404 is benign; a 500 or auth error means the canonical set is unknown,
+  and a records-only `result` would silently omit whatever `/leads` would have
+  added. Now only 404 falls back — and fixing it immediately surfaced a missing
+  `/leads` mock in the MCP E2E test that the old catch had been hiding.
+- **The canonical merge keyed a map by `leadId`,** which collapsed the several
+  rows records-mode deliberately allows on one lead (separate contacts on one
+  company) and lost each row's `rowId`. Every reconciled row is kept; only ids
+  `/leads` knows and no record exposed are appended.
+- **A canonical id could resurrect a non-terminal record** through the union,
+  undoing the terminal gate added in round 2. Ids belonging to a record that is
+  still MATCHING / IMPORTING are held back.
+- **The settling deficit counted raw fetched rows,** so a re-paged duplicate
+  masked a genuine shortfall. Measured on distinct rows now.
+- **The detached finisher inherited the caller's budget.** A caller who passed
+  a short `total_budget_ms` is exactly the caller most likely to time out;
+  giving the finisher that same window let it fail the one job it exists to do
+  and leave the import parked. It now carries its own 10-minute budget, does
+  only what it must — poll preprocess, commit the mappings — and is skipped
+  entirely for a dry run, which is *supposed* to stop after preprocess.
+- **Two tool descriptions still said `leadbay_import_status` returns
+  status/progress only**, contradicting the recovery path this release adds.
+- **`readCell` never looked at a cell's `field` name.** A records-mode import
+  that maps the header `Web` to LEAD_WEBSITE returns
+  `{column_name: "Web", field: "LEAD_WEBSITE"}`, and coalescing to the first
+  present name let `column_name` shadow `field` — so an unmatched row lost its
+  domain and rendered as "needs attention" instead of "pending crawl", without
+  the domain needed to retry. Pre-existing, but the stateless recovery path is
+  what made it bite.
+- **`importIds` is deduped.** The same handle twice doubled the declared row
+  count against a record set that dedupes, pinning `still_settling` above zero
+  on an import that had entirely finished.
+- **Records mode returns `row_ids`.** `MCP_ROW_ID` is a UUID minted inside the
+  tool; the caller has never seen it, yet `leadbay_import_status` reports
+  recovered leads keyed by it. A row identified only by `CRM_ID` — no website
+  to correlate on — was untraceable back to the leadId it produced.
+- **A rejected mapping commit no longer polls for ever.** The detached
+  finisher sends `update_mappings` on the caller's behalf; if the backend
+  refuses it (an invalid mapping answers `400 missing LEAD_NAME field`), the
+  row it leaves is byte-identical to one still committing — no error field
+  anywhere. Before the timeout became a success result this surfaced as a plain
+  error, so staying silent would be a regression introduced by that very
+  change. The finisher records the rejection in a memory-only, best-effort
+  registry and `leadbay_import_status` reports `failed` with the backend's own
+  message; a restart just falls back to the old "still committing" reading.
+- **A completed dry run says so.** Polling with `dry_run:true` returned
+  `complete` with no `result` and no discriminator, which the rendering
+  contract turns into "✓ Import complete" — a lie about an import that
+  committed nothing. The response now echoes `dry_run`.
+- **A foreign `MCP_ROW_ID` column is not trusted as an identity.** A web-UI
+  import's own file may carry that header holding blanks or one repeated value;
+  treating those as our synthetic ids collapsed unrelated records onto one
+  dedupe key. Only a `randomUUID()`-shaped value counts.
+- **A canonical id is only published when the snapshot is complete.**
+  `pendingLeadIds` can only speak for rows that were actually fetched, so while
+  rows are missing an unvouched id might belong to one of them and still be
+  MATCHING — downstream qualification would then act on a lead the wizard may
+  yet re-match. `row_ids` propagates through `import_and_qualify` too.
+- **Record dedupe falls back to the backend record id.** `importIds` need not
+  name an MCP-created import; a web-UI one carries no `MCP_ROW_ID`, so keying
+  only on that let a re-paged row count twice while another went missing — and
+  a raw count matching `total_records` then read as a complete snapshot.
+
+**Not shipped, deliberately:** the issue's criterion 6 asks to flip
+`wait_for_completion` to default `false`. `http-server.ts:336` never passes a
+`bulkTracker`, so on hosted that path throws `BULK_TRACKER_UNAVAILABLE` today
+(product#4005) — the flip would break 100% of hosted imports. `BulkRecord` also
+carries no org field, so a shared store on the multi-tenant hosted process would
+make handles cross-tenant resolvable; that needs its own design. Parked behind
+#4005. The degrade-to-running fix delivers the same benefit without it.
+
+**Backend, not this repo:** the bimodal ~85s phase itself, and
+`POST /leads/resolve`'s 81-95s slow mode (17 of 40 calls in the same session,
+~24 minutes of wall clock). Issue criteria 1 and 2.
+
 ## 0.30.0 — 2026-08-19
 
 Encode the **single-country rule** across every location-accepting surface
