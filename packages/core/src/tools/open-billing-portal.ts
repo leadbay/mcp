@@ -9,8 +9,12 @@ interface StripeUrlResponse {
 export const openBillingPortal: Tool<Record<string, never>> = {
   name: "leadbay_open_billing_portal",
   annotations: {
+    // Not read-only, despite being a GET: the backend mints a Stripe portal
+    // session, and for an org with no customer yet it also creates the Stripe
+    // customer and persists organizations.stripe_customer_id. Same
+    // getStripeCustomer path as leadbay_create_topup_link.
     title: "Generate Stripe customer-portal URL for subscription management",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: false,
     openWorldHint: true,

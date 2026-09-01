@@ -1,5 +1,32 @@
 # Changelog — @leadbay/mcp
 
+## 0.32.6 — 2026-09-01
+
+The 401 auto-retry is GET-only — replaying a write could double-execute a
+mutation that already committed — but `mapErrorResponse` wrote its hint as if
+`request()` had always retried. On `leadbay_create_topup_link` (a POST) the
+agent was told the call had already been retried when it had been attempted
+exactly once. Covers acceptance criteria 4 and 5 of product#3998; the 401 itself
+is a backend bug fixed in leadbay/backend#1989.
+
+- The GET-only rule is extracted into `retriesOn401` so the retry path and the
+  error mapper read one source of truth, and the actual outcome is threaded into
+  `mapErrorResponse` rather than assumed.
+- The not-retried hint states only the fact and never the reason. A GET with
+  `retryOn401:false` (the startup auth probe) is not a write, and the earlier
+  text told it that it was. Why the retry didn't run is not actionable for the
+  agent — only that this was attempt one — so the flag stays a boolean.
+- `readOnlyHint: false` on both Stripe tools. Each mints a Stripe session, and
+  for an org with no customer yet the shared `getStripeCustomer` path creates
+  the customer and persists `organizations.stripe_customer_id`.
+- The two Stripe tools stay in `granularReadTools`. `readOnlyHint` (a client
+  confirmation hint) and `includeWrite` (a capability gate over the user's
+  Leadbay data) are different axes, and this repo already treats them that way
+  — `leadbay_preview_bulk_enrichment` sits in `granularWriteTools` with
+  `readOnlyHint: true`. Moving them would leave a `--no-write` user who hits
+  quota with no top-up link at all, which is the exact failure product#3998 was
+  filed for.
+
 ## 0.32.5 — 2026-09-01
 
 `leadbay_update_contact` returned `NOT_FOUND` / 404 on 100% of the calls ever

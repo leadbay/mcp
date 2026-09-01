@@ -16,6 +16,13 @@ import type {
 
 const LENS_CACHE_TTL_MS = 5 * 60 * 1000;
 const TASTE_CACHE_TTL_MS = 10 * 60 * 1000;
+// Whether a 401 on this method is safe to auto-retry. Reads are idempotent;
+// writes may have committed server-side before the 401 came back, so replaying
+// them could double-execute the mutation. Single source of truth for the rule —
+// httpsRequestWithRetry enforces it, and the error mapper reads it so the hint
+// never claims a retry that did not happen.
+export const retriesOn401 = (method: string): boolean => method.toUpperCase() === "GET";
+
 const ME_CACHE_TTL_MS = 60 * 1000;
 const MAX_CONCURRENT = 5;
 
@@ -634,12 +641,13 @@ export class LeadbayClient {
   // error envelope says so.
   //
   // Arrow-function field so `this` stays bound even when the method is passed
-  // as a bare reference (see request()'s ternary). Retries are GET-ONLY: a 401
-  // on a write (POST/PUT/DELETE) may arrive AFTER the mutation already committed
-  // server-side, so blindly re-sending it would double-execute the write. Reads
-  // are idempotent, so retrying them is safe. The 250ms backoff releases the
-  // concurrency slot first (release → sleep → re-acquire) so a wave of 401s
-  // doesn't pin all MAX_CONCURRENT slots in setTimeout and stall the queue.
+  // as a bare reference (see request()'s ternary). Retries are GET-ONLY (see
+  // retriesOn401): a 401 on a write (POST/PUT/DELETE) may arrive AFTER the
+  // mutation already committed server-side, so blindly re-sending it would
+  // double-execute the write. Reads are idempotent, so retrying them is safe.
+  // The 250ms backoff releases the concurrency slot first (release → sleep →
+  // re-acquire) so a wave of 401s doesn't pin all MAX_CONCURRENT slots in
+  // setTimeout and stall the queue.
   private httpsRequestWithRetry = async (
     method: string,
     url: string,
@@ -648,7 +656,7 @@ export class LeadbayClient {
     timeoutMs?: number
   ): Promise<HttpResult> => {
     const res = await httpsRequest(method, url, headers, body, timeoutMs);
-    if (res.status === 401 && method.toUpperCase() === "GET") {
+    if (res.status === 401 && retriesOn401(method)) {
       this.releaseSemaphore();
       try {
         await new Promise((r) => setTimeout(r, 250));
@@ -684,6 +692,8 @@ export class LeadbayClient {
     // Auto-retry a transient 401 on normal calls; the startup auth-probe opts
     // out (retryOn401:false) so a bad token fails fast instead of double-probing.
     const retryOn401 = opts?.retryOn401 !== false;
+    // Did a 401 on this call actually get auto-retried? Feeds the error hint.
+    const retriedOn401 = retryOn401 && retriesOn401(method);
     await this.acquireSemaphore();
     try {
       const url = `${this._baseUrl}${API_PREFIX}${path}`;
@@ -714,7 +724,7 @@ export class LeadbayClient {
       }
 
       if (res.status < 200 || res.status >= 300) {
-        throw this.mapErrorResponse(res.status, res.body, path, res.headers);
+        throw this.mapErrorResponse(res.status, res.body, path, res.headers, retriedOn401);
       }
 
       return JSON.parse(res.body) as T;
@@ -726,6 +736,7 @@ export class LeadbayClient {
   }
 
   async requestVoid(method: string, path: string, body?: unknown): Promise<void> {
+    const retriedOn401 = retriesOn401(method);
     if (process.env.LEADBAY_MOCK === "1") {
       await this.mockRequest<void>(method, path, body);
       return;
@@ -763,7 +774,7 @@ export class LeadbayClient {
       };
 
       if (res.status < 200 || res.status >= 300) {
-        throw this.mapErrorResponse(res.status, res.body, path, res.headers);
+        throw this.mapErrorResponse(res.status, res.body, path, res.headers, retriedOn401);
       }
     } catch (e) {
       throw this.mapTransportError(e, `${method} ${path}`);
@@ -783,6 +794,7 @@ export class LeadbayClient {
     contentType: string,
     body: string | Buffer
   ): Promise<T> {
+    const retriedOn401 = retriesOn401(method);
     if (process.env.LEADBAY_MOCK === "1") {
       return this.mockRequestBinary<T>(method, path, contentType, body);
     }
@@ -816,7 +828,7 @@ export class LeadbayClient {
       }
 
       if (res.status < 200 || res.status >= 300) {
-        throw this.mapErrorResponse(res.status, res.body, path, res.headers);
+        throw this.mapErrorResponse(res.status, res.body, path, res.headers, retriedOn401);
       }
 
       return JSON.parse(res.body) as T;
@@ -936,7 +948,8 @@ export class LeadbayClient {
     status: number,
     rawBody: string,
     endpoint: string,
-    headers: Record<string, string | string[] | undefined>
+    headers: Record<string, string | string[] | undefined>,
+    retried: boolean
   ): LeadbayError {
     let parsed: any;
     try {
@@ -948,18 +961,26 @@ export class LeadbayClient {
     const retryAfter = parseRetryAfter(headers["retry-after"]);
 
     if (status === 401) {
-      // Leadbay tokens don't expire on a timer, and request() already retried
-      // this call once on the first 401. The one thing we can state for certain
-      // is that the token did NOT time out. A persistent 401 is EITHER a
+      // Leadbay tokens don't expire on a timer, so the one thing we can state
+      // for certain is that the token did NOT time out. A 401 is EITHER a
       // Leadbay-side hiccup OR a genuine logout/revocation (per Milan, a 401 can
       // mean the user is logged out) — we can't tell which from here, so name
       // both causes and assert neither. Don't claim the login is fine, and don't
       // push re-login as the default fix either.
+      //
+      // [retried] says whether the auto-retry actually ran — false on a write
+      // (retriesOn401) and also on a GET whose caller passed retryOn401:false,
+      // e.g. the startup auth probe. The hint states only that fact and not the
+      // reason, so it can't misdescribe either path: it used to claim a retry
+      // that never happened, which read as "we already tried twice, it's
+      // hopeless" on a call attempted exactly once (product#3998).
       // (Code stays AUTH_EXPIRED for backward compat with the MCP auth handlers.)
       return this.makeError(
         "AUTH_EXPIRED",
         "Leadbay rejected this request (401)",
-        "Leadbay tokens don't expire on a timer, so this isn't a stale token. A 401 here is usually a Leadbay-side hiccup, but can also mean the user logged out. Try again shortly; if it persists, offer to report it to the team.",
+        retried
+          ? "Tokens don't expire on a timer, so this isn't stale. Already auto-retried once and it 401'd again — usually a Leadbay-side hiccup, but can also mean the user logged out. Try again shortly, else report it."
+          : "Tokens don't expire on a timer, so this isn't stale. This call wasn't auto-retried, so it's the first attempt — a Leadbay-side hiccup, or the user logged out. Try again once, else report it.",
         endpoint,
         null,
         status
@@ -1135,7 +1156,8 @@ export class LeadbayClient {
         opts?.timeoutMs
       );
       if (res.status < 200 || res.status >= 300) {
-        throw this.mapErrorResponse(res.status, res.body, "/users/me", res.headers);
+        // Hardcoded GET through httpsRequestWithRetry, so the 401 auto-retry ran.
+        throw this.mapErrorResponse(res.status, res.body, "/users/me", res.headers, retriesOn401("GET"));
       }
       const me = JSON.parse(res.body) as UserMePayload;
       const observed = me.telemetry_enabled;
