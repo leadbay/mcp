@@ -1,5 +1,34 @@
 # Changelog — @leadbay/mcp
 
+## 0.32.5 — 2026-09-01
+
+`leadbay_update_contact` returned `NOT_FOUND` / 404 on 100% of the calls ever
+made to it (product#3997). Not a missing route and not a backend bug.
+
+Leadbay holds contacts in two id namespaces — `org_contacts` (the org's own
+directory) and `paid_contacts` (enrichment results) — with separate models,
+separate DAOs and separate ids. `POST /contacts/{id}/update` resolves
+`orgContacts.findById` only, so a paid id can only ever 404.
+
+`research_lead_by_id` merges `/leads/{id}/enrich/contacts` and
+`/leads/{id}/contacts` into `contacts.reachable` / `contacts.candidates`, split
+by **whether the person is messagable right now, not by which endpoint they came
+from**. That split is right for outreach and wrong for identity: an enriched
+paid contact sits in the same list as an org contact, and the agent had nothing
+to distinguish them by. Roughly half the ids we handed out were unusable by a
+tool the server instructions tell the agent to call after every outreach.
+
+- The `source` field (`"org"` / `"paid"`) was already on the wire but undeclared
+  and unexplained. It is now documented in `research_lead_by_id`'s output schema
+  as the thing that decides whether an id can be passed to
+  `leadbay_update_contact`.
+- `leadbay_update_contact`'s description states which namespace it accepts,
+  what a 404 means, and routes a correction to a paid contact through
+  `leadbay_add_contact` instead — the enrichment row is a provider's answer and
+  is not ours to edit.
+- New: `research-contact-source-provenance.test.ts`, covering the case the
+  reachability split hides — an enriched paid contact and an org contact in the
+  SAME `reachable` list, distinguished only by `source`.
 ## 0.32.4 — 2026-09-01
 
 `leadbay_account_status.notifications` was permanently `[]` on the hosted server
@@ -27,7 +56,6 @@ answer, and the ledger is not called.
   responses.** Reviving it would mean a `GET /notifications` per tool call to
   decorate every response. The cost lands on the check-in entry point only,
   which is where the daily-rhythm channel is actually read.
-
 ## 0.32.0 — 2026-09-01
 
 A poll-budget timeout stops being an error (product#4007). The import wizard's
