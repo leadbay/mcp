@@ -4,9 +4,11 @@ description: "Orientation for working with Leadbay from any host — discovery v
 ---
 
 
-## MEMORY
+## WHAT LEADBAY SHOULD REMEMBER
 
-Before responding, glance at any `_meta.agent_memory.summary` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call `leadbay_agent_memory_capture` to persist it: `source:"user_stated"` if literal, `source:"inferred"` with confidence <=6 if inferred.
+You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
+
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call `leadbay_refine_prompt` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
 
 
 # Leadbay Prospecting — Orientation
@@ -149,7 +151,7 @@ After reporting account state, you MAY propose a concrete next step — but only
 
 **Skip it when** there's no clear unfinished thread, the user only wanted the status (a bare "where do I stand?"), or the work they asked for is plainly done. A status read that ends cleanly is a complete answer — don't manufacture a next step just to have one.
 
-**Lean on memory.** Check the `_meta.agent_memory.summary` for prior signal on how this user reacts to next-step offers. If the memory shows they routinely dismiss them, default to NOT proposing (let them ask). If they routinely act on them, lean toward proposing. When the user dismisses or accepts a proposal this turn, that's a material signal — call `leadbay_agent_memory_capture` (`source:"inferred"`, low confidence) so the preference compounds across sessions.
+**Read the room.** If this user has been dismissing next-step offers, stop making them and let them ask. If they keep acting on them, keep offering. That is your own read of the conversation, not something Leadbay stores for you.
 
 **When you do propose, the proposal IS a native choice dialog — never a prose "let me know if…".** Route 2–4 mutually-exclusive next moves into your host's next-step widget (`ask_user_input_v0` on Claude chat / ChatGPT, `AskUserQuestion` on Claude cowork / Claude Code). The widget is the question; do not also list the same options as prose.
 

@@ -9,7 +9,6 @@ import type {
   ContactPayload,
   PaginatedActivities,
 } from "../types.js";
-import { withAgentMemoryMeta } from "../agent-memory/index.js";
 import { reshapeWebFetchContent } from "./_web-fetch-helpers.js";
 
 import { leadbay_research_lead_by_id as RESEARCH_LEAD_BY_ID_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -597,7 +596,7 @@ export const researchLeadById: Tool<ResearchLeadByIdParams> = {
     const webFetchFetchedAt =
       webFetchR.status === "fulfilled" ? webFetchR.value?.fetch_at ?? null : null;
 
-    return withAgentMemoryMeta(client, {
+    return {
       // 1) qualification
       qualification:
         qualR.status === "fulfilled"
@@ -668,7 +667,7 @@ export const researchLeadById: Tool<ResearchLeadByIdParams> = {
         match_candidates: params._resolved?.candidates ?? null,
         resolved_matched_on: params._resolved?.matched_on ?? null,
       },
-    }, _ctx);
+    };
   },
 };
 

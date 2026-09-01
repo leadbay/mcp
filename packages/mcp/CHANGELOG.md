@@ -1,5 +1,48 @@
 # Changelog — @leadbay/mcp
 
+## 0.33.0 — 2026-09-01
+
+Agent memory is removed (product#3996). The three `leadbay_agent_memory_*`
+tools, `packages/core/src/agent-memory/`, the `agent-memory://summary`
+resource, the `_meta.agent_memory` decoration and the `AGENT_MEMORY` server
+instruction are all deleted.
+
+**Why it goes rather than gets fixed.** The store was written when the MCP ran
+on the user's own machine and no host had memory of its own. Both premises are
+dead. Claude Cowork projects carry persistent memory into their scheduled
+tasks, Claude chat memory shipped to all plans, ChatGPT has memory plus remote
+connectors, and Codex reads the user's own file. Meanwhile the hosted server
+writes to a container layer that Argo replaces on every image build, so ours
+was strictly worse than the host's on the surface where it mattered most.
+
+**Measured before deciding.** PostHog `mcp tool called`, tools matching
+`%memory%`, 120 days, whole fleet: **121 captures, 30 recalls, 13 users.**
+79 of the 121 captures came from one hosted IP and stop on 2026-07-29. August
+was 11 captures and 3 recalls. The feature wrote four times more than it was
+read and almost nothing read it twice.
+
+**What replaces it.** Reading that user's verbatim `triggered_by` sentences
+rather than a summary of them, the largest group by far was targeting — *"je
+vise en priorité les entreprises qui ont plus de 100 voitures dans leur parc"*,
+*"les transporteurs ne sont pas forcément de bons prospects sauf ceux qui font
+du last mile delivery"*. Stored as notes those changed one conversation. The
+new `headers/durable-preferences` snippet, included by the seven prompts that
+carried the memory preamble, routes them to `leadbay_refine_prompt` instead,
+where they mutate `computing_intelligence` and change what the product finds
+for the whole organization. A rejected lead goes to a dislike.
+
+- `withAgentMemoryMeta` is unwrapped from nine composites. It called
+  `resolveMe()` on every invocation, so each of those tools loses a round-trip.
+- `LEADBAY_AGENT_MEMORY`, `EV_AGENT_MEMORY_*` and the three
+  `captureAgentMemory*` telemetry methods are gone. Historical events stay in
+  PostHog; nothing new is emitted.
+- `assembler.ts` no longer injects a memory pointer into routed tool
+  descriptions, and `memory_protocol` is removed from the frontmatter schema.
+- Deliberately NOT landed: `agent-memory/durability.ts`, a boot-time warning
+  for an ephemeral memory root written while this was still going to be fixed
+  with a volume. With nothing writing to disk the condition it detects can no
+  longer occur, so it is not a safety net, it is dead code.
+
 ## 0.32.6 — 2026-09-01
 
 The 401 auto-retry is GET-only — replaying a write could double-execute a

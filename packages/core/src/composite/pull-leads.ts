@@ -6,7 +6,6 @@ import type {
   AiAgentResponse,
   LeadPayload,
 } from "../types.js";
-import { withAgentMemoryMeta } from "../agent-memory/index.js";
 import { resolveLeadOrder } from "../lead-order.js";
 import { diagnoseEmptyLens } from "./_empty-lens-reason.js";
 
@@ -484,7 +483,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
         })
       : null;
 
-    return withAgentMemoryMeta(client, {
+    return {
       lens: { id: lensId },
       leads: res.items.map((lead) => ({
         ...trimmed(lead),
@@ -501,6 +500,6 @@ export const pullLeads: Tool<PullLeadsParams> = {
         region: client.region,
         latency_ms: client.lastMeta?.latency_ms ?? null,
       },
-    }, ctx);
+    };
   },
 };

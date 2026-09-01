@@ -25,7 +25,6 @@ import {
   compositeReadTools,
   compositeWriteTools,
   setTelemetry,
-  agentMemoryTools,
   granularReadTools,
   granularWriteTools,
   COMPOSITE_FILE_TOOL_NAMES,
@@ -51,7 +50,6 @@ import {
   FRICTION,
   MENTAL_MODEL,
   QUOTA_TOPUP,
-  AGENT_MEMORY,
   TRIGGERED_BY,
   TRANSIENT_401,
   ENRICHMENT_TERMINAL,
@@ -65,7 +63,7 @@ import {
 // underlying tool is exposed.
 //
 // The static paragraphs (VERIFICATION, FRICTION, MENTAL_MODEL, QUOTA_TOPUP,
-// AGENT_MEMORY, TRIGGERED_BY, TRANSIENT_401, ENRICHMENT_TERMINAL) are sourced from packages/promptforge/snippets/server-instructions/*.md
+// TRIGGERED_BY, TRANSIENT_401, ENRICHMENT_TERMINAL) are sourced from packages/promptforge/snippets/server-instructions/*.md
 // and emitted into ./server-instructions.generated.ts by promptforge build.
 // Edit the snippet files, not this one. The dynamic builders (scoring,
 // start-here, rhythm, etc.) remain inline below because they conditionally
@@ -379,9 +377,6 @@ export function buildServerInstructions(exposed: Set<string>): string {
   if (promptsCatalog) parts.push(promptsCatalog);
   parts.push(RESOURCES_PARAGRAPH);
   parts.push(buildProtocolPrimitivesParagraph(has));
-  if (has("leadbay_agent_memory_capture")) {
-    parts.push(AGENT_MEMORY);
-  }
   parts.push(ARTIFACT_PROPOSAL_PARAGRAPH);
   parts.push(SCHEDULED_TASK_PARAGRAPH);
   // Host-native widget routing — Claude's places_map_display_v0 /
@@ -568,9 +563,6 @@ export function buildServer(
   opts: BuildServerOptions = {}
 ): Server {
   const exposedTools: Tool[] = [];
-  // Local agent-memory protocol tools are always exposed. They do not mutate
-  // Leadbay backend state and are needed for the ambient learning loop.
-  exposedTools.push(...agentMemoryTools);
   // Read composites — ALWAYS exposed.
   exposedTools.push(...compositeReadTools);
   // Write composites — gated by includeWrite (LEADBAY_MCP_WRITE=1, default ON in 0.3.0).
@@ -1034,34 +1026,6 @@ export function buildServer(
   // (see the ctx construction below) so the tool learns whether delivery
   // actually succeeded and can confirm honestly to the user (product#3943).
 
-  const captureAgentMemoryTelemetry = (toolName: string, result: any) => {
-    if (!result || typeof result !== "object") return;
-    const meta = result._meta ?? {};
-    if (toolName === "leadbay_agent_memory_capture") {
-      telemetry.captureAgentMemoryCaptured({
-        source: result.captured?.source ?? meta.source,
-        scope: result.captured?.scope ?? meta.scope,
-        key: result.captured?.key,
-        type: result.captured?.type,
-        account_id_hash: meta.account_id_hash,
-      });
-    } else if (toolName === "leadbay_agent_memory_recall") {
-      telemetry.captureAgentMemoryRecalled({
-        entries_returned: result.entries_returned,
-        total_active: result.total_active,
-        account_id_hash: meta.account_id_hash,
-      });
-    } else if (
-      toolName === "leadbay_agent_memory_review" &&
-      result.changed === true &&
-      (result.action === "retract" || result.action === "prune")
-    ) {
-      telemetry.captureAgentMemoryPruned({
-        action: result.action,
-        account_id_hash: meta.account_id_hash,
-      });
-    }
-  };
 
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     // Duration timer is always on now (telemetry needs it). The DEBUG
@@ -1454,7 +1418,6 @@ export function buildServer(
             duration_ms: mdDur,
           });
         }
-        captureAgentMemoryTelemetry(name, env.structured);
         if (
           name === "leadbay_create_topup_link" &&
           typeof (env.structured as any)?.url === "string"
@@ -1515,7 +1478,6 @@ export function buildServer(
           });
         }
       }
-      captureAgentMemoryTelemetry(name, result);
       if (
         name === "leadbay_create_topup_link" &&
         typeof (result as any)?.url === "string"

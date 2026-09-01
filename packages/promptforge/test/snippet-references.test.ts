@@ -63,9 +63,6 @@ describe("audit: snippet references", () => {
     // via another snippet. Walk the include graph.
     const referenced = new Set<string>();
     const queue: string[] = [];
-    // This snippet is injected by assembler.ts for routed tools, not by a
-    // literal {{include:...}} in a template.
-    referenced.add("headers/agent-memory-pointer");
     // server-instructions/* snippets are consumed by emit.ts:emitServerInstructions
     // — emitted as TS constants into packages/mcp/src/server-instructions.generated.ts,
     // not pulled in via {{include:...}}. Mark every file in that dir as referenced.

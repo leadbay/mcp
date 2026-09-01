@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.33.0 — 2026-09-01 — Your assistant remembers; Leadbay stops pretending to
+
+- **Leadbay no longer keeps its own notebook about you.** The three
+  `leadbay_agent_memory_*` tools and the file behind them are gone. Every
+  assistant Leadbay plugs into — Claude chat, Claude Cowork projects, ChatGPT,
+  Codex — now remembers your tone, your naming, and how you like to work, on its
+  own and across conversations. Ours did the same job worse: it lived on the
+  server and was wiped on every release, which is how one customer lost
+  fifty-four rules he had taught it over two weeks.
+- **What you say about your market now reaches the product.** Telling the
+  assistant "I target fleets over a hundred vehicles" or "carriers are a bad fit
+  unless they do last-mile" used to be filed as a note that changed one
+  conversation. It now goes to your targeting, which changes what Leadbay finds
+  for your whole team, in the web app too, on every refresh.
+- **Every leads screen answers a little faster.** Nine tools were each making an
+  extra round-trip to fetch that notebook before replying. They no longer do.
+
 ## 0.32.6 — 2026-09-01 — An honest word when a Leadbay call is refused
 
 - **The assistant stops saying it already retried when it didn't.** When Leadbay

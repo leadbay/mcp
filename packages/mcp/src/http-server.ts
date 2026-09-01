@@ -241,9 +241,6 @@ export function bindTelemetryIdentity(
     captureQuotaHit: on((p) => base.captureQuotaHit(p, identity)),
     captureTopupLink: on((p) => base.captureTopupLink(p, identity)),
     captureStartup: on((p) => base.captureStartup(p, identity)),
-    captureAgentMemoryCaptured: on((p) => base.captureAgentMemoryCaptured(p, identity)),
-    captureAgentMemoryRecalled: on((p) => base.captureAgentMemoryRecalled(p, identity)),
-    captureAgentMemoryPruned: on((p) => base.captureAgentMemoryPruned(p, identity)),
     // captureFrictionReported is NOT gated by isSuppressed, for the same reason
     // as captureFeedback below: since product#3943 `leadbay_report_friction` is
     // a consent-gated, user-initiated "deliver my problem report to the team"

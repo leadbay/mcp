@@ -22,14 +22,12 @@ import type {
   ReadResourceResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import {
-  resolveAgentMemorySummary,
   type LeadbayClient,
 } from "@leadbay/core";
 
 const LEAD_URI_RE = /^lead:\/\/([0-9a-f-]{36})\/profile$/i;
 const LENS_URI_RE = /^lens:\/\/(\d+)\/definition$/;
 const ORG_TASTE_URI = "org://taste-profile";
-const AGENT_MEMORY_SUMMARY_URI = "agent-memory://summary";
 
 export function listResources(): Resource[] {
   return [
@@ -39,13 +37,6 @@ export function listResources(): Resource[] {
       description:
         "The org's qualification questions, intent tags, and ICP signals — the agent's knowledge base for what makes a lead a fit.",
       mimeType: "application/json",
-    },
-    {
-      uri: AGENT_MEMORY_SUMMARY_URI,
-      name: "Agent memory summary",
-      description:
-        "Consolidated top Leadbay agent-memory signals for this account. Local-file, read-only resource.",
-      mimeType: "text/markdown",
     },
   ];
 }
@@ -104,14 +95,6 @@ export async function readResource(
   if (uri === ORG_TASTE_URI) {
     const taste = await client.resolveTasteProfile();
     return jsonContent(uri, taste);
-  }
-
-  if (uri === AGENT_MEMORY_SUMMARY_URI) {
-    const me = await client.resolveMe();
-    const memory = await resolveAgentMemorySummary({
-      accountId: me.organization.id,
-    });
-    return textContent(uri, "text/markdown", memory.summary);
   }
 
   const leadMatch = LEAD_URI_RE.exec(uri);

@@ -1,6 +1,5 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, QuotaStatusPayload, LensPayload } from "../types.js";
-import { withAgentMemoryMeta } from "../agent-memory/index.js";
 import { fetchTerminalNotifications } from "../notifications/catch-up.js";
 import { isUnlimitedAccount } from "./_credits-helpers.js";
 
@@ -208,7 +207,7 @@ export const accountStatus: Tool<Record<string, never>> = {
       }
     }
 
-    return withAgentMemoryMeta(client, {
+    return {
       user: {
         email: me.email ?? null,
         name: me.name ?? null,
@@ -249,6 +248,6 @@ export const accountStatus: Tool<Record<string, never>> = {
       _meta: {
         region: client.region,
       },
-    }, ctx, me.organization.id);
+    };
   },
 };

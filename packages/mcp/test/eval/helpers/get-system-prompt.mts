@@ -15,7 +15,7 @@
  */
 import { getPrompt } from "../../../src/prompts.js";
 import { buildServerInstructions } from "../../../src/server.js";
-import { compositeReadTools, compositeWriteTools, agentMemoryTools } from "@leadbay/core";
+import { compositeReadTools, compositeWriteTools } from "@leadbay/core";
 
 const promptName = process.argv[2];
 if (!promptName) {
@@ -26,7 +26,7 @@ if (!promptName) {
 // Build the same exposed tool set as the live eval server:
 // includeWrite=true, includeAdvanced=false, no updateStateStore (no acknowledge_update)
 const exposedNames = new Set<string>();
-for (const t of [...agentMemoryTools, ...compositeReadTools, ...compositeWriteTools]) {
+for (const t of [...compositeReadTools, ...compositeWriteTools]) {
   exposedNames.add(t.name);
 }
 
