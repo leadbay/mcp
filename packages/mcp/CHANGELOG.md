@@ -145,6 +145,23 @@ real, all fixed:
   tool; the caller has never seen it, yet `leadbay_import_status` reports
   recovered leads keyed by it. A row identified only by `CRM_ID` — no website
   to correlate on — was untraceable back to the leadId it produced.
+- **A rejected mapping commit no longer polls for ever.** The detached
+  finisher sends `update_mappings` on the caller's behalf; if the backend
+  refuses it (an invalid mapping answers `400 missing LEAD_NAME field`), the
+  row it leaves is byte-identical to one still committing — no error field
+  anywhere. Before the timeout became a success result this surfaced as a plain
+  error, so staying silent would be a regression introduced by that very
+  change. The finisher records the rejection in a memory-only, best-effort
+  registry and `leadbay_import_status` reports `failed` with the backend's own
+  message; a restart just falls back to the old "still committing" reading.
+- **A completed dry run says so.** Polling with `dry_run:true` returned
+  `complete` with no `result` and no discriminator, which the rendering
+  contract turns into "✓ Import complete" — a lie about an import that
+  committed nothing. The response now echoes `dry_run`.
+- **A foreign `MCP_ROW_ID` column is not trusted as an identity.** A web-UI
+  import's own file may carry that header holding blanks or one repeated value;
+  treating those as our synthetic ids collapsed unrelated records onto one
+  dedupe key. Only a `randomUUID()`-shaped value counts.
 - **A canonical id is only published when the snapshot is complete.**
   `pendingLeadIds` can only speak for rows that were actually fetched, so while
   rows are missing an unvouched id might belong to one of them and still be

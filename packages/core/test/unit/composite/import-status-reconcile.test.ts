@@ -36,6 +36,13 @@ const IMPORT_ID = "imp-1";
 const RECORDS_RE = new RegExp(`^/1\\.6/imports/${IMPORT_ID}/records\\?`);
 const LEADS_PATH = `/1.6/imports/${IMPORT_ID}/leads`;
 
+// MCP_ROW_ID is randomUUID() output in production, and the reconciler now
+// requires that shape so a web-UI import's own MCP_ROW_ID column can't pose as
+// one. Fixtures use real UUIDs for the same reason.
+const ROW_R1 = "11111111-1111-4111-8111-111111111111";
+const ROW_R2 = "22222222-2222-4222-8222-222222222222";
+const ROW_R3 = "33333333-3333-4333-8333-333333333333";
+
 const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
 
 // `total_records` is what the wizard says it holds. A snapshot short of it is
@@ -80,21 +87,21 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
           items: [
             {
               id: 1,
-              records: [cell("MCP_ROW_ID", "r1"), cell("LEAD_WEBSITE", "https://Acme-Imports.fr/careers")],
+              records: [cell("MCP_ROW_ID", ROW_R1), cell("LEAD_WEBSITE", "https://Acme-Imports.fr/careers")],
               match_type: "AUTOMATIC_MATCH",
               status: "IMPORTED",
               lead: { id: "lead-1", name: "Acme Imports", website: "acme-imports.fr" },
             },
             {
               id: 2,
-              records: [cell("MCP_ROW_ID", "r2"), cell("LEAD_WEBSITE", "acme-corp.fr")],
+              records: [cell("MCP_ROW_ID", ROW_R2), cell("LEAD_WEBSITE", "acme-corp.fr")],
               match_type: "NO_MATCH",
               status: "MATCHING",
               lead: null,
             },
             {
               id: 3,
-              records: [cell("MCP_ROW_ID", "r3"), cell("LEAD_WEBSITE", "gmail.com")],
+              records: [cell("MCP_ROW_ID", ROW_R3), cell("LEAD_WEBSITE", "gmail.com")],
               match_type: "NO_MATCH",
               status: "MATCHING",
               lead: null,
@@ -109,13 +116,13 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
     expect(out.status).toBe("complete");
     // URL noise is normalized, so the domain matches what the caller sent.
     expect(out.result.leads).toEqual([
-      { rowId: "r1", domain: "acme-imports.fr", leadId: "lead-1", name: "Acme Imports" },
+      { rowId: ROW_R1, domain: "acme-imports.fr", leadId: "lead-1", name: "Acme Imports" },
     ]);
     // A public mailbox domain is `no_match` (nothing to crawl); a real company
     // domain is `uncrawled` (Leadbay will get to it) — never both "failed".
     expect(out.result.not_imported).toEqual([
-      { rowId: "r2", domain: "acme-corp.fr", reason: "uncrawled" },
-      { rowId: "r3", domain: "gmail.com", reason: "no_match" },
+      { rowId: ROW_R2, domain: "acme-corp.fr", reason: "uncrawled" },
+      { rowId: ROW_R3, domain: "gmail.com", reason: "no_match" },
     ]);
     expect(out.result.still_settling).toBeUndefined();
   });
@@ -162,8 +169,49 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
     });
     expect(out.status).toBe("complete");
     expect(out.result).toBeUndefined();
+    // …and the response has to SAY so. `complete` with no `result` is
+    // otherwise rendered as "✓ Import complete", which is a lie about an
+    // import that committed nothing.
+    expect(out.dry_run).toBe(true);
     // Nothing was committed, so there is nothing to reconcile.
     expect(getHttpRequests().some((r) => r.path.includes("/leads"))).toBe(false);
+  });
+
+  it("a foreign MCP_ROW_ID column is not trusted as an identity", async () => {
+    // Nothing stops a web-UI import's own file from carrying a column called
+    // MCP_ROW_ID holding blanks or one repeated value. Treating those as our
+    // synthetic ids would collapse unrelated records onto one dedupe key,
+    // drop their leads, and pin `distinct` below total_records forever.
+    const row = (n: number, junk: string) => ({
+      id: n,
+      records: [cell("MCP_ROW_ID", junk), cell("LEAD_WEBSITE", `co-${n}.fr`)],
+      match_type: "AUTOMATIC_MATCH",
+      status: "IMPORTED",
+      lead: { id: `lead-${n}`, name: "Acme Imports" },
+    });
+    mockHttp([
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: importRow() },
+      { method: "GET", path: LEADS_PATH, status: 200, body: { lead_ids: [] } },
+      {
+        method: "GET",
+        path: RECORDS_RE,
+        status: 200,
+        body: {
+          items: [row(1, "batch-A"), row(2, "batch-A"), row(3, "")],
+          pagination: { page: 0, pages: 1, total: 3 },
+        },
+      },
+    ]);
+    const out: any = await importStatus.execute(newClient(), { importIds: [IMPORT_ID] });
+    // All three survive, deduped on the backend record id instead.
+    expect(out.result.leads.map((l: any) => l.leadId)).toEqual([
+      "lead-1",
+      "lead-2",
+      "lead-3",
+    ]);
+    // And none of them claims a rowId that isn't ours.
+    expect(out.result.leads.every((l: any) => l.rowId === undefined)).toBe(true);
+    expect(out.result.still_settling).toBeUndefined();
   });
 
   it("a lead /leads knows about but no record exposed is still reported", async () => {
@@ -183,7 +231,7 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
           items: [
             {
               id: 1,
-              records: [cell("MCP_ROW_ID", "r1"), cell("LEAD_WEBSITE", "acme-imports.fr")],
+              records: [cell("MCP_ROW_ID", ROW_R1), cell("LEAD_WEBSITE", "acme-imports.fr")],
               match_type: "AUTOMATIC_MATCH",
               status: "IMPORTED",
               lead: { id: "lead-1", name: "Acme Imports", website: "acme-imports.fr" },
@@ -195,7 +243,7 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
     ]);
     const out: any = await importStatus.execute(newClient(), { importIds: [IMPORT_ID] });
     expect(out.result.leads).toEqual([
-      { rowId: "r1", domain: "acme-imports.fr", leadId: "lead-1", name: "Acme Imports" },
+      { rowId: ROW_R1, domain: "acme-imports.fr", leadId: "lead-1", name: "Acme Imports" },
       { leadId: "lead-created-late", name: null },
     ]);
   });
@@ -215,14 +263,14 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
           items: [
             {
               id: 1,
-              records: [cell("MCP_ROW_ID", "r1"), cell("LEAD_WEBSITE", "acme-imports.fr")],
+              records: [cell("MCP_ROW_ID", ROW_R1), cell("LEAD_WEBSITE", "acme-imports.fr")],
               match_type: "AUTOMATIC_MATCH",
               status: "IMPORTED",
               lead: { id: "lead-1", name: "Acme Imports" },
             },
             {
               id: 2,
-              records: [cell("MCP_ROW_ID", "r2"), cell("LEAD_WEBSITE", "acme-imports.fr")],
+              records: [cell("MCP_ROW_ID", ROW_R2), cell("LEAD_WEBSITE", "acme-imports.fr")],
               match_type: "AUTOMATIC_MATCH",
               status: "IMPORTED",
               lead: { id: "lead-1", name: "Acme Imports" },
@@ -234,8 +282,8 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
     ]);
     const out: any = await importStatus.execute(newClient(), { importIds: [IMPORT_ID] });
     expect(out.result.leads).toEqual([
-      { rowId: "r1", domain: "acme-imports.fr", leadId: "lead-1", name: "Acme Imports" },
-      { rowId: "r2", domain: "acme-imports.fr", leadId: "lead-1", name: "Acme Imports" },
+      { rowId: ROW_R1, domain: "acme-imports.fr", leadId: "lead-1", name: "Acme Imports" },
+      { rowId: ROW_R2, domain: "acme-imports.fr", leadId: "lead-1", name: "Acme Imports" },
     ]);
     expect(out.result.still_settling).toBeUndefined();
   });
@@ -255,7 +303,7 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
           items: [
             {
               id: 1,
-              records: [cell("MCP_ROW_ID", "r1")],
+              records: [cell("MCP_ROW_ID", ROW_R1)],
               match_type: "AUTOMATIC_MATCH",
               status: "MATCHING",
               lead: { id: "lead-mid-flight", name: "Acme Imports" },
@@ -276,7 +324,7 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
     // 3-row import as fully seen.
     const row = (n: string) => ({
       id: n,
-      records: [cell("MCP_ROW_ID", n)],
+      records: [cell("MCP_ROW_ID", `0000000${n.slice(1)}-0000-4000-8000-000000000000`)],
       match_type: "AUTOMATIC_MATCH",
       status: "IMPORTED",
       lead: { id: `lead-${n}`, name: "Acme Imports" },
@@ -349,7 +397,7 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
             {
               id: 1,
               records: [
-                cell("MCP_ROW_ID", "r1"),
+                cell("MCP_ROW_ID", ROW_R1),
                 { column_name: "Web", field: "LEAD_WEBSITE", value: "acme-corp.fr" },
               ],
               match_type: "NO_MATCH",
@@ -363,7 +411,7 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
     ]);
     const out: any = await importStatus.execute(newClient(), { importIds: [IMPORT_ID] });
     expect(out.result.not_imported).toEqual([
-      { rowId: "r1", domain: "acme-corp.fr", reason: "uncrawled" },
+      { rowId: ROW_R1, domain: "acme-corp.fr", reason: "uncrawled" },
     ]);
   });
 
@@ -382,7 +430,7 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
           items: [
             {
               id: 1,
-              records: [cell("MCP_ROW_ID", "r1")],
+              records: [cell("MCP_ROW_ID", ROW_R1)],
               match_type: "AUTOMATIC_MATCH",
               status: "IMPORTED",
               lead: { id: "lead-1", name: "Acme Imports" },
@@ -416,7 +464,7 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
           items: [
             {
               id: 1,
-              records: [cell("MCP_ROW_ID", "r1")],
+              records: [cell("MCP_ROW_ID", ROW_R1)],
               match_type: "AUTOMATIC_MATCH",
               status: "IMPORTED",
               lead: { id: "lead-1", name: "Acme Imports" },
@@ -458,7 +506,7 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
           items: [
             {
               id: 1,
-              records: [cell("MCP_ROW_ID", "r1"), cell("LEAD_WEBSITE", "acme-imports.fr")],
+              records: [cell("MCP_ROW_ID", ROW_R1), cell("LEAD_WEBSITE", "acme-imports.fr")],
               match_type: "AUTOMATIC_MATCH",
               status: "IMPORTED",
               lead: { id: "lead-1", name: "Acme Imports", website: "acme-imports.fr" },
@@ -471,7 +519,7 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
     const out: any = await importStatus.execute(newClient(), { importIds: [IMPORT_ID] });
     expect(out.status).toBe("complete");
     expect(out.result.leads).toEqual([
-      { rowId: "r1", domain: "acme-imports.fr", leadId: "lead-1", name: "Acme Imports" },
+      { rowId: ROW_R1, domain: "acme-imports.fr", leadId: "lead-1", name: "Acme Imports" },
     ]);
   });
 
@@ -490,7 +538,7 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
           items: [
             {
               id: 1,
-              records: [cell("MCP_ROW_ID", "r1")],
+              records: [cell("MCP_ROW_ID", ROW_R1)],
               match_type: "AUTOMATIC_MATCH",
               status: "IMPORTING",
               lead: { id: "lead-1", name: "Acme Imports" },
@@ -520,7 +568,7 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
           items: [
             {
               id: 1,
-              records: [cell("MCP_ROW_ID", "r1")],
+              records: [cell("MCP_ROW_ID", ROW_R1)],
               match_type: "AUTOMATIC_MATCH",
               status: "IMPORTED",
               lead: { id: "lead-1", name: "Acme Imports" },

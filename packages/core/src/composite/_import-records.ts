@@ -121,6 +121,21 @@ export const PUBLIC_MAILBOX_DOMAINS = new Set([
 // which is what lets the status-side reconciler work statelessly.
 export const MCP_ROW_ID_COLUMN = "MCP_ROW_ID";
 
+// `importIds` need not name an import this MCP created, and a web-UI import's
+// own file may happen to carry a column called MCP_ROW_ID holding anything at
+// all — blanks, or the same value on every row. Trusting those as identities
+// would collapse unrelated records onto one dedupe key, drop their leads, and
+// leave `distinct` permanently short of `total_records`. Only a value shaped
+// like the UUID `import-leads` mints is ours.
+const MCP_ROW_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function ourRowId(raw: string | null): string | undefined {
+  if (raw == null) return undefined;
+  const v = raw.trim();
+  return MCP_ROW_ID_RE.test(v) ? v : undefined;
+}
+
 // Pull a column value by name (case-insensitive) from a record's records[]
 // array. Live wire format (probed 2026-04-28): each entry is
 // { column_name, value, field? }. Some test mocks use the older
@@ -237,7 +252,7 @@ export function reconcileRecords(records: ImportRecordPayload[]): ReconciledReco
   const seenRowIds = new Set<string>();
 
   for (const rec of records) {
-    const rowId = readCell(rec, MCP_ROW_ID_COLUMN) ?? undefined;
+    const rowId = ourRowId(readCell(rec, MCP_ROW_ID_COLUMN));
     // The wizard can return the same row twice across a re-page. Dedupe on the
     // synthetic MCP_ROW_ID when this import came through the MCP, and fall back
     // to the backend's own record id otherwise — an import created in the web

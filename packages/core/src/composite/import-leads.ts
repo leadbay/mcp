@@ -20,6 +20,7 @@ import {
   readCell,
   recordMatchType,
 } from "./_import-records.js";
+import { recordCommitFailure } from "./_import-commit-log.js";
 
 // Re-exported for backward compatibility: these lived here before product#4007
 // split the record-reading primitives into _import-records.ts so
@@ -1892,10 +1893,19 @@ function resumeParkedUpload(
         ctx?.logger?.info?.(
           `import-leads: parked upload ${importId} committed; backend is processing`
         ),
-      (err: any) =>
+      (err: any) => {
+        // Nobody is waiting on this promise, and the wizard row keeps no
+        // record of a rejected commit — so without this the import would
+        // report "still committing" for ever and the agent would poll for
+        // ever. See _import-commit-log.ts.
+        recordCommitFailure(
+          importId,
+          err?.message ?? err?.code ?? "mapping commit failed"
+        );
         ctx?.logger?.warn?.(
           `import-leads: parked upload ${importId} could not be committed (${err?.code ?? err?.message ?? "unknown"})`
-        )
+        );
+      }
     );
   }, 0);
 }

@@ -32,6 +32,10 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 const BASE = "https://api-us.leadbay.app";
 const IMPORT_ID = "imp-4007";
+// MCP_ROW_ID is randomUUID() output in production, and the reconciler requires
+// that shape so a foreign MCP_ROW_ID column can't pose as one.
+const ROW_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const ROW_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 async function connect() {
   const lbClient = new LeadbayClient(BASE, "u.test-token");
@@ -79,7 +83,7 @@ const RECORDS_PAGE = {
     {
       id: 1,
       records: [
-        { column_name: "MCP_ROW_ID", value: "row-a" },
+        { column_name: "MCP_ROW_ID", value: ROW_A },
         { column_name: "LEAD_WEBSITE", value: "acme-imports.fr" },
       ],
       match_type: "AUTOMATIC_MATCH",
@@ -89,7 +93,7 @@ const RECORDS_PAGE = {
     {
       id: 2,
       records: [
-        { column_name: "MCP_ROW_ID", value: "row-b" },
+        { column_name: "MCP_ROW_ID", value: ROW_B },
         { column_name: "LEAD_WEBSITE", value: "uncrawled-co.fr" },
       ],
       match_type: "NO_MATCH",
@@ -182,10 +186,10 @@ describe("product#4007 — a slow import returns a handle, not an error", () => 
     expect(res.structuredContent.status).toBe("complete");
     // The leadIds the user came for, recovered without re-running the import.
     expect(res.structuredContent.result.leads).toEqual([
-      { rowId: "row-a", domain: "acme-imports.fr", leadId: "lead-777", name: "Acme Imports" },
+      { rowId: ROW_A, domain: "acme-imports.fr", leadId: "lead-777", name: "Acme Imports" },
     ]);
     expect(res.structuredContent.result.not_imported).toEqual([
-      { rowId: "row-b", domain: "uncrawled-co.fr", reason: "uncrawled" },
+      { rowId: ROW_B, domain: "uncrawled-co.fr", reason: "uncrawled" },
     ]);
   });
 });

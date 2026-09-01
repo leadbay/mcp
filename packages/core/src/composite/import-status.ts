@@ -15,6 +15,7 @@ import {
   type ReconciledLead,
   type ReconciledNotImported,
 } from "./_import-records.js";
+import { commitFailureFor } from "./_import-commit-log.js";
 
 import { leadbay_import_status as IMPORT_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface ImportStatusParams {
@@ -41,6 +42,11 @@ interface ImportStatusResult {
     still_settling?: number;
   };
   error?: string;
+  // Echoed back when the caller told us these ids came from a dry run. The
+  // render for a completed dry run has to differ from a real import — nothing
+  // was committed — and this is the only marker that survives, since the
+  // records path has no `dry_run` reason to produce.
+  dry_run?: boolean;
   region: "us" | "fr" | "custom";
   _meta: RequestMeta;
 }
@@ -263,6 +269,11 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
           "Final import result: {leads, not_imported, importIds, still_settling?}. Present when a handle_id resolves a completed run in this MCP instance, OR when the importIds[] path finds every import complete and reconciles the wizard's records.",
       },
       error: { type: "string" },
+      dry_run: {
+        type: "boolean",
+        description:
+          "True when these importIds came from a dry run. NOTHING was committed to the CRM — render it as a validation pass, never as a completed import.",
+      },
       region: { type: "string" },
       _meta: { type: "object" },
     },
@@ -420,6 +431,10 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
     // row looks complete, ask, and demote to `running` if the answer is no.
     // Getting this wrong reports `complete` with no leads and the agent stops
     // polling — the failure this whole change exists to prevent.
+    // A commit the backend rejected leaves a row indistinguishable from one
+    // still being committed, so the wizard can never tell us. The finisher can,
+    // and did.
+    const commitError = commitFailureFor(importIds);
     let notReady = false;
     const declaredTotal = imports.reduce(
       (n, i) => n + Number(i.total_records ?? 0),
@@ -451,9 +466,10 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
     const settled = complete && !notReady;
 
     return {
-      status: failed ? "failed" : settled ? "complete" : "running",
+      status: failed || commitError ? "failed" : settled ? "complete" : "running",
       ...(handleId ? { handle_id: handleId } : {}),
       importIds,
+      ...(handleDryRun === true ? { dry_run: true } : {}),
       progress: notReady
         ? { ...progress, phase: "committing" }
         : progress,
@@ -476,7 +492,9 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
               failed.processing?.error ??
               "import failed",
           }
-        : {}),
+        : commitError
+          ? { error: `Import mappings were rejected: ${commitError}` }
+          : {}),
       region: client.region,
       _meta: client.lastMeta ?? {
         region: client.region,
