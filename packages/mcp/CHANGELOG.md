@@ -1,5 +1,33 @@
 # Changelog — @leadbay/mcp
 
+## 0.32.4 — 2026-09-01
+
+`leadbay_account_status.notifications` was permanently `[]` on the hosted server
+(product#4009). Same shape as product#4005: `buildServerFromClient` builds every
+hosted server without a `notificationsInbox`, `BuildServerOptions` makes it
+optional, so it compiled and failed silently.
+
+**Not fixed by wiring the inbox, because the inbox cannot exist there.** It is
+fed by a WS listener whose ticket (`GET /auth/ws`) is per-account, which is
+meaningless on a multi-tenant process, and the streamable transport builds a
+fresh `Server` per request so nothing would survive to be cached. Porting it
+would be the same mistake in a third place.
+
+`GET /notifications` is already per-account and already durable. On hosted the
+ledger IS the inbox, so `account_status` reads it on demand when no inbox is
+wired. Stdio is unchanged and still free — the WS listener already has the
+answer, and the ledger is not called.
+
+- `fetchTerminalNotifications(client)` in `notifications/catch-up.ts` returns
+  terminal, unseen entries directly. `isTerminalUnseen` is extracted so inbox
+  seeding and the inbox-less read cannot disagree about what counts.
+- A notifications failure resolves to `[]` rather than throwing. `account_status`
+  is the daily entry point; a ledger hiccup must not take the check-in down.
+- **Deliberately not done: `_meta.notifications` still does not ride hosted tool
+  responses.** Reviving it would mean a `GET /notifications` per tool call to
+  decorate every response. The cost lands on the check-in entry point only,
+  which is where the daily-rhythm channel is actually read.
+
 ## 0.32.0 — 2026-09-01
 
 A poll-budget timeout stops being an error (product#4007). The import wizard's
