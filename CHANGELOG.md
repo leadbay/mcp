@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.32.4 — 2026-09-01 — "Your enrichment finished" now reaches hosted users
+
+- **Background work that finishes while you are away is reported again.** If you
+  started an enrichment, a qualification or an import and came back later, the
+  assistant had no way to know it had finished — it always reported nothing
+  waiting. It now reads the same notifications the web app shows you, so your
+  morning check-in opens with what completed overnight.
+
 =======
 ## 0.32.1 — 2026-09-01 — A stalled Leadbay can no longer freeze your session
 
