@@ -1,3 +1,4 @@
+import { resetLaunchGuard } from "../../../src/jobs/launch-guard.js";
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   mockHttp,
@@ -20,6 +21,7 @@ function newClient() {
 
 beforeEach(() => {
   resetHttpMock();
+  resetLaunchGuard();
 });
 
 describe("leadbay_resolve_import_rows", () => {

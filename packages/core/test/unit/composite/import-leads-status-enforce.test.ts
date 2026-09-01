@@ -14,6 +14,7 @@
  * reaches update_mappings; the assertion is on the body it sends.
  */
 
+import { resetLaunchGuard } from "../../../src/jobs/launch-guard.js";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   mockHttp,
@@ -136,7 +137,10 @@ const records = () => [
   { Brand: "Stripe", Site: "stripe.com" },
 ];
 
-beforeEach(() => resetHttpMock());
+beforeEach(() => {
+  resetHttpMock();
+  resetLaunchGuard();
+});
 
 describe("leadbay_import_leads — LeadStatus enforcement (product#3745)", () => {
   it("normalizes default_status + statuses values to the uppercase enum in the update_mappings body", async () => {

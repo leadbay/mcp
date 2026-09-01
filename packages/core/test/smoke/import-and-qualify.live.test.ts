@@ -10,7 +10,6 @@ import { describe, it, expect } from "vitest";
 import { LeadbayClient } from "../../src/client.js";
 import { importAndQualify } from "../../src/composite/import-and-qualify.js";
 import { qualifyStatus } from "../../src/composite/qualify-status.js";
-import { InMemoryBulkStore } from "../../src/jobs/bulk-store.js";
 
 const TOKEN = process.env.LEADBAY_TEST_TOKEN;
 const BASE_URL = process.env.LEADBAY_TEST_BASE_URL ?? "https://api-us.leadbay.app";
@@ -37,7 +36,7 @@ describe.skipIf(!runLive)("leadbay_import_and_qualify — live smoke", () => {
   it("rejects empty input cleanly", async () => {
     const { client, tracker } = newCtx();
     await expect(
-      importAndQualify.execute(client, { domains: [] }, { logger, bulkTracker: tracker })
+      importAndQualify.execute(client, { domains: [] }, { logger, })
     ).rejects.toMatchObject({ code: "IMPORT_EMPTY_INPUT" });
   }, 15_000);
 
@@ -46,7 +45,7 @@ describe.skipIf(!runLive)("leadbay_import_and_qualify — live smoke", () => {
     const out = await importAndQualify.execute(
       client,
       { domains: [{ domain: "no-tld" }, { domain: "localhost" }] },
-      { logger, bulkTracker: tracker }
+      { logger, }
     );
     expect(out.imported).toEqual([]);
     expect(out.not_imported.length).toBeGreaterThan(0);
@@ -70,7 +69,7 @@ describe.skipIf(!runLive)("leadbay_import_and_qualify — live smoke", () => {
           total_budget_ms: 360_000,
           per_phase_budget_ms: 120_000,
         },
-        { logger, bulkTracker: tracker }
+        { logger, }
       );
       // We expect import to have produced ≥1 leadId (Apple etc.).
       expect(out.import_ids.length).toBeGreaterThanOrEqual(1);
@@ -85,7 +84,7 @@ describe.skipIf(!runLive)("leadbay_import_and_qualify — live smoke", () => {
         const status = await qualifyStatus.execute(
           client,
           { qualify_id: out.qualify_id! },
-          { logger, bulkTracker: tracker }
+          { logger, }
         );
         expect(status.qualify_id).toBe(out.qualify_id);
         expect(status.lead_ids.sort()).toEqual(
@@ -103,7 +102,7 @@ describe.skipIf(!runLive)("leadbay_import_and_qualify — live smoke", () => {
       qualifyStatus.execute(
         client,
         { qualify_id: "00000000-0000-4000-8000-000000000000" },
-        { logger, bulkTracker: tracker }
+        { logger, }
       )
     ).rejects.toMatchObject({ code: "BULK_NOT_FOUND" });
   }, 15_000);
@@ -114,7 +113,7 @@ describe.skipIf(!runLive)("leadbay_import_and_qualify — live smoke", () => {
       qualifyStatus.execute(
         client,
         { qualify_id: "not-a-uuid" },
-        { logger, bulkTracker: tracker }
+        { logger, }
       )
     ).rejects.toMatchObject({ code: "BULK_INVALID_ID" });
   }, 15_000);
@@ -137,7 +136,7 @@ describe.skipIf(!runLive)("leadbay_import_and_qualify — live smoke", () => {
           per_phase_budget_ms: 300_000,
           skip_already_qualified: false,
         },
-        { logger, bulkTracker: tracker }
+        { logger, }
       );
       if (out.kind !== "result") throw new Error("expected result");
       // We expect ≥1 lead in either qualified or still_running.

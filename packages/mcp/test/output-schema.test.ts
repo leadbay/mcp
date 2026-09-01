@@ -16,18 +16,17 @@ import { mockHttp, resetHttpMock, httpsMockFactory } from "./harness.js";
 
 vi.mock("node:https", () => httpsMockFactory());
 
-import { InMemoryBulkStore, LeadbayClient } from "@leadbay/core";
+import { LeadbayClient } from "@leadbay/core";
 import { buildServer } from "../src/server.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 const BASE = "https://api-us.leadbay.app";
 
-async function connect(opts: { bulkTracker?: InMemoryBulkStore } = {}) {
+async function connect() {
   const lbClient = new LeadbayClient(BASE, "u.test-token");
   const server = buildServer(lbClient, {
     includeWrite: true,
-    bulkTracker: opts.bulkTracker,
   });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const mcpClient = new Client({ name: "test", version: "0.0.1" }, {});
@@ -163,7 +162,7 @@ describe("outputSchema on top 5 composites (P2: structured output)", () => {
         },
       },
     ]);
-    const { mcpClient } = await connect({ bulkTracker: new InMemoryBulkStore() });
+    const { mcpClient } = await connect();
     const result = await mcpClient.callTool({
       name: "leadbay_import_leads",
       arguments: {
@@ -175,7 +174,7 @@ describe("outputSchema on top 5 composites (P2: structured output)", () => {
     expect((result as any).isError).not.toBe(true);
     const structured = (result as any).structuredContent;
     expect(structured.status).toBe("running");
-    expect(structured.handle_id).toBeTypeOf("string");
+    expect(Array.isArray(structured.importIds)).toBe(true);
     expect(structured.importIds).toEqual(["imp-async-1"]);
     expect(structured.leads).toBeUndefined();
     expect(structured.not_imported).toBeUndefined();
@@ -206,7 +205,7 @@ describe("outputSchema on top 5 composites (P2: structured output)", () => {
         status: 204,
       },
     ]);
-    const { mcpClient } = await connect({ bulkTracker: new InMemoryBulkStore() });
+    const { mcpClient } = await connect();
     const result = await mcpClient.callTool({
       name: "leadbay_bulk_qualify_leads",
       arguments: {
@@ -219,8 +218,8 @@ describe("outputSchema on top 5 composites (P2: structured output)", () => {
     expect((result as any).isError).not.toBe(true);
     const structured = (result as any).structuredContent;
     expect(structured.status).toBe("running");
-    expect(structured.handle_id).toBeTypeOf("string");
-    expect(structured.qualify_id).toBe(structured.handle_id);
+    expect(structured).toHaveProperty("notification_id");
+    expect(Array.isArray(structured.lead_ids)).toBe(true);
     expect(structured.lead_ids).toEqual(["lead-1"]);
     expect(structured.launched_count).toBe(1);
     expect(structured.notification_id).toBe("abcdef01-2345-4678-89ab-cdef01234567");

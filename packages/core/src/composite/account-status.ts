@@ -1,7 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, QuotaStatusPayload, LensPayload } from "../types.js";
 import { withAgentMemoryMeta } from "../agent-memory/index.js";
-import { fetchTerminalNotifications } from "../notifications/catch-up.js";
 import { isUnlimitedAccount } from "./_credits-helpers.js";
 
 import { leadbay_account_status as ACCOUNT_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -155,27 +154,6 @@ export const accountStatus: Tool<Record<string, never>> = {
       }
     }
 
-    // Terminal bulk-progress notifications (product#4009).
-    //
-    // On stdio the WS listener keeps an in-process inbox warm, so reading it
-    // costs nothing. The hosted server has no inbox and cannot have one: the
-    // WS ticket (`GET /auth/ws`) is per-account, which is meaningless on a
-    // multi-tenant process, and the streamable transport builds a fresh
-    // `Server` per request so nothing would survive to be cached. Before this,
-    // `ctx.notificationsInbox` was simply undefined there and this field was
-    // permanently `[]` — the daily-rhythm channel silently did not exist for
-    // hosted users.
-    //
-    // So when there is no inbox we read the backend ledger directly. It is
-    // already per-account and already durable; on that surface it IS the
-    // inbox. One extra GET on the check-in entry point, and only there — we
-    // deliberately do NOT fetch per response to revive `_meta.notifications`
-    // on hosted, which would tax every tool call for a decoration.
-    const inbox = ctx?.notificationsInbox;
-    const notifications = inbox
-      ? inbox.list()
-      : await fetchTerminalNotifications(client, { logger: ctx?.logger });
-
     // The lens is gated on what the user ACTUALLY asked (product#3761). A plain
     // "what account am I connected to?" is NOT a lens question, and prompt
     // guidance alone leaked the lens unprompted in ~1/3 of live runs. So we only
@@ -236,12 +214,13 @@ export const accountStatus: Tool<Record<string, never>> = {
       // on /me are intentionally NOT surfaced — they're defunct (see
       // SHAPE-DRIFT.md probe round 4).
       quota,
-      // Terminal bulk-progress notifications. Same shape the MCP server
-      // attaches to `_meta.notifications` on every tool response — carried
-      // here as a top-level field so the agent's daily-rhythm check-in (this
-      // composite) sees them without reading _meta. See the read above for
-      // why hosted takes a different path to the same list.
-      notifications,
+      // Inbox of terminal bulk-progress notifications. Same shape the MCP
+      // server attaches to `_meta.notifications` on every tool response —
+      // duplicated here as a top-level field so the agent's daily-rhythm
+      // check-in (this composite) sees them without having to read _meta.
+      // Empty array when the WS listener isn't wired (OpenClaw, tests) OR
+      // when nothing has completed since the last ack.
+      notifications: ctx?.notificationsInbox?.list() ?? [],
       // Non-null ONLY when the quota_status call failed. The agent must treat
       // this as "could not read quota" — NOT as zero usage, and NOT as a broken
       // login (the token just authenticated /users/me above). product#3761.

@@ -1,4 +1,9 @@
 import type { LeadbayClient } from "../client.js";
+import {
+  launchFingerprint,
+  beginLaunch,
+  rememberLaunch,
+} from "../jobs/launch-guard.js";
 import type {
   Tool,
   ToolContext,
@@ -119,7 +124,8 @@ interface ImportAndQualifyResult {
   chosen_budgets?: ChosenBudgets;
   // Composite-level handle. Persists in ~/.leadbay/bulks.json. Pass to
   // leadbay_qualify_status to resume after the response timed out.
-  qualify_id: string | null;
+  lead_ids: string[];
+  lens_id: number;
   // Underlying file-import handles (one per chunk). Useful if the agent
   // wants to inspect the wizard's record-level diagnostics directly.
   import_ids: string[];
@@ -520,10 +526,12 @@ export const importAndQualify: Tool<
         type: "object",
         description: "Adaptive budgets the composite selected (when caller didn't override): {per_lead_budget_ms, total_budget_ms, per_phase_budget_ms, wall_clock_estimate_ms, strategy}.",
       },
-      qualify_id: {
-        type: ["string", "null"],
-        description: "UUIDv4 handle for polling via leadbay_qualify_status. Null when no leads were qualified.",
+      lead_ids: {
+        type: "array",
+        description: "Leads the qualify phase covers. Pass to leadbay_qualify_status for per-lead detail.",
+        items: { type: "string" },
       },
+      lens_id: { type: "number", description: "Lens the qualification ran against." },
       import_ids: {
         type: "array",
         description: "Backend file-import handles (one per chunk).",
@@ -610,15 +618,6 @@ export const importAndQualify: Tool<
       return await runPreview(client, params, ctx, perPhaseBudget, totalBudget);
     }
 
-    if (!ctx?.bulkTracker) {
-      throw client.makeError(
-        "BULK_TRACKER_UNAVAILABLE",
-        "No BulkTracker configured on this MCP instance",
-        "leadbay_import_and_qualify needs a BulkTracker (qualify_id persistence). " +
-          "Upgrade to @leadbay/mcp ≥0.5.0 or set LEADBAY_BULK_STORE_ALLOW_MEMORY=1.",
-        ""
-      );
-    }
 
     if (params.wait_for_completion === false) {
       const queued = await importLeads.execute(
@@ -638,7 +637,8 @@ export const importAndQualify: Tool<
         return {
           kind: "result",
           ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
-          qualify_id: null,
+          lead_ids: [],
+          lens_id: 0,
           import_ids: queued.importIds,
           notification_ids: queued.notification_ids ?? [],
           imported: queued.leads.map((l: any) => ({
@@ -663,7 +663,8 @@ export const importAndQualify: Tool<
         status: "running",
         ...(queued.handle_id ? { handle_id: queued.handle_id } : {}),
         ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
-        qualify_id: null,
+          lead_ids: [],
+          lens_id: 0,
         import_ids: queued.importIds,
         notification_ids: queued.notification_ids ?? [],
         imported: [],
@@ -724,7 +725,8 @@ export const importAndQualify: Tool<
         ...(importResultRaw.dry_run ? { dry_run: true } : {}),
         ...(importResultRaw.row_ids ? { row_ids: importResultRaw.row_ids } : {}),
         ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
-        qualify_id: null,
+          lead_ids: [],
+          lens_id: 0,
         import_ids: importResultRaw.importIds,
         notification_ids: importResultRaw.notification_ids ?? [],
         imported: [],
@@ -747,7 +749,8 @@ export const importAndQualify: Tool<
         kind: "result",
         ...(params.dry_run === true ? { dry_run: true } : {}),
         ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
-        qualify_id: null,
+          lead_ids: [],
+          lens_id: 0,
         import_ids: importResult.importIds,
         notification_ids: importResult.notification_ids ?? [],
         imported: [],
@@ -789,7 +792,8 @@ export const importAndQualify: Tool<
         kind: "result",
         ...(params.dry_run === true ? { dry_run: true } : {}),
         ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
-        qualify_id: null,
+          lead_ids: [],
+          lens_id: 0,
         import_ids: importResult.importIds,
         notification_ids: importResult.notification_ids ?? [],
         imported,
@@ -861,43 +865,19 @@ export const importAndQualify: Tool<
       buildFingerprintInput(params.mappings)
     );
 
-    const reservation = await ctx.bulkTracker.findOrCreatePendingQualify({
-      lead_ids: leadIds,
-      import_ids: importResult.importIds,
-      lens_id: lensId,
-      mapping_fingerprint: mappingFp,
-      per_lead_budget_ms: perLeadBudget,
-      total_budget_ms: totalBudget,
-    });
-
-    if (reservation.reused) {
+    // Double-launch guard only. The qualify phase's identity lives on the
+    // backend; the agent polls with the ids returned below.
+    const qualifyFingerprint = launchFingerprint([
+      "import_qualify",
+      leadIds,
+      importResult.importIds,
+      lensId,
+      mappingFp,
+    ]);
+    const alreadyQualified = beginLaunch(qualifyFingerprint);
+    if (alreadyQualified) {
       ctx?.logger?.info?.(
-        `import_and_qualify: reusing qualify_id=${reservation.record.bulk_id} ` +
-          `(seconds_since_original=${reservation.seconds_since_original})`
-      );
-    }
-
-    // Mark launched even before fan-out — the qualify_id is persisted with the
-    // lead set, so a status call can recover even if the rest of this composite
-    // crashes. `markLaunched` flips status pending→launched. We retry once
-    // before swallowing because if the launch DOES happen but the bit doesn't
-    // flip, qualify_status will trap immediate calls with BULK_PENDING and
-    // hint the agent to relaunch — burning extra ai_rescore quota redundantly.
-    let launchMarked = false;
-    for (const attempt of [1, 2]) {
-      try {
-        await ctx.bulkTracker.markLaunched(reservation.record.bulk_id);
-        launchMarked = true;
-        break;
-      } catch (err) {
-        ctx?.logger?.warn?.(
-          `import_and_qualify: markLaunched attempt ${attempt} failed: ${(err as Error)?.message ?? err}`
-        );
-      }
-    }
-    if (!launchMarked) {
-      ctx?.logger?.warn?.(
-        `import_and_qualify: markLaunched failed twice — qualify_status may BULK_PENDING-trap immediate retrieval; agent should poll, not relaunch`
+        `import_and_qualify: identical qualify launched ${alreadyQualified.seconds_since}s ago — not relaunching`
       );
     }
 
@@ -934,19 +914,8 @@ export const importAndQualify: Tool<
       ...(questionOrder ? { questionOrder } : {}),
     });
 
-    // iter-21: when the qualify fan-out was cancelled (ctx.signal aborted),
-    // mark the bulk-store record cancelled so a subsequent qualify_status
-    // returns BULK_CANCELLED instead of "still launched". Best-effort —
-    // the operational cancel already happened; only the record needs the bit.
-    if (fanOut.cancelled) {
-      try {
-        await ctx.bulkTracker.markCancelled(reservation.record.bulk_id);
-      } catch (err: any) {
-        ctx?.logger?.warn?.(
-          `import_and_qualify: tracker.markCancelled failed: ${err?.message ?? err}`
-        );
-      }
-    }
+    // Settle the claim now that the fan-out has actually run.
+    if (!alreadyQualified) rememberLaunch(qualifyFingerprint, null);
 
     const qualified = fanOut.results
       .filter((r) => !r._stillRunning)
@@ -981,7 +950,8 @@ export const importAndQualify: Tool<
     return {
       kind: "result",
       ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
-      qualify_id: reservation.record.bulk_id,
+      lead_ids: leadIds,
+      lens_id: lensId,
       import_ids: importResult.importIds,
       notification_ids: importResult.notification_ids ?? [],
       imported,
@@ -992,10 +962,10 @@ export const importAndQualify: Tool<
       quota_exceeded: fanOut.quota_exceeded,
       skipped_already_qualified,
       not_in_lens: fanOut.not_in_lens,
-      ...(reservation.reused
+      ...(alreadyQualified
         ? {
             reused: true,
-            seconds_since_original: reservation.seconds_since_original,
+            seconds_since_original: alreadyQualified.seconds_since,
           }
         : {}),
       ...(fanOut.cancelled ? { cancelled: true } : {}),

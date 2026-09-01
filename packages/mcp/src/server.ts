@@ -29,14 +29,13 @@ import {
   granularReadTools,
   granularWriteTools,
   COMPOSITE_FILE_TOOL_NAMES,
-  type BulkTracker,
   type LeadbayClient,
   type NotificationInboxEntry,
   type Tool,
   type ToolContext,
   type ToolLogger,
 } from "@leadbay/core";
-import { NotificationsInbox, runWithRequestSignal } from "@leadbay/core";
+import { NotificationsInbox } from "@leadbay/core";
 import { NOOP_TELEMETRY, type TelemetryHandle } from "./telemetry.js";
 import type { UpdateStateStore } from "./update-state.js";
 import {
@@ -397,7 +396,6 @@ interface BuildServerOptions {
   includeAdvanced?: boolean;
   includeWrite?: boolean;
   logger?: ToolLogger;
-  bulkTracker?: BulkTracker;
   // Server version reported on `initialize`. The CLI passes the build-time
   // package.json#version (via tsup's __LEADBAY_MCP_VERSION__ define) so this
   // stays in lock-step with the published package. Tests omit it and fall
@@ -1005,30 +1003,6 @@ export function buildServer(
     };
   };
 
-  // product#4003 alert signal. A tool call that died on the request deadline is
-  // the shape that produced a 36-hour silent outage: the customer sees nothing
-  // come back and nothing in our telemetry says "stalled backend" unless we say
-  // it. Fired from BOTH failure paths (thrown LeadbayError and returned error
-  // envelope) so a composite that catches and surfaces the envelope is still
-  // alertable. The deadline is read from `_meta.timeout_ms`, which the client
-  // stamps on the envelope, so the event reports the deadline that actually
-  // expired (a 4s probe and a 60s tool call must stay separable) without
-  // re-parsing the message text.
-  const captureTimeoutAlert = (
-    toolName: string,
-    envelope: { message?: string; _meta?: any },
-    triggeredBy: string | undefined
-  ): void => {
-    const ms = envelope._meta?.timeout_ms;
-    telemetry.captureToolTimeout({
-      tool: toolName,
-      ...(typeof ms === "number" ? { timeout_ms: ms } : {}),
-      ...(envelope._meta?.endpoint ? { endpoint: envelope._meta.endpoint } : {}),
-      ...(envelope._meta?.region ? { region: envelope._meta.region } : {}),
-      ...(triggeredBy !== undefined ? { triggered_by: triggeredBy } : {}),
-    });
-  };
-
   // NOTE: friction reporting is no longer captured post-hoc from the tool
   // result. It is threaded into ToolContext as a `reportFriction` transport
   // (see the ctx construction below) so the tool learns whether delivery
@@ -1285,19 +1259,12 @@ export function buildServer(
         };
       }
       // MCP 2025-11-25 §Cancellation: extra.signal is aborted by the SDK
-      // when the client sends `notifications/cancelled` — which it does both
-      // when the user clicks Cancel and when its OWN request timeout fires.
-      //
-      // Two things consume it. ToolContext.signal lets long-running composites
-      // (bulk_qualify_leads, enrich_titles, import_and_qualify) stop polling.
-      // runWithRequestSignal makes it ambient for the HTTP layer, so the request
-      // in flight at that moment is destroyed and its concurrency slot released
-      // instead of surviving the call that wanted it (product#4003). That is
-      // what bounds a stalled backend — the host's own policy, not a wall-clock
-      // number we would have to guess on Leadbay's behalf.
-      const result = await runWithRequestSignal(extra.signal, () => tool.execute(client, args, {
+      // when the client sends `notifications/cancelled`. Plumbing it to
+      // ToolContext.signal lets long-running composites (bulk_qualify_leads,
+      // enrich_titles, import_and_qualify) actually stop polling when the
+      // user clicks Cancel in Claude Desktop / Cursor.
+      const result = await tool.execute(client, args, {
         logger: opts.logger,
-        bulkTracker: opts.bulkTracker,
         notificationsInbox: opts.notificationsInbox,
         signal: extra.signal,
         progress,
@@ -1333,7 +1300,7 @@ export function buildServer(
               ? { severity: report.severity as "low" | "medium" | "high" }
               : {}),
           }) === true,
-      }));
+      });
       // Inject `update_available` into account_status returns when an
       // upgrade is cached. Other tools pass through untouched. Done
       // BEFORE the error/markdown/json branching so the field appears
@@ -1371,9 +1338,6 @@ export function buildServer(
               retry_after_s: (result as any)._meta?.retry_after,
               endpoint: (result as any)._meta?.endpoint,
             });
-          }
-          if (envCode === "TIMEOUT") {
-            captureTimeoutAlert(name, result as any, triggered_by);
           }
           telemetry.captureToolCall({
             tool: name,
@@ -1548,9 +1512,6 @@ export function buildServer(
             retry_after_s: err._meta?.retry_after,
             endpoint: err._meta?.endpoint,
           });
-        }
-        if (!skipAnalytics && err.code === "TIMEOUT") {
-          captureTimeoutAlert(name, err, triggered_by);
         }
         // Upstream HTTP status (set by client.ts mapErrorResponse at
         // _meta.http_status). Forward it onto the product-analytics events

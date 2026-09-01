@@ -329,7 +329,7 @@ function extractBearer(authHeader: string | undefined): string | undefined {
 // leaking through the LeadbayClient.
 function buildServerFromClient(
   client: LeadbayClient,
-  requestTelemetry: TelemetryHandle
+  requestTelemetry: TelemetryHandle,
 ): Server {
   const includeWrite = parseWriteEnv();
   const includeAdvanced = process.env.LEADBAY_MCP_ADVANCED === "1";
@@ -810,9 +810,13 @@ const isEntrypoint = (() => {
 if (isEntrypoint) {
   // Stable boot log for Fly to surface in the dashboard.
   const _boot = randomUUID();
+  // Eager: the point of the boot line is that a misconfigured volume is visible
+  // before the first user request, not after it.
   serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) => {
     process.stderr.write(
-      `leadbay-mcp-http ${VERSION} listening on http://${info.address}:${info.port} (boot=${_boot})\n`
+      `leadbay-mcp-http ${VERSION} listening on http://${info.address}:${info.port} ` +
+        `(boot=${_boot}, write=${parseWriteEnv()}, ` +
+        `advanced=${process.env.LEADBAY_MCP_ADVANCED === "1"})\n`
     );
     // Process-level boot signal (no per-user identity — no request yet). Lets us
     // correlate "events stopped" in PostHog with a Fly restart/redeploy. Pass an

@@ -44,7 +44,7 @@ After your first `leadbay_pull_leads` call, capture `response.lens.id` into your
 
 ## Rule 2 — Prefer async for bulk operations
 
-`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false`, which returns `{status:'running', qualify_id}` immediately. Then poll `leadbay_qualify_status` (or `leadbay_import_status`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
+`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false`, which returns `{status:'running', notification_id}` immediately. Then poll `leadbay_qualify_status` (or `leadbay_import_status`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
 
 ## Rule 3 — Serialize `leadbay_research_lead_by_id` fan-out
 
@@ -495,7 +495,7 @@ account's **default wishlist selection** while `confirm`/`email` are set — so
 it would reveal and charge for the whole batch instead of the one lead the user
 agreed to.
 
-It returns a `bulk_id` and runs async — poll `leadbay_bulk_enrich_status`
+It returns a `notification_id` and runs async — poll `leadbay_bulk_enrich_status`
 with that id (`include_contacts=true`) until `all_done`, or until the resolved
 count plateaus across a few spaced polls. Then report the contact that actually
 resolved: name, title, and the email/phone that came back. Contacts sometimes

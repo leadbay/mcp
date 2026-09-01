@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.34.0 — 2026-09-01 — Start a long job, come back to it any time
+
+- **Start an enrichment, qualification or import in the evening and pick it up
+  the next morning.** The reference you get back now belongs to Leadbay rather
+  than to the assistant's session, so it keeps working in a later message, a
+  later conversation, or the next day. It lasts 30 days.
+- **"Import and qualify" works when you connect through mcp.leadbay.app.** It
+  had never worked there. Nor had asking for qualification without waiting for
+  it to finish.
+- **Nothing about your leads is stored outside Leadbay any more.** Imported
+  lists used to be kept alongside the assistant for 30 days. They aren't.
+- **Checking progress is one request instead of one per lead.**
+
+Existing references from before this release stop working. They only ever
+lasted minutes, and on mcp.leadbay.app they never worked at all.
+
 ## 0.32.4 — 2026-09-01 — "Your enrichment finished" now reaches hosted users
 
 - **Background work that finishes while you are away is reported again.** If you
@@ -8,7 +24,6 @@
   waiting. It now reads the same notifications the web app shows you, so your
   morning check-in opens with what completed overnight.
 
-=======
 ## 0.32.1 — 2026-09-01 — A stalled Leadbay can no longer freeze your session
 
 - **When you cancel, Leadbay actually stops.** Cancelling a tool call — or your

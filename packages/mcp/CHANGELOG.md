@@ -1,5 +1,43 @@
 # Changelog — @leadbay/mcp
 
+## 0.34.0 — 2026-09-01
+
+Delete the bulk store. The job handle is the backend's id (product#4005,
+product#4039; supersedes PR #187).
+
+The store existed, per its own header, "while the Leadbay backend doesn't yet
+issue a real bulk_id". It does now, in two places on main: `GET /1.6/mcp/jobs/{id}`
+(`mcp_jobs`) for MCP-first search and qualify, and `GET /1.6/notifications` —
+which the backend ADR calls the single user-facing unit for asynchronous
+operations — for contact enrichment, CSV import and lead qualification. Both are
+durable, org-scoped, and retained 30 days.
+
+Verified against the live backend before any of this was written: a launch
+returns a `notification_id`, it is listable one second later with progress
+counters, and it resolves from three separate processes with fresh logins each
+time.
+
+- **Launches return the backend's id**; status tools poll by it.
+  `bulk_enrich_status` and `qualify_status` take `notification_id` (plus the
+  `lead_ids` / `lens_id` the launch returned, for per-lead detail).
+  `import_status` takes `importIds`, which it already accepted.
+- **Deleted**: `jobs/bulk-store.ts`, `ToolContext.bulkTracker`, both entrypoint
+  wirings, eight `BULK_*` error codes, `LEADBAY_BULK_STORE_PATH` /
+  `_ALLOW_MEMORY` / `_PATH_UNSAFE`. No volume, no `fsGroup`, no rollout-strategy
+  change, nothing at rest on the pod or on the user's disk.
+- **Kept**: a 30-line in-process double-launch guard. It claims a fingerprint
+  before launching, settles it with the backend id, and abandons it if the
+  launch throws — which closes both halves of product#4039 (a failed launch
+  poisoning the window, and two concurrent callers both launching).
+- **Hosted and stdio now run one code path.** The bug this replaces was hosted
+  building its server without a tracker while every core test passed. There is
+  no such option left to omit.
+- Descriptions no longer promise a handle "persisted to ~/.leadbay/bulks.json
+  with a 30-day TTL" — 8 tool descriptions, 4 prompts, 3 snippets.
+
+Breaking: `bulk_id`, `handle_id` and `qualify_id` are gone as inputs. They lived
+minutes on local installs and never worked on hosted.
+
 ## 0.32.4 — 2026-09-01
 
 `leadbay_account_status.notifications` was permanently `[]` on the hosted server
