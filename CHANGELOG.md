@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.32.5 — 2026-09-01 — Editing a contact stops failing
+
+- **Fixing a contact's details now works.** Asking the assistant to correct a
+  contact's title, email or LinkedIn used to fail every time. Leadbay keeps two
+  kinds of contact — the ones your team added, and the ones bought from an
+  enrichment provider — and only the first can be edited. The assistant could
+  not tell them apart, so it kept picking the wrong one. It can now, and it
+  offers to add a corrected contact when the original is a bought one.
+
 ## 0.32.4 — 2026-09-01 — "Your enrichment finished" now reaches hosted users
 
 - **Background work that finishes while you are away is reported again.** If you
@@ -7,8 +16,6 @@
   assistant had no way to know it had finished — it always reported nothing
   waiting. It now reads the same notifications the web app shows you, so your
   morning check-in opens with what completed overnight.
-
-=======
 ## 0.32.1 — 2026-09-01 — A stalled Leadbay can no longer freeze your session
 
 - **When you cancel, Leadbay actually stops.** Cancelling a tool call — or your
@@ -33,7 +40,6 @@
 - **A timed-out call tells the agent to retry** instead of failing silently, a
   stalled account can no longer distort our own latency numbers, and a timeout
   now raises an alert instead of waiting to be found in a retrospective.
-
 ## 0.32.0 — 2026-09-01 — A slow import is no longer a failed import
 
 - **A slow import stops looking broken.** Leadbay's import sometimes takes a

@@ -4803,9 +4803,9 @@ Trigger phrases: "update this contact", "fix this contact's title", "change thei
 
 **Memory:** recall + capture via \`leadbay_agent_memory_*\` tools.
 
-Do NOT use for: "add a new contact to this company" → \`leadbay_add_contact\`; "remove / delete this contact" → \`leadbay_remove_contact\`; "get email/phone for a contact (enrichment)" → \`leadbay_enrich_titles\`.
+Do NOT use for: "add a new contact to this company" → \`leadbay_add_contact\`; "remove / delete this contact" → \`leadbay_remove_contact\`; "get email/phone for a contact (enrichment)" → \`leadbay_enrich_titles\`; "fix an enriched contact's details" → \`leadbay_add_contact\`.
 
-Prefer when: user wants to change details on an EXISTING contact — pass that contact's own \`contact_id\` plus first_name + last_name (required) and the fields to change
+Prefer when: user wants to change details on a contact that is in their own directory (\`source: "org"\`) — pass that contact's own \`contact_id\` plus first_name + last_name (required) and the fields to change
 
 Examples that SHOULD invoke this tool:
 - "Update Jane's title to SVP Engineering."
@@ -4825,7 +4825,18 @@ One-line confirmation naming the contact and what changed. No table.
 
 Edit an existing contact in place — change their \`job_title\`, \`linkedin_page\`, \`email\`, \`phone_number\`, or name.
 
-Pass the contact's **own** \`contact_id\` (the \`id\` field from \`leadbay_research_lead_by_id\` or a contacts list) — **not** the parent lead id.
+Pass the contact's **own** \`contact_id\` — **not** the parent lead id.
+
+**Only your organization's own directory contacts can be edited.** Leadbay holds contacts in two separate id namespaces and this endpoint resolves one of them:
+
+| \`source\` on the contact | What it is | Editable here |
+|---|---|---|
+| \`"org"\` | A row in your organization's contact directory — added by you or your team, or promoted from an import | **yes** |
+| \`"paid"\` | An enrichment result bought from a data provider | **no** — returns \`NOT_FOUND\` / 404 |
+
+\`leadbay_research_lead_by_id\` returns both, merged into \`contacts.reachable\` / \`contacts.candidates\` and split by whether the person is messagable right now — **not** by which namespace they came from. So read \`source\` on the contact before calling this. If it is \`"paid"\` and the user wants different details on record, add the corrected person with \`leadbay_add_contact\` instead; the enrichment row is a provider's answer and is not ours to edit.
+
+A 404 from this tool almost always means a \`"paid"\` id was passed. Re-read the contact, check \`source\`, and do not retry the same id.
 
 **\`first_name\` + \`last_name\` are required even on an edit.** The backend validates the full contact identity and rejects a partial body (\`invalid contact\`). So pass the contact's *current* first/last name even when you're only changing the title — read the current values via \`leadbay_research_lead_by_id\` first if you don't have them.
 
