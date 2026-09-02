@@ -4695,7 +4695,7 @@ Trigger phrases: "update this contact", "fix this contact's title", "change thei
 
 Do NOT use for: "add a new contact to this company" → \`leadbay_add_contact\`; "remove / delete this contact" → \`leadbay_remove_contact\`; "get email/phone for a contact (enrichment)" → \`leadbay_enrich_titles\`; "fix an enriched contact's details" → \`leadbay_add_contact\`.
 
-Prefer when: user wants to change details on a contact that is in their own directory (\`source: "org"\`) — read the contact first, then pass its \`contact_id\` plus EVERY field, because an omitted field is deleted
+Prefer when: user wants to change details on a contact that is in their own directory (\`source: "org"\`) — pass its \`contact_id\`, first_name, last_name and only the fields being changed
 
 Examples that SHOULD invoke this tool:
 - "Update Jane's title to SVP Engineering."
@@ -4728,23 +4728,30 @@ Pass the contact's **own** \`contact_id\` — **not** the parent lead id.
 
 A 404 from this tool almost always means a \`"paid"\` id was passed. Re-read the contact, check \`source\`, and do not retry the same id.
 
-## PASS EVERY FIELD, ALWAYS — a field you leave out is DELETED
+## Omitting a field keeps it. Erasing one takes an explicit \`null\`.
 
-This endpoint **replaces** the contact. It does not patch it. Any field absent from your call is erased, silently, and the call still returns \`updated: true\`.
+Send only what you are changing. Any field you leave out keeps its current value — you do NOT need to read the contact first and echo everything back.
 
-Verified in production: sending only \`contact_id\` + \`first_name\` + \`last_name\` + \`job_title\` — the contact's own current values, changing nothing — **deleted that contact's email**. The lead stopped being contactable.
+\`\`\`
+{ contact_id, first_name, last_name, job_title: "CEO" }
+→ title becomes CEO. email, phone and LinkedIn are untouched.
+\`\`\`
 
-So, every time, even to change one field:
+**To erase a field, pass it as \`null\`.** Because erasing rewrites the whole record, that call must carry ALL of \`job_title\`, \`linkedin_page\`, \`email\`, \`phone_number\` — current value for the ones to keep, \`null\` for the ones to erase. If any are missing the call is refused with \`CONTACT_CLEAR_NEEDS_FULL_RECORD\` rather than deleting them; read the contact with \`leadbay_research_lead_by_id\` and re-call.
 
-1. Read the contact first with \`leadbay_research_lead_by_id\` (or \`leadbay_campaign_call_sheet\`).
-2. Send **all** of \`first_name\`, \`last_name\`, \`job_title\`, \`email\`, \`phone_number\`, \`linkedin_page\` — current value for the ones you are not changing, new value for the one you are.
-3. Only pass \`null\` for a field when the user actually asked you to remove it.
+\`\`\`
+{ contact_id, first_name, last_name, email: null,
+  job_title: "CEO", phone_number: "+33…", linkedin_page: "https://…" }
+→ email erased, everything else as given.
+\`\`\`
 
-If you do not have the contact's current values, **do not guess and do not omit** — read them first. \`first_name\` and \`last_name\` are additionally rejected outright when missing (\`invalid contact\`), which is the one case that fails loudly; every other field fails silently by disappearing.
+\`first_name\` + \`last_name\` are required on every call. The backend validates the contact's identity and rejects a body without them (\`invalid contact\`), so pass the current values when you are not changing the name.
 
-Backend: \`POST /contacts/{contact_id}/update\` (snake_case body) → 200 with the updated contact. Edits in place (same id). Camel-case bodies are rejected.
+The result tells you which happened: \`mode\` is \`merge\` or \`replace\`, \`preserved\` lists the fields left untouched, \`cleared\` lists the fields erased. **Check \`cleared\` is what you intended.**
 
-Returns \`{ updated: true, contact_id, contact: { id, first_name, last_name, job_title, linkedin_page, email, phone_number } }\`. **Compare that echo against what you meant to send** — a field missing from it was deleted by this call.
+Backend: \`POST /contacts/{contact_id}/merge\` when nothing is being erased, \`POST /contacts/{contact_id}/update\` when something is. Snake_case body; camel-case is rejected. Edits in place (same id).
+
+Returns \`{ updated: true, contact_id, mode, preserved, cleared, contact: { id, first_name, last_name, job_title, linkedin_page, email, phone_number } }\`.
 
 Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw).
 `;

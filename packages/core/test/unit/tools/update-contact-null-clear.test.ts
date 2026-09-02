@@ -16,7 +16,7 @@ const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
 beforeEach(() => resetHttpMock());
 
 describe("leadbay_update_contact — null clears", () => {
-  it("forwards null to clear a field (email/title) — backend accepts it", async () => {
+  it("clearing a field forwards null on /update — with the whole record supplied (product#4046)", async () => {
     mockHttp([
       {
         method: "POST",
@@ -34,12 +34,17 @@ describe("leadbay_update_contact — null clears", () => {
       },
     ]);
 
+    // An erase rewrites the record, so every optional field has to be stated.
+    // Before product#4046 this call omitted phone_number and linkedin_page and
+    // silently deleted them; now they must be named to be kept or cleared.
     const result = await updateContact.execute(newClient(), {
       contact_id: "c-9",
       first_name: "Null",
       last_name: "Clear",
       email: null,
       job_title: null,
+      phone_number: null,
+      linkedin_page: null,
     });
 
     expect(result.updated).toBe(true);
@@ -50,9 +55,9 @@ describe("leadbay_update_contact — null clears", () => {
     expect(sent).toHaveProperty("job_title", null);
     expect(sent.first_name).toBe("Null");
     expect(sent.last_name).toBe("Clear");
-    // Fields the caller didn't mention are NOT sent (undefined is skipped).
-    expect(sent).not.toHaveProperty("phone_number");
-    expect(sent).not.toHaveProperty("linkedin_page");
+    // Every field is stated, because /update writes all of them.
+    expect(sent).toHaveProperty("phone_number", null);
+    expect(sent).toHaveProperty("linkedin_page", null);
   });
 
   it("schema declares nullable types for the optional update fields", () => {

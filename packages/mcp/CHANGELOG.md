@@ -2,9 +2,7 @@
 
 ## 0.33.2 — 2026-09-02
 
-`POST /contacts/{contact_id}/update` **replaces** the contact; it does not patch
-it. Any field absent from the body is erased and the call still returns
-`updated: true` (product#4046).
+Editing one field on a contact erased the others (product#4046).
 
 Reproduced on production while verifying leadbay/mcp#194: sending a contact's
 own current `first_name` + `last_name` + `job_title`, changing nothing, deleted
@@ -12,25 +10,45 @@ that contact's email. The contact moved from `contacts.reachable` to
 `contacts.candidates` and `_meta.has_reachable_contact` flipped to false, so the
 lead stopped being contactable. Restored with a second call.
 
-This became reachable only yesterday: until #194 the tool returned 404 on 100%
-of calls, so it destroyed nothing. A tool that always failed now succeeds and
-deletes data, which is strictly worse.
+This became reachable only the day before: until #194 the tool returned 404 on
+100% of calls, so it destroyed nothing. A tool that always failed now succeeded
+and deleted data.
 
-Instructional fix, per Milan — the agent must send every field:
+**The backend already had the safe behaviour and we were choosing the other
+one.** Both routes take the same payload
+(`OrgContactRoutes.kt:110,152` → `OrgContactsDaoImpl.kt:265-272`):
 
-- The description leads with the mechanism (replaces, not patches), the
-  production evidence, and a three-step procedure: read the contact, send all
-  six fields, pass `null` only when removal was actually asked for.
-- Each optional field's own schema description now says omitting it deletes it.
-  The old text — *"Pass null to clear it"* — implied omission was the safe way
-  to leave a field alone, which is the exact mistake.
-- `short_description` and `prefer_when` carry the same warning, so it survives
-  hosts that truncate tool descriptions.
-- New `update-contact-omitted-field-warning.test.ts` pins the warning in place
-  and pins `null`-means-clear alongside it, so the guidance cannot be trimmed as
-  verbose without failing.
+| Route | `forceUpdateIfNullOrEmpty` | A field absent from the body |
+|---|---|---|
+| `/contacts/{id}/update` | `true` | written as null — **erased** |
+| `/contacts/{id}/merge` | `false` | skipped — **kept** |
 
-No behaviour change: the tool sends what it is given, as before.
+So the fix needs no read-modify-write, no extra round-trip and no race window.
+`leadbay_update_contact` now routes by intent:
+
+- **Nothing being erased → `/merge`.** Every field the caller omitted survives.
+- **Any field passed as `null` → `/update`**, which rewrites the record — so
+  that call must carry all four optional fields. If it does not, the tool
+  refuses with `CONTACT_CLEAR_NEEDS_FULL_RECORD` rather than deleting what was
+  not mentioned. The destructive path costs more effort than the safe one,
+  which is the intended asymmetry.
+- The result carries `mode` (`merge` / `replace`), `preserved` and `cleared`, so
+  a wrong edit is visible rather than silent.
+
+Verified live on staging, same body to each route:
+
+```
+POST /contacts/{id}/merge   {first_name, last_name, job_title:"CEO"}
+  → job_title CEO,  email merge.probe@example.test,  phone +15550001111   (kept)
+POST /contacts/{id}/update  {first_name, last_name, job_title:"CTO"}
+  → job_title CTO,  email absent,  phone absent                           (erased)
+```
+
+Two existing test files were changed rather than added, because both asserted
+the contract this fixes: `update-contact.test.ts`'s happy path now expects
+`/merge`, and `update-contact-null-clear.test.ts`'s clear case now supplies the
+whole record. The second had encoded the data loss as correct — it asserted that
+unmentioned fields are not sent, while posting to the route that deletes them.
 
 ## 0.33.1 — 2026-09-02
 

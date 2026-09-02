@@ -4,9 +4,12 @@
 
 - **Fixing one detail on a contact used to delete the others.** Asking the
   assistant to correct someone's job title erased their email and phone,
-  silently, and reported success. Leadbay replaces the whole contact on an edit,
-  so anything the assistant did not send was removed. The assistant is now told
-  to send every field, every time.
+  silently, and reported success. Now anything you do not change keeps its
+  value.
+- **Removing a detail on purpose still works, and now takes saying so.** To
+  clear an email the assistant states it explicitly, along with the rest of the
+  contact. If it does not, the edit is refused instead of deleting things
+  nobody mentioned.
 
 ## 0.33.1 — 2026-09-02 — A slow import is not a broken one
 
