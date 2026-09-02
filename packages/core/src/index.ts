@@ -226,7 +226,6 @@ export const granularReadTools: Tool[] = [
 // AND LEADBAY_MCP_WRITE=1 in MCP).
 export const granularWriteTools: Tool[] = [
   qualifyLead,
-  enrichContacts,
   addNote,
   selectLeads,
   deselectLeads,
@@ -386,6 +385,12 @@ export const compositeWriteTools: Tool[] = [
   pinContact,
   unpinContact,
   updateContact,
+  // enrichContacts is granular-shaped (one POST per contact) but registered
+  // HERE, not in granularWriteTools: it is the only tool that enriches ONE
+  // chosen person (leadId + contactId) rather than a job title, and hosted
+  // never sets LEADBAY_MCP_ADVANCED, so behind that gate no hosted agent could
+  // act on a person it had already identified (product#4050).
+  enrichContacts,
   // createCustomField is granular-shaped but file-import prompts depend on it
   // to preserve source-system links without requiring advanced-tool exposure.
   createCustomField,

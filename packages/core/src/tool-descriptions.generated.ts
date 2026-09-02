@@ -1075,15 +1075,41 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_dismiss_clarification
 
 // region: leadbay_enrich_contacts
-export const leadbay_enrich_contacts: string = `Order email and/or phone enrichment for a specific contact. Tries the paid-contact path and falls back to the org-contact path on NOT_FOUND. Each email reveal and each phone reveal consumes QUOTA. Both \`email\` and \`phone\` default to \`true\` — a bare call enriches both channels.
+export const leadbay_enrich_contacts: string = `## WHEN TO USE
 
-WHEN TO USE: when you have a specific \`contact_id\` (from leadbay_get_contacts) and want to enrich just that one.
+Trigger phrases: "enrich this contact", "get this person's email", "find <name>'s phone number", "reveal the email of <name> at <company>", "enrich the managing director, not the president", "enrichir le DG à la place du président".
 
-WHEN NOT TO USE: for bulk enrichment by job title across many leads — use leadbay_enrich_titles, which handles the selection lifecycle and returns a clean preview/launch flow.
+Do NOT use for: "enrich the CEOs / a job title across my leads" → \`leadbay_enrich_titles\`; "pin / mark this person as the priority contact" → \`leadbay_pin_contact\`; "draft an email / prepare outreach for this lead" → \`leadbay_prepare_outreach\`.
+
+Prefer when: the user names ONE person on ONE company — pass the lead id + that contact's own id. A \`source:"paid"\` candidate id from leadbay_research_lead_by_id is valid input. Pinning does not enrich anyone.
+
+Examples that SHOULD invoke this tool:
+- "Get me Jane Doe's email at Acme."
+- "Enrich the managing director at Cromology, not the president."
+- "Reveal the phone number for this contact."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Enrich the CEOs across my top 10 leads."
+- "Pin Jane Doe as the main contact on Acme."
+- "Draft an outreach email for Acme."
+
+## RENDER (quick)
+
+One line: "Enrichment started for <name> (<email / phone>)". Then re-read the
+lead's contacts every ~30s via leadbay_research_lead_by_id and report when
+the requested channel has landed. Never print a credits figure.
+
+---
+
+Order email and/or phone enrichment for a specific contact. Tries the paid-contact path and falls back to the org-contact path on NOT_FOUND. Each email reveal and each phone reveal consumes QUOTA. Both \`email\` and \`phone\` default to \`true\` — a bare call enriches both channels.
+
+WHEN TO USE: when the user has already picked WHO they want on a company and you hold that person's \`contact_id\` — from \`leadbay_research_lead_by_id\` (\`reachable\` / \`candidates\` lists) or \`leadbay_get_contacts\` where exposed. A \`source: "paid"\` candidate id is the normal input here: it is the person Leadbay suggested but has not resolved yet, and this tool is what resolves them. What to expect on the re-read depends on which id you passed. **Paid candidate:** the candidate row never carries email or phone; when the provider finds a channel, the person appears as a \`source: "org"\` row (new, or merged into an existing org contact for the same person) with a DIFFERENT id, and that row holds the channel and is pinnable. If nothing is found, the candidate row reads \`enrichment_done: true\` with no channel and no org row is created. **Org contact** (\`source: "org"\`, e.g. adding phone to someone who already has an email): the SAME row is updated in place, same id.
+
+WHEN NOT TO USE: for bulk enrichment by job title across many leads — use leadbay_enrich_titles, which handles the selection lifecycle and returns a clean preview/launch flow. Not to mark someone as the priority contact — that is leadbay_pin_contact, and pinning does not enrich anyone.
 
 ## QUOTA, NOT CREDITS
 
-Enrichment is gated by QUOTA (the per-window allowance in \`leadbay_account_status\`), not a credit balance. **Never pre-refuse because a credit number looks low or zero** — a freemium/fresh account with quota left can enrich even when its credit counter reads 0. The reveal either fits the remaining quota or the backend returns 429 (\`quota_exceeded\`); only THEN surface the exhausted window + wait-or-top-up choice. The \`credits_remaining\` field on the result is **advisory internal context only — do NOT display it**. Because it can read \`0\` on an account that still has quota, printing \`_(N credits remaining)_\` would falsely tell the user they're out. Do not render a credits balance at all; if the user asks where they stand, call \`leadbay_account_status\` and show the quota gauge instead. The actual per-contact cost (\`enrichment.credits_used\`) appears on the contact via leadbay_get_contacts after enrichment.
+Enrichment is gated by QUOTA (the per-window allowance in \`leadbay_account_status\`), not a credit balance. **Never pre-refuse because a credit number looks low or zero** — a freemium/fresh account with quota left can enrich even when its credit counter reads 0. The reveal either fits the remaining quota or the backend returns 429 (\`quota_exceeded\`); only THEN surface the exhausted window + wait-or-top-up choice. The \`credits_remaining\` field on the result is **advisory internal context only — do NOT display it**. Because it can read \`0\` on an account that still has quota, printing \`_(N credits remaining)_\` would falsely tell the user they're out. Do not render a credits balance at all; if the user asks where they stand, call \`leadbay_account_status\` and show the quota gauge instead. The actual per-contact cost (\`enrichment.credits_used\`) appears on the contact after enrichment.
 
 **Channels: when the user asks to enrich a contact without naming a channel, confirm scope via \`ask_user_input_v0\`** — \`"Enrich email only, or email + phone? (phone uses more quota)"\` → \`["Email only", "Email + phone"]\` — then pass the chosen \`email\`/\`phone\` flags. Skip the question only if they already said which channel(s) they want.
 
@@ -1096,7 +1122,7 @@ export const leadbay_enrich_titles: string = `Order contact enrichments by job t
 
 WHEN TO USE: as the agent's go-to enrichment entry point, immediately before proposing outreach.
 
-WHEN NOT TO USE: to enrich a single contact — that's leadbay_enrich_contacts (granular). Speculatively, before the user has committed to outreaching — enrichment consumes quota. **NOT to add "titles" or "LinkedIn" to a list** — a contact's \`job_title\` and \`linkedin_page\` already ride on the contact record; they are FREE and need no enrichment. If the user asks for "title and LinkedIn only", read those fields directly (e.g. leadbay_get_contacts / leadbay_research_lead_by_id); do NOT launch a job here. This tool is strictly the email / phone reveal, which consumes quota.
+WHEN NOT TO USE: to enrich a single named contact — that's leadbay_enrich_contacts. Speculatively, before the user has committed to outreaching — enrichment consumes quota. **NOT to add "titles" or "LinkedIn" to a list** — a contact's \`job_title\` and \`linkedin_page\` already ride on the contact record; they are FREE and need no enrichment. If the user asks for "title and LinkedIn only", read those fields directly (e.g. leadbay_get_contacts / leadbay_research_lead_by_id); do NOT launch a job here. This tool is strictly the email / phone reveal, which consumes quota.
 
 ## ENRICHMENT CONSUMES QUOTA — the model to reason with
 
@@ -2623,10 +2649,10 @@ Passing a \`source: "paid"\` id here returns **\`contact not found\`**. That is 
 
 To pin someone who is currently only a candidate, first make them an org contact:
 
-- \`leadbay_enrich_titles\` (or \`leadbay_prepare_outreach\` with \`enrich: true\`) resolves the candidate and writes a NEW org contact for that person. It has a **different \`id\`** from the paid candidate, so re-read the contacts list afterwards and pin the \`source: "org"\` row.
+- \`leadbay_enrich_contacts\` with the lead id + this candidate's id enriches exactly this person. \`leadbay_enrich_titles\` (or \`leadbay_prepare_outreach\` with \`enrich: true\`) does the same by job title. When the provider finds an email or phone, each writes a NEW org contact for that person (or merges into an existing one). It has a **different \`id\`** from the paid candidate, so re-read the contacts list afterwards and pin the \`source: "org"\` row. If nothing was found, no org contact exists and there is nothing to pin.
 - Or add them directly with \`leadbay_add_contact\`, which returns the new org contact's \`id\` — that id is pinnable immediately.
 
-**Pinning does not steer enrichment.** It only marks who the priority is on a company the user already has. Enrichment picks people by JOB TITLE, so "enrich the Directeur Général rather than the Président" is \`leadbay_enrich_titles\` with the wanted title — not a pin. Pinning first and enriching after changes nothing about who gets enriched.
+**Pinning does not steer enrichment.** It only marks who the priority is on a company the user already has. "Enrich the Directeur Général rather than the Président" is \`leadbay_enrich_contacts\` with that person's id (or \`leadbay_enrich_titles\` with the wanted title) — not a pin. Pinning first and enriching after changes nothing about who gets enriched.
 
 
 Backend: \`POST /contacts/{contact_id}/pin\` → 204. Idempotent. The inverse is \`leadbay_unpin_contact\`.
@@ -4704,10 +4730,10 @@ Passing a \`source: "paid"\` id here returns **\`contact not found\`**. That is 
 
 To pin someone who is currently only a candidate, first make them an org contact:
 
-- \`leadbay_enrich_titles\` (or \`leadbay_prepare_outreach\` with \`enrich: true\`) resolves the candidate and writes a NEW org contact for that person. It has a **different \`id\`** from the paid candidate, so re-read the contacts list afterwards and pin the \`source: "org"\` row.
+- \`leadbay_enrich_contacts\` with the lead id + this candidate's id enriches exactly this person. \`leadbay_enrich_titles\` (or \`leadbay_prepare_outreach\` with \`enrich: true\`) does the same by job title. When the provider finds an email or phone, each writes a NEW org contact for that person (or merges into an existing one). It has a **different \`id\`** from the paid candidate, so re-read the contacts list afterwards and pin the \`source: "org"\` row. If nothing was found, no org contact exists and there is nothing to pin.
 - Or add them directly with \`leadbay_add_contact\`, which returns the new org contact's \`id\` — that id is pinnable immediately.
 
-**Pinning does not steer enrichment.** It only marks who the priority is on a company the user already has. Enrichment picks people by JOB TITLE, so "enrich the Directeur Général rather than the Président" is \`leadbay_enrich_titles\` with the wanted title — not a pin. Pinning first and enriching after changes nothing about who gets enriched.
+**Pinning does not steer enrichment.** It only marks who the priority is on a company the user already has. "Enrich the Directeur Général rather than the Président" is \`leadbay_enrich_contacts\` with that person's id (or \`leadbay_enrich_titles\` with the wanted title) — not a pin. Pinning first and enriching after changes nothing about who gets enriched.
 
 
 A \`source: "org"\` contact that was never pinned is a no-op here, not an error — the backend answers 204 either way. Check \`pinned\` on the contact before calling if you need to tell the user whether anything actually changed.

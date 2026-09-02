@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.33.4 — 2026-09-02 — Enrich the one person you named
+
+- **You can now ask for one specific person's email or phone.** "Get me the
+  managing director's email, not the president's" used to have no direct
+  answer on the hosted assistant: the tool that enriches a single named person
+  was only available with an advanced setting nobody hosted turns on. The
+  assistant fell back on pinning, which never enriches anyone and failed every
+  time. That tool is now available by default, and the assistant is told it is
+  the right one when it has already picked who it wants.
+- **The pinning error now points at the direct route.** When you try to pin a
+  suggested contact who is not yet in your list, the assistant is told it can
+  enrich exactly that person, as well as the existing by-title and add-contact
+  routes.
+
 ## 0.33.3 — 2026-09-02 — Pinning a contact says what it can and cannot do
 
 - **Pinning someone Leadbay only suggested no longer looks like a breakage.**
