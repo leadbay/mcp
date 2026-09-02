@@ -7,7 +7,7 @@ Passing a `source: "paid"` id here returns **`contact not found`**. That is the 
 
 To pin someone who is currently only a candidate, first make them an org contact:
 
-- `leadbay_enrich_contacts` with the lead id + this candidate's id enriches exactly this person. `leadbay_enrich_titles` (or `leadbay_prepare_outreach` with `enrich: true`) does the same by job title. Each resolves the candidate and writes a NEW org contact for that person. It has a **different `id`** from the paid candidate, so re-read the contacts list afterwards and pin the `source: "org"` row.
+- `leadbay_enrich_contacts` with the lead id + this candidate's id enriches exactly this person. `leadbay_enrich_titles` (or `leadbay_prepare_outreach` with `enrich: true`) does the same by job title. When the provider finds an email or phone, each writes a NEW org contact for that person (or merges into an existing one). It has a **different `id`** from the paid candidate, so re-read the contacts list afterwards and pin the `source: "org"` row. If nothing was found, no org contact exists and there is nothing to pin.
 - Or add them directly with `leadbay_add_contact`, which returns the new org contact's `id` — that id is pinnable immediately.
 
 **Pinning does not steer enrichment.** It only marks who the priority is on a company the user already has. "Enrich the Directeur Général rather than the Président" is `leadbay_enrich_contacts` with that person's id (or `leadbay_enrich_titles` with the wanted title) — not a pin. Pinning first and enriching after changes nothing about who gets enriched.

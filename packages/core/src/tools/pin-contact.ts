@@ -13,7 +13,7 @@ export const NOT_PINNABLE_HINT =
   "To act on this person, enrich them directly with leadbay_enrich_contacts (the lead id + this contact id), " +
   "enrich by job title with leadbay_enrich_titles, or add them with leadbay_add_contact — " +
   "each produces a NEW org contact with a different id, which is pinnable. " +
-  "Note that pinning does not decide who gets enriched; enrichment selects people by job title.";
+  "Note that pinning does not decide who gets enriched: leadbay_enrich_titles selects people by job title, leadbay_enrich_contacts by the contact id you pass.";
 
 interface PinContactParams {
   // The contact's own UUID (the `id` on a contact object) — NOT the lead id.
