@@ -1,5 +1,55 @@
 # Changelog — @leadbay/mcp
 
+## 0.34.0 — 2026-09-02
+
+The OpenAI app directory rejects an app that sells digital goods — "plugins may
+conduct commerce only for physical goods. Selling digital products or services
+— including subscriptions, digital content, tokens, or credits — is not
+allowed" — and separately forbids promoting the purchase: a plugin "must not
+display subscription plans, initiate new subscriptions, or promote upgrades" or
+"link directly to a checkout". Signing in to an existing paid account and using
+what it entitles you to IS allowed. Anthropic's Software Directory Policy has
+no equivalent clause; its nearest rule bars software that "executes financial
+transactions on behalf of users", which our Stripe-URL handoff does not do.
+
+`POST /chatgpt/mcp` is the URL submitted to OpenAI. Same Hono app, same auth,
+same handler, built with `includeCommerce: false`. Four things go away
+together — the tools, and every text that would promote buying them, since
+removing only the tools left the agent still pushing a top-up it could no
+longer produce:
+
+- `leadbay_create_topup_link` and `leadbay_open_billing_portal` are not
+  registered (filtered after the catalogue arrays merge — both appear in
+  `compositeReadTools` and `granularReadTools`).
+- Tool descriptions lose their `{{commerce}}` blocks
+  (`NO_COMMERCE_TOOL_DESCRIPTIONS`, emitted by promptforge).
+- The `QUOTA_TOPUP` instruction paragraph is not pushed. `quota-topup.md` was
+  split verbatim: the selling paragraph is gated, and the neutral one that says
+  when to re-render the quota gauge became `quota-refresh.md`, pushed on both.
+- `LeadbayClient.commerce` drops the two selling sentences from the
+  QUOTA_EXCEEDED hint ("OR top up AI credits…", "…or direct them to
+  app.leadbay.ai → Billing"). One client per session on hosted, so the flag
+  cannot leak across tenants.
+
+Nothing is reworded for ChatGPT. `{{commerce}}` only ever DELETES — there is no
+second, softened wording anywhere to drift out of sync, and the Claude surface
+keeps selling exactly as hard as before. Enforced two ways:
+`commerce-gate.test.ts` asserts the gated description and instruction strings
+are pure character-level *subsequences* of the Claude ones (any reworded
+character fails), and the generated descriptions were diffed against `main` to
+confirm the default rendering did not move by a byte.
+
+A path rather than an `initialize` clientInfo sniff, and rather than a query
+parameter: the OAuth protected-resource identifier IS the path
+(`/.well-known/oauth-protected-resource/chatgpt/mcp` → `resource:
+https://mcp.leadbay.app/chatgpt/mcp`). A `?commerce=off` flag would leave both
+URLs advertising the same resource, so a client reconnecting to the audience it
+registered would get the selling tools back. RFC 8707 also says a resource URI
+should carry no query component.
+
+`RESOURCE_PATHS` gains the path so OAuth discovery resolves for it, and the
+installer's ChatGPT Desktop entry now hands out `HOSTED_MCP_URL_CHATGPT`.
+
 ## 0.33.4 — 2026-09-02
 
 `leadbay_enrich_contacts` moves from `granularWriteTools` to

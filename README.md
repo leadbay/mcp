@@ -35,6 +35,7 @@ If you use Claude on the web, Claude Desktop, or ChatGPT, the fastest path is a 
 
 - **Name:** `Leadbay`
 - **URL:** `https://mcp.leadbay.app/mcp`  — one URL for every region (`/fr/mcp` remains a compatibility alias)
+- **On ChatGPT, use `https://mcp.leadbay.app/chatgpt/mcp` instead.** Same server, same sign-in, same leads — but the assistant cannot generate a top-up link or open your billing page there, because the OpenAI app directory does not allow an app to sell credits. Buy credits or change your plan in your Leadbay account instead.
 
 In Claude: **Settings → Connectors → + → Add custom connector**, paste the URL, then open the connector and **Connect**. Sign in with Leadbay, click **Approve**, and you're linked. The server handles OAuth in-app; updates are automatic — you never touch a config file.
 
@@ -126,7 +127,8 @@ Every supported way to connect Leadbay MCP:
 
 | Method | Command / action | Platforms | Notes |
 |--------|------------------|-----------|-------|
-| **Hosted connector (no install)** | Add custom connector → `https://mcp.leadbay.app/mcp` (all regions) | Claude web / Desktop, ChatGPT | Browser OAuth in-app. Nothing to install; auto-updates. |
+| **Hosted connector (no install)** | Add custom connector → `https://mcp.leadbay.app/mcp` (all regions) | Claude web / Desktop | Browser OAuth in-app. Nothing to install; auto-updates. |
+| **Hosted connector — ChatGPT** | Add custom connector → `https://mcp.leadbay.app/chatgpt/mcp` | ChatGPT | Same server; the top-up and billing tools are not registered (OpenAI directory rule). |
 | **`.dxt` / `.mcpb` bundle** | Download from [Releases](https://github.com/leadbay/mcp/releases/latest), double-click → **Install** | Claude Desktop | One-click desktop extension. |
 | **Guided installer (GUI)** | `npx -y -p @leadbay/mcp@latest installer` | macOS, Windows, Linux | Browser wizard: sign in with Leadbay, pick clients. Works for everyone. |
 | **Local dev build** | `pnpm --filter @leadbay/mcp installer -- --local` | macOS, Windows, Linux | Registers clients against your local build. OAuth automatic. Build from source first (above). |

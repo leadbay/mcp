@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.34.0 — 2026-09-02 — Leadbay on ChatGPT gets its own address
+
+- **On ChatGPT, add Leadbay as `https://mcp.leadbay.app/chatgpt/mcp`.** Same
+  Leadbay, same sign-in, same leads, same everything — except the assistant
+  cannot generate a top-up link or open your billing page there, and will not
+  suggest buying credits at all. ChatGPT's rules for apps do not allow an app
+  to sell credits or plans, or to push you toward an upgrade. When you run out
+  of quota it tells you which window is empty and when it refills. Buy credits
+  in your Leadbay account as usual; tell the assistant you did, and it picks
+  straight back up where it stopped.
+- **Nothing changes on Claude.** `https://mcp.leadbay.app/mcp` keeps the
+  30-second top-up and the billing link exactly as before.
+- **If ChatGPT was already set up for you**, our installer now points it at the
+  new address on its own.
+
 ## 0.33.4 — 2026-09-02 — Enrich the one person you named
 
 - **You can now ask for one specific person's email or phone.** "Get me the

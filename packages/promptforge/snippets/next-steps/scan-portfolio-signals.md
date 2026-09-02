@@ -12,7 +12,9 @@ almost always "turn the matched leads into a campaign."
 | Zero matches but leads were researched            | "Widen the query (synonyms) or relax `since`"                | leadbay_scan_portfolio_signals(query: "<broader terms>", since: omit-or-earlier)      |
 | `truncated_at` set                                | "Scan only covered N — narrow scope or raise the cap"        | leadbay_scan_portfolio_signals({city / set_filter}) or raise `max_leads`              |
 | One standout matched lead                          | "Open that lead's full brief"                                | leadbay_research_lead_by_id(leadId)                                                    |
+{{commerce}}
 | `quota_exceeded`                                  | "Wait for reset OR top up to finish the scan"                | leadbay_create_topup_link                                                              |
+{{/commerce}}
 
 NEVER report leads in `not_researched` as if they had no matching signal — they
 were never read. Distinguish "no signal X found" (researched, no match) from

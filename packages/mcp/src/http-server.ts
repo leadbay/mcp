@@ -9,6 +9,7 @@
 // Endpoints:
 //   POST /mcp                  Streamable HTTP transport (current MCP spec)
 //   POST /fr/mcp               Compat alias for the README's EU connector URL
+//   POST /chatgpt/mcp          Same, minus every commerce surface (see COMMERCE_FREE_PATHS)
 //   GET  /sse, POST /messages  Legacy SSE transport (older hosts)
 //   GET  /healthz              Liveness probe for Fly/Render
 //
@@ -324,9 +325,22 @@ function extractBearer(authHeader: string | undefined): string | undefined {
 // Build a fresh MCP server bound to the caller's resolved client. One server per
 // session — keeps tenant isolation explicit and avoids any cross-request state
 // leaking through the LeadbayClient.
+// Paths that must not sell. The OpenAI app directory forbids selling digital
+// goods of any kind — credits, top-ups, subscriptions — so the URL we submit
+// to it is served WITHOUT leadbay_create_topup_link, leadbay_open_billing_portal,
+// or any prose that offers them. Anthropic's directory has no such rule, so
+// /mcp is unchanged and Claude users keep the top-up flow.
+//
+// This is a path, not a clientInfo sniff, on purpose: a reviewer connecting to
+// this URL sees a catalog where the tools do not exist, rather than a promise
+// that we suppress them. clientInfo is self-reported, unverified, and arrives
+// after `instructions` has already been built.
+const COMMERCE_FREE_PATHS = new Set<string>(["/chatgpt/mcp"]);
+
 function buildServerFromClient(
   client: LeadbayClient,
-  requestTelemetry: TelemetryHandle
+  requestTelemetry: TelemetryHandle,
+  resourcePath: string
 ): Server {
   const includeWrite = parseWriteEnv();
   const includeAdvanced = process.env.LEADBAY_MCP_ADVANCED === "1";
@@ -334,6 +348,7 @@ function buildServerFromClient(
     version: VERSION,
     includeWrite,
     includeAdvanced,
+    includeCommerce: !COMMERCE_FREE_PATHS.has(resourcePath),
     logger,
     telemetry: requestTelemetry,
   });
@@ -354,7 +369,7 @@ const PRM_PREFIX = "/.well-known/oauth-protected-resource";
 // the same single Stargate auth server and the token's `_fr`/`_us` suffix
 // self-routes tool calls — so `/fr/mcp` behaves identically to `/mcp`. Kept as an
 // alias (not a redirect) so those users don't 404.
-const RESOURCE_PATHS = ["/mcp", "/sse", "/fr/mcp", "/fr/sse"] as const;
+const RESOURCE_PATHS = ["/mcp", "/sse", "/fr/mcp", "/fr/sse", "/chatgpt/mcp"] as const;
 
 // Public origin of this request. Fly terminates TLS and forwards over http, so
 // trust x-forwarded-proto; fall back to the request URL (host + scheme).
@@ -475,6 +490,7 @@ app.options("*", (c) => {
 const MCP_BODY_LIMIT = bodyLimit({ maxSize: 1 * 1024 * 1024 });
 app.use("/mcp", MCP_BODY_LIMIT);
 app.use("/fr/mcp", MCP_BODY_LIMIT); // compat alias (see RESOURCE_PATHS)
+app.use("/chatgpt/mcp", MCP_BODY_LIMIT); // commerce-free (see COMMERCE_FREE_PATHS)
 app.use("/messages", MCP_BODY_LIMIT);
 
 // Streamable HTTP transport. Stateless mode (no sessionIdGenerator) is the
@@ -483,7 +499,7 @@ app.use("/messages", MCP_BODY_LIMIT);
 // passing `sessionIdGenerator: randomUUID`.
 async function handleStreamable(
   c: Context,
-  resourcePath: "/mcp" | "/fr/mcp"
+  resourcePath: "/mcp" | "/fr/mcp" | "/chatgpt/mcp"
 ): Promise<Response> {
   const foreign = rejectForeignOrigin(c);
   if (foreign) return foreign;
@@ -509,7 +525,8 @@ async function handleStreamable(
   // events are suppressed per-request — product#3879.
   const server = buildServerFromClient(
     resolved.client,
-    await telemetryHandleForRequest(resolved.client)
+    await telemetryHandleForRequest(resolved.client),
+    resourcePath
   );
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
@@ -566,6 +583,9 @@ app.all("/mcp", (c) => handleStreamable(c, "/mcp"));
 // Compat alias for the README's published EU connector URL. Same behavior as
 // /mcp — the token suffix, not the path, selects the region.
 app.all("/fr/mcp", (c) => handleStreamable(c, "/fr/mcp"));
+// The URL submitted to the OpenAI app directory. Identical to /mcp except that
+// nothing on it sells — see COMMERCE_FREE_PATHS.
+app.all("/chatgpt/mcp", (c) => handleStreamable(c, "/chatgpt/mcp"));
 
 // Legacy SSE transport. Two endpoints: GET /sse opens the stream, POST
 // /messages?sessionId=... feeds JSON-RPC messages in.
@@ -624,8 +644,10 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
           sessionOptedOut: session.suppressed,
           fallbackEnabled: !session.suppressed,
         })
-    )
+    ),
+    resourcePath
   );
+
   await server.connect(transport);
 
   const sessionId = transport.sessionId;

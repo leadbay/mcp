@@ -538,6 +538,16 @@ export class LeadbayClient {
     }
   }
 
+  /**
+   * Whether this client may compose text that promotes a purchase. Default
+   * true. The MCP server sets it false for a host whose directory forbids
+   * promoting upgrades (see BuildServerOptions.includeCommerce); the only
+   * effect is that the QUOTA_EXCEEDED hint drops its two selling sentences.
+   * Set per client, and the hosted server builds one client per session, so
+   * this never leaks across tenants.
+   */
+  commerce = true;
+
   get baseUrl(): string {
     return this._baseUrl;
   }
@@ -1008,8 +1018,16 @@ export class LeadbayClient {
         // agent can generate the URL itself instead of asking the user to
         // navigate to a website. Once the user has topped up, the previous
         // 429 is stale — retry the failed call.
-        `${hintBase}, OR top up AI credits — top-ups clear the throttle immediately. ` +
-          `Offer the user to generate a Stripe checkout URL via leadbay_create_topup_link, OR direct them to app.leadbay.ai → Billing. ` +
+        //
+        // The two selling sentences are dropped when `commerce` is off — this
+        // hint is text the agent reads out, and a host may forbid promoting a
+        // purchase. Nothing is reworded; the rest of the hint is unchanged, and
+        // "the user topped up (elsewhere), so retry" survives either way.
+        `${hintBase}` +
+          (this.commerce
+            ? `, OR top up AI credits — top-ups clear the throttle immediately. ` +
+              `Offer the user to generate a Stripe checkout URL via leadbay_create_topup_link, OR direct them to app.leadbay.ai → Billing. `
+            : `. `) +
           `Check leadbay_account_status / leadbay_get_quota to see which resource window (daily/weekly/monthly) was hit. ` +
           `Once the user has topped up, the previous QUOTA_EXCEEDED is stale — re-call leadbay_account_status to refresh, then RETRY the original operation.`,
         endpoint,

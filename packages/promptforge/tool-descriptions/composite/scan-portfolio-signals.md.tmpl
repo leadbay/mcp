@@ -81,9 +81,11 @@ date are kept (a missing date is not evidence the event is old).
 date + description). Feed the matched `lead_id`s straight into
 `leadbay_add_leads_to_campaign` / `leadbay_create_campaign`.
 
+{{commerce}}
 On a 429 mid-scan, partial `matched` is returned with `quota_exceeded: true` —
 offer the user wait-for-reset OR a top-up link (both unblock; a top-up clears
 the throttle immediately).
+{{/commerce}}
 
 {{include:gates/signal-honesty}}
 

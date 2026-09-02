@@ -6,6 +6,15 @@ import { homedir } from "node:os";
 export const HOSTED_MCP_URL = "https://mcp.leadbay.app/mcp";
 
 /**
+ * The URL we hand to ChatGPT. Same server, same auth, but served without the
+ * top-up and billing-portal tools: the OpenAI app directory forbids selling
+ * digital goods, and that applies to a connector a user adds by hand just as
+ * it does to a listed app. Claude keeps HOSTED_MCP_URL, which is unchanged.
+ * See COMMERCE_FREE_PATHS in src/http-server.ts.
+ */
+export const HOSTED_MCP_URL_CHATGPT = "https://mcp.leadbay.app/chatgpt/mcp";
+
+/**
  * Print the actionable fallback block. The guided installer ALWAYS tries to
  * open a browser; this is only printed by the entrypoint watchdog (#3805) when
  * nothing ever opened, so the user isn't left staring at a hang. It covers the
@@ -221,7 +230,7 @@ export async function detectClients(): Promise<DetectedClient[]> {
   }
 
   if (await isChatGptDesktopInstalled(home)) {
-    out.push({ id: "chatgpt-desktop", label: "ChatGPT Desktop", detail: HOSTED_MCP_URL });
+    out.push({ id: "chatgpt-desktop", label: "ChatGPT Desktop", detail: HOSTED_MCP_URL_CHATGPT });
   }
 
   const cursorPath = process.platform === "win32" ? `${home}\\.cursor\\mcp.json` : `${home}/.cursor/mcp.json`;

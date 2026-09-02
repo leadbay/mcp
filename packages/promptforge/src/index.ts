@@ -12,6 +12,12 @@ export {
 export type { Frontmatter, PromptArgument, ParsedTemplate } from "./frontmatter.js";
 
 export { resolveSnippets, listSnippetsReferenced, SnippetError } from "./snippets.js";
+export {
+  hasCommerceMarkers,
+  renderCommerce,
+  validateCommerceMarkers,
+} from "./commerce.js";
+export type { CommerceMode } from "./commerce.js";
 export { assemble, AssemblyError } from "./assembler.js";
 export type { AssembledArtifact, AssembleResult, AssembleOptions } from "./assembler.js";
 

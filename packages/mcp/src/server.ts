@@ -27,6 +27,7 @@ import {
   setTelemetry,
   granularReadTools,
   granularWriteTools,
+  NO_COMMERCE_TOOL_DESCRIPTIONS,
   COMPOSITE_FILE_TOOL_NAMES,
   type BulkTracker,
   type LeadbayClient,
@@ -50,6 +51,7 @@ import {
   FRICTION,
   MENTAL_MODEL,
   QUOTA_TOPUP,
+  QUOTA_REFRESH,
   TRIGGERED_BY,
   TRANSIENT_401,
   ENRICHMENT_TERMINAL,
@@ -352,7 +354,18 @@ export function buildServerInstructions(exposed: Set<string>): string {
   // the telemetry setting (see leadbay/product#3718 review).
   parts.push(TRIGGERED_BY);
   parts.push(MENTAL_MODEL);
-  parts.push(QUOTA_TOPUP);
+  // The selling paragraph — only where selling is allowed. Keyed off the tool
+  // so the instructions never promote a purchase the host forbids, and never
+  // name a tool this server did not register (the iter-12 invariant the rest of
+  // this function follows). Not softened anywhere: it is present verbatim or
+  // absent.
+  if (has("leadbay_create_topup_link")) {
+    parts.push(QUOTA_TOPUP);
+  }
+  // When to re-render the quota gauge once paid work completes. Says nothing
+  // about buying, so both surfaces get it — its own snippet precisely so a
+  // future edit cannot land on one surface and miss the other.
+  parts.push(QUOTA_REFRESH);
   // Sits next to QUOTA_TOPUP because both govern the enrichment lifecycle: that
   // one says when to refresh the quota, this one says when to STOP enriching.
   // Gated on enrich_titles because it names that tool (#3504: never instruct the
@@ -388,9 +401,39 @@ export function buildServerInstructions(exposed: Set<string>): string {
   return parts.join("\n\n");
 }
 
+// Tools that sell, or link to a page that sells. Dropped wholesale on a
+// commerce-free surface. See COMMERCE_FREE_NOTE below.
+const COMMERCE_TOOL_NAMES = new Set([
+  "leadbay_create_topup_link",
+  "leadbay_open_billing_portal",
+]);
+
 interface BuildServerOptions {
   includeAdvanced?: boolean;
   includeWrite?: boolean;
+  /**
+   * Default true. Set false for a surface whose host forbids selling digital
+   * goods — the OpenAI app directory: "plugins may conduct commerce only for
+   * physical goods. Selling digital products or services — including
+   * subscriptions, digital content, tokens, or credits — is not allowed".
+   * Anthropic's Software Directory Policy has no equivalent rule, so the
+   * Claude surface keeps commerce on.
+   *
+   * When false, three things go away together — the tools, and every text that
+   * would promote buying them:
+   *
+   *   1. COMMERCE_TOOL_NAMES are not registered.
+   *   2. Tool descriptions lose their `{{commerce}}` blocks
+   *      (NO_COMMERCE_TOOL_DESCRIPTIONS, emitted by promptforge).
+   *   3. The QUOTA_TOPUP instruction paragraph is not pushed, and the client's
+   *      QUOTA_EXCEEDED hint drops its two selling sentences.
+   *
+   * Nothing is reworded for ChatGPT. Every one of those is a deletion of text
+   * that is otherwise present verbatim, so the Claude surface keeps selling
+   * exactly as hard as it does today — asserted byte-for-byte by
+   * test/unit/commerce-gate.test.ts.
+   */
+  includeCommerce?: boolean;
   logger?: ToolLogger;
   bulkTracker?: BulkTracker;
   // Server version reported on `initialize`. The CLI passes the build-time
@@ -611,16 +654,24 @@ export function buildServer(
   // For composite-file tools (COMPOSITE_FILE_TOOL_NAMES) the field is also
   // declared as required + uses the stronger MANDATORY description; the
   // dispatch handler enforces presence by rejecting LAST_PROMPT_REQUIRED.
+  const includeCommerce = opts.includeCommerce !== false;
+  client.commerce = includeCommerce;
   const toolByName = new Map<string, Tool>();
   for (const t of exposedTools) {
-    if (!toolByName.has(t.name) && t.name !== "leadbay_login") {
-      toolByName.set(
-        t.name,
-        withTriggeredByMeta(t, {
-          mandatory: COMPOSITE_FILE_TOOL_NAMES.has(t.name),
-        })
-      );
-    }
+    if (toolByName.has(t.name) || t.name === "leadbay_login") continue;
+    // COMMERCE_FREE_NOTE: filtered here, after the catalogue arrays are
+    // merged, because these two are registered in both compositeReadTools
+    // and granularReadTools.
+    if (!includeCommerce && COMMERCE_TOOL_NAMES.has(t.name)) continue;
+    const noCommerce = includeCommerce
+      ? undefined
+      : NO_COMMERCE_TOOL_DESCRIPTIONS[t.name];
+    toolByName.set(
+      t.name,
+      withTriggeredByMeta(noCommerce ? { ...t, description: noCommerce } : t, {
+        mandatory: COMPOSITE_FILE_TOOL_NAMES.has(t.name),
+      })
+    );
   }
 
   // Build instructions from the ACTUAL exposed name set so the agent system
