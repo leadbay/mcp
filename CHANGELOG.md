@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.35.0 — 2026-09-02 — Background jobs you can come back to
+
+- **A job you start without waiting now hands back Leadbay's own id.**
+  Qualification, imports and contact enrichment launched in the background
+  return the same id Leadbay keeps for thirty days. Ask about it in the next
+  message, the next conversation, or tomorrow, and the assistant picks it up.
+  On the hosted assistant those three requests used to fail every time with
+  "No BulkTracker configured"; they now work.
+- **Nothing of yours is kept on our server between messages.** The assistant
+  no longer writes imported rows or lead lists to a file of its own; Leadbay
+  is the only record.
+- **Old ticket names are answered, not crashed.** An assistant still passing
+  `bulk_id`, `qualify_id` or `handle_id` is told which id to pass instead.
+- **The wrong kind of id is caught.** An import's id given to the enrichment
+  status (or the other way round) is named as such, instead of a confident
+  wrong answer.
+
 ## 0.34.0 — 2026-09-02 — Leadbay on ChatGPT gets its own address
 
 - **On ChatGPT, add Leadbay as `https://mcp.leadbay.app/chatgpt/mcp`.** Same
