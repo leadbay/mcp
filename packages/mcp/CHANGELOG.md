@@ -1,5 +1,65 @@
 # Changelog — @leadbay/mcp
 
+## 0.35.0 — 2026-09-02
+
+The MCP no longer keeps any record of the jobs it starts (product#4005,
+product#4039). Every launch already receives a durable id from the Leadbay
+backend, and the status tools now take that id.
+
+**Why.** Three tools — `leadbay_bulk_qualify_leads`, `leadbay_import_leads`,
+`leadbay_import_and_qualify` — failed on the hosted server with
+`BULK_TRACKER_UNAVAILABLE` (9 customers, 53 times; `import_and_qualify` never
+once worked there). The file they depended on (`~/.leadbay/bulks.json`) was only
+ever created by the stdio entrypoint. Its own header said it existed *"while the
+Leadbay backend doesn't yet issue a real bulk_id"*; the backend now does.
+
+**Breaking.** `bulk_id`, `handle_id` and `qualify_id` are gone as inputs, with
+no transition period — they were valid for minutes on a local install and never
+worked on the server.
+
+| Tool | Now returns / takes |
+|---|---|
+| `leadbay_enrich_titles`, `leadbay_bulk_qualify_leads` | return the backend's `notification_id` + `lead_ids` (+ `lens_id`) |
+| `leadbay_import_leads`, `leadbay_import_and_qualify` | return the backend's `importIds` / `import_ids` |
+| `leadbay_bulk_enrich_status`, `leadbay_qualify_status` | take `notification_id` and/or `lead_ids` (+ `lens_id`) |
+| `leadbay_import_status` | takes `importIds`, which it already accepted |
+
+`packages/core/src/jobs/bulk-store.ts` and its tests are deleted, along with
+`LEADBAY_BULK_STORE_PATH`, `LEADBAY_BULK_STORE_ALLOW_MEMORY` and the `BULK_*`
+error codes. What survives is a five-minute in-memory guard so an assistant
+retry does not charge twice (`jobs/launch-guard.ts`); it claims the launch
+BEFORE firing it, so a concurrent identical call is told `launch_in_flight`
+rather than handed an empty ticket (product#4039).
+
+Verified live on staging through fresh server processes: a job started in one
+process resolves by its backend id from another, including after the
+notification was archived with `leadbay_acknowledge_notification`. The
+notification is listable within a second of the launch ack.
+
+Found in that run and fixed in the same release:
+
+- **A notification of the wrong kind was answered as if it were the right
+  one.** A qualification's notification fed to `leadbay_bulk_enrich_status`
+  read as a finished enrichment; an enrichment's fed to `leadbay_qualify_status`
+  read as a running qualification. Both tools now check the notification's kind
+  (`ENRICH_JOB_WRONG_KIND` / `QUALIFY_JOB_WRONG_KIND`) and name the right tool.
+- **Enrichment notifications do not always carry counters.** On staging the
+  finished row had `in_progress` and a title but no `bulk_progress`, so the
+  `notification_id`-only call said "not a bulk job". It now says
+  `ENRICH_JOB_NO_COUNTERS` with the backend's running/finished flag and asks for
+  the `lead_ids` the launch returned, which always answer.
+- `leadbay_qualify_status` no longer throws not-found when the caller also
+  passed `lead_ids` + `lens_id`; it answers per lead, as its own hint says to.
+- `leadbay_enrich_titles` declared `notification_id` / `lead_ids` / `reused`
+  as inputs instead of outputs; `leadbay_bulk_enrich_status` required
+  `notification_id` in its output when the `lead_ids`-only path omits it.
+- The artifact SDK's `lb.enrichment()` (`@leadbay/components`) still read
+  `bulk_id`, so every widget enrichment reported done instantly with no job
+  polled. It now carries `notification_id` + `lead_ids`.
+- The live eval harness and two live smoke suites still imported the deleted
+  store; tool copy in eight places still told the assistant to poll with a
+  `bulk_id` / `qualify_id`.
+
 ## 0.34.0 — 2026-09-02
 
 The OpenAI app directory rejects an app that sells digital goods — "plugins may

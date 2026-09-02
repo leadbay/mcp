@@ -11,7 +11,7 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Retrieve the current state of an import_and_qualify (or bulk_qualify_leads) launch. Pass the `notification_id` the launch returned to get progress in ONE call; add the `lead_ids` and `lens_id` it returned to get per-lead detail (which settled, which are still running). Both come straight out of the launch response — nothing is stored on the MCP side. The job belongs to the Leadbay backend, which keeps it for 30 days and scopes it to your organization, so the id resolves from a later message, a later conversation, or the next day.
+Retrieve the current state of an import_and_qualify (or bulk_qualify_leads) launch. Pass the `notification_id` the launch returned to get progress in ONE call; add the `lead_ids` and `lens_id` it returned to get per-lead detail (which settled, which are still running). Both come straight out of the launch response — nothing is stored on the MCP side. The job belongs to the Leadbay backend and is scoped to the user who launched it, so the id resolves from a later message, a later conversation, or the next day.
 
 {{include:headers/tool-when-to-use}} after leadbay_import_and_qualify or leadbay_bulk_qualify_leads returned a `notification_id` with non-empty `still_running[]`, call this tool a few minutes later (or hours) to retrieve the now-completed qualifications without re-running the import or re-spending qualify quota.
 

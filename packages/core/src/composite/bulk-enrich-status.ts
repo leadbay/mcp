@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import { readNotificationById } from "../notifications/read-by-id.js";
+import { inferKind } from "../notifications/revise-hint.js";
 import type { BulkProgress, Notification, Tool, ToolContext } from "../types.js";
 import { getContacts } from "../tools/get-contacts.js";
 import { readCreditsRemaining, UNLIMITED } from "./_credits-helpers.js";
@@ -129,7 +130,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
         items: { type: "object" },
       },
     },
-    required: ["notification_id", "status", "leads", "overall_progress", "all_done"],
+    required: ["status", "leads", "overall_progress", "all_done"],
   },
   execute: async (
     client: LeadbayClient,
@@ -159,6 +160,22 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
     let launchedAt: string | null = null;
     if (params.notification_id) {
       const n = await readNotificationById(client, params.notification_id);
+      if (n && inferKind(n) !== "bulk_enrich") {
+        // A qualification or import notification also carries counters; without
+        // this check its progress would be reported as an enrichment's.
+        const kind = inferKind(n);
+        return {
+          error: true,
+          code: "ENRICH_JOB_WRONG_KIND",
+          message: `That notification_id is a ${kind === "bulk_qualify" ? "lead qualification" : kind === "import" ? "file import" : "non-bulk"} notification, not a contact enrichment`,
+          hint:
+            kind === "bulk_qualify"
+              ? "Poll it with leadbay_qualify_status({notification_id}) instead."
+              : kind === "import"
+                ? "Poll it with leadbay_import_status({importIds}) instead — the import ids came back from the import launch."
+                : "Pass the notification_id returned by leadbay_enrich_titles.",
+        };
+      }
       if (n) {
         bp = n.bulk_progress;
         inProgress = n.in_progress;
@@ -314,13 +331,18 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
       };
     }
 
-    // Counters-only path: the caller gave an id but no leads.
+    // Counters-only path: the caller gave an id but no leads. Enrichment
+    // notifications do not always carry counters (verified on staging
+    // 2026-09-02: `bulk_progress` absent, `in_progress` + title present), so
+    // say what the backend does know and ask for the lead_ids.
     if (!bp) {
       return {
         error: true,
-        code: "ENRICH_JOB_NOT_BULK",
-        message: "That notification is not a bulk job",
-        hint: "Pass the notification_id returned by leadbay_enrich_titles.",
+        code: "ENRICH_JOB_NO_COUNTERS",
+        message: `This enrichment notification carries no per-contact counters; the backend reports it as ${inProgress ? "still running" : "finished"}`,
+        hint: "Re-call with the `lead_ids` returned by leadbay_enrich_titles (plus titles/email/phone) — that path counts contacts directly and works whether or not the notification has counters.",
+        ...(inProgress !== null ? { in_progress: inProgress } : {}),
+        ...(launchedAt ? { launched_at: launchedAt } : {}),
       };
     }
     const done = bp.success_count + bp.failure_count + bp.quota_hit_count;

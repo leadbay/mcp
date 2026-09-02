@@ -1,5 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import { readNotificationById } from "../notifications/read-by-id.js";
+import { inferKind } from "../notifications/revise-hint.js";
 import type { BulkProgress, Notification, Tool, ToolContext, RequestMeta } from "../types.js";
 
 import {
@@ -29,7 +30,7 @@ interface QualifyStatusResult {
   import_ids: string[];
   lens_id: number;
 
-  // The lead set this qualify_id covers.
+  // The lead set this status covers.
   lead_ids: string[];
 
   // Live state, refreshed at call time.
@@ -113,7 +114,7 @@ export const qualifyStatus: Tool<
       lens_id: { type: "number", description: "Lens id the qualification ran against." },
       lead_ids: {
         type: "array",
-        description: "Lead UUIDs covered by this qualify_id (echoed from launch).",
+        description: "Lead UUIDs covered by this status (echoed from launch).",
         items: { type: "string" },
       },
       qualified: {
@@ -188,17 +189,34 @@ export const qualifyStatus: Tool<
     let launchedAt: string | null = null;
     if (notifId) {
       const n = await readNotificationById(client, notifId);
-      if (!n) {
+      if (!n && leadIds.length === 0) {
         throw client.makeError(
           "QUALIFY_JOB_NOT_FOUND",
           "No job for that notification_id",
-          "The backend keeps jobs for 30 days and scopes them to your organization. Check the id came from a launch on this account, or relaunch.",
+          "The lookup scans this user's recent notifications (archived included); a job behind many newer ones will not be found. Re-call with the `lead_ids` + `lens_id` the launch returned — that answers per lead without the notification.",
           ""
         );
       }
-      bulkProgress = n.bulk_progress;
-      inProgressFlag = n.in_progress;
-      launchedAt = n.created_at;
+      if (n && inferKind(n) !== "bulk_qualify") {
+        // An enrichment or import notification would otherwise be reported as
+        // a qualification's progress.
+        const kind = inferKind(n);
+        throw client.makeError(
+          "QUALIFY_JOB_WRONG_KIND",
+          `That notification_id is a ${kind === "bulk_enrich" ? "contact enrichment" : kind === "import" ? "file import" : "non-bulk"} notification, not a lead qualification`,
+          kind === "bulk_enrich"
+            ? "Poll it with leadbay_bulk_enrich_status({notification_id, lead_ids}) instead."
+            : kind === "import"
+              ? "Poll it with leadbay_import_status({importIds}) instead."
+              : "Pass the notification_id returned by leadbay_bulk_qualify_leads.",
+          ""
+        );
+      }
+      if (n) {
+        bulkProgress = n.bulk_progress;
+        inProgressFlag = n.in_progress;
+        launchedAt = n.created_at;
+      }
     }
 
     if (leadIds.length === 0) {
