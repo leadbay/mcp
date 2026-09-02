@@ -4978,3 +4978,346 @@ export const TOOL_DESCRIPTIONS = {
 } as const;
 
 export type ToolDescriptionName = keyof typeof TOOL_DESCRIPTIONS;
+
+// Descriptions with the {{commerce}} blocks deleted (no rewording). The MCP
+// server swaps these in when commerce is gated off; tools absent from this
+// map read identically on both surfaces.
+export const NO_COMMERCE_TOOL_DESCRIPTIONS: Record<string, string> = {
+  leadbay_account_status: `## WHEN TO USE
+
+Trigger phrases: "what's my account status", "how much quota do I have", "what lens am I on", "I topped up / I bought credits / I added credits".
+
+Do NOT use for: "show me leads" → \`leadbay_pull_leads\`.
+
+Prefer when: meta question about account, quota, active lens, or top-up recovery
+
+Examples that SHOULD invoke this tool:
+- "What's my account status?"
+- "How much quota do I have left this week?"
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Show me today's leads."
+- "What should I follow up on?"
+
+## RENDER (quick)
+
+Report user + org, AND quota whenever readable — include quota even on a plain
+"what account?" ask. NEVER mention the lens unless asked (use
+\`last_requested_lens_name\`, never the id). SILENT on quota ONLY when
+\`quota_error\` set, \`unlimited_credits\` true, or quota null. Else render
+Daily/Weekly/Monthly from \`quota.user\` (fall back to \`quota.org\` if \`user\`
+absent) as \`$used / $cap (N% used) · resets\` (or a resource-count table when
+\`spend[]\` empty). Never say raw "credits".
+
+---
+
+Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **Show quota the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` in dollar_cents (% used = the ratio, $ = \`/100\`); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
+
+**After a user tops up, do NOT keep refusing — RETRY.** If the user signals they topped up / bought credits / added credits, the previous QUOTA_EXCEEDED is invalidated the moment the Stripe webhook lands. RE-CALL \`leadbay_account_status\` to pick up the new state AND retry the originally failed call. The retry itself does not require a successful account_status check first — a topped-up user has cleared the throttle whether or not your cached snapshot reflects it yet. **A stale quota snapshot is never a reason to gate-keep a topped-up user.**
+
+**\`notifications\` block.** The response now includes a top-level \`notifications\` array listing background work the user (or agent) initiated that has since completed (\`bulk_enrich\`, \`bulk_qualify\`, \`import\`). These are signals to revise prior agent outputs the just-finished work might have made stale — they're NOT a pending-task list for the user. After revising (or confirming nothing is affected), call \`leadbay_acknowledge_notification(notification_id)\`. Full handling protocol below.
+
+## GATE — INSPECT \`_meta.notifications\` ON EVERY RESPONSE
+
+Some Leadbay tool responses include a \`_meta.notifications\` array listing **background work the user (or you) initiated that has since completed**. The three relevant kinds:
+
+| Kind | What just finished |
+|---|---|
+| \`bulk_enrich\` | A bulk contact-enrichment job (emails / phone numbers attached to leads' contacts). |
+| \`bulk_qualify\` | A bulk lead-qualification job (web-fetch + AI rescore, producing \`ai_agent_lead_score\` and qualification answers). |
+| \`import\` | A CSV / CRM file import (rows resolved to leads in the user's pipeline). |
+
+**Your job when you see an entry: revise prior outputs the just-finished work might have made stale.** This is NOT a pending-task list. It's a "your earlier answer used data that has now changed" signal.
+
+| Kind | Outputs you've produced that may now be stale — refresh them |
+|---|---|
+| \`bulk_enrich\` | Outreach drafts mentioning these leads' contacts; contact lists; recommended-lead lists citing \`contact_count\`; NEXT STEPS that asked the user to wait for emails / phones. Re-fetch via \`leadbay_get_contacts(leadId)\` for the affected leads. |
+| \`bulk_qualify\` | Lead rankings / shortlists you produced without \`ai_agent_lead_score\`; "today's leads"; followup maps; prepare-outreach picks. Re-pull via \`leadbay_pull_leads\` / \`leadbay_research_lead_by_id\`. |
+| \`import\` | "Available leads" claims; pulls from the affected lens that ran before the import landed; followup planning that needed the imported set. Re-pull via \`leadbay_pull_leads\` / \`leadbay_pull_followups\`. |
+
+**After revising (or after confirming no prior output is affected):** call \`leadbay_acknowledge_notification(notification_id)\` so the entry stops resurfacing on every tool response. Ack-and-move-on is correct even when nothing was stale — that's how the inbox stays focused on what's actually pending.
+
+**Do NOT** interpret these entries as "things waiting for the user." The user expects you to handle them silently. They are signals to YOU — agent — that prior outputs need a refresh.
+
+**Poll a job you launched THIS turn; don't poll one from a PREVIOUS turn.** The rule splits by *when* the work was kicked off:
+
+- **Previous turn / before an MCP restart, and the user has NOT asked about it** — don't poll for it in the background. Simply continue the conversation; the next time you call any tool, the completed-work entry appears in \`_meta.notifications\` (also on \`leadbay_account_status.notifications\`). This is the ambient push path — leave it to do its job. **But if the user explicitly asks for status or to "wait for it to finish"** (e.g. a multi-turn flow where a job was launched in a prior turn and this turn says "wait for enrichment to finish, then …"), DO poll its status tool now until done, exactly as for a this-turn job below — the ambient push only surfaces *completed* work, so it can't answer a live "is it done / wait for it" request while the job is still running.
+- **This turn (you just launched it)** — the DEFAULT is: do NOT end your turn on the "launched" ack; stay active and poll the job's status tool in a loop until it reports done, then report the finished result yourself, rather than spinning forever or deferring the result to a later turn. (Two exceptions, detailed below: the user explicitly asked NOT to wait / to run it in the background; or it's a large qualification/import that's async by design — in those cases hand back the handle instead of looping.) Each status tool has its OWN terminal signal — poll until:
+  - \`leadbay_bulk_enrich_status\` → \`all_done:true\` — OR \`overall_progress.done\` holds steady across several SPACED polls (~15–30s apart) over at least ~90s–2 min of elapsed time (some contacts are unresolvable, so \`all_done\` can stay false forever). Don't call a plateau from the first few back-to-back reads — early on \`done\` sits flat while the backend spins up. Once the plateau is real, report what resolved and name what didn't.
+  - \`leadbay_qualify_status\` → \`still_running\` is empty: every launched lead has finished or failed. (\`in_progress\` also reads \`false\` on the fast path, but it can be \`null\` on the legacy/fallback read — so treat an empty \`still_running\` as terminal on its own; only require \`in_progress:false\` when that field is actually present.) LIKE imports, large qualification runs are async by design: \`leadbay_bulk_qualify_leads\` defaults to \`wait_for_completion:false\` for \`count > 5\` or chained workflows because blocking can time out, and \`leadbay_qualify_status\` may take minutes/hours. So don't force a long polling loop on a big run — return the handle/progress and let completion arrive via \`_meta.notifications\` — UNLESS the user explicitly asked to wait, or it's a small run that finishes quickly. A small \`wait_for_completion:true\` run you can poll to \`still_running\` empty inline.
+  - \`leadbay_import_status\` → \`status:"complete"\` (or \`"failed"\`). BUT imports are the exception to the stay-active loop: a large \`leadbay_import_leads({wait_for_completion:false})\` is meant to return a handle and resolve over minutes, and the tool does ONE refresh pass per call. Don't block the conversation looping on it — surface the returned progress/handle and let the completion arrive via \`_meta.notifications\` — UNLESS the user explicitly asked you to wait for the import, or it's a small import that finishes quickly.
+
+  Enrichment polls to completion in-turn BY DEFAULT — the exception is when the user explicitly said to start it in the background / not wait ("kick it off, I'll check later"), in which case hand back the bulk_id and let completion arrive via \`_meta.notifications\` (only when a notification id exists; if none was returned, tell the user to ask again / that you'll poll later, since nothing will auto-surface). For qualification and imports, poll inline only for small/quick runs or when the user explicitly asked you to wait; otherwise return the handle and let \`_meta.notifications\` deliver it. Either way, the user should never have to ask "is it done yet?" for work you kicked off in the same turn — you either report it or hand back a clear in-progress handle.
+
+Also surfaced as a top-level \`notifications\` array on \`leadbay_account_status\` — same shape, same handling.
+
+
+---
+
+## RENDERING — quota windows (percentage + $, like the frontend)
+
+Mirror the Leadbay web quota widget: three windows side by side — **Daily**,
+**Weekly**, **Monthly** — each headlined by a **% used** gauge and a **$ spend /
+$ cap** figure, with a per-resource usage breakdown underneath. **Never speak in
+raw "credits"** for quota — the unit is a percentage and a dollar spend.
+
+**Include the quota whenever it is readable** — as part of the default account
+answer, even when the user only asked "what account am I connected to?". The
+sole reason to omit it is the silence gate below (unreadable quota, or an
+unlimited account); it is NOT gated on the user explicitly asking for quota.
+
+**Silence gate (check FIRST).** Render NOTHING about quota when any of these
+holds — do not mention quota at all, do not say "unreadable", never tell the user
+to reconnect:
+- \`quota\` is null, OR \`quota_error\` is set (a 401/403 backend quirk for plan-less
+  orgs — the same token read user/org fine), OR
+- \`organization.unlimited_credits\` is true (internal/unlimited account — stay
+  silent on quota; never announce "unlimited").
+
+**Pick the group (for DISPLAY only).** Prefer \`quota.user\` (present for every
+caller). Use \`quota.org\` only when \`quota.user\` is absent (admins receive both —
+still show the caller's own \`user\` view). Call the chosen group \`<group>\` below.
+
+**Exception — lens-refill pre-checks read the refill row, ORG-first.** This
+user-preference is for the display gauge ONLY. When you pre-check the
+\`LENS_EXTRA_REFILL\` resource before \`leadbay_extend_lens\`, look for the row in
+**\`quota.org.resources[]\` first** (admins get the org group, and the refill
+quota is org-scoped there); when \`quota.org\` is absent — non-admin callers only
+receive the \`user\` group — fall back to **\`quota.user.resources[]\`**. Match the
+resource type case-insensitively (\`LENS_EXTRA_REFILL\` / \`lens_extra_refill\`).
+Skipping the \`user\` fallback for non-admins would make the row invisible even
+when the quota data exists, so the agent burns the write and hits the very 429
+this pre-check exists to avoid.
+
+**Per window (fixed order: daily → weekly → monthly).** Match entries by
+\`window_type\` (\`"daily"\` / \`"weekly"\` / \`"monthly"\`).
+
+**Headline — when \`<group>.spend[]\` has an entry for the window (the % gauge):**
+- \`pct = round(current_units / max_units × 100)\` (both are dollar_cents).
+- \`$used = (current_units / 100).toFixed(2)\`, \`$cap = (max_units / 100).toFixed(2)\`.
+- 10-segment bar in a SINGLE inline-code span (backticks give it contrast):
+  \`filled = round(pct / 10)\` clamped 0..10; \`bar = "▰"×filled + "▱"×(10 − filled)\`.
+  Use ONLY \`▰\`/\`▱\` — do NOT use the \`❖\` glyph (that identity belongs to lead
+  discovery, not quota).
+- Line: **\`<Window>\`** \`\` \`▰▰▱▱▱▱▱▱▱▱\` \`\` \`<pct>% used · $<used> / $<cap> · resets <resets_at, relative>\`.
+  e.g. \`**Daily** \` + \`\` \`▰▱▱▱▱▱▱▱▱▱\` \`\` + \` 7% used · $0.84 / $12.00 · resets in ~7 h\`.
+
+**Fallback — when \`<group>.spend[]\` is empty** (internal / free orgs have no
+OVERALL_SPEND quota): no gauge. Render the per-window resource breakdown as a
+compact table instead — one row per resource in \`<group>.resources[]\` for that
+window: the friendly label + \`count\` (append \`/ <max_units>\` only when
+\`max_units\` is a number). This is the pre-existing behavior, preserved.
+
+**Resource labels (look up case-insensitively — lower-case \`resource_type\`
+first).** Localize to \`user.language\` (FR canonical shown; English in parens):
+- \`llm_completion\` → **Générations par IA** (AI generations)
+- \`ai_rescore\` → **Leads qualifiés** (qualified leads)
+- \`web_fetch\` → **Informations web** (web insights)
+- \`contact_enrichment_phone\` → **Téléphones enrichis** (phones enriched)
+- \`contact_enrichment_email\` → **E-mails enrichis** (emails enriched)
+
+Skip any resource type not in this map silently — never dump the raw
+\`resource_type\` string at the user.
+
+**\`resets_at\`.** Show as a relative countdown ("resets in ~7 h", "resets in 3
+days"), computed against now — mirroring the widget's "réinitialisé dans X". The
+raw value is an ISO-8601 timestamp.
+
+**Top-up (optional, subordinate).** When \`quota.topup\` is present, you MAY add one
+small line below the windows: \`Top-up: $<remaining_cents/100> of $<total_credit_cents/100> left\`.
+Keep it secondary — the three window gauges are the headline. Omit when null.
+
+**Legend** (once, below): \`\` \`▰\` used · \`▱\` remaining \`\`.
+
+
+---
+
+WHEN TO USE: at the start of a session to know what the agent can/can't do, after a 429 to explain to the user which resource window was exhausted and when it resets, and after the user signals a top-up so the agent can resume the interrupted workflow.
+
+WHEN NOT TO USE: as a pre-flight gate before bulk ops — operations themselves return 429; this tool is for context, not gating. And: a recent quota snapshot showing "exhausted" is NOT a reason to refuse a write call when the user has just topped up — re-call this tool first, then proceed.
+`,
+  leadbay_scan_portfolio_signals: `## WHEN TO USE
+
+Trigger phrases: "which of my leads <did X>", "find leads that <raised / acquired / hired / moved / changed CEO>", "scan my portfolio for <signal>", "identify all the ones that <event> since <date>", "who in Monitor has a <funding / M&A / hiring> signal", "build a campaign from leads with <signal>".
+
+Do NOT use for: "research one named company" → \`leadbay_research_lead_by_name_fuzzy\`; "everything about lead <UUID>" → \`leadbay_research_lead_by_id\`; "qualify my next N leads (they aren't researched yet)" → \`leadbay_bulk_qualify_leads\`; "just list my follow-ups" → \`leadbay_pull_followups\`.
+
+Prefer when: user wants to FILTER a known portfolio by a web-research signal in bulk — pass \`query\`, optionally \`since\`, \`city\`/\`set_filter\`, or \`leadIds\`; NEVER a country name in \`city\` — a whole-country ask means NO geo filter
+
+Examples that SHOULD invoke this tool:
+- "Which of my leads acquired a company since 2025?"
+- "Scan my Lyon portfolio for funding signals."
+- "Find everyone in Monitor who changed CEO and build a campaign."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Look up Acme Corp for me."
+- "Show me my follow-ups."
+- "Qualify my next 10 leads."
+
+## RENDER (quick)
+
+Cohort grouped by lead: one block per matched lead (name · location +
+its matched signal entries, hot first, source-linked). Open with
+"N match <query> (M scanned)"; ALWAYS close with an honesty footer —
+"scanned N · matched M · K not yet researched". Never present
+not_researched leads as "no signal". Full layout below.
+
+---
+
+Scan a known portfolio for a specific web-research signal in one call. This is
+the bulk, read-only answer to "which of my leads have signal X" — the question
+that otherwise forces a per-lead \`leadbay_research_lead_by_id\` loop (one full
+profile call per lead, slow and quota-heavy).
+
+**Reads CACHED signals only — does not trigger new research.** For each lead in
+scope it reads \`GET /leads/{id}/web_fetch\` (the already-computed web-research
+signals) and filters the entries against \`query\`. It issues NO web_fetch POST,
+so it does not consume AI qualification credits and does not re-crawl. Leads
+that have no cached content (never qualified, or still in progress) are
+reported in \`not_researched\` — they are **NOT** silently treated as "no
+match". Qualify them with \`leadbay_bulk_qualify_leads\`, then re-scan.
+
+**Scope.** Pass \`leadIds\` for an explicit cohort, or omit it to scan the
+Monitor portfolio. Narrow the Monitor scope with \`city\` / \`set_filter\` exactly
+as \`leadbay_pull_followups\` does (store-then-apply server-side filter).
+
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+\`axis: "include"\`:
+
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
+Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+ The
+scan is bounded by \`max_leads\` (default 200, hard cap 300); when the portfolio
+is larger, \`truncated_at\` is set and coverage is partial — say so.
+
+**Query.** \`query\` is matched case- and accent-insensitively against each
+signal entry's description, source, and section label. Comma- or
+space-separated terms are OR'd ("M&A, acquisition, racheté" matches any). Use
+\`since\` (ISO date) to keep only entries dated on/after it — entries with no
+date are kept (a missing date is not evidence the event is old).
+
+**Result is campaign-ready.** \`matched[]\` carries \`lead_id\`, \`name\`,
+\`location\`, and the matching \`matched_signals[]\` (section + hot + source +
+date + description). Feed the matched \`lead_id\`s straight into
+\`leadbay_add_leads_to_campaign\` / \`leadbay_create_campaign\`.
+
+**SIGNAL HONESTY — never infer signals from freshness.** \`stale_at\`,
+\`web_fetch_in_progress\`, \`fetch_at\` are freshness markers, not signal
+indicators — signal presence is read ONLY from the actual \`signals[]\` /
+\`web_fetch.content\` entries. For "which of my leads have signal X" across a
+portfolio, call **\`leadbay_scan_portfolio_signals\`** (bulk-reads cached
+signals); don't loop \`leadbay_research_lead_by_id\` per lead or guess from
+freshness. A lead with no cached content is \`not_researched\`, not "no match";
+never report a signal verdict for a lead you never read.
+
+
+WHEN TO USE: when the user wants to filter a known
+portfolio by a web-research signal across many leads at once — discovering a
+cohort to act on, not inspecting a single lead.
+
+WHEN NOT TO USE: for a single named company
+(leadbay_research_lead_by_name_fuzzy) or one lead by UUID
+(leadbay_research_lead_by_id); to qualify leads that have no signals yet
+(leadbay_bulk_qualify_leads); or to just list follow-ups with no signal filter
+(leadbay_pull_followups).
+
+---
+
+## RENDERING — bulk signal-scan results
+
+The output is a cohort, grouped by lead. Lead with the matches, end with an
+honesty footer — never hide what wasn't scanned.
+
+### Matched leads
+
+Open with a one-line headline: \`**N leads match "<query>"** (M scanned).\`
+
+Then one block per \`matched[]\` lead, ordered with \`hot\` matches first. Emit
+each as a host-parseable per-lead block so the chat host's place-card
+auto-detector can render it (per the repo "feed the address auto-detector"
+convention):
+
+\`\`\`
+### <name> · <location>
+
+<for each matched_signal, one bullet>
+- **<section_emoji> <section_label>** — <description> <🔥 if hot> ([source](<source>), <date>)
+\`\`\`
+
+- **Bold** the description of \`hot: true\` entries; leave cold entries plain.
+- Render \`source\` as a markdown link \`([source](url), date)\`; omit the date
+  when null, omit the link when \`source\` is empty.
+- Cap to the 3 strongest signals per lead (hot first, then by date desc); if a
+  lead has more, end its block with \`_+K more signals_\`.
+- When \`name\` is null (the scan was scoped by \`leadIds\` and the read failed to
+  carry firmographics), fall back to \`### Lead <lead_id>\` — but prefer to enrich
+  the name via the matched lead's own data when available.
+
+### Honesty footer (ALWAYS print)
+
+A single italic line summarising coverage:
+
+\`_Scanned N · matched M · K had no cached signals (not yet researched)._\`
+
+- When \`not_researched\` is non-empty, this is load-bearing: state plainly that
+  those K leads were NOT searched and were NOT counted as "no match". Offer to
+  qualify them and re-scan (see NEXT STEPS).
+- When \`truncated_at\` is set, add: \`_Coverage partial — only the first <truncated_at>
+  leads were scanned; narrow the scope or raise max_leads._\`
+
+**Hide:** raw \`lead_id\` in prose (use it only for the campaign call), \`_meta\`,
+empty arrays, any freshness field. NEVER present \`not_researched\` leads as
+"no signal found".
+
+
+---
+
+## NEXT STEPS — after the signal scan
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+The scan exists to BUILD A COHORT, not just to list. The default next move is
+almost always "turn the matched leads into a campaign."
+
+| Observation                                       | Suggest                                                      | Calls                                                                                  |
+|---------------------------------------------------|--------------------------------------------------------------|----------------------------------------------------------------------------------------|
+| \`matched\` non-empty (top of menu)                 | "Build a campaign from the N matched leads"                  | leadbay_create_campaign / leadbay_add_leads_to_campaign(matched lead_ids)              |
+| \`not_researched\` non-empty                        | "K leads aren't researched yet — qualify them, then re-scan" | leadbay_bulk_qualify_leads(not_researched lead_ids) → re-run leadbay_scan_portfolio_signals |
+| Zero matches but leads were researched            | "Widen the query (synonyms) or relax \`since\`"                | leadbay_scan_portfolio_signals(query: "<broader terms>", since: omit-or-earlier)      |
+| \`truncated_at\` set                                | "Scan only covered N — narrow scope or raise the cap"        | leadbay_scan_portfolio_signals({city / set_filter}) or raise \`max_leads\`              |
+| One standout matched lead                          | "Open that lead's full brief"                                | leadbay_research_lead_by_id(leadId)                                                    |
+
+NEVER report leads in \`not_researched\` as if they had no matching signal — they
+were never read. Distinguish "no signal X found" (researched, no match) from
+"not yet researched" (no data to search) every time.
+`,
+};

@@ -443,3 +443,8 @@ export const compositeTools: Tool[] = [
 ];
 
 export const tools: Tool[] = [...compositeTools, ...granularTools];
+
+// Descriptions with the {{commerce}} blocks deleted, emitted by promptforge for
+// the templates that carry the marker. The MCP server swaps these in on a
+// surface that may not promote a purchase; nothing is reworded.
+export { NO_COMMERCE_TOOL_DESCRIPTIONS } from "./tool-descriptions.generated.js";

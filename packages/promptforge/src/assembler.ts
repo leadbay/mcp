@@ -2,6 +2,11 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parseTemplate, type Frontmatter, type ParsedTemplate, type Routing, FrontmatterError } from "./frontmatter.js";
 import { resolveSnippets } from "./snippets.js";
+import {
+  hasCommerceMarkers,
+  renderCommerce,
+  validateCommerceMarkers,
+} from "./commerce.js";
 
 /**
  * Generate the `## WHEN TO USE` block from a tool's routing
@@ -70,6 +75,13 @@ export interface AssembledArtifact {
   frontmatter: Frontmatter;
   body: string;
   sourcePath: string;
+  /**
+   * The same description with the `{{commerce}}` blocks deleted. Set only when
+   * the template carries the marker. Emitted alongside `body` so the MCP server
+   * can serve it on a host that forbids promoting a purchase. Nothing is
+   * reworded — see src/commerce.ts.
+   */
+  noCommerceBody?: string;
 }
 
 export interface AssembleResult {
@@ -239,10 +251,16 @@ export function assemble(opts: AssembleOptions): AssembleResult {
         ? applyDescriptionHeader(parsed.frontmatter, resolved)
         : resolved;
 
+    const markerError = validateCommerceMarkers(finalBody);
+    if (markerError) throw new AssemblyError(markerError, path);
+
     const artifact: AssembledArtifact = {
       frontmatter: parsed.frontmatter,
-      body: finalBody.trimEnd() + "\n",
+      body: renderCommerce(finalBody, "with").trimEnd() + "\n",
       sourcePath: path,
+      ...(hasCommerceMarkers(finalBody) && expectedKind === "tool-description"
+        ? { noCommerceBody: renderCommerce(finalBody, "without").trimEnd() + "\n" }
+        : {}),
     };
 
     if (expectedKind === "prompt") {

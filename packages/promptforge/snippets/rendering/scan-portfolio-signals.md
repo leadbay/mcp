@@ -39,7 +39,9 @@ A single italic line summarising coverage:
   qualify them and re-scan (see NEXT STEPS).
 - When `truncated_at` is set, add: `_Coverage partial — only the first <truncated_at>
   leads were scanned; narrow the scope or raise max_leads._`
+{{commerce}}
 - When `quota_exceeded` is true, add the wait-or-top-up offer.
+{{/commerce}}
 
 **Hide:** raw `lead_id` in prose (use it only for the campaign call), `_meta`,
 empty arrays, any freshness field. NEVER present `not_researched` leads as
