@@ -31,15 +31,23 @@ interface UpdateContactResult {
   updated: true;
   contact_id: string;
   contact: UpdatedContact;
+  /** `merge` kept every field you did not send; `replace` rewrote the record. */
+  mode: "merge" | "replace";
+  /** Fields you did not send, which were left untouched. */
+  preserved: string[];
+  /** Fields you explicitly passed as null, which were erased. */
+  cleared: string[];
 }
 
 /**
  * Edit an existing contact in place.
  *
- * Backend route: `POST /1.6/contacts/{contactId}/update` → 200 with the
- * updated contact. Keyed by the contact's own id. The body must be snake_case
- * and MUST carry `first_name` + `last_name` — the endpoint validates the full
- * identity and 400s ("invalid contact") on a partial body. So callers pass
+ * Backend routes, both keyed by the contact's own id and taking the same
+ * snake_case body: `/merge` keeps fields the caller omitted, `/update`
+ * rewrites the record. We pick by intent — see `execute` (product#4046).
+ * Either way the body MUST carry `first_name` + `last_name`: the endpoint
+ * validates the identity (`OrgContact.isValid()` needs a name pair, an email,
+ * a phone or a LinkedIn URL) and 400s ("invalid contact"). So callers pass
  * the contact's current first/last name even when only changing, say, the
  * title; read the current values via leadbay_research_lead_by_id first.
  */
@@ -76,19 +84,19 @@ export const updateContact: Tool<UpdateContactParams, UpdateContactResult> = {
       // new value. execute forwards null verbatim; the backend accepts it.
       job_title: {
         type: ["string", "null"],
-        description: "Contact job title. Pass null to clear it.",
+        description: "Contact job title. Omit it to leave it unchanged. Pass null to ERASE it — an erase rewrites the whole contact, so that call must also carry every other optional field, or it is refused.",
       },
       linkedin_page: {
         type: ["string", "null"],
-        description: "Contact LinkedIn URL. Pass null to clear it.",
+        description: "Contact LinkedIn URL. Omit it to leave it unchanged. Pass null to ERASE it — an erase rewrites the whole contact, so that call must also carry every other optional field, or it is refused.",
       },
       email: {
         type: ["string", "null"],
-        description: "Contact email. Pass null to clear it.",
+        description: "Contact email. Omit it to leave it unchanged. Pass null to ERASE it — an erase rewrites the whole contact, so that call must also carry every other optional field, or it is refused.",
       },
       phone_number: {
         type: ["string", "null"],
-        description: "Contact phone (free-form). Pass null to clear it.",
+        description: "Contact phone (free-form). Omit it to leave it unchanged. Pass null to ERASE it — an erase rewrites the whole contact, so that call must also carry every other optional field, or it is refused.",
       },
     },
     required: ["contact_id", "first_name", "last_name"],
@@ -99,20 +107,75 @@ export const updateContact: Tool<UpdateContactParams, UpdateContactResult> = {
     params: UpdateContactParams,
     _ctx?: ToolContext,
   ): Promise<UpdateContactResult> => {
+    // product#4046. The backend offers BOTH semantics on the same payload, and
+    // we were unconditionally choosing the destructive one:
+    //
+    //   POST /contacts/{id}/update  → updateContact(forceUpdateIfNullOrEmpty=true)
+    //                                 writes EVERY column, so a field absent
+    //                                 from the body is erased.
+    //   POST /contacts/{id}/merge   → updateContact(forceUpdateIfNullOrEmpty=false)
+    //                                 skips null/empty fields, so anything the
+    //                                 caller did not send keeps its value.
+    //
+    // (OrgContactRoutes.kt:110,152 → OrgContactsDaoImpl.kt:265-272.)
+    //
+    // So the safe reading of "leave it alone" already exists server-side and
+    // costs nothing — no read-modify-write, no extra round-trip, no race. We
+    // route by intent: an omitted field means keep it, and the ONLY way to
+    // erase one is to say so with an explicit null.
+    const OPTIONAL = ["job_title", "linkedin_page", "email", "phone_number"] as const;
+    const asked = (f: (typeof OPTIONAL)[number]) => params[f] !== undefined;
+    const clearing = OPTIONAL.filter((f) => params[f] === null);
+
     const body: Record<string, unknown> = {
       first_name: params.first_name,
       last_name: params.last_name,
     };
-    if (params.job_title !== undefined) body.job_title = params.job_title;
-    if (params.linkedin_page !== undefined) body.linkedin_page = params.linkedin_page;
-    if (params.email !== undefined) body.email = params.email;
-    if (params.phone_number !== undefined) body.phone_number = params.phone_number;
+    for (const f of OPTIONAL) if (asked(f)) body[f] = params[f];
+
+    if (clearing.length === 0) {
+      // Nothing to erase — merge, and every field the caller left out survives.
+      const contact = await client.request<UpdatedContact>(
+        "POST",
+        `/contacts/${params.contact_id}/merge`,
+        body,
+      );
+      return {
+        updated: true,
+        contact_id: params.contact_id,
+        contact,
+        mode: "merge",
+        preserved: OPTIONAL.filter((f) => !asked(f)),
+        cleared: [],
+      };
+    }
+
+    // A deliberate erase. /merge cannot express it — it skips nulls — so this
+    // has to go through /update, which writes the whole record. That makes any
+    // field the caller omitted collateral damage, so refuse rather than guess.
+    // Costing the destructive path more effort than the safe one is the point.
+    const missing = OPTIONAL.filter((f) => !asked(f));
+    if (missing.length > 0) {
+      throw client.makeError(
+        "CONTACT_CLEAR_NEEDS_FULL_RECORD",
+        `Clearing ${clearing.join(", ")} rewrites the whole contact, and ${missing.join(", ")} ${missing.length === 1 ? "was" : "were"} not supplied`,
+        `Read the contact (leadbay_research_lead_by_id) and re-call with ALL of ${OPTIONAL.join(", ")} — current value to keep it, null to clear it. Omitting a field here would delete it.`,
+        `POST /contacts/${params.contact_id}/update`,
+      );
+    }
 
     const contact = await client.request<UpdatedContact>(
       "POST",
       `/contacts/${params.contact_id}/update`,
       body,
     );
-    return { updated: true, contact_id: params.contact_id, contact };
+    return {
+      updated: true,
+      contact_id: params.contact_id,
+      contact,
+      mode: "replace",
+      preserved: [],
+      cleared: clearing,
+    };
   },
 };

@@ -1,5 +1,55 @@
 # Changelog — @leadbay/mcp
 
+## 0.33.2 — 2026-09-02
+
+Editing one field on a contact erased the others (product#4046).
+
+Reproduced on production while verifying leadbay/mcp#194: sending a contact's
+own current `first_name` + `last_name` + `job_title`, changing nothing, deleted
+that contact's email. The contact moved from `contacts.reachable` to
+`contacts.candidates` and `_meta.has_reachable_contact` flipped to false, so the
+lead stopped being contactable. Restored with a second call.
+
+This became reachable only the day before: until #194 the tool returned 404 on
+100% of calls, so it destroyed nothing. A tool that always failed now succeeded
+and deleted data.
+
+**The backend already had the safe behaviour and we were choosing the other
+one.** Both routes take the same payload
+(`OrgContactRoutes.kt:110,152` → `OrgContactsDaoImpl.kt:265-272`):
+
+| Route | `forceUpdateIfNullOrEmpty` | A field absent from the body |
+|---|---|---|
+| `/contacts/{id}/update` | `true` | written as null — **erased** |
+| `/contacts/{id}/merge` | `false` | skipped — **kept** |
+
+So the fix needs no read-modify-write, no extra round-trip and no race window.
+`leadbay_update_contact` now routes by intent:
+
+- **Nothing being erased → `/merge`.** Every field the caller omitted survives.
+- **Any field passed as `null` → `/update`**, which rewrites the record — so
+  that call must carry all four optional fields. If it does not, the tool
+  refuses with `CONTACT_CLEAR_NEEDS_FULL_RECORD` rather than deleting what was
+  not mentioned. The destructive path costs more effort than the safe one,
+  which is the intended asymmetry.
+- The result carries `mode` (`merge` / `replace`), `preserved` and `cleared`, so
+  a wrong edit is visible rather than silent.
+
+Verified live on staging, same body to each route:
+
+```
+POST /contacts/{id}/merge   {first_name, last_name, job_title:"CEO"}
+  → job_title CEO,  email merge.probe@example.test,  phone +15550001111   (kept)
+POST /contacts/{id}/update  {first_name, last_name, job_title:"CTO"}
+  → job_title CTO,  email absent,  phone absent                           (erased)
+```
+
+Two existing test files were changed rather than added, because both asserted
+the contract this fixes: `update-contact.test.ts`'s happy path now expects
+`/merge`, and `update-contact-null-clear.test.ts`'s clear case now supplies the
+whole record. The second had encoded the data loss as correct — it asserted that
+unmentioned fields are not sent, while posting to the route that deletes them.
+
 ## 0.33.1 — 2026-09-02
 
 Follow-up to 0.32.0 (product#4007). A review finding landed after the merge.

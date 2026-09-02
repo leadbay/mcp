@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.33.2 — 2026-09-02 — Correcting a contact no longer wipes their email
+
+- **Fixing one detail on a contact used to delete the others.** Asking the
+  assistant to correct someone's job title erased their email and phone,
+  silently, and reported success. Now anything you do not change keeps its
+  value.
+- **Removing a detail on purpose still works, and now takes saying so.** To
+  clear an email the assistant states it explicitly, along with the rest of the
+  contact. If it does not, the edit is refused instead of deleting things
+  nobody mentioned.
+
 ## 0.33.1 — 2026-09-02 — A slow import is not a broken one
 
 - **A slow import no longer gets reported as failed.** The recent fix taught the
