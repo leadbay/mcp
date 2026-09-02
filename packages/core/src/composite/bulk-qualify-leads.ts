@@ -151,7 +151,7 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams, any> = {
       wait_for_completion: {
         type: "boolean",
         description:
-          "When false, launch qualification and return `{status:'running', qualify_id}` immediately. Poll leadbay_qualify_status. Default is true for 0.6.x backwards compatibility.",
+          "When false, launch qualification and return `{status:'running', notification_id, lead_ids, lens_id}` immediately. Poll leadbay_qualify_status with them. Default is true for 0.6.x backwards compatibility.",
       },
     },
     additionalProperties: false,
@@ -178,7 +178,7 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams, any> = {
       still_running: {
         type: "array",
         description:
-          "Leads launched but whose qualification did not complete within budget. Re-poll via leadbay_qualify_status with the bulk_id (when present).",
+          "Leads launched but whose qualification did not complete within budget. Re-poll via leadbay_qualify_status with notification_id (when present) or lead_ids + lens_id.",
         items: { type: "object" },
       },
       failed: {

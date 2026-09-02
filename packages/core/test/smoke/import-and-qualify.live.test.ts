@@ -4,13 +4,15 @@
  * Opt-in: set LEADBAY_TEST_TOKEN.
  * Long form (LEADBAY_SMOKE_LONG=1) runs the full happy path against
  * api-us with 3 known-matchable domains.
+ *
+ * No job store: the handles are the backend's own (product#4005) —
+ * `import_ids` for the import, `lead_ids` + `lens_id` for the qualification.
  */
 
 import { describe, it, expect } from "vitest";
 import { LeadbayClient } from "../../src/client.js";
 import { importAndQualify } from "../../src/composite/import-and-qualify.js";
 import { qualifyStatus } from "../../src/composite/qualify-status.js";
-import { InMemoryBulkStore } from "../../src/jobs/bulk-store.js";
 
 const TOKEN = process.env.LEADBAY_TEST_TOKEN;
 const BASE_URL = process.env.LEADBAY_TEST_BASE_URL ?? "https://api-us.leadbay.app";
@@ -29,35 +31,30 @@ const logger = {
 };
 
 describe.skipIf(!runLive)("leadbay_import_and_qualify — live smoke", () => {
-  function newCtx() {
-    const tracker = new InMemoryBulkStore({ logger });
-    return { client: new LeadbayClient(BASE_URL, TOKEN, "us"), tracker };
-  }
+  const newClient = () => new LeadbayClient(BASE_URL, TOKEN, "us");
 
   it("rejects empty input cleanly", async () => {
-    const { client, tracker } = newCtx();
     await expect(
-      importAndQualify.execute(client, { domains: [] }, { logger, bulkTracker: tracker })
+      importAndQualify.execute(newClient(), { domains: [] }, { logger })
     ).rejects.toMatchObject({ code: "IMPORT_EMPTY_INPUT" });
   }, 15_000);
 
   it("returns clean shape when all domains are malformed", async () => {
-    const { client, tracker } = newCtx();
     const out = await importAndQualify.execute(
-      client,
+      newClient(),
       { domains: [{ domain: "no-tld" }, { domain: "localhost" }] },
-      { logger, bulkTracker: tracker }
+      { logger }
     );
     expect(out.imported).toEqual([]);
     expect(out.not_imported.length).toBeGreaterThan(0);
     expect(out.qualified).toEqual([]);
-    expect(out.qualify_id).toBeNull();
+    expect(out.lead_ids).toEqual([]);
   }, 30_000);
 
   it.skipIf(!runLong)(
-    "happy path: 3 known domains → ≥1 import + qualify outcome with qualify_id retrievable",
+    "happy path: 3 known domains → ≥1 import + qualify outcome, resumable by lead_ids + lens_id",
     async () => {
-      const { client, tracker } = newCtx();
+      const client = newClient();
       const out = await importAndQualify.execute(
         client,
         {
@@ -70,7 +67,7 @@ describe.skipIf(!runLive)("leadbay_import_and_qualify — live smoke", () => {
           total_budget_ms: 360_000,
           per_phase_budget_ms: 120_000,
         },
-        { logger, bulkTracker: tracker }
+        { logger }
       );
       // We expect import to have produced ≥1 leadId (Apple etc.).
       expect(out.import_ids.length).toBeGreaterThanOrEqual(1);
@@ -78,46 +75,32 @@ describe.skipIf(!runLive)("leadbay_import_and_qualify — live smoke", () => {
       const totalLeads =
         out.qualified.length + out.still_running.length + out.failed.length;
       expect(out.imported.length).toBe(totalLeads);
-      // qualify_id should be populated if there are imported leads.
+      // The qualification is resumable from the ids the launch returned.
       if (out.imported.length > 0) {
-        expect(typeof out.qualify_id).toBe("string");
-        // Status retrieval round-trip.
-        const status = await qualifyStatus.execute(
-          client,
-          { qualify_id: out.qualify_id! },
-          { logger, bulkTracker: tracker }
-        );
-        expect(status.qualify_id).toBe(out.qualify_id);
-        expect(status.lead_ids.sort()).toEqual(
+        expect(out.lead_ids.slice().sort()).toEqual(
           out.imported.map((l) => l.leadId).sort()
         );
-        expect(status.import_ids).toEqual(out.import_ids);
+        const status = await qualifyStatus.execute(
+          client,
+          { lead_ids: out.lead_ids, lens_id: out.lens_id },
+          { logger }
+        );
+        expect(status.lead_ids.slice().sort()).toEqual(out.lead_ids.slice().sort());
+        expect(status.lens_id).toBe(out.lens_id);
       }
     },
     900_000
   );
 
-  it("qualify_status with non-existent qualify_id → BULK_NOT_FOUND", async () => {
-    const { client, tracker } = newCtx();
+  it("qualify_status with an unknown notification_id → QUALIFY_JOB_NOT_FOUND", async () => {
     await expect(
       qualifyStatus.execute(
-        client,
-        { qualify_id: "00000000-0000-4000-8000-000000000000" },
-        { logger, bulkTracker: tracker }
+        newClient(),
+        { notification_id: "00000000-0000-4000-8000-000000000000" },
+        { logger }
       )
-    ).rejects.toMatchObject({ code: "BULK_NOT_FOUND" });
-  }, 15_000);
-
-  it("qualify_status with malformed qualify_id → BULK_INVALID_ID", async () => {
-    const { client, tracker } = newCtx();
-    await expect(
-      qualifyStatus.execute(
-        client,
-        { qualify_id: "not-a-uuid" },
-        { logger, bulkTracker: tracker }
-      )
-    ).rejects.toMatchObject({ code: "BULK_INVALID_ID" });
-  }, 15_000);
+    ).rejects.toMatchObject({ code: "QUALIFY_JOB_NOT_FOUND" });
+  }, 30_000);
 
   // Long-form: asserts qualifications[] are sorted by the org's
   // ai_agent_questions catalog AND human_summary is populated when at
@@ -126,10 +109,9 @@ describe.skipIf(!runLive)("leadbay_import_and_qualify — live smoke", () => {
   it.skipIf(!runLong)(
     "human_summary populated + qualifications[] match ai_agent_questions order",
     async () => {
-      const { client, tracker } = newCtx();
       // Force a refresh so we don't ride a cached qualification.
       const out = await importAndQualify.execute(
-        client,
+        newClient(),
         {
           domains: [{ domain: "apple.com" }],
           per_lead_budget_ms: 240_000,
@@ -137,7 +119,7 @@ describe.skipIf(!runLive)("leadbay_import_and_qualify — live smoke", () => {
           per_phase_budget_ms: 300_000,
           skip_already_qualified: false,
         },
-        { logger, bulkTracker: tracker }
+        { logger }
       );
       if (out.kind !== "result") throw new Error("expected result");
       // We expect ≥1 lead in either qualified or still_running.

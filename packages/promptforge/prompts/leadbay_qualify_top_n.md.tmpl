@@ -28,7 +28,7 @@ Qualify the top {{arg:count_or_default}} un-qualified leads in the active Leadba
 # PHASE 1 — LAUNCH
 Call `leadbay_bulk_qualify_leads` with `count={{arg:count_or_default}}` and `wait_for_completion=true` (synchronous mode — waits for results before returning).
 
-**Resilience rule:** If `leadbay_bulk_qualify_leads` returns a BulkTracker-not-configured error or similar infrastructure error, do NOT retry with `wait_for_completion=false`. Instead, proceed directly to Phase 3 and call `leadbay_pull_leads` to surface the already-qualified leads in the current batch.
+**Resilience rule:** If `leadbay_bulk_qualify_leads` returns an infrastructure error, do NOT retry with `wait_for_completion=false`. Instead, proceed directly to Phase 3 and call `leadbay_pull_leads` to surface the already-qualified leads in the current batch.
 
 # PHASE 2 — POLL
 While it polls, expect notifications / progress events showing per-lead transitions. Surface meaningful ones (e.g. "lead X just finished") to me as they arrive — one inline status sentence per check, never expanded into a card:

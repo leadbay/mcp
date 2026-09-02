@@ -423,7 +423,7 @@ export const importAndQualify: Tool<
         type: "number",
         description:
           `Total wall-clock budget across import + qualify in ms (default ${DEFAULT_TOTAL_BUDGET_MS}). ` +
-          `When exhausted, the response returns qualify_id for resume via leadbay_qualify_status.`,
+          `When exhausted, the response returns lead_ids + lens_id for resume via leadbay_qualify_status.`,
       },
       per_phase_budget_ms: {
         type: "number",
@@ -465,7 +465,7 @@ export const importAndQualify: Tool<
   outputSchema: {
     type: "object",
     description:
-      "Two return shapes: kind:'preview' (when dry_run='preview') with mapping hints; kind:'result' (default) with imported + qualified leads + qualify_id handle.",
+      "Two return shapes: kind:'preview' (when dry_run='preview') with mapping hints; kind:'result' (default) with imported + qualified leads + lead_ids/lens_id to resume via leadbay_qualify_status.",
     properties: {
       kind: {
         type: "string",
@@ -550,7 +550,7 @@ export const importAndQualify: Tool<
       },
       still_running: {
         type: "array",
-        description: "Leads still being qualified at deadline; agent calls leadbay_qualify_status with qualify_id.",
+        description: "Leads still being qualified at deadline; agent calls leadbay_qualify_status with lead_ids + lens_id.",
         items: { type: "object" },
       },
       failed: {
@@ -571,7 +571,7 @@ export const importAndQualify: Tool<
       },
       reused: {
         type: "boolean",
-        description: "True when an identical qualify_id was launched within the idempotency window.",
+        description: "True when an identical launch was reused within the idempotency window.",
       },
       seconds_since_original: { type: "number" },
       cancelled: { type: "boolean", description: "True when ctx.signal aborted mid-flight." },

@@ -208,21 +208,6 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
   inputSchema: {
     type: "object",
     properties: {
-      notification_id: {
-        type: ["string", "null"],
-        description:
-          "The backend's job id. Carry it to leadbay_bulk_enrich_status. Null when the backend returned none — then poll by lead_ids instead.",
-      },
-      lead_ids: {
-        type: "array",
-        description:
-          "The leads this run enriched. Carry them to leadbay_bulk_enrich_status for per-lead progress; they also work when the notification is archived.",
-        items: { type: "string" },
-      },
-      reused: {
-        type: "boolean",
-        description: "True when an identical launch inside the 5-minute window was reused instead of spending quota again.",
-      },
       titles: {
         type: "array",
         items: { type: "string" },
@@ -314,6 +299,21 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
       would_launch: {
         type: "object",
         description: "What dry_run WOULD have launched (titles, email, phone).",
+      },
+      notification_id: {
+        type: ["string", "null"],
+        description:
+          "The backend's job id. Carry it to leadbay_bulk_enrich_status. Null when the backend returned none — then poll by lead_ids instead.",
+      },
+      lead_ids: {
+        type: "array",
+        description:
+          "The leads this run enriched. Carry them to leadbay_bulk_enrich_status for per-lead progress; they also work when the notification is archived.",
+        items: { type: "string" },
+      },
+      reused: {
+        type: "boolean",
+        description: "True when an identical launch inside the 5-minute window was reused instead of spending quota again.",
       },
       launched_at: {
         type: "string",
