@@ -34,7 +34,7 @@ export const getContacts: Tool<GetContactsParams> = {
       contacts: {
         type: "array",
         description:
-          "Merged org+paid contacts. Each: {id, first_name, last_name, email, phone_number, linkedin_page, job_title, recommended, enrichment, source:'org'|'paid'}.",
+          "Merged org+paid contacts. Each: {id, first_name, last_name, email, phone_number, linkedin_page, job_title, recommended, enrichment, source:'org'|'paid'}. `source:'org'` entries additionally carry {pinned, pinned_by_ai}; `source:'paid'` entries do not, because a paid candidate cannot be pinned — passing its id to leadbay_pin_contact / leadbay_unpin_contact returns NOT_FOUND.",
         items: {
           type: "object",
           properties: {
@@ -46,6 +46,16 @@ export const getContacts: Tool<GetContactsParams> = {
             linkedin_page: { type: ["string", "null"] },
             job_title: { type: ["string", "null"] },
             recommended: { type: "boolean" },
+            pinned: {
+              type: "boolean",
+              description:
+                "Someone flagged this person as the priority on the company. Present on source:'org' contacts only.",
+            },
+            pinned_by_ai: {
+              type: "boolean",
+              description:
+                "The pin came from Leadbay's AI rather than a human. Present on source:'org' contacts only.",
+            },
             source: { type: "string", enum: ["org", "paid"] },
             enrichment: {
               type: ["object", "null"],
@@ -123,6 +133,10 @@ export const getContacts: Tool<GetContactsParams> = {
           job_title: c.job_title,
           recommended: c.recommended,
           enrichment: c.enrichment,
+          // Org contacts only — the backend's PaidContactPayload carries no
+          // pin state, because a paid candidate cannot be pinned.
+          pinned: c.pinned ?? false,
+          pinned_by_ai: c.pinned_by_ai ?? false,
           source: "org" as const,
         })),
         ...paidContacts.map((c) => ({

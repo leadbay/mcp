@@ -21,7 +21,7 @@ routing:
       route_to: leadbay_pin_contact
     - phrase: "remove / delete this contact"
       route_to: leadbay_remove_contact
-  prefer_when: "user wants to clear the pinned flag on a contact (but keep the contact) — pass that contact's own `contact_id`"
+  prefer_when: "user wants to clear the pinned flag on a contact (but keep the contact) — pass that contact's own `contact_id`, and ONLY a `source:\"org\"` contact can be unpinned (a `source:\"paid\"` candidate returns 'contact not found')"
   examples:
     positive:
       - "Unpin Jane Doe — she's not the priority anymore."
@@ -40,8 +40,12 @@ Unpin a single contact on a company — clears its priority / favourite flag. Th
 
 Pass the contact's **own** `contact_id` — not the parent lead id.
 
+{{include:heuristics/pinnable-contacts}}
+
+A `source: "org"` contact that was never pinned is a no-op here, not an error — the backend answers 204 either way. Check `pinned` on the contact before calling if you need to tell the user whether anything actually changed.
+
 Backend: `POST /contacts/{contact_id}/unpin` → 204. Idempotent. The inverse is `leadbay_pin_contact`.
 
-Returns `{ pinned: false, contact_id, action: "unpinned" }`.
+Returns `{ pinned: false, contact_id, action: "unpinned" }`. To read the resulting state back, re-call `leadbay_research_lead_by_id` — the contact's `pinned` flips to `false` and the lead's `recommended` contact reverts to the title-matched default.
 
 Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw).

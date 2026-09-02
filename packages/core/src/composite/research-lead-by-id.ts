@@ -122,7 +122,8 @@ export function renderResearchLeadMarkdown(
       const ln = (c.last_name ?? "") as string;
       const title = c.job_title ?? "—";
       const channel = c.email ?? c.phone_number ?? "—";
-      out.push(`- **${(fn + " " + ln).trim() || "(unknown)"}** — ${title} · ${channel}`);
+      const pin = c.pinned ? " 📌" : "";
+      out.push(`- **${(fn + " " + ln).trim() || "(unknown)"}**${pin} — ${title} · ${channel}`);
     }
   }
   const candidates = Array.isArray(contacts.candidates)
@@ -135,7 +136,12 @@ export function renderResearchLeadMarkdown(
       const ln = (c.last_name ?? "") as string;
       const title = c.job_title ?? "—";
       const li = c.linkedin_page ? `LinkedIn` : "no LinkedIn";
-      out.push(`- **${(fn + " " + ln).trim() || "(unknown)"}** — ${title} · ${li}`);
+      // An org contact with no email/phone is unreachable, so it lands here
+      // rather than in `reachable` — but it is still pinnable, and may be
+      // pinned right now. Mark it in both partitions or the pin disappears
+      // from the rendering for exactly the contacts that have no channel yet.
+      const pin = c.pinned ? " 📌" : "";
+      out.push(`- **${(fn + " " + ln).trim() || "(unknown)"}**${pin} — ${title} · ${li}`);
     }
     if (candidates.length > 10) out.push(`- _${candidates.length - 10} more …_`);
   }
@@ -360,7 +366,7 @@ export const researchLeadById: Tool<ResearchLeadByIdParams> = {
       contacts: {
         type: "object",
         description:
-          "Two-tier contact set, partitioned by reachability — agent-friendly framing of the backend's paid-vs-org split. `reachable`: contacts with an email or phone right now (org-directory entries that ship with channels, PLUS paid contacts whose enrichment has completed). The agent can message these without buying enrichment. `candidates`: paid-contact entries WITHOUT resolved channels yet — typically LinkedIn URL only, `enrichment_done: false`. The agent must call leadbay_enrich_titles (or leadbay_prepare_outreach with enrich:true) before these become messagable. Every contact in both lists carries `source`: `\"org\"` means it is a row in your organization's own contact directory, `\"paid\"` means it came from enrichment. The two are separate id namespaces on the backend, so only a `source:\"org\"` id can be passed to leadbay_update_contact / leadbay_remove_contact — a `\"paid\"` id returns NOT_FOUND there.",
+          "Two-tier contact set, partitioned by reachability — agent-friendly framing of the backend's paid-vs-org split. `reachable`: contacts with an email or phone right now (org-directory entries that ship with channels, PLUS paid contacts whose enrichment has completed). The agent can message these without buying enrichment. `candidates`: paid-contact entries WITHOUT resolved channels yet — typically LinkedIn URL only, `enrichment_done: false`. The agent must call leadbay_enrich_titles (or leadbay_prepare_outreach with enrich:true) before these become messagable. Every contact in both lists carries `source`: `\"org\"` means it is a row in your organization's own contact directory, `\"paid\"` means it came from enrichment. The two are separate id namespaces on the backend, so only a `source:\"org\"` id can be passed to leadbay_update_contact / leadbay_remove_contact / leadbay_pin_contact / leadbay_unpin_contact — a `\"paid\"` id returns NOT_FOUND there, which means \"this candidate is not an org contact yet\", NOT that the tool is broken. Only `source:\"org\"` contacts carry `pinned` (someone flagged this person as the priority) and `pinned_by_ai` (that someone was Leadbay's AI, not a human); paid candidates have no pin state because they cannot be pinned.",
         properties: {
           reachable: { type: "array", items: { type: "object" } },
           candidates: { type: "array", items: { type: "object" } },
@@ -531,6 +537,12 @@ export const researchLeadById: Tool<ResearchLeadByIdParams> = {
       linkedin_page: normalizeLinkedinPage(c.linkedin_page ?? null),
       recommended: c.recommended,
       enrichment_done: true,
+      // Pin state exists on org contacts only — mirror the backend, which
+      // omits it entirely from PaidContactPayload. `pinned` is what makes a
+      // pin readable at all; without it the agent can only infer the pin from
+      // `recommended`, which also moves for non-pin reasons.
+      pinned: c.pinned ?? false,
+      pinned_by_ai: c.pinned_by_ai ?? false,
       source: "org" as const,
     });
     const allContacts: Array<ReturnType<typeof shapePaid> | ReturnType<typeof shapeOrg>> = [

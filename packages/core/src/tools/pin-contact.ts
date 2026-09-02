@@ -2,6 +2,18 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 import { leadbay_pin_contact as PIN_CONTACT_DESCRIPTION } from "../tool-descriptions.generated.js";
 
+/**
+ * Replaces the client's generic 404 hint on the pin/unpin endpoints. Shared
+ * with unpin-contact.ts so both answer a NOT_FOUND the same way.
+ */
+export const NOT_PINNABLE_HINT =
+  "This contact id is not in your organization's contact directory, so it cannot be pinned or unpinned. " +
+  "Almost always it is a `source: \"paid\"` enrichment candidate from leadbay_research_lead_by_id's `candidates` list; " +
+  "only `source: \"org\"` contacts are pinnable. The id is not wrong and the tool is not broken, so do NOT retry it. " +
+  "To act on this person, enrich them by job title with leadbay_enrich_titles, or add them with leadbay_add_contact — " +
+  "either produces a NEW org contact with a different id, which is pinnable. " +
+  "Note that pinning does not decide who gets enriched; enrichment selects people by job title.";
+
 interface PinContactParams {
   // The contact's own UUID (the `id` on a contact object) — NOT the lead id.
   contact_id: string;
@@ -46,7 +58,17 @@ export const pinContact: Tool<PinContactParams, PinContactResult> = {
     params: PinContactParams,
     _ctx?: ToolContext,
   ): Promise<PinContactResult> => {
-    await client.requestVoid("POST", `/contacts/${params.contact_id}/pin`);
+    try {
+      await client.requestVoid("POST", `/contacts/${params.contact_id}/pin`);
+    } catch (e: any) {
+      // The generic 404 hint is "Verify the ID is correct", which for this
+      // endpoint is wrong advice: the id IS correct, it is just a paid
+      // candidate rather than an org contact. Agents read that hint as "look
+      // it up again and retry" and hammer the endpoint (43 of 48 production
+      // pin calls in the 180 days to 2026-09-02 were this 404).
+      if (e?.code === "NOT_FOUND") throw { ...e, hint: NOT_PINNABLE_HINT };
+      throw e;
+    }
     return { pinned: true, contact_id: params.contact_id, action: "pinned" };
   },
 };

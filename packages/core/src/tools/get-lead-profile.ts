@@ -144,6 +144,10 @@ export const getLeadProfile: Tool<GetLeadProfileParams> = {
         job_title: c.job_title,
         recommended: c.recommended,
         enrichment: c.enrichment,
+        // Org contacts only — the backend's PaidContactPayload carries no pin
+        // state, because a paid candidate cannot be pinned.
+        pinned: c.pinned ?? false,
+        pinned_by_ai: c.pinned_by_ai ?? false,
         source: "org" as const,
       })),
       ...paidContacts.map((c) => ({
