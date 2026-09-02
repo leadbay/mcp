@@ -245,6 +245,7 @@ These take action on your account. Every action is one you could take yourself i
 |------|-------------|
 | `leadbay_bulk_qualify_leads` | Trigger AI qualification on a batch of leads |
 | `leadbay_enrich_titles` | Enrich contacts by job title |
+| `leadbay_enrich_contacts` | Enrich one specific person (email / phone) — the contact you name, not a job title |
 
 **Outreach & activity**
 

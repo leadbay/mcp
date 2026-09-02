@@ -97,7 +97,7 @@ export const enrichContacts: Tool<EnrichContactsParams> = {
       phone_requested: phone,
       credits_remaining: creditsRemaining,
       hint:
-        "Enrichment started (runs async). Re-check leadbay_get_contacts every ~30s and treat the contact as done only when the REQUESTED channel actually landed — " +
+        "Enrichment started (runs async). Re-read the lead's contacts every ~30s (leadbay_research_lead_by_id; or leadbay_get_contacts where exposed) and treat the contact as done only when the REQUESTED channel actually landed — " +
         [email ? "`email` present" : null, phone ? "`phone_number` present" : null]
           .filter(Boolean)
           .join(" AND ") +

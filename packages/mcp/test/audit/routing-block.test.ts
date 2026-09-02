@@ -68,6 +68,7 @@ const TOOLS_WITH_ROUTING = new Set([
   "leadbay_getting_started",
   "leadbay_team_activity",
   "leadbay_set_telemetry",
+  "leadbay_enrich_contacts",
 ]);
 
 const ALL_TOOLS: Tool[] = [

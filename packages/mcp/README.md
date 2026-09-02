@@ -634,7 +634,7 @@ Use `dry_run: true` to validate domain formatting and wizard reachability withou
 
 - Tokens live only in your MCP client's config file — they never traverse the network except to `api-{region}.leadbay.app`.
 - The `leadbay_login` tool from the OpenClaw adapter is **not** registered on MCP: exposing a credential-taking tool to an LLM is a prompt-injection risk. Use the token path above.
-- The `leadbay_add_note` tool is a write action flagged `optional: true`. If your client supports per-tool opt-in, leave it disabled until you need it. `leadbay_enrich_contacts` is a granular tool exposed only when `LEADBAY_MCP_ADVANCED=1`.
+- The `leadbay_add_note` tool is a write action flagged `optional: true`. If your client supports per-tool opt-in, leave it disabled until you need it. `leadbay_enrich_contacts` (enrich one named contact) is on the default write surface since 0.33.4; it was advanced-only before.
 
 ### Privacy & telemetry
 

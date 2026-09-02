@@ -1,5 +1,44 @@
 # Changelog — @leadbay/mcp
 
+## 0.33.4 — 2026-09-02
+
+`leadbay_enrich_contacts` moves from `granularWriteTools` to
+`compositeWriteTools` (product#4050).
+
+It is the only tool that enriches ONE chosen person — `leadId` + `contactId`,
+paid-candidate path first, org-contact path on `NOT_FOUND` — but it sat behind
+`LEADBAY_MCP_ADVANCED=1`, which hosted never sets. No granular tool has been
+called from a hosted IP in 30 days. The daily check-in prompt and the pull-leads
+NEXT STEPS table already told the agent to call it, so on hosted they named a
+tool that was not registered. `zoe+dogfood@leadbay.ai`'s scheduled agent
+reached for `leadbay_pin_contact` instead (41 `contact not found` over 12 days;
+see 0.33.3). Same registration pattern as add/remove/pin/unpin/update_contact
+and set_lead_status: granular-shaped, lives in `tools/`, default write surface,
+still hidden by `LEADBAY_MCP_WRITE=0`. Not in `COMPOSITE_FILE_TOOL_NAMES`, so
+`_triggered_by` stays optional.
+
+What moved with it, so the tool works on the surface it now lands on:
+
+- **The result hint names a read that exists there.** It said "re-check
+  `leadbay_get_contacts`", which is advanced-only. It now says re-read the
+  lead's contacts via `leadbay_research_lead_by_id` (or `get_contacts` where
+  exposed).
+- **The description carries routing.** `routing` + `rendering_hint`
+  frontmatter, added to `TOOLS_WITH_ROUTING`; the `prefer_when` states that a
+  `source:"paid"` candidate id from `research_lead_by_id` is valid input and
+  that pinning does not enrich anyone. Cross-routes to `enrich_titles`
+  (by title, many leads), `pin_contact`, `prepare_outreach`.
+- **The pin/unpin 404 hint and `heuristics/pinnable-contacts` name it** as the
+  direct route alongside `enrich_titles` and `add_contact`. `enrich_titles`'s
+  WHEN NOT TO USE drops the "(granular)" label.
+
+Tests: `packages/mcp/test/enrich-contacts-default-surface.test.ts` drives the
+real MCP `tools/list` — present with `includeWrite:true, includeAdvanced:false`,
+absent with `includeWrite:false`, and every `leadbay_*` the description and
+the call hint name is itself registered on that surface.
+`packages/core/test/unit/tools/pin-contact-hint-names-enrich-contacts.test.ts`
+pins the hint.
+
 ## 0.33.3 — 2026-09-02
 
 `leadbay_pin_contact` failed 43 of its 48 production calls.

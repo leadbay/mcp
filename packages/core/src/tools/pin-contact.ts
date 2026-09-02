@@ -10,8 +10,9 @@ export const NOT_PINNABLE_HINT =
   "This contact id is not in your organization's contact directory, so it cannot be pinned or unpinned. " +
   "Almost always it is a `source: \"paid\"` enrichment candidate from leadbay_research_lead_by_id's `candidates` list; " +
   "only `source: \"org\"` contacts are pinnable. The id is not wrong and the tool is not broken, so do NOT retry it. " +
-  "To act on this person, enrich them by job title with leadbay_enrich_titles, or add them with leadbay_add_contact — " +
-  "either produces a NEW org contact with a different id, which is pinnable. " +
+  "To act on this person, enrich them directly with leadbay_enrich_contacts (the lead id + this contact id), " +
+  "enrich by job title with leadbay_enrich_titles, or add them with leadbay_add_contact — " +
+  "each produces a NEW org contact with a different id, which is pinnable. " +
   "Note that pinning does not decide who gets enriched; enrichment selects people by job title.";
 
 interface PinContactParams {
