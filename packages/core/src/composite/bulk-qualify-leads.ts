@@ -169,8 +169,10 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams, any> = {
         type: "string",
         description: "`running` when wait_for_completion=false; absent on the legacy blocking result.",
       },
-      handle_id: { type: "string", description: "Alias of qualify_id for handle-oriented callers." },
-      qualify_id: { type: "string", description: "UUIDv4 to poll via leadbay_qualify_status." },
+      notification_id: {
+        type: ["string", "null"],
+        description: "The backend's job id. Carry it to leadbay_qualify_status.",
+      },
       lead_ids: { type: "array", items: { type: "string" } },
       launched_count: { type: "number" },
       still_running: {
@@ -212,8 +214,7 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams, any> = {
       {
         required: [
           "status",
-          "handle_id",
-          "qualify_id",
+          "notification_id",
           "lead_ids",
           "launched_count",
           "failed",

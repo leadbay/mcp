@@ -116,7 +116,7 @@ describe("leadbay_bulk_enrich_status — reads the backend job", () => {
     const res: any = await bulkEnrichStatus.execute(newClient(), { notification_id: NOTIF });
     expect(res.error).toBe(true);
     expect(res.code).toBe("ENRICH_JOB_NOT_FOUND");
-    // The 30-day retention is the backend's, and the message says so.
-    expect(res.hint).toMatch(/30 days/);
+    // Says what the lookup actually does, not a retention we never verified.
+    expect(res.hint).toMatch(/lead_ids/);
   });
 });

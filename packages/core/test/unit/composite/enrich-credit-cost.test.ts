@@ -22,7 +22,7 @@ import { enrichTitles } from "../../../src/composite/enrich-titles.js";
 import { bulkEnrichStatus } from "../../../src/composite/bulk-enrich-status.js";
 import { readCreditsRemaining } from "../../../src/composite/_credits-helpers.js";
 
-const LEAD_IDS = ["lead-1"];
+const LEAD_IDS = ["lead-a", "lead-b"];
 const NOTIF_ID = "11d949d5-f4e9-4591-b106-f289b863b298";
 const BASE = "https://api-us.leadbay.app";
 const LENS_ID = 7;
@@ -271,7 +271,7 @@ describe("bulk_enrich_status — credits_remaining only", () => {
 
     const status: any = await bulkEnrichStatus.execute(
       newClient(),
-      { notification_id: NOTIF_ID, lead_ids: LEAD_IDS, include_contacts: true },
+      { notification_id: NOTIF_ID, lead_ids: [LEAD_A], titles: [TITLE], include_contacts: true },
       { }
     );
 

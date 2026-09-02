@@ -1,17 +1,7 @@
 import type { LeadbayClient } from "../client.js";
+import { readNotificationById } from "../notifications/read-by-id.js";
 import type { BulkProgress, Notification, Tool, ToolContext, RequestMeta } from "../types.js";
 
-async function readNotification(
-  client: LeadbayClient,
-  notificationId: string
-): Promise<Notification | null> {
-  try {
-    const page = await client.listNotifications({ archived: false, count: 50 });
-    return page.items.find((n) => n.id === notificationId) ?? null;
-  } catch {
-    return null;
-  }
-}
 import {
   refreshLeadStates,
   buildQuestionOrder,
@@ -197,7 +187,7 @@ export const qualifyStatus: Tool<
     let inProgressFlag: boolean | null = null;
     let launchedAt: string | null = null;
     if (notifId) {
-      const n = await readNotification(client, notifId);
+      const n = await readNotificationById(client, notifId);
       if (!n) {
         throw client.makeError(
           "QUALIFY_JOB_NOT_FOUND",

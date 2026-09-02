@@ -151,10 +151,10 @@ async function launchOnSelection(
         "then report the finished contacts yourself. The notification_id keeps working across conversations and days; " +
         "completion also surfaces via _meta.notifications / leadbay_account_status.notifications."
       : "Enrichment job launched, but the backend returned no notification_id, so there is no job id to poll. " +
-        "Track it per lead instead via leadbay_get_contacts for the returned lead_ids.",
+        "Poll leadbay_bulk_enrich_status({lead_ids, titles, email, phone}) instead — it answers per lead without a job id.",
     next_action: notificationId
       ? "Unless the user explicitly asked NOT to wait, poll leadbay_bulk_enrich_status({notification_id, lead_ids, include_contacts: true}) until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15-30s apart, ~90s-2min elapsed; don't call a plateau from the first back-to-back reads, and not while partial_failures is present — that's transient, respect retry_after). Then report the resolved enrichment in THIS turn, naming what landed and what didn't. If the user DID ask not to wait, hand back the notification_id — it resolves later from any conversation."
-      : "Re-check via leadbay_get_contacts for the returned lead_ids (every ~30s). get_contacts returns each lead's FULL contact list, so only count contacts whose job_title matches the enriched titles (" + titles.join(", ") + "), and treat a contact as done only when the REQUESTED channel landed (email and/or phone_number present, not contact.enrichment.done alone). Stop once the done set stops growing across a couple of spaced re-checks (~90s-2min) — unresolvable contacts never flip.",
+      : "Poll leadbay_bulk_enrich_status({lead_ids, titles, email, phone, include_contacts: true}) every ~30s. It scopes counting to these titles and treats a contact as done only when the REQUESTED channel landed, so you do not have to do that yourself. Stop once overall_progress.done stops growing across a couple of spaced re-checks (~90s-2min) — unresolvable contacts never flip.",
   };
 }
 
@@ -200,7 +200,7 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
     // destructive because the dominant flow mutates state.
     destructiveHint: true,
     // Idempotent against the same selection + titles set (same hash → same
-    // bulk_id; backend silently no-ops on already-enriched contacts).
+    // the launch; backend silently no-ops on already-enriched contacts).
     idempotentHint: true,
     openWorldHint: true,
   },
@@ -208,6 +208,21 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
   inputSchema: {
     type: "object",
     properties: {
+      notification_id: {
+        type: ["string", "null"],
+        description:
+          "The backend's job id. Carry it to leadbay_bulk_enrich_status. Null when the backend returned none — then poll by lead_ids instead.",
+      },
+      lead_ids: {
+        type: "array",
+        description:
+          "The leads this run enriched. Carry them to leadbay_bulk_enrich_status for per-lead progress; they also work when the notification is archived.",
+        items: { type: "string" },
+      },
+      reused: {
+        type: "boolean",
+        description: "True when an identical launch inside the 5-minute window was reused instead of spending quota again.",
+      },
       titles: {
         type: "array",
         items: { type: "string" },
@@ -245,11 +260,11 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
   outputSchema: {
     type: "object",
     description:
-      "Branchy return shape; the `mode` (or `status`) field tells the agent which branch it got. Modes: 'discover' (no titles passed), 'preview_only' (no enrichable contacts), 'dry_run', 'needs_confirmation' (paid launch withheld pending user consent), 'already_launched' (idempotent reuse), 'launched_tracker_pending' (rare, soft-fail), 'launched' (happy path). Status: 'quota_exceeded' (429).",
+      "Branchy return shape; the `mode` (or `status`) field tells the agent which branch it got. Modes: 'discover' (no titles passed), 'preview_only' (no enrichable contacts), 'dry_run', 'needs_confirmation' (paid launch withheld pending user consent), 'already_launched' (idempotent reuse), 'launch_in_flight' (an identical launch is mid-flight and has no id yet), 'launched' (happy path). Status: 'quota_exceeded' (429).",
     properties: {
       mode: {
         type: "string",
-        description: "'discover' | 'preview_only' | 'dry_run' | 'needs_confirmation' | 'already_launched' | 'launched_tracker_pending' | 'launched'.",
+        description: "'discover' | 'preview_only' | 'dry_run' | 'needs_confirmation' | 'already_launched' | 'launch_in_flight' | 'launched'.",
       },
       status: {
         type: "string",
@@ -300,21 +315,9 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
         type: "object",
         description: "What dry_run WOULD have launched (titles, email, phone).",
       },
-      re_used: {
-        type: "boolean",
-        description: "True when an identical bulk was launched within the idempotency window (already_launched mode).",
-      },
-      bulk_id: {
-        type: "string",
-        description: "UUIDv4 to poll via leadbay_bulk_enrich_status.",
-      },
       launched_at: {
         type: "string",
         description: "ISO timestamp of the (re-used or fresh) launch.",
-      },
-      durability: {
-        type: "string",
-        description: "'file' (persisted bulks.json) or 'memory'.",
       },
       seconds_since_original_launch: {
         type: "number",

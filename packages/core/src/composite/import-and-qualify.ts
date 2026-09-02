@@ -103,7 +103,6 @@ interface ChosenBudgets {
 interface ImportAndQualifyResult {
   kind: "result";
   status?: "running";
-  handle_id?: string;
   // Set when the underlying import ran out of poll budget rather than being
   // launched async on purpose. The import is still running server-side —
   // poll leadbay_import_status(import_ids); do NOT re-issue the import.
@@ -123,8 +122,8 @@ interface ImportAndQualifyResult {
   // what wall-clock to communicate to the human user. Absent when the
   // caller specified budgets explicitly.
   chosen_budgets?: ChosenBudgets;
-  // Composite-level handle. Persists in ~/.leadbay/bulks.json. Pass to
-  // leadbay_qualify_status to resume after the response timed out.
+  // The coordinates the agent carries: pass these to leadbay_qualify_status to
+  // resume after the response timed out. Nothing is stored on our side.
   lead_ids: string[];
   lens_id: number;
   // Underlying file-import handles (one per chunk). Useful if the agent
@@ -435,7 +434,7 @@ export const importAndQualify: Tool<
       wait_for_completion: {
         type: "boolean",
         description:
-          "When false, enqueue the import phase and return `{kind:'result', status:'running', handle_id}` immediately. Poll leadbay_import_status. Default is true for 0.6.x backwards compatibility.",
+          "When false, upload the rows and return `{kind:'result', status:'running', import_ids}` immediately. Poll leadbay_import_status({importIds, dry_run}); the qualify phase does NOT run on this path — call leadbay_bulk_qualify_leads on the imported leads yourself. Default is true.",
       },
       lensId: {
         type: "number",
@@ -475,10 +474,6 @@ export const importAndQualify: Tool<
       status: {
         type: "string",
         description: "`running` when wait_for_completion=false.",
-      },
-      handle_id: {
-        type: "string",
-        description: "Import handle to pass to leadbay_import_status when wait_for_completion=false.",
       },
       timed_out: {
         type: "boolean",
@@ -662,7 +657,6 @@ export const importAndQualify: Tool<
       return {
         kind: "result",
         status: "running",
-        ...(queued.handle_id ? { handle_id: queued.handle_id } : {}),
         ...(chosenBudgets ? { chosen_budgets: chosenBudgets } : {}),
           lead_ids: [],
           lens_id: 0,
@@ -712,7 +706,6 @@ export const importAndQualify: Tool<
       return {
         kind: "result",
         status: "running",
-        ...(importResultRaw.handle_id ? { handle_id: importResultRaw.handle_id } : {}),
         // Everything the rendering contract keys off has to survive the
         // wrapper. Without `timed_out` the agent can't tell this from a
         // deliberate async launch; without `rows_pending_upload` a >100-row

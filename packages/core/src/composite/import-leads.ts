@@ -126,8 +126,6 @@ export interface ImportLeadsRunningResult {
   // Present on the `wait_for_completion:false` path, which reserves a
   // BulkTracker record. ABSENT when a blocking call degraded on a poll
   // timeout (product#4007): the hosted MCP has no BulkTracker at all, so
-  // `importIds` — not `handle_id` — is the handle that always resumes.
-  handle_id?: string;
   importIds: string[];
   notification_ids: string[];
   progress: { phase: string; records_processed: number; records_total: number };
@@ -1442,8 +1440,8 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
       wait_for_completion: {
         type: "boolean",
         description:
-          "When false, validate and enqueue the import in the background, then return `{status:'running', handle_id}` immediately. " +
-          "Poll leadbay_import_status(handle_id). Default is true for 0.6.x backwards compatibility.",
+          "When false, upload the rows and return `{status:'running', importIds}` immediately. " +
+          "Poll leadbay_import_status({importIds, dry_run}) — those importIds are the backend's own and keep working from any conversation. Default is true.",
       },
     },
     // Neither field is "required" at the schema level; xor + presence is
@@ -1462,11 +1460,6 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
       status: {
         type: "string",
         description: "`running` when wait_for_completion=false; absent on the legacy blocking result.",
-      },
-      handle_id: {
-        type: "string",
-        description:
-          "Persisted UUID handle to pass to leadbay_import_status. Only on the wait_for_completion=false path; absent when a blocking call timed out (use importIds then).",
       },
       timed_out: {
         type: "boolean",
