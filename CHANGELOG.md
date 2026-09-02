@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.33.3 — 2026-09-02 — Pinning a contact says what it can and cannot do
+
+- **Pinning someone Leadbay only suggested no longer looks like a breakage.**
+  You can pin the people already in your contact list. Someone Leadbay has
+  suggested for a company but not yet enriched cannot be pinned. The assistant
+  used to get back a bare "contact not found", read it as Leadbay being broken,
+  and try again several times. It now knows the difference, says so, and tells
+  you how to get that person into your list.
+- **Pinning does not decide who gets enriched.** Asking for the managing
+  director rather than the president is a matter of which job title you ask
+  Leadbay to enrich, not which contact you pin. The old wording suggested
+  otherwise and the assistant believed it.
+- **You can see who is pinned.** Whether a contact is pinned, and whether
+  Leadbay pinned them for you rather than you doing it, now comes back with the
+  contact instead of having to be inferred.
+
 ## 0.33.2 — 2026-09-02 — Correcting a contact no longer wipes their email
 
 - **Fixing one detail on a contact used to delete the others.** Asking the

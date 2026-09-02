@@ -195,6 +195,12 @@ export interface ContactPayload {
   job_title: string | null;
   recommended: boolean;
   enrichment: ContactEnrichment | null;
+  // Pin state, straight off the backend's ContactPayload. Optional here only
+  // because older API builds predate the fields; the current backend always
+  // emits both on org contacts and NEITHER on paid ones (PaidContactPayload
+  // has no pin state — a paid candidate cannot be pinned).
+  pinned?: boolean;
+  pinned_by_ai?: boolean;
 }
 
 export interface BillingStatePayload {

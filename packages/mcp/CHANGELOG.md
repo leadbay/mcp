@@ -1,5 +1,59 @@
 # Changelog — @leadbay/mcp
 
+## 0.33.3 — 2026-09-02
+
+`leadbay_pin_contact` failed 43 of its 48 production calls.
+
+Measured over the 180 days to 2026-09-02 (PostHog `mcp tool called`,
+`properties.ok = false`). Sentry issue `MCP-3A` carries exactly 43 events, so
+every `contact not found` in the `mcp` project is a pin call. 41 of the 43 are
+one scheduled agent, `zoe+dogfood@leadbay.ai`, across 12 days and MCP 0.26.0
+through 0.33.2. Its own `triggered_by` reads *"tâche planifiée : épingler le DG
+Mickael Hamot (CROMOLOGY SERVICES) à la place du président"*. It picks the DG
+out of `leadbay_research_lead_by_id` and pins that id, which on an unenriched
+company is a `source: "paid"` candidate. It has never once succeeded, and pin
+is its third most used tool.
+
+`POST /contacts/{id}/pin` resolves through `org_contacts` only
+(`OrgContactRoutes.kt:44`), so a paid candidate id can never resolve there. Two
+changes:
+
+- **The 404 now names its cause.** The client's shared 404 hint is "Verify the
+  ID is correct" (`client.ts:1048`), which on this endpoint is false: the id is
+  correct, it is the wrong namespace. An agent reads that as "look it up and
+  retry" and does, in bursts of up to 10 calls in 13 seconds. pin and unpin now
+  catch `NOT_FOUND` and replace the hint with one that names the org-vs-paid
+  split, says not to retry, and names the tools that make the person pinnable.
+- **The descriptions carry the rule.** New shared snippet
+  `snippets/heuristics/pinnable-contacts.md`, included by both templates, plus
+  the rule in `prefer_when` so it lands in the first 600 chars every host reads.
+  It also states that pinning does not steer enrichment: enrichment selects by
+  job title (`resolveAutoIncludedTitles` →
+  `paidContacts.findSimilarJobTitlesWithScores`) and `pinnedBy` plays no part.
+  That was the second half of the agent's mistake.
+
+**`pinned` is now readable.** The backend's `ContactPayload` has carried
+`pinned` + `pinned_by_ai` all along; every MCP shaping site dropped them, so a
+pin could be written but not read back except by watching `recommended`, which
+moves for other reasons too. Now passed through in `research_lead_by_id`,
+`get_contacts` and `get_lead_profile`, and marked `📌` in both markdown contact
+lists. Deliberately asymmetric: `PaidContactPayload` has no pin state, so paid
+contacts get no `pinned` key rather than a synthetic `false`.
+
+Verified live against FR staging, running the built branch:
+
+```
+BEFORE PIN:  org contact → pinned: false     paid contacts → no pinned key
+AFTER  PIN:  org contact → pinned: true      (pin http 204)
+AFTER UNPIN: org contact → pinned: false     (unpin http 204)
+```
+
+Remaining, not fixed here: on hosted an agent still has no way to enrich one
+named person. `leadbay_enrich_contacts` takes a `contact_id` and does exactly
+that, but sits in `granularWriteTools` behind `LEADBAY_MCP_ADVANCED=1`, and no
+granular tool has been called from a hosted IP in 30 days. That is why the
+agent reached for pin. Filed as leadbay/product#4050.
+
 ## 0.33.2 — 2026-09-02
 
 Editing one field on a contact erased the others (product#4046).

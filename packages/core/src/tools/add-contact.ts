@@ -25,7 +25,11 @@ interface CreatedContact {
   job_title: string | null;
   can_enrich?: boolean;
   recommended?: boolean;
+  // Pin state as the backend returns it. A freshly created org contact is
+  // never pinned, but the fields ship so the shape matches every other org
+  // contact the agent sees — and this id IS pinnable via leadbay_pin_contact.
   pinned?: boolean;
+  pinned_by_ai?: boolean;
 }
 
 interface AddContactResult {
