@@ -280,20 +280,14 @@ granularTools.forEach((t) => {
 });
 
 // Composite read tools — always exposed (default agent surface).
-// The MCP-first delivery tools depend on backend routes (`POST /1.6/mcp/search`,
-// `POST /1.6/mcp/qualify`, `GET /1.6/mcp/jobs/{id}`) that are live on STAGING
-// only — production returns 404. Shipping them unconditionally would hand every
-// user tools that fail on their first call, so they stay behind an opt-in flag
-// until the backend rollout lands. Remove this gate (and the flag) in the
-// release that follows the backend deploy.
-const MCP_FIRST_DELIVERY_ENABLED =
-  process.env.LEADBAY_MCP_LEAD_DELIVERY === "1";
-
 export const compositeReadTools: Tool[] = [
   // Poll surface for the MCP-first lead-delivery jobs (find_new_leads /
-  // qualify_leads). Read-only snapshot of a backend-owned job, gated with
-  // them since it is useless without a job to poll.
-  ...(MCP_FIRST_DELIVERY_ENABLED ? [leadJobStatus] : []),
+  // qualify_leads). Read-only snapshot of a backend-owned job. The backend
+  // routes (`POST /1.6/mcp/search`, `POST /1.6/mcp/qualify`,
+  // `GET /1.6/mcp/jobs/{id}`) shipped to production in backend v3.22.0
+  // (2026-08-22) and were verified live on both regions, so the opt-in
+  // LEADBAY_MCP_LEAD_DELIVERY flag that held these three back is gone.
+  leadJobStatus,
   pullLeads,
   pullFollowups,
   followupsMap,
@@ -415,7 +409,7 @@ export const mcpFirstDeliveryAllTools: Tool[] = [
 // Composite write tools — always-exposed in OpenClaw, gated in MCP behind
 // LEADBAY_MCP_WRITE=1 (the MCP server filters them out by default).
 export const compositeWriteTools: Tool[] = [
-  ...(MCP_FIRST_DELIVERY_ENABLED ? mcpFirstDeliveryTools : []),
+  ...mcpFirstDeliveryTools,
   bulkQualifyLeads,
   enrichTitles,
   adjustAudience,

@@ -5,6 +5,23 @@
 > as first-class MCP tools. Grounded in live staging probes against the five
 > test accounts (2026-07-28, `.context/probe/` in the working branch).
 
+## Production status (2026-09-01)
+
+The endpoints shipped to production in backend **v3.22.0** (2026-08-22) and the
+three tools are exposed by default — the `LEADBAY_MCP_LEAD_DELIVERY` rollout
+flag is retired. Verified live on `api-us` and `api-fr` through the compiled MCP
+server: free search, both dry-run quote paths, the withheld-paid-submit gate,
+a real capped paid job, `request_id` de-duplication, cursor paging, and
+`qualify_leads` returning disqualified leads with their evidence.
+
+**One caveat the tools cannot fix.** Searches carrying an `example_lead` or a
+`query` currently sit in `state: "queued"` indefinitely on BOTH prod regions;
+`filters`-only searches complete in ~20–33 s. The difference is seed embedding
+(`MCP_EMBED_SEED` on `LOW_PRIORITY_GPU`, backend#1932), so the stall is in that
+queue, not in the delivery tick. The tools poll and report `queued` honestly and
+spend nothing while waiting — but the seeded path is the one this document tells
+agents to prefer, so the headline journey is blocked until that queue drains.
+
 ## The two capabilities, in user vocabulary
 
 | Capability | User sentence | Backend |

@@ -281,16 +281,16 @@ const CATALOG: CatalogEntry[] = [
   },
 ];
 
-/** Prompts whose whole workflow drives tools that are themselves gated off
- *  until the backend routes ship. Exposing the prompt without the tools would
- *  let a user start a guided flow whose every call is missing from tools/list. */
+/** Prompts whose whole workflow drives tools the deployment may not expose.
+ *  Offering the prompt without them would let a user start a guided flow whose
+ *  every call is missing from tools/list. */
 const GATED_PROMPTS: Record<string, (opts: PromptGateOptions) => boolean> = {
-  // Needs the rollout flag AND the write surface: every phase calls
-  // leadbay_find_new_leads / leadbay_qualify_leads, which are write-tier, so a
-  // read-only server (LEADBAY_MCP_WRITE=0) would offer a workflow whose tools
-  // are absent from tools/list even with the flag on.
-  leadbay_new_leads: (opts) =>
-    process.env.LEADBAY_MCP_LEAD_DELIVERY === "1" && opts.includeWrite !== false,
+  // Needs the write surface: every phase calls leadbay_find_new_leads /
+  // leadbay_qualify_leads, which are write-tier, so a read-only server
+  // (LEADBAY_MCP_WRITE=0) would offer a workflow whose tools are absent from
+  // tools/list. The backend-rollout half of this gate is gone — the
+  // /1.6/mcp/* routes shipped in backend v3.22.0.
+  leadbay_new_leads: (opts) => opts.includeWrite !== false,
 };
 
 export interface PromptGateOptions {
@@ -331,7 +331,7 @@ export function getPrompt(
   const gate = GATED_PROMPTS[name];
   if (gate && !gate(opts)) {
     throw new Error(
-      `Prompt ${name} is not enabled in this deployment (requires LEADBAY_MCP_LEAD_DELIVERY=1 and the write surface).`
+      `Prompt ${name} is not enabled in this deployment (requires the write surface — LEADBAY_MCP_WRITE must not be 0).`
     );
   }
   // Validate required arguments. Per spec, missing required args should

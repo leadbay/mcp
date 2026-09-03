@@ -1,50 +1,25 @@
 ---
 name: leadbay_new_leads
-kind: prompt
-# Every phase of this workflow calls leadbay_find_new_leads /
-# leadbay_qualify_leads / leadbay_lead_job_status, which are gated off until
-# the /1.6/mcp/* backend routes ship. Suppresses the Claude SKILL.md (a static
-# file with no runtime gate); the MCP prompt is filtered by listPrompts().
-# DELETE this line in the release that un-gates the tools.
-release_gated: true
-short_description: |
-  Guided net-new lead delivery — turn a natural-language need ("gyms around
-  Dallas that would buy our flooring") into ICP-perfect NEW companies with
-  qualification evidence and the right contact, via leadbay_find_new_leads.
-  Trigger on "find me new leads", "get me N companies that <profile>",
-  "we're entering <market>". Do NOT trigger on "today's leads"
-  (leadbay_daily_check_in) or "qualify these companies I have"
-  (leadbay_qualify_leads).
-arguments:
-  - name: need
-    description: "What the user is looking for, in their own words (e.g. '10 gyms around Dallas that would buy modular flooring, with phone numbers'). Optional — the session starts by asking when absent."
-    required: false
-expected_calls:
-  - leadbay_find_new_leads
-  - leadbay_lead_job_status
-  - leadbay_qualify_leads
-failure_modes:
-  - Passes the user's raw sentence as `query` instead of crafting an example_lead description (vendor-vocabulary trap — measured 0 delivered from a raw query vs on-profile results from a crafted example)
-  - Invents a distinctive brand name in example_lead.name (pulls matching toward name-lookalikes)
-  - Puts event language ("hiring", "expanding", "just raised") into the seed description
-  - Launches qualify:true or channels without a dry_run quote and the user's explicit go-ahead
-  - Retries a failed/timed-out submit with a NEW request_id (double-spend) — the same ask must reuse the same request_id
-  - Reports "no results" without narrating the funnel + scope_notes and proposing a concrete fix
-  - Renders delivered leads as freeform prose instead of the canonical lead-delivery table
-  - Blends two distinct buyer archetypes into one seed description instead of running one search per archetype
-  - Passes a country name in filters.locations (silently matches a same-named town — whole-country intent means OMITTING locations) or a nested employees object instead of the flat employees_min/employees_max
-  - Renders rows that visibly violate the user's exclusions, or presents a best-fit-under-30 table as an answer instead of flagging weak matches
+description: "Guided net-new lead delivery — turn a natural-language need (\"gyms around Dallas that would buy our flooring\") into ICP-perfect NEW companies with qualification evidence and the right contact, via leadbay_find_new_leads. Trigger on \"find me new leads\", \"get me N companies that <profile>\", \"we're entering <market>\". Do NOT trigger on \"today's leads\" (leadbay_daily_check_in) or \"qualify these companies I have\" (leadbay_qualify_leads)."
 ---
 
-{{include:headers/agent-memory-preamble}}
 
-{{include:iron-laws/no-fabrication}}
+## MEMORY
 
-{{include:gates/defer-to-tool-rendering}}
+Before responding, glance at any `_meta.agent_memory.summary` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call `leadbay_agent_memory_capture` to persist it: `source:"user_stated"` if literal, `source:"inferred"` with confidence <=6 if inferred.
+
+
+IRON LAW — NO FABRICATION. Every lead id, contact email, custom field id, mapping decision, and tool argument must trace to a value you read from the file the user attached or to an output from a leadbay_* tool call in this session. Do not invent values. Do not "fill in" a missing leadId with a name match. Do not synthesize a CRM id from a guess. If a value is missing, leave the field blank and say so.
+
+
+GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
+
+If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
+
 
 Find net-new leads for me. My need, in my words:
 
-> {{arg:need}}
+> <What the user is looking for, in their own words (e.g. '10 gyms around Dallas that would buy modular flooring, with phone numbers'). Optional — the session starts by asking when absent. Optional.>
 
 If that need was not supplied to you directly, take it from the message that
 started this — the request in my own words is the need, and I should never be
