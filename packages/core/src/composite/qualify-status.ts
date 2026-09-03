@@ -205,7 +205,7 @@ export const qualifyStatus: Tool<
           "QUALIFY_JOB_WRONG_KIND",
           `That notification_id is a ${kind === "bulk_enrich" ? "contact enrichment" : kind === "import" ? "file import" : "non-bulk"} notification, not a lead qualification`,
           kind === "bulk_enrich"
-            ? "Poll it with leadbay_bulk_enrich_status({notification_id, lead_ids}) instead."
+            ? "Poll it with leadbay_bulk_enrich_status({notification_id, lead_ids, titles, email, phone}) instead — carry the titles and channel the enrichment was launched with, or a contact enriched earlier counts as done and all_done flips true before anything landed."
             : kind === "import"
               ? "Poll it with leadbay_import_status({importIds}) instead."
               : "Pass the notification_id returned by leadbay_bulk_qualify_leads.",

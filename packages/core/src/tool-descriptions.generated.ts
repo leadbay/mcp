@@ -1862,7 +1862,7 @@ WHEN TO USE: agent has a list of companies (domains, or CSV-shaped rows from the
 
 WHEN NOT TO USE: discovery (use leadbay_pull_leads); single-lead deep dive (use leadbay_research_lead_by_id); high-cadence or untrusted automation — this mutates user state and consumes ai_rescore + web_fetch quota.
 
-Budgets: \`total_budget_ms\` caps wall-clock; \`per_lead_budget_ms\` caps each lead's poll. For short transport timeouts, pass \`wait_for_completion:false\` and poll \`leadbay_import_status\`. Outputs \`qualified[]\`, \`still_running[]\`, \`not_imported[]\`, \`notification_id\` (resumable handle). Idempotent within a 5-min window. \`dry_run:'preview'\` returns mapping hints + custom-field candidates without importing.
+Budgets: \`total_budget_ms\` caps wall-clock; \`per_lead_budget_ms\` caps each lead's poll. For short transport timeouts, pass \`wait_for_completion:false\` and poll \`leadbay_import_status\`. Outputs \`qualified[]\`, \`still_running[]\`, \`not_imported[]\`, plus the ids that resume it: \`lead_ids\` + \`lens_id\` for leadbay_qualify_status, \`import_ids\` for leadbay_import_status. There is no qualification \`notification_id\` — the qualify phase runs per-lead, so no job notification exists; \`notification_ids[]\` are the file-import ones. Idempotent within a 5-min window. \`dry_run:'preview'\` returns mapping hints + custom-field candidates without importing.
 
 \`not_imported\` rows with \`reason:"uncrawled"\` are **pending a background crawl**, NOT failures: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously (the label doesn't verify the URL resolves — don't call the site bad, but don't certify it valid either). Surface them as pending; the leads populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — \`leadbay_import_status\` returns status/progress only, and \`leadbay_pull_leads\` reads the active lens's wishlist so an imported lead outside that lens may not appear). To pull those specific companies back through the MCP, re-run the import later. A large \`uncrawled\` share on a fresh list is normal.
 
@@ -1890,7 +1890,7 @@ Otherwise, partition \`not_imported\` by \`reason\` into these buckets before yo
 
 - Completed: \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` (drop any segment whose count is 0)
 - Running: \`"⏳ Import running — importIds <ids>; poll leadbay_import_status"\`
-- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — notification_id <id>"\`
+- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — I'll pick it up with leadbay_qualify_status"\` (its resume ids are \`lead_ids\` + \`lens_id\`; there is no qualification notification_id to quote)
 
 Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
 
@@ -1985,7 +1985,7 @@ Otherwise, partition \`not_imported\` by \`reason\` into these buckets before yo
 
 - Completed: \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` (drop any segment whose count is 0)
 - Running: \`"⏳ Import running — importIds <ids>; poll leadbay_import_status"\`
-- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — notification_id <id>"\`
+- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — I'll pick it up with leadbay_qualify_status"\` (its resume ids are \`lead_ids\` + \`lens_id\`; there is no qualification notification_id to quote)
 
 Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
 
@@ -3241,9 +3241,14 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_qualify_lead
 
 // region: leadbay_qualify_status
-export const leadbay_qualify_status: string = `Retrieve the current state of an import_and_qualify (or bulk_qualify_leads) launch. Pass the \`notification_id\` the launch returned to get progress in ONE call; add the \`lead_ids\` and \`lens_id\` it returned to get per-lead detail (which settled, which are still running). Both come straight out of the launch response — nothing is stored on the MCP side. The job belongs to the Leadbay backend and is scoped to the user who launched it, so the id resolves from a later message, a later conversation, or the next day.
+export const leadbay_qualify_status: string = `Retrieve the current state of a bulk_qualify_leads or import_and_qualify launch. Which ids to pass depends on which tool launched it, because only one of them creates a qualification job on the backend:
 
-WHEN TO USE: after leadbay_import_and_qualify or leadbay_bulk_qualify_leads returned a \`notification_id\` with non-empty \`still_running[]\`, call this tool a few minutes later (or hours) to retrieve the now-completed qualifications without re-running the import or re-spending qualify quota.
+- **\`leadbay_bulk_qualify_leads\`** returns a \`notification_id\`. Pass it for progress in ONE call, and add the \`lead_ids\` + \`lens_id\` it also returned for per-lead detail (which settled, which are still running).
+- **\`leadbay_import_and_qualify\`** returns NO qualification \`notification_id\` — its qualify phase runs per-lead, so no job notification exists. Pass the \`lead_ids\` + \`lens_id\` it returned. Its \`notification_ids[]\` are the FILE-IMPORT notifications; handing one of those to this tool is rejected as the wrong kind, and \`leadbay_import_status({importIds})\` is where the import half is polled.
+
+Everything comes straight out of the launch response — nothing is stored on the MCP side. A backend job is scoped to the user who launched it, so a \`notification_id\` resolves from a later message, a later conversation, or the next day.
+
+WHEN TO USE: after leadbay_bulk_qualify_leads or leadbay_import_and_qualify came back with a non-empty \`still_running[]\`, call this tool a few minutes later (or hours) with those ids to retrieve the now-completed qualifications without re-running the import or re-spending qualify quota.
 
 WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id — that's a deeper per-lead profile and includes contacts. This tool is purely the qualification answers + signals_count.
 `;

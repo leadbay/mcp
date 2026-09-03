@@ -15,7 +15,7 @@ Otherwise, partition `not_imported` by `reason` into these buckets before you wr
 
 - Completed: `"✓ Import complete — N imported · P pending crawl · Q need attention"` (drop any segment whose count is 0)
 - Running: `"⏳ Import running — importIds <ids>; poll leadbay_import_status"`
-- Pending qualification (`leadbay_import_and_qualify`): `"✓ Imported N leads · qualifying M of them — notification_id <id>"`
+- Pending qualification (`leadbay_import_and_qualify`): `"✓ Imported N leads · qualifying M of them — I'll pick it up with leadbay_qualify_status"` (its resume ids are `lead_ids` + `lens_id`; there is no qualification notification_id to quote)
 
 Count `uncrawled` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
 
