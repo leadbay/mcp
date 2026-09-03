@@ -12,6 +12,7 @@
 //   POST /chatgpt/mcp          Same, minus every commerce surface (see COMMERCE_FREE_PATHS)
 //   GET  /sse, POST /messages  Legacy SSE transport (older hosts)
 //   GET  /healthz              Liveness probe for Fly/Render
+//   GET  /.well-known/openai-apps-challenge  Domain proof for the OpenAI Apps directory
 //
 // Run: `node dist/http-server.js` (PORT defaults to 8080).
 
@@ -362,6 +363,17 @@ function buildServerFromClient(
 // consent and rides in the token's `_us`/`_fr` suffix, so tool requests route by
 // the token, not the URL.
 
+// ── OpenAI Apps directory domain verification ───────────────────────────────
+//
+// The submission form proves we control the MCP hostname by fetching this token
+// from the origin root. It is a public proof, not a credential — OpenAI reads it
+// unauthenticated and anyone may — so it ships as a constant rather than a
+// secret, the same way STARGATE_AUTH_SERVER does. The env var is the rotation
+// escape hatch: OpenAI issues a fresh token if the app is ever re-verified, and
+// infra can set it without waiting on a release.
+const OPENAI_APPS_CHALLENGE =
+  process.env.OPENAI_APPS_CHALLENGE ?? "vsJ51IZ_3AqM10YZxXQFmB29IGIMDOZGbpbEgRIT4r4";
+
 const PRM_PREFIX = "/.well-known/oauth-protected-resource";
 // `/fr/*` are compat aliases: the README shipped `https://mcp.leadbay.app/fr/mcp`
 // as the EU connector URL, so existing EU users still connect there. Under the
@@ -463,6 +475,14 @@ function sendChallenge(
 const app = new Hono();
 
 app.get("/healthz", (c) => c.json({ ok: true, version: VERSION }));
+
+// Domain proof for the OpenAI Apps directory. Bare token, no trailing newline —
+// the verifier compares the body to the issued string. Public and unauthenticated
+// by design; it must answer before any auth gate, which it does because the MCP
+// routes gate inside their own handlers rather than in middleware.
+app.get("/.well-known/openai-apps-challenge", (c) =>
+  c.text(OPENAI_APPS_CHALLENGE, 200, { "Cache-Control": "no-store" })
+);
 
 // Protected resource metadata: bare path serves the primary /mcp resource; the
 // RFC 9728 path-suffix form (…/oauth-protected-resource/mcp, /fr/mcp, /sse, …)
