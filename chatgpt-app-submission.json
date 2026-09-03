@@ -1,0 +1,776 @@
+{
+  "$schema": "https://developers.openai.com/apps-sdk/schemas/chatgpt-app-submission.v1.json",
+  "schema_version": 1,
+  "app_info": {
+    "display_name": "Leadbay",
+    "subtitle": "Work your B2B lead pipeline",
+    "description": "Leadbay is a B2B prospecting workspace that sources and scores companies against a seller's ideal customer profile. This app connects ChatGPT to the user's own Leadbay account so they can work that pipeline in plain language instead of clicking through the web app.\n\nTypical sessions: pull the day's fresh, AI-scored prospects and skim the best ones; research a single company in depth (qualification signals, contacts, recent web findings, past notes and activity); draft a personalised outreach email or call opener for a named contact; plan which accounts to visit in a city before a trip; import a list of companies and have Leadbay qualify them; and log what was actually sent so the pipeline stays honest.\n\nIt also covers the account admin a seller needs along the way: managing lenses (saved audiences), campaigns, contacts, CRM custom fields, and the qualification questions every lead is scored against.\n\nThe app reads and writes only the signed-in user's own Leadbay workspace, over an OAuth token the user grants. It does not send email or messages on the user's behalf — it drafts outreach and records the outcome the user reports.",
+    "category": "BUSINESS"
+  },
+  "tools": {
+    "leadbay_pull_leads": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Fetches the active lens wishlist and AI qualification summaries from Leadbay.",
+        "open_world_justification": "Calls the user's private Leadbay api-us or api-fr workspace to read lens leads and qualification summaries, with data staying inside that customer workspace and never being published, posted, or emailed to a third party.",
+        "destructive_justification": "Retrieves wishlist lead pages and qualification summaries from Leadbay without changing saved lead, lens, campaign, or quota state."
+      }
+    },
+    "leadbay_pull_followups": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads the Monitor follow-up view; an optional set_filter argument first persists that filter server-side via POST /monitor/filter.",
+        "open_world_justification": "Reaches the user's private Leadbay api-us or api-fr workspace for Monitor filters and follow-up leads, and the returned account data is not published to a public URL, posted elsewhere, or emailed to an outside party.",
+        "destructive_justification": "Loads Monitor follow-ups and, when requested, updates the saved Monitor filter used for future Monitor reads."
+      }
+    },
+    "leadbay_followups_map": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads mapped follow-up leads from the Monitor view; an optional set_filter argument first persists that filter server-side via POST /monitor/filter.",
+        "open_world_justification": "Uses the customer's private Leadbay api-us or api-fr workspace to retrieve geocoded Monitor leads for map display, without publishing, posting, or emailing those leads outside the workspace.",
+        "destructive_justification": "Delegates to the Monitor follow-up reader and may save a Monitor filter for later reads when the caller supplies filter parameters."
+      }
+    },
+    "leadbay_tour_plan": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Combines Leadbay Monitor follow-up reads with fresh wishlist reads to assemble a city itinerary.",
+        "open_world_justification": "Queries the customer's private Leadbay api-us or api-fr account for known and fresh leads used in the tour plan, keeping those leads within the private workspace rather than posting or emailing them externally.",
+        "destructive_justification": "Builds an itinerary from existing Leadbay lead and Monitor data while leaving campaigns, lenses, contacts, and billing state unchanged."
+      }
+    },
+    "leadbay_list_campaigns": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Lists campaigns and roll-up statistics from the user's Leadbay account.",
+        "open_world_justification": "Calls the customer's private Leadbay api-us or api-fr workspace to read campaign metadata and statistics, with no publication to a public URL or third-party message channel.",
+        "destructive_justification": "Reads campaign summaries from Leadbay and returns them without modifying campaign membership or campaign metadata."
+      }
+    },
+    "leadbay_campaign_progression": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads paginated per-lead progression inside a selected Leadbay campaign.",
+        "open_world_justification": "Contacts the user's private Leadbay api-us or api-fr workspace for campaign lead progression, and the data remains confined to that customer's account output.",
+        "destructive_justification": "Fetches campaign lead progression rows without adding, removing, or updating campaign records."
+      }
+    },
+    "leadbay_campaign_call_sheet": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads campaign contacts and lead rows to assemble a cold-calling sheet.",
+        "open_world_justification": "Retrieves campaign leads and contacts from the user's private Leadbay api-us or api-fr workspace, and it does not send the call sheet to any outside email, posting, or public publishing service.",
+        "destructive_justification": "Compiles a call sheet from campaign data without changing contacts, lead statuses, notes, or campaign membership."
+      }
+    },
+    "leadbay_research_lead_by_id": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads a lead profile, qualification answers, contacts, web signals, and activity history; it also fire-and-forget logs LEAD_SEEN and LEAD_CLICKED via POST /interactions to feed lens refresh.",
+        "open_world_justification": "Calls the customer's private Leadbay api-us or api-fr workspace for lead research and interaction logging, keeping the lead data inside the private workspace with no public posting or third-party email.",
+        "destructive_justification": "Hydrates one Leadbay lead and records lightweight interaction telemetry used for lens refresh without altering the lead's CRM status, contacts, notes, or audience filters."
+      }
+    },
+    "leadbay_research_lead_by_name_fuzzy": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Searches the user's Leadbay wishlist and suggestion indexes, then uses the Leadbay resolver to identify a likely matching lead.",
+        "open_world_justification": "Uses the user's private Leadbay api-us or api-fr workspace for company-name search and lead resolution, and matching results are returned only in the chat response rather than published or emailed externally.",
+        "destructive_justification": "Runs search and resolve lookups that identify candidate leads without creating, deleting, or editing Leadbay records."
+      }
+    },
+    "leadbay_get_qualification_questions": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads the organization's Leadbay AI qualification questions used for lead scoring.",
+        "open_world_justification": "Requests the question catalog from the customer's private Leadbay api-us or api-fr workspace and sends it to no public, posting, billing, or email destination.",
+        "destructive_justification": "Returns the current qualification-question list without changing scoring criteria or triggering regeneration."
+      }
+    },
+    "leadbay_getting_started": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Returns a packaged guided walkthrough manifest without backend access.",
+        "open_world_justification": "Serves static local walkthrough content and reaches no Leadbay API, Stripe, Sentry, PostHog, public URL, or email service.",
+        "destructive_justification": "Provides local onboarding instructions and leaves all workspace, billing, memory, and telemetry state untouched."
+      }
+    },
+    "leadbay_get_lead_custom_fields": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads a lead's custom-field values and any needed CRM field definitions; it also fire-and-forget logs LEAD_SEEN and LEAD_CLICKED via POST /interactions to feed lens refresh.",
+        "open_world_justification": "Contacts the user's private Leadbay api-us or api-fr workspace for lead custom fields and interaction logging, keeping the field values inside the customer's account response.",
+        "destructive_justification": "Returns stored custom-field values and records lightweight interaction telemetry without editing field definitions or lead values."
+      }
+    },
+    "leadbay_account_history": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads notes and activity history for one Leadbay account.",
+        "open_world_justification": "Calls the customer's private Leadbay api-us or api-fr workspace to retrieve one account's historical notes and activities, without posting or emailing that history to outsiders.",
+        "destructive_justification": "Loads account history from Leadbay and returns it without appending notes or changing activities."
+      }
+    },
+    "leadbay_scan_portfolio_signals": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads the Monitor portfolio and cached per-lead web_fetch signals; an optional set_filter argument persists the Monitor filter first via POST /monitor/filter.",
+        "open_world_justification": "Uses the customer's private Leadbay api-us or api-fr workspace to read Monitor leads and cached web research, and the scan results are not published, posted, or emailed outside that workspace.",
+        "destructive_justification": "Scans cached Leadbay portfolio signals and may update the saved Monitor filter that scopes later Monitor reads."
+      }
+    },
+    "leadbay_team_activity": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads team KPI user metrics and trend data from Leadbay.",
+        "open_world_justification": "Queries the customer's private Leadbay api-us or api-fr workspace for team activity metrics, with no transfer to public pages, posting systems, or email recipients.",
+        "destructive_justification": "Returns KPI and trend data without editing user records, goals, activities, or workspace settings."
+      }
+    },
+    "leadbay_recall_ordered_titles": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads previously enriched titles by posting a transient lead selection, previewing enrichment metadata, and clearing the selection again in a finally block with no lasting change.",
+        "open_world_justification": "Uses the customer's private Leadbay api-us or api-fr workspace to preview enrichment metadata for selected leads, and that title data remains within the private account response.",
+        "destructive_justification": "Temporarily sets Leadbay selection state for the preview request and clears it before returning, leaving no durable selection, enrichment, or contact change."
+      }
+    },
+    "leadbay_account_status": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads quota status, lens state, notification summaries, telemetry preference, and local memory context for the account.",
+        "open_world_justification": "Contacts the user's private Leadbay api-us or api-fr workspace for account status and combines it with local MCP context, without publishing or emailing the account details externally.",
+        "destructive_justification": "Summarizes account state and local context without changing quotas, lenses, notifications, telemetry settings, or memory entries."
+      }
+    },
+    "leadbay_bulk_enrich_status": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads local and Leadbay-backed bulk enrichment job progress.",
+        "open_world_justification": "Checks the customer's private Leadbay api-us or api-fr workspace, and possibly local tracker state, for enrichment progress without sending contact data to any public or third-party destination.",
+        "destructive_justification": "Polls enrichment status and contacts for an existing job without launching new enrichment or spending additional quota."
+      }
+    },
+    "leadbay_qualify_status": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads local and Leadbay-backed import or qualification job status.",
+        "open_world_justification": "Checks the customer's private Leadbay api-us or api-fr workspace and local bulk tracker for qualification progress, keeping status details in the private account context.",
+        "destructive_justification": "Reports progress for an existing qualification handle without queueing new web_fetch work or changing lead records."
+      }
+    },
+    "leadbay_import_status": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads status, records, and imported lead ids for a Leadbay import.",
+        "open_world_justification": "Fetches import status from the customer's private Leadbay api-us or api-fr workspace, and import diagnostics are returned only to the current chat.",
+        "destructive_justification": "Polls an existing import record without uploading rows, changing mappings, or starting processing."
+      }
+    },
+    "leadbay_resolve_import_rows": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Uses Leadbay lead-resolution and optional lead hydration to preview identity matches for import rows.",
+        "open_world_justification": "Calls the customer's private Leadbay api-us or api-fr workspace to resolve row identities against Leadbay data, without posting the rows to public or email systems.",
+        "destructive_justification": "Produces candidate row-to-lead matches without creating imports or writing CRM values."
+      }
+    },
+    "leadbay_seed_candidates": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads candidate seed companies for a lens extra-refill.",
+        "open_world_justification": "Queries the customer's private Leadbay api-us or api-fr workspace for refill seed candidates and keeps the candidate list inside that workspace response.",
+        "destructive_justification": "Returns refill candidates for review without queueing a refill or consuming quota."
+      }
+    },
+    "leadbay_list_mappable_fields": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads the CRM mappable-field catalog; when sample rows are supplied it uploads a preview CSV via POST /imports, creating an import record on the account.",
+        "open_world_justification": "Uses the customer's private Leadbay api-us or api-fr workspace to read CRM fields and optionally create a preview import record, with no public URL, third-party post, or outbound email.",
+        "destructive_justification": "Lists importable CRM fields and can create a preview import record for sample-row inspection without applying mappings to leads."
+      }
+    },
+    "leadbay_list_sectors": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads the Leadbay sector taxonomy, using organization language resolution when available.",
+        "open_world_justification": "Contacts the customer's private Leadbay api-us or api-fr workspace or packaged taxonomy path to return sector definitions, without sending taxonomy choices to public or third-party services.",
+        "destructive_justification": "Returns sector options for audience building without changing any lens filter."
+      }
+    },
+    "leadbay_prepare_outreach": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads lead and contact data to build an outreach brief; with the optional enrich: true argument it launches a paid contact enrichment that consumes the account's credit quota.",
+        "open_world_justification": "Calls the customer's private Leadbay api-us or api-fr workspace for lead and contact context, and optional enrichment stays within that Leadbay workspace rather than being published, posted, or emailed to a third party.",
+        "destructive_justification": "Builds an outreach brief and, only when enrich is true, starts contact enrichment that spends the account's Leadbay credit quota."
+      }
+    },
+    "leadbay_report_friction": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Creates a user-approved friction report payload that the MCP server emits as a PostHog telemetry event.",
+        "open_world_justification": "Sends only the user-approved friction report fields to PostHog through the MCP telemetry hook and performs no Leadbay backend write, Stripe action, public post, or email.",
+        "destructive_justification": "Reports diagnostic friction telemetry to PostHog without mutating Leadbay workspace records."
+      }
+    },
+    "leadbay_acknowledge_notification": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Marks a Leadbay notification as seen or archived through the notification acknowledgement path.",
+        "open_world_justification": "Updates notification acknowledgement state in the customer's private Leadbay api-us or api-fr workspace, without posting or emailing notification content outside the account.",
+        "destructive_justification": "Changes notification visibility state by marking it seen or archived while leaving the underlying lead, import, or enrichment job unchanged."
+      }
+    },
+    "leadbay_artifact_kit": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Returns static artifact component runtime metadata and usage guidance with no backend call.",
+        "open_world_justification": "Serves packaged local artifact-kit content and reaches no Leadbay API, Stripe, Sentry, PostHog, public URL, or email destination.",
+        "destructive_justification": "Provides local component metadata without changing workspace records, files, memory, telemetry, or billing state."
+      }
+    },
+    "leadbay_bulk_qualify_leads": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Selects Leadbay leads, launches bulk web-fetch qualification, clears the transient selection, and polls qualification reads.",
+        "open_world_justification": "Uses the customer's private Leadbay api-us or api-fr workspace to select leads and start web_fetch qualification, keeping qualification results within the private workspace.",
+        "destructive_justification": "Issues POST /leads/selection/web_fetch?force_fetch=false after POST /leads/selection/select, which starts AI web qualification for the selected leads and can consume the account's qualification quota before clearing selection."
+      }
+    },
+    "leadbay_enrich_titles": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Selects leads, previews title enrichment, optionally launches paid email or phone enrichment, and clears the transient selection.",
+        "open_world_justification": "Calls the customer's private Leadbay api-us or api-fr workspace to preview and possibly launch contact enrichment, with enriched contact data remaining inside that Leadbay account.",
+        "destructive_justification": "When confirm and channel flags authorize launch, POST /leads/selection/enrichment/launch starts paid email or phone enrichment for selected titles and consumes AI-credit quota."
+      }
+    },
+    "leadbay_adjust_audience": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Creates, drafts, updates, or activates Leadbay lens filters based on the requested audience change.",
+        "open_world_justification": "Uses the customer's private Leadbay api-us or api-fr workspace to read sectors, lenses, and filters and then write the requested audience changes, without public posting or email delivery.",
+        "destructive_justification": "POST /lenses/{id}/filter overwrites the saved audience filter for a user lens, org lens, or draft lens, and the cleanup path can issue DELETE /lenses/{id} to remove a failed orphan draft."
+      }
+    },
+    "leadbay_refine_prompt": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Replaces the organization's audience prompt and may answer a generated clarification through Leadbay.",
+        "open_world_justification": "Writes the new audience prompt to the customer's private Leadbay api-us or api-fr workspace, and prompt text is not published to a public page or emailed to an outside party.",
+        "destructive_justification": "POST /organizations/{orgId}/user_prompt replaces the organization's prior audience prompt and triggers intelligence regeneration, so the previous prompt no longer drives scoring."
+      }
+    },
+    "leadbay_answer_clarification": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Posts an answer to the pending Leadbay audience clarification and triggers intelligence regeneration.",
+        "open_world_justification": "Sends the clarification answer to the customer's private Leadbay api-us or api-fr workspace, where it becomes workspace scoring input rather than a public post or third-party email.",
+        "destructive_justification": "POST /organizations/{orgId}/pick_clarification records the answer as the organization's user prompt and clears the pending clarification."
+      }
+    },
+    "leadbay_report_outreach": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Writes verified outreach notes and optional epilogue status, or returns a dry-run preview when requested.",
+        "open_world_justification": "Writes outreach activity into the customer's private Leadbay api-us or api-fr workspace only, and it does not send emails or publish the outreach note outside Leadbay.",
+        "destructive_justification": "POST /leads/{id}/notes appends outreach audit notes and POST /leads/epilogue can change outreach disposition for the selected leads after required verification."
+      }
+    },
+    "leadbay_send_feedback": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Sends explicit user-authored feedback to the Leadbay team's Sentry feedback inbox through the MCP feedback hook.",
+        "open_world_justification": "Reaches Sentry to deliver the user's feedback to the Leadbay team and does not write Leadbay workspace records, create Stripe billing objects, or post the message publicly.",
+        "destructive_justification": "Delivers a feedback report to Sentry while leaving Leadbay account data and billing state unchanged."
+      }
+    },
+    "leadbay_import_leads": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Uploads lead records, updates import mappings, and may start backend import processing unless dry_run prevents the commit.",
+        "open_world_justification": "Sends import rows and mappings to the customer's private Leadbay api-us or api-fr workspace, creating private account import records rather than public posts or third-party emails.",
+        "destructive_justification": "POST /imports creates an import record and POST /imports/{id}/update_mappings commits mappings that can create or update lead CRM records in the customer's workspace."
+      }
+    },
+    "leadbay_import_and_qualify": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Imports lead records and then starts qualification work unless preview, dry-run, or already-qualified checks prevent it.",
+        "open_world_justification": "Uses the customer's private Leadbay api-us or api-fr workspace to upload imports and launch qualification, keeping imported companies and scoring results private to that account.",
+        "destructive_justification": "POST /imports creates import records, mapping commits create or update leads, and follow-on web_fetch qualification can consume qualification quota."
+      }
+    },
+    "leadbay_add_contact": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Creates a new contact on a Leadbay lead.",
+        "open_world_justification": "Writes the contact into the customer's private Leadbay api-us or api-fr workspace and does not email that contact, post it publicly, or send it to a third-party CRM.",
+        "destructive_justification": "POST /leads/{leadId}/contacts adds a contact record to the selected lead while preserving existing contacts."
+      }
+    },
+    "leadbay_remove_contact": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Archives a contact so it leaves the active contact list for its Leadbay lead.",
+        "open_world_justification": "Updates the contact archive state inside the customer's private Leadbay api-us or api-fr workspace, with no public posting or external email action.",
+        "destructive_justification": "POST /contacts/{contactId}/archive archives the contact and removes it from the lead's active contact list."
+      }
+    },
+    "leadbay_pin_contact": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Pins an existing contact as preferred in Leadbay.",
+        "open_world_justification": "Writes the pin state inside the customer's private Leadbay api-us or api-fr workspace and does not share contact details outside the account.",
+        "destructive_justification": "POST /contacts/{contactId}/pin marks the selected contact as pinned for ranking and display."
+      }
+    },
+    "leadbay_unpin_contact": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Unpins an existing Leadbay contact.",
+        "open_world_justification": "Writes the unpin state in the customer's private Leadbay api-us or api-fr workspace, without posting, emailing, or publishing contact information elsewhere.",
+        "destructive_justification": "POST /contacts/{contactId}/unpin removes the pinned preference from that contact while keeping the contact record."
+      }
+    },
+    "leadbay_update_contact": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Updates editable fields on an existing Leadbay contact.",
+        "open_world_justification": "Saves contact edits in the customer's private Leadbay api-us or api-fr workspace only, with no public URL, outbound email, or third-party CRM write.",
+        "destructive_justification": "POST /contacts/{contactId}/update changes the contact's stored fields and returns the updated contact."
+      }
+    },
+    "leadbay_create_custom_field": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Creates an organization CRM custom field unless if_not_exists reuses an existing field.",
+        "open_world_justification": "Writes CRM field metadata to the customer's private Leadbay api-us or api-fr workspace and does not expose field definitions outside the account.",
+        "destructive_justification": "POST /crm/custom_fields adds a reusable CRM field definition or returns an existing matching definition."
+      }
+    },
+    "leadbay_update_custom_field": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Updates a CRM custom field definition after reading the current definition.",
+        "open_world_justification": "Reads and writes CRM field metadata in the customer's private Leadbay api-us or api-fr workspace, with no publication or external notification.",
+        "destructive_justification": "POST /crm/custom_fields/{id} changes the selected custom field's stored name, type, or config while preserving the field record."
+      }
+    },
+    "leadbay_delete_custom_field": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Deletes a CRM custom field only when confirm is true.",
+        "open_world_justification": "Reads and deletes CRM field metadata in the customer's private Leadbay api-us or api-fr workspace, and the field definition is not sent to outside systems.",
+        "destructive_justification": "After confirm: true, DELETE /crm/custom_fields/{id} permanently removes the custom field and drops its values from every lead that used it."
+      }
+    },
+    "leadbay_set_qualification_questions": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Replaces, appends, or removes the organization's Leadbay qualification questions after reading the current list.",
+        "open_world_justification": "Writes qualification-question changes to the customer's private Leadbay api-us or api-fr workspace, keeping scoring criteria inside that workspace.",
+        "destructive_justification": "POST /organizations/{orgId} replaces the full ai_agent_lead_questions array, and confirm: true is required when the change drops any existing question."
+      }
+    },
+    "leadbay_add_note": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Adds a note to a Leadbay lead.",
+        "open_world_justification": "Writes the note to the selected lead in the customer's private Leadbay api-us or api-fr workspace, without emailing it or publishing it externally.",
+        "destructive_justification": "POST /leads/{leadId}/notes appends a durable note to the lead's activity history."
+      }
+    },
+    "leadbay_like_lead": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Marks a lead as liked in Leadbay.",
+        "open_world_justification": "Updates liked state for one lead in the customer's private Leadbay api-us or api-fr workspace, with no external publication or message delivery.",
+        "destructive_justification": "POST /leads/{leadId}/like records positive lead preference used by Leadbay workflows."
+      }
+    },
+    "leadbay_dislike_lead": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Marks a lead as disliked and removes it from the active prospecting path.",
+        "open_world_justification": "Updates disliked state for one lead in the customer's private Leadbay api-us or api-fr workspace and does not notify third parties.",
+        "destructive_justification": "POST /leads/{leadId}/dislike records negative lead preference and removes the lead from active prospecting surfaces."
+      }
+    },
+    "leadbay_set_lead_status": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Sets org-wide CRM status and optional status date for one or more Leadbay leads.",
+        "open_world_justification": "Writes lead status values in the customer's private Leadbay api-us or api-fr workspace, without sending status changes to external CRM, email, or public systems.",
+        "destructive_justification": "POST /leads/{leadId}/set_status overwrites the org-wide CRM status, and POST /leads/{leadId}/set_status_date overwrites the status date when supplied."
+      }
+    },
+    "leadbay_create_campaign": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Creates a Leadbay campaign, optionally seeded with lead ids.",
+        "open_world_justification": "Creates campaign state inside the customer's private Leadbay api-us or api-fr workspace and does not post the campaign or email its membership externally.",
+        "destructive_justification": "POST /campaigns creates a durable campaign record and can attach the supplied seed leads at creation time."
+      }
+    },
+    "leadbay_add_leads_to_campaign": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Adds selected Leadbay leads to an existing campaign.",
+        "open_world_justification": "Updates campaign membership in the customer's private Leadbay api-us or api-fr workspace, with no public sharing or email notification.",
+        "destructive_justification": "POST /campaigns/{id}/leads persists new campaign membership for the supplied lead ids, changing how that campaign is used."
+      }
+    },
+    "leadbay_remove_leads_from_campaign": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Removes selected leads from a Leadbay campaign.",
+        "open_world_justification": "Changes campaign membership in the customer's private Leadbay api-us or api-fr workspace and sends no campaign data to outside systems.",
+        "destructive_justification": "DELETE /campaigns/{id}/leads removes the supplied lead ids from that campaign's saved membership."
+      }
+    },
+    "leadbay_extend_lens": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Requests an additive extra-refill job for a lens after quota and preview checks.",
+        "open_world_justification": "Calls the customer's private Leadbay api-us or api-fr workspace to preview and possibly queue additional leads for a lens, keeping refill results inside the account.",
+        "destructive_justification": "POST /lenses/{id}/extra_refill queues an additive refill job that expands the lens's candidate lead pool."
+      }
+    },
+    "leadbay_my_lenses": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Lists lenses and can switch the active lens, edit lens metadata, or delete a lens when parameters request it.",
+        "open_world_justification": "Reads and writes lens state in the customer's private Leadbay api-us or api-fr workspace, with lens definitions never published to a public URL or emailed externally.",
+        "destructive_justification": "With confirm: true, DELETE /lenses/{id} permanently removes the selected non-default lens and its saved audience filter; other modes use POST /lenses/{id} for metadata edits or POST /lenses/{id}/update_last_requested for active-lens switching."
+      }
+    },
+    "leadbay_new_lens": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Previews a new lens by default and, when confirm is true, creates the lens and applies sector, size, and geography criteria.",
+        "open_world_justification": "Creates the new lens inside the customer's private Leadbay api-us or api-fr workspace only, without posting, publishing, or emailing the audience definition outside Leadbay.",
+        "destructive_justification": "After confirm: true, POST /lenses creates a new lens and POST /lenses/{id}/filter applies its audience criteria, with rollback deletion only if the filter write fails."
+      }
+    },
+    "leadbay_enrich_contacts": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Reveals contact details for a chosen lead by launching a paid enrichment against the user's Leadbay account.",
+        "open_world_justification": "Sends the contact to Leadbay's enrichment provider through the user's own private workspace; the revealed details land on that account and are not published or emailed anywhere.",
+        "destructive_justification": "Consumes enrichment quota, which is not refundable, and writes the revealed email or phone onto the contact record; it removes nothing."
+      }
+    },
+    "leadbay_set_telemetry": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads or changes the account's product-usage telemetry preference, depending on whether the action argument is status, enable or disable.",
+        "open_world_justification": "Writes a single preference flag on the user's own Leadbay account; it sends nothing to a public destination or third party.",
+        "destructive_justification": "Flips one opt-in flag that the user can flip back at any time; no lead, contact or account data is altered."
+      }
+    }
+  },
+  "test_cases": [
+    {
+      "description": "Pull the day's fresh, AI-scored prospects — the app's core daily workflow.",
+      "user_prompt": "Show me today's leads.",
+      "file_attachment_urls": null,
+      "tools_triggered": "leadbay_pull_leads",
+      "expected_output": "A ranked list of the account's fresh prospects with a fit score, a short why-it-fits rationale, and the recommended contact for each.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Look a company up by name and summarise what the account already knows about it.",
+      "user_prompt": "Tell me what we know about the top company in that batch.",
+      "file_attachment_urls": null,
+      "tools_triggered": "leadbay_research_lead_by_name_fuzzy",
+      "expected_output": "A single company card: qualification signals and score, contacts with titles, recent web findings, and prior notes or activity if any exist.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Draft outreach for a named lead. Verifies the app drafts but never sends.",
+      "user_prompt": "Draft me a personalised outreach email for that company.",
+      "file_attachment_urls": null,
+      "tools_triggered": "leadbay_prepare_outreach",
+      "expected_output": "An outreach package: the recommended contact, the angle to lead with, and two or three draft variants. Nothing is sent — the user copies or edits the draft themselves.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Plan in-person visits for a trip to a city, mixing existing accounts with new prospects.",
+      "user_prompt": "I'm visiting Paris next week — which leads should I go and see?",
+      "file_attachment_urls": null,
+      "tools_triggered": "leadbay_tour_plan",
+      "expected_output": "A city-scoped visit list mixing existing customers, already-qualified leads and fresh prospects, each with a mode badge, a one-line reason to go, and the contact to ask for. If the account holds no known accounts in that city, the app says so rather than padding the list.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Log outreach the user actually performed. Exercises a write path with the app's verification requirement.",
+      "user_prompt": "I just emailed their VP of Sales — log that against the company.",
+      "file_attachment_urls": null,
+      "tools_triggered": "leadbay_report_outreach",
+      "expected_output": "Confirmation that the activity was recorded on the lead, carrying the verification reference the user supplied. The app asks for verification rather than logging an unconfirmed send.",
+      "expected_output_url": null
+    }
+  ],
+  "negative_test_cases": [
+    {
+      "description": "General web or market research is out of scope — the app only works the user's own pipeline.",
+      "user_prompt": "Research the latest news about Apple stock and summarise analyst reactions.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked. This is open-web market research, not a lookup against the user's Leadbay pipeline.",
+      "expected_output_url": null
+    },
+    {
+      "description": "The app drafts and logs outreach but never sends mail. A send request must not route here.",
+      "user_prompt": "Send this email to jane@example.com from my Gmail account.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked. It has no send capability — it prepares drafts and records outreach the user reports having sent.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Other CRMs are out of scope. Only Leadbay records are readable or writable.",
+      "user_prompt": "Update my Salesforce opportunity stage for Acme to Closed Won.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked. It can only change records in the user's Leadbay workspace, not in Salesforce.",
+      "expected_output_url": null
+    }
+  ]
+}
