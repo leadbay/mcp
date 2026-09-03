@@ -12,9 +12,9 @@ annotations:
 ---
 Retrieve the current **status/progress** of a lead import, and its leadIds once it finishes. Pass the `importIds` the launch returned — `leadbay_import_leads` returns `importIds`, `leadbay_import_and_qualify` returns `import_ids`. These are the backend's own import ids, so they resolve from a later message, a later conversation, or the next day; nothing is stored on the MCP side. Also pass the `dry_run` the import was launched with, so completion is judged against the right phase (a dry run finishes at preprocess, a real import at processing). This status call performs a single refresh pass and never polls in a loop.
 
-{{include:headers/tool-when-to-use}} after an async import (`leadbay_import_leads` OR `leadbay_import_and_qualify` with `wait_for_completion:false`) returns `{status:'running', importIds}`, poll with those `importIds`; OR to check whether a finished import is still processing. This tool does NOT surface the leads Leadbay adds later for pending-crawl (`uncrawled`) rows — those populate in the user's Leadbay account as the crawl completes; no tool here fetches them on demand (re-run the import to pull them back through the MCP).
+{{include:headers/tool-when-to-use}} after an async import returns its ids — `leadbay_import_leads` as `{status:'running', importIds}`, `leadbay_import_and_qualify` as `import_ids` — poll with those; OR to check whether a finished import is still processing. This tool does NOT surface the leads Leadbay adds later for pending-crawl (`uncrawled`) rows — those populate in the user's Leadbay account as the crawl completes; no tool here fetches them on demand (re-run the import to pull them back through the MCP).
 
-{{include:headers/tool-when-not-to-use}} for the qualification half — use leadbay_qualify_status with the `notification_id` the launch returned; or when you still want the legacy blocking behavior from leadbay_import_leads with `wait_for_completion=true`.
+{{include:headers/tool-when-not-to-use}} for the qualification half — use leadbay_qualify_status, with the `lead_ids` + `lens_id` an `leadbay_import_and_qualify` launch returned (it has no qualification `notification_id`; its `notification_ids[]` are these same file imports); or when you still want the legacy blocking behavior from leadbay_import_leads with `wait_for_completion=true`.
 
 ---
 
