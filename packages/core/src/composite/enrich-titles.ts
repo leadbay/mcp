@@ -97,7 +97,7 @@ async function launchOnSelection(
         `An identical enrichment was launched ${already.seconds_since}s ago; this call did NOT spend quota again. ` +
         "Poll the original job rather than relaunching.",
       next_action:
-        "Poll leadbay_bulk_enrich_status({notification_id, lead_ids, include_contacts: true}) until all_done, or until overall_progress.done holds steady across spaced polls (~15-30s apart) — unresolvable contacts never flip. Then report what landed and name what didn't.",
+        "Poll leadbay_bulk_enrich_status({notification_id, lead_ids, titles, email, phone, include_contacts: true}) until all_done, or until overall_progress.done holds steady across spaced polls (~15-30s apart) — unresolvable contacts never flip. Pass titles/email/phone every time: they scope counting to the roles and channel THIS run asked for, so a contact enriched earlier cannot report the run as finished. Then report what landed and name what didn't.",
     };
   }
 
@@ -146,14 +146,14 @@ async function launchOnSelection(
     launched_at: remembered.launched_at,
     message: notificationId
       ? "Enrichment job launched (runs async). Unless the user asked NOT to wait, do NOT end your turn here — poll " +
-        "leadbay_bulk_enrich_status({notification_id, lead_ids}) until all_done OR until progress plateaus " +
+        "leadbay_bulk_enrich_status({notification_id, lead_ids, titles, email, phone}) until all_done OR until progress plateaus " +
         "(overall_progress.done stops climbing across spaced polls — unresolvable contacts keep all_done:false forever), " +
         "then report the finished contacts yourself. The notification_id keeps working across conversations and days; " +
         "completion also surfaces via _meta.notifications / leadbay_account_status.notifications."
       : "Enrichment job launched, but the backend returned no notification_id, so there is no job id to poll. " +
         "Poll leadbay_bulk_enrich_status({lead_ids, titles, email, phone}) instead — it answers per lead without a job id.",
     next_action: notificationId
-      ? "Unless the user explicitly asked NOT to wait, poll leadbay_bulk_enrich_status({notification_id, lead_ids, include_contacts: true}) until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15-30s apart, ~90s-2min elapsed; don't call a plateau from the first back-to-back reads, and not while partial_failures is present — that's transient, respect retry_after). Then report the resolved enrichment in THIS turn, naming what landed and what didn't. If the user DID ask not to wait, hand back the notification_id — it resolves later from any conversation."
+      ? "Unless the user explicitly asked NOT to wait, poll leadbay_bulk_enrich_status({notification_id, lead_ids, titles, email, phone, include_contacts: true}) until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15-30s apart, ~90s-2min elapsed; don't call a plateau from the first back-to-back reads, and not while partial_failures is present — that's transient, respect retry_after). Carry titles/email/phone on every poll — they scope counting to the roles and channel THIS run asked for, and without them a contact enriched months ago counts as done and all_done flips true before anything landed. Then report the resolved enrichment in THIS turn, naming what landed and what didn't. If the user DID ask not to wait, hand back the notification_id — it resolves later from any conversation."
       : "Poll leadbay_bulk_enrich_status({lead_ids, titles, email, phone, include_contacts: true}) every ~30s. It scopes counting to these titles and treats a contact as done only when the REQUESTED channel landed, so you do not have to do that yourself. Stop once overall_progress.done stops growing across a couple of spaced re-checks (~90s-2min) — unresolvable contacts never flip.",
   };
 }

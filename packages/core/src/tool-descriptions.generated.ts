@@ -2044,7 +2044,7 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 // endregion: leadbay_import_leads
 
 // region: leadbay_import_status
-export const leadbay_import_status: string = `Retrieve the current **status/progress** of a lead import. Pass the \`importIds\` the launch returned — \`leadbay_import_leads\` returns \`importIds\`, \`leadbay_import_and_qualify\` returns \`import_ids\`. These are the backend's own import ids, so they resolve from a later message, a later conversation, or the next day; nothing is stored on the MCP side. Also pass the \`dry_run\` the import was launched with, so completion is judged against the right phase (a dry run finishes at preprocess, a real import at processing). This status call performs a single refresh pass and never polls in a loop.
+export const leadbay_import_status: string = `Retrieve the current **status/progress** of a lead import, and its leadIds once it finishes. Pass the \`importIds\` the launch returned — \`leadbay_import_leads\` returns \`importIds\`, \`leadbay_import_and_qualify\` returns \`import_ids\`. These are the backend's own import ids, so they resolve from a later message, a later conversation, or the next day; nothing is stored on the MCP side. Also pass the \`dry_run\` the import was launched with, so completion is judged against the right phase (a dry run finishes at preprocess, a real import at processing). This status call performs a single refresh pass and never polls in a loop.
 
 WHEN TO USE: after an async import (\`leadbay_import_leads\` OR \`leadbay_import_and_qualify\` with \`wait_for_completion:false\`) returns \`{status:'running', importIds}\`, poll with those \`importIds\`; OR to check whether a finished import is still processing. This tool does NOT surface the leads Leadbay adds later for pending-crawl (\`uncrawled\`) rows — those populate in the user's Leadbay account as the crawl completes; no tool here fetches them on demand (re-run the import to pull them back through the MCP).
 
@@ -2068,12 +2068,13 @@ After the status line, propose the obvious refresh / progress-check / recovery a
 
 Specifically for import status:
 
-This tool returns \`status\`, \`importIds\`, and \`progress\` ({phase, records_processed, records_total}). It reports the backend's phase and record counts; it does not re-reconcile records or return refreshed leads. **Render only from the fields actually present; never invent counts.**
+This tool returns \`status\`, \`importIds\`, and \`progress\` ({phase, records_processed, records_total}). Once every named import is \`complete\` and it wasn't a dry run, it also reconciles the wizard's records and carries \`result\` ({leads, not_imported, importIds, still_settling?}) — that is how you recover the leadIds of an import you stopped watching, without re-importing. \`result.still_settling\` counts rows the wizard hasn't finished placing; they are neither imported nor failed, so poll again rather than reporting them. If \`result\` is absent on a \`complete\` import the records weren't readable — report completion without inventing counts. **Render only from the fields actually present; never invent counts.**
 
 Caveat on \`progress\`: \`records_processed\` counts only the rows that MATCHED an existing lead (backend \`imported_records\`), not every row that finished processing — so for a complete import whose rows are mostly/all \`uncrawled\` (pending crawl), \`records_processed\` is legitimately low or 0. Never read a low \`records_processed\` on a \`complete\` import as "stuck" or "failed": once \`status:"complete"\`, processing is done; the pending-crawl rows just matched no existing lead yet.
 
-- Running → \`"⏳ Import still running — phase <phase>; check back in ~M minutes."\` (use the phase; don't turn the matched-count into an "X/Y processed" progress bar).
-- Complete, **no \`result\`** (the usual \`importIds\` status check) → \`"✓ Import complete."\` Do NOT append a \`records_processed/records_total\` fraction (it undercounts pending-crawl rows and looks stuck) and do NOT report pending-crawl / need-attention bucket counts — the row-level \`not_imported\` breakdown isn't in this response.
+- Running → \`"⏳ Import still running — phase <phase>; check back in ~M minutes."\` (use the phase; don't turn the matched-count into an "X/Y processed" progress bar). \`phase:"committing"\` means the mappings are still being committed — say it's still being committed, never that it failed or finished empty.
+- Complete, **no \`result\`** → \`"✓ Import complete."\` Do NOT append a \`records_processed/records_total\` fraction (it undercounts pending-crawl rows and looks stuck) and do NOT report pending-crawl / need-attention bucket counts — the row-level \`not_imported\` breakdown isn't in this response.
+- Complete with \`result.still_settling > 0\` → say \`"✓ Import complete — N imported, S rows still being placed."\` Never count \`still_settling\` rows as failures.
 - Complete, **\`result\` present AND it was a dry run** (\`result.dry_run:true\`, or every \`result.not_imported\` row has \`reason:"dry_run"\`) → this resolved handle was a VALIDATION pass, nothing committed. Render \`"🔎 Dry run complete — V rows validated, nothing imported. Re-run without dry_run to commit."\` — do NOT render it as a real import completion or use the pending/attention buckets.
 - Complete, **\`result\` present** (async handle resolved, real import) → then, and only then, partition \`result.not_imported\` as in the shared import-result render block below — \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` where **pending crawl** is \`uncrawled\` rows that HAVE a \`domain\` (not failures) and no-\`domain\` \`uncrawled\` rows fall under need-attention. Drop any zero segment.
 - Error / failed → \`"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."\` — reserve this ONLY for a true transport/backend error on the import itself, never for \`uncrawled\` rows.
@@ -2097,9 +2098,10 @@ How the OTHER reasons map to the "Need attention" bucket (see the render block a
 
 | Observation                          | Suggest                                              | Calls                          |
 |--------------------------------------|------------------------------------------------------|--------------------------------|
+| Status: complete, \`result.leads\` present | "Qualify the imported leads"                     | leadbay_bulk_qualify_leads(result.leads[].leadId) |
 | Status: complete                     | "See the imported (matched) leads"                   | leadbay_pull_leads             |
 | Pending-crawl (\`uncrawled\`) rows     | "Re-run the import for those domains later, once Leadbay has crawled them" | leadbay_import_leads (re-run with just the uncrawled domains, later — they re-reconcile once crawled). The added leads otherwise populate in the user's Leadbay account as the crawl completes; no live-fetch here |
-| Status: running                      | "Check again in N minutes"                           | leadbay_import_status — re-call|
+| Status: running (incl. \`committing\`) | "Check again in N minutes"                           | leadbay_import_status — re-call (pass \`dry_run:true\` if the ids came from a dry run) |
 | Status: error / failed (true error)  | "Diagnose the failure"                               | leadbay_resolve_import_rows    |
 `;
 // endregion: leadbay_import_status
