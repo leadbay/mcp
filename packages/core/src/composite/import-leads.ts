@@ -1124,7 +1124,12 @@ async function completeUploadedChunk(
   totalDeadline: number,
   ctx: ToolContext | undefined,
   signal: AbortSignal | undefined,
-  onNotificationId?: (id: string) => void
+  onNotificationId?: (id: string) => void,
+  // Fires the moment the mapping commit has gone out. A caller recovering from
+  // a throw needs to KNOW whether this chunk was committed, not infer it from
+  // the error: a transport blip inside pollPreprocess and one inside pollProcess
+  // are the same error type on opposite sides of the commit.
+  onCommitSent?: () => void
 ): Promise<ChunkRunOutput> {
   const { importId, chunk } = upload;
   const phaseBudget = Math.min(perPhaseBudgetMs, Math.max(1, totalDeadline - Date.now()));
@@ -1137,6 +1142,7 @@ async function completeUploadedChunk(
   }
 
   const importNotificationId = await commitMappings(client, importId, mappings, ctx);
+  onCommitSent?.();
   if (importNotificationId) {
     onNotificationId?.(importNotificationId);
     ctx?.logger?.info?.(
@@ -1956,13 +1962,16 @@ async function runImportInBackground(
       const notificationIds: string[] = [];
       const matched = new Map<number, MatchEntry>();
       const notImported = new Map<number, NotImportedEntry>();
-      // Which chunk the loop is on. Everything from here on is uploaded but
-      // has not had its mappings committed yet — see the catch.
+      // Which chunk the loop is on, and whether its mapping commit went out.
+      // Everything from `inFlight` on is uploaded; whether `inFlight` ITSELF is
+      // still uncommitted is what `committed` answers — see the catch.
       let inFlight = 0;
+      let committed = false;
       try {
         const totalDeadline = Date.now() + opts.totalBudget;
         for (inFlight = 0; inFlight < uploadedChunks.length; inFlight++) {
           const upload = uploadedChunks[inFlight];
+          committed = false;
           const out = await completeUploadedChunk(
             client,
             upload,
@@ -1971,7 +1980,11 @@ async function runImportInBackground(
             opts.perPhaseBudget,
             totalDeadline,
             bgCtx,
-            undefined
+            undefined,
+            undefined,
+            () => {
+              committed = true;
+            }
           );
           if (out.notification_id && !notificationIds.includes(out.notification_id)) {
             notificationIds.push(out.notification_id);
@@ -2000,16 +2013,15 @@ async function runImportInBackground(
         // import finished that committed nothing. Hand every un-committed
         // chunk to the same detached finisher the blocking path uses.
         //
-        // The chunk that threw is un-committed only when PREPROCESS timed out;
-        // the commit is sent immediately after preprocess, so a later-phase
-        // error means it already went out and re-sending it would re-trigger
-        // processing. Every chunk AFTER the thrower is un-committed whatever
-        // the error, because the loop never reached it.
+        // Whether the chunk that THREW is un-committed is answered by
+        // `committed`, not by the error type: a preprocess budget timeout, a
+        // backend `pre_processing.error` and a transport blip mid-poll all
+        // leave it uncommitted, while the same transport blip one phase later
+        // does not — and re-sending a commit that already went out would
+        // re-trigger processing. Every chunk AFTER the thrower is un-committed
+        // whatever the error, because the loop never reached it.
         if (!opts.dryRun) {
-          const parkedFrom =
-            err instanceof ImportPhaseTimeout && err.phase === "preprocess"
-              ? inFlight
-              : inFlight + 1;
+          const parkedFrom = committed ? inFlight + 1 : inFlight;
           for (const parked of uploadedChunks.slice(parkedFrom)) {
             resumeParkedUpload(client, parked, prep.mappings, bgCtx);
           }

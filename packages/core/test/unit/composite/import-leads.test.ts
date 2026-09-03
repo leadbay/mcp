@@ -359,6 +359,10 @@ describe("leadbay_import_leads — preflight + edge cases", () => {
     expect(requestsAtReturn).toHaveLength(2);
     expect(requestsAtReturn[0]).toBe("GET /1.6/users/me");
     expect(requestsAtReturn[1]).toContain("POST /1.6/imports?file_name=");
+
+    // Let the detached background half finish against the scripts above. Without
+    // this it outlives the test, and its calls land in the NEXT test's mock.
+    await new Promise((r) => setTimeout(r, 3_000));
   });
 });
 

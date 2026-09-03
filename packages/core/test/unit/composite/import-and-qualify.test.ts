@@ -161,6 +161,10 @@ describe("leadbay_import_and_qualify — async import handle", () => {
       "GET /1.6/users/me",
       expect.stringContaining("POST /1.6/imports?file_name="),
     ]);
+
+    // Let the detached background half finish against the scripts above. Without
+    // this it outlives the test, and its calls land in the NEXT test's mock.
+    await new Promise((r) => setTimeout(r, 3_000));
   });
 });
 

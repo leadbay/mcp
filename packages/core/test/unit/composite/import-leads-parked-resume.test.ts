@@ -97,6 +97,82 @@ describe("background import — a parked upload is resumed", () => {
     expect(commits()).toHaveLength(1);
   });
 
+  it("resumes when preprocess fails for a reason other than the budget", async () => {
+    // A transport blip mid-poll is not an ImportPhaseTimeout, but it leaves the
+    // chunk exactly as parked. Keying the recovery off the error type missed it.
+    mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 200, body: ME },
+      {
+        method: "POST",
+        path: /^\/1\.6\/imports\?file_name=/,
+        status: 200,
+        body: row(false),
+      },
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 503, body: { message: "upstream" } },
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: row(true) },
+      {
+        method: "POST",
+        path: `/1.6/imports/${IMPORT_ID}/update_mappings`,
+        status: 200,
+        body: { id: IMPORT_ID },
+      },
+    ]);
+
+    await importLeads.execute(
+      newClient(),
+      { domains: [{ domain: "acme.com" }], wait_for_completion: false },
+      {}
+    );
+
+    await settle();
+    await settle();
+
+    expect(commits()).toHaveLength(1);
+  });
+
+  it("never re-sends a commit that already went out", async () => {
+    // Preprocess lands, the commit goes out, then the PROCESS poll runs out of
+    // budget. The chunk is committed; re-sending it would re-trigger processing.
+    mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 200, body: ME },
+      {
+        method: "POST",
+        path: /^\/1\.6\/imports\?file_name=/,
+        status: 200,
+        body: row(false),
+      },
+      { method: "GET", path: `/1.6/imports/${IMPORT_ID}`, status: 200, body: row(true) },
+      {
+        method: "POST",
+        path: `/1.6/imports/${IMPORT_ID}/update_mappings`,
+        status: 200,
+        body: { id: IMPORT_ID },
+      },
+      // pollProcess: `processing` never finishes, and the budget is already spent.
+      {
+        method: "GET",
+        path: `/1.6/imports/${IMPORT_ID}`,
+        status: 200,
+        body: { ...row(true), processing: { finished: false, progress: 0, error: null } },
+      },
+    ]);
+
+    await importLeads.execute(
+      newClient(),
+      {
+        domains: [{ domain: "acme.com" }],
+        wait_for_completion: false,
+        per_phase_budget_ms: 0,
+      },
+      {}
+    );
+
+    await settle();
+    await settle();
+
+    expect(commits()).toHaveLength(1);
+  });
+
   it("does NOT resume a dry run — committing it would make it a real import", async () => {
     mockHttp([
       { method: "GET", path: "/1.6/users/me", status: 200, body: ME },
