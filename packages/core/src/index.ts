@@ -8,10 +8,11 @@ export {
   REGIONS,
   API_VERSION,
   API_PREFIX,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  runWithRequestSignal,
 } from "./client.js";
 export type { CreateClientConfig, TasteProfileResult } from "./client.js";
 export * from "./types.js";
-export * from "./agent-memory/index.js";
 export { COMPOSITE_FILE_TOOL_NAMES } from "./composite/_composite-file-names.js";
 export * from "./notifications/index.js";
 
@@ -46,9 +47,6 @@ import { getEnrichmentJobTitles } from "./tools/get-enrichment-job-titles.js";
 import { listMappableFields } from "./tools/list-mappable-fields.js";
 import { createTopupLink } from "./tools/create-topup-link.js";
 import { openBillingPortal } from "./tools/open-billing-portal.js";
-import { agentMemoryRecall } from "./tools/agent-memory-recall.js";
-import { agentMemoryCapture } from "./tools/agent-memory-capture.js";
-import { agentMemoryReview } from "./tools/agent-memory-review.js";
 import { acknowledgeNotification } from "./tools/acknowledge-notification.js";
 
 // New write tools (autoplan §E5) — gated behind LEADBAY_MCP_WRITE=1 in MCP
@@ -173,7 +171,6 @@ export {
   getSelectionIds, getEnrichmentJobTitles,
   listMappableFields,
   createTopupLink, openBillingPortal,
-  agentMemoryRecall, agentMemoryCapture, agentMemoryReview,
   acknowledgeNotification,
   // new granular writes
   selectLeads, deselectLeads, clearSelection, setActiveLens, createLens,
@@ -205,14 +202,6 @@ export {
 
 // ─── Tool catalogues ─────────────────────────────────────────────────────
 
-// Agent memory tools are always exposed: local-file recall/capture/review is
-// part of the agent protocol, not an advanced backend API surface.
-export const agentMemoryTools: Tool[] = [
-  agentMemoryRecall,
-  agentMemoryCapture,
-  agentMemoryReview,
-];
-
 // Granular reads (advanced — gated by LEADBAY_MCP_ADVANCED=1 in MCP).
 export const granularReadTools: Tool[] = [
   listLenses,
@@ -242,7 +231,6 @@ export const granularReadTools: Tool[] = [
 // AND LEADBAY_MCP_WRITE=1 in MCP).
 export const granularWriteTools: Tool[] = [
   qualifyLead,
-  enrichContacts,
   addNote,
   selectLeads,
   deselectLeads,
@@ -271,7 +259,6 @@ export const granularWriteTools: Tool[] = [
 // includes login + reads + writes for OpenClaw which always exposes everything.
 export const granularTools: Tool[] = [
   login,
-  ...agentMemoryTools,
   ...granularReadTools,
   ...granularWriteTools,
 ];
@@ -437,6 +424,12 @@ export const compositeWriteTools: Tool[] = [
   pinContact,
   unpinContact,
   updateContact,
+  // enrichContacts is granular-shaped (one POST per contact) but registered
+  // HERE, not in granularWriteTools: it is the only tool that enriches ONE
+  // chosen person (leadId + contactId) rather than a job title, and hosted
+  // never sets LEADBAY_MCP_ADVANCED, so behind that gate no hosted agent could
+  // act on a person it had already identified (product#4050).
+  enrichContacts,
   // createCustomField is granular-shaped but file-import prompts depend on it
   // to preserve source-system links without requiring advanced-tool exposure.
   createCustomField,
@@ -489,3 +482,8 @@ export const compositeTools: Tool[] = [
 ];
 
 export const tools: Tool[] = [...compositeTools, ...granularTools];
+
+// Descriptions with the {{commerce}} blocks deleted, emitted by promptforge for
+// the templates that carry the marker. The MCP server swaps these in on a
+// surface that may not promote a purchase; nothing is reworded.
+export { NO_COMMERCE_TOOL_DESCRIPTIONS } from "./tool-descriptions.generated.js";

@@ -6,9 +6,11 @@
 
 // region: leadbay_build_campaign
 export const leadbay_build_campaign: string = `
-## MEMORY
+## WHAT LEADBAY SHOULD REMEMBER
 
-Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
+
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
 
 
 Build me a Leadbay campaign from scratch{{arg:campaign_name_paren}} — a cohort of **{{arg:count_or_default}}** fully-actionable leads: each in-ICP, high \`ai_agent_lead_score\`, AND with a reachable buyer contact. {{arg:audience_block}} {{arg:job_titles_block}}
@@ -206,9 +208,11 @@ Building a campaign is NOT outreaching — do not send anything and do not call 
 
 // region: leadbay_daily_check_in
 export const leadbay_daily_check_in: string = `
-## MEMORY
+## WHAT LEADBAY SHOULD REMEMBER
 
-Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
+
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
 
 
 Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask focused on NEW leads from the Discover wishlist: "get me leadbay leads", "best NEW leads to prospect today", "what's new today", "show me my batch", "let's prospect", "run my morning check-in", "my daily routine", "I do this every day", "every morning". For follow-up phrasings ("what should I follow up on", "leads I've already worked", "before my trip"), this is the wrong prompt — route to \`leadbay_followup_check_in\` instead. **Recurrence language ("I do this every day", "every morning", "my routine") always means this prompt — it is a daily batch check-in, not a follow-up.** If the user's intent is ambiguous ("what should I work on?"), ASK once before picking an entry point.
@@ -463,9 +467,11 @@ Never list \`accepted_seeds\` to the user. They are internal — the user wants 
 
 // region: leadbay_followup_check_in
 export const leadbay_followup_check_in: string = `
-## MEMORY
+## WHAT LEADBAY SHOULD REMEMBER
 
-Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
+
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
 
 
 Run the Leadbay follow-up check-in for me. Treat this prompt the same way for any equivalent ask: "leads I should follow up with", "already known leads", "what's overdue", "before my trip to [city]", "leads I haven't contacted", "who should I re-engage today".
@@ -699,9 +705,11 @@ Do not propose a next action. Do not call any more tools. Hand control back to t
 
 // region: leadbay_getting_started
 export const leadbay_getting_started: string = `
-## MEMORY
+## WHAT LEADBAY SHOULD REMEMBER
 
-Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
+
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
 
 
 Walk me through Leadbay. Treat these the same way: "I'm new here", "how do I
@@ -1431,7 +1439,7 @@ Build the final mappings yourself. Start from \`leadbay_resolve_import_rows.mapp
 
 # PHASE 5 — QUALIFY (optional) + REPORT
 
-Prefer \`leadbay_import_and_qualify\` when the user asks to qualify/research after import; otherwise use \`leadbay_import_leads\`. For large files or short client timeouts, pass \`wait_for_completion=false\` and poll \`leadbay_import_status\`. After import, qualify only lead IDs returned by the import. Rows that came back \`uncrawled\` are pending a background crawl (not failures); the leads Leadbay adds for them populate in the user's Leadbay account as the crawl completes — tell the user that, not that a tool call will fetch them (\`import_status\` refreshes status/progress only; \`pull_leads\` reads the active lens, so an imported lead outside it may not appear; re-running the import later re-reconciles those companies).
+Prefer \`leadbay_import_and_qualify\` when the user asks to qualify/research after import; otherwise use \`leadbay_import_leads\`. For large files or short client timeouts, pass \`wait_for_completion=false\` and poll \`leadbay_import_status\`. After import, qualify only lead IDs returned by the import. Rows that came back \`uncrawled\` are pending a background crawl (not failures); the leads Leadbay adds for them populate in the user's Leadbay account as the crawl completes — tell the user that, not that a tool call will fetch them (\`import_status\` reports the rows the wizard already placed, not leads a later crawl adds; \`pull_leads\` reads the active lens, so an imported lead outside it may not appear; re-running the import later re-reconciles those companies).
 
 **Deliver the augmented file back to the user**: the original file plus a new \`LEADBAY_ID\` column populated from the resolution step. This is the second deliverable of a job well done.
 
@@ -1489,9 +1497,11 @@ Tell me the outreach was logged, name the verification.source used, and surface 
 
 // region: leadbay_new_leads
 export const leadbay_new_leads: string = `
-## MEMORY
+## WHAT LEADBAY SHOULD REMEMBER
 
-Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
+
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
 
 
 IRON LAW — NO FABRICATION. Every lead id, contact email, custom field id, mapping decision, and tool argument must trace to a value you read from the file the user attached or to an output from a leadbay_* tool call in this session. Do not invent values. Do not "fill in" a missing leadId with a name match. Do not synthesize a CRM id from a guess. If a value is missing, leave the field blank and say so.
@@ -1755,9 +1765,11 @@ Done. The map is the surface; the drafts are the action; the campaign is the per
 
 // region: leadbay_prospecting_overview
 export const leadbay_prospecting_overview: string = `
-## MEMORY
+## WHAT LEADBAY SHOULD REMEMBER
 
-Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
+
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
 
 
 # Leadbay Prospecting — Orientation
@@ -1900,7 +1912,7 @@ After reporting account state, you MAY propose a concrete next step — but only
 
 **Skip it when** there's no clear unfinished thread, the user only wanted the status (a bare "where do I stand?"), or the work they asked for is plainly done. A status read that ends cleanly is a complete answer — don't manufacture a next step just to have one.
 
-**Lean on memory.** Check the \`_meta.agent_memory.summary\` for prior signal on how this user reacts to next-step offers. If the memory shows they routinely dismiss them, default to NOT proposing (let them ask). If they routinely act on them, lean toward proposing. When the user dismisses or accepts a proposal this turn, that's a material signal — call \`leadbay_agent_memory_capture\` (\`source:"inferred"\`, low confidence) so the preference compounds across sessions.
+**Read the room.** If this user has been dismissing next-step offers, stop making them and let them ask. If they keep acting on them, keep offering. That is your own read of the conversation, not something Leadbay stores for you.
 
 **When you do propose, the proposal IS a native choice dialog — never a prose "let me know if…".** Route 2–4 mutually-exclusive next moves into your host's next-step widget (\`ask_user_input_v0\` on Claude chat / ChatGPT, \`AskUserQuestion\` on Claude cowork / Claude Code). The widget is the question; do not also list the same options as prose.
 
@@ -2153,9 +2165,11 @@ If the prompt's body and the tool's RENDERING appear to conflict, the tool's REN
 
 // region: leadbay_research_a_domain
 export const leadbay_research_a_domain: string = `
-## MEMORY
+## WHAT LEADBAY SHOULD REMEMBER
 
-Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
+
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
 
 
 IRON LAW — NO FABRICATION. Every lead id, contact email, custom field id, mapping decision, and tool argument must trace to a value you read from the file the user attached or to an output from a leadbay_* tool call in this session. Do not invent values. Do not "fill in" a missing leadId with a name match. Do not synthesize a CRM id from a guess. If a value is missing, leave the field blank and say so.
@@ -2170,10 +2184,17 @@ Research the company name or domain '{{arg:domain}}' for me using Leadbay.
 
 # PHASE 1 — RESOLVE + DEEP DIVE
 Call \`leadbay_research_lead_by_name_fuzzy\` with
-\`companyName:'{{arg:domain}}'\`. Omit \`lensId\`: the default search deliberately
-covers the user's visible Discover, Monitor, and Activate corpus, including
-other lenses and leads outside the active lens's first page. The composite
-resolves the lead and returns the full deep-research payload in one call.
+\`companyName:'{{arg:domain}}'\`. If the user gave a domain or a contact email
+anywhere in the conversation, also pass \`website\` (or \`email\`) — that is the
+match key that finds a company they do not own yet. Omit \`lensId\`: the default
+search covers the user's visible Discover, Monitor, and Activate corpus —
+including other lenses and leads outside the active lens's first page — and
+then the Leadbay company registry. The composite resolves the lead and returns
+the full deep-research payload in one call.
+
+If it returns \`{resolution:"ambiguous"}\`, several companies match. Ask the user
+which one via \`ask_user_input_v0\`, then call \`leadbay_research_lead_by_id\` with
+the leadId they pick.
 
 Render the result using the canonical single-record card layout — detect MODE A
 (Discovery) since the user asked to research a company rather than prepare
@@ -2250,10 +2271,14 @@ When the response carries \`social_urls\` (the post-fix multi-platform URL block
 
 
 # PHASE 2 — NOT FOUND
-If the resolver returns \`LEAD_NOT_FOUND\`, say that the existing visible corpus
-was searched. **Do NOT call \`leadbay_import_and_qualify\` automatically.** Offer
-to import and qualify the company as a separate, explicit next step; only call
-it after the user agrees.
+If the resolver returns \`LEAD_NOT_FOUND\`, read its hint: it names the field
+that would have found the company (\`would_help\`, usually \`website\`). **Ask the
+user for that field first** — "what's their website?" — and call the tool again
+with it. Only when they cannot supply it should you say both their leads and
+the Leadbay registry were searched.
+**Do NOT call \`leadbay_import_and_qualify\` automatically.**
+Offer to import and qualify as a separate, explicit next step; only call it
+after the user agrees.
 
 # PHASE 3 — SUMMARY
 Place a 2–3 sentence summary ABOVE the card with:
@@ -2372,9 +2397,11 @@ Done. The lens is live, the validated cohort is persisted as named campaigns, an
 
 // region: leadbay_top_accounts_to_activate
 export const leadbay_top_accounts_to_activate: string = `
-## MEMORY
+## WHAT LEADBAY SHOULD REMEMBER
 
-Before responding, glance at any \`_meta.agent_memory.summary\` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call \`leadbay_agent_memory_capture\` to persist it: \`source:"user_stated"\` if literal, \`source:"inferred"\` with confidence <=6 if inferred.
+You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
+
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
 
 
 Build me a **top-{{arg:count_or_default}} account-conquest plan** — the accounts worth activating, ranked, each one carrying a strategic motif, a phone pitch and a three-step checklist. {{arg:territory_block}}

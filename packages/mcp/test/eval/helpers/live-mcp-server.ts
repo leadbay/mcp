@@ -14,7 +14,6 @@ import {
   LeadbayClient,
   LocalBulkStore,
   NotificationsInbox,
-  agentMemoryTools,
   compositeReadTools,
   compositeWriteTools,
   granularReadTools,
@@ -125,7 +124,7 @@ async function main(): Promise<void> {
     // forbidden_calls assertion for it stayed vacuous. The agent could not have
     // called it either way, so the scenario claimed a protection it never
     // exercised.
-    const exposedCatalog = [...agentMemoryTools, ...compositeReadTools, ...compositeWriteTools];
+    const exposedCatalog = [...compositeReadTools, ...compositeWriteTools];
     const unexposedCatalog = [...granularReadTools, ...granularWriteTools];
     const armed = new Set<string>();
     for (const tool of exposedCatalog) {

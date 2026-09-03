@@ -35,6 +35,7 @@ If you use Claude on the web, Claude Desktop, or ChatGPT, the fastest path is a 
 
 - **Name:** `Leadbay`
 - **URL:** `https://mcp.leadbay.app/mcp`  — one URL for every region (`/fr/mcp` remains a compatibility alias)
+- **On ChatGPT, use `https://mcp.leadbay.app/chatgpt/mcp` instead.** Same server, same sign-in, same leads — but the assistant cannot generate a top-up link or open your billing page there, because the OpenAI app directory does not allow an app to sell credits. Buy credits or change your plan in your Leadbay account instead.
 
 In Claude: **Settings → Connectors → + → Add custom connector**, paste the URL, then open the connector and **Connect**. Sign in with Leadbay, click **Approve**, and you're linked. The server handles OAuth in-app; updates are automatic — you never touch a config file.
 
@@ -126,7 +127,8 @@ Every supported way to connect Leadbay MCP:
 
 | Method | Command / action | Platforms | Notes |
 |--------|------------------|-----------|-------|
-| **Hosted connector (no install)** | Add custom connector → `https://mcp.leadbay.app/mcp` (all regions) | Claude web / Desktop, ChatGPT | Browser OAuth in-app. Nothing to install; auto-updates. |
+| **Hosted connector (no install)** | Add custom connector → `https://mcp.leadbay.app/mcp` (all regions) | Claude web / Desktop | Browser OAuth in-app. Nothing to install; auto-updates. |
+| **Hosted connector — ChatGPT** | Add custom connector → `https://mcp.leadbay.app/chatgpt/mcp` | ChatGPT | Same server; the top-up and billing tools are not registered (OpenAI directory rule). |
 | **`.dxt` / `.mcpb` bundle** | Download from [Releases](https://github.com/leadbay/mcp/releases/latest), double-click → **Install** | Claude Desktop | One-click desktop extension. |
 | **Guided installer (GUI)** | `npx -y -p @leadbay/mcp@latest installer` | macOS, Windows, Linux | Browser wizard: sign in with Leadbay, pick clients. Works for everyone. |
 | **Local dev build** | `pnpm --filter @leadbay/mcp installer -- --local` | macOS, Windows, Linux | Registers clients against your local build. OAuth automatic. Build from source first (above). |
@@ -166,16 +168,6 @@ Opens the uninstall wizard — only shows clients that already have Leadbay MCP 
 ## Tools
 
 Your assistant calls these on your behalf — you never call them directly. You ask in plain language ("show me today's leads", "research acme.com", "log that I emailed Jane") and the agent picks the right tool. The default surface below is always exposed; the [full per-tool reference](https://docs.leadbay.ai/leadbay-mcp/tools-reference) lives in the user guide.
-
-### Always on — agent memory
-
-A local, per-account memory of your taste signals (preferred sectors, deal size, communication style). It never leaves your machine.
-
-| Tool | Description |
-|------|-------------|
-| `leadbay_agent_memory_recall` | Read the consolidated top taste signals |
-| `leadbay_agent_memory_capture` | Record a new learning after you reveal a preference |
-| `leadbay_agent_memory_review` | List entries; gate retractions / org promotion behind confirmation |
 
 ### Read-only (always on)
 
@@ -255,6 +247,7 @@ These take action on your account. Every action is one you could take yourself i
 |------|-------------|
 | `leadbay_bulk_qualify_leads` | Trigger AI qualification on a batch of leads |
 | `leadbay_enrich_titles` | Enrich contacts by job title |
+| `leadbay_enrich_contacts` | Enrich one specific person (email / phone) — the contact you name, not a job title |
 
 **Outreach & activity**
 
@@ -332,6 +325,7 @@ You can also manage lenses directly from chat: `leadbay_my_lenses` lists them an
 | `LEADBAY_MCP_WRITE` | No | Set to `0` to disable write tools (default: on since 0.3.0) |
 | `LEADBAY_MCP_ADVANCED` | No | Set to `1` to expose granular tools (default: off) |
 | `LEADBAY_BASE_URL` | No | Override API URL (for staging/dev) |
+| `LEADBAY_TIMEOUT_MS` | No | Backstop deadline for one outbound request, in ms (default: 600000) |
 
 The full environment-variable reference (telemetry, mock mode, logging, timeouts) is in [`packages/mcp/README.md`](packages/mcp/README.md#environment-variables).
 

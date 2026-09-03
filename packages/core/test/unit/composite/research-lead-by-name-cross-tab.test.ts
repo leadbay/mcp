@@ -133,24 +133,20 @@ describe("research_lead_by_name_fuzzy cross-tab resolution", () => {
     ).toBe(false);
   });
 
-  it("resolves a domain suggestion and falls back to the active lens only when the suggestion has no lens", async () => {
+  it("routes a bare-domain query through the registry, which shares suggest's id space", async () => {
+    // The domain IS the identity assertion, so it outranks the name typeahead.
+    // The resolver returns the same lead id suggest would have (verified on FR
+    // staging), so an owned lead still renders as its own research card.
     mockHttp([
       {
-        method: "GET",
-        path: "/1.6/search/suggest?q=monitor.example",
+        method: "POST",
+        path: "/1.6/leads/resolve",
         status: 200,
-        body: [
-          {
-            text: "monitor.example",
-            matchType: "DOMAIN",
-            companyName: "Monitor Only Incorporated",
-            leadId: "lead-domain",
-            inDiscover: false,
-            inMonitor: true,
-            inActivate: false,
-            lensId: null,
-          },
-        ],
+        body: {
+          type: "matched",
+          lead_id: "lead-domain",
+          matched_on: ["website_exact"],
+        },
       },
       {
         method: "GET",
@@ -162,11 +158,7 @@ describe("research_lead_by_name_fuzzy cross-tab resolution", () => {
           last_requested_lens: 42,
         },
       },
-      ...mockByIdSubResources(
-        "lead-domain",
-        42,
-        "Monitor Only Incorporated"
-      ),
+      ...mockByIdSubResources("lead-domain", 42, "Monitor Only Incorporated"),
     ]);
 
     const result: any = await researchLeadByNameFuzzy.execute(newClient(), {
@@ -175,9 +167,11 @@ describe("research_lead_by_name_fuzzy cross-tab resolution", () => {
 
     expect(result.firmographics.id).toBe("lead-domain");
     expect(result._meta.resolved_query).toBe("monitor.example");
-    expect(getHttpRequests()[0].path).toBe(
-      "/1.6/search/suggest?q=monitor.example"
-    );
+    expect(result._meta.resolved_from).toBe("resolver");
+    expect(getHttpRequests()[0].path).toBe("/1.6/leads/resolve");
+    expect(JSON.parse(getHttpRequests()[0].body ?? "{}")).toEqual({
+      website: "monitor.example",
+    });
   });
 
   it("treats an explicit lensId as a strict server-side search scope", async () => {
@@ -218,13 +212,19 @@ describe("research_lead_by_name_fuzzy cross-tab resolution", () => {
     ).toBe(false);
   });
 
-  it("reports a cross-tab miss without resolving or scanning an active lens", async () => {
+  it("falls through to the registry on a corpus miss, never to a lens scan", async () => {
     mockHttp([
       {
         method: "GET",
         path: "/1.6/search/suggest?q=Definitely%20Missing",
         status: 200,
         body: [],
+      },
+      {
+        method: "POST",
+        path: "/1.6/leads/resolve",
+        status: 200,
+        body: { type: "none", would_help: ["website", "registry_number"] },
       },
     ]);
 
@@ -234,8 +234,12 @@ describe("research_lead_by_name_fuzzy cross-tab resolution", () => {
       })
     ).rejects.toMatchObject({
       code: "LEAD_NOT_FOUND",
-      message: expect.stringContaining("visible Leadbay leads"),
+      message: expect.stringContaining("Leadbay company registry"),
+      hint: expect.stringContaining("website"),
     });
-    expect(getHttpRequests()).toHaveLength(1);
+    expect(getHttpRequests().map((r) => r.path)).toEqual([
+      "/1.6/search/suggest?q=Definitely%20Missing",
+      "/1.6/leads/resolve",
+    ]);
   });
 });

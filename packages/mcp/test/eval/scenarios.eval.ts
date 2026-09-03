@@ -49,7 +49,7 @@ import {
 import { getPrompt } from "../../src/prompts.js";
 
 import { buildServerInstructions } from "../../src/server.js";
-import { compositeReadTools, compositeWriteTools, agentMemoryTools } from "@leadbay/core";
+import { compositeReadTools, compositeWriteTools } from "@leadbay/core";
 
 const SCENARIOS_DIR = resolve(__dirname, "scenarios");
 const PROMPTFORGE_ROOT = resolve(__dirname, "../../../promptforge");
@@ -124,7 +124,7 @@ function discover(): Array<{ file: string; folder: string }> {
  */
 function buildSystemPrompt(promptName: string): string {
   const exposed = new Set<string>();
-  for (const t of [...agentMemoryTools, ...compositeReadTools, ...compositeWriteTools]) {
+  for (const t of [...compositeReadTools, ...compositeWriteTools]) {
     exposed.add(t.name);
   }
   const rendered = getPrompt(promptName, {});
@@ -237,13 +237,7 @@ describe.skipIf(missing.length > 0)("eval: live scenarios", () => {
           ...PROMPT_SETUP_CALLS,
           ...sc.mission.allowed_calls,
         ]);
-        // Memory traffic is protocol, not scope: the server instructions tell
-        // the agent to capture and recall signals on its own initiative. Match
-        // the real catalog rather than a guessed prefix.
-        const memoryNames = new Set(agentMemoryTools.map((t) => t.name));
-        const strays = [...new Set(called)].filter(
-          (n) => !permitted.has(n) && !memoryNames.has(n),
-        );
+        const strays = [...new Set(called)].filter((n) => !permitted.has(n));
         expect(
           strays,
           `tools fired outside required + allowed_calls: ${strays.join(", ")}`,

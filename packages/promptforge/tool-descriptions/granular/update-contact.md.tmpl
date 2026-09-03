@@ -3,8 +3,9 @@ name: leadbay_update_contact
 kind: tool-description
 short_description: |
   Edit an existing contact in place — change their title, LinkedIn, email,
-  phone, or name. Use when the user wants to fix or update a contact's
-  details. Don't use it to add a new contact or remove one.
+  phone, or name. Send only the fields you are changing; the rest keep their
+  values. Pass a field as null to erase it. Use when the user wants to fix or
+  update a contact's details. Don't use it to add a new contact or remove one.
 annotations:
   readOnlyHint: false
   destructiveHint: false
@@ -24,7 +25,9 @@ routing:
       route_to: leadbay_remove_contact
     - phrase: "get email/phone for a contact (enrichment)"
       route_to: leadbay_enrich_titles
-  prefer_when: "user wants to change details on an EXISTING contact — pass that contact's own `contact_id` plus first_name + last_name (required) and the fields to change"
+    - phrase: "fix an enriched contact's details"
+      route_to: leadbay_add_contact
+  prefer_when: "user wants to change details on a contact that is in their own directory (`source: \"org\"`) — pass its `contact_id`, first_name, last_name and only the fields being changed"
   examples:
     positive:
       - "Update Jane's title to SVP Engineering."
@@ -40,12 +43,42 @@ rendering_hint: |
 
 Edit an existing contact in place — change their `job_title`, `linkedin_page`, `email`, `phone_number`, or name.
 
-Pass the contact's **own** `contact_id` (the `id` field from `leadbay_research_lead_by_id` or a contacts list) — **not** the parent lead id.
+Pass the contact's **own** `contact_id` — **not** the parent lead id.
 
-**`first_name` + `last_name` are required even on an edit.** The backend validates the full contact identity and rejects a partial body (`invalid contact`). So pass the contact's *current* first/last name even when you're only changing the title — read the current values via `leadbay_research_lead_by_id` first if you don't have them.
+**Only your organization's own directory contacts can be edited.** Leadbay holds contacts in two separate id namespaces and this endpoint resolves one of them:
 
-Backend: `POST /contacts/{contact_id}/update` (snake_case body) → 200 with the updated contact. Edits in place (same id). Camel-case bodies are rejected.
+| `source` on the contact | What it is | Editable here |
+|---|---|---|
+| `"org"` | A row in your organization's contact directory — added by you or your team, or promoted from an import | **yes** |
+| `"paid"` | An enrichment result bought from a data provider | **no** — returns `NOT_FOUND` / 404 |
 
-Returns `{ updated: true, contact_id, contact: { id, first_name, last_name, job_title, linkedin_page, email, phone_number } }`.
+`leadbay_research_lead_by_id` returns both, merged into `contacts.reachable` / `contacts.candidates` and split by whether the person is messagable right now — **not** by which namespace they came from. So read `source` on the contact before calling this. If it is `"paid"` and the user wants different details on record, add the corrected person with `leadbay_add_contact` instead; the enrichment row is a provider's answer and is not ours to edit.
+
+A 404 from this tool almost always means a `"paid"` id was passed. Re-read the contact, check `source`, and do not retry the same id.
+
+## Omitting a field keeps it. Erasing one takes an explicit `null`.
+
+Send only what you are changing. Any field you leave out keeps its current value — you do NOT need to read the contact first and echo everything back.
+
+```
+{ contact_id, first_name, last_name, job_title: "CEO" }
+→ title becomes CEO. email, phone and LinkedIn are untouched.
+```
+
+**To erase a field, pass it as `null`.** Because erasing rewrites the whole record, that call must carry ALL of `job_title`, `linkedin_page`, `email`, `phone_number` — current value for the ones to keep, `null` for the ones to erase. If any are missing the call is refused with `CONTACT_CLEAR_NEEDS_FULL_RECORD` rather than deleting them; read the contact with `leadbay_research_lead_by_id` and re-call.
+
+```
+{ contact_id, first_name, last_name, email: null,
+  job_title: "CEO", phone_number: "+33…", linkedin_page: "https://…" }
+→ email erased, everything else as given.
+```
+
+`first_name` + `last_name` are required on every call. The backend validates the contact's identity and rejects a body without them (`invalid contact`), so pass the current values when you are not changing the name.
+
+The result tells you which happened: `mode` is `merge` or `replace`, `preserved` lists the fields left untouched, `cleared` lists the fields erased. **Check `cleared` is what you intended.**
+
+Backend: `POST /contacts/{contact_id}/merge` when nothing is being erased, `POST /contacts/{contact_id}/update` when something is. Snake_case body; camel-case is rejected. Edits in place (same id).
+
+Returns `{ updated: true, contact_id, mode, preserved, cleared, contact: { id, first_name, last_name, job_title, linkedin_page, email, phone_number } }`.
 
 Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw).

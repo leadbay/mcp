@@ -9,8 +9,10 @@
 // Endpoints:
 //   POST /mcp                  Streamable HTTP transport (current MCP spec)
 //   POST /fr/mcp               Compat alias for the README's EU connector URL
+//   POST /chatgpt/mcp          Same, minus every commerce surface (see COMMERCE_FREE_PATHS)
 //   GET  /sse, POST /messages  Legacy SSE transport (older hosts)
 //   GET  /healthz              Liveness probe for Fly/Render
+//   GET  /.well-known/openai-apps-challenge  Domain proof for the OpenAI Apps directory
 //
 // Run: `node dist/http-server.js` (PORT defaults to 8080).
 
@@ -241,9 +243,6 @@ export function bindTelemetryIdentity(
     captureQuotaHit: on((p) => base.captureQuotaHit(p, identity)),
     captureTopupLink: on((p) => base.captureTopupLink(p, identity)),
     captureStartup: on((p) => base.captureStartup(p, identity)),
-    captureAgentMemoryCaptured: on((p) => base.captureAgentMemoryCaptured(p, identity)),
-    captureAgentMemoryRecalled: on((p) => base.captureAgentMemoryRecalled(p, identity)),
-    captureAgentMemoryPruned: on((p) => base.captureAgentMemoryPruned(p, identity)),
     // captureFrictionReported is NOT gated by isSuppressed, for the same reason
     // as captureFeedback below: since product#3943 `leadbay_report_friction` is
     // a consent-gated, user-initiated "deliver my problem report to the team"
@@ -327,9 +326,22 @@ function extractBearer(authHeader: string | undefined): string | undefined {
 // Build a fresh MCP server bound to the caller's resolved client. One server per
 // session — keeps tenant isolation explicit and avoids any cross-request state
 // leaking through the LeadbayClient.
+// Paths that must not sell. The OpenAI app directory forbids selling digital
+// goods of any kind — credits, top-ups, subscriptions — so the URL we submit
+// to it is served WITHOUT leadbay_create_topup_link, leadbay_open_billing_portal,
+// or any prose that offers them. Anthropic's directory has no such rule, so
+// /mcp is unchanged and Claude users keep the top-up flow.
+//
+// This is a path, not a clientInfo sniff, on purpose: a reviewer connecting to
+// this URL sees a catalog where the tools do not exist, rather than a promise
+// that we suppress them. clientInfo is self-reported, unverified, and arrives
+// after `instructions` has already been built.
+const COMMERCE_FREE_PATHS = new Set<string>(["/chatgpt/mcp"]);
+
 function buildServerFromClient(
   client: LeadbayClient,
-  requestTelemetry: TelemetryHandle
+  requestTelemetry: TelemetryHandle,
+  resourcePath: string
 ): Server {
   const includeWrite = parseWriteEnv();
   const includeAdvanced = process.env.LEADBAY_MCP_ADVANCED === "1";
@@ -337,6 +349,7 @@ function buildServerFromClient(
     version: VERSION,
     includeWrite,
     includeAdvanced,
+    includeCommerce: !COMMERCE_FREE_PATHS.has(resourcePath),
     logger,
     telemetry: requestTelemetry,
   });
@@ -350,6 +363,17 @@ function buildServerFromClient(
 // consent and rides in the token's `_us`/`_fr` suffix, so tool requests route by
 // the token, not the URL.
 
+// ── OpenAI Apps directory domain verification ───────────────────────────────
+//
+// The submission form proves we control the MCP hostname by fetching this token
+// from the origin root. It is a public proof, not a credential — OpenAI reads it
+// unauthenticated and anyone may — so it ships as a constant rather than a
+// secret, the same way STARGATE_AUTH_SERVER does. The env var is the rotation
+// escape hatch: OpenAI issues a fresh token if the app is ever re-verified, and
+// infra can set it without waiting on a release.
+const OPENAI_APPS_CHALLENGE =
+  process.env.OPENAI_APPS_CHALLENGE ?? "vsJ51IZ_3AqM10YZxXQFmB29IGIMDOZGbpbEgRIT4r4";
+
 const PRM_PREFIX = "/.well-known/oauth-protected-resource";
 // `/fr/*` are compat aliases: the README shipped `https://mcp.leadbay.app/fr/mcp`
 // as the EU connector URL, so existing EU users still connect there. Under the
@@ -357,7 +381,7 @@ const PRM_PREFIX = "/.well-known/oauth-protected-resource";
 // the same single Stargate auth server and the token's `_fr`/`_us` suffix
 // self-routes tool calls — so `/fr/mcp` behaves identically to `/mcp`. Kept as an
 // alias (not a redirect) so those users don't 404.
-const RESOURCE_PATHS = ["/mcp", "/sse", "/fr/mcp", "/fr/sse"] as const;
+const RESOURCE_PATHS = ["/mcp", "/sse", "/fr/mcp", "/fr/sse", "/chatgpt/mcp"] as const;
 
 // Public origin of this request. Fly terminates TLS and forwards over http, so
 // trust x-forwarded-proto; fall back to the request URL (host + scheme).
@@ -452,6 +476,14 @@ const app = new Hono();
 
 app.get("/healthz", (c) => c.json({ ok: true, version: VERSION }));
 
+// Domain proof for the OpenAI Apps directory. Bare token, no trailing newline —
+// the verifier compares the body to the issued string. Public and unauthenticated
+// by design; it must answer before any auth gate, which it does because the MCP
+// routes gate inside their own handlers rather than in middleware.
+app.get("/.well-known/openai-apps-challenge", (c) =>
+  c.text(OPENAI_APPS_CHALLENGE, 200, { "Cache-Control": "no-store" })
+);
+
 // Protected resource metadata: bare path serves the primary /mcp resource; the
 // RFC 9728 path-suffix form (…/oauth-protected-resource/mcp, /fr/mcp, /sse, …)
 // lets each connector URL advertise its own region's authorization server.
@@ -478,6 +510,7 @@ app.options("*", (c) => {
 const MCP_BODY_LIMIT = bodyLimit({ maxSize: 1 * 1024 * 1024 });
 app.use("/mcp", MCP_BODY_LIMIT);
 app.use("/fr/mcp", MCP_BODY_LIMIT); // compat alias (see RESOURCE_PATHS)
+app.use("/chatgpt/mcp", MCP_BODY_LIMIT); // commerce-free (see COMMERCE_FREE_PATHS)
 app.use("/messages", MCP_BODY_LIMIT);
 
 // Streamable HTTP transport. Stateless mode (no sessionIdGenerator) is the
@@ -486,7 +519,7 @@ app.use("/messages", MCP_BODY_LIMIT);
 // passing `sessionIdGenerator: randomUUID`.
 async function handleStreamable(
   c: Context,
-  resourcePath: "/mcp" | "/fr/mcp"
+  resourcePath: "/mcp" | "/fr/mcp" | "/chatgpt/mcp"
 ): Promise<Response> {
   const foreign = rejectForeignOrigin(c);
   if (foreign) return foreign;
@@ -512,7 +545,8 @@ async function handleStreamable(
   // events are suppressed per-request — product#3879.
   const server = buildServerFromClient(
     resolved.client,
-    await telemetryHandleForRequest(resolved.client)
+    await telemetryHandleForRequest(resolved.client),
+    resourcePath
   );
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
@@ -569,6 +603,9 @@ app.all("/mcp", (c) => handleStreamable(c, "/mcp"));
 // Compat alias for the README's published EU connector URL. Same behavior as
 // /mcp — the token suffix, not the path, selects the region.
 app.all("/fr/mcp", (c) => handleStreamable(c, "/fr/mcp"));
+// The URL submitted to the OpenAI app directory. Identical to /mcp except that
+// nothing on it sells — see COMMERCE_FREE_PATHS.
+app.all("/chatgpt/mcp", (c) => handleStreamable(c, "/chatgpt/mcp"));
 
 // Legacy SSE transport. Two endpoints: GET /sse opens the stream, POST
 // /messages?sessionId=... feeds JSON-RPC messages in.
@@ -627,8 +664,10 @@ async function handleSse(c: Context, resourcePath: "/sse" | "/fr/sse"): Promise<
           sessionOptedOut: session.suppressed,
           fallbackEnabled: !session.suppressed,
         })
-    )
+    ),
+    resourcePath
   );
+
   await server.connect(transport);
 
   const sessionId = transport.sessionId;

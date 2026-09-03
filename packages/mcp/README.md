@@ -22,26 +22,18 @@ A Model Context Protocol server that lets Claude Desktop, Cursor, Claude Code, a
 
 > **Upgrading?** See [CHANGELOG](../../CHANGELOG.md) and [MIGRATION.md](./MIGRATION.md) for version-specific behavior changes. Key callout: composite write tools are **ON by default** since 0.3.0 — set `LEADBAY_MCP_WRITE=0` to restore read-only behavior.
 
-## Agent memory
+## What Leadbay remembers
 
-Leadbay MCP keeps a local, per-account agent memory at
-`~/.leadbay/memory/{account_id}/`. It stores append-only JSONL learnings
-about user taste signals such as preferred sectors, regions, deal size,
-communication style, and qualification rules.
+Leadbay stores nothing about how you like to work. Your assistant already does
+that — Claude, ChatGPT and Codex each keep their own memory of your tone,
+naming and habits, and it survives across conversations without us.
 
-The memory tools are always exposed:
-
-- `leadbay_agent_memory_recall` reads the consolidated top signals.
-- `leadbay_agent_memory_capture` appends a new learning after the user reveals
-  a material preference.
-- `leadbay_agent_memory_review` lists entries and gates retractions or org
-  promotion through user confirmation.
-
-The main leads-touching tools (`leadbay_account_status`,
-`leadbay_pull_leads`, `leadbay_pull_followups`,
-`leadbay_prepare_outreach`, `leadbay_research_lead_by_id`) also attach
-`_meta.agent_memory.summary` automatically. Set `LEADBAY_AGENT_MEMORY=off`
-to suppress this ambient metadata.
+What Leadbay stores is what changes **who it finds for you**. When you tell the
+agent something about your market ("I target fleets over 100 vehicles",
+"carriers are a bad fit unless they do last-mile"), it calls
+`leadbay_refine_prompt`, and that reshapes your recommendations for your whole
+organization — in the web app too, on every refresh. A lead you reject is
+recorded as a dislike, which feeds the recommender the same way.
 
 ## 1. Install
 
@@ -634,7 +626,7 @@ Use `dry_run: true` to validate domain formatting and wizard reachability withou
 | `LEADBAY_MOCK` | no | unset | `"1"` serves all reads from on-disk fixtures (dev only) |
 | `LEADBAY_MOCK_DIR` | no | `./.context/leadbay-live-shapes/` | Fixture dir for mock mode |
 | `LEADBAY_LOG_LEVEL` | no | `error` | `debug` \| `info` \| `error`, logs to stderr |
-| `LEADBAY_TIMEOUT_MS` | no | (client default) | Per-request timeout override |
+| `LEADBAY_TIMEOUT_MS` | no | `600000` | Backstop deadline for a single outbound Leadbay request, for the case where nothing cancels it. Not a latency budget: long work (enrichment, bulk qualify, import) is launched and polled, and a cancelled tool call already closes its own requests. On expiry the socket is closed and the tool returns a `TIMEOUT` error. Set `0` to disable the backstop. |
 
 > ⚠️ **Set `LEADBAY_REGION` explicitly.** If you don't, the server probes BOTH `api-us.leadbay.app` and `api-fr.leadbay.app` in parallel with your bearer token attached, sending the token to a backend that doesn't own your account. The `install` and `login` subcommands enforce `--region` for exactly this reason; the runtime auto-probe is a backwards-compat fallback, not a recommended setting.
 
@@ -642,7 +634,7 @@ Use `dry_run: true` to validate domain formatting and wizard reachability withou
 
 - Tokens live only in your MCP client's config file — they never traverse the network except to `api-{region}.leadbay.app`.
 - The `leadbay_login` tool from the OpenClaw adapter is **not** registered on MCP: exposing a credential-taking tool to an LLM is a prompt-injection risk. Use the token path above.
-- The `leadbay_add_note` tool is a write action flagged `optional: true`. If your client supports per-tool opt-in, leave it disabled until you need it. `leadbay_enrich_contacts` is a granular tool exposed only when `LEADBAY_MCP_ADVANCED=1`.
+- The `leadbay_add_note` tool is a write action flagged `optional: true`. If your client supports per-tool opt-in, leave it disabled until you need it. `leadbay_enrich_contacts` (enrich one named contact) is on the default write surface since 0.33.4; it was advanced-only before.
 
 ### Privacy & telemetry
 
@@ -657,6 +649,7 @@ Use `dry_run: true` to validate domain formatting and wizard reachability withou
 | `mcp tool called` | Every tool invocation | `tool`, `ok`, `duration_ms`, `format`, `bytes`, `error_code` (if failed) |
 | `mcp quota hit` | When the API returns `QUOTA_EXCEEDED` (HTTP 429/402) | `tool`, `retry_after_s`, `endpoint` |
 | `mcp topup link created` | When `leadbay_create_topup_link` returns a checkout URL | `tool` (the URL itself is **never** captured) |
+| `mcp tool timeout` | When an outbound Leadbay request exceeds `LEADBAY_TIMEOUT_MS` | `tool`, `timeout_ms`, `endpoint`, `region` |
 
 After your first authenticated call, your PostHog `distinctId` is set to your Leadbay account email so MCP events consolidate with web-app events for the same person. Events also carry `$groups.organization` so org-level rollups work.
 

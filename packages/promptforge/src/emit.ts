@@ -155,7 +155,22 @@ export function emit(result: AssembleResult): EmitOutput {
     toolParts.push(`  ${t.frontmatter.name},\n`);
   }
   toolParts.push("} as const;\n\n");
-  toolParts.push("export type ToolDescriptionName = keyof typeof TOOL_DESCRIPTIONS;\n");
+  toolParts.push("export type ToolDescriptionName = keyof typeof TOOL_DESCRIPTIONS;\n\n");
+
+  // Same descriptions with the {{commerce}} blocks deleted — nothing reworded.
+  // The MCP server swaps these in on a host that forbids promoting a purchase.
+  // Tools absent from the map carry no commerce prose and are used as-is.
+  toolParts.push(
+    "// Descriptions with the {{commerce}} blocks deleted (no rewording). The MCP\n" +
+      "// server swaps these in when commerce is gated off; tools absent from this\n" +
+      "// map read identically on both surfaces.\n",
+  );
+  toolParts.push("export const NO_COMMERCE_TOOL_DESCRIPTIONS: Record<string, string> = {\n");
+  for (const t of result.toolDescriptions) {
+    if (!t.noCommerceBody) continue;
+    toolParts.push(`  ${t.frontmatter.name}: \`${escapeBacktick(t.noCommerceBody)}\`,\n`);
+  }
+  toolParts.push("};\n");
 
   return {
     promptsModule: promptParts.join(""),

@@ -1,6 +1,6 @@
 # Changelog — @leadbay/mcp
 
-## 0.32.0 — 2026-09-01
+## 0.35.0 — 2026-09-02
 
 Expose the backend MCP-first delivery endpoints (`POST /1.6/mcp/search`,
 `POST /1.6/mcp/qualify`, `GET /1.6/mcp/jobs/{id}`) as three composites —
@@ -19,6 +19,528 @@ retired: the routes shipped to production in backend v3.22.0 (2026-08-22) and
 were verified live on `api-us` and `api-fr`. The `leadbay_new_leads` prompt is
 still hidden on a read-only server (`LEADBAY_MCP_WRITE=0`), since every phase of
 it calls a write-tier tool.
+
+## 0.34.0 — 2026-09-02
+
+The OpenAI app directory rejects an app that sells digital goods — "plugins may
+conduct commerce only for physical goods. Selling digital products or services
+— including subscriptions, digital content, tokens, or credits — is not
+allowed" — and separately forbids promoting the purchase: a plugin "must not
+display subscription plans, initiate new subscriptions, or promote upgrades" or
+"link directly to a checkout". Signing in to an existing paid account and using
+what it entitles you to IS allowed. Anthropic's Software Directory Policy has
+no equivalent clause; its nearest rule bars software that "executes financial
+transactions on behalf of users", which our Stripe-URL handoff does not do.
+
+`POST /chatgpt/mcp` is the URL submitted to OpenAI. Same Hono app, same auth,
+same handler, built with `includeCommerce: false`. Four things go away
+together — the tools, and every text that would promote buying them, since
+removing only the tools left the agent still pushing a top-up it could no
+longer produce:
+
+- `leadbay_create_topup_link` and `leadbay_open_billing_portal` are not
+  registered (filtered after the catalogue arrays merge — both appear in
+  `compositeReadTools` and `granularReadTools`).
+- Tool descriptions lose their `{{commerce}}` blocks
+  (`NO_COMMERCE_TOOL_DESCRIPTIONS`, emitted by promptforge).
+- The `QUOTA_TOPUP` instruction paragraph is not pushed. `quota-topup.md` was
+  split verbatim: the selling paragraph is gated, and the neutral one that says
+  when to re-render the quota gauge became `quota-refresh.md`, pushed on both.
+- `LeadbayClient.commerce` drops the two selling sentences from the
+  QUOTA_EXCEEDED hint ("OR top up AI credits…", "…or direct them to
+  app.leadbay.ai → Billing"). One client per session on hosted, so the flag
+  cannot leak across tenants.
+
+Nothing is reworded for ChatGPT. `{{commerce}}` only ever DELETES — there is no
+second, softened wording anywhere to drift out of sync, and the Claude surface
+keeps selling exactly as hard as before. Enforced two ways:
+`commerce-gate.test.ts` asserts the gated description and instruction strings
+are pure character-level *subsequences* of the Claude ones (any reworded
+character fails), and the generated descriptions were diffed against `main` to
+confirm the default rendering did not move by a byte.
+
+A path rather than an `initialize` clientInfo sniff, and rather than a query
+parameter: the OAuth protected-resource identifier IS the path
+(`/.well-known/oauth-protected-resource/chatgpt/mcp` → `resource:
+https://mcp.leadbay.app/chatgpt/mcp`). A `?commerce=off` flag would leave both
+URLs advertising the same resource, so a client reconnecting to the audience it
+registered would get the selling tools back. RFC 8707 also says a resource URI
+should carry no query component.
+
+`RESOURCE_PATHS` gains the path so OAuth discovery resolves for it, and the
+installer's ChatGPT Desktop entry now hands out `HOSTED_MCP_URL_CHATGPT`.
+
+## 0.33.4 — 2026-09-02
+
+`leadbay_enrich_contacts` moves from `granularWriteTools` to
+`compositeWriteTools` (product#4050).
+
+It is the only tool that enriches ONE chosen person — `leadId` + `contactId`,
+paid-candidate path first, org-contact path on `NOT_FOUND` — but it sat behind
+`LEADBAY_MCP_ADVANCED=1`, which hosted never sets. No granular tool has been
+called from a hosted IP in 30 days. The daily check-in prompt and the pull-leads
+NEXT STEPS table already told the agent to call it, so on hosted they named a
+tool that was not registered. `zoe+dogfood@leadbay.ai`'s scheduled agent
+reached for `leadbay_pin_contact` instead (41 `contact not found` over 12 days;
+see 0.33.3). Same registration pattern as add/remove/pin/unpin/update_contact
+and set_lead_status: granular-shaped, lives in `tools/`, default write surface,
+still hidden by `LEADBAY_MCP_WRITE=0`. Not in `COMPOSITE_FILE_TOOL_NAMES`, so
+`_triggered_by` stays optional.
+
+What moved with it, so the tool works on the surface it now lands on:
+
+- **The result hint names a read that exists there.** It said "re-check
+  `leadbay_get_contacts`", which is advanced-only. It now says re-read the
+  lead's contacts via `leadbay_research_lead_by_id` (or `get_contacts` where
+  exposed).
+- **The description carries routing.** `routing` + `rendering_hint`
+  frontmatter, added to `TOOLS_WITH_ROUTING`; the `prefer_when` states that a
+  `source:"paid"` candidate id from `research_lead_by_id` is valid input and
+  that pinning does not enrich anyone. Cross-routes to `enrich_titles`
+  (by title, many leads), `pin_contact`, `prepare_outreach`.
+- **The pin/unpin 404 hint and `heuristics/pinnable-contacts` name it** as the
+  direct route alongside `enrich_titles` and `add_contact`. `enrich_titles`'s
+  WHEN NOT TO USE drops the "(granular)" label.
+
+Tests: `packages/mcp/test/enrich-contacts-default-surface.test.ts` drives the
+real MCP `tools/list` — present with `includeWrite:true, includeAdvanced:false`,
+absent with `includeWrite:false`, and every `leadbay_*` the description and
+the call hint name is itself registered on that surface.
+`packages/core/test/unit/tools/pin-contact-hint-names-enrich-contacts.test.ts`
+pins the hint.
+
+## 0.33.3 — 2026-09-02
+
+`leadbay_pin_contact` failed 43 of its 48 production calls.
+
+Measured over the 180 days to 2026-09-02 (PostHog `mcp tool called`,
+`properties.ok = false`). Sentry issue `MCP-3A` carries exactly 43 events, so
+every `contact not found` in the `mcp` project is a pin call. 41 of the 43 are
+one scheduled agent, `zoe+dogfood@leadbay.ai`, across 12 days and MCP 0.26.0
+through 0.33.2. Its own `triggered_by` reads *"tâche planifiée : épingler le DG
+Mickael Hamot (CROMOLOGY SERVICES) à la place du président"*. It picks the DG
+out of `leadbay_research_lead_by_id` and pins that id, which on an unenriched
+company is a `source: "paid"` candidate. It has never once succeeded, and pin
+is its third most used tool.
+
+`POST /contacts/{id}/pin` resolves through `org_contacts` only
+(`OrgContactRoutes.kt:44`), so a paid candidate id can never resolve there. Two
+changes:
+
+- **The 404 now names its cause.** The client's shared 404 hint is "Verify the
+  ID is correct" (`client.ts:1048`), which on this endpoint is false: the id is
+  correct, it is the wrong namespace. An agent reads that as "look it up and
+  retry" and does, in bursts of up to 10 calls in 13 seconds. pin and unpin now
+  catch `NOT_FOUND` and replace the hint with one that names the org-vs-paid
+  split, says not to retry, and names the tools that make the person pinnable.
+- **The descriptions carry the rule.** New shared snippet
+  `snippets/heuristics/pinnable-contacts.md`, included by both templates, plus
+  the rule in `prefer_when` so it lands in the first 600 chars every host reads.
+  It also states that pinning does not steer enrichment: enrichment selects by
+  job title (`resolveAutoIncludedTitles` →
+  `paidContacts.findSimilarJobTitlesWithScores`) and `pinnedBy` plays no part.
+  That was the second half of the agent's mistake.
+
+**`pinned` is now readable.** The backend's `ContactPayload` has carried
+`pinned` + `pinned_by_ai` all along; every MCP shaping site dropped them, so a
+pin could be written but not read back except by watching `recommended`, which
+moves for other reasons too. Now passed through in `research_lead_by_id`,
+`get_contacts` and `get_lead_profile`, and marked `📌` in both markdown contact
+lists. Deliberately asymmetric: `PaidContactPayload` has no pin state, so paid
+contacts get no `pinned` key rather than a synthetic `false`.
+
+Verified live against FR staging, running the built branch:
+
+```
+BEFORE PIN:  org contact → pinned: false     paid contacts → no pinned key
+AFTER  PIN:  org contact → pinned: true      (pin http 204)
+AFTER UNPIN: org contact → pinned: false     (unpin http 204)
+```
+
+Remaining, not fixed here: on hosted an agent still has no way to enrich one
+named person. `leadbay_enrich_contacts` takes a `contact_id` and does exactly
+that, but sits in `granularWriteTools` behind `LEADBAY_MCP_ADVANCED=1`, and no
+granular tool has been called from a hosted IP in 30 days. That is why the
+agent reached for pin. Filed as leadbay/product#4050.
+
+## 0.33.2 — 2026-09-02
+
+Editing one field on a contact erased the others (product#4046).
+
+Reproduced on production while verifying leadbay/mcp#194: sending a contact's
+own current `first_name` + `last_name` + `job_title`, changing nothing, deleted
+that contact's email. The contact moved from `contacts.reachable` to
+`contacts.candidates` and `_meta.has_reachable_contact` flipped to false, so the
+lead stopped being contactable. Restored with a second call.
+
+This became reachable only the day before: until #194 the tool returned 404 on
+100% of calls, so it destroyed nothing. A tool that always failed now succeeded
+and deleted data.
+
+**The backend already had the safe behaviour and we were choosing the other
+one.** Both routes take the same payload
+(`OrgContactRoutes.kt:110,152` → `OrgContactsDaoImpl.kt:265-272`):
+
+| Route | `forceUpdateIfNullOrEmpty` | A field absent from the body |
+|---|---|---|
+| `/contacts/{id}/update` | `true` | written as null — **erased** |
+| `/contacts/{id}/merge` | `false` | skipped — **kept** |
+
+So the fix needs no read-modify-write, no extra round-trip and no race window.
+`leadbay_update_contact` now routes by intent:
+
+- **Nothing being erased → `/merge`.** Every field the caller omitted survives.
+- **Any field passed as `null` → `/update`**, which rewrites the record — so
+  that call must carry all four optional fields. If it does not, the tool
+  refuses with `CONTACT_CLEAR_NEEDS_FULL_RECORD` rather than deleting what was
+  not mentioned. The destructive path costs more effort than the safe one,
+  which is the intended asymmetry.
+- The result carries `mode` (`merge` / `replace`), `preserved` and `cleared`, so
+  a wrong edit is visible rather than silent.
+
+Verified live on staging, same body to each route:
+
+```
+POST /contacts/{id}/merge   {first_name, last_name, job_title:"CEO"}
+  → job_title CEO,  email merge.probe@example.test,  phone +15550001111   (kept)
+POST /contacts/{id}/update  {first_name, last_name, job_title:"CTO"}
+  → job_title CTO,  email absent,  phone absent                           (erased)
+```
+
+Two existing test files were changed rather than added, because both asserted
+the contract this fixes: `update-contact.test.ts`'s happy path now expects
+`/merge`, and `update-contact-null-clear.test.ts`'s clear case now supplies the
+whole record. The second had encoded the data loss as correct — it asserted that
+unmentioned fields are not sent, while posting to the route that deletes them.
+
+## 0.33.1 — 2026-09-02
+
+Follow-up to 0.32.0 (product#4007). A review finding landed after the merge.
+
+- **Only a REFUSAL counts as a commit failure.** The detached finisher's catch
+  recorded ANY rejection from the `pollPreprocess` → `commitMappings` chain as a
+  permanent commit failure — including the `ImportPhaseTimeout` raised when
+  preprocess still hasn't finished after the finisher's own 10-minute window.
+  That is not a backend refusal; the import is merely slow and may yet finish.
+  The registry has no expiry, so `leadbay_import_status` would have answered
+  `failed` for ever on a healthy import — worse than the forever-polling 0.32.0
+  set out to remove. A budget timeout now leaves the status at `committing`,
+  which is the honest reading; only an error from `commitMappings` itself is
+  recorded.
+- The finisher's window is deliberately not caller-controllable — a caller
+  shrinking it is the bug that budget exists to prevent — so the test reaches it
+  through a named module seam beside the existing `clearCommitFailures`, rather
+  than a parameter that would leak into the tool's public schema.
+
+## 0.33.0 — 2026-09-01
+
+Agent memory is removed (product#3996). The three `leadbay_agent_memory_*`
+tools, `packages/core/src/agent-memory/`, the `agent-memory://summary`
+resource, the `_meta.agent_memory` decoration and the `AGENT_MEMORY` server
+instruction are all deleted.
+
+**Why it goes rather than gets fixed.** The store was written when the MCP ran
+on the user's own machine and no host had memory of its own. Both premises are
+dead. Claude Cowork projects carry persistent memory into their scheduled
+tasks, Claude chat memory shipped to all plans, ChatGPT has memory plus remote
+connectors, and Codex reads the user's own file. Meanwhile the hosted server
+writes to a container layer that Argo replaces on every image build, so ours
+was strictly worse than the host's on the surface where it mattered most.
+
+**Measured before deciding.** PostHog `mcp tool called`, tools matching
+`%memory%`, 120 days, whole fleet: **121 captures, 30 recalls, 13 users.**
+79 of the 121 captures came from one hosted IP and stop on 2026-07-29. August
+was 11 captures and 3 recalls. The feature wrote four times more than it was
+read and almost nothing read it twice.
+
+**What replaces it.** Reading that user's verbatim `triggered_by` sentences
+rather than a summary of them, the largest group by far was targeting — *"je
+vise en priorité les entreprises qui ont plus de 100 voitures dans leur parc"*,
+*"les transporteurs ne sont pas forcément de bons prospects sauf ceux qui font
+du last mile delivery"*. Stored as notes those changed one conversation. The
+new `headers/durable-preferences` snippet, included by the seven prompts that
+carried the memory preamble, routes them to `leadbay_refine_prompt` instead,
+where they mutate `computing_intelligence` and change what the product finds
+for the whole organization. A rejected lead goes to a dislike.
+
+- `withAgentMemoryMeta` is unwrapped from nine composites. It called
+  `resolveMe()` on every invocation, so each of those tools loses a round-trip.
+- `LEADBAY_AGENT_MEMORY`, `EV_AGENT_MEMORY_*` and the three
+  `captureAgentMemory*` telemetry methods are gone. Historical events stay in
+  PostHog; nothing new is emitted.
+- `assembler.ts` no longer injects a memory pointer into routed tool
+  descriptions, and `memory_protocol` is removed from the frontmatter schema.
+- Deliberately NOT landed: `agent-memory/durability.ts`, a boot-time warning
+  for an ephemeral memory root written while this was still going to be fixed
+  with a volume. With nothing writing to disk the condition it detects can no
+  longer occur, so it is not a safety net, it is dead code.
+
+## 0.32.6 — 2026-09-01
+
+The 401 auto-retry is GET-only — replaying a write could double-execute a
+mutation that already committed — but `mapErrorResponse` wrote its hint as if
+`request()` had always retried. On `leadbay_create_topup_link` (a POST) the
+agent was told the call had already been retried when it had been attempted
+exactly once. Covers acceptance criteria 4 and 5 of product#3998; the 401 itself
+is a backend bug fixed in leadbay/backend#1989.
+
+- The GET-only rule is extracted into `retriesOn401` so the retry path and the
+  error mapper read one source of truth, and the actual outcome is threaded into
+  `mapErrorResponse` rather than assumed.
+- The not-retried hint states only the fact and never the reason. A GET with
+  `retryOn401:false` (the startup auth probe) is not a write, and the earlier
+  text told it that it was. Why the retry didn't run is not actionable for the
+  agent — only that this was attempt one — so the flag stays a boolean.
+- `readOnlyHint: false` on both Stripe tools. Each mints a Stripe session, and
+  for an org with no customer yet the shared `getStripeCustomer` path creates
+  the customer and persists `organizations.stripe_customer_id`.
+- The two Stripe tools stay in `granularReadTools`. `readOnlyHint` (a client
+  confirmation hint) and `includeWrite` (a capability gate over the user's
+  Leadbay data) are different axes, and this repo already treats them that way
+  — `leadbay_preview_bulk_enrichment` sits in `granularWriteTools` with
+  `readOnlyHint: true`. Moving them would leave a `--no-write` user who hits
+  quota with no top-up link at all, which is the exact failure product#3998 was
+  filed for.
+
+## 0.32.5 — 2026-09-01
+
+`leadbay_update_contact` returned `NOT_FOUND` / 404 on 100% of the calls ever
+made to it (product#3997). Not a missing route and not a backend bug.
+
+Leadbay holds contacts in two id namespaces — `org_contacts` (the org's own
+directory) and `paid_contacts` (enrichment results) — with separate models,
+separate DAOs and separate ids. `POST /contacts/{id}/update` resolves
+`orgContacts.findById` only, so a paid id can only ever 404.
+
+`research_lead_by_id` merges `/leads/{id}/enrich/contacts` and
+`/leads/{id}/contacts` into `contacts.reachable` / `contacts.candidates`, split
+by **whether the person is messagable right now, not by which endpoint they came
+from**. That split is right for outreach and wrong for identity: an enriched
+paid contact sits in the same list as an org contact, and the agent had nothing
+to distinguish them by. Roughly half the ids we handed out were unusable by a
+tool the server instructions tell the agent to call after every outreach.
+
+- The `source` field (`"org"` / `"paid"`) was already on the wire but undeclared
+  and unexplained. It is now documented in `research_lead_by_id`'s output schema
+  as the thing that decides whether an id can be passed to
+  `leadbay_update_contact`.
+- `leadbay_update_contact`'s description states which namespace it accepts,
+  what a 404 means, and routes a correction to a paid contact through
+  `leadbay_add_contact` instead — the enrichment row is a provider's answer and
+  is not ours to edit.
+- New: `research-contact-source-provenance.test.ts`, covering the case the
+  reachability split hides — an enriched paid contact and an org contact in the
+  SAME `reachable` list, distinguished only by `source`.
+## 0.32.4 — 2026-09-01
+
+`leadbay_account_status.notifications` was permanently `[]` on the hosted server
+(product#4009). Same shape as product#4005: `buildServerFromClient` builds every
+hosted server without a `notificationsInbox`, `BuildServerOptions` makes it
+optional, so it compiled and failed silently.
+
+**Not fixed by wiring the inbox, because the inbox cannot exist there.** It is
+fed by a WS listener whose ticket (`GET /auth/ws`) is per-account, which is
+meaningless on a multi-tenant process, and the streamable transport builds a
+fresh `Server` per request so nothing would survive to be cached. Porting it
+would be the same mistake in a third place.
+
+`GET /notifications` is already per-account and already durable. On hosted the
+ledger IS the inbox, so `account_status` reads it on demand when no inbox is
+wired. Stdio is unchanged and still free — the WS listener already has the
+answer, and the ledger is not called.
+
+- `fetchTerminalNotifications(client)` in `notifications/catch-up.ts` returns
+  terminal, unseen entries directly. `isTerminalUnseen` is extracted so inbox
+  seeding and the inbox-less read cannot disagree about what counts.
+- A notifications failure resolves to `[]` rather than throwing. `account_status`
+  is the daily entry point; a ledger hiccup must not take the check-in down.
+- **Deliberately not done: `_meta.notifications` still does not ride hosted tool
+  responses.** Reviving it would mean a `GET /notifications` per tool call to
+  decorate every response. The cost lands on the check-in entry point only,
+  which is where the daily-rhythm channel is actually read.
+## 0.32.0 — 2026-09-01
+
+A poll-budget timeout stops being an error (product#4007). The import wizard's
+phases are bimodal — ~7s or ~85s, essentially nothing in between — and
+`DEFAULT_PER_PHASE_BUDGET_MS` (60s) sat squarely in the gap, so the same input
+randomly succeeded or threw. One reported session: 21 successful imports and 9
+timeouts on a single spreadsheet, all nine timeouts issued from one user
+instruction. The agent re-issued the identical call nine times over eleven
+minutes, because an error is a thing you retry. Account details are in
+product#4007; this file is published to npm, so they stay there.
+
+- **`IMPORT_BUDGET_EXHAUSTED` → `IMPORT_TIMEOUT`.** No alias. "Budget" meant
+  milliseconds and every reader — customer, support, engineer — parsed it as
+  money. There is no import billing cap. Keeping the old string alive in
+  telemetry would preserve the exact confusion the rename exists to end.
+- **The blocking path returns `{status:"running", timed_out:true, importIds}`
+  instead of throwing.** `ImportPhaseTimeout` is now an internal signal raised by
+  the three poll sites (preprocess / process / records-terminal) and converted to
+  a result in `execute`. A real backend error — `IMPORT_PREPROCESS_FAILED`,
+  `IMPORT_PROCESSING_FAILED` — still throws; degradation is timeout-only.
+- **A preprocess timeout parks the import, so it gets a detached finisher.**
+  Found by probing us-staging rather than by reading the code: `update_mappings`
+  is the MCP's *own* POST, and it only fires after preprocess. Walk away before
+  sending it and the wizard row sits inert forever — `pre_processing.finished`
+  true, `processing` absent, `total_records` 0, and `GET /records` answering
+  `400 in_progress` indefinitely. `summarizeImports` reads that shape as
+  **complete**, so without this the fix would have converted a loud error into a
+  silent "running… complete… no leads", which is worse than what it replaced.
+  `resumeParkedUpload` hands the uploaded chunk to a detached continuation that
+  commits the mappings, so `status:"running"` is a true statement. Process and
+  reconcile timeouts need nothing — the backend is already working. Verified
+  live on us-staging 2026-09-01: forced timeout → running at t+0, three real
+  leadIds out of `leadbay_import_status(importIds)` at t+10s.
+- **`IMPORT_NOT_TERMINAL` is retired.** Its hint said *"Retry
+  leadbay_import_leads with the same input in 30s"* — our own contract asking
+  for the loop. That path degrades like the other two now.
+- **`leadbay_import_status` returns leads on the `importIds[]` path.** It used
+  to carry `result` only when resolving a `handle_id` against the BulkTracker,
+  so an import that timed out mid-poll could be observed as `complete` and still
+  leave the agent with no leadIds — whose only route to them was re-running the
+  whole import. It now reads `GET /imports/{id}/records` once every named import
+  is complete. `MCP_ROW_ID` round-trips through the synthesized CSV, so this
+  needs no client-side state — which is what makes it work on the hosted MCP,
+  where there is no BulkTracker at all (`http-server.ts` never passes one).
+  A records read that fails downgrades to status-only; it never turns a readable
+  status into an error.
+- **A still-settling record is in neither bucket.** `reconcileOneChunk` can call
+  an unresolved record `internal_error` because it only runs after the records
+  settled; a status poll has no such guarantee. The status-side reconciler
+  counts them as `result.still_settling` instead. Calling a pending row "failed"
+  is what sends an agent back into the loop.
+- **`notification_id` survives a timeout.** It was collected from
+  `runOneChunk`'s return value, so a call that timed out after `update_mappings`
+  threw away the very notification that would have told the agent the import
+  finished. Threaded out at mint time, mirroring `onImportId`.
+- **`import_and_qualify` passes the running shape through** rather than throwing
+  `IMPORT_ASYNC_UNEXPECTED`, which would otherwise fire on exactly the incident
+  being fixed. Reuses the literal its `wait_for_completion:false` branch already
+  returns; `handle_id` is now optional on both.
+- **Multi-chunk honesty:** a timeout on chunk 1 of 3 leaves chunks 2-3 unsent.
+  Those rows are reported as `rows_pending_upload`, and the description says
+  they DO need a fresh call for that subset — the one case where re-importing is
+  right.
+- Shared record-reading primitives (`normalizeDomain`, `readCell`,
+  `PUBLIC_MAILBOX_DOMAINS`, `reconcileRecords`) moved to
+  `composite/_import-records.ts`. `import-leads.ts` re-exports `normalizeDomain`
+  for backward compatibility.
+
+**Review round 2** — nine findings from the Codex and Claude reviewers, all
+real, all fixed:
+
+- **A dry run and an import parked mid-commit are byte-identical on the wire.**
+  Probed on us-staging: both answer `total_records: 0`,
+  `pre_processing.finished: true`, `processing` absent, `mappings` populated by
+  the backend's own AI hints, and `400 in_progress` on BOTH `/leads` and
+  `/records`. So the row cannot decide completion — the endpoints can.
+  `leadbay_import_status` now asks, and demotes a row that merely *looks*
+  finished to `status:"running"`, `phase:"committing"`. Without that, the window
+  between preprocess finishing and the detached finisher committing reported
+  `complete` with no leads and the agent stopped polling — the exact failure
+  this release exists to prevent.
+- **`dry_run` is carried by the caller**, because nothing else can carry it.
+  The timed-out running result sets it; `leadbay_import_status` takes it as a
+  parameter. Absent it, a validation pass reads as `committing` rather than
+  risking a "N leads imported" render of an import that committed nothing.
+- **`GET /imports/{id}/leads` is the source of truth for lead ids**, unioned
+  over the records-derived set, which now only annotates them with
+  rowId/domain/name. It is what `import_and_qualify` already trusts and it
+  includes leads the import created rather than matched; records-only would
+  drop those silently.
+- **A snapshot short of the declared `total_records` reports the shortfall as
+  `still_settling`.** `processing.finished` can flip before every row is
+  exposed; counting only visible rows let a partial snapshot read as final.
+- **A record carrying `lead.id` while still `MATCHING`/`IMPORTING` stays
+  pending.** The module's own `isRecordTerminal` says settled means `IMPORTED`
+  or `NO_MATCH`; the leads bucket now honours it instead of trusting a
+  lead id that the wizard may yet re-match.
+- **`import_and_qualify` propagates `timed_out`, `rows_pending_upload`,
+  `dry_run` and the malformed rows.** Dropping them meant a >100-row batch
+  silently lost every unuploaded chunk and the agent had no cue to poll.
+- **Malformed rows survive the degraded result.** They are rejected
+  client-side and never reach the backend, so `leadbay_import_status` could
+  never reconstruct them — dropping them let the caller read the batch as fully
+  accounted for.
+- **No customer identity in this file.** It ships in the package's npm `files`
+  list; incident details belong in product#4007, not on npm.
+
+**Review round 3** — seven more findings on the round-2 code, all real:
+
+- **A transient `/leads` failure was being swallowed as "endpoint missing".**
+  Only a 404 is benign; a 500 or auth error means the canonical set is unknown,
+  and a records-only `result` would silently omit whatever `/leads` would have
+  added. Now only 404 falls back — and fixing it immediately surfaced a missing
+  `/leads` mock in the MCP E2E test that the old catch had been hiding.
+- **The canonical merge keyed a map by `leadId`,** which collapsed the several
+  rows records-mode deliberately allows on one lead (separate contacts on one
+  company) and lost each row's `rowId`. Every reconciled row is kept; only ids
+  `/leads` knows and no record exposed are appended.
+- **A canonical id could resurrect a non-terminal record** through the union,
+  undoing the terminal gate added in round 2. Ids belonging to a record that is
+  still MATCHING / IMPORTING are held back.
+- **The settling deficit counted raw fetched rows,** so a re-paged duplicate
+  masked a genuine shortfall. Measured on distinct rows now.
+- **The detached finisher inherited the caller's budget.** A caller who passed
+  a short `total_budget_ms` is exactly the caller most likely to time out;
+  giving the finisher that same window let it fail the one job it exists to do
+  and leave the import parked. It now carries its own 10-minute budget, does
+  only what it must — poll preprocess, commit the mappings — and is skipped
+  entirely for a dry run, which is *supposed* to stop after preprocess.
+- **Two tool descriptions still said `leadbay_import_status` returns
+  status/progress only**, contradicting the recovery path this release adds.
+- **`readCell` never looked at a cell's `field` name.** A records-mode import
+  that maps the header `Web` to LEAD_WEBSITE returns
+  `{column_name: "Web", field: "LEAD_WEBSITE"}`, and coalescing to the first
+  present name let `column_name` shadow `field` — so an unmatched row lost its
+  domain and rendered as "needs attention" instead of "pending crawl", without
+  the domain needed to retry. Pre-existing, but the stateless recovery path is
+  what made it bite.
+- **`importIds` is deduped.** The same handle twice doubled the declared row
+  count against a record set that dedupes, pinning `still_settling` above zero
+  on an import that had entirely finished.
+- **Records mode returns `row_ids`.** `MCP_ROW_ID` is a UUID minted inside the
+  tool; the caller has never seen it, yet `leadbay_import_status` reports
+  recovered leads keyed by it. A row identified only by `CRM_ID` — no website
+  to correlate on — was untraceable back to the leadId it produced.
+- **A rejected mapping commit no longer polls for ever.** The detached
+  finisher sends `update_mappings` on the caller's behalf; if the backend
+  refuses it (an invalid mapping answers `400 missing LEAD_NAME field`), the
+  row it leaves is byte-identical to one still committing — no error field
+  anywhere. Before the timeout became a success result this surfaced as a plain
+  error, so staying silent would be a regression introduced by that very
+  change. The finisher records the rejection in a memory-only, best-effort
+  registry and `leadbay_import_status` reports `failed` with the backend's own
+  message; a restart just falls back to the old "still committing" reading.
+- **A completed dry run says so.** Polling with `dry_run:true` returned
+  `complete` with no `result` and no discriminator, which the rendering
+  contract turns into "✓ Import complete" — a lie about an import that
+  committed nothing. The response now echoes `dry_run`.
+- **A foreign `MCP_ROW_ID` column is not trusted as an identity.** A web-UI
+  import's own file may carry that header holding blanks or one repeated value;
+  treating those as our synthetic ids collapsed unrelated records onto one
+  dedupe key. Only a `randomUUID()`-shaped value counts.
+- **A canonical id is only published when the snapshot is complete.**
+  `pendingLeadIds` can only speak for rows that were actually fetched, so while
+  rows are missing an unvouched id might belong to one of them and still be
+  MATCHING — downstream qualification would then act on a lead the wizard may
+  yet re-match. `row_ids` propagates through `import_and_qualify` too.
+- **Record dedupe falls back to the backend record id.** `importIds` need not
+  name an MCP-created import; a web-UI one carries no `MCP_ROW_ID`, so keying
+  only on that let a re-paged row count twice while another went missing — and
+  a raw count matching `total_records` then read as a complete snapshot.
+
+**Not shipped, deliberately:** the issue's criterion 6 asks to flip
+`wait_for_completion` to default `false`. `http-server.ts:336` never passes a
+`bulkTracker`, so on hosted that path throws `BULK_TRACKER_UNAVAILABLE` today
+(product#4005) — the flip would break 100% of hosted imports. `BulkRecord` also
+carries no org field, so a shared store on the multi-tenant hosted process would
+make handles cross-tenant resolvable; that needs its own design. Parked behind
+#4005. The degrade-to-running fix delivers the same benefit without it.
+
+**Backend, not this repo:** the bimodal ~85s phase itself, and
+`POST /leads/resolve`'s 81-95s slow mode (17 of 40 calls in the same session,
+~24 minutes of wall clock). Issue criteria 1 and 2.
 
 ## 0.30.0 — 2026-08-19
 

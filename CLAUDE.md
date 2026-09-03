@@ -258,6 +258,30 @@ Common shared blocks live in `packages/promptforge/snippets/`:
 | `headers/*.md` | The tiny shared header fragments promptforge stitches in |
 | `server-instructions/*.md` | Server-instruction blocks — emitted as consts by `emitServerInstructions`, NOT resolved via `{{include:}}` |
 
+### `{{commerce}}` — prose that only exists where selling is allowed
+
+The OpenAI app directory forbids promoting a purchase; Anthropic's does not. A
+handful of paragraphs therefore ship to Claude and not to ChatGPT. Wrap them:
+
+```markdown
+{{commerce}}
+**Top-ups always beat waiting.** …
+{{/commerce}}
+```
+
+Promptforge emits the tool's normal const plus an entry in
+`NO_COMMERCE_TOOL_DESCRIPTIONS` with the block deleted;
+`buildServer({ includeCommerce: false })` serves the second one. Rules:
+
+- **The marker DELETES; it never substitutes.** Never write a softened
+  "ChatGPT version" of a paragraph. If a sentence cannot be removed without
+  rewording the prose around it, gate the whole paragraph instead.
+- Markers go on their own lines for a block. For an inline span, put the
+  leading space *inside* the markers — `resets{{commerce}} (or top
+  up){{/commerce}}.` — so deleting it leaves `resets.`, not a double space.
+- `packages/mcp/test/unit/commerce-gate.test.ts` asserts the gated strings are
+  character-level subsequences of the default ones, so any rewording fails.
+
 Include them via `{{include:rendering/score-bar}}` etc. Don't duplicate
 content across templates — extract a snippet if you find yourself
 copy-pasting.
@@ -522,7 +546,7 @@ Rule: multiple API calls or business logic → composite. Single relay call → 
 
 | Tools exposed | Condition |
 |---|---|
-| `agentMemoryTools` + `compositeReadTools` | always |
+| `compositeReadTools` | always |
 | `compositeWriteTools` | `LEADBAY_MCP_WRITE=1` (default ON since 0.3.0) |
 | `granularReadTools` + `granularWriteTools` | `LEADBAY_MCP_ADVANCED=1` |
 

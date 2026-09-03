@@ -1,6 +1,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 import { leadbay_unpin_contact as UNPIN_CONTACT_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { NOT_PINNABLE_HINT } from "./pin-contact.js";
 
 interface UnpinContactParams {
   // The contact's own UUID (the `id` on a contact object) — NOT the lead id.
@@ -46,7 +47,15 @@ export const unpinContact: Tool<UnpinContactParams, UnpinContactResult> = {
     params: UnpinContactParams,
     _ctx?: ToolContext,
   ): Promise<UnpinContactResult> => {
-    await client.requestVoid("POST", `/contacts/${params.contact_id}/unpin`);
+    try {
+      await client.requestVoid("POST", `/contacts/${params.contact_id}/unpin`);
+    } catch (e: any) {
+      // Same reasoning as pin-contact.ts: the generic "Verify the ID is
+      // correct" hint sends the agent into a retry loop on an id that can
+      // never resolve here.
+      if (e?.code === "NOT_FOUND") throw { ...e, hint: NOT_PINNABLE_HINT };
+      throw e;
+    }
     return { pinned: false, contact_id: params.contact_id, action: "unpinned" };
   },
 };

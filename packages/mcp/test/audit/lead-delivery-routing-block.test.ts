@@ -25,9 +25,6 @@ import { mcpFirstDeliveryAllTools, type Tool } from "@leadbay/core";
 
 const ROUTING_HEAD_WINDOW = 600;
 const EXAMPLE_WINDOW = 1500;
-const MEMORY_POINTER =
-  "**Memory:** recall + capture via `leadbay_agent_memory_*` tools.";
-
 const POS_BLOCK_RE =
   /Examples that SHOULD invoke this tool:\n([\s\S]+?)(?:\n\n|$)/;
 const NEG_BLOCK_RE =
@@ -68,10 +65,14 @@ describe("audit: routing block on the MCP-first delivery tools", () => {
     expect(violations, violations.join("\n")).toEqual([]);
   });
 
-  it("each carries the shared agent-memory pointer in the first 600 chars", () => {
-    const violations = DELIVERY_TOOLS.filter(
-      (t) => !t.description.slice(0, ROUTING_HEAD_WINDOW).includes(MEMORY_POINTER),
-    ).map((t) => `${t.name}: missing memory pointer in first ${ROUTING_HEAD_WINDOW} chars`);
+  it("none of them still points at the retired agent-memory tools", () => {
+    // This case used to REQUIRE a `leadbay_agent_memory_*` pointer in the
+    // routing head. Agent memory was retired in 0.33.0 (product#3996) — the
+    // host remembers now — so the requirement inverts: naming those tools would
+    // route the agent at something that no longer exists.
+    const violations = DELIVERY_TOOLS.filter((t) =>
+      t.description.includes("leadbay_agent_memory"),
+    ).map((t) => `${t.name}: names a retired agent-memory tool`);
     expect(violations, violations.join("\n")).toEqual([]);
   });
 

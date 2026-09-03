@@ -9,8 +9,10 @@ interface StripeUrlResponse {
 export const createTopupLink: Tool<Record<string, never>> = {
   name: "leadbay_create_topup_link",
   annotations: {
+    // Not read-only: this POSTs a new Stripe Checkout Session into existence.
+    // Clients read readOnlyHint to decide whether to ask the user to confirm.
     title: "Generate Stripe checkout URL for AI-credits top-up",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: false,
     openWorldHint: true,

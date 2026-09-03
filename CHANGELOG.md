@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.32.0 — 2026-09-01 — Ask once, get leads you don't already have
+## 0.35.0 — 2026-09-02 — Ask once, get leads you don't already have
 
 - **"Find me 10 gyms around Dallas that would buy our flooring."** That is now
   one request. Leadbay goes and finds companies you have never seen, works out
@@ -27,6 +27,157 @@
   re-reading what you already saw.
 - Available as `leadbay_find_new_leads`, `leadbay_qualify_leads` and
   `leadbay_lead_job_status`, plus the "find me new leads" guided walkthrough.
+
+## 0.34.0 — 2026-09-02 — Leadbay on ChatGPT gets its own address
+
+- **On ChatGPT, add Leadbay as `https://mcp.leadbay.app/chatgpt/mcp`.** Same
+  Leadbay, same sign-in, same leads, same everything — except the assistant
+  cannot generate a top-up link or open your billing page there, and will not
+  suggest buying credits at all. ChatGPT's rules for apps do not allow an app
+  to sell credits or plans, or to push you toward an upgrade. When you run out
+  of quota it tells you which window is empty and when it refills. Buy credits
+  in your Leadbay account as usual; tell the assistant you did, and it picks
+  straight back up where it stopped.
+- **Nothing changes on Claude.** `https://mcp.leadbay.app/mcp` keeps the
+  30-second top-up and the billing link exactly as before.
+- **If ChatGPT was already set up for you**, our installer now points it at the
+  new address on its own.
+
+## 0.33.4 — 2026-09-02 — Enrich the one person you named
+
+- **You can now ask for one specific person's email or phone.** "Get me the
+  managing director's email, not the president's" used to have no direct
+  answer on the hosted assistant: the tool that enriches a single named person
+  was only available with an advanced setting nobody hosted turns on. The
+  assistant fell back on pinning, which never enriches anyone and failed every
+  time. That tool is now available by default, and the assistant is told it is
+  the right one when it has already picked who it wants.
+- **The pinning error now points at the direct route.** When you try to pin a
+  suggested contact who is not yet in your list, the assistant is told it can
+  enrich exactly that person, as well as the existing by-title and add-contact
+  routes.
+
+## 0.33.3 — 2026-09-02 — Pinning a contact says what it can and cannot do
+
+- **Pinning someone Leadbay only suggested no longer looks like a breakage.**
+  You can pin the people already in your contact list. Someone Leadbay has
+  suggested for a company but not yet enriched cannot be pinned. The assistant
+  used to get back a bare "contact not found", read it as Leadbay being broken,
+  and try again several times. It now knows the difference, says so, and tells
+  you how to get that person into your list.
+- **Pinning does not decide who gets enriched.** Asking for the managing
+  director rather than the president is a matter of which job title you ask
+  Leadbay to enrich, not which contact you pin. The old wording suggested
+  otherwise and the assistant believed it.
+- **You can see who is pinned.** Whether a contact is pinned, and whether
+  Leadbay pinned them for you rather than you doing it, now comes back with the
+  contact instead of having to be inferred.
+
+## 0.33.2 — 2026-09-02 — Correcting a contact no longer wipes their email
+
+- **Fixing one detail on a contact used to delete the others.** Asking the
+  assistant to correct someone's job title erased their email and phone,
+  silently, and reported success. Now anything you do not change keeps its
+  value.
+- **Removing a detail on purpose still works, and now takes saying so.** To
+  clear an email the assistant states it explicitly, along with the rest of the
+  contact. If it does not, the edit is refused instead of deleting things
+  nobody mentioned.
+
+## 0.33.1 — 2026-09-02 — A slow import is not a broken one
+
+- **A slow import no longer gets reported as failed.** The recent fix taught the
+  assistant to hand back a receipt instead of an error when an import takes a
+  while. One case was still wrong: if the import stayed slow for a long time,
+  the assistant would eventually call it failed, even though Leadbay was still
+  working on it and would have finished. It now keeps saying it's in progress.
+
+## 0.33.0 — 2026-09-01 — Your assistant remembers; Leadbay stops pretending to
+
+- **Leadbay no longer keeps its own notebook about you.** The three
+  `leadbay_agent_memory_*` tools and the file behind them are gone. Every
+  assistant Leadbay plugs into — Claude chat, Claude Cowork projects, ChatGPT,
+  Codex — now remembers your tone, your naming, and how you like to work, on its
+  own and across conversations. Ours did the same job worse: it lived on the
+  server and was wiped on every release, which is how one customer lost
+  fifty-four rules he had taught it over two weeks.
+- **What you say about your market now reaches the product.** Telling the
+  assistant "I target fleets over a hundred vehicles" or "carriers are a bad fit
+  unless they do last-mile" used to be filed as a note that changed one
+  conversation. It now goes to your targeting, which changes what Leadbay finds
+  for your whole team, in the web app too, on every refresh.
+- **Every leads screen answers a little faster.** Nine tools were each making an
+  extra round-trip to fetch that notebook before replying. They no longer do.
+
+## 0.32.6 — 2026-09-01 — An honest word when a Leadbay call is refused
+
+- **The assistant stops saying it already retried when it didn't.** When Leadbay
+  refuses a call, the assistant explains what happened. For anything that writes
+  — adding a top-up, opening billing — it never retries on its own, because
+  replaying a write can do the same thing twice. The explanation said otherwise,
+  so you were told a second attempt had been made when there had only ever been
+  one.
+- **Paying is treated as an action, not a lookup.** Creating a top-up link or
+  opening the billing portal now asks you first, like any other action that
+  changes something.
+
+## 0.32.5 — 2026-09-01 — Editing a contact stops failing
+
+- **Fixing a contact's details now works.** Asking the assistant to correct a
+  contact's title, email or LinkedIn used to fail every time. Leadbay keeps two
+  kinds of contact — the ones your team added, and the ones bought from an
+  enrichment provider — and only the first can be edited. The assistant could
+  not tell them apart, so it kept picking the wrong one. It can now, and it
+  offers to add a corrected contact when the original is a bought one.
+
+## 0.32.4 — 2026-09-01 — "Your enrichment finished" now reaches hosted users
+
+- **Background work that finishes while you are away is reported again.** If you
+  started an enrichment, a qualification or an import and came back later, the
+  assistant had no way to know it had finished — it always reported nothing
+  waiting. It now reads the same notifications the web app shows you, so your
+  morning check-in opens with what completed overnight.
+## 0.32.1 — 2026-09-01 — A stalled Leadbay can no longer freeze your session
+
+- **When you cancel, Leadbay actually stops.** Cancelling a tool call — or your
+  client giving up on one — used to stop the polling but leave the request
+  itself running, still holding one of the five slots the server has. Enough of
+  those and everything else queued behind them. Now cancelling closes the
+  connection and frees the slot immediately.
+- **This is what made a stalled backend a 36-hour outage.** One customer had 28
+  calls sit open for up to 57 hours. The connection had been accepted, so
+  nothing anywhere reported a problem — she just got silence for a day and a
+  half, on the only Leadbay surface she uses.
+- **Long jobs are untouched.** Enrichment, bulk qualification and imports launch
+  work and poll for it, and they keep their own budgets. Nothing now decides on
+  Leadbay's behalf how long its work is allowed to take.
+- **Cancelling never loses track of something you already saved.** Only reads
+  are dropped mid-flight. A note or an import already on its way to Leadbay is
+  allowed to finish, so you are never told it wasn't saved when it was.
+- **A last-resort backstop closes a connection nobody is waiting for any more**
+  after 10 minutes — longer than the longest job any tool runs — so an orphaned
+  request can't hold a slot forever. `LEADBAY_TIMEOUT_MS` changes it; `0` turns
+  it off. That variable was already documented; now it works.
+- **A timed-out call tells the agent to retry** instead of failing silently, a
+  stalled account can no longer distort our own latency numbers, and a timeout
+  now raises an alert instead of waiting to be found in a retrospective.
+## 0.32.0 — 2026-09-01 — A slow import is no longer a failed import
+
+- **A slow import stops looking broken.** Leadbay's import sometimes takes a
+  minute or more. The assistant used to wait sixty seconds, give up, and report
+  an error — even though the import was still running perfectly well on our
+  side. It now says the import is running and comes back for the result.
+- **No more re-uploading the same file.** Because the old answer looked like a
+  failure, the assistant would try the whole import again. One customer's file
+  went up nine times in eleven minutes on a single request. It now checks
+  progress instead of re-importing.
+- **You still get your leads.** Checking an import's progress now returns the
+  imported leads themselves, so the assistant can qualify them or write to them
+  straight away — no second import just to find out which leads it created.
+- **Rows that are still being placed are counted as "in progress", never as
+  failures.**
+- **"Import budget exhausted" is gone.** It was never about money or credits —
+  it meant the wait had run out. Nothing bills you for waiting.
 
 ## 0.31.1 — 2026-08-28 — Asking for more leads on an empty lens now says no
 

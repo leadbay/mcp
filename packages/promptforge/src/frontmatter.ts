@@ -78,12 +78,12 @@ export const FrontmatterSchema = z.object({
   // Agent-memory routing/prompt protocol. Defaults to "enabled" for tools
   // with routing, "disabled" otherwise; explicit disabled is for tools whose
   // first-600-char window cannot carry the shared pointer.
-  memory_protocol: z.enum(["enabled", "disabled"]).optional(),
   // Set while a prompt's whole workflow depends on tools that are themselves
   // gated off (e.g. a backend route that hasn't shipped). The MCP prompt is
   // filtered at runtime, but a Claude SKILL.md is a static file with no
-  // runtime gate — so promptforge simply does not emit one. Delete this line
-  // in the release that un-gates the tools.
+  // runtime gate — so promptforge simply does not emit one. No prompt sets it
+  // today; skills-release-gate.test.ts asserts that and exercises the
+  // mechanism on synthetic artifacts so the next rollout can rely on it.
   release_gated: z.boolean().optional(),
   // Compact rendering recipe (1–3 sentences). Promptforge auto-emits
   // a `## RENDER (quick)` block. The detailed RENDERING block stays

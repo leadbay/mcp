@@ -16,6 +16,10 @@ export interface RequestMeta {
   // through the HTTP layer (NOT_AUTHENTICATED, MOCK_NOT_FOUND, composite-
   // synthesized codes like LEAD_NOT_FOUND).
   http_status?: number;
+  // The wall-clock deadline (ms) a TIMEOUT-coded error exceeded. Set only by
+  // the client's timeout path so telemetry can report which deadline expired
+  // without re-parsing the message (product#4003). Absent everywhere else.
+  timeout_ms?: number;
 }
 
 export interface LeadbayError {
@@ -191,6 +195,12 @@ export interface ContactPayload {
   job_title: string | null;
   recommended: boolean;
   enrichment: ContactEnrichment | null;
+  // Pin state, straight off the backend's ContactPayload. Optional here only
+  // because older API builds predate the fields; the current backend always
+  // emits both on org contacts and NEITHER on paid ones (PaidContactPayload
+  // has no pin state — a paid candidate cannot be pinned).
+  pinned?: boolean;
+  pinned_by_ai?: boolean;
 }
 
 export interface BillingStatePayload {

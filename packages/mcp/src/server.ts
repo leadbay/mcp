@@ -25,9 +25,9 @@ import {
   compositeReadTools,
   compositeWriteTools,
   setTelemetry,
-  agentMemoryTools,
   granularReadTools,
   granularWriteTools,
+  NO_COMMERCE_TOOL_DESCRIPTIONS,
   COMPOSITE_FILE_TOOL_NAMES,
   type BulkTracker,
   type LeadbayClient,
@@ -36,7 +36,7 @@ import {
   type ToolContext,
   type ToolLogger,
 } from "@leadbay/core";
-import { NotificationsInbox } from "@leadbay/core";
+import { NotificationsInbox, runWithRequestSignal } from "@leadbay/core";
 import { NOOP_TELEMETRY, type TelemetryHandle } from "./telemetry.js";
 import type { UpdateStateStore } from "./update-state.js";
 import {
@@ -51,7 +51,7 @@ import {
   FRICTION,
   MENTAL_MODEL,
   QUOTA_TOPUP,
-  AGENT_MEMORY,
+  QUOTA_REFRESH,
   TRIGGERED_BY,
   TRANSIENT_401,
   ENRICHMENT_TERMINAL,
@@ -65,7 +65,7 @@ import {
 // underlying tool is exposed.
 //
 // The static paragraphs (VERIFICATION, FRICTION, MENTAL_MODEL, QUOTA_TOPUP,
-// AGENT_MEMORY, TRIGGERED_BY, TRANSIENT_401, ENRICHMENT_TERMINAL) are sourced from packages/promptforge/snippets/server-instructions/*.md
+// TRIGGERED_BY, TRANSIENT_401, ENRICHMENT_TERMINAL) are sourced from packages/promptforge/snippets/server-instructions/*.md
 // and emitted into ./server-instructions.generated.ts by promptforge build.
 // Edit the snippet files, not this one. The dynamic builders (scoring,
 // start-here, rhythm, etc.) remain inline below because they conditionally
@@ -392,7 +392,18 @@ export function buildServerInstructions(exposed: Set<string>): string {
   // the telemetry setting (see leadbay/product#3718 review).
   parts.push(TRIGGERED_BY);
   parts.push(MENTAL_MODEL);
-  parts.push(QUOTA_TOPUP);
+  // The selling paragraph — only where selling is allowed. Keyed off the tool
+  // so the instructions never promote a purchase the host forbids, and never
+  // name a tool this server did not register (the iter-12 invariant the rest of
+  // this function follows). Not softened anywhere: it is present verbatim or
+  // absent.
+  if (has("leadbay_create_topup_link")) {
+    parts.push(QUOTA_TOPUP);
+  }
+  // When to re-render the quota gauge once paid work completes. Says nothing
+  // about buying, so both surfaces get it — its own snippet precisely so a
+  // future edit cannot land on one surface and miss the other.
+  parts.push(QUOTA_REFRESH);
   // Sits next to QUOTA_TOPUP because both govern the enrichment lifecycle: that
   // one says when to refresh the quota, this one says when to STOP enriching.
   // Gated on enrich_titles because it names that tool (#3504: never instruct the
@@ -417,9 +428,6 @@ export function buildServerInstructions(exposed: Set<string>): string {
   if (promptsCatalog) parts.push(promptsCatalog);
   parts.push(RESOURCES_PARAGRAPH);
   parts.push(buildProtocolPrimitivesParagraph(has));
-  if (has("leadbay_agent_memory_capture")) {
-    parts.push(AGENT_MEMORY);
-  }
   parts.push(ARTIFACT_PROPOSAL_PARAGRAPH);
   parts.push(SCHEDULED_TASK_PARAGRAPH);
   // Host-native widget routing — Claude's places_map_display_v0 /
@@ -431,9 +439,39 @@ export function buildServerInstructions(exposed: Set<string>): string {
   return parts.join("\n\n");
 }
 
+// Tools that sell, or link to a page that sells. Dropped wholesale on a
+// commerce-free surface. See COMMERCE_FREE_NOTE below.
+const COMMERCE_TOOL_NAMES = new Set([
+  "leadbay_create_topup_link",
+  "leadbay_open_billing_portal",
+]);
+
 interface BuildServerOptions {
   includeAdvanced?: boolean;
   includeWrite?: boolean;
+  /**
+   * Default true. Set false for a surface whose host forbids selling digital
+   * goods — the OpenAI app directory: "plugins may conduct commerce only for
+   * physical goods. Selling digital products or services — including
+   * subscriptions, digital content, tokens, or credits — is not allowed".
+   * Anthropic's Software Directory Policy has no equivalent rule, so the
+   * Claude surface keeps commerce on.
+   *
+   * When false, three things go away together — the tools, and every text that
+   * would promote buying them:
+   *
+   *   1. COMMERCE_TOOL_NAMES are not registered.
+   *   2. Tool descriptions lose their `{{commerce}}` blocks
+   *      (NO_COMMERCE_TOOL_DESCRIPTIONS, emitted by promptforge).
+   *   3. The QUOTA_TOPUP instruction paragraph is not pushed, and the client's
+   *      QUOTA_EXCEEDED hint drops its two selling sentences.
+   *
+   * Nothing is reworded for ChatGPT. Every one of those is a deletion of text
+   * that is otherwise present verbatim, so the Claude surface keeps selling
+   * exactly as hard as it does today — asserted byte-for-byte by
+   * test/unit/commerce-gate.test.ts.
+   */
+  includeCommerce?: boolean;
   logger?: ToolLogger;
   bulkTracker?: BulkTracker;
   // Server version reported on `initialize`. The CLI passes the build-time
@@ -606,9 +644,6 @@ export function buildServer(
   opts: BuildServerOptions = {}
 ): Server {
   const exposedTools: Tool[] = [];
-  // Local agent-memory protocol tools are always exposed. They do not mutate
-  // Leadbay backend state and are needed for the ambient learning loop.
-  exposedTools.push(...agentMemoryTools);
   // Read composites — ALWAYS exposed.
   exposedTools.push(...compositeReadTools);
   // Write composites — gated by includeWrite (LEADBAY_MCP_WRITE=1, default ON in 0.3.0).
@@ -657,16 +692,24 @@ export function buildServer(
   // For composite-file tools (COMPOSITE_FILE_TOOL_NAMES) the field is also
   // declared as required + uses the stronger MANDATORY description; the
   // dispatch handler enforces presence by rejecting LAST_PROMPT_REQUIRED.
+  const includeCommerce = opts.includeCommerce !== false;
+  client.commerce = includeCommerce;
   const toolByName = new Map<string, Tool>();
   for (const t of exposedTools) {
-    if (!toolByName.has(t.name) && t.name !== "leadbay_login") {
-      toolByName.set(
-        t.name,
-        withTriggeredByMeta(t, {
-          mandatory: COMPOSITE_FILE_TOOL_NAMES.has(t.name),
-        })
-      );
-    }
+    if (toolByName.has(t.name) || t.name === "leadbay_login") continue;
+    // COMMERCE_FREE_NOTE: filtered here, after the catalogue arrays are
+    // merged, because these two are registered in both compositeReadTools
+    // and granularReadTools.
+    if (!includeCommerce && COMMERCE_TOOL_NAMES.has(t.name)) continue;
+    const noCommerce = includeCommerce
+      ? undefined
+      : NO_COMMERCE_TOOL_DESCRIPTIONS[t.name];
+    toolByName.set(
+      t.name,
+      withTriggeredByMeta(noCommerce ? { ...t, description: noCommerce } : t, {
+        mandatory: COMPOSITE_FILE_TOOL_NAMES.has(t.name),
+      })
+    );
   }
 
   // Build instructions from the ACTUAL exposed name set so the agent system
@@ -1054,39 +1097,35 @@ export function buildServer(
     };
   };
 
+  // product#4003 alert signal. A tool call that died on the request deadline is
+  // the shape that produced a 36-hour silent outage: the customer sees nothing
+  // come back and nothing in our telemetry says "stalled backend" unless we say
+  // it. Fired from BOTH failure paths (thrown LeadbayError and returned error
+  // envelope) so a composite that catches and surfaces the envelope is still
+  // alertable. The deadline is read from `_meta.timeout_ms`, which the client
+  // stamps on the envelope, so the event reports the deadline that actually
+  // expired (a 4s probe and a 60s tool call must stay separable) without
+  // re-parsing the message text.
+  const captureTimeoutAlert = (
+    toolName: string,
+    envelope: { message?: string; _meta?: any },
+    triggeredBy: string | undefined
+  ): void => {
+    const ms = envelope._meta?.timeout_ms;
+    telemetry.captureToolTimeout({
+      tool: toolName,
+      ...(typeof ms === "number" ? { timeout_ms: ms } : {}),
+      ...(envelope._meta?.endpoint ? { endpoint: envelope._meta.endpoint } : {}),
+      ...(envelope._meta?.region ? { region: envelope._meta.region } : {}),
+      ...(triggeredBy !== undefined ? { triggered_by: triggeredBy } : {}),
+    });
+  };
+
   // NOTE: friction reporting is no longer captured post-hoc from the tool
   // result. It is threaded into ToolContext as a `reportFriction` transport
   // (see the ctx construction below) so the tool learns whether delivery
   // actually succeeded and can confirm honestly to the user (product#3943).
 
-  const captureAgentMemoryTelemetry = (toolName: string, result: any) => {
-    if (!result || typeof result !== "object") return;
-    const meta = result._meta ?? {};
-    if (toolName === "leadbay_agent_memory_capture") {
-      telemetry.captureAgentMemoryCaptured({
-        source: result.captured?.source ?? meta.source,
-        scope: result.captured?.scope ?? meta.scope,
-        key: result.captured?.key,
-        type: result.captured?.type,
-        account_id_hash: meta.account_id_hash,
-      });
-    } else if (toolName === "leadbay_agent_memory_recall") {
-      telemetry.captureAgentMemoryRecalled({
-        entries_returned: result.entries_returned,
-        total_active: result.total_active,
-        account_id_hash: meta.account_id_hash,
-      });
-    } else if (
-      toolName === "leadbay_agent_memory_review" &&
-      result.changed === true &&
-      (result.action === "retract" || result.action === "prune")
-    ) {
-      telemetry.captureAgentMemoryPruned({
-        action: result.action,
-        account_id_hash: meta.account_id_hash,
-      });
-    }
-  };
 
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     // Duration timer is always on now (telemetry needs it). The DEBUG
@@ -1310,11 +1349,17 @@ export function buildServer(
         };
       }
       // MCP 2025-11-25 §Cancellation: extra.signal is aborted by the SDK
-      // when the client sends `notifications/cancelled`. Plumbing it to
-      // ToolContext.signal lets long-running composites (bulk_qualify_leads,
-      // enrich_titles, import_and_qualify) actually stop polling when the
-      // user clicks Cancel in Claude Desktop / Cursor.
-      const result = await tool.execute(client, args, {
+      // when the client sends `notifications/cancelled` — which it does both
+      // when the user clicks Cancel and when its OWN request timeout fires.
+      //
+      // Two things consume it. ToolContext.signal lets long-running composites
+      // (bulk_qualify_leads, enrich_titles, import_and_qualify) stop polling.
+      // runWithRequestSignal makes it ambient for the HTTP layer, so the request
+      // in flight at that moment is destroyed and its concurrency slot released
+      // instead of surviving the call that wanted it (product#4003). That is
+      // what bounds a stalled backend — the host's own policy, not a wall-clock
+      // number we would have to guess on Leadbay's behalf.
+      const result = await runWithRequestSignal(extra.signal, () => tool.execute(client, args, {
         logger: opts.logger,
         bulkTracker: opts.bulkTracker,
         notificationsInbox: opts.notificationsInbox,
@@ -1352,7 +1397,7 @@ export function buildServer(
               ? { severity: report.severity as "low" | "medium" | "high" }
               : {}),
           }) === true,
-      });
+      }));
       // Inject `update_available` into account_status returns when an
       // upgrade is cached. Other tools pass through untouched. Done
       // BEFORE the error/markdown/json branching so the field appears
@@ -1390,6 +1435,9 @@ export function buildServer(
               retry_after_s: (result as any)._meta?.retry_after,
               endpoint: (result as any)._meta?.endpoint,
             });
+          }
+          if (envCode === "TIMEOUT") {
+            captureTimeoutAlert(name, result as any, triggered_by);
           }
           telemetry.captureToolCall({
             tool: name,
@@ -1470,7 +1518,6 @@ export function buildServer(
             duration_ms: mdDur,
           });
         }
-        captureAgentMemoryTelemetry(name, env.structured);
         if (
           name === "leadbay_create_topup_link" &&
           typeof (env.structured as any)?.url === "string"
@@ -1531,7 +1578,6 @@ export function buildServer(
           });
         }
       }
-      captureAgentMemoryTelemetry(name, result);
       if (
         name === "leadbay_create_topup_link" &&
         typeof (result as any)?.url === "string"
@@ -1564,6 +1610,9 @@ export function buildServer(
             retry_after_s: err._meta?.retry_after,
             endpoint: err._meta?.endpoint,
           });
+        }
+        if (!skipAnalytics && err.code === "TIMEOUT") {
+          captureTimeoutAlert(name, err, triggered_by);
         }
         // Upstream HTTP status (set by client.ts mapErrorResponse at
         // _meta.http_status). Forward it onto the product-analytics events

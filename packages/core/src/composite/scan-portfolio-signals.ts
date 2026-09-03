@@ -6,7 +6,6 @@ import type {
   LeadWebFetchPayload,
   WebFetchEntry,
 } from "../types.js";
-import { withAgentMemoryMeta } from "../agent-memory/index.js";
 import { reshapeWebFetchContent } from "./_web-fetch-helpers.js";
 import { resolveLocations } from "./_geo-helpers.js";
 import {
@@ -363,9 +362,7 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
       if (geoTexts.length > 0) {
         const { resolved, ambiguities } = await resolveLocations(client, geoTexts);
         if (ambiguities.length > 0) {
-          return withAgentMemoryMeta(
-            client,
-            {
+          return {
               status: "ambiguous_locations" as const,
               location_ambiguities: ambiguities,
               matched: [],
@@ -374,9 +371,7 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
               matched_count: 0,
               quota_exceeded: false,
               _meta: { region: client.region },
-            },
-            ctx
-          );
+            };
         }
         if (resolved.length > 0) {
           effectiveSetFilter = mergeLocationIds(effectiveSetFilter, resolved);
@@ -528,6 +523,6 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
     };
     if (truncatedAt !== undefined) out.truncated_at = truncatedAt;
 
-    return withAgentMemoryMeta(client, out, ctx);
+    return out;
   },
 };

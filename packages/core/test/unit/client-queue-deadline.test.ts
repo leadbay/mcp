@@ -80,11 +80,34 @@ describe("the request deadline covers the queue wait", () => {
     expect(client._semaphoreState.active).toBe(0);
   });
 
-  it("refuses immediately when the budget is already spent", async () => {
+  it("refuses a budget spent in the queue without ever reaching the wire", async () => {
+    // This case used to pass `timeoutMs: 0` as shorthand for "already spent".
+    // That shorthand is no longer available: since the default request deadline
+    // landed, an explicit `timeoutMs <= 0` is the caller OPTING OUT of a bound
+    // (client-default-request-deadline.test.ts pins it), so the two readings of
+    // the same value collided. The behaviour under test is unchanged — a budget
+    // that really has run out must refuse before dispatch — so it is now
+    // exercised by letting the budget expire during the queue wait, which is
+    // also how it actually happens.
     const client = newClient();
-    await expect(
-      client.request("GET", "/mcp/jobs/j1", undefined, { timeoutMs: 0 })
-    ).rejects.toMatchObject({ code: "TIMEOUT" });
+    const stalled = Array.from({ length: MAX_CONCURRENT }, () =>
+      client.request("GET", "/stalled").catch(() => {})
+    );
+    await settled();
+    seen.length = 0;
+
+    const bounded = client
+      .request("GET", "/mcp/jobs/j1", undefined, { totalTimeoutMs: 50 })
+      .catch((e) => e);
+
+    // Outlive the budget while every slot is still held.
+    await wait(120);
+    flush();
+    await Promise.all(stalled);
+
+    expect(await bounded).toMatchObject({ code: "TIMEOUT" });
+    // The point of the assertion: nothing was sent, so nothing could have been
+    // charged or committed server-side.
     expect(seen).toHaveLength(0);
     expect(client._semaphoreState.active).toBe(0);
   });

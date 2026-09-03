@@ -4,9 +4,11 @@ description: "Resolve a company by name or domain across the user's visible Disc
 ---
 
 
-## MEMORY
+## WHAT LEADBAY SHOULD REMEMBER
 
-Before responding, glance at any `_meta.agent_memory.summary` returned by tool calls earlier in this session and reflect its top signals in your reasoning ("Filtering by your stated preference for healthcare"). After any material new signal from the user this conversation (sector, region, deal size, communication style, qualification rule, explicit retraction, or recurrence / scheduling preference such as "I do this every day" or "remind me every morning"), call `leadbay_agent_memory_capture` to persist it: `source:"user_stated"` if literal, `source:"inferred"` with confidence <=6 if inferred.
+You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
+
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call `leadbay_refine_prompt` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
 
 
 IRON LAW — NO FABRICATION. Every lead id, contact email, custom field id, mapping decision, and tool argument must trace to a value you read from the file the user attached or to an output from a leadbay_* tool call in this session. Do not invent values. Do not "fill in" a missing leadId with a name match. Do not synthesize a CRM id from a guess. If a value is missing, leave the field blank and say so.
@@ -21,10 +23,17 @@ Research the company name or domain '<Company name or domain (for example 'Acme 
 
 # PHASE 1 — RESOLVE + DEEP DIVE
 Call `leadbay_research_lead_by_name_fuzzy` with
-`companyName:'<the domain (as extracted above)>'`. Omit `lensId`: the default search deliberately
-covers the user's visible Discover, Monitor, and Activate corpus, including
-other lenses and leads outside the active lens's first page. The composite
-resolves the lead and returns the full deep-research payload in one call.
+`companyName:'<the domain (as extracted above)>'`. If the user gave a domain or a contact email
+anywhere in the conversation, also pass `website` (or `email`) — that is the
+match key that finds a company they do not own yet. Omit `lensId`: the default
+search covers the user's visible Discover, Monitor, and Activate corpus —
+including other lenses and leads outside the active lens's first page — and
+then the Leadbay company registry. The composite resolves the lead and returns
+the full deep-research payload in one call.
+
+If it returns `{resolution:"ambiguous"}`, several companies match. Ask the user
+which one via `ask_user_input_v0`, then call `leadbay_research_lead_by_id` with
+the leadId they pick.
 
 Render the result using the canonical single-record card layout — detect MODE A
 (Discovery) since the user asked to research a company rather than prepare
@@ -101,10 +110,14 @@ When the response carries `social_urls` (the post-fix multi-platform URL block o
 
 
 # PHASE 2 — NOT FOUND
-If the resolver returns `LEAD_NOT_FOUND`, say that the existing visible corpus
-was searched. **Do NOT call `leadbay_import_and_qualify` automatically.** Offer
-to import and qualify the company as a separate, explicit next step; only call
-it after the user agrees.
+If the resolver returns `LEAD_NOT_FOUND`, read its hint: it names the field
+that would have found the company (`would_help`, usually `website`). **Ask the
+user for that field first** — "what's their website?" — and call the tool again
+with it. Only when they cannot supply it should you say both their leads and
+the Leadbay registry were searched.
+**Do NOT call `leadbay_import_and_qualify` automatically.**
+Offer to import and qualify as a separate, explicit next step; only call it
+after the user agrees.
 
 # PHASE 3 — SUMMARY
 Place a 2–3 sentence summary ABOVE the card with:

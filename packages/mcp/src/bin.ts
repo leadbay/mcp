@@ -22,6 +22,7 @@ import {
   detectClaudeDesktopMode,
   formatInstallOsLabel,
   HOSTED_MCP_URL,
+  HOSTED_MCP_URL_CHATGPT,
   type DetectedClient,
 } from "../installer/install-shared.js";
 export { detectClaudeDesktopMode, formatInstallOsLabel } from "../installer/install-shared.js";
@@ -1367,7 +1368,7 @@ export async function runInstall(args: string[]): Promise<number> {
     } else if (c.id === "chatgpt-desktop") {
       res = {
         ok: true,
-        message: "manual setup required; add this MCP URL in ChatGPT Settings > Apps: " + HOSTED_MCP_URL,
+        message: "manual setup required; add this MCP URL in ChatGPT Settings > Apps: " + HOSTED_MCP_URL_CHATGPT,
       };
     } else if (c.id === "claude-desktop" && c.mode?.dxt && c.supportDir) {
       const dxtResult = await removeDxtExtension(c.supportDir);

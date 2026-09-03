@@ -36,20 +36,17 @@ import {
   EV_QUOTA_HIT,
   EV_STARTUP,
   EV_TOOL_CALL,
+  EV_TOOL_TIMEOUT,
   EV_TOPUP_LINK,
-  EV_AGENT_MEMORY_CAPTURED,
-  EV_AGENT_MEMORY_RECALLED,
-  EV_AGENT_MEMORY_PRUNED,
+  DURATION_PLAUSIBILITY_CEILING_MS,
   EV_FRICTION_REPORTED,
-  type AgentMemoryCapturedProps,
-  type AgentMemoryPrunedProps,
-  type AgentMemoryRecalledProps,
   type CompositeCallProps,
   type ExceptionCtx,
   type FrictionReportedProps,
   type QuotaHitProps,
   type StartupProps,
   type ToolCallProps,
+  type ToolTimeoutProps,
   type TopupLinkProps,
   type UpdateCheckProps,
   type UpdateDismissedProps,
@@ -95,11 +92,9 @@ export interface TelemetryHandle {
   captureToolCall(props: ToolCallProps, identity?: CaptureIdentity): void;
   captureCompositeCall(props: CompositeCallProps, identity?: CaptureIdentity): void;
   captureQuotaHit(props: QuotaHitProps, identity?: CaptureIdentity): void;
+  captureToolTimeout(props: ToolTimeoutProps, identity?: CaptureIdentity): void;
   captureTopupLink(props: TopupLinkProps, identity?: CaptureIdentity): void;
   captureStartup(props: StartupProps, identity?: CaptureIdentity): void;
-  captureAgentMemoryCaptured(props: AgentMemoryCapturedProps, identity?: CaptureIdentity): void;
-  captureAgentMemoryRecalled(props: AgentMemoryRecalledProps, identity?: CaptureIdentity): void;
-  captureAgentMemoryPruned(props: AgentMemoryPrunedProps, identity?: CaptureIdentity): void;
   // Returns whether the report was actually accepted for delivery (sent to
   // PostHog, or buffered pending identity resolution). Returns FALSE when there
   // is no PostHog sink at all — e.g. a Sentry-only handle, a failed PostHog
@@ -134,11 +129,9 @@ export const NOOP_TELEMETRY: TelemetryHandle = {
   captureToolCall: (_props?, _identity?) => {},
   captureCompositeCall: (_props?, _identity?) => {},
   captureQuotaHit: (_props?, _identity?) => {},
+  captureToolTimeout: (_props?, _identity?) => {},
   captureTopupLink: (_props?, _identity?) => {},
   captureStartup: (_props?, _identity?) => {},
-  captureAgentMemoryCaptured: () => {},
-  captureAgentMemoryRecalled: () => {},
-  captureAgentMemoryPruned: () => {},
   // NOOP delivers nothing — say so, so the tool never claims a false send.
   captureFrictionReported: () => false,
   captureException: () => {},
@@ -186,6 +179,37 @@ export function parseTelemetryEnv(raw: string | undefined): boolean {
   const v = raw.trim().toLowerCase();
   if (v === "false" || v === "0" || v === "no" || v === "off") return false;
   return true;
+}
+
+/**
+ * Keep an implausible `duration_ms` out of the field the latency dashboards
+ * aggregate, without discarding the measurement.
+ *
+ * A single stalled tenant used to be enough to destroy a tool's fleet-wide
+ * percentiles — product#4003 saw `leadbay_list_campaigns` at p95 = 204,338,713 ms
+ * against a 5–24 ms median for every other user. Over the ceiling we drop
+ * `duration_ms`, move the measurement to `duration_ms_raw`, and set
+ * `duration_implausible: true`, so the stall is louder in the data, not quieter.
+ *
+ * Negative durations get the same treatment: a backwards clock is not a latency
+ * either, and a negative value silently drags a mean down.
+ */
+export function withPlausibleDuration<
+  T extends { duration_ms: number }
+>(props: T): Omit<T, "duration_ms"> & {
+  duration_ms?: number;
+  duration_ms_raw?: number;
+  duration_implausible?: boolean;
+} {
+  const { duration_ms, ...rest } = props;
+  if (
+    Number.isFinite(duration_ms) &&
+    duration_ms >= 0 &&
+    duration_ms <= DURATION_PLAUSIBILITY_CEILING_MS
+  ) {
+    return { ...rest, duration_ms };
+  }
+  return { ...rest, duration_ms_raw: duration_ms, duration_implausible: true };
 }
 
 export function initTelemetry(opts: InitOpts): TelemetryHandle {
@@ -401,28 +425,22 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
       return identityPromise;
     },
     captureToolCall(props, identity) {
-      emit(EV_TOOL_CALL, { ...props }, identity);
+      emit(EV_TOOL_CALL, withPlausibleDuration(props), identity);
     },
     captureCompositeCall(props, identity) {
-      emit(EV_COMPOSITE_CALL, { ...props }, identity);
+      emit(EV_COMPOSITE_CALL, withPlausibleDuration(props), identity);
     },
     captureQuotaHit(props, identity) {
       emit(EV_QUOTA_HIT, { ...props }, identity);
+    },
+    captureToolTimeout(props, identity) {
+      emit(EV_TOOL_TIMEOUT, { ...props }, identity);
     },
     captureTopupLink(props, identity) {
       emit(EV_TOPUP_LINK, { ...props }, identity);
     },
     captureStartup(props, identity) {
       emit(EV_STARTUP, { ...props }, identity);
-    },
-    captureAgentMemoryCaptured(props, identity) {
-      emit(EV_AGENT_MEMORY_CAPTURED, { ...props }, identity);
-    },
-    captureAgentMemoryRecalled(props, identity) {
-      emit(EV_AGENT_MEMORY_RECALLED, { ...props }, identity);
-    },
-    captureAgentMemoryPruned(props, identity) {
-      emit(EV_AGENT_MEMORY_PRUNED, { ...props }, identity);
     },
     captureFrictionReported(props, identity) {
       // `emit` silently no-ops without a PostHog sink, which for this event

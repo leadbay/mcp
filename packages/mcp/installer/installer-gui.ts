@@ -12,6 +12,7 @@ import {
   detectClients,
   formatInstallOsLabel,
   HOSTED_MCP_URL,
+  HOSTED_MCP_URL_CHATGPT,
   type DetectedClient,
 } from "./install-shared.js";
 import { inferRegionViaStargate, oauthLogin, openInBrowser } from "../src/oauth.js";
@@ -435,7 +436,7 @@ async function installInto(client: DetectedClient, session: LoginSession, includ
         : { ok: false, message: `config ${configRes.message}; ${exportRes.message}` };
     }
   } else if (client.id === "chatgpt-desktop") {
-    res = { ok: true, message: "manual setup required; add this MCP URL in ChatGPT Settings > Apps: " + HOSTED_MCP_URL };
+    res = { ok: true, message: "manual setup required; add this MCP URL in ChatGPT Settings > Apps: " + HOSTED_MCP_URL_CHATGPT };
   } else if (client.id === "claude-desktop" && client.mode?.dxt && client.supportDir) {
     const dxtResult = await removeDxtExtension(client.supportDir);
     const jsonResult = await installInJsonConfig(client.configPath!, session.token, session.region, includeWrite, telemetryEnabled, LOCAL_BIN_PATH);

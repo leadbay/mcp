@@ -16,11 +16,11 @@ const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
 beforeEach(() => resetHttpMock());
 
 describe("leadbay_update_contact", () => {
-  it("happy path — edits via POST /contacts/{id}/update with snake_case body", async () => {
+  it("happy path — a plain edit goes to POST /contacts/{id}/merge, so untouched fields survive (product#4046)", async () => {
     mockHttp([
       {
         method: "POST",
-        path: "/1.6/contacts/c-1/update",
+        path: "/1.6/contacts/c-1/merge",
         status: 200,
         body: {
           id: "c-1",
@@ -48,7 +48,7 @@ describe("leadbay_update_contact", () => {
     const reqs = getHttpRequests();
     expect(reqs).toHaveLength(1);
     expect(reqs[0].method).toBe("POST");
-    expect(reqs[0].path).toBe("/1.6/contacts/c-1/update");
+    expect(reqs[0].path).toBe("/1.6/contacts/c-1/merge");
     const sent = JSON.parse(reqs[0].body as string);
     // first/last name are always sent (backend requires the full identity).
     expect(sent).toMatchObject({

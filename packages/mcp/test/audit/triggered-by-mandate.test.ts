@@ -29,7 +29,6 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
   LeadbayClient,
   COMPOSITE_FILE_TOOL_NAMES,
-  clearAgentMemoryCache,
 } from "@leadbay/core";
 import { buildServer } from "../../src/server.js";
 import { NOOP_TELEMETRY, type TelemetryHandle } from "../../src/telemetry.js";
@@ -93,7 +92,6 @@ async function connect(opts: { includeWrite?: boolean; telemetry?: TelemetryHand
 
 beforeEach(() => {
   resetHttpMock();
-  clearAgentMemoryCache();
 });
 
 describe("audit: composite _triggered_by mandate (schema)", () => {
