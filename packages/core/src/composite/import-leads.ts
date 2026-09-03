@@ -1956,9 +1956,13 @@ async function runImportInBackground(
       const notificationIds: string[] = [];
       const matched = new Map<number, MatchEntry>();
       const notImported = new Map<number, NotImportedEntry>();
+      // Which chunk the loop is on. Everything from here on is uploaded but
+      // has not had its mappings committed yet — see the catch.
+      let inFlight = 0;
       try {
         const totalDeadline = Date.now() + opts.totalBudget;
-        for (const upload of uploadedChunks) {
+        for (inFlight = 0; inFlight < uploadedChunks.length; inFlight++) {
+          const upload = uploadedChunks[inFlight];
           const out = await completeUploadedChunk(
             client,
             upload,
@@ -1989,6 +1993,27 @@ async function runImportInBackground(
           notificationIds
         );
       } catch (err: any) {
+        // A chunk whose mappings were never committed is parked for ever:
+        // `commitMappings` is the MCP's own POST, so nothing on the backend
+        // will send it, and `import_status` classifies the row as COMPLETE
+        // (pre_processing.finished && !processing) — the user is told an
+        // import finished that committed nothing. Hand every un-committed
+        // chunk to the same detached finisher the blocking path uses.
+        //
+        // The chunk that threw is un-committed only when PREPROCESS timed out;
+        // the commit is sent immediately after preprocess, so a later-phase
+        // error means it already went out and re-sending it would re-trigger
+        // processing. Every chunk AFTER the thrower is un-committed whatever
+        // the error, because the loop never reached it.
+        if (!opts.dryRun) {
+          const parkedFrom =
+            err instanceof ImportPhaseTimeout && err.phase === "preprocess"
+              ? inFlight
+              : inFlight + 1;
+          for (const parked of uploadedChunks.slice(parkedFrom)) {
+            resumeParkedUpload(client, parked, prep.mappings, bgCtx);
+          }
+        }
         ctx?.logger?.warn?.(
           `import-leads: background import failed for ${importIds.join(",")}: ${err?.message ?? err?.code ?? err}`
         );
