@@ -4,7 +4,7 @@
   "app_info": {
     "display_name": "Leadbay",
     "subtitle": "Work your B2B lead pipeline",
-    "description": "Leadbay is a B2B prospecting workspace that sources and scores companies against a seller's ideal customer profile. This app connects ChatGPT to the user's own Leadbay account so they can work that pipeline in plain language instead of clicking through the web app.\n\nTypical sessions: pull the day's fresh, AI-scored prospects and skim the best ones; research a single company in depth (qualification signals, contacts, recent web findings, past notes and activity); draft a personalised outreach email or call opener for a named contact; plan which accounts to visit in a city before a trip; import a list of companies and have Leadbay qualify them; and log what was actually sent so the pipeline stays honest.\n\nIt also covers the account admin a seller needs along the way: managing lenses (saved audiences), campaigns, contacts, CRM custom fields, and the qualification questions every lead is scored against.\n\nThe app reads and writes only the signed-in user's own Leadbay workspace, over an OAuth token the user grants. It does not send email or messages on the user's behalf — it drafts outreach and records the outcome the user reports.",
+    "description": "Leadbay is a B2B prospecting workspace that sources and scores companies against a seller's ideal customer profile. This app connects ChatGPT to the user's own Leadbay account so they can work that pipeline in plain language instead of clicking through the web app.\n\nTypical sessions: pull the day's fresh, AI-scored prospects and skim the best ones; research a single company in depth (qualification signals, contacts, recent web findings, past notes and activity); draft a personalised outreach email or call opener for a named contact; plan which accounts to visit in a city before a trip; import a list of companies and have Leadbay qualify them; and log what was actually sent so the pipeline stays honest.\n\nIt also covers the account admin a seller needs along the way: managing lenses (saved audiences), campaigns, contacts, CRM custom fields, and the qualification questions every lead is scored against.\n\nLead and contact data is read and written only in the signed-in user's own Leadbay workspace, over an OAuth token the user grants. Two consent-gated tools are the exception and send nothing else: \"send feedback\" delivers a message the user wrote to the Leadbay team's Sentry inbox, and \"report a problem\" emits one product-analytics event to PostHog carrying the user's own words. Both fire only when the user asks or accepts an offer, and neither carries lead or contact data. The app does not send email or messages on the user's behalf — it drafts outreach and records the outcome the user reports.",
     "category": "BUSINESS"
   },
   "tools": {
@@ -715,11 +715,11 @@
       "expected_output_url": null
     },
     {
-      "description": "Look a company up by name and summarise what the account already knows about it.",
-      "user_prompt": "Tell me what we know about the top company in that batch.",
+      "description": "Look a named company up by name and summarise what the account already knows about it. The name is explicit so the case stands alone.",
+      "user_prompt": "Tell me what we know about CEGEDIM.",
       "file_attachment_urls": null,
       "tools_triggered": "leadbay_research_lead_by_name_fuzzy",
-      "expected_output": "A single company card: qualification signals and score, contacts with titles, recent web findings, and prior notes or activity if any exist.",
+      "expected_output": "A single company card for CEGEDIM: qualification signals and score, contacts with titles, recent web findings, and prior notes or activity if any exist.",
       "expected_output_url": null
     },
     {
