@@ -25,6 +25,12 @@ jobs:
       - name: Build
         run: pnpm -r build
 
+      # The build rewrites the committed generated modules in place, so every
+      # vitest freshness gate downstream reads a file that was just regenerated
+      # and can never fail. This is the only step that sees the drift.
+      - name: Generated files match the committed ones
+        run: git diff --exit-code
+
       - name: Typecheck
         run: pnpm -r typecheck
 
