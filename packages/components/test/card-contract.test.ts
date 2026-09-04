@@ -56,7 +56,7 @@ describe("lead-card contract in the usage guide", () => {
     // The literal wraps across a line in the guide's prose, so match it
     // whitespace-insensitively rather than asserting a contiguous string.
     expect(GUIDE.replace(/\s+/g, " ")).toContain(
-      "No description yet — run qualification to generate one",
+      "No description yet — qualify to add one",
     );
     expect(GUIDE).toMatch(/Never leave this line blank/i);
   });
@@ -70,8 +70,11 @@ describe("lead-card contract in the usage guide", () => {
     expect(GUIDE).toContain("phone_numbers");
     expect(GUIDE).toContain("lead.email");
     expect(GUIDE).toContain("has_phone");
-    // The API returns the literal string "null" for a missing email.
-    expect(GUIDE).toContain('lead.email !== "null"');
+    // The API returns the literal string "null" for a missing value — in
+    // phone_numbers as well as email. A real lead ships phone_numbers:["null"],
+    // which rendered as "☎ null" until the guard covered both.
+    expect(GUIDE).toContain('v !== "null"');
+    expect(GUIDE.replace(/\s+/g, " ")).toMatch(/phone_numbers as well as email/i);
     // LinkedIn alone and contacts_count are NOT reachability.
     expect(GUIDE.replace(/\s+/g, " ")).toMatch(/linkedin_page` alone/i);
     expect(GUIDE).toContain("contacts_count");

@@ -90,7 +90,8 @@ lb.styles();   // idempotent — safe to call per row
 | `lb-msg` (`data-tone="error\|ok"`) | inline feedback |
 | `lb-chip` (`data-status="WON\|LOST"`) | a status pill |
 | `lb-table` | leads table |
-| `lb-spinner` | inline busy indicator |
+| `lb-spinner` | inline busy indicator — decorative, mark it `aria-hidden` |
+| `lb-vh` | visually-hidden text — labels heard but not seen |
 
 Controls react to the `data-lb-state` the bind helpers already set — a bound
 `lb-btn` dims while loading, goes green on success, red on error, all with no
@@ -99,7 +100,8 @@ extra CSS from you.
 The palette is the **product design system**, ported from
 `frontend/packages/style/color.css` — same `--color-gray-1…9` ramp, same
 semantic `--color-{green,red,blue,gold}-{background,foreground}` pairs, same
-`1rem` / `0.625rem` radii and `corner-shape: squircle` as the app's components.
+`1.5rem` / `0.625rem` radii (concentric: outer = inner + padding) and
+`corner-shape: squircle`, matching the app's components.
 An artifact therefore looks like Leadbay, not like a generic page.
 
 Use the tokens rather than hardcoded colours — the same rule the style package
@@ -122,7 +124,7 @@ and a remote font URL will silently fail.
 
 A card is the artifact form of the `pull_leads` table, and it inherits that
 table's rules. A card with a name and a button is not enough: the rep cannot
-tell *why* this lead is on screen. Four lines, in this order.
+tell *why* this lead is on screen. Five lines, in this order.
 
 ```html
 <div class="lb-card">
@@ -133,26 +135,72 @@ tell *why* this lead is on screen. Four lines, in this order.
       <span class="lb-chip" data-status hidden></span>
     </span>
   </div>
-  <div class="lb-sub"></div>                    <!-- 3. firmographics -->
-  <div class="lb-sub" data-why></div>           <!-- 4. why it fits -->
+  <div class="lb-facts">                        <!-- one group, tight 4px gap -->
+    <div class="lb-sub"></div>                  <!-- 3. firmographics -->
+    <div class="lb-sub" data-who></div>         <!-- 4. the person -->
+    <div class="lb-sub" data-how></div>         <!-- 5. company channels -->
+  </div>
+  <div class="lb-sub" data-why></div>           <!-- 6. why it fits -->
   <div class="lb-row"><!-- actions --></div>
+  <div class="lb-msg" role="status" aria-live="polite"></div>
 </div>
 ```
 
 1. **Company** — `name`, linked to `website` (prefix `https://` on a bare host).
    Never render the numeric `score`; use the `▰❖▱` bar if you want the signal.
 
+   Keep `.lb-msg` OUT of `.lb-row`. The result of a write — "Could not reach the
+   host" — is the most important thing on the card at that moment; parked between
+   two buttons it reads as a control, and as a wide flex item it forces the
+   trailing link onto a line of its own. Give it its own row after the actions.
+
    Also give every card an **Open in Leadbay** link to the lead's panel in the
-   product. Put it at the **right-hand end of the card's last action row** —
+   product. Put it at the **trailing end of the card's last action row** —
    same row as the buttons, pushed right by an `lb-spacer`, not on a line of
    its own. Style it `lb-link-out`: quiet text plus a plain arrow-up-right,
    never a filled button. It is an escape hatch, not a call to action.
 
+   Group the controls by what they act on. A flat row of five buttons reads as
+   five peers; the rep cannot see that "Set status" commits the select beside it
+   while Like/Dislike are independent toggles. Wrap each axis in an `lb-group`
+   and mark the commit with `lb-btn-submit`.
+
+   Taste is the one pair worth reducing to icons: thumbs up/down are unambiguous,
+   they repeat on every card, and dropping the words buys the width a narrow chat
+   host needs. Use `lb-btn-icon` — and note the three attributes it REQUIRES,
+   because with no text the glyph is the whole affordance:
+
+   - `aria-label` naming the lead ("Like Acme Corp"), since the control repeats
+     N times down the list;
+   - `title` so a sighted user who does not know the glyph gets a tooltip;
+   - `aria-pressed` reflecting the current taste — a toggle must say whether it
+     is on, and `[aria-pressed=true]` is what the skin styles.
+
+   Do **not** reduce "Set status" to an icon: no glyph says "commit the value in
+   the select beside me". Icons work for a fixed, well-known action; they fail
+   for one whose meaning comes from a neighbouring control.
+
    ```html
    <div class="lb-row">
-     <button class="lb-btn">Like</button>
-     <button class="lb-btn">Set status</button>
-     <span class="lb-spacer"></span>          <!-- pushes the link right -->
+     <span class="lb-group">                  <!-- taste: two toggles -->
+       <button class="lb-btn lb-btn-icon" aria-label="Like Acme Corp"
+               title="Like" aria-pressed="false">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+           <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>
+         </svg>
+       </button>
+       <button class="lb-btn lb-btn-icon" data-taste="disliked"
+               aria-label="Dislike Acme Corp" title="Dislike" aria-pressed="false">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+           <path d="M17 14V2"/>
+           <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/>
+         </svg>
+       </button>
+     </span>
+     <select class="lb-select" aria-label="Lead status for Acme Corp"></select>
+     <span class="lb-spacer"></span>          <!-- pushes the link to the end -->
      <a class="lb-link-out" data-k="open" target="_blank" rel="noopener">
        Open in Leadbay
        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -217,23 +265,25 @@ tell *why* this lead is on screen. Four lines, in this order.
    // payloads it is usually null, and inventing one is worse than omitting it.
    const rc = lead.recommended_contact;
    const who = rc ? [rc.first_name, rc.last_name].filter(Boolean).join(" ") : null;
-   const whoLine = who ? who + (rc.job_title ? " · " + rc.job_title : "") : "No named contact";
+   const whoLine = who ? who + (rc.job_title ? " · " + rc.job_title : "") : "No contact yet — enrich to find one";
 
    // HOW — company-level channels. `phone_numbers` and `email` belong to the
    // COMPANY, not to `recommended_contact`. Rendering "Jean · ☎ 0123…" claims a
    // direct line that does not exist; it is the switchboard.
-   const phone = (lead.phone_numbers || [])[0] || null;
-   // The API returns the STRING "null" for a missing email — guard for it or
-   // you will print the word "null" as an address.
-   const email = lead.email && lead.email !== "null" ? lead.email : null;
+   // The API returns the literal STRING "null" for a missing value — in
+   // phone_numbers as well as email (a real lead ships phone_numbers:["null"]).
+   // Guard BOTH or the card prints "☎ null" as if it were a number.
+   const real = (v) => (v && v !== "null" ? v : null);
+   const phone = real((lead.phone_numbers || [])[0]);
+   const email = real(lead.email);
    const howLine = [phone && "☎ " + phone, email && "✉ " + email].filter(Boolean)
-     .join(" · ") || "No direct channel — enrich to reveal";
+     .join(" · ") || "No phone or email — enrich to look for them";
    ```
 
    ```html
    <div class="lb-sub">Sector · City · Size</div>
-   <div class="lb-sub">👤 Jean-François Froemer · Gérant</div>   <!-- WHO -->
-   <div class="lb-sub">🏢 ☎ 01 23 45 67 89</div>                 <!-- HOW: company -->
+   <div class="lb-sub"><span aria-hidden="true">👤</span> Jean-François Froemer · Gérant</div>
+   <div class="lb-sub"><span class="lb-vh">Company switchboard: </span><span aria-hidden="true">🏢 ☎</span> 01 23 45 67 89 (company line)</div>
    ```
 
    Label the channel line as the **company's**, so a rep reading fast cannot
@@ -261,7 +311,8 @@ tell *why* this lead is on screen. Four lines, in this order.
    5. `keywords`, first 3, joined with ` · `
    6. the resolved sector label — better than nothing, and if step 3 already
       printed the sector on the firmographics line, skip to step 7
-   7. the literal *"No description yet — run qualification to generate one"*
+   7. the literal *"No description yet — qualify to add one"* ("qualify" is the
+      product's own verb; "run qualification to generate one" is a nominalisation)
 
    Never leave this line blank: a silent gap reads as a rendering bug, whereas
    the fallback tells the rep the data is missing and what fixes it.
@@ -291,6 +342,24 @@ least one write, and prefer the set the rep actually needs:
 
 Always render the `.error` branch of every view-model — a control that cannot
 reach the host must say so, not sit silent.
+
+   **Accessibility is the markup's job, not the skin's.** `data-lb-state` is a
+   STYLING hook; it sets no ARIA. A card renders N times in a list, so every
+   repeated control needs a name that says *which* lead it acts on:
+
+   ```html
+   <select class="lb-select" aria-label="Lead status for Acme Corp"></select>
+   <button class="lb-btn" aria-label="Like Acme Corp">Like</button>
+   <a class="lb-link-out" aria-label="Open Acme Corp in Leadbay" …>
+   <span class="lb-msg" role="status" aria-live="polite"></span>
+   ```
+
+   Without the `role="status"` node the rep hears nothing when a write fails —
+   `bindAction` puts the message in a `data-lb-error` attribute that nothing
+   renders. Mark the `▰❖▱` bar `aria-hidden="true"` and follow it with
+   `<span class="lb-vh">Fit: strong</span>`; the glyphs otherwise read aloud as
+   "black parallelogram black parallelogram…" before the company name. Use
+   `lb-vh` for any label that should be heard but not seen.
 
 ## Recipe: cold-call sheet (one row per lead)
 
@@ -366,11 +435,31 @@ Loading / success / error styling comes free: `bindAction` and `bindSelect` set
 `data-lb-state` (`ready|loading|error|success|unavailable`) and the skin already
 targets those attributes. No extra wiring.
 
-Save-on-change instead of an Apply button — drop `bindAction` and run it yourself:
+**Save on change is the default for status.** The rep picks a value and it
+writes — one interaction, no second button, matching the web app's own status
+selector. Drop `bindAction` and run the action from the change event:
 
 ```js
-document.getElementById("st").addEventListener("change", () => save.run());
+const sel = document.getElementById("st");
+sel.addEventListener("change", () => save.run());
+save.subscribe((a) => {                       // the select IS the feedback surface
+  sel.setAttribute("data-lb-state",
+    a.loading ? "loading" : a.error ? "error" : a.lastResult ? "success" : "ready");
+  msg.textContent = a.loading ? "Saving…" : a.error ? a.error.message
+    : a.lastResult ? "Saved" : "";
+  msg.dataset.tone = a.error ? "error" : a.lastResult ? "ok" : "";
+});
 ```
+
+Without a submit button the select becomes the only affordance, so it MUST show
+the write: mirror `data-lb-state` onto it (the skin already styles loading /
+success / error on `.lb-select`) and put the outcome in the `role="status"`
+line. A silent select leaves the rep unsure whether anything happened.
+
+Keep a submit button ONLY where a mis-click is expensive and the value is not
+self-evident — a bulk apply across checked rows, for instance, which already
+takes a `confirm`. For one lead, the extra step buys nothing: the value is
+visible in the select, and the rep can simply pick again.
 
 **Bulk apply** across checked rows — pass `leadIds` and a `confirm`, since one
 click rewrites a field every rep in the org sees:
