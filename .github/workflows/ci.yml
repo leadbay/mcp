@@ -25,6 +25,19 @@ jobs:
       - name: Build
         run: pnpm -r build
 
+      # The build rewrites the committed generated modules in place, so every
+      # vitest freshness gate downstream reads a file that was just regenerated
+      # and can never fail. This is the only step that sees the drift.
+      #
+      # Staged rather than `git diff --exit-code`: the build also emits one
+      # SKILL.md per prompt, and a new prompt whose skill file was never
+      # `git add`ed lands as an untracked path, which an unstaged diff exits 0
+      # on. `git add -A` honours .gitignore, so dist/ and node_modules/ stay out.
+      - name: Generated files match the committed ones
+        run: |
+          git add -A
+          git diff --cached --exit-code
+
       - name: Typecheck
         run: pnpm -r typecheck
 
