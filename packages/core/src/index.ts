@@ -121,6 +121,9 @@ import { bulkEnrichStatus } from "./composite/bulk-enrich-status.js";
 import { adjustAudience } from "./composite/adjust-audience.js";
 import { refinePrompt } from "./composite/refine-prompt.js";
 import { seedCandidates } from "./composite/seed-candidates.js";
+import { findNewLeads } from "./composite/find-new-leads.js";
+import { qualifyLeads } from "./composite/qualify-leads.js";
+import { leadJobStatus } from "./composite/lead-job-status.js";
 import { extendLens } from "./composite/extend-lens.js";
 import { myLenses } from "./composite/my-lenses.js";
 import { newLens } from "./composite/new-lens.js";
@@ -192,6 +195,8 @@ export {
   answerClarification, reportOutreach, reportFriction, sendFeedback, importLeads, importAndQualify,
   createCampaign, addLeadsToCampaign, removeLeadsFromCampaign,
   seedCandidates, extendLens,
+  // MCP-first lead delivery
+  findNewLeads, qualifyLeads, leadJobStatus,
   artifactKit,
 };
 
@@ -263,6 +268,13 @@ granularTools.forEach((t) => {
 
 // Composite read tools — always exposed (default agent surface).
 export const compositeReadTools: Tool[] = [
+  // Poll surface for the MCP-first lead-delivery jobs (find_new_leads /
+  // qualify_leads). Read-only snapshot of a backend-owned job. The backend
+  // routes (`POST /1.6/mcp/search`, `POST /1.6/mcp/qualify`,
+  // `GET /1.6/mcp/jobs/{id}`) shipped to production in backend v3.22.0
+  // (2026-08-22) and were verified live on both regions, so the opt-in
+  // LEADBAY_MCP_LEAD_DELIVERY flag that held these three back is gone.
+  leadJobStatus,
   pullLeads,
   pullFollowups,
   followupsMap,
@@ -325,6 +337,11 @@ export const compositeReadTools: Tool[] = [
   // leadbay_new_lens / leadbay_adjust_audience). Without it the agent can only
   // probe sectors by trial-and-error or ask the user to read the web UI.
   listSectors,
+  // listLocations, same rationale on the geography axis. The delivery tools
+  // reject an unresolvable filters.locations with a 400 naming the value and
+  // send the agent here to look up the real admin area — a recovery path that
+  // only works if the lookup is reachable without LEADBAY_MCP_ADVANCED=1.
+  listLocations,
   // Billing / top-up tools — granular-shaped but ALWAYS exposed because
   // they're the canonical recovery path from a QUOTA_EXCEEDED wall. If
   // they were gated behind LEADBAY_MCP_ADVANCED=1 the agent would
@@ -355,9 +372,31 @@ export const compositeReadTools: Tool[] = [
   artifactKit,
 ];
 
+/** Every MCP-first delivery tool, regardless of the deployment gate above.
+ *  The gate controls what a RUNNING server exposes; contract audits
+ *  (WORKFLOWS.md, routing anti-triggers) must still see these as registered
+ *  tools, or a temporary rollout flag would read as "this tool doesn't exist". */
+export const mcpFirstDeliveryTools: Tool[] = [
+  // Write-tier: submits create server-side jobs that can spend money
+  // (qualification research, channel purchase) and claim novelty in the
+  // org's delivery ledger — same posture as the other spending composites.
+  // The FREE tier (qualify:false, channels:[]) is the default ask, and a paid
+  // call is withheld in code until `confirm: true`.
+  findNewLeads,
+  qualifyLeads,
+];
+
+/** All three delivery tools including the read-side poller — the ungated
+ *  registry the contract audits read. */
+export const mcpFirstDeliveryAllTools: Tool[] = [
+  ...mcpFirstDeliveryTools,
+  leadJobStatus,
+];
+
 // Composite write tools — always-exposed in OpenClaw, gated in MCP behind
 // LEADBAY_MCP_WRITE=1 (the MCP server filters them out by default).
 export const compositeWriteTools: Tool[] = [
+  ...mcpFirstDeliveryTools,
   bulkQualifyLeads,
   enrichTitles,
   adjustAudience,

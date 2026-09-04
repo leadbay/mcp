@@ -21,6 +21,12 @@ routing:
   # intercepting legitimate discovery intent. E.g. "reach out to new leads" should
   # still fire pull_leads; only "leads I should reach out to" (existing pipeline) → pull_followups.
   anti_triggers:
+    - phrase: "find me N companies that <specific profile>"
+      route_to: leadbay_find_new_leads
+      gated: true
+    - phrase: "new prospects like <company> with their emails"
+      route_to: leadbay_find_new_leads
+      gated: true
     - phrase: "leads I should follow up with"
       route_to: leadbay_pull_followups
     - phrase: "I'm going to <city>"
@@ -49,6 +55,7 @@ routing:
       - "Show me today's leads."
       - "Pull my best new prospects."
     negative:
+      - "Find me 10 gyms around Dallas that would buy our flooring."   # → leadbay_find_new_leads (custom net-new ask, not the lens batch)
       - "Which leads should I follow up with this week?"
       - "I'm flying to Berlin Thursday — who should I meet?"   # → leadbay_tour_plan (geographic visit, wants a map)
       - "I'm in San Francisco next Tuesday — who's worth meeting?"   # → leadbay_tour_plan
@@ -80,7 +87,7 @@ Every lead carries `recommended_contact` (with `linkedin_page` when the backend 
 
 {{include:headers/tool-when-to-use}} as the agent's default opening move when the user wants to see leads, or as a daily check-in for what's new today.
 
-{{include:headers/tool-when-not-to-use}} when the user has named a specific lens — pass `lensId` to override the auto-resolution. Replaces the older leadbay_find_prospects (removed in v0.2.0).
+{{include:headers/tool-when-not-to-use}} when the user has named a specific lens — pass `lensId` to override the auto-resolution.
 
 The active lens can change between calls (5-min cache + backend `last_requested_lens`). If a multi-step workflow depends on staying on one lens, **capture `response.lens.id` from the first response and pass it as the `lensId` argument on every subsequent Leadbay call** — including re-pulls, bulk qualifies, and research. (Field-name caveat: response nests it as `lens.id`; the parameter is `lensId`.) Re-pulling without `lensId` after a long-running tool may silently switch to a different lens and discard prior work.
 

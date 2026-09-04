@@ -25,6 +25,12 @@ export const RoutingAntiTriggerSchema = z.object({
   route_to: z.string().regex(/^leadbay_[a-z0-9_]+$/, {
     message: "route_to must be a leadbay_* tool name",
   }),
+  // The target is release-gated, so it may be absent from tools/list on a
+  // default deployment. Marked HERE rather than explained in the body: the
+  // routing block is the part every host loads even when truncating, and a
+  // caveat further down the description is never read by the host that most
+  // needs it.
+  gated: z.boolean().optional(),
 });
 
 // Full-sentence examples — community best practice (Anthropic
@@ -72,6 +78,13 @@ export const FrontmatterSchema = z.object({
   // Agent-memory routing/prompt protocol. Defaults to "enabled" for tools
   // with routing, "disabled" otherwise; explicit disabled is for tools whose
   // first-600-char window cannot carry the shared pointer.
+  // Set while a prompt's whole workflow depends on tools that are themselves
+  // gated off (e.g. a backend route that hasn't shipped). The MCP prompt is
+  // filtered at runtime, but a Claude SKILL.md is a static file with no
+  // runtime gate — so promptforge simply does not emit one. No prompt sets it
+  // today; skills-release-gate.test.ts asserts that and exercises the
+  // mechanism on synthetic artifacts so the next rollout can rely on it.
+  release_gated: z.boolean().optional(),
   // Compact rendering recipe (1–3 sentences). Promptforge auto-emits
   // a `## RENDER (quick)` block. The detailed RENDERING block stays
   // in the body via {{include:rendering/...}}.

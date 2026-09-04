@@ -18,6 +18,9 @@ routing:
   anti_triggers:
     - phrase: "show me today's leads"
       route_to: leadbay_pull_leads
+    - phrase: "find me companies that <different profile than the lens>"
+      route_to: leadbay_find_new_leads
+      gated: true
     - phrase: "narrow the audience"
       route_to: leadbay_adjust_audience
     - phrase: "stop showing me X"

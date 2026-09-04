@@ -24,6 +24,7 @@ import {
   leadbay_getting_started,
   leadbay_import_file,
   leadbay_log_outreach,
+  leadbay_new_leads,
   leadbay_plan_tour_in_city,
   leadbay_prospecting_overview,
   leadbay_qualify_top_n,
@@ -96,6 +97,18 @@ const CATALOG: CatalogEntry[] = [
     description: PROMPT_META.leadbay_prospecting_overview.short_description,
     arguments: promptArguments("leadbay_prospecting_overview"),
     render: () => [userMessage(leadbay_prospecting_overview)],
+  },
+  {
+    name: "leadbay_new_leads",
+    description: PROMPT_META.leadbay_new_leads.short_description,
+    arguments: promptArguments("leadbay_new_leads"),
+    render: (args) => [
+      userMessage(
+        substitutePlaceholders(leadbay_new_leads, {
+          need: args.need ?? "(not provided — ask me first)",
+        }),
+      ),
+    ],
   },
   {
     name: "leadbay_research_a_domain",
@@ -268,7 +281,27 @@ const CATALOG: CatalogEntry[] = [
   },
 ];
 
-export function listPrompts(): Prompt[] {
+/** Prompts whose whole workflow drives tools the deployment may not expose.
+ *  Offering the prompt without them would let a user start a guided flow whose
+ *  every call is missing from tools/list. */
+const GATED_PROMPTS: Record<string, (opts: PromptGateOptions) => boolean> = {
+  // Needs the write surface: every phase calls leadbay_find_new_leads /
+  // leadbay_qualify_leads, which are write-tier, so a read-only server
+  // (LEADBAY_MCP_WRITE=0) would offer a workflow whose tools are absent from
+  // tools/list. The backend-rollout half of this gate is gone — the
+  // /1.6/mcp/* routes shipped in backend v3.22.0.
+  leadbay_new_leads: (opts) => opts.includeWrite !== false,
+};
+
+export interface PromptGateOptions {
+  /** Mirrors buildServer's includeWrite. Defaults to true (write enabled). */
+  includeWrite?: boolean;
+}
+
+/** The full catalogue, gates ignored — contract audits assert every prompt
+ *  named in WORKFLOWS.md resolves, and a rollout flag must not read as
+ *  "this prompt does not exist". */
+export function listAllPrompts(): Prompt[] {
   return CATALOG.map((c) => ({
     name: c.name,
     description: c.description,
@@ -276,13 +309,30 @@ export function listPrompts(): Prompt[] {
   }));
 }
 
+export function listPrompts(opts: PromptGateOptions = {}): Prompt[] {
+  return listAllPrompts().filter((p) => {
+    const gate = GATED_PROMPTS[p.name];
+    return gate ? gate(opts) : true;
+  });
+}
+
 export function getPrompt(
   name: string,
-  args: Record<string, string | undefined> = {}
+  args: Record<string, string | undefined> = {},
+  opts: PromptGateOptions = {}
 ): GetPromptResult {
   const entry = CATALOG.find((c) => c.name === name);
   if (!entry) {
     throw new Error(`Unknown prompt: ${name}`);
+  }
+  // Filtering prompts/list is not enough: a cached slash command or a direct
+  // prompts/get by name would still hand back a workflow whose every tool call
+  // is missing from tools/list. A gated prompt is unavailable, not just unlisted.
+  const gate = GATED_PROMPTS[name];
+  if (gate && !gate(opts)) {
+    throw new Error(
+      `Prompt ${name} is not enabled in this deployment (requires the write surface — LEADBAY_MCP_WRITE must not be 0).`
+    );
   }
   // Validate required arguments. Per spec, missing required args should
   // surface as a JSON-RPC error so the client can re-prompt the user.

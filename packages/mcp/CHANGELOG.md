@@ -1,5 +1,25 @@
 # Changelog — @leadbay/mcp
 
+## 0.35.0 — 2026-09-02
+
+Expose the backend MCP-first delivery endpoints (`POST /1.6/mcp/search`,
+`POST /1.6/mcp/qualify`, `GET /1.6/mcp/jobs/{id}`) as three composites —
+`leadbay_find_new_leads`, `leadbay_qualify_leads`, `leadbay_lead_job_status` —
+plus the `leadbay_new_leads` guided prompt. One ask → net-new qualified
+contactable leads, replacing the pull→select→web_fetch→poll→enrich chain.
+
+Free by default (`qualify: false`, no `channels`). Any paid call is withheld
+until `confirm: true` and returns a real backend quote instead; `confirm: false`
+vetoes with no round-trip. A derived `request_id` makes a retried paid batch
+return the same job rather than double-charge, and `max_cost` stops the job with
+`stop_reason: "max_cost"`.
+
+The `LEADBAY_MCP_LEAD_DELIVERY` rollout flag introduced with these tools is
+retired: the routes shipped to production in backend v3.22.0 (2026-08-22) and
+were verified live on `api-us` and `api-fr`. The `leadbay_new_leads` prompt is
+still hidden on a read-only server (`LEADBAY_MCP_WRITE=0`), since every phase of
+it calls a write-tier tool.
+
 ## 0.34.0 — 2026-09-02
 
 The OpenAI app directory rejects an app that sells digital goods — "plugins may

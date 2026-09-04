@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.35.0 — 2026-09-02 — Ask once, get leads you don't already have
+
+- **"Find me 10 gyms around Dallas that would buy our flooring."** That is now
+  one request. Leadbay goes and finds companies you have never seen, works out
+  which of them actually fit, and tells you who to talk to at each — instead of
+  you pulling a batch, picking rows, researching them and enriching them in four
+  separate steps.
+- **The first look is free.** A search costs nothing by default: you get the
+  companies, how well each fits and why, and the job title of the person to
+  reach. Only running fresh AI qualification, or revealing an actual email or
+  phone number, costs anything.
+- **Nothing is bought without a yes.** Ask for anything paid and Leadbay stops,
+  prices the whole job first, and waits. Say no and it spends nothing at all.
+  Set a budget and the job stops at it and says so, rather than running past it.
+- **Asking twice does not pay twice.** Repeat the same request — after a
+  timeout, a dropped connection, an impatient retry — and you get the original
+  job back, not a second one billing you again.
+- **You can hand it companies you already have.** Paste websites, names or a
+  spreadsheet's worth of rows and Leadbay tells you which fit, which don't, and
+  who the decision-maker is at the ones that do. Companies you own that turn out
+  NOT to fit come back with the reasons — a "no" you can act on beats a silent
+  drop.
+- **Long jobs stay reachable.** A search that outlives your patience hands back
+  a ticket you can check later, and picks up where it left off rather than
+  re-reading what you already saw.
+- Available as `leadbay_find_new_leads`, `leadbay_qualify_leads` and
+  `leadbay_lead_job_status`, plus the "find me new leads" guided walkthrough.
+
 ## 0.34.0 — 2026-09-02 — Leadbay on ChatGPT gets its own address
 
 - **On ChatGPT, add Leadbay as `https://mcp.leadbay.app/chatgpt/mcp`.** Same

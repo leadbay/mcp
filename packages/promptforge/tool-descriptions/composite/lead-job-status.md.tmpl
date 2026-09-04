@@ -1,0 +1,66 @@
+---
+name: leadbay_lead_job_status
+kind: tool-description
+short_description: |
+  Poll a running leadbay_find_new_leads / leadbay_qualify_leads job by
+  job_id — cumulative results, funnel, spend. Use when a delivery tool
+  returned still_running:true or the user asks "is it done / any results
+  yet". Don't use it for enrichment jobs (leadbay_bulk_enrich_status) or
+  imports (leadbay_import_status).
+routing:
+  triggers:
+    - "is the lead search done"
+    - "any results yet on that job"
+    - "check on the delivery"
+  anti_triggers:
+    - phrase: "is the enrichment done"
+      route_to: leadbay_bulk_enrich_status
+    - phrase: "is my import done"
+      route_to: leadbay_import_status
+    - phrase: "is the top-N qualification done"
+      route_to: leadbay_qualify_status
+  prefer_when: >-
+    a find_new_leads / qualify_leads result carried next_poll — pass its
+    job_id; use wait_seconds ~60 when the user asked to wait for results.
+  examples:
+    positive:
+      - "Any leads yet from that search you started?"
+      - "Wait for the qualification job to finish and show me everything."
+    negative:
+      - "Is the email enrichment finished?"
+      - "Is my CSV import done?"
+rendering_hint: |
+  Terminal job -> render the full delivery per the lead-delivery table +
+  honest funnel line. Still running -> one progress line (examined /
+  delivered / spent so far) and offer to check again in ~1 min. Never
+  render UUIDs or cursors.
+next_steps: lead-job-status
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: true
+---
+Cumulative snapshot of a lead-delivery job: state, funnel counters, every
+item emitted so far (full lead payloads for delivered/degraded, honest
+status_reason for skipped), spend + breakdown, and the `explain` block
+(basis, seed strategy, scope notes). Items are immutable once emitted —
+polling never re-reads live data, so numbers only ever grow.
+
+`wait_seconds: 0` (default) answers instantly; set ~60 to block-wait for
+completion when the user asked for results "in this reply". `since` (from a
+prior poll's `next_since`) pages only the new items. Jobs terminalize
+server-side: past the 30-min wall clock a job reads `completed_partial`
+(time budget), past 30 days `expired` (items no longer listed — re-read
+billed leads via leadbay_qualify_leads `prior_deliveries`). A 404 means
+unknown job or another org's job.
+
+---
+
+{{include:rendering/lead-delivery-table}}
+
+{{include:rendering/disqualified-delivered}}
+
+---
+
+{{include:next-steps/lead-job-status}}
