@@ -9,8 +9,10 @@
  * two sides agree: the unit harness mocks the API, so a mocked test would
  * assert our own mock.
  *
- * Opt-in: set LEADBAY_TEST_TOKEN (admin token on a dogfood account). Creates
- * real CRM-import rows in the test tenant.
+ * Opt-in: set LEADBAY_TEST_TOKEN (admin token on a dogfood account) AND
+ * LEADBAY_SMOKE_LONG=1. It runs a real import that mutates the test tenant and
+ * can take minutes, so it sits behind the same long gate as the other
+ * full-import cases in import-leads.live.test.ts.
  */
 
 import { describe, it, expect } from "vitest";
@@ -39,25 +41,30 @@ describe.skipIf(!runLive)(
   "leadbay_import_leads — a mapping the MCP accepts, the API accepts",
   () => {
     const client = () => new LeadbayClient(BASE_URL, TOKEN, "us");
+    const runLong = process.env.LEADBAY_SMOKE_LONG === "1";
 
-    it("records mode with a LEAD_WEBSITE-only mapping commits and imports", async () => {
-      const out = await importLeads.execute(
-        client(),
-        {
-          records: [{ Site: "apple.com" }, { Site: "microsoft.com" }],
-          mappings: { fields: { Site: "LEAD_WEBSITE" } },
-          per_phase_budget_ms: 300_000,
-          total_budget_ms: 900_000,
-        },
-        { logger },
-      );
+    it.skipIf(!runLong)(
+      "records mode with a LEAD_WEBSITE-only mapping commits and imports",
+      async () => {
+        const out = await importLeads.execute(
+          client(),
+          {
+            records: [{ Site: "apple.com" }, { Site: "microsoft.com" }],
+            mappings: { fields: { Site: "LEAD_WEBSITE" } },
+            per_phase_budget_ms: 300_000,
+            total_budget_ms: 900_000,
+          },
+          { logger },
+        );
 
-      // The commit is what used to 400. Reaching an importId at all proves it
-      // went through; matching itself is fuzzy and not what this test guards.
-      expect(out.importIds.length).toBeGreaterThanOrEqual(1);
-      expect(out.leads.length + out.not_imported.length).toBeGreaterThanOrEqual(
-        2,
-      );
-    }, 1_800_000);
+        // The commit is what used to 400. Reaching an importId at all proves it
+        // went through; matching itself is fuzzy and not what this test guards.
+        expect(out.importIds.length).toBeGreaterThanOrEqual(1);
+        expect(
+          out.leads.length + out.not_imported.length,
+        ).toBeGreaterThanOrEqual(2);
+      },
+      1_800_000,
+    );
   },
 );
