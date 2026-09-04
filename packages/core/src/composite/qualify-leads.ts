@@ -28,6 +28,7 @@ import {
   waitForJob,
   type McpDryRunResponse,
   type McpSubmitResponse,
+  rejectOversizedLeadRefs,
 } from "./_mcp-job-helpers.js";
 import { normalizeDomain } from "./import-leads.js";
 import { leadbay_qualify_leads as QUALIFY_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -345,6 +346,10 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     // AFTER the string reshape (so a bare string is not called malformed) and
     // BEFORE the spend gate and key derivation, both of which read ref fields.
     rejectMalformedLeadRefs(params.lead_refs);
+    // Types first, then the cap — same ordering as find_new_leads' exclusion
+    // guards: counting a list that still contains junk would size the cap
+    // against entries that were never going to be sent.
+    rejectOversizedLeadRefs(params.lead_refs);
     // Spend gate. `qualify` defaults to TRUE on the backend (~94 cost_cents per
     // lead needing fresh research), so a bare call carrying only lead_refs is a
     // PAID submit — up to 500 refs — that the user never approved. Prose in the

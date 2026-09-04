@@ -147,9 +147,19 @@ interface HttpResult {
 // One shape for every deadline expiry — the socket one below and the queue one
 // in acquireSemaphore. Callers classify on `code`, so a second shape would make
 // a queued timeout look like an unrelated failure.
-function timeoutError(what: string): Error & { code?: string } {
-  const err = new Error(what) as Error & { code?: string };
+//
+// `timeoutMs` is the deadline that actually expired, and it is not decoration:
+// mapTransportError reads `timeout_ms ?? defaultTimeoutMs()`, so omitting it
+// makes a 30s job snapshot or a short auth probe report that Leadbay stalled
+// for the 600,000ms default — and stamps that invented latency into `_meta`,
+// where Sentry shows it next to the failure as if it were measured.
+function timeoutError(
+  what: string,
+  timeoutMs?: number
+): Error & { code?: string; timeout_ms?: number } {
+  const err = new Error(what) as Error & { code?: string; timeout_ms?: number };
   err.code = "TIMEOUT"; // not an auth code — callers treat it as a transient fault
+  if (timeoutMs !== undefined) err.timeout_ms = timeoutMs;
   return err;
 }
 
@@ -628,13 +638,21 @@ export class LeadbayClient {
   // deadline was only handed to httpsRequest, which does not start until this
   // resolves, so five slow peers let even `wait_seconds: 1` run unbounded. The
   // wait a caller asked for is wall-clock, not socket time.
+  // `budgetMs` is the DURATION `deadlineAt` was derived from. Only the caller
+  // knows it — an absolute deadline cannot be turned back into "how long did we
+  // agree to wait" here — and the timeout error needs it, or the envelope
+  // reports the 600,000ms default instead of the seconds actually granted.
   private async acquireSemaphore(
     signal?: AbortSignal,
-    deadlineAt?: number
+    deadlineAt?: number,
+    budgetMs?: number
   ): Promise<void> {
     if (signal?.aborted) throw this.cancelledBeforeSendError();
     if (deadlineAt !== undefined && Date.now() >= deadlineAt) {
-      throw timeoutError("Request deadline expired before a request slot was free");
+      throw timeoutError(
+        "Request deadline expired before a request slot was free",
+        budgetMs
+      );
     }
     if (this.activeRequests < MAX_CONCURRENT) {
       this.activeRequests++;
@@ -663,7 +681,10 @@ export class LeadbayClient {
       const onDeadline = () => {
         drop();
         reject(
-          timeoutError("Request deadline expired while queued for a request slot")
+          timeoutError(
+            "Request deadline expired while queued for a request slot",
+            budgetMs
+          )
         );
       };
       const cleanup = () => {
@@ -768,6 +789,11 @@ export class LeadbayClient {
     // and throws rather than returning 0 — passing a spent budget through
     // would silently restore unbounded behaviour.
     const perAttemptOptOut = timeoutMs !== undefined && timeoutMs <= 0;
+    // When the budget expires, the ERROR has to say how long it was. Measured
+    // from here rather than recomputed from the absolute deadline, which no
+    // longer knows its own duration once a total and a per-attempt bound have
+    // been min'd together.
+    const retryStartedAt = Date.now();
     const phaseBudget = (): number | undefined => {
       const now = Date.now();
       const perAttempt =
@@ -781,7 +807,12 @@ export class LeadbayClient {
       // Opted out of BOTH bounds — forward the opt-out, not `undefined`.
       if (deadline === undefined) return perAttemptOptOut ? timeoutMs : undefined;
       const left = deadline - now;
-      if (left <= 0) throw timeoutError(`Request deadline expired: ${method} ${url}`);
+      if (left <= 0) {
+        throw timeoutError(
+          `Request deadline expired: ${method} ${url}`,
+          Math.max(0, deadline - retryStartedAt)
+        );
+      }
       return left;
     };
     // Semaphore deadline, so the opt-out must NOT become `Date.now()`, which
@@ -821,7 +852,11 @@ export class LeadbayClient {
         // window that started before the 250ms sleep would already be spent,
         // deleting the retry rather than bounding it. The total ceiling still
         // applies on top, so a caller that asked for a hard total gets one.
-        await this.acquireSemaphore(held ? signal : undefined, phaseDeadline());
+        await this.acquireSemaphore(
+          held ? signal : undefined,
+          phaseDeadline(),
+          phaseBudget()
+        );
         if (held) held.value = true;
       }
       // Don't burn the retry on a call cancelled during the backoff: the caller
@@ -905,6 +940,16 @@ export class LeadbayClient {
       if (perAttempt === undefined) return totalDeadlineAt;
       return Math.min(perAttempt, totalDeadlineAt);
     };
+    // The bound the caller actually agreed to. Both knobs can be set; the
+    // narrower one is the one that will expire, and it is what a TIMEOUT
+    // envelope must report — mapTransportError falls back to the 600,000ms
+    // default when the error carries no duration.
+    const grantedBudget = (): number | undefined => {
+      const bounds = [opts?.timeoutMs, opts?.totalTimeoutMs].filter(
+        (n): n is number => typeof n === "number" && n > 0
+      );
+      return bounds.length ? Math.min(...bounds) : undefined;
+    };
     const remainingBudget = (): number | undefined => {
       const deadline = phaseDeadlineAt();
       // Opted out with no total on top — forward the opt-out value so
@@ -915,13 +960,29 @@ export class LeadbayClient {
       // Never hand back 0 for a budget that really did expire: httpsRequest
       // reads a non-positive timeout as "no deadline at all", which would turn
       // an exhausted budget into an unbounded request.
-      if (left <= 0) throw timeoutError(`Request deadline expired: ${method} ${path}`);
+      if (left <= 0) {
+        throw timeoutError(
+          `Request deadline expired: ${method} ${path}`,
+          grantedBudget()
+        );
+      }
       return left;
     };
-    await this.acquireSemaphore(
-      opts?.signal ?? opts?.preSendSignal,
-      phaseDeadlineAt()
-    );
+    // Mapped like any other transport failure. This acquire sits OUTSIDE the
+    // main try/finally on purpose — that finally releases a slot on the
+    // assumption we hold one, which a failed acquire does not — so without this
+    // wrapper a queue-wait expiry escaped as a bare Error and the caller got a
+    // stack trace instead of the TIMEOUT envelope every other deadline
+    // produces.
+    try {
+      await this.acquireSemaphore(
+        opts?.signal ?? opts?.preSendSignal,
+        phaseDeadlineAt(),
+        grantedBudget()
+      );
+    } catch (e) {
+      throw this.mapTransportError(e, `${method} ${path}`);
+    }
     try {
       // Last point at which "nothing has been sent" is still true. A submit
       // cancelled here provably spent nothing; one cancelled a line later

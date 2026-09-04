@@ -254,12 +254,25 @@ export async function collectJobSnapshot(
     // Out of budget mid-drain: stop with what we have rather than start a page
     // that cannot finish in time. The cursor below makes it resumable.
     if (remaining() <= 0) break;
-    const next = await client.request<McpJobSnapshot>(
-      "GET",
-      qs(page.next_since),
-      undefined,
-      { signal, totalTimeoutMs: remaining() }
-    );
+    // A page that STARTS inside the budget can still consume it. Letting that
+    // rejection escape would discard every item and cursor already collected —
+    // rows the org may have paid for — and force the caller to restart the
+    // drain from the beginning. The budget check above already treats "out of
+    // time" as a stop-with-what-we-have, so the same expiry arriving a moment
+    // later must mean the same thing. Only a timeout: any other failure is a
+    // real error and still propagates.
+    let next: McpJobSnapshot;
+    try {
+      next = await client.request<McpJobSnapshot>(
+        "GET",
+        qs(page.next_since),
+        undefined,
+        { signal, totalTimeoutMs: remaining() }
+      );
+    } catch (e) {
+      if (isTimeout(e)) break;
+      throw e;
+    }
     items.push(...next.items);
     pages += 1;
     // Always adopt the newest page — its job/funnel/cost projection is the
@@ -459,7 +472,7 @@ export async function waitForJob(
     // snapshot, so return it instead of surfacing an AbortError: the user
     // cancelled the WAIT, not the job, and the job keeps running backend-side.
     try {
-      snap = await collectJobSnapshot(
+      const fresh = await collectJobSnapshot(
         client,
         jobId,
         since,
@@ -467,6 +480,24 @@ export async function waitForJob(
         ctx?.signal,
         snapshotBudget(remainingMsOf())
       );
+      // Never regress. Every tick re-drains from the SAME `since`, under a
+      // budget that shrinks as the wait runs down — so a later tick can
+      // truncate earlier than an earlier one did and come back with fewer items
+      // and a staler cursor. Overwriting blindly would hand the caller less
+      // than a previous poll already established.
+      //
+      // The job/funnel/cost projection on the newer page is still the freshest
+      // thing we have, so that is always adopted; only the paid rows and the
+      // resumption cursor are held at their high-water mark.
+      const regressed = fresh.items.length < snap.items.length;
+      snap = regressed
+        ? {
+            ...fresh,
+            items: snap.items,
+            next_since: snap.next_since ?? fresh.next_since,
+            ...(snap.items_truncated ? { items_truncated: true } : {}),
+          }
+        : fresh;
     } catch (e) {
       if (ctx?.signal?.aborted) break;
       // A snapshot that outran the remaining wait is the wait expiring, not a
@@ -963,6 +994,40 @@ export function rejectOversizedExclusions(ids: unknown): void {
     code: "TOO_MANY_EXCLUSIONS",
     message: `exclude_lead_ids carries ${unique.length} ids — the maximum is ${MAX_EXCLUDE_LEAD_IDS}.`,
     hint: "Drop the DELIVERED ids first: novelty:'org' already excludes those. Send the examined-but-rejected ones (disqualified + skipped), most recent first, capped at 500.",
+  };
+}
+
+/** `lead_refs` accepts at most 500 companies — the same ceiling the tool
+ *  description advertises. Without a check here an oversized batch reaches a
+ *  real `POST /mcp/qualify`: the description's "max 500" is prose, the schema
+ *  carries no `maxItems`, and `rejectMalformedLeadRefs` only inspects shape.
+ *  The caller then gets an opaque backend 400 instead of the fast named
+ *  rejection this codebase gives the sibling case (`rejectOversizedExclusions`).
+ *
+ *  Counted AFTER de-duplication, because duplicates collapse into one item
+ *  server-side: refusing a 600-entry list that is really 400 companies would
+ *  reject work the backend would happily have done. */
+export const MAX_LEAD_REFS = 500;
+
+export function rejectOversizedLeadRefs(refs: unknown): void {
+  if (refs === undefined || refs === null) return;
+  const list = Array.isArray(refs) ? refs : [refs];
+  const unique = new Set<string>();
+  let unkeyed = 0;
+  for (const ref of list) {
+    const key = refIdentity(ref);
+    // A ref with no identifying field cannot be folded, so it counts on its
+    // own — rejectMalformedLeadRefs refuses those separately anyway.
+    if (key === null) unkeyed += 1;
+    else unique.add(key);
+  }
+  const count = unique.size + unkeyed;
+  if (count <= MAX_LEAD_REFS) return;
+  throw {
+    error: true,
+    code: "TOO_MANY_LEAD_REFS",
+    message: `lead_refs carries ${count} companies — the maximum is ${MAX_LEAD_REFS}.`,
+    hint: `Split the batch into runs of ${MAX_LEAD_REFS} or fewer and call leadbay_qualify_leads once per run, each with its OWN request_id. Results accumulate in the org ledger, so a later run can re-read the earlier ones via prior_deliveries.`,
   };
 }
 
