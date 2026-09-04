@@ -27,6 +27,24 @@ const GENERATED = [
   "packages/mcp/src/server-instructions.generated.ts",
 ];
 
+/**
+ * Count `\r` escapes that a JS parser would read as a carriage return.
+ *
+ * A bare `\r` in the source is one; `\\r` is a literal backslash followed by
+ * the letter r and produces no CR. So an escape counts only when the run of
+ * backslashes immediately before the `r` is odd.
+ */
+function countCarriageReturnEscapes(source: string): number {
+  let count = 0;
+  for (let i = 0; i < source.length; i++) {
+    if (source[i] !== "r") continue;
+    let backslashes = 0;
+    for (let j = i - 1; j >= 0 && source[j] === "\\"; j--) backslashes++;
+    if (backslashes % 2 === 1) count++;
+  }
+  return count;
+}
+
 function blobAtHead(path: string): string {
   return execFileSync("git", ["cat-file", "-p", `HEAD:${path}`], {
     cwd: REPO_ROOT,
@@ -43,7 +61,7 @@ describe("audit: generated modules use LF only", () => {
     });
 
     it(`${path} has no \\r escape sequences`, () => {
-      const count = (blobAtHead(path).match(/\\r/g) ?? []).length;
+      const count = countCarriageReturnEscapes(blobAtHead(path));
       expect(
         count,
         `${path}: ${count} \\r escapes at HEAD — regenerate from an LF checkout`,
