@@ -248,7 +248,7 @@ describe("bind helpers", () => {
     const el = document.createElement("button");
     const a = lb.action({ tool: "leadbay_like_lead", args: { lead_id: "L1" } });
     lb.bindAction(el, a);
-    expect(el.getAttribute("data-lb-state")).toBe("idle");
+    expect(el.getAttribute("data-lb-state")).toBe("ready");
     el.click();
     await tick();
     expect(el.getAttribute("data-lb-state")).toBe("loading");

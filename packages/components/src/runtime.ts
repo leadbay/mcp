@@ -623,6 +623,11 @@ export function bindAction(el: HTMLElement, action: Action): () => void {
     void action.run();
   };
   el.addEventListener("click", onClick);
+  // A success state must DWELL, not persist. `lastResult` is never cleared on
+  // its own, so without this the control stays green for the life of the
+  // artifact — still claiming "saved" after the rep has changed the value to
+  // something that was never written.
+  let settle: ReturnType<typeof setTimeout> | undefined;
   const unsub = action.subscribe(() => {
     const state = action.error?.unavailable
       ? "unavailable"
@@ -632,11 +637,20 @@ export function bindAction(el: HTMLElement, action: Action): () => void {
           ? "error"
           : action.lastResult != null
             ? "success"
-            : "idle";
+            : "ready";
     el.setAttribute("data-lb-state", state);
     if ("disabled" in el) (el as unknown as { disabled: boolean }).disabled = action.loading;
+    // aria-busy is the assistive-tech equivalent of the loading style; without
+    // it an in-flight write is silent to a screen reader.
+    el.setAttribute("aria-busy", String(action.loading));
     if (action.error) el.setAttribute("data-lb-error", action.error.message);
     else el.removeAttribute("data-lb-error");
+    if (settle) clearTimeout(settle);
+    if (state === "success") {
+      settle = setTimeout(() => {
+        if (!action.loading && !action.error) el.setAttribute("data-lb-state", "ready");
+      }, 1600);
+    }
   });
   return () => {
     el.removeEventListener("click", onClick);
@@ -715,7 +729,7 @@ export const LEAD_STATUSES: ReadonlyArray<Option> = [
   { value: "UNWANTED", label: "Unwanted" },
 ];
 
-const UNSET_OPTION: Option = { value: "", label: "— Not set —" };
+const UNSET_OPTION: Option = { value: "", label: "Pick a status" };
 
 /** Lead-status picker field. Static options (no API call), so bind it with
  *  `lb.bindSelect` — the options land on the first emit.
