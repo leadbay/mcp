@@ -1890,6 +1890,7 @@ Otherwise, partition \`not_imported\` by \`reason\` into these buckets before yo
 
 - Completed: \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` (drop any segment whose count is 0)
 - Running: \`"⏳ Import running — importIds <ids>; poll leadbay_import_status"\`
+- Running with \`timed_out:true\` (the blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. \`"⏳ Import still running (the backend is slow today) — I'll check back."\` Then call \`leadbay_import_status({importIds})\`, do NOT re-run leadbay_import_leads. If \`rows_pending_upload\` is present, add \`"⚠ K rows weren't submitted — re-import just those."\`
 - Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — I'll pick it up with leadbay_qualify_status"\` (its resume ids are \`lead_ids\` + \`lens_id\`; there is no qualification notification_id to quote)
 
 Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
@@ -1939,6 +1940,8 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 | Observation                                    | Suggest                                                       | Calls                                                  |
 |------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
 | Status: running                                | "Check progress"                                              | leadbay_import_status(importIds)                       |
+| Status: running with \`timed_out:true\`          | "Check progress" — NOT "retry the import"                     | leadbay_import_status(importIds, dry_run if the result carried it) after ~30s; \`result.leads\` carries the leadIds once complete |
+| \`rows_pending_upload\` present                  | "Import the rows that never got submitted"                    | leadbay_import_leads (that subset only)                |
 | Status: complete, imports succeeded            | "Run AI qualification on the imported leads"                  | leadbay_bulk_qualify_leads([leadIds]) — or use leadbay_import_and_qualify next time |
 | Pending-crawl (\`uncrawled\`) rows present       | "Re-run the import for those domains later, once Leadbay has crawled them" | leadbay_import_leads (re-run with just the uncrawled domains, later — they re-reconcile once crawled). NOTE: not a live-fetch of the added leads; those populate in the user's Leadbay account as the crawl completes |
 | Ambiguous / unresolved rows present            | "Resolve the ambiguous rows"                                  | leadbay_resolve_import_rows(records, identity_mappings)|
@@ -1985,6 +1988,7 @@ Otherwise, partition \`not_imported\` by \`reason\` into these buckets before yo
 
 - Completed: \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` (drop any segment whose count is 0)
 - Running: \`"⏳ Import running — importIds <ids>; poll leadbay_import_status"\`
+- Running with \`timed_out:true\` (the blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. \`"⏳ Import still running (the backend is slow today) — I'll check back."\` Then call \`leadbay_import_status({importIds})\`, do NOT re-run leadbay_import_leads. If \`rows_pending_upload\` is present, add \`"⚠ K rows weren't submitted — re-import just those."\`
 - Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — I'll pick it up with leadbay_qualify_status"\` (its resume ids are \`lead_ids\` + \`lens_id\`; there is no qualification notification_id to quote)
 
 Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
@@ -2034,6 +2038,8 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 | Observation                                    | Suggest                                                       | Calls                                                  |
 |------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
 | Status: running                                | "Check progress"                                              | leadbay_import_status(importIds)                       |
+| Status: running with \`timed_out:true\`          | "Check progress" — NOT "retry the import"                     | leadbay_import_status(importIds, dry_run if the result carried it) after ~30s; \`result.leads\` carries the leadIds once complete |
+| \`rows_pending_upload\` present                  | "Import the rows that never got submitted"                    | leadbay_import_leads (that subset only)                |
 | Status: complete, imports succeeded            | "Run AI qualification on the imported leads"                  | leadbay_bulk_qualify_leads([leadIds]) — or use leadbay_import_and_qualify next time |
 | Pending-crawl (\`uncrawled\`) rows present       | "Re-run the import for those domains later, once Leadbay has crawled them" | leadbay_import_leads (re-run with just the uncrawled domains, later — they re-reconcile once crawled). NOTE: not a live-fetch of the added leads; those populate in the user's Leadbay account as the crawl completes |
 | Ambiguous / unresolved rows present            | "Resolve the ambiguous rows"                                  | leadbay_resolve_import_rows(records, identity_mappings)|
@@ -3245,6 +3251,8 @@ export const leadbay_qualify_status: string = `Retrieve the current state of a b
 
 - **\`leadbay_bulk_qualify_leads\`** returns a \`notification_id\`. Pass it for progress in ONE call, and add the \`lead_ids\` + \`lens_id\` it also returned for per-lead detail (which settled, which are still running).
 - **\`leadbay_import_and_qualify\`** returns NO qualification \`notification_id\` — its qualify phase runs per-lead, so no job notification exists. Pass the \`lead_ids\` + \`lens_id\` it returned. Its \`notification_ids[]\` are the FILE-IMPORT notifications; handing one of those to this tool is rejected as the wrong kind, and \`leadbay_import_status({importIds})\` is where the import half is polled.
+
+**When it is finished:** \`status\` is always \`"launched"\` — it is not a progress field. On the \`notification_id\` path the job is done when \`in_progress\` is false (or \`bulk_progress.success_count + failure_count\` reaches \`total_count\`); \`still_running[]\` is empty on that path from the very first poll and must NOT be read as "done". On the \`lead_ids\` path the job is done when \`still_running[]\` is empty. Pass both and you get both signals in one call.
 
 Everything comes straight out of the launch response — nothing is stored on the MCP side. A backend job is scoped to the user who launched it, so a \`notification_id\` resolves from a later message, a later conversation, or the next day.
 
