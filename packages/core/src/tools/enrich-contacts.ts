@@ -17,7 +17,9 @@ export const enrichContacts: Tool<EnrichContactsParams> = {
     title: "Enrich contacts for a lead",
     readOnlyHint: false,
     destructiveHint: true,
-    idempotentHint: true,
+    // No double-launch guard: this POSTs straight through, so an identical
+    // repeat is a second paid launch, not a no-op (product#4039).
+    idempotentHint: false,
     openWorldHint: true,
   },
   description: ENRICH_CONTACTS_DESCRIPTION,

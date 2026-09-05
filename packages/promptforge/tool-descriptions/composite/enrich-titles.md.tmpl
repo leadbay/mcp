@@ -17,6 +17,8 @@ Order contact enrichments by job title across many leads. Contacts are NOT retur
 
 {{include:headers/tool-when-not-to-use}} to enrich a single named contact — that's leadbay_enrich_contacts. Speculatively, before the user has committed to outreaching — enrichment consumes quota. **NOT to add "titles" or "LinkedIn" to a list** — a contact's `job_title` and `linkedin_page` already ride on the contact record; they are FREE and need no enrichment. If the user asks for "title and LinkedIn only", read those fields directly (e.g. leadbay_get_contacts / leadbay_research_lead_by_id); do NOT launch a job here. This tool is strictly the email / phone reveal, which consumes quota.
 
+{{include:heuristics/launched-work-cannot-be-stopped}}
+
 ## ENRICHMENT CONSUMES QUOTA — the model to reason with
 
 Each email reveal and each phone reveal **consumes quota** (the per-window daily / weekly / monthly allowance shown in `leadbay_account_status`). That is the ONLY thing that gates enrichment. Do **NOT** reason about, mention, or block on "credits": there is no separate credit wall the user must clear first — enrichment either fits the user's remaining quota or the backend returns 429 (`{status:'quota_exceeded'}`) when a window is actually exhausted. **Never pre-refuse enrichment because a credit number looks low or zero** — a fresh/freemium account with quota still available can enrich even when its credit counter reads 0. If and only if the backend returns `quota_exceeded`, tell the user which window is exhausted and offer the wait-or-top-up choice (see `leadbay_account_status`).
