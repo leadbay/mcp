@@ -44,6 +44,12 @@ const GUARDED = [
   "leadbay_enrich_titles",
   "leadbay_bulk_qualify_leads",
   "leadbay_import_and_qualify",
+];
+
+// Read-only. Re-calling them launches nothing, so they must NOT carry the
+// launcher's "check account_status before you spend quota again" text — that
+// stalls the poll loop they exist for.
+const POLL_ONLY = [
   "leadbay_bulk_enrich_status",
   "leadbay_qualify_status",
   "leadbay_import_status",
@@ -88,7 +94,7 @@ async function listTools(url: string): Promise<Map<string, string>> {
 beforeEach(() => resetHttpMock());
 
 describe("the no-cancel rule reaches a hosted connector (product#4039)", () => {
-  it("every guarded launcher and status tool carries the rule and its branches", async () => {
+  it("every guarded launcher carries the rule and its branches", async () => {
     mockHttp([ME]);
     const { close, url } = await boot();
     try {
@@ -110,6 +116,25 @@ describe("the no-cancel rule reaches a hosted connector (product#4039)", () => {
 
   // `leadbay_enrich_contacts` is the one unguarded launcher the hosted route
   // exposes, so it is the one a real connector user can double-spend on.
+  it("every status tool is told polling is free, without the launcher warning", async () => {
+    mockHttp([ME]);
+    const { close, url } = await boot();
+    try {
+      const byName = await listTools(url);
+      for (const name of POLL_ONLY) {
+        const d = byName.get(name);
+        expect(d, `${name} is missing from tools/list`).toBeTypeOf("string");
+        expect(d, name).toContain("Leadbay has no cancel");
+        expect(d, name).toContain("This tool only reads");
+        expect(d, name).toContain("a timeout here is a reason to call it again, not a reason to stop");
+        // The launcher variant would make the assistant hesitate to re-poll.
+        expect(d, name).not.toContain("hand back the job already launched");
+      }
+    } finally {
+      close();
+    }
+  });
+
   it("leadbay_enrich_contacts is told it has NO guard, not the guarded advice", async () => {
     mockHttp([ME]);
     const { close, url } = await boot();
@@ -118,6 +143,7 @@ describe("the no-cancel rule reaches a hosted connector (product#4039)", () => {
       expect(d, "leadbay_enrich_contacts is missing from tools/list").toBeTypeOf("string");
       expect(d).toContain("Leadbay has no cancel");
       expect(d).toContain("no double-launch guard");
+      expect(d).toContain("`dry_run` result reached no backend and spent nothing");
       expect(d).toContain("calling it again always issues a new paid launch");
       // The guarded variant would tell it to just re-call. That spends twice.
       expect(d).not.toContain("hand back the job already launched");
@@ -132,8 +158,8 @@ describe("the no-cancel rule reaches a hosted connector (product#4039)", () => {
     try {
       const d = (await listTools(url)).get("leadbay_import_leads");
       expect(d).toContain("Leadbay has no cancel");
-      expect(d).toContain("re-call it identically");
-      expect(d).toContain("returns the same `importIds`");
+      expect(d).toContain("≤100 rows gives back the same `importIds`");
+      expect(d).toContain("larger files may re-upload");
     } finally {
       close();
     }

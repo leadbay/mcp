@@ -16,7 +16,7 @@ Retrieve the current **status/progress** of a lead import, and its leadIds once 
 
 {{include:headers/tool-when-not-to-use}} for the qualification half — use leadbay_qualify_status, with the `lead_ids` + `lens_id` an `leadbay_import_and_qualify` launch returned (it has no qualification `notification_id`; its `notification_ids[]` are these same file imports); or when you still want the legacy blocking behavior from leadbay_import_leads with `wait_for_completion=true`.
 
-{{include:heuristics/launched-work-cannot-be-stopped}}
+{{include:heuristics/launched-work-poll-only}}
 
 ---
 

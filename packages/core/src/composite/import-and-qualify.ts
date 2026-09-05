@@ -577,7 +577,7 @@ export const importAndQualify: Tool<
       cancelled: {
         type: "boolean",
         description:
-          "True when the HOST cancelled the call (a user Cancel, or the host's own request timeout); a budget timeout reports `budget_exhausted` instead. The import and the qualifications already launched keep running on Leadbay — poll leadbay_import_status with the `import_ids` values passed as `importIds`, and leadbay_qualify_status with lead_ids + lens_id. `still_running` can also hold leads whose qualification was never launched; those need a fresh qualification, which qualify_status cannot start.",
+          "True when the HOST cancelled the call (a user Cancel, or the host's own request timeout); a budget timeout reports `budget_exhausted` instead. The import and the qualifications already launched keep running on Leadbay, except a chunk cancelled before its mappings were committed, which can read `running` without ever progressing — if the counts stop moving, say so rather than polling on. Poll leadbay_import_status with the `import_ids` values passed as `importIds`, and leadbay_qualify_status with lead_ids + lens_id. `still_running` can also hold leads whose qualification was never launched; those need a fresh qualification, which qualify_status cannot start.",
       },
       budget_exhausted: { type: "boolean", description: "True when total_budget_ms hit before all leads finished." },
       quota_blocked: { type: "boolean", description: "True when quota was exhausted before launching all leads." },

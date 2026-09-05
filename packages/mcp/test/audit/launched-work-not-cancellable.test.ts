@@ -1,6 +1,6 @@
 /**
  * Leadbay has no cancel. Once an enrichment, qualification or import launch
- * returns, the backend runs it to completion and the user's quota is already
+ * returns, the backend runs it to completion and the quota it costs is already
  * committed — there is no cancel, stop or abort route for any of the three
  * (`LeadsRoutes.kt`, `ImportsRoutes.kt`, and the `/1.6` specs).
  *
@@ -9,8 +9,16 @@
  * is in flight … relaunch". Following that spends the user's quota a second
  * time on rows Leadbay is still processing.
  *
- * This audit keeps the true statement on the surface the agent actually reads,
- * and keeps the false one from coming back.
+ * Three variants ship, because three kinds of tool exist, and handing a tool
+ * the wrong one is its own bug:
+ *
+ *  - GUARDED launchers call `beginLaunch`, so a re-call inside the window hands
+ *    back the job already launched. Best-effort, never a guarantee.
+ *  - POLL_ONLY status tools launch nothing. Re-calling them is free, and text
+ *    that warns about spending quota on a retry would stall the polling loop
+ *    they exist for.
+ *  - UNGUARDED launchers POST directly with no guard at all, so the guarded
+ *    re-call advice would buy a second paid launch.
  */
 
 import { describe, it, expect } from "vitest";
@@ -23,23 +31,20 @@ import {
 } from "@leadbay/core";
 import * as prompts from "../../src/prompts.generated.js";
 
-// Every tool that launches background work, and every tool used to poll it.
-// `leadbay_import_leads` is not here: it sits ~150 chars from the 17,000 cap,
-// and its own SLOW BACKEND paragraph already carries the handle and the
-// never-uploaded-subset branches in its own terms. It states the cancel case in
-// one sentence instead, asserted separately below.
-const BULK_TOOLS = [
+const GUARDED_TOOLS = [
   "leadbay_enrich_titles",
   "leadbay_bulk_qualify_leads",
   "leadbay_import_and_qualify",
+] as const;
+
+const POLL_ONLY_TOOLS = [
   "leadbay_bulk_enrich_status",
   "leadbay_qualify_status",
   "leadbay_import_status",
 ] as const;
 
-// Advanced-gated single POSTs. Each spends quota, and none of them calls
-// `beginLaunch`, so the guarded "re-call and get the same job back" advice is
-// false for them — they carry the unguarded variant instead.
+// Advanced-gated single POSTs. Each spends quota, and none calls `beginLaunch`.
+// `leadbay_enrich_contacts` is also exposed on the hosted route.
 const UNGUARDED_TOOLS = [
   "leadbay_qualify_lead",
   "leadbay_enrich_contacts",
@@ -55,77 +60,25 @@ const ALL_TOOLS: Tool[] = [
 
 const byName = new Map(ALL_TOOLS.map((t) => [t.name, t.description]));
 
-// The snippet is hard-wrapped markdown, so a sentence can straddle a newline.
+// The snippets are hard-wrapped markdown, so a sentence can straddle a newline.
 // Match on collapsed whitespace or the audit breaks every time someone rewraps
 // a paragraph without changing a word of it.
 const flat = (s: string | undefined) => (s ?? "").replace(/\s+/g, " ");
 const says = (tool: string, phrase: string) =>
-  expect(flat(byName.get(tool))).toContain(phrase.replace(/\s+/g, " "));
+  expect(flat(byName.get(tool)), tool).toContain(phrase.replace(/\s+/g, " "));
+const doesNotSay = (tool: string, phrase: string) =>
+  expect(flat(byName.get(tool)), tool).not.toContain(phrase.replace(/\s+/g, " "));
 
 const PROMPT_TEXTS: Array<[string, string]> = Object.entries(prompts).filter(
   (e): e is [string, string] => typeof e[1] === "string"
 );
 
-describe("a launched job cannot be stopped — the agent is told so", () => {
-  it.each(BULK_TOOLS)("%s states that Leadbay has no cancel", (tool) => {
-    const text = byName.get(tool);
-    expect(text, `${tool} is not a registered tool`).toBeTypeOf("string");
-    says(tool, "Leadbay has no cancel");
-  });
+const EVERY_TOOL = [...GUARDED_TOOLS, ...POLL_ONLY_TOOLS, ...UNGUARDED_TOOLS];
 
-  it.each(BULK_TOOLS)("%s says a handle must be polled, not relaunched", (tool) => {
-    says(tool, "do not launch the work that handle covers a second time");
-  });
-
-  // The rule branches, and each branch is load-bearing: an absolute "never
-  // relaunch" strands a call that timed out before it returned a handle, and
-  // an unconditional "quota is committed" is wrong for a discovery, preview or
-  // dry-run result that launched nothing.
-  it.each(BULK_TOOLS)("%s scopes the rule to a launched result", (tool) => {
-    says(tool, "dry_run` result launched nothing and is not covered here");
-  });
-
-  it.each(BULK_TOOLS)("%s tells a handle-less caller to re-call, not to give up", (tool) => {
-    says(tool, "hand back the job already launched");
-  });
-
-  // The guard is in-memory, five minutes, per process, and the blocking
-  // qualify path never enters it. Promising recovery it cannot deliver is how
-  // a lost launch response turns into a second charge.
-  it.each(BULK_TOOLS)("%s calls the double-launch guard best-effort", (tool) => {
-    says(tool, "best-effort");
-  });
-
-  // A running handle can ship alongside leads or rows that were never queued.
-  it.each(BULK_TOOLS)("%s permits re-running a never-started subset", (tool) => {
-    says(tool, 'error:"not_queued"');
-    says(tool, "re-run for that subset only");
-  });
-
-  it.each(UNGUARDED_TOOLS)("%s says Leadbay has no cancel", (tool) => {
+describe("a launched job cannot be stopped — every tool is told so", () => {
+  it.each([...EVERY_TOOL, "leadbay_import_leads"])("%s says Leadbay has no cancel", (tool) => {
     expect(byName.get(tool), `${tool} is not a registered tool`).toBeTypeOf("string");
     says(tool, "Leadbay has no cancel");
-  });
-
-  it.each(UNGUARDED_TOOLS)("%s warns it has no double-launch guard", (tool) => {
-    says(tool, "no double-launch guard");
-    says(tool, "calling it again always issues a new paid launch");
-  });
-
-  it.each(UNGUARDED_TOOLS)("%s does not promise the guarded re-call", (tool) => {
-    expect(flat(byName.get(tool))).not.toContain("hand back the job already launched");
-  });
-
-  it("leadbay_import_leads states the cancel case in its own paragraph", () => {
-    says("leadbay_import_leads", "Leadbay has no cancel");
-    // The branches it does carry, from its own SLOW BACKEND paragraph.
-    says("leadbay_import_leads", "Do NOT call leadbay_import_leads again");
-    says("leadbay_import_leads", "rows_pending_upload");
-    // The P1 the snippet would otherwise have carried here: a call that
-    // returned no handle at all must be re-called, and the async path's guard
-    // gives back the same importIds.
-    says("leadbay_import_leads", "re-call it identically");
-    says("leadbay_import_leads", "returns the same `importIds`");
   });
 
   it("every prompt carrying the long-running rules carries this one too", () => {
@@ -139,8 +92,77 @@ describe("a launched job cannot be stopped — the agent is told so", () => {
   });
 });
 
+describe("guarded launchers get all three recovery branches", () => {
+  it.each(GUARDED_TOOLS)("%s scopes the rule to a launched result", (tool) => {
+    says(tool, "dry_run` result launched nothing and is not covered here");
+  });
+
+  it.each(GUARDED_TOOLS)("%s says a handle is polled, not relaunched", (tool) => {
+    says(tool, "do not launch the work that handle covers a second time");
+  });
+
+  it.each(GUARDED_TOOLS)("%s permits re-running a never-started subset", (tool) => {
+    says(tool, 'error:"not_queued"');
+    says(tool, "re-run for that subset only");
+  });
+
+  // The guard is in-memory, five minutes, per process, and the blocking qualify
+  // path never enters it. Promising recovery it cannot deliver is how a lost
+  // launch response turns into a second charge.
+  it.each(GUARDED_TOOLS)("%s calls the double-launch guard best-effort", (tool) => {
+    says(tool, "hand back the job already launched");
+    says(tool, "best-effort");
+  });
+});
+
+describe("status tools are told polling is free", () => {
+  it.each(POLL_ONLY_TOOLS)("%s says re-calling it launches nothing", (tool) => {
+    says(tool, "This tool only reads");
+    says(tool, "launches nothing and spends no quota");
+    says(tool, "a timeout here is a reason to call it again, not a reason to stop");
+  });
+
+  // The launcher text would tell a status tool to check account_status and warn
+  // the user before "spending quota" on a retry. There is no quota to spend,
+  // and hesitating breaks the poll loop these tools exist for.
+  it.each(POLL_ONLY_TOOLS)("%s does not carry the launcher retry warning", (tool) => {
+    doesNotSay(tool, "hand back the job already launched");
+    doesNotSay(tool, "before you spend the user's quota on it");
+  });
+});
+
+describe("unguarded launchers are told they have no guard", () => {
+  it.each(UNGUARDED_TOOLS)("%s warns every call is a new paid launch", (tool) => {
+    says(tool, "no double-launch guard");
+    says(tool, "calling it again always issues a new paid launch");
+  });
+
+  it.each(UNGUARDED_TOOLS)("%s exempts a dry run from the quota claim", (tool) => {
+    says(tool, "`dry_run` result reached no backend and spent nothing");
+  });
+
+  it.each(UNGUARDED_TOOLS)("%s does not promise the guarded re-call", (tool) => {
+    doesNotSay(tool, "hand back the job already launched");
+  });
+});
+
+describe("leadbay_import_leads carries its own sentence", () => {
+  it("states the cancel case and the branches its own paragraph already has", () => {
+    says("leadbay_import_leads", "Do NOT call leadbay_import_leads again");
+    says("leadbay_import_leads", "rows_pending_upload");
+  });
+
+  // `rememberLaunch` is reached only after EVERY chunk uploads, and the catch
+  // calls `abandonLaunch`, so the re-call returns the same ids for a
+  // single-chunk file and can re-upload a larger one.
+  it("does not promise handle recovery for a multi-chunk file", () => {
+    says("leadbay_import_leads", "≤100 rows gives back the same `importIds`");
+    says("leadbay_import_leads", "larger files may re-upload");
+    doesNotSay("leadbay_import_leads", "for five minutes it returns the same");
+  });
+});
+
 describe("the old, false model is not reachable from any generated surface", () => {
-  // `cancelled` as a JOB state, plus the relaunch advice that rode with it.
   const BANNED = [
     "BULK_CANCELLED",
     "the cancelled record won't block a fresh launch",

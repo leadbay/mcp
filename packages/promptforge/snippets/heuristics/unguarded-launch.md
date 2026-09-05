@@ -1,7 +1,8 @@
 ## A launched job cannot be stopped, and this tool has no retry guard
 
-Leadbay has no cancel. Once this call returns, the work is queued on Leadbay and
-runs to completion, and the quota it costs is already committed. The user
+Leadbay has no cancel. Once this call returns having actually launched, the work
+is queued on Leadbay and runs to completion, and the quota it costs is already
+committed. A `dry_run` result reached no backend and spent nothing. The user
 cancelling in the chat, a request timeout, or a closed stream stops YOUR waiting,
 never the job.
 
