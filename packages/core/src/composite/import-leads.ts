@@ -12,6 +12,12 @@ import type {
   CustomFieldDef,
 } from "../types.js";
 
+import {
+  launchFingerprint,
+  beginLaunch,
+  abandonLaunch,
+  rememberLaunch,
+} from "../jobs/launch-guard.js";
 import { leadbay_import_leads as IMPORT_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 import {
   PUBLIC_MAILBOX_DOMAINS,
@@ -120,8 +126,6 @@ export interface ImportLeadsRunningResult {
   // Present on the `wait_for_completion:false` path, which reserves a
   // BulkTracker record. ABSENT when a blocking call degraded on a poll
   // timeout (product#4007): the hosted MCP has no BulkTracker at all, so
-  // `importIds` — not `handle_id` — is the handle that always resumes.
-  handle_id?: string;
   importIds: string[];
   notification_ids: string[];
   progress: { phase: string; records_processed: number; records_total: number };
@@ -1120,7 +1124,12 @@ async function completeUploadedChunk(
   totalDeadline: number,
   ctx: ToolContext | undefined,
   signal: AbortSignal | undefined,
-  onNotificationId?: (id: string) => void
+  onNotificationId?: (id: string) => void,
+  // Fires the moment the mapping commit has gone out. A caller recovering from
+  // a throw needs to KNOW whether this chunk was committed, not infer it from
+  // the error: a transport blip inside pollPreprocess and one inside pollProcess
+  // are the same error type on opposite sides of the commit.
+  onCommitSent?: () => void
 ): Promise<ChunkRunOutput> {
   const { importId, chunk } = upload;
   const phaseBudget = Math.min(perPhaseBudgetMs, Math.max(1, totalDeadline - Date.now()));
@@ -1133,6 +1142,7 @@ async function completeUploadedChunk(
   }
 
   const importNotificationId = await commitMappings(client, importId, mappings, ctx);
+  onCommitSent?.();
   if (importNotificationId) {
     onNotificationId?.(importNotificationId);
     ctx?.logger?.info?.(
@@ -1436,8 +1446,8 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
       wait_for_completion: {
         type: "boolean",
         description:
-          "When false, validate and enqueue the import in the background, then return `{status:'running', handle_id}` immediately. " +
-          "Poll leadbay_import_status(handle_id). Default is true for 0.6.x backwards compatibility.",
+          "When false, upload the rows and return `{status:'running', importIds}` immediately. " +
+          "Poll leadbay_import_status({importIds, dry_run}) — those importIds are the backend's own and keep working from any conversation. Default is true.",
       },
     },
     // Neither field is "required" at the schema level; xor + presence is
@@ -1456,11 +1466,6 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
       status: {
         type: "string",
         description: "`running` when wait_for_completion=false; absent on the legacy blocking result.",
-      },
-      handle_id: {
-        type: "string",
-        description:
-          "Persisted UUID handle to pass to leadbay_import_status. Only on the wait_for_completion=false path; absent when a blocking call timed out (use importIds then).",
       },
       timed_out: {
         type: "boolean",
@@ -1616,94 +1621,99 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
     const chunks = chunkAt100(prep.validInputs);
 
     if (!waitForCompletion) {
-      if (!ctx?.bulkTracker) {
+      // Double-launch guard only. The handle the agent polls with is the
+      // backend's own importIds — leadbay_import_status accepts them directly,
+      // and the backend owns their state and retention.
+      const fingerprint = launchFingerprint([
+        "import",
+        prep.mode,
+        dryRun,
+        // Cached /users/me — the admin gate above already read it, so this
+        // costs no round trip. Scopes the fingerprint to the organization.
+        await client.resolveOrgId(),
+        importFingerprint(params, prep),
+      ]);
+      const claim = beginLaunch(fingerprint);
+      if (claim.state === "in_flight") {
+        // importIds is the ONLY handle back to a hosted import. Answering
+        // `running` with an empty array would upload rows the agent can never
+        // find again.
         throw client.makeError(
-          "BULK_TRACKER_UNAVAILABLE",
-          "No BulkTracker configured on this MCP instance",
-          "leadbay_import_leads wait_for_completion=false needs a BulkTracker so the handle survives restart.",
+          "IMPORT_LAUNCH_IN_FLIGHT",
+          `An identical import was started ${claim.seconds_since}s ago and has not returned its import ids yet`,
+          "Nothing was uploaded twice. Call leadbay_import_leads again with the same arguments in a few seconds to receive the importIds.",
           ""
         );
       }
-      const reservation = await ctx.bulkTracker.findOrCreatePendingImport({
-        import_fingerprint: importFingerprint(params, prep),
-        mode: prep.mode,
-        dry_run: dryRun,
-        records_total: prep.validInputs.length,
-      });
-      const importIds = [...reservation.record.import_ids];
-      const uploadedChunks: UploadedChunk[] = [];
-      if (!reservation.reused || reservation.record.import_ids.length === 0) {
-        try {
-          for (let i = 0; i < chunks.length; i++) {
-            const upload = await uploadOneChunk(
-              client,
-              chunks[i],
-              i,
-              chunks.length,
-              prep.header,
-              ctx,
-              (id) => {
-                if (!importIds.includes(id)) importIds.push(id);
-              }
-            );
-            uploadedChunks.push(upload);
-            await ctx.bulkTracker.setImportIds(reservation.record.bulk_id, importIds);
-          }
-          await ctx.bulkTracker.setImportProgress(reservation.record.bulk_id, {
+      const already = claim.state === "settled" ? claim.record : undefined;
+      if (already) {
+        return {
+          status: "running",
+          importIds: already.import_ids ?? [],
+          notification_ids: [],
+          progress: {
             phase: "preprocess",
             records_processed: 0,
             records_total: prep.validInputs.length,
-          });
-        } catch (err: any) {
-          await ctx.bulkTracker.markImportFailed(
-            reservation.record.bulk_id,
-            err?.message ?? err?.code ?? "unknown"
-          );
-          throw err;
-        }
+          },
+          region: client.region,
+          reused: true,
+          seconds_since_original: already.seconds_since,
+          _meta: client.lastMeta ?? {
+            region: client.region,
+            endpoint: "POST /imports",
+            latency_ms: null,
+            retry_after: null,
+          },
+        };
       }
+
+      const importIds: string[] = [];
+      const uploadedChunks: UploadedChunk[] = [];
+      try {
+        for (let i = 0; i < chunks.length; i++) {
+          const upload = await uploadOneChunk(
+            client,
+            chunks[i],
+            i,
+            chunks.length,
+            prep.header,
+            ctx,
+            (id) => {
+              if (!importIds.includes(id)) importIds.push(id);
+            }
+          );
+          uploadedChunks.push(upload);
+        }
+      } catch (err) {
+        // The claim must not outlive a launch that did not happen.
+        abandonLaunch(fingerprint);
+        throw err;
+      }
+      rememberLaunch(fingerprint, null, undefined, importIds);
+
       if (uploadedChunks.length > 0) {
         void runImportInBackground(
           client,
           prep,
           uploadedChunks,
-          {
-            dryRun,
-            perPhaseBudget,
-            totalBudget,
-          },
-          ctx,
-          reservation.record.bulk_id
+          { dryRun, perPhaseBudget, totalBudget },
+          ctx ?? {}
         );
       }
       return {
         status: "running",
-        handle_id: reservation.record.bulk_id,
         importIds,
-        // Notifications fire from update_mappings, which the background
-        // task hasn't called yet at this point. They surface via the WS
-        // listener / catch-up REST on subsequent agent turns.
+        // Notifications fire from update_mappings, which the background task
+        // hasn't called yet. They surface via the WS listener / catch-up REST
+        // on subsequent turns.
         notification_ids: [],
         progress: {
-          phase:
-            reservation.record.status === "complete"
-              ? "complete"
-              : importIds.length > 0
-              ? "preprocess"
-              : "queued",
-          records_processed:
-            reservation.record.status === "complete"
-              ? reservation.record.records_total
-              : 0,
-          records_total: reservation.record.records_total,
+          phase: importIds.length > 0 ? "preprocess" : "queued",
+          records_processed: 0,
+          records_total: prep.validInputs.length,
         },
         region: client.region,
-        ...(reservation.reused
-          ? {
-              reused: true,
-              seconds_since_original: reservation.seconds_since_original,
-            }
-          : {}),
         _meta: client.lastMeta ?? {
           region: client.region,
           endpoint: "POST /imports",
@@ -1943,28 +1953,25 @@ async function runImportInBackground(
     perPhaseBudget: number;
     totalBudget: number;
   },
-  ctx: ToolContext,
-  handleId: string
+  ctx: ToolContext
 ): Promise<void> {
-  const tracker = ctx.bulkTracker;
-  if (!tracker) return;
-  void tracker
-    .setImportProgress(handleId, {
-      phase: "preprocess",
-      records_processed: 0,
-      records_total: prep.validInputs.length,
-    })
-    .catch(() => {});
   setTimeout(() => {
     void (async () => {
-      const bgCtx: ToolContext = { logger: ctx.logger, bulkTracker: tracker };
+      const bgCtx: ToolContext = { logger: ctx.logger };
       const importIds = uploadedChunks.map((chunk) => chunk.importId);
       const notificationIds: string[] = [];
       const matched = new Map<number, MatchEntry>();
       const notImported = new Map<number, NotImportedEntry>();
+      // Which chunk the loop is on, and whether its mapping commit went out.
+      // Everything from `inFlight` on is uploaded; whether `inFlight` ITSELF is
+      // still uncommitted is what `committed` answers — see the catch.
+      let inFlight = 0;
+      let committed = false;
       try {
         const totalDeadline = Date.now() + opts.totalBudget;
-        for (const upload of uploadedChunks) {
+        for (inFlight = 0; inFlight < uploadedChunks.length; inFlight++) {
+          const upload = uploadedChunks[inFlight];
+          committed = false;
           const out = await completeUploadedChunk(
             client,
             upload,
@@ -1973,7 +1980,11 @@ async function runImportInBackground(
             opts.perPhaseBudget,
             totalDeadline,
             bgCtx,
-            undefined
+            undefined,
+            undefined,
+            () => {
+              committed = true;
+            }
           );
           if (out.notification_id && !notificationIds.includes(out.notification_id)) {
             notificationIds.push(out.notification_id);
@@ -1982,7 +1993,9 @@ async function runImportInBackground(
             reconcileOneChunk(prep, out, matched, notImported);
           }
         }
-        const result = buildImportLeadsResult(
+        // Nothing to persist. The backend owns this import; the agent polls it
+        // with the importIds it already has, via leadbay_import_status.
+        buildImportLeadsResult(
           client,
           prep,
           importIds,
@@ -1992,17 +2005,38 @@ async function runImportInBackground(
           false,
           notificationIds
         );
-        await tracker.markImportComplete(handleId, {
-          leads: result.leads,
-          not_imported: result.not_imported,
-          importIds: result.importIds,
-        });
       } catch (err: any) {
-        await tracker.markImportFailed(
-          handleId,
-          err?.message ?? err?.code ?? "unknown"
+        // A chunk whose mappings were never committed is parked for ever:
+        // `commitMappings` is the MCP's own POST, so nothing on the backend
+        // will send it, and `import_status` classifies the row as COMPLETE
+        // (pre_processing.finished && !processing) — the user is told an
+        // import finished that committed nothing. Hand every un-committed
+        // chunk to the same detached finisher the blocking path uses.
+        //
+        // Whether the chunk that THREW is un-committed is answered by
+        // `committed`, not by the error type: a preprocess budget timeout, a
+        // backend `pre_processing.error` and a transport blip mid-poll all
+        // leave it uncommitted, while the same transport blip one phase later
+        // does not — and re-sending a commit that already went out would
+        // re-trigger processing. Every chunk AFTER the thrower is un-committed
+        // whatever the error, because the loop never reached it.
+        if (!opts.dryRun) {
+          const parkedFrom = committed ? inFlight + 1 : inFlight;
+          for (const parked of uploadedChunks.slice(parkedFrom)) {
+            resumeParkedUpload(client, parked, prep.mappings, bgCtx);
+          }
+        }
+        ctx?.logger?.warn?.(
+          `import-leads: background import failed for ${importIds.join(",")}: ${err?.message ?? err?.code ?? err}`
         );
       }
-    })();
+    })().catch((e: any) =>
+      // Terminal guard. Nothing may escape a detached task — an unhandled
+      // rejection would take the whole multi-tenant hosted process down.
+      ctx?.logger?.error?.(
+        `import-leads: background import crashed: ${e?.message ?? e}`
+      )
+    );
   }, 0);
 }
+

@@ -1,3 +1,54 @@
+# Migration: leadbay-mcp 0.34.x → 0.35.0
+
+The MCP no longer keeps a local job file. Every long-running launch hands back
+the **backend's own id**, so a job started in one process resolves in any other
+— including on the hosted server, which never had the local file.
+
+## The three handles are gone
+
+| Was | Pass instead | On |
+|---|---|---|
+| `bulk_id` | `notification_id` (job counters) and/or `lead_ids` (per-lead progress) | `leadbay_bulk_enrich_status` |
+| `qualify_id` | `notification_id` and/or `lead_ids` + `lens_id` | `leadbay_qualify_status` |
+| `handle_id` | `importIds[]` | `leadbay_import_status` |
+
+All three are returned by the launch call. Nothing is stored MCP-side, so they
+resolve from a later message, a later conversation, or the next day. A call that
+still passes an old name is answered with an error naming the id to pass, not a
+crash.
+
+`leadbay_enrich_titles` renamed its `re_used` output field to `reused`, matching
+`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify`.
+
+`leadbay_import_and_qualify` returns NO qualification `notification_id` — its
+qualify phase runs per-lead. Poll it with the `lead_ids` + `lens_id` it returned;
+its `notification_ids[]` are the FILE-IMPORT ones, polled via
+`leadbay_import_status({importIds})`.
+
+## Knowing a job is finished
+
+`leadbay_qualify_status.status` is always `"launched"` — it is not a progress
+field. On the `notification_id` path the job is done when `in_progress` is false;
+`still_running[]` is empty on that path from the first poll and must not be read
+as "done". On the `lead_ids` path, done means `still_running[]` is empty.
+
+`leadbay_bulk_enrich_status` answers `ENRICH_JOB_NO_COUNTERS` when the enrichment
+notification carries no per-contact counters (the common case) — re-call with the
+`lead_ids` the launch returned.
+
+## Errors removed
+
+`BULK_TRACKER_UNAVAILABLE`, `BULK_INVALID_ID`, `BULK_NOT_FOUND`, `BULK_PENDING`,
+`BULK_LAUNCH_FAILED`, `BULK_WRONG_KIND`, `BULK_CANCELLED`, `BULK_STORE_UNAVAILABLE`
+no longer exist, and neither does `~/.leadbay/bulks.json` or the
+`LEADBAY_BULK_STORE_ALLOW_MEMORY` escape hatch. The replacements are
+`ENRICH_STATUS_INPUT_REQUIRED`, `ENRICH_JOB_NOT_FOUND`, `ENRICH_JOB_WRONG_KIND`,
+`ENRICH_JOB_NO_COUNTERS`, `QUALIFY_STATUS_INPUT_REQUIRED`, `QUALIFY_JOB_NOT_FOUND`
+and `QUALIFY_JOB_WRONG_KIND`. The 0.5.0 sections below describe the old store and
+are kept as history.
+
+---
+
 # Migration: leadbay-mcp 0.5.x → 0.6.0 (UNRELEASED)
 
 The "MCP best-practice" upgrade. Five behaviour additions and ONE

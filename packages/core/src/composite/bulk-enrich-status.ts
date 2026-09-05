@@ -1,28 +1,26 @@
 import type { LeadbayClient } from "../client.js";
-import type { Notification, Tool, ToolContext } from "../types.js";
+import { readNotificationById } from "../notifications/read-by-id.js";
+import { inferKind } from "../notifications/revise-hint.js";
+import type { BulkProgress, Notification, Tool, ToolContext } from "../types.js";
 import { getContacts } from "../tools/get-contacts.js";
-import { isValidBulkId, type BulkRecord } from "../jobs/bulk-store.js";
 import { readCreditsRemaining, UNLIMITED } from "./_credits-helpers.js";
 
-// Read a single notification by id from the paginated list endpoint.
-// Backend exposes list + per-id mutations only; this short list pass is
-// cheap (50 rows max) and lets the status tool surface bulk_progress with
-// a single REST call instead of fanning out per-lead.
-async function readNotification(
-  client: LeadbayClient,
-  notificationId: string
-): Promise<Notification | null> {
-  try {
-    const page = await client.listNotifications({ archived: false, count: 50 });
-    return page.items.find((n) => n.id === notificationId) ?? null;
-  } catch {
-    return null;
-  }
-}
 
 import { leadbay_bulk_enrich_status as BULK_ENRICH_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface BulkEnrichStatusParams {
-  bulk_id: string;
+  // The backend's own job id, returned by leadbay_enrich_titles. Minted,
+  // retained and org-scoped by the backend, so it resolves from any process on
+  // any day — which is exactly what a client-minted handle could never do.
+  // Optional now: with lead_ids the tool answers per lead without it.
+  notification_id?: string;
+  // The lead set the launch reported.
+  lead_ids?: string[];
+  // What the launch asked for. The agent already has these from enrich_titles;
+  // they are what makes "done" mean the channel THIS run requested rather than
+  // "some enrichment happened once".
+  titles?: string[];
+  email?: boolean;
+  phone?: boolean;
   include_contacts?: boolean;
 }
 
@@ -64,10 +62,30 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
   inputSchema: {
     type: "object",
     properties: {
-      bulk_id: {
+      notification_id: {
         type: "string",
         description:
-          "UUIDv4 returned by leadbay_enrich_titles at launch time. Required.",
+          "The `notification_id` returned by leadbay_enrich_titles. Gives the job-level counters in one call.",
+      },
+      lead_ids: {
+        type: "array",
+        description:
+          "The `lead_ids` the launch returned. Gives per-lead progress, and answers on its own if the notification is archived or has aged off page 1.",
+        items: { type: "string" },
+      },
+      titles: {
+        type: "array",
+        description:
+          "The `titles` the launch returned. Scopes progress to the roles THIS run enriched, so a lead's pre-existing CFO email cannot inflate a CEO run.",
+        items: { type: "string" },
+      },
+      email: {
+        type: "boolean",
+        description: "The `email` flag the launch returned. A contact counts as done only once the requested channel has landed.",
+      },
+      phone: {
+        type: "boolean",
+        description: "The `phone` flag the launch returned. Same rule as `email`.",
       },
       include_contacts: {
         type: "boolean",
@@ -75,35 +93,17 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
           "If true, return the full contact list per lead (email, phone, enrichment.done). Default false — cheap status polls.",
       },
     },
-    required: ["bulk_id"],
+    anyOf: [{ required: ["notification_id"] }, { required: ["lead_ids"] }],
     additionalProperties: false,
   },
   outputSchema: {
     type: "object",
     properties: {
-      bulk_id: { type: "string", description: "Echoed UUIDv4 handle." },
+      notification_id: { type: "string", description: "The backend job id; pass it back to poll again." },
       launched_at: { type: "string", description: "ISO timestamp of /enrichment/launch ack." },
       status: {
         type: "string",
         description: "'launched' on success. Errors return error envelopes (handled separately).",
-      },
-      durability: {
-        type: "string",
-        description: "'persistent' (file-backed bulks.json) or 'memory' (LEADBAY_BULK_STORE_ALLOW_MEMORY).",
-      },
-      titles: {
-        type: "array",
-        description: "Titles ordered at launch time (echoed from the original enrich_titles call).",
-        items: { type: "string" },
-      },
-      email: { type: "boolean", description: "True if email enrichment was requested." },
-      phone: { type: "boolean", description: "True if phone enrichment was requested." },
-      lens_id: { type: "number", description: "Lens id used to scope the enrichment." },
-      leads: {
-        type: "array",
-        description:
-          "Per-lead rollup: {lead_id, enrichment_progress:{done,total}, contacts? (when include_contacts=true)}.",
-        items: { type: "object" },
       },
       overall_progress: {
         type: "object",
@@ -130,398 +130,244 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
         items: { type: "object" },
       },
     },
-    required: ["bulk_id", "status", "leads", "overall_progress", "all_done"],
+    required: ["status", "leads", "overall_progress", "all_done"],
   },
   execute: async (
     client: LeadbayClient,
     params: BulkEnrichStatusParams,
     ctx?: ToolContext
   ) => {
-    // Strict UUIDv4 validation BEFORE any disk read — path-traversal / LFI defense.
-    if (!isValidBulkId(params.bulk_id)) {
-      return {
-        error: true,
-        code: "BULK_INVALID_ID",
-        message: "bulk_id is not a valid UUIDv4",
-        hint: "Pass the bulk_id returned by leadbay_enrich_titles verbatim.",
-      };
-    }
-
-    if (!ctx?.bulkTracker) {
-      return {
-        error: true,
-        code: "BULK_TRACKER_UNAVAILABLE",
-        message: "No BulkTracker configured on this MCP instance",
-        hint:
-          "This composite requires a BulkTracker in ToolContext. Upgrade to @leadbay/mcp ≥0.3.0 or run with LEADBAY_BULK_STORE_ALLOW_MEMORY=1.",
-      };
-    }
-
     const includeContacts = params.include_contacts ?? false;
-
+    const leadIds = params.lead_ids ?? [];
     const startMs = Date.now();
 
-    let record: BulkRecord | undefined;
-    try {
-      record = await ctx.bulkTracker.get(params.bulk_id);
-    } catch (err: any) {
+    if (!params.notification_id && leadIds.length === 0) {
       return {
         error: true,
-        code: "BULK_STORE_UNAVAILABLE",
-        message: `Bulk store read failed: ${err?.message ?? err}`,
+        code: "ENRICH_STATUS_INPUT_REQUIRED",
+        message: "Pass notification_id and/or lead_ids",
         hint:
-          "Check the file at $LEADBAY_BULK_STORE_PATH (default ~/.leadbay/bulks.json). " +
-          "Set LEADBAY_BULK_STORE_ALLOW_MEMORY=1 to fall back to in-memory storage on startup (handles won't survive restart).",
+          "Both are in the leadbay_enrich_titles result. notification_id gives the job counters; lead_ids gives per-lead progress and works even when the notification has been archived.",
       };
     }
 
-    if (!record) {
-      return {
-        error: true,
-        code: "BULK_NOT_FOUND",
-        message: "No bulk record for that bulk_id",
-        hint:
-          "The record may have aged out (30-day TTL) or the MCP process was restarted without persistence. " +
-          "Launch a new enrichment via leadbay_enrich_titles.",
-      };
-    }
-
-    if (record.kind !== "enrich") {
-      return {
-        error: true,
-        code: "BULK_WRONG_KIND",
-        message:
-          `This bulk_id was created by ${record.kind === "qualify" ? "leadbay_import_and_qualify" : "leadbay_import_leads"}, not leadbay_enrich_titles.`,
-        hint:
-          record.kind === "qualify"
-            ? "Call leadbay_qualify_status with this id instead."
-            : "Call leadbay_import_status with this id instead.",
-        bulk_id: record.bulk_id,
-      };
-    }
-
-    if (record.status === "pending") {
-      return {
-        error: true,
-        code: "BULK_PENDING",
-        message:
-          "Bulk is in 'pending' state — the launch is in flight or the MCP crashed between launch and ack.",
-        hint:
-          "Retry leadbay_bulk_enrich_status in a few seconds. If it persists >60s, relaunch via leadbay_enrich_titles.",
-        bulk_id: record.bulk_id,
-        launched_at: record.launched_at,
-      };
-    }
-
-    if (record.status === "failed") {
-      return {
-        error: true,
-        code: "BULK_LAUNCH_FAILED",
-        message:
-          "The original /enrichment/launch POST failed; no backend enrichment was ordered.",
-        hint:
-          "Call leadbay_enrich_titles again — the failed record won't block a fresh launch.",
-        bulk_id: record.bulk_id,
-        launched_at: record.launched_at,
-      };
-    }
-
-    if (record.status === "cancelled") {
-      return {
-        error: true,
-        code: "BULK_CANCELLED",
-        message:
-          "The bulk was cancelled (ctx.signal aborted by the client mid-launch). No further work is in flight.",
-        hint:
-          "Call leadbay_enrich_titles again with the same titles to relaunch — the cancelled record won't block a fresh launch.",
-        bulk_id: record.bulk_id,
-        launched_at: record.launched_at,
-      };
-    }
-
-    // Fast path — when the launch persisted a notification_id (post #1849),
-    // read bulk_progress from the notification with one REST call. This is
-    // O(1) regardless of selection size. We still fall back to the legacy
-    // per-lead fan-out for two cases:
-    //   (a) bulk records minted by older MCP versions (no notification_id),
-    //   (b) the caller passed include_contacts=true and the operation is
-    //       still running — we want to return the partial contact list too.
-    const notifId = record.notification_id ?? null;
-    if (notifId) {
-      const n = await readNotification(client, notifId);
-      if (n && n.bulk_progress) {
-        const bp = n.bulk_progress;
-        const inProgress = n.in_progress;
-        // Fetch per-lead contacts whenever the agent opts in with
-        // include_contacts, even while the notification still reads
-        // in_progress. A job can plateau below 100% forever (unresolvable
-        // titles / no findable email keep it in_progress), and the
-        // stay-active guidance tells the agent to report the RESOLVED
-        // contacts at that plateau — so the report read must return the
-        // contacts that DID land, not bare {lead_id}. The agent only sets
-        // include_contacts on the read it reports from, so the fan-out stays
-        // off the cheap interim polls (it defaults false).
-        let leads: Array<{ lead_id: string; contacts?: any[] }> = [];
-        const fastPartialFailures: Array<{
-          lead_id: string;
-          code: string;
-          retry_after?: number;
-        }> = [];
-        if (includeContacts) {
-          leads = await pMap<string, { lead_id: string; contacts?: any[] }>(
-            record.lead_ids,
-            async (leadId) => {
-              try {
-                const out: any = await getContacts.execute(client, { leadId });
-                const contacts: any[] = Array.isArray(out?.contacts) ? out.contacts : [];
-                // getContacts uses allSettled internally — a rejected endpoint
-                // becomes [] but is reported via _fetch_errors. Surface it as a
-                // partial_failure so a transient 429 during a plateau report read
-                // is distinguishable from "nothing resolved" (the agent's plateau
-                // rule then keeps polling / honors retry_after instead of reporting
-                // these leads as permanently unresolvable).
-                const fe: any[] = Array.isArray(out?._fetch_errors)
-                  ? out._fetch_errors
-                  : [];
-                if (fe.length > 0) {
-                  fastPartialFailures.push({
-                    lead_id: leadId,
-                    code: fe[0]?.code ?? "FETCH_ERROR",
-                    ...(fe[0]?.retry_after !== undefined
-                      ? { retry_after: fe[0].retry_after }
-                      : {}),
-                  });
-                }
-                return { lead_id: leadId, contacts };
-              } catch (err: any) {
-                fastPartialFailures.push({
-                  lead_id: leadId,
-                  code: err?.code ?? "UNKNOWN",
-                  ...(err?._meta?.retry_after !== undefined
-                    ? { retry_after: err._meta.retry_after }
-                    : {}),
-                });
-                return { lead_id: leadId };
-              }
-            },
-            STATUS_FETCH_CONCURRENCY
-          );
-        } else {
-          leads = record.lead_ids.map((id) => ({ lead_id: id }));
-        }
-        ctx?.logger?.info?.(
-          `bulk.status_checked_via_notification bulk_id=${record.bulk_id} notification_id=${notifId} done=${bp.success_count}/${bp.total_count} in_progress=${inProgress} wall_ms=${Date.now() - startMs}`
-        );
-        // Cost surfacing (AFTER): re-read the post-spend AI-credit balance
-        // (force=true) on any read the agent will report from — terminal OR a
-        // plateau report (include_contacts). We do NOT sum per-contact spend —
-        // getContacts can't scope cost to this bulk. Skipped on the cheap
-        // interim polls (include_contacts=false, still in_progress) to avoid an
-        // extra /me call each time. Null when billing is unavailable.
-        const isReportRead = !inProgress || includeContacts;
-        const creditsRemaining: number | typeof UNLIMITED | null = isReportRead
-          ? await readCreditsRemaining(client, true)
-          : null;
+    // Job-level counters, when the caller has the id. Best-effort: the lookup
+    // scans the recent notification list rather than fetching by id, so an
+    // archived or older job can be absent. That is not fatal — with lead_ids we
+    // compute progress from the leads themselves.
+    let bp: BulkProgress | null = null;
+    let inProgress: boolean | null = null;
+    let launchedAt: string | null = null;
+    if (params.notification_id) {
+      const n = await readNotificationById(client, params.notification_id);
+      if (n && inferKind(n) !== "bulk_enrich") {
+        // A qualification or import notification also carries counters; without
+        // this check its progress would be reported as an enrichment's.
+        const kind = inferKind(n);
         return {
-          bulk_id: record.bulk_id,
-          notification_id: notifId,
-          launched_at: record.launched_at,
-          status: record.status,
-          durability: record.durability,
-          titles: record.titles,
-          email: record.email,
-          phone: record.phone,
-          lens_id: record.lens_id,
-          leads,
-          overall_progress: {
-            done: bp.success_count + bp.failure_count + bp.quota_hit_count,
-            total: bp.total_count,
-            done_ratio:
-              bp.total_count === 0
-                ? 0
-                : (bp.success_count + bp.failure_count + bp.quota_hit_count) /
-                  bp.total_count,
-          },
-          bulk_progress: bp,
-          in_progress: inProgress,
-          all_done: !inProgress,
-          ...(fastPartialFailures.length > 0
-            ? { partial_failures: fastPartialFailures }
-            : {}),
-          ...(isReportRead ? { credits_remaining: creditsRemaining } : {}),
-          ...(bp.quota_hit_count > 0
-            ? {
-                quota_hit_hint:
-                  "Some contacts could not be enriched because the AI-credits quota was hit. Top up via leadbay_create_topup_link or wait for the window reset.",
-              }
-            : {}),
+          error: true,
+          code: "ENRICH_JOB_WRONG_KIND",
+          message: `That notification_id is a ${kind === "bulk_qualify" ? "lead qualification" : kind === "import" ? "file import" : "non-bulk"} notification, not a contact enrichment`,
+          hint:
+            kind === "bulk_qualify"
+              ? "Poll it with leadbay_qualify_status({notification_id}) instead."
+              : kind === "import"
+                ? "Poll it with leadbay_import_status({importIds}) instead — the import ids came back from the import launch."
+                : "Pass the notification_id returned by leadbay_enrich_titles.",
         };
       }
-      // notification not found yet (race between launch ack and WS) —
-      // fall through to legacy fan-out so the agent still gets an answer.
-      ctx?.logger?.info?.(
-        `bulk_enrich_status: notification ${notifId} not yet visible; falling back to per-lead fan-out`
-      );
-    }
-
-    // record.status === "launched" — fetch per-lead contacts.
-    type Ok = {
-      kind: "ok";
-      lead_id: string;
-      done: number;
-      total: number;
-      contacts?: any[];
-    };
-    type Fail = {
-      kind: "fail";
-      lead_id: string;
-      code: string;
-      retry_after?: number;
-    };
-
-    // Per-lead progress emit so the agent can stream "fetched 3/10 leads"
-    // back to the user during a status poll over many leads. Counter is
-    // incremented inside the worker — JS single-threadedness makes the
-    // increment+emit safe even under STATUS_FETCH_CONCURRENCY=5.
-    let doneSoFar = 0;
-    const totalLeads = record.lead_ids.length;
-    const results = await pMap<string, Ok | Fail>(
-      record.lead_ids,
-      async (leadId) => {
-        try {
-          const out: any = await getContacts.execute(client, { leadId });
-          const contacts: any[] = Array.isArray(out?.contacts) ? out.contacts : [];
-          // Scope the fallback progress to the titles THIS bulk enriched.
-          // getContacts returns the lead's FULL contact list, so a lead with
-          // earlier enriched contacts of other roles (CFO/Sales) would otherwise
-          // inflate this run's done/total. When record.titles is set, count only
-          // contacts whose job_title matches a requested title (case-insensitive);
-          // if titles is empty (discover / no-title launch), fall back to all
-          // enrichable contacts.
-          const wantTitles = new Set(
-            (record.titles ?? []).map((t) => t.trim().toLowerCase())
-          );
-          const enrichable = contacts.filter(
-            (c) =>
-              c &&
-              c.enrichment &&
-              (wantTitles.size === 0 ||
-                (typeof c.job_title === "string" &&
-                  wantTitles.has(c.job_title.trim().toLowerCase())))
-          );
-          // "done" must reflect the channels THIS run requested, not just the
-          // contact's enrichment.done flag. A contact previously email-enriched
-          // (enrichment.done:true, has email) but with no phone_number is NOT
-          // done for a phone-only run — counting it would flip all_done:true
-          // before the phone reveal lands. Require every requested channel's
-          // field to be populated (record.email → email; record.phone →
-          // phone_number) in addition to enrichment.done.
-          const channelResolved = (c: any): boolean => {
-            if (c.enrichment?.done !== true) return false;
-            if (record.email && !c.email) return false;
-            if (record.phone && !c.phone_number) return false;
-            return true;
-          };
-          const done = enrichable.filter(channelResolved).length;
-          const total = enrichable.length;
-          doneSoFar += 1;
-          ctx?.progress?.({
-            progress: doneSoFar,
-            total: totalLeads,
-            message: `Fetched contacts for ${leadId} (${doneSoFar}/${totalLeads})`,
-          });
-          return {
-            kind: "ok",
-            lead_id: leadId,
-            done,
-            total,
-            contacts: includeContacts ? contacts : undefined,
-          };
-        } catch (err: any) {
-          doneSoFar += 1;
-          ctx?.progress?.({
-            progress: doneSoFar,
-            total: totalLeads,
-            message: `Fetch failed for ${leadId} (${doneSoFar}/${totalLeads}): ${err?.code ?? "UNKNOWN"}`,
-          });
-          return {
-            kind: "fail",
-            lead_id: leadId,
-            code: err?.code ?? "UNKNOWN",
-            retry_after: err?._meta?.retry_after,
-          };
-        }
-      },
-      STATUS_FETCH_CONCURRENCY
-    );
-
-    const leads: any[] = [];
-    const partialFailures: Array<{
-      lead_id: string;
-      code: string;
-      retry_after?: number;
-    }> = [];
-    let totalDone = 0;
-    let totalAll = 0;
-    for (const r of results) {
-      if (r.kind === "fail") {
-        partialFailures.push({
-          lead_id: r.lead_id,
-          code: r.code,
-          ...(r.retry_after !== undefined ? { retry_after: r.retry_after } : {}),
-        });
-        continue;
+      if (n) {
+        bp = n.bulk_progress;
+        inProgress = n.in_progress;
+        launchedAt = n.created_at;
+      } else if (leadIds.length === 0) {
+        return {
+          error: true,
+          code: "ENRICH_JOB_NOT_FOUND",
+          message: "That notification_id is not in the recent notification list",
+          hint:
+            "The lookup scans your recent unarchived notifications; an archived job, or one behind many newer ones, will not be found. Re-call with the `lead_ids` the launch returned — that answers without the notification.",
+        };
       }
-      leads.push({
-        lead_id: r.lead_id,
-        ...(r.contacts ? { contacts: r.contacts } : {}),
-        enrichment_progress: { done: r.done, total: r.total },
-      });
-      totalDone += r.done;
-      totalAll += r.total;
     }
 
-    const overallProgress = {
-      done: totalDone,
-      total: totalAll,
-      done_ratio: totalAll === 0 ? 0 : totalDone / totalAll,
-    };
-    const allDone = totalAll > 0 && totalDone === totalAll && partialFailures.length === 0;
+    // Per-lead path. Everything it needs comes from the agent: which leads, and
+    // what the run asked for. Nothing is stored anywhere.
+    if (leadIds.length > 0) {
+      const wantTitles = new Set(
+        (params.titles ?? []).map((t) => t.trim().toLowerCase())
+      );
+      // A contact counts only if the run requested its role, and only once the
+      // requested CHANNEL has landed. A contact email-enriched earlier
+      // (enrichment.done:true, has email) but with no phone_number is NOT done
+      // for a phone-only run — counting it would flip all_done before the phone
+      // reveal arrives.
+      const channelResolved = (c: any): boolean => {
+        if (c?.enrichment?.done !== true) return false;
+        if (params.email && !c.email) return false;
+        if (params.phone && !c.phone_number) return false;
+        return true;
+      };
 
-    ctx?.logger?.info?.(
-      `bulk.status_checked bulk_id=${record.bulk_id} done=${totalDone} total=${totalAll} wall_ms=${
-        Date.now() - startMs
-      }`
-    );
+      let doneSoFar = 0;
+      const totalLeads = leadIds.length;
+      const results = await pMap<
+        string,
+        | { kind: "ok"; lead_id: string; done: number; total: number; contacts?: any[] }
+        | { kind: "fail"; lead_id: string; code: string; retry_after?: number }
+      >(
+        leadIds,
+        async (leadId) => {
+          try {
+            const out: any = await getContacts.execute(client, { leadId });
+            const contacts: any[] = Array.isArray(out?.contacts) ? out.contacts : [];
+            const enrichable = contacts.filter(
+              (c) =>
+                c &&
+                c.enrichment &&
+                (wantTitles.size === 0 ||
+                  (typeof c.job_title === "string" &&
+                    wantTitles.has(c.job_title.trim().toLowerCase())))
+            );
+            // getContacts uses allSettled internally — a rejected endpoint
+            // becomes [] but is reported via _fetch_errors. Surface it so a
+            // transient 429 stays distinguishable from "nothing resolved".
+            const fe: any[] = Array.isArray(out?._fetch_errors) ? out._fetch_errors : [];
+            doneSoFar += 1;
+            ctx?.progress?.({
+              progress: doneSoFar,
+              total: totalLeads,
+              message: `Fetched contacts for ${leadId} (${doneSoFar}/${totalLeads})`,
+            });
+            if (fe.length > 0) {
+              return {
+                kind: "fail" as const,
+                lead_id: leadId,
+                code: fe[0]?.code ?? "FETCH_ERROR",
+                ...(fe[0]?.retry_after !== undefined ? { retry_after: fe[0].retry_after } : {}),
+              };
+            }
+            return {
+              kind: "ok" as const,
+              lead_id: leadId,
+              done: enrichable.filter(channelResolved).length,
+              total: enrichable.length,
+              ...(includeContacts ? { contacts } : {}),
+            };
+          } catch (err: any) {
+            doneSoFar += 1;
+            ctx?.progress?.({
+              progress: doneSoFar,
+              total: totalLeads,
+              message: `Fetch failed for ${leadId} (${doneSoFar}/${totalLeads}): ${err?.code ?? "UNKNOWN"}`,
+            });
+            return {
+              kind: "fail" as const,
+              lead_id: leadId,
+              code: err?.code ?? "UNKNOWN",
+              ...(err?._meta?.retry_after !== undefined
+                ? { retry_after: err._meta.retry_after }
+                : {}),
+            };
+          }
+        },
+        STATUS_FETCH_CONCURRENCY
+      );
 
-    // Cost surfacing (AFTER). We deliberately do NOT sum enrichment.credits_used
-    // across the lead's contacts: getContacts returns ALL enriched contacts on
-    // a lead, not just those touched by THIS bulk, and there is no contact_id
-    // or per-run timestamp to scope the sum. Summing would report historical
-    // spend (e.g. a prior CFO enrichment) as this run's cost. Instead we
-    // surface only credits_remaining — the post-spend balance, re-read with
-    // force=true. Unambiguous and scope-free. Fetched once the job is done to
-    // avoid an extra /me call on every interim poll. Null when billing is
-    // unavailable.
-    let creditsRemaining: number | typeof UNLIMITED | null = null;
-    if (allDone) {
-      creditsRemaining = await readCreditsRemaining(client, true);
+      const leads: any[] = [];
+      const partialFailures: Array<{ lead_id: string; code: string; retry_after?: number }> = [];
+      let totalDone = 0;
+      let totalAll = 0;
+      for (const r of results) {
+        if (r.kind === "fail") {
+          partialFailures.push({
+            lead_id: r.lead_id,
+            code: r.code,
+            ...(r.retry_after !== undefined ? { retry_after: r.retry_after } : {}),
+          });
+          continue;
+        }
+        leads.push({
+          lead_id: r.lead_id,
+          ...(r.contacts ? { contacts: r.contacts } : {}),
+          enrichment_progress: { done: r.done, total: r.total },
+        });
+        totalDone += r.done;
+        totalAll += r.total;
+      }
+
+      const allDone =
+        totalAll > 0 && totalDone === totalAll && partialFailures.length === 0;
+      ctx?.logger?.info?.(
+        `bulk.status leads=${leadIds.length} done=${totalDone}/${totalAll} wall_ms=${Date.now() - startMs}`
+      );
+      const creditsRemaining = allDone ? await readCreditsRemaining(client, true) : null;
+
+      return {
+        ...(params.notification_id ? { notification_id: params.notification_id } : {}),
+        ...(launchedAt ? { launched_at: launchedAt } : {}),
+        status: allDone ? "complete" : "launched",
+        // Echo what was asked for, so the reply states its own scope.
+        ...(params.titles ? { titles: params.titles } : {}),
+        ...(params.email !== undefined ? { email: params.email } : {}),
+        ...(params.phone !== undefined ? { phone: params.phone } : {}),
+        leads,
+        overall_progress: {
+          done: totalDone,
+          total: totalAll,
+          done_ratio: totalAll === 0 ? 0 : totalDone / totalAll,
+        },
+        ...(bp ? { bulk_progress: bp } : {}),
+        ...(inProgress !== null ? { in_progress: inProgress } : {}),
+        all_done: allDone,
+        ...(partialFailures.length > 0 ? { partial_failures: partialFailures } : {}),
+        ...(allDone ? { credits_remaining: creditsRemaining } : {}),
+        ...(bp && bp.quota_hit_count > 0
+          ? {
+              quota_hit_hint:
+                "Some contacts could not be enriched because the AI-credits quota was hit. Top up via leadbay_create_topup_link or wait for the window reset.",
+            }
+          : {}),
+      };
     }
 
+    // Counters-only path: the caller gave an id but no leads. Enrichment
+    // notifications do not always carry counters (verified on staging
+    // 2026-09-02: `bulk_progress` absent, `in_progress` + title present), so
+    // say what the backend does know and ask for the lead_ids.
+    if (!bp) {
+      return {
+        error: true,
+        code: "ENRICH_JOB_NO_COUNTERS",
+        message: `This enrichment notification carries no per-contact counters; the backend reports it as ${inProgress ? "still running" : "finished"}`,
+        hint: "Re-call with the `lead_ids` returned by leadbay_enrich_titles (plus titles/email/phone) — that path counts contacts directly and works whether or not the notification has counters.",
+        ...(inProgress !== null ? { in_progress: inProgress } : {}),
+        ...(launchedAt ? { launched_at: launchedAt } : {}),
+      };
+    }
+    const done = bp.success_count + bp.failure_count + bp.quota_hit_count;
+    const isReportRead = !inProgress;
+    const creditsRemaining = isReportRead ? await readCreditsRemaining(client, true) : null;
     return {
-      bulk_id: record.bulk_id,
-      launched_at: record.launched_at,
-      status: record.status,
-      durability: record.durability,
-      titles: record.titles,
-      email: record.email,
-      phone: record.phone,
-      lens_id: record.lens_id,
-      leads,
-      overall_progress: overallProgress,
-      all_done: allDone,
-      ...(allDone ? { credits_remaining: creditsRemaining } : {}),
-      ...(partialFailures.length > 0 ? { partial_failures: partialFailures } : {}),
+      notification_id: params.notification_id,
+      launched_at: launchedAt,
+      status: inProgress ? "launched" : "complete",
+      leads: [],
+      overall_progress: {
+        done,
+        total: bp.total_count,
+        done_ratio: bp.total_count === 0 ? 0 : done / bp.total_count,
+      },
+      bulk_progress: bp,
+      in_progress: inProgress,
+      all_done: !inProgress,
+      ...(isReportRead ? { credits_remaining: creditsRemaining } : {}),
+      ...(bp.quota_hit_count > 0
+        ? {
+            quota_hit_hint:
+              "Some contacts could not be enriched because the AI-credits quota was hit. Top up via leadbay_create_topup_link or wait for the window reset.",
+          }
+        : {}),
     };
   },
 };

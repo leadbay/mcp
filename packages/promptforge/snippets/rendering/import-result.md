@@ -14,9 +14,9 @@ Otherwise, partition `not_imported` by `reason` into these buckets before you wr
 **Header — single line, choose by status:**
 
 - Completed: `"✓ Import complete — N imported · P pending crawl · Q need attention"` (drop any segment whose count is 0)
-- Running, `handle_id` present: `"⏳ Import running — handle_id <id>; poll leadbay_import_status"`
-- Running with `timed_out:true` (blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. `"⏳ Import still running (the backend is slow today) — I'll check back."` Then call `leadbay_import_status({importIds})`, do NOT re-run leadbay_import_leads. If `rows_pending_upload` is present, add `"⚠ K rows weren't submitted — re-import just those."`
-- Pending qualification (`leadbay_import_and_qualify`): `"✓ Imported N leads · qualifying M of them — qualify_id <id>"`
+- Running: `"⏳ Import running — importIds <ids>; poll leadbay_import_status"`
+- Running with `timed_out:true` (the blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. `"⏳ Import still running (the backend is slow today) — I'll check back."` Then call `leadbay_import_status({importIds})`, do NOT re-run leadbay_import_leads. If `rows_pending_upload` is present, add `"⚠ K rows weren't submitted — re-import just those."`
+- Pending qualification (`leadbay_import_and_qualify`): `"✓ Imported N leads · qualifying M of them — I'll pick it up with leadbay_qualify_status"` (its resume ids are `lead_ids` + `lens_id`; there is no qualification notification_id to quote)
 
 Count `uncrawled` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
 

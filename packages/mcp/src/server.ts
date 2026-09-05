@@ -29,7 +29,6 @@ import {
   granularWriteTools,
   NO_COMMERCE_TOOL_DESCRIPTIONS,
   COMPOSITE_FILE_TOOL_NAMES,
-  type BulkTracker,
   type LeadbayClient,
   type NotificationInboxEntry,
   type Tool,
@@ -313,8 +312,8 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
   if (longRunners.length > 0) {
     parts.push(
       "(2) `notifications/cancelled` — when the user clicks Cancel in the host UI, the polling loop exits " +
-        "within ≤2 seconds AND the bulk-store entry transitions to 'cancelled'; subsequent status polls " +
-        "return `BULK_CANCELLED` so the agent stops polling."
+        "within ≤2 seconds. The job itself keeps running on the backend; poll its notification_id / " +
+        "importIds later to pick it up."
     );
   } else {
     parts.push(
@@ -435,7 +434,6 @@ interface BuildServerOptions {
    */
   includeCommerce?: boolean;
   logger?: ToolLogger;
-  bulkTracker?: BulkTracker;
   // Server version reported on `initialize`. The CLI passes the build-time
   // package.json#version (via tsup's __LEADBAY_MCP_VERSION__ define) so this
   // stays in lock-step with the published package. Tests omit it and fall
@@ -1312,7 +1310,6 @@ export function buildServer(
       // number we would have to guess on Leadbay's behalf.
       const result = await runWithRequestSignal(extra.signal, () => tool.execute(client, args, {
         logger: opts.logger,
-        bulkTracker: opts.bulkTracker,
         notificationsInbox: opts.notificationsInbox,
         signal: extra.signal,
         progress,

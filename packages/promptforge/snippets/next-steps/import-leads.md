@@ -4,7 +4,7 @@
 
 | Observation                                    | Suggest                                                       | Calls                                                  |
 |------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
-| Status: running, `handle_id` present           | "Check progress"                                              | leadbay_import_status(handle_id)                       |
+| Status: running                                | "Check progress"                                              | leadbay_import_status(importIds)                       |
 | Status: running with `timed_out:true`          | "Check progress" — NOT "retry the import"                     | leadbay_import_status(importIds, dry_run if the result carried it) after ~30s; `result.leads` carries the leadIds once complete |
 | `rows_pending_upload` present                  | "Import the rows that never got submitted"                    | leadbay_import_leads (that subset only)                |
 | Status: complete, imports succeeded            | "Run AI qualification on the imported leads"                  | leadbay_bulk_qualify_leads([leadIds]) — or use leadbay_import_and_qualify next time |

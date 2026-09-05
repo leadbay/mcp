@@ -91,7 +91,7 @@ After your first `leadbay_pull_leads` call, capture `response.lens.id` into your
 
 ## Rule 2 — Prefer async for bulk operations
 
-`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false`, which returns `{status:'running', qualify_id}` immediately. Then poll `leadbay_qualify_status` (or `leadbay_import_status`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
+`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false` and return immediately. They hand back different ids: `bulk_qualify_leads` returns `{status:'running', notification_id, lead_ids, lens_id}` — poll `leadbay_qualify_status` with those. `import_and_qualify` returns `{status:'running', import_ids}` and no `notification_id` at all — poll `leadbay_import_status({importIds, dry_run})` with those. Poll every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
 
 ## Rule 3 — Serialize `leadbay_research_lead_by_id` fan-out
 
@@ -204,7 +204,7 @@ So: **read the persisted filter first** (the response reports `active_filters`),
 
 ⚠ **Pass explicit `leadIds` whenever the cohort isn't simply "the next N on the lens"** — e.g. after you've selected a shortlist, or when the plan mixes Monitor and Discover rows. The `count`-based path selects the next *unqualified leads from the lens wishlist*, so on any other cohort it qualifies unrelated leads and hands you handles whose pills belong to different companies. Use `leadbay_bulk_qualify_leads({leadIds:[…≤25 of the cohort], wait_for_completion:false})` and chunk through the cohort's own ids. The `{lensId, count}` form is only right when the cohort genuinely *is* the lens's top N.
 
-**Qualify the plan cohort, not the whole base.** Select your ~<the count_or_default (as extracted above)> candidates (plus a modest buffer for drop-outs) BEFORE qualifying — qualification is async and quota-bearing, so running it across an entire portfolio to produce a top-<the count_or_default (as extracted above)> burns the user's quota for rows that will never appear. **Keep every returned `qualify_id`** — the deck's live qualification layer is wired from those handles, and a deck with none is a dead deck that still looks finished. Never ship a plan whose lower ranks have empty qualification pills because only the first 25 were ever qualified.
+**Qualify the plan cohort, not the whole base.** Select your ~<the count_or_default (as extracted above)> candidates (plus a modest buffer for drop-outs) BEFORE qualifying — qualification is async and quota-bearing, so running it across an entire portfolio to produce a top-<the count_or_default (as extracted above)> burns the user's quota for rows that will never appear. **Keep every returned `notification_id`** — the deck's live qualification layer is wired from those handles, and a deck with none is a dead deck that still looks finished. Never ship a plan whose lower ranks have empty qualification pills because only the first 25 were ever qualified.
 
 **Signals — scoped to the cohort.** ⚠ **Always pass the selected `leadIds`.** With `leadIds` omitted, `leadbay_scan_portfolio_signals` builds its own portfolio by paging `/monitor` — so on an imported cohort or a freshly-pulled Discover set it would scan a *different population* and you'd render dashes for accounts whose signals were never read.
 
@@ -331,7 +331,7 @@ Each card needs a reachable decision-maker. `leadbay_enrich_titles({leadIds, len
 
 ⚠ **Do NOT quote a cost or a credits figure.** The per-reveal rate is backend-side and enrichment is gated by quota, not a credit balance; `credits_remaining` is advisory context only. A spend number invented to make the offer concrete is the same failure as an invented euro on a card.
 
-On an explicit yes, launch with the agreed `titles` + channels, then poll `leadbay_bulk_enrich_status` until done and **keep the `bulk_id` handles** for the deck.
+On an explicit yes, launch with the agreed `titles` + channels, then poll `leadbay_bulk_enrich_status` until done and **keep the `notification_id` handles** for the deck.
 
 ⚠ **Render only the channels that actually came back.** The default reveal is email-only unless phone was explicitly requested, so never emit a `tel:` link for a contact whose phone was never revealed — show the channels enrichment returned and mark the rest omitted. A fabricated phone link is the same failure as a fabricated euro.
 
@@ -477,9 +477,9 @@ ChatGPT exposes the same routing pattern via `_meta.openai/outputTemplate`. We d
 - One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
 
 
-⚠ **The deck's contact layer depends on what actually happened in Phase 5.** Bind a `leadbay_bulk_enrich_status` resource ONLY if a paid reveal was launched and you hold a `bulk_id`. If the user accepted the deck but not the reveal, render the contacts already on record and carry the paid-reveal offer inside the deck — never wire a status resource with no handle (it renders permanently empty) and never launch enrichment from the deck to manufacture one.
+⚠ **The deck's contact layer depends on what actually happened in Phase 5.** Bind a `leadbay_bulk_enrich_status` resource ONLY if a paid reveal was launched and you hold a `notification_id`. If the user accepted the deck but not the reveal, render the contacts already on record and carry the paid-reveal offer inside the deck — never wire a status resource with no handle (it renders permanently empty) and never launch enrichment from the deck to manufacture one.
 
-On acceptance, call `leadbay_artifact_kit`, read its `usage_guide` before writing any code, and build a single-file deck. Wire the live layer from the handles you kept: a poll-until-done resource per `qualify_id` for the qualification pills, and one over `leadbay_bulk_enrich_status` for the contacts. ⚠ **If enrichment already ran this session, bind the existing `bulk_id` — re-launching enrichment from the deck double-spends my quota.** Per-card notes and outcomes go through the pre-wired note/outreach view-models (they carry the required verification and `_triggered_by` fields; hand-rolling those is where it breaks). Keep the checklists in local storage, and always wire a Refresh — auto-poll is host-dependent. List every tool the deck calls in its `mcp_tools`, and render the bridge-unavailable branch, or the pills silently show empty.
+On acceptance, call `leadbay_artifact_kit`, read its `usage_guide` before writing any code, and build a single-file deck. Wire the live layer from the handles you kept: a poll-until-done resource per `notification_id` for the qualification pills, and one over `leadbay_bulk_enrich_status` for the contacts. ⚠ **If enrichment already ran this session, bind the existing `notification_id` — re-launching enrichment from the deck double-spends my quota.** Per-card notes and outcomes go through the pre-wired note/outreach view-models (they carry the required verification and `_triggered_by` fields; hand-rolling those is where it breaks). Keep the checklists in local storage, and always wire a Refresh — auto-poll is host-dependent. List every tool the deck calls in its `mcp_tools`, and render the bridge-unavailable branch, or the pills silently show empty.
 
 # Iron laws
 

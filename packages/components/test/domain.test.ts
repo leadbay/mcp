@@ -170,7 +170,7 @@ describe("domain factories", () => {
     let statusReads = 0;
     configure({
       call: async (t) => {
-        if (t === "leadbay_enrich_titles") return (launches++, { bulk_id: "b1" });
+        if (t === "leadbay_enrich_titles") return (launches++, { notification_id: "n1", lead_ids: ["L1"] });
         if (t === "leadbay_bulk_enrich_status") {
           statusReads++;
           return { overall_progress: { done: statusReads, total: 2 }, all_done: statusReads >= 2 };

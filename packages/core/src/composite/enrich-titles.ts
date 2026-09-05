@@ -1,4 +1,10 @@
 import type { LeadbayClient } from "../client.js";
+import {
+  launchFingerprint,
+  beginLaunch,
+  abandonLaunch,
+  rememberLaunch,
+} from "../jobs/launch-guard.js";
 import type {
   Tool,
   ToolContext,
@@ -45,272 +51,111 @@ async function launchOnSelection(
 ) {
   const { leadIds, titles, email, phone, lensId, selectionSource, preview } =
     args;
-  {
-    {
-      // Two-phase launch: reserve a bulk slot via tracker BEFORE POSTing to
-      // /launch. findOrCreatePending is atomic; if an identical bulk was
-      // launched within the idempotency window, short-circuit without
-      // spending quota. If the tracker is absent (e.g. legacy OpenClaw
-      // deployment), fall through to the raw launch without tracking.
-      const tracker = ctx?.bulkTracker;
-      let bulkRecord:
-        | { bulk_id: string; launched_at: string; durability: "file" | "memory" }
-        | undefined;
-      let bulkReused = false;
-      let bulkSecondsSinceOriginal: number | undefined;
-      if (tracker) {
-        const res = await tracker.findOrCreatePending({
-          lead_ids: leadIds,
-          titles,
-          email,
-          phone,
-          lens_id: lensId,
-          selection_source: selectionSource,
-        });
-        bulkRecord = {
-          bulk_id: res.record.bulk_id,
-          launched_at: res.record.launched_at,
-          durability: res.record.durability,
-        };
-        bulkReused = res.reused;
-        bulkSecondsSinceOriginal = res.seconds_since_original;
 
-        // An AGED pending reuse is ambiguous and must NOT be reused as-is:
-        //   - pre-launch crash: process died after findOrCreatePending but
-        //     before the /launch POST → NO backend job exists.
-        //   - post-launch markLaunched failure: the job DID run but the tracker
-        //     never flipped to 'launched'.
-        // The record alone can't tell these apart (notification_id is only set
-        // on success). Since re-launch is server-idempotent (backend no-ops
-        // already-enriched contacts — idempotentHint), the safe resolution is to
-        // retire the aged pending and fall through to a fresh launch: correct
-        // whether no job existed (now one does) or one did (backend no-ops, the
-        // tracker reconciles). A FRESH concurrent pending (<60s) is the normal
-        // serialization point between a live first call's findOrCreatePending and
-        // markLaunched — leave it alone and reuse so we don't double-launch.
-        const AGED_PENDING_S = 60;
-        const agedPending =
-          bulkReused &&
-          res.record.status === "pending" &&
-          (bulkSecondsSinceOriginal ?? 0) >= AGED_PENDING_S;
-        if (agedPending) {
-          const staleBulkId = res.record.bulk_id;
-          try {
-            await tracker.markFailed(staleBulkId);
-          } catch (e: any) {
-            ctx?.logger?.warn?.(
-              `enrich_titles: markFailed on aged pending failed: ${e?.message ?? e}`
-            );
-          }
-          bulkReused = false;
-          // Re-reserve a fresh pending record for the relaunch below.
-          const fresh = await tracker.findOrCreatePending({
-            lead_ids: leadIds,
-            titles,
-            email,
-            phone,
-            lens_id: lensId,
-            selection_source: selectionSource,
-          });
-          // Concurrency guard: between our markFailed and this re-reserve, another
-          // caller retrying the same selection could have created (or be about to
-          // launch) a fresh pending row — findOrCreatePending then returns it with
-          // reused:true. If so, do NOT launch again (that would double-spend the
-          // same selection within the idempotency window). Defer to that caller's
-          // reservation and tell the agent to poll it.
-          //
-          // BUT only when it's a GENUINELY NEW row (different bulk_id). If
-          // markFailed threw, the stale aged row survives and findOrCreatePending
-          // returns THAT same row with reused:true — deferring to it would leave a
-          // pre-launch-crash handle stuck 'pending' forever with no backend job.
-          // In that case proceed to (re)launch on the stale record instead (a
-          // relaunch is server-idempotent).
-          if (fresh.reused && fresh.record.bulk_id !== staleBulkId) {
-            return {
-              mode: "already_launched",
-              re_used: true,
-              bulk_id: fresh.record.bulk_id,
-              launched_at: fresh.record.launched_at,
-              durability: fresh.record.durability,
-              notification_id: fresh.record.notification_id ?? null,
-              seconds_since_original_launch: fresh.seconds_since_original ?? 0,
-              lead_ids: leadIds,
-              titles,
-              email,
-              phone,
-              preview,
-              message:
-                "No new enrichment was ordered; quota not spent. A concurrent identical launch is already in flight. " +
-                "Unless the user asked NOT to wait, poll leadbay_bulk_enrich_status with this bulk_id for results (see next_action); if they asked not to wait, hand back the bulk_id.",
-              next_action:
-                "Unless the user explicitly asked NOT to wait, poll leadbay_bulk_enrich_status({bulk_id}) until all_done — OR until overall_progress.done plateaus across spaced polls (~90s–2min; unresolvable contacts never flip). include_contacts=true on the read you report from, then report the resolved enrichment in this turn. If the user asked not to wait, hand back the bulk_id instead.",
-            };
-          }
-          bulkRecord = {
-            bulk_id: fresh.record.bulk_id,
-            launched_at: fresh.record.launched_at,
-            durability: fresh.record.durability,
-          };
-        } else if (bulkReused && res.record.status !== "failed") {
-          // Reuse verbatim: either 'launched' (poll the same bulk_id) or a FRESH
-          // concurrent 'pending' (<60s) that will flip to launched momentarily —
-          // in both cases the agent polls bulk_enrich_status normally.
-          return {
-            mode: "already_launched",
-            re_used: true,
-            bulk_id: res.record.bulk_id,
-            launched_at: res.record.launched_at,
-            durability: res.record.durability,
-            notification_id: res.record.notification_id ?? null,
-            seconds_since_original_launch: bulkSecondsSinceOriginal ?? 0,
-            lead_ids: leadIds,
-            titles,
-            email,
-            phone,
-            preview,
-            message:
-              "No new enrichment was ordered; quota not spent. An identical bulk was launched " +
-              `${bulkSecondsSinceOriginal ?? 0}s ago. Unless the user asked NOT to wait (background/'I'll check later'), ` +
-              "poll leadbay_bulk_enrich_status with this bulk_id for results; if they DID ask not to wait, hand back the bulk_id instead.",
-            next_action:
-              "Unless the user explicitly asked NOT to wait (background/'I'll check later'), poll leadbay_bulk_enrich_status({bulk_id}) until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15–30s apart, ~90s–2min elapsed; unresolvable contacts never flip, so a reused bulk can stay all_done:false forever). include_contacts=true on the read you report from, then report the resolved enrichment in this turn — don't end your turn waiting or spin forever. If the user DID ask not to wait, hand back the bulk_id instead of polling.",
-          };
-        }
-      }
+  // Double-launch guard. The only thing the backend cannot tell us is whether
+  // we fired this exact request seconds ago, so we remember the fingerprint
+  // in-process for five minutes. Everything else about the job — identity,
+  // progress, retention — belongs to the backend.
+  const fingerprint = launchFingerprint([
+    "enrich",
+    leadIds,
+    titles,
+    email,
+    phone,
+    lensId,
+  ]);
+  const claim = beginLaunch(fingerprint);
+  if (claim.state === "in_flight") {
+    return {
+      mode: "launch_in_flight",
+      launched: false,
+      preview,
+      lead_ids: leadIds,
+      titles,
+      message:
+        `An identical enrichment was started ${claim.seconds_since}s ago and has not returned its job id yet. ` +
+        "Nothing was launched twice and no quota was spent.",
+      next_action:
+        "Wait a few seconds and call leadbay_enrich_titles again with the same arguments — it will hand back the job id once the first call settles. Do not treat this as a running job; there is no id to poll yet.",
+    };
+  }
+  const already = claim.state === "settled" ? claim.record : undefined;
+  if (already) {
+    return {
+      mode: "already_launched",
+      launched: true,
+      preview,
+      reused: true,
+      seconds_since_original_launch: already.seconds_since,
+      lead_ids: leadIds,
+      titles,
+      email,
+      phone,
+      notification_id: already.notification_id,
+      launched_at: already.launched_at,
+      message:
+        `An identical enrichment was launched ${already.seconds_since}s ago; this call did NOT spend quota again. ` +
+        "Poll the original job rather than relaunching.",
+      next_action:
+        "Poll leadbay_bulk_enrich_status({notification_id, lead_ids, titles, email, phone, include_contacts: true}) until all_done, or until overall_progress.done holds steady across spaced polls (~15-30s apart) — unresolvable contacts never flip. Pass titles/email/phone every time: they scope counting to the roles and channel THIS run asked for, so a contact enriched earlier cannot report the run as finished. Then report what landed and name what didn't.",
+    };
+  }
 
-      // Phase 3/3: launch the enrichment job on the backend.
-      ctx?.progress?.({
-        progress: 3,
-        total: 3,
-        message: `Launching enrichment for ${titles.length} title${titles.length === 1 ? "" : "s"}…`,
-      });
-      // Backend ADR docs/adr/notifications.md: launch now returns
-      // BulkLaunchResponse { notification_id }. Capture it so:
-      //   (a) bulk_enrich_status can read bulk_progress from a single
-      //       /notifications call instead of fanning out per-lead,
-      //   (b) the WS listener can correlate completion frames back to
-      //       the agent's prior outputs.
-      let launchResp: { notification_id: string | null } | null = null;
-      try {
-        launchResp = await client.request<{ notification_id: string | null }>(
-          "POST",
-          "/leads/selection/enrichment/launch",
-          { titles, email, phone }
-        );
-      } catch (err: any) {
-        // iter-21: ctx.signal abort during launch → mark the pending
-        // record cancelled so subsequent bulk_enrich_status returns
-        // BULK_CANCELLED instead of "still launched". AbortError surfaces
-        // as either err.name === "AbortError" or signal.aborted at catch
-        // time; both are handled.
-        const aborted =
-          err?.name === "AbortError" || ctx?.signal?.aborted === true;
-        if (bulkRecord && tracker) {
-          try {
-            if (aborted) {
-              await tracker.markCancelled(bulkRecord.bulk_id);
-            } else {
-              await tracker.markFailed(bulkRecord.bulk_id);
-            }
-          } catch (e: any) {
-            ctx?.logger?.warn?.(
-              `enrich_titles: tracker.${aborted ? "markCancelled" : "markFailed"} failed: ${e?.message ?? e}`
-            );
-          }
-        }
-        if (err?.code === "QUOTA_EXCEEDED") {
-          return {
-            status: "quota_exceeded",
-            preview,
-            message: "Quota exceeded on launch",
-            retry_after_seconds: err?._meta?.retry_after ?? null,
-          };
-        }
-        throw err;
-      }
-
-      const notificationId = launchResp?.notification_id ?? null;
-      if (bulkRecord && tracker) {
-        try {
-          await tracker.markLaunched(bulkRecord.bulk_id, notificationId);
-        } catch (e: any) {
-          // Launch already succeeded on the backend; flipping the tracker
-          // status failed. Return BULK_PENDING signal in the payload so the
-          // agent knows the handle is in flight.
-          ctx?.logger?.warn?.(
-            `enrich_titles: tracker.markLaunched failed: ${e?.message ?? e}`
-          );
-          return {
-            mode: "launched_tracker_pending",
-            launched: true,
-            preview,
-            bulk_id: bulkRecord.bulk_id,
-            launched_at: bulkRecord.launched_at,
-            durability: bulkRecord.durability,
-            // Surface the resolved lead IDs so the agent can follow the backend
-            // job per-lead — bulk_enrich_status is unusable for this stuck handle,
-            // and the caller may have omitted leadIds (wishlist default), so
-            // without these it has no identifiers to poll.
-            lead_ids: leadIds,
-            titles,
-            email,
-            phone,
-            message:
-              "Enrichment job launched on the backend, but the local tracker record could not be flipped to 'launched' and will NOT heal on its own this session. " +
-              "leadbay_bulk_enrich_status({bulk_id}) will keep returning status:'pending' (BULK_PENDING) — do NOT poll it in a loop expecting completion. The backend job is running regardless; track it per-lead instead.",
-            next_action:
-              "Do NOT poll leadbay_bulk_enrich_status — this bulk_id is stuck 'pending' and won't flip. If the user asked NOT to wait (background/'I'll check later'), just hand back the returned lead_ids and let them re-check later. Otherwise track results per lead via leadbay_get_contacts(leadId) / leadbay_research_lead_by_id for the returned lead_ids (re-check every ~30s). get_contacts returns each lead's FULL contact list, so only count/report contacts whose job_title matches the enriched titles (" + titles.join(", ") + ") — don't attribute a pre-existing CFO/Sales email to this run — and a contact is done only when the REQUESTED channel landed (requested email and/or phone_number present, not contact.enrichment.done alone). Stop once the done set plateaus (~90s–2min), then report the resolved contacts and name the rest. (The launch already succeeded — do not relaunch.)",
-          };
-        }
-      }
-
+  // Phase 3/3: launch the enrichment job on the backend.
+  ctx?.progress?.({
+    progress: 3,
+    total: 3,
+    message: `Launching enrichment for ${titles.length} title${titles.length === 1 ? "" : "s"}…`,
+  });
+  let launchResp: { notification_id: string | null } | null = null;
+  try {
+    launchResp = await client.request<{ notification_id: string | null }>(
+      "POST",
+      "/leads/selection/enrichment/launch",
+      { titles, email, phone }
+    );
+  } catch (err: any) {
+    // The claim must not outlive a launch that did not happen, or an identical
+    // retry inside the window is told it already ran (product#4039).
+    abandonLaunch(fingerprint);
+    if (err?.code === "QUOTA_EXCEEDED") {
       return {
-        mode: "launched",
+        status: "quota_exceeded",
         preview,
-        launched: true,
-        titles,
-        email,
-        phone,
-        // Always surface the resolved lead IDs — in the no-tracker branch there's
-        // no bulk_id to poll, and the caller may have omitted leadIds (wishlist
-        // default), so without these the agent has no identifiers to follow the
-        // job it just launched via leadbay_get_contacts / research_lead_by_id.
-        lead_ids: leadIds,
-        bulk_id: bulkRecord?.bulk_id,
-        launched_at: bulkRecord?.launched_at,
-        durability: bulkRecord?.durability,
-        notification_id: notificationId,
-        // Branch on bulkRecord FIRST: leadbay_bulk_enrich_status needs a real
-        // bulk_id (tracker handle). A notification_id can come back even with no
-        // tracker (legacy / OpenClaw raw-launch fall-through) — in that case
-        // bulk_id is undefined, so the agent must use the per-lead fallback, not
-        // poll a nonexistent bulk_id.
-        message: bulkRecord
-          ? notificationId
-            ? "Enrichment job launched (runs async). Unless the user asked NOT to wait (background/'I'll check later'), do NOT end your turn here — poll " +
-              "leadbay_bulk_enrich_status({bulk_id}) until all_done OR until progress plateaus (overall_progress.done " +
-              "stops climbing across spaced polls — unresolvable contacts keep all_done:false forever), then report the " +
-              "finished contacts yourself. (If the user DID ask not to wait, hand back the bulk_id instead. Either way, if you leave the conversation the completion also surfaces later via " +
-              "_meta.notifications / leadbay_account_status.notifications — but for a job you launched this turn and were NOT told to background, poll it now.)"
-            : "Enrichment job launched (runs async). Unless the user asked NOT to wait (background/'I'll check later'), do NOT end your turn here — poll " +
-              "leadbay_bulk_enrich_status({bulk_id}) until all_done OR until progress plateaus (overall_progress.done stops " +
-              "climbing across spaced polls — unresolvable contacts keep all_done:false forever), then report the finished " +
-              "contacts yourself. (No notification id was returned, so there is NO automatic _meta.notifications completion " +
-              "for this job — if you background it or don't finish this turn, you (or the user) must poll leadbay_bulk_enrich_status({bulk_id}) again later; it will NOT surface on its own.)"
-          : "Enrichment job launched. No bulk_id tracker configured. Unless the user asked NOT to wait (background/'I'll check later' — in which case hand back the lead_ids and let them re-check later), poll leadbay_get_contacts per lead " +
-            "(re-check every ~30s). get_contacts returns each lead's FULL contact list, so only count/report contacts " +
-            "whose job_title matches the enriched titles (" + titles.join(", ") + ") — don't attribute a pre-existing " +
-            "email of an unrelated role to this run — and a contact is done only when the REQUESTED channel landed " +
-            "(requested email and/or phone_number present, not contact.enrichment.done alone). Then report the results. " +
-            "Stop once the set of done contacts stops growing across a couple of spaced re-checks (~90s–2min elapsed): " +
-            "some contacts are unresolvable and never flip, so report the resolved ones and name the rest rather than " +
-            "polling forever.",
-        next_action: bulkRecord
-          ? "Unless the user explicitly asked NOT to wait (background/'I'll check later'), poll leadbay_bulk_enrich_status({bulk_id}) in a loop until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15–30s apart, ~90s–2min elapsed; don't call a plateau from the first back-to-back reads while the backend spins up, and don't call it a plateau while partial_failures is present — that's a transient fetch error, keep polling/respect retry_after). Pass include_contacts=true on the read you report from, then report the resolved enrichment in THIS turn (name what landed and what didn't). If the user DID ask not to wait, hand back the bulk_id instead of polling (and if notification_id is null, tell them to ask again later — nothing auto-surfaces)."
-          : "Unless the user asked not to wait, re-check via leadbay_research_lead_by_id or leadbay_get_contacts for the returned lead_ids (every ~30s). get_contacts returns each lead's FULL contact list, so only count/report contacts whose job_title matches the enriched titles (" + titles.join(", ") + ") — don't attribute a pre-existing email of an unrelated role to this run. Treat a contact as done only when the REQUESTED channel landed — the requested email present and/or phone_number present — NOT contact.enrichment.done alone (it's already true for a contact enriched on the other channel earlier). Stop once the done set stops growing across a couple of spaced re-checks (~90s–2min elapsed) — unresolvable contacts never flip — then report the resolved ones and name the rest. Don't poll forever or end your turn waiting. If the user asked not to wait, hand back the lead_ids and let them re-check later.",
+        message: "Quota exceeded on launch",
+        retry_after_seconds: err?._meta?.retry_after ?? null,
       };
     }
+    throw err;
   }
+
+  const notificationId = launchResp?.notification_id ?? null;
+  const remembered = rememberLaunch(fingerprint, notificationId);
+
+  return {
+    mode: "launched",
+    preview,
+    launched: true,
+    titles,
+    email,
+    phone,
+    // Always surfaced: these are the coordinates the agent polls with. There is
+    // no server-side handle to look them up from, by design.
+    lead_ids: leadIds,
+    notification_id: notificationId,
+    launched_at: remembered.launched_at,
+    message: notificationId
+      ? "Enrichment job launched (runs async). Unless the user asked NOT to wait, do NOT end your turn here — poll " +
+        "leadbay_bulk_enrich_status({notification_id, lead_ids, titles, email, phone}) until all_done OR until progress plateaus " +
+        "(overall_progress.done stops climbing across spaced polls — unresolvable contacts keep all_done:false forever), " +
+        "then report the finished contacts yourself. The notification_id keeps working across conversations and days; " +
+        "completion also surfaces via _meta.notifications / leadbay_account_status.notifications."
+      : "Enrichment job launched, but the backend returned no notification_id, so there is no job id to poll. " +
+        "Poll leadbay_bulk_enrich_status({lead_ids, titles, email, phone}) instead — it answers per lead without a job id.",
+    next_action: notificationId
+      ? "Unless the user explicitly asked NOT to wait, poll leadbay_bulk_enrich_status({notification_id, lead_ids, titles, email, phone, include_contacts: true}) until all_done — OR until overall_progress.done holds steady across several SPACED polls (~15-30s apart, ~90s-2min elapsed; don't call a plateau from the first back-to-back reads, and not while partial_failures is present — that's transient, respect retry_after). Carry titles/email/phone on every poll — they scope counting to the roles and channel THIS run asked for, and without them a contact enriched months ago counts as done and all_done flips true before anything landed. Then report the resolved enrichment in THIS turn, naming what landed and what didn't. If the user DID ask not to wait, hand back the notification_id — it resolves later from any conversation."
+      : "Poll leadbay_bulk_enrich_status({lead_ids, titles, email, phone, include_contacts: true}) every ~30s. It scopes counting to these titles and treats a contact as done only when the REQUESTED channel landed, so you do not have to do that yourself. Stop once overall_progress.done stops growing across a couple of spaced re-checks (~90s-2min) — unresolvable contacts never flip.",
+  };
 }
 
 // Launch under its OWN selection lock — used ONLY by the elicit-accept path,
@@ -355,7 +200,7 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
     // destructive because the dominant flow mutates state.
     destructiveHint: true,
     // Idempotent against the same selection + titles set (same hash → same
-    // bulk_id; backend silently no-ops on already-enriched contacts).
+    // the launch; backend silently no-ops on already-enriched contacts).
     idempotentHint: true,
     openWorldHint: true,
   },
@@ -400,11 +245,11 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
   outputSchema: {
     type: "object",
     description:
-      "Branchy return shape; the `mode` (or `status`) field tells the agent which branch it got. Modes: 'discover' (no titles passed), 'preview_only' (no enrichable contacts), 'dry_run', 'needs_confirmation' (paid launch withheld pending user consent), 'already_launched' (idempotent reuse), 'launched_tracker_pending' (rare, soft-fail), 'launched' (happy path). Status: 'quota_exceeded' (429).",
+      "Branchy return shape; the `mode` (or `status`) field tells the agent which branch it got. Modes: 'discover' (no titles passed), 'preview_only' (no enrichable contacts), 'dry_run', 'needs_confirmation' (paid launch withheld pending user consent), 'already_launched' (idempotent reuse), 'launch_in_flight' (an identical launch is mid-flight and has no id yet), 'launched' (happy path). Status: 'quota_exceeded' (429).",
     properties: {
       mode: {
         type: "string",
-        description: "'discover' | 'preview_only' | 'dry_run' | 'needs_confirmation' | 'already_launched' | 'launched_tracker_pending' | 'launched'.",
+        description: "'discover' | 'preview_only' | 'dry_run' | 'needs_confirmation' | 'already_launched' | 'launch_in_flight' | 'launched'.",
       },
       status: {
         type: "string",
@@ -455,21 +300,24 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
         type: "object",
         description: "What dry_run WOULD have launched (titles, email, phone).",
       },
-      re_used: {
-        type: "boolean",
-        description: "True when an identical bulk was launched within the idempotency window (already_launched mode).",
+      notification_id: {
+        type: ["string", "null"],
+        description:
+          "The backend's job id. Carry it to leadbay_bulk_enrich_status. Null when the backend returned none — then poll by lead_ids instead.",
       },
-      bulk_id: {
-        type: "string",
-        description: "UUIDv4 to poll via leadbay_bulk_enrich_status.",
+      lead_ids: {
+        type: "array",
+        description:
+          "The leads this run enriched. Carry them to leadbay_bulk_enrich_status for per-lead progress; they also work when the notification is archived.",
+        items: { type: "string" },
+      },
+      reused: {
+        type: "boolean",
+        description: "True when an identical launch inside the 5-minute window was reused instead of spending quota again.",
       },
       launched_at: {
         type: "string",
         description: "ISO timestamp of the (re-used or fresh) launch.",
-      },
-      durability: {
-        type: "string",
-        description: "'file' (persisted bulks.json) or 'memory'.",
       },
       seconds_since_original_launch: {
         type: "number",
