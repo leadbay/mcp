@@ -95,9 +95,14 @@ as *"ctx.signal aborted mid-flight"*, each names the flag a timeout uses instead
 and the import one says the counts can stop moving on a chunk cancelled before
 its mappings were committed (product#4064).
 `packages/mcp/test/audit/launched-work-not-cancellable.test.ts` holds both halves
-— every branch is present on all nine tools, matched on collapsed whitespace so a
-rewrap cannot silently pass it, and no generated description or prompt can tell
-the assistant to relaunch after a cancel again.
+— every branch is present on the guarded tools, the no-guard warning on the
+unguarded ones with the guarded advice asserted absent, matched on collapsed
+whitespace so a rewrap cannot silently pass it, and no generated description or
+prompt can tell the assistant to relaunch after a cancel again.
+`packages/mcp/test/launched-work-rule-over-the-wire-e2e.test.ts` proves the same
+thing where it counts, driving the real Hono app on a real socket through
+`StreamableHTTPServerTransport` and reading `tools/list` — the catalogue objects
+the audit reads are not what a chat host receives.
 
 ## 0.34.0 — 2026-09-02
 
