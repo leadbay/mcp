@@ -1502,7 +1502,7 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
       cancelled: {
         type: "boolean",
         description:
-          "True when the call was interrupted (host cancel, timeout). The rows already uploaded keep importing on Leadbay — poll leadbay_import_status with importIds; do not re-run the import.",
+          "True when the HOST cancelled the call (a user Cancel, or the host's own request timeout); a Leadbay-side or phase-budget timeout reports `timed_out` instead. Rows already uploaded keep importing on Leadbay — poll leadbay_import_status with importIds. Rows past the interruption may never have been uploaded; re-run the import for those rows only.",
       },
       dry_run: {
         type: "boolean",

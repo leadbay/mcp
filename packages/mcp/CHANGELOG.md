@@ -70,9 +70,13 @@ flight … relaunch"*, which spends the quota a second time on rows Leadbay is
 still processing. That text is gone with the store; the true rule now ships on
 the surface the assistant actually reads, in the seven bulk tool descriptions
 and in the six prompts that carry the long-running-tool rules
-(`snippets/heuristics/launched-work-cannot-be-stopped.md`). `cancelled: true`
-on the two import results is described the same way, instead of as *"ctx.signal
-aborted mid-flight"*. `packages/mcp/test/audit/launched-work-not-cancellable.test.ts`
+(`snippets/heuristics/launched-work-cannot-be-stopped.md`). The rule branches, because recovery does: poll the
+handle you were given, or, if the call never returned one, re-call the same tool
+inside the five-minute guard window so it hands back the job already launched.
+It applies to a launched or running result only, not to a discovery, preview or
+`dry_run` result that launched nothing. `cancelled: true` on the two import
+results is described the same way, instead of as *"ctx.signal aborted
+mid-flight"*, and each names the flag a timeout uses instead. `packages/mcp/test/audit/launched-work-not-cancellable.test.ts`
 holds both halves — the rule is present, and no generated description or prompt
 can tell the assistant to relaunch after a cancel again.
 

@@ -54,8 +54,20 @@ describe("a launched job cannot be stopped — the agent is told so", () => {
     expect(text).toContain("Leadbay has no cancel");
   });
 
-  it.each(BULK_TOOLS)("%s forbids relaunching after an interruption", (tool) => {
-    expect(byName.get(tool)).toContain("Never relaunch after an interruption");
+  it.each(BULK_TOOLS)("%s says a handle must be polled, not relaunched", (tool) => {
+    expect(byName.get(tool)).toContain("do not launch again");
+  });
+
+  // The rule branches, and each branch is load-bearing: an absolute "never
+  // relaunch" strands a call that timed out before it returned a handle, and
+  // an unconditional "quota is committed" is wrong for a discovery, preview or
+  // dry-run result that launched nothing.
+  it.each(BULK_TOOLS)("%s scopes the rule to a launched result", (tool) => {
+    expect(byName.get(tool)).toContain("dry_run` result\nlaunched nothing");
+  });
+
+  it.each(BULK_TOOLS)("%s tells a handle-less caller to re-call, not to give up", (tool) => {
+    expect(byName.get(tool)).toContain("hands back the job already launched");
   });
 
   it("every prompt carrying the long-running rules carries this one too", () => {
