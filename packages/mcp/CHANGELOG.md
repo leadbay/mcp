@@ -77,6 +77,15 @@ the wrong one is its own bug.
 | `bulk_enrich_status`, `qualify_status`, `import_status` | `heuristics/launched-work-poll-only.md` | read-only. Re-calling launches nothing, and the launcher's "check your quota before retrying" text would stall the poll loop these tools exist for |
 | `qualify_lead`, `enrich_contacts`, `launch_bulk_enrichment` | `heuristics/unguarded-launch.md` | they POST directly with no guard, so the guarded re-call advice would buy a second paid launch. `enrich_contacts` is on the hosted route, so this is not only an advanced-mode concern |
 
+Those same three tools shipped `idempotentHint: true`, which this repo defines as
+*"calling the same tool twice with the same arguments is safe and produces the
+same observable outcome (no double-write side-effect)"*. That is the
+machine-readable half of the claim the prose now contradicts, and a host may act
+on it automatically. They are `idempotentHint: false` now. This is the one
+behaviour change in an otherwise text-only release;
+`packages/mcp/test/annotations.test.ts` carried the old value in its expectation
+table and is corrected with the code.
+
 The six prompts that already carry the long-running-tool rules carry the guarded
 variant too. `leadbay_import_leads` sits 157 chars under the
 17,000 cap and states the cancel case in one sentence instead; its own SLOW
