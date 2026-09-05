@@ -68,14 +68,17 @@ this reachable in the wrong direction — a host cancellation flipped a local
 record to `cancelled`, and the status tools answered *"no further work is in
 flight … relaunch"*, which spends the quota a second time on rows Leadbay is
 still processing. That text is gone with the store; the true rule now ships on
-the surface the assistant actually reads. Six tool descriptions carry
-`snippets/heuristics/launched-work-cannot-be-stopped.md` — the three composite
-launchers (`enrich_titles`, `bulk_qualify_leads`, `import_and_qualify`) and the
-three status tools — plus the six prompts that already carry the
-long-running-tool rules. The three granular launchers exposed under
-`LEADBAY_MCP_ADVANCED=1` carry `heuristics/unguarded-launch.md` instead: they
-POST directly, never call `beginLaunch`, and so must NOT be told that re-calling
-returns the job already launched. `leadbay_import_leads` sits 157 chars under the
+the surface the assistant actually reads. Three variants ship, because handing a tool
+the wrong one is its own bug.
+
+| Tools | Snippet | Why |
+|---|---|---|
+| `enrich_titles`, `bulk_qualify_leads`, `import_and_qualify` | `heuristics/launched-work-cannot-be-stopped.md` | they call `beginLaunch`, so a re-call inside the window returns the ids the first call produced — best-effort, never a guarantee |
+| `bulk_enrich_status`, `qualify_status`, `import_status` | `heuristics/launched-work-poll-only.md` | read-only. Re-calling launches nothing, and the launcher's "check your quota before retrying" text would stall the poll loop these tools exist for |
+| `qualify_lead`, `enrich_contacts`, `launch_bulk_enrichment` | `heuristics/unguarded-launch.md` | they POST directly with no guard, so the guarded re-call advice would buy a second paid launch. `enrich_contacts` is on the hosted route, so this is not only an advanced-mode concern |
+
+The six prompts that already carry the long-running-tool rules carry the guarded
+variant too. `leadbay_import_leads` sits 157 chars under the
 17,000 cap and states the cancel case in one sentence instead; its own SLOW
 BACKEND paragraph already carries the rest.
 
