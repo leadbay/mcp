@@ -68,12 +68,14 @@ this reachable in the wrong direction — a host cancellation flipped a local
 record to `cancelled`, and the status tools answered *"no further work is in
 flight … relaunch"*, which spends the quota a second time on rows Leadbay is
 still processing. That text is gone with the store; the true rule now ships on
-the surface the assistant actually reads: nine tool descriptions carry
+the surface the assistant actually reads. Six tool descriptions carry
 `snippets/heuristics/launched-work-cannot-be-stopped.md` — the three composite
-launchers (`enrich_titles`, `bulk_qualify_leads`, `import_and_qualify`), the
-three status tools, and the three granular launchers that POST a paid launch
-under `LEADBAY_MCP_ADVANCED=1` — plus the six prompts that already carry the
-long-running-tool rules. `leadbay_import_leads` sits 157 chars under the
+launchers (`enrich_titles`, `bulk_qualify_leads`, `import_and_qualify`) and the
+three status tools — plus the six prompts that already carry the
+long-running-tool rules. The three granular launchers exposed under
+`LEADBAY_MCP_ADVANCED=1` carry `heuristics/unguarded-launch.md` instead: they
+POST directly, never call `beginLaunch`, and so must NOT be told that re-calling
+returns the job already launched. `leadbay_import_leads` sits 157 chars under the
 17,000 cap and states the cancel case in one sentence instead; its own SLOW
 BACKEND paragraph already carries the rest.
 

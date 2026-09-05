@@ -35,8 +35,12 @@ const BULK_TOOLS = [
   "leadbay_bulk_enrich_status",
   "leadbay_qualify_status",
   "leadbay_import_status",
-  // Advanced-gated, but each POSTs a paid launch of its own, so an assistant
-  // running with LEADBAY_MCP_ADVANCED=1 must be told the same thing.
+] as const;
+
+// Advanced-gated single POSTs. Each spends quota, and none of them calls
+// `beginLaunch`, so the guarded "re-call and get the same job back" advice is
+// false for them — they carry the unguarded variant instead.
+const UNGUARDED_TOOLS = [
   "leadbay_qualify_lead",
   "leadbay_enrich_contacts",
   "leadbay_launch_bulk_enrichment",
@@ -98,11 +102,30 @@ describe("a launched job cannot be stopped — the agent is told so", () => {
     says(tool, "re-run for that subset only");
   });
 
+  it.each(UNGUARDED_TOOLS)("%s says Leadbay has no cancel", (tool) => {
+    expect(byName.get(tool), `${tool} is not a registered tool`).toBeTypeOf("string");
+    says(tool, "Leadbay has no cancel");
+  });
+
+  it.each(UNGUARDED_TOOLS)("%s warns it has no double-launch guard", (tool) => {
+    says(tool, "no double-launch guard");
+    says(tool, "calling it again always issues a new paid launch");
+  });
+
+  it.each(UNGUARDED_TOOLS)("%s does not promise the guarded re-call", (tool) => {
+    expect(flat(byName.get(tool))).not.toContain("hand back the job already launched");
+  });
+
   it("leadbay_import_leads states the cancel case in its own paragraph", () => {
     says("leadbay_import_leads", "Leadbay has no cancel");
     // The branches it does carry, from its own SLOW BACKEND paragraph.
     says("leadbay_import_leads", "Do NOT call leadbay_import_leads again");
     says("leadbay_import_leads", "rows_pending_upload");
+    // The P1 the snippet would otherwise have carried here: a call that
+    // returned no handle at all must be re-called, and the async path's guard
+    // gives back the same importIds.
+    says("leadbay_import_leads", "re-call it identically");
+    says("leadbay_import_leads", "returns the same `importIds`");
   });
 
   it("every prompt carrying the long-running rules carries this one too", () => {
