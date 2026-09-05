@@ -16,6 +16,8 @@ Retrieve the current state of a bulk_qualify_leads or import_and_qualify launch.
 - **`leadbay_bulk_qualify_leads`** returns a `notification_id`. Pass it for progress in ONE call, and add the `lead_ids` + `lens_id` it also returned for per-lead detail (which settled, which are still running).
 - **`leadbay_import_and_qualify`** returns NO qualification `notification_id` — its qualify phase runs per-lead, so no job notification exists. Pass the `lead_ids` + `lens_id` it returned. Its `notification_ids[]` are the FILE-IMPORT notifications; handing one of those to this tool is rejected as the wrong kind, and `leadbay_import_status({importIds})` is where the import half is polled.
 
+**When it is finished:** `status` is always `"launched"` — it is not a progress field. On the `notification_id` path the job is done when `in_progress` is false (or `bulk_progress.success_count + failure_count` reaches `total_count`); `still_running[]` is empty on that path from the very first poll and must NOT be read as "done". On the `lead_ids` path the job is done when `still_running[]` is empty. Pass both and you get both signals in one call.
+
 Everything comes straight out of the launch response — nothing is stored on the MCP side. A backend job is scoped to the user who launched it, so a `notification_id` resolves from a later message, a later conversation, or the next day.
 
 {{include:headers/tool-when-to-use}} after leadbay_bulk_qualify_leads or leadbay_import_and_qualify came back with a non-empty `still_running[]`, call this tool a few minutes later (or hours) with those ids to retrieve the now-completed qualifications without re-running the import or re-spending qualify quota.
