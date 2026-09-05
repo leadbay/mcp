@@ -22,6 +22,11 @@ a launcher only for a subset that never started, never for the whole batch:
 - a `rows_pending_upload` count;
 - leads in `still_running` after a CANCELLED `leadbay_import_and_qualify`. Its
   fan-out is sequential, so an interruption leaves the remainder unlaunched and
-  folds them in with the ones that did launch. This tool cannot start them. If
-  leads there never settle across several spaced polls, launch qualification for
-  those ids and leave the rest polling.
+  folds them in with the ones that did launch. Nothing in the result tells the
+  two apart, and this tool cannot start either. Wait until the REST of the batch
+  has settled: what launched settles in order, so leads still unanswered after
+  that are the ones that never started. Only then call
+  `leadbay_bulk_qualify_leads({leadIds, lensId})` for exactly those ids. A lead
+  that is merely slow looks identical to one that never launched over a few
+  polls, and re-launching it charges the user twice — when unsure, tell the user
+  rather than guess.

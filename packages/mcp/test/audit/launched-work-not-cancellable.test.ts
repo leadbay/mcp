@@ -130,7 +130,10 @@ describe("status tools are told polling is free", () => {
   // `rows_pending_upload` as retryable strands them (product#4063).
   it.each(POLL_ONLY_TOOLS)("%s names the cancelled-fan-out remainder as relaunchable", (tool) => {
     says(tool, "leads in `still_running` after a CANCELLED `leadbay_import_and_qualify`");
-    says(tool, "launch qualification for those ids and leave the rest polling");
+    says(tool, "Wait until the REST of the batch has settled");
+    says(tool, "leadbay_bulk_qualify_leads({leadIds, lensId})");
+    // The two are indistinguishable over a few polls, and guessing charges twice.
+    says(tool, "re-launching it charges the user twice");
   });
 
   it.each(POLL_ONLY_TOOLS)("%s does not carry the launcher retry warning", (tool) => {
