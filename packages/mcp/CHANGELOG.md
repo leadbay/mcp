@@ -68,17 +68,34 @@ this reachable in the wrong direction — a host cancellation flipped a local
 record to `cancelled`, and the status tools answered *"no further work is in
 flight … relaunch"*, which spends the quota a second time on rows Leadbay is
 still processing. That text is gone with the store; the true rule now ships on
-the surface the assistant actually reads, in the seven bulk tool descriptions
-and in the six prompts that carry the long-running-tool rules
-(`snippets/heuristics/launched-work-cannot-be-stopped.md`). The rule branches, because recovery does: poll the
-handle you were given, or, if the call never returned one, re-call the same tool
-inside the five-minute guard window so it hands back the job already launched.
-It applies to a launched or running result only, not to a discovery, preview or
-`dry_run` result that launched nothing. `cancelled: true` on the two import
-results is described the same way, instead of as *"ctx.signal aborted
-mid-flight"*, and each names the flag a timeout uses instead. `packages/mcp/test/audit/launched-work-not-cancellable.test.ts`
-holds both halves — the rule is present, and no generated description or prompt
-can tell the assistant to relaunch after a cancel again.
+the surface the assistant actually reads: nine tool descriptions carry
+`snippets/heuristics/launched-work-cannot-be-stopped.md` — the three composite
+launchers (`enrich_titles`, `bulk_qualify_leads`, `import_and_qualify`), the
+three status tools, and the three granular launchers that POST a paid launch
+under `LEADBAY_MCP_ADVANCED=1` — plus the six prompts that already carry the
+long-running-tool rules. `leadbay_import_leads` sits 157 chars under the
+17,000 cap and states the cancel case in one sentence instead; its own SLOW
+BACKEND paragraph already carries the rest.
+
+The rule applies to a launched or running result only, never to a discovery,
+preview or `dry_run` result, and it branches because recovery does. With a
+handle: poll it, and do not launch the work that handle covers again. With a
+handle and a subset the result says never started — `failed[]` entries with
+`error:"not_queued"`, or a `rows_pending_upload` count — re-run that subset
+only. With no result at all: read `leadbay_account_status` first, because the
+double-launch guard is in-memory, five minutes and per process, and
+`bulk-qualify-leads.ts` drops its claim when the launch POST throws even if the
+backend accepted it. The rule says so rather than promising a recovery the guard
+cannot deliver.
+
+`cancelled: true` on the two import results is described the same way instead of
+as *"ctx.signal aborted mid-flight"*, each names the flag a timeout uses instead,
+and the import one says the counts can stop moving on a chunk cancelled before
+its mappings were committed (product#4064).
+`packages/mcp/test/audit/launched-work-not-cancellable.test.ts` holds both halves
+— every branch is present on all nine tools, matched on collapsed whitespace so a
+rewrap cannot silently pass it, and no generated description or prompt can tell
+the assistant to relaunch after a cancel again.
 
 ## 0.34.0 — 2026-09-02
 
