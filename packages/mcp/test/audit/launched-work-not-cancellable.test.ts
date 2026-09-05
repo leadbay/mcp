@@ -35,6 +35,11 @@ const BULK_TOOLS = [
   "leadbay_bulk_enrich_status",
   "leadbay_qualify_status",
   "leadbay_import_status",
+  // Advanced-gated, but each POSTs a paid launch of its own, so an assistant
+  // running with LEADBAY_MCP_ADVANCED=1 must be told the same thing.
+  "leadbay_qualify_lead",
+  "leadbay_enrich_contacts",
+  "leadbay_launch_bulk_enrichment",
 ] as const;
 
 const ALL_TOOLS: Tool[] = [
@@ -46,6 +51,13 @@ const ALL_TOOLS: Tool[] = [
 
 const byName = new Map(ALL_TOOLS.map((t) => [t.name, t.description]));
 
+// The snippet is hard-wrapped markdown, so a sentence can straddle a newline.
+// Match on collapsed whitespace or the audit breaks every time someone rewraps
+// a paragraph without changing a word of it.
+const flat = (s: string | undefined) => (s ?? "").replace(/\s+/g, " ");
+const says = (tool: string, phrase: string) =>
+  expect(flat(byName.get(tool))).toContain(phrase.replace(/\s+/g, " "));
+
 const PROMPT_TEXTS: Array<[string, string]> = Object.entries(prompts).filter(
   (e): e is [string, string] => typeof e[1] === "string"
 );
@@ -54,11 +66,11 @@ describe("a launched job cannot be stopped — the agent is told so", () => {
   it.each(BULK_TOOLS)("%s states that Leadbay has no cancel", (tool) => {
     const text = byName.get(tool);
     expect(text, `${tool} is not a registered tool`).toBeTypeOf("string");
-    expect(text).toContain("Leadbay has no cancel");
+    says(tool, "Leadbay has no cancel");
   });
 
   it.each(BULK_TOOLS)("%s says a handle must be polled, not relaunched", (tool) => {
-    expect(byName.get(tool)).toContain("do not launch again");
+    says(tool, "do not launch the work that handle covers a second time");
   });
 
   // The rule branches, and each branch is load-bearing: an absolute "never
@@ -66,19 +78,31 @@ describe("a launched job cannot be stopped — the agent is told so", () => {
   // an unconditional "quota is committed" is wrong for a discovery, preview or
   // dry-run result that launched nothing.
   it.each(BULK_TOOLS)("%s scopes the rule to a launched result", (tool) => {
-    expect(byName.get(tool)).toContain("dry_run` result\nlaunched nothing");
+    says(tool, "dry_run` result launched nothing and is not covered here");
   });
 
   it.each(BULK_TOOLS)("%s tells a handle-less caller to re-call, not to give up", (tool) => {
-    expect(byName.get(tool)).toContain("hands back the job already launched");
+    says(tool, "hand back the job already launched");
+  });
+
+  // The guard is in-memory, five minutes, per process, and the blocking
+  // qualify path never enters it. Promising recovery it cannot deliver is how
+  // a lost launch response turns into a second charge.
+  it.each(BULK_TOOLS)("%s calls the double-launch guard best-effort", (tool) => {
+    says(tool, "best-effort");
+  });
+
+  // A running handle can ship alongside leads or rows that were never queued.
+  it.each(BULK_TOOLS)("%s permits re-running a never-started subset", (tool) => {
+    says(tool, 'error:"not_queued"');
+    says(tool, "re-run for that subset only");
   });
 
   it("leadbay_import_leads states the cancel case in its own paragraph", () => {
-    const text = byName.get("leadbay_import_leads");
-    expect(text).toContain("Leadbay has no cancel");
+    says("leadbay_import_leads", "Leadbay has no cancel");
     // The branches it does carry, from its own SLOW BACKEND paragraph.
-    expect(text).toContain("Do NOT call leadbay_import_leads again");
-    expect(text).toContain("rows_pending_upload");
+    says("leadbay_import_leads", "Do NOT call leadbay_import_leads again");
+    says("leadbay_import_leads", "rows_pending_upload");
   });
 
   it("every prompt carrying the long-running rules carries this one too", () => {
@@ -87,7 +111,7 @@ describe("a launched job cannot be stopped — the agent is told so", () => {
     );
     expect(carriers.length).toBeGreaterThan(0);
     for (const [name, body] of carriers) {
-      expect(body, `prompt ${name}`).toContain("Leadbay has no cancel");
+      expect(flat(body), `prompt ${name}`).toContain("Leadbay has no cancel");
     }
   });
 });
