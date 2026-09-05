@@ -24,10 +24,13 @@ import {
 import * as prompts from "../../src/prompts.generated.js";
 
 // Every tool that launches background work, and every tool used to poll it.
+// `leadbay_import_leads` is not here: it sits ~150 chars from the 17,000 cap,
+// and its own SLOW BACKEND paragraph already carries the handle and the
+// never-uploaded-subset branches in its own terms. It states the cancel case in
+// one sentence instead, asserted separately below.
 const BULK_TOOLS = [
   "leadbay_enrich_titles",
   "leadbay_bulk_qualify_leads",
-  "leadbay_import_leads",
   "leadbay_import_and_qualify",
   "leadbay_bulk_enrich_status",
   "leadbay_qualify_status",
@@ -68,6 +71,14 @@ describe("a launched job cannot be stopped — the agent is told so", () => {
 
   it.each(BULK_TOOLS)("%s tells a handle-less caller to re-call, not to give up", (tool) => {
     expect(byName.get(tool)).toContain("hands back the job already launched");
+  });
+
+  it("leadbay_import_leads states the cancel case in its own paragraph", () => {
+    const text = byName.get("leadbay_import_leads");
+    expect(text).toContain("Leadbay has no cancel");
+    // The branches it does carry, from its own SLOW BACKEND paragraph.
+    expect(text).toContain("Do NOT call leadbay_import_leads again");
+    expect(text).toContain("rows_pending_upload");
   });
 
   it("every prompt carrying the long-running rules carries this one too", () => {

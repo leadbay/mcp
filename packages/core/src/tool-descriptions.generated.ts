@@ -2058,7 +2058,7 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 // region: leadbay_import_leads
 export const leadbay_import_leads: string = `Import leads into Leadbay's CRM via the file-import wizard. Returns stable Leadbay leadIds for downstream chaining into leadbay_bulk_qualify_leads / leadbay_research_lead_by_id. For MCP clients with short transport timeouts, pass \`wait_for_completion:false\` to return quickly with \`{status:'running', importIds}\`; poll leadbay_import_status with that handle. For end-to-end import+qualify in one call, prefer leadbay_import_and_qualify. For messy files, prefer the \`leadbay_import_file\` prompt which walks an agent through scan → resolve → preserve → commit phases.
 
-SLOW BACKEND ⇒ \`{status:'running', timed_out:true, importIds}\`. The wizard is sometimes slow; when the poll budget runs out this tool returns that SUCCESS result, not an error. The import is still running server-side. **Do NOT call leadbay_import_leads again** — that re-uploads the file and leaves a duplicate CRM-imports row. Call \`leadbay_import_status({importIds})\` after ~30s — and pass \`dry_run:true\` too if the result carried it; on \`complete\` it returns \`result.leads\` with the leadIds, while \`phase:"committing"\` just means keep polling. Tell the user it's running and you'll check back — it is not a problem to report. Exception: \`rows_pending_upload\` rows never reached the backend and DO need a fresh call for that subset only. In records mode the result also carries \`row_ids\` — the synthetic id of each input row, in your \`records[]\` order — because \`leadbay_import_status\` reports recovered leads by that id; keep it to map them back to your source rows.
+SLOW BACKEND ⇒ \`{status:'running', timed_out:true, importIds}\`. The wizard is sometimes slow; when the poll budget runs out this tool returns that SUCCESS result, not an error. The import is still running server-side. Leadbay has no cancel, so a user Cancel or a host timeout stops your waiting, never the import. **Do NOT call leadbay_import_leads again** — that re-uploads the file and leaves a duplicate CRM-imports row. Call \`leadbay_import_status({importIds})\` after ~30s — and pass \`dry_run:true\` too if the result carried it; on \`complete\` it returns \`result.leads\` with the leadIds, while \`phase:"committing"\` just means keep polling. Tell the user it's running and you'll check back — it is not a problem to report. Exception: \`rows_pending_upload\` rows never reached the backend and DO need a fresh call for that subset only. In records mode the result also carries \`row_ids\` — the synthetic id of each input row, in your \`records[]\` order — because \`leadbay_import_status\` reports recovered leads by that id; keep it to map them back to your source rows.
 
 TWO MODES: (A) Domain-list shortcut — pass \`domains: [{domain, name?}]\`. The tool builds a 2-column CSV (LEAD_NAME, LEAD_WEBSITE) and imports with the default mapping. (B) Custom records + mapping — pass \`records: [{Col1, Col2, ...}]\` plus \`mappings.fields: {Col1: 'LEAD_NAME', ...}\`. \`mappings.fields\` must include LEADBAY_ID, CRM_ID, SIREN, LEAD_NAME, or LEAD_WEBSITE (resolver needs at least one identity key). Pass exactly one of \`domains\` / \`records\`. Reserved column \`MCP_ROW_ID\` cannot appear in records/mappings — the tool injects it for stable reconciliation.
 
@@ -2069,32 +2069,6 @@ MUTATES USER STATE: each call creates a row in the user's CRM-imports list (visi
 WHEN TO USE: you have a list of company domains from another system (CRM, analytics, email correspondents) and need stable Leadbay leadIds; or CRM-shaped rows with custom columns and want to drive the wizard with explicit field mappings.
 
 WHEN NOT TO USE: for prospect discovery (use leadbay_pull_leads); for one specific company's profile (use leadbay_research_lead_by_name_fuzzy); when you can't tolerate the side effects above; when you also want qualification in the same call (use leadbay_import_and_qualify).
-
-## A launched job cannot be stopped
-
-Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
-\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned a launched or
-running result, that work is queued on Leadbay and runs to completion, and the
-quota it costs is already committed. A discovery, preview or \`dry_run\` result
-launched nothing and is not covered here.
-
-The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
-waiting, never the job. \`cancelled: true\` means we stopped watching, not that the
-work stopped. What to do next depends on what you are holding:
-
-- **A handle.** Poll the status tool with it and do not launch again — a second
-  launch spends the quota again on the same rows. \`leadbay_import_status\` takes
-  \`importIds\`, so pass the values of \`import_ids\` under that name. A
-  qualification started by \`leadbay_import_and_qualify\` has no notification of
-  its own: resume it with \`leadbay_qualify_status({lead_ids, lens_id})\`.
-- **No result at all**, because the call timed out or the stream closed before it
-  returned. Call the same tool again with the same arguments: for five minutes it
-  hands back the job already launched rather than starting a second one. Past
-  that window, check \`leadbay_account_status\` for work that has since finished
-  before launching anything.
-- **A count of work that never started**, such as \`rows_pending_upload\`. Re-run
-  for that subset only, never for the whole batch.
-
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
