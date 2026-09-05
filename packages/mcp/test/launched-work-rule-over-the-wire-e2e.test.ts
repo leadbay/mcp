@@ -72,6 +72,19 @@ async function boot(): Promise<{ close: () => void; url: string }> {
   return { close: () => server.close(), url: `http://127.0.0.1:${server.address().port}/mcp` };
 }
 
+async function rawTools(url: string): Promise<any[]> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${TOKEN}`,
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+  });
+  return ((await res.json()) as any).result?.tools ?? [];
+}
+
 async function listTools(url: string): Promise<Map<string, string>> {
   const res = await fetch(url, {
     method: "POST",
@@ -158,8 +171,24 @@ describe("the no-cancel rule reaches a hosted connector (product#4039)", () => {
     try {
       const d = (await listTools(url)).get("leadbay_import_leads");
       expect(d).toContain("Leadbay has no cancel");
-      expect(d).toContain("≤100 rows gives back the same `importIds`");
-      expect(d).toContain("larger files may re-upload");
+      expect(d).toContain("Sole exception: a `wait_for_completion:false` call that returned NOTHING");
+      expect(d).toContain("even that can re-upload");
+    } finally {
+      close();
+    }
+  });
+
+  // The prose says every call is a new paid launch. `idempotentHint` is the
+  // machine-readable half of the same claim and it shipped saying the opposite,
+  // so a host could auto-retry a paid launch on the strength of it.
+  it("leadbay_enrich_contacts advertises itself as NON-idempotent", async () => {
+    mockHttp([ME]);
+    const { close, url } = await boot();
+    try {
+      const t = (await rawTools(url)).find((x) => x.name === "leadbay_enrich_contacts");
+      expect(t, "leadbay_enrich_contacts is missing from tools/list").toBeDefined();
+      expect(t.annotations?.idempotentHint).toBe(false);
+      expect(t.annotations?.destructiveHint).toBe(true);
     } finally {
       close();
     }

@@ -11,6 +11,10 @@ that the work stopped.
 so poll it as often as the job needs — a timeout here is a reason to call it
 again, not a reason to stop.
 
+One import state does NOT progress: a chunk cancelled before its mappings were
+committed reads `running` / `committing` forever. If the counts hold flat across
+several spaced polls, say so and stop, rather than polling on.
+
 What must not be repeated is the LAUNCH. Re-run a launcher only for a subset the
 result says never started: `failed[]` entries with `error:"not_queued"`, or a
 `rows_pending_upload` count. Never for the whole batch.

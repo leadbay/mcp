@@ -156,9 +156,10 @@ describe("leadbay_import_leads carries its own sentence", () => {
   // calls `abandonLaunch`, so the re-call returns the same ids for a
   // single-chunk file and can re-upload a larger one.
   it("does not promise handle recovery for a multi-chunk file", () => {
-    says("leadbay_import_leads", "≤100 rows gives back the same `importIds`");
-    says("leadbay_import_leads", "larger files may re-upload");
+    says("leadbay_import_leads", "Sole exception: a `wait_for_completion:false` call that returned NOTHING");
+    says("leadbay_import_leads", "even that can re-upload");
     doesNotSay("leadbay_import_leads", "for five minutes it returns the same");
+    doesNotSay("leadbay_import_leads", "gives back the same `importIds`");
   });
 });
 
