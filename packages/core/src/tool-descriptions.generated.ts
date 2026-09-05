@@ -557,6 +557,24 @@ WHEN TO USE: poll this REPEATEDLY after leadbay_enrich_titles returns a \`notifi
 
 WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id — that already includes enriched contacts for a single lead.
 
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned, the work is
+queued on Leadbay and runs to completion. The user's quota is already committed.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting — never the job.
+
+- **Never relaunch after an interruption.** Poll the status tool with the
+  \`notification_id\` / \`importIds\` you were handed. A second launch spends the
+  quota again on the same rows.
+- **\`cancelled: true\` on a result means we stopped watching**, not that the work
+  stopped. Rows already uploaded are still being imported.
+- Work that has since finished is listed by \`leadbay_account_status\` under
+  \`notifications\`.
+
+
 ## QUOTA — show where the user stands after the spend
 
 Enrichment consumes QUOTA (the per-window allowance), not a separate credit wall. Once the job is done (all_done, or a plateau — see WHEN TO USE), show the user their refreshed quota: call \`leadbay_account_status\` and render the per-window quota it returns (the canonical surface). The result's \`credits_remaining\` field is **advisory internal context only — do NOT display it**: it comes from \`billing.ai_credits\` (a consumed counter, not remaining), so printing \`_(N credits remaining)_\` can show a fresh/quota-backed account a false "0 remaining." Never render a credits balance; the \`leadbay_account_status\` quota gauge is the only place the user's standing is shown. Do NOT report a "credits used" figure for this run either: the per-contact cost can't be scoped to this specific enrichment (a lead's contact list mixes in earlier runs), so any "X used" number would be misleading. Do the account_status refresh ONCE at completion — not on every in-progress poll.
@@ -577,6 +595,24 @@ Context: Leadbay auto-qualifies roughly the top 10 of each daily batch. Leads be
 WHEN TO USE: when the user wants more qualified leads than what's currently shown, or when a lead looks promising in leadbay_pull_leads but has an empty \`qualification_summary\`.
 
 WHEN NOT TO USE: to qualify a single specific lead — that's leadbay_qualify_lead (granular, advanced).
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned, the work is
+queued on Leadbay and runs to completion. The user's quota is already committed.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting — never the job.
+
+- **Never relaunch after an interruption.** Poll the status tool with the
+  \`notification_id\` / \`importIds\` you were handed. A second launch spends the
+  quota again on the same rows.
+- **\`cancelled: true\` on a result means we stopped watching**, not that the work
+  stopped. Rows already uploaded are still being imported.
+- Work that has since finished is listed by \`leadbay_account_status\` under
+  \`notifications\`.
+
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
@@ -1123,6 +1159,24 @@ export const leadbay_enrich_titles: string = `Order contact enrichments by job t
 WHEN TO USE: as the agent's go-to enrichment entry point, immediately before proposing outreach.
 
 WHEN NOT TO USE: to enrich a single named contact — that's leadbay_enrich_contacts. Speculatively, before the user has committed to outreaching — enrichment consumes quota. **NOT to add "titles" or "LinkedIn" to a list** — a contact's \`job_title\` and \`linkedin_page\` already ride on the contact record; they are FREE and need no enrichment. If the user asks for "title and LinkedIn only", read those fields directly (e.g. leadbay_get_contacts / leadbay_research_lead_by_id); do NOT launch a job here. This tool is strictly the email / phone reveal, which consumes quota.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned, the work is
+queued on Leadbay and runs to completion. The user's quota is already committed.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting — never the job.
+
+- **Never relaunch after an interruption.** Poll the status tool with the
+  \`notification_id\` / \`importIds\` you were handed. A second launch spends the
+  quota again on the same rows.
+- **\`cancelled: true\` on a result means we stopped watching**, not that the work
+  stopped. Rows already uploaded are still being imported.
+- Work that has since finished is listed by \`leadbay_account_status\` under
+  \`notifications\`.
+
 
 ## ENRICHMENT CONSUMES QUOTA — the model to reason with
 
@@ -1862,6 +1916,24 @@ WHEN TO USE: agent has a list of companies (domains, or CSV-shaped rows from the
 
 WHEN NOT TO USE: discovery (use leadbay_pull_leads); single-lead deep dive (use leadbay_research_lead_by_id); high-cadence or untrusted automation — this mutates user state and consumes ai_rescore + web_fetch quota.
 
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned, the work is
+queued on Leadbay and runs to completion. The user's quota is already committed.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting — never the job.
+
+- **Never relaunch after an interruption.** Poll the status tool with the
+  \`notification_id\` / \`importIds\` you were handed. A second launch spends the
+  quota again on the same rows.
+- **\`cancelled: true\` on a result means we stopped watching**, not that the work
+  stopped. Rows already uploaded are still being imported.
+- Work that has since finished is listed by \`leadbay_account_status\` under
+  \`notifications\`.
+
+
 Budgets: \`total_budget_ms\` caps wall-clock; \`per_lead_budget_ms\` caps each lead's poll. For short transport timeouts, pass \`wait_for_completion:false\` and poll \`leadbay_import_status\`. Outputs \`qualified[]\`, \`still_running[]\`, \`not_imported[]\`, plus the ids that resume it: \`lead_ids\` + \`lens_id\` for leadbay_qualify_status, \`import_ids\` for leadbay_import_status. There is no qualification \`notification_id\` — the qualify phase runs per-lead, so no job notification exists; \`notification_ids[]\` are the file-import ones. Idempotent within a 5-min window. \`dry_run:'preview'\` returns mapping hints + custom-field candidates without importing.
 
 \`not_imported\` rows with \`reason:"uncrawled"\` are **pending a background crawl**, NOT failures: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously (the label doesn't verify the URL resolves — don't call the site bad, but don't certify it valid either). Surface them as pending; the leads populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — \`leadbay_import_status\` returns status/progress only, and \`leadbay_pull_leads\` reads the active lens's wishlist so an imported lead outside that lens may not appear). To pull those specific companies back through the MCP, re-run the import later. A large \`uncrawled\` share on a fresh list is normal.
@@ -1961,6 +2033,24 @@ WHEN TO USE: you have a list of company domains from another system (CRM, analyt
 
 WHEN NOT TO USE: for prospect discovery (use leadbay_pull_leads); for one specific company's profile (use leadbay_research_lead_by_name_fuzzy); when you can't tolerate the side effects above; when you also want qualification in the same call (use leadbay_import_and_qualify).
 
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned, the work is
+queued on Leadbay and runs to completion. The user's quota is already committed.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting — never the job.
+
+- **Never relaunch after an interruption.** Poll the status tool with the
+  \`notification_id\` / \`importIds\` you were handed. A second launch spends the
+  quota again on the same rows.
+- **\`cancelled: true\` on a result means we stopped watching**, not that the work
+  stopped. Rows already uploaded are still being imported.
+- Work that has since finished is listed by \`leadbay_account_status\` under
+  \`notifications\`.
+
+
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
 
@@ -2049,6 +2139,24 @@ export const leadbay_import_status: string = `Retrieve the current **status/prog
 WHEN TO USE: after an async import returns its ids — \`leadbay_import_leads\` as \`{status:'running', importIds}\`, \`leadbay_import_and_qualify\` as \`import_ids\` — poll with those; OR to check whether a finished import is still processing. This tool does NOT surface the leads Leadbay adds later for pending-crawl (\`uncrawled\`) rows — those populate in the user's Leadbay account as the crawl completes; no tool here fetches them on demand (re-run the import to pull them back through the MCP).
 
 WHEN NOT TO USE: for the qualification half — use leadbay_qualify_status, with the \`lead_ids\` + \`lens_id\` an \`leadbay_import_and_qualify\` launch returned (it has no qualification \`notification_id\`; its \`notification_ids[]\` are these same file imports); or when you still want the legacy blocking behavior from leadbay_import_leads with \`wait_for_completion=true\`.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned, the work is
+queued on Leadbay and runs to completion. The user's quota is already committed.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting — never the job.
+
+- **Never relaunch after an interruption.** Poll the status tool with the
+  \`notification_id\` / \`importIds\` you were handed. A second launch spends the
+  quota again on the same rows.
+- **\`cancelled: true\` on a result means we stopped watching**, not that the work
+  stopped. Rows already uploaded are still being imported.
+- Work that has since finished is listed by \`leadbay_account_status\` under
+  \`notifications\`.
+
 
 ---
 
@@ -3251,6 +3359,23 @@ Everything comes straight out of the launch response — nothing is stored on th
 WHEN TO USE: after leadbay_bulk_qualify_leads or leadbay_import_and_qualify came back with a non-empty \`still_running[]\`, call this tool a few minutes later (or hours) with those ids to retrieve the now-completed qualifications without re-running the import or re-spending qualify quota.
 
 WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id — that's a deeper per-lead profile and includes contacts. This tool is purely the qualification answers + signals_count.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned, the work is
+queued on Leadbay and runs to completion. The user's quota is already committed.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting — never the job.
+
+- **Never relaunch after an interruption.** Poll the status tool with the
+  \`notification_id\` / \`importIds\` you were handed. A second launch spends the
+  quota again on the same rows.
+- **\`cancelled: true\` on a result means we stopped watching**, not that the work
+  stopped. Rows already uploaded are still being imported.
+- Work that has since finished is listed by \`leadbay_account_status\` under
+  \`notifications\`.
 `;
 // endregion: leadbay_qualify_status
 

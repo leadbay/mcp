@@ -1501,7 +1501,8 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
       region: { type: "string" },
       cancelled: {
         type: "boolean",
-        description: "True when ctx.signal aborted the call mid-flight.",
+        description:
+          "True when the call was interrupted (host cancel, timeout). The rows already uploaded keep importing on Leadbay — poll leadbay_import_status with importIds; do not re-run the import.",
       },
       dry_run: {
         type: "boolean",

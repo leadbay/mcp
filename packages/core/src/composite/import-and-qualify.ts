@@ -574,7 +574,11 @@ export const importAndQualify: Tool<
         description: "True when an identical launch was reused within the idempotency window.",
       },
       seconds_since_original: { type: "number" },
-      cancelled: { type: "boolean", description: "True when ctx.signal aborted mid-flight." },
+      cancelled: {
+        type: "boolean",
+        description:
+          "True when the call was interrupted (host cancel, timeout). The import and any qualifications already launched keep running on Leadbay — poll leadbay_import_status with import_ids and leadbay_qualify_status with lead_ids + lens_id; do not re-run this tool.",
+      },
       budget_exhausted: { type: "boolean", description: "True when total_budget_ms hit before all leads finished." },
       quota_blocked: { type: "boolean", description: "True when quota was exhausted before launching all leads." },
       region: { type: "string" },

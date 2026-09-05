@@ -16,6 +16,11 @@
 - **The wrong kind of id is caught.** An import's id given to the enrichment
   status (or the other way round) is named as such, instead of a confident
   wrong answer.
+- **Work you start keeps running, even if you stop the assistant.** An import,
+  an enrichment or a qualification cannot be called back once it has started —
+  Leadbay finishes it. Stopping the assistant, or a slow reply, only stops the
+  waiting. The assistant now knows this and checks on the job instead of
+  starting it again, so the same rows are never paid for twice.
 
 ## 0.34.0 — 2026-09-02 — Leadbay on ChatGPT gets its own address
 

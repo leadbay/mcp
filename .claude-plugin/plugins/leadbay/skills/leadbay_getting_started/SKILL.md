@@ -38,7 +38,7 @@ If the prompt's body and the tool's RENDERING appear to conflict, the tool's REN
 
 # Resilience rules for Leadbay long-running tools
 
-These four rules apply to every Leadbay workflow that calls `leadbay_pull_leads`, `leadbay_bulk_qualify_leads`, `leadbay_research_lead_by_id`, `leadbay_import_and_qualify`, or `leadbay_enrich_titles`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
+These rules apply to every Leadbay workflow that calls `leadbay_pull_leads`, `leadbay_bulk_qualify_leads`, `leadbay_research_lead_by_id`, `leadbay_import_and_qualify`, or `leadbay_enrich_titles`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
 
 ## Rule 1 — Pin the lens
 
@@ -61,6 +61,24 @@ If a Leadbay tool returns `"Request timed out"`, `"stream closed"`, or any other
 3. **Do not** switch strategies (e.g. "the endpoint is broken, let me re-pull from scratch"). The earlier work is still valid; the timeout was the wire.
 
 If `pull_leads` itself fails and you have no prior batch, then yes — retry it, explicitly pass the lensId you captured (if any), and continue.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once `leadbay_enrich_titles`, `leadbay_bulk_qualify_leads`,
+`leadbay_import_leads` or `leadbay_import_and_qualify` has returned, the work is
+queued on Leadbay and runs to completion. The user's quota is already committed.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting — never the job.
+
+- **Never relaunch after an interruption.** Poll the status tool with the
+  `notification_id` / `importIds` you were handed. A second launch spends the
+  quota again on the same rows.
+- **`cancelled: true` on a result means we stopped watching**, not that the work
+  stopped. Rows already uploaded are still being imported.
+- Work that has since finished is listed by `leadbay_account_status` under
+  `notifications`.
+
 
 
 # THE ONE-FORWARD-OPTION RULE — the structural contract of this walkthrough

@@ -23,6 +23,8 @@ MUTATES USER STATE: each call creates a row in the user's CRM-imports list (visi
 
 {{include:headers/tool-when-not-to-use}} for prospect discovery (use leadbay_pull_leads); for one specific company's profile (use leadbay_research_lead_by_name_fuzzy); when you can't tolerate the side effects above; when you also want qualification in the same call (use leadbay_import_and_qualify).
 
+{{include:heuristics/launched-work-cannot-be-stopped}}
+
 {{include:headers/verification-required-if-write}}
 
 Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role on the Leadbay account; active billing.

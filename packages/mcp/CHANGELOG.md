@@ -60,6 +60,22 @@ Found in that run and fixed in the same release:
   store; tool copy in eight places still told the assistant to poll with a
   `bulk_id` / `qualify_id`.
 
+**The assistant is now told, in the tool descriptions, that a launched job
+cannot be stopped.** Leadbay has no cancel: enrichment, qualification and
+imports have a launch route and a read route and nothing else
+(`LeadsRoutes.kt`, `ImportsRoutes.kt`, `/1.6` specs). The retired store made
+this reachable in the wrong direction — a host cancellation flipped a local
+record to `cancelled`, and the status tools answered *"no further work is in
+flight … relaunch"*, which spends the quota a second time on rows Leadbay is
+still processing. That text is gone with the store; the true rule now ships on
+the surface the assistant actually reads, in the seven bulk tool descriptions
+and in the six prompts that carry the long-running-tool rules
+(`snippets/heuristics/launched-work-cannot-be-stopped.md`). `cancelled: true`
+on the two import results is described the same way, instead of as *"ctx.signal
+aborted mid-flight"*. `packages/mcp/test/audit/launched-work-not-cancellable.test.ts`
+holds both halves — the rule is present, and no generated description or prompt
+can tell the assistant to relaunch after a cancel again.
+
 ## 0.34.0 — 2026-09-02
 
 The OpenAI app directory rejects an app that sells digital goods — "plugins may
