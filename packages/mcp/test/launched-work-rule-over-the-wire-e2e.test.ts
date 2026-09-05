@@ -140,6 +140,9 @@ describe("the no-cancel rule reaches a hosted connector (product#4039)", () => {
         expect(d, name).toContain("Leadbay has no cancel");
         expect(d, name).toContain("This tool only reads");
         expect(d, name).toContain("a timeout here is a reason to call it again, not a reason to stop");
+        // The never-launched remainder of a cancelled fan-out is relaunchable,
+        // and this tool cannot start it (product#4063).
+        expect(d, name).toContain("leads in `still_running` after a CANCELLED `leadbay_import_and_qualify`");
         // The launcher variant would make the assistant hesitate to re-poll.
         expect(d, name).not.toContain("hand back the job already launched");
       }

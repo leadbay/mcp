@@ -15,6 +15,13 @@ One import state does NOT progress: a chunk cancelled before its mappings were
 committed reads `running` / `committing` forever. If the counts hold flat across
 several spaced polls, say so and stop, rather than polling on.
 
-What must not be repeated is the LAUNCH. Re-run a launcher only for a subset the
-result says never started: `failed[]` entries with `error:"not_queued"`, or a
-`rows_pending_upload` count. Never for the whole batch.
+What must not be repeated is the LAUNCH — for work that actually launched. Re-run
+a launcher only for a subset that never started, never for the whole batch:
+
+- `failed[]` entries with `error:"not_queued"`;
+- a `rows_pending_upload` count;
+- leads in `still_running` after a CANCELLED `leadbay_import_and_qualify`. Its
+  fan-out is sequential, so an interruption leaves the remainder unlaunched and
+  folds them in with the ones that did launch. This tool cannot start them. If
+  leads there never settle across several spaced polls, launch qualification for
+  those ids and leave the rest polling.

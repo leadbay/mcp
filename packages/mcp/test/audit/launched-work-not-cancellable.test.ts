@@ -125,6 +125,14 @@ describe("status tools are told polling is free", () => {
   // The launcher text would tell a status tool to check account_status and warn
   // the user before "spending quota" on a retry. There is no quota to spend,
   // and hesitating breaks the poll loop these tools exist for.
+  // `import-and-qualify.ts:939` folds `not_launched` into `still_running`, and
+  // this tool cannot start them. Enumerating only `not_queued` and
+  // `rows_pending_upload` as retryable strands them (product#4063).
+  it.each(POLL_ONLY_TOOLS)("%s names the cancelled-fan-out remainder as relaunchable", (tool) => {
+    says(tool, "leads in `still_running` after a CANCELLED `leadbay_import_and_qualify`");
+    says(tool, "launch qualification for those ids and leave the rest polling");
+  });
+
   it.each(POLL_ONLY_TOOLS)("%s does not carry the launcher retry warning", (tool) => {
     doesNotSay(tool, "hand back the job already launched");
     doesNotSay(tool, "before you spend the user's quota on it");
