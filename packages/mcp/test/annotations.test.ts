@@ -189,8 +189,8 @@ describe("granular tool annotations (advanced surface — iter 3)", () => {
     const listed = await mcpClient.listTools();
     // (toolName, expectedIdempotent)
     const granularWrites: Array<[string, boolean]> = [
-      ["leadbay_qualify_lead", true],
-      ["leadbay_enrich_contacts", true],
+      ["leadbay_qualify_lead", false],
+      ["leadbay_enrich_contacts", false],
       ["leadbay_add_note", false],
       ["leadbay_select_leads", true],
       ["leadbay_deselect_leads", true],
@@ -207,7 +207,9 @@ describe("granular tool annotations (advanced surface — iter 3)", () => {
       ["leadbay_dismiss_clarification", false],
       ["leadbay_set_epilogue_status", true],
       ["leadbay_remove_epilogue", true],
-      ["leadbay_launch_bulk_enrichment", true],
+      // product#4039: no double-launch guard on these three — an identical
+      // repeat is a second PAID launch, so the hint must say non-idempotent.
+      ["leadbay_launch_bulk_enrichment", false],
     ];
     for (const [name, idempotent] of granularWrites) {
       const t = listed.tools.find((tool) => tool.name === name);

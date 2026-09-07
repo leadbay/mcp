@@ -60,6 +60,62 @@ Found in that run and fixed in the same release:
   store; tool copy in eight places still told the assistant to poll with a
   `bulk_id` / `qualify_id`.
 
+**The assistant is now told, in the tool descriptions, that a launched job
+cannot be stopped.** Leadbay has no cancel: enrichment, qualification and
+imports have a launch route and a read route and nothing else
+(`LeadsRoutes.kt`, `ImportsRoutes.kt`, `/1.6` specs). The retired store made
+this reachable in the wrong direction — a host cancellation flipped a local
+record to `cancelled`, and the status tools answered *"no further work is in
+flight … relaunch"*, which spends the quota a second time on rows Leadbay is
+still processing. That text is gone with the store; the true rule now ships on
+the surface the assistant actually reads. Three variants ship, because handing a tool
+the wrong one is its own bug.
+
+| Tools | Snippet | Why |
+|---|---|---|
+| `enrich_titles`, `bulk_qualify_leads`, `import_and_qualify` | `heuristics/launched-work-cannot-be-stopped.md` | they call `beginLaunch`, so a re-call inside the window returns the ids the first call produced — best-effort, never a guarantee |
+| `bulk_enrich_status`, `qualify_status`, `import_status` | `heuristics/launched-work-poll-only.md` | read-only. Re-calling launches nothing, and the launcher's "check your quota before retrying" text would stall the poll loop these tools exist for |
+| `qualify_lead`, `enrich_contacts`, `launch_bulk_enrichment` | `heuristics/unguarded-launch.md` | they POST directly with no guard, so the guarded re-call advice would buy a second paid launch. `enrich_contacts` is on the hosted route, so this is not only an advanced-mode concern |
+
+Those same three tools shipped `idempotentHint: true`, which this repo defines as
+*"calling the same tool twice with the same arguments is safe and produces the
+same observable outcome (no double-write side-effect)"*. That is the
+machine-readable half of the claim the prose now contradicts, and a host may act
+on it automatically. They are `idempotentHint: false` now. This is the one
+behaviour change in an otherwise text-only release;
+`packages/mcp/test/annotations.test.ts` carried the old value in its expectation
+table and is corrected with the code.
+
+The six prompts that already carry the long-running-tool rules carry the guarded
+variant too. `leadbay_import_leads` sits 157 chars under the
+17,000 cap and states the cancel case in one sentence instead; its own SLOW
+BACKEND paragraph already carries the rest.
+
+The rule applies to a launched or running result only, never to a discovery,
+preview or `dry_run` result, and it branches because recovery does. With a
+handle: poll it, and do not launch the work that handle covers again. With a
+handle and a subset the result says never started — `failed[]` entries with
+`error:"not_queued"`, or a `rows_pending_upload` count — re-run that subset
+only. With no result at all: read `leadbay_account_status` first, because the
+double-launch guard is in-memory, five minutes and per process, and
+`bulk-qualify-leads.ts` drops its claim when the launch POST throws even if the
+backend accepted it. The rule says so rather than promising a recovery the guard
+cannot deliver.
+
+`cancelled: true` on the two import results is described the same way instead of
+as *"ctx.signal aborted mid-flight"*, each names the flag a timeout uses instead,
+and the import one says the counts can stop moving on a chunk cancelled before
+its mappings were committed (product#4064).
+`packages/mcp/test/audit/launched-work-not-cancellable.test.ts` holds both halves
+— every branch is present on the guarded tools, the no-guard warning on the
+unguarded ones with the guarded advice asserted absent, matched on collapsed
+whitespace so a rewrap cannot silently pass it, and no generated description or
+prompt can tell the assistant to relaunch after a cancel again.
+`packages/mcp/test/launched-work-rule-over-the-wire-e2e.test.ts` proves the same
+thing where it counts, driving the real Hono app on a real socket through
+`StreamableHTTPServerTransport` and reading `tools/list` — the catalogue objects
+the audit reads are not what a chat host receives.
+
 ## 0.34.0 — 2026-09-02
 
 The OpenAI app directory rejects an app that sells digital goods — "plugins may

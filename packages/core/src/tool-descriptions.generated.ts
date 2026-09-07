@@ -557,6 +557,40 @@ WHEN TO USE: poll this REPEATEDLY after leadbay_enrich_titles returns a \`notifi
 
 WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id — that already includes enriched contacts for a single lead.
 
+## A launched job cannot be stopped
+
+Leadbay has no cancel. A job started by \`leadbay_enrich_titles\`,
+\`leadbay_bulk_qualify_leads\`, \`leadbay_import_leads\` or
+\`leadbay_import_and_qualify\` runs to completion on Leadbay. The user cancelling
+in the chat, a request timeout, or a closed stream stops YOUR waiting, never the
+job, and \`cancelled: true\` on an earlier result means we stopped watching, not
+that the work stopped.
+
+**This tool only reads.** Calling it again launches nothing and spends no quota,
+so poll it as often as the job needs — a timeout here is a reason to call it
+again, not a reason to stop.
+
+One import state does NOT progress: a chunk cancelled before its mappings were
+committed reads \`running\` / \`committing\` forever. If the counts hold flat across
+several spaced polls, say so and stop, rather than polling on.
+
+What must not be repeated is the LAUNCH — for work that actually launched. Re-run
+a launcher only for a subset that never started, never for the whole batch:
+
+- \`failed[]\` entries with \`error:"not_queued"\`;
+- a \`rows_pending_upload\` count;
+- leads in \`still_running\` after a CANCELLED \`leadbay_import_and_qualify\`. Its
+  fan-out is sequential, so an interruption leaves the remainder unlaunched and
+  folds them in with the ones that did launch. Nothing in the result tells the
+  two apart, and this tool cannot start either. Wait until the REST of the batch
+  has settled: what launched settles in order, so leads still unanswered after
+  that are the ones that never started. Only then call
+  \`leadbay_bulk_qualify_leads({leadIds, lensId})\` for exactly those ids. A lead
+  that is merely slow looks identical to one that never launched over a few
+  polls, and re-launching it charges the user twice — when unsure, tell the user
+  rather than guess.
+
+
 ## QUOTA — show where the user stands after the spend
 
 Enrichment consumes QUOTA (the per-window allowance), not a separate credit wall. Once the job is done (all_done, or a plateau — see WHEN TO USE), show the user their refreshed quota: call \`leadbay_account_status\` and render the per-window quota it returns (the canonical surface). The result's \`credits_remaining\` field is **advisory internal context only — do NOT display it**: it comes from \`billing.ai_credits\` (a consumed counter, not remaining), so printing \`_(N credits remaining)_\` can show a fresh/quota-backed account a false "0 remaining." Never render a credits balance; the \`leadbay_account_status\` quota gauge is the only place the user's standing is shown. Do NOT report a "credits used" figure for this run either: the per-contact cost can't be scoped to this specific enrichment (a lead's contact list mixes in earlier runs), so any "X used" number would be misleading. Do the account_status refresh ONCE at completion — not on every in-progress poll.
@@ -577,6 +611,36 @@ Context: Leadbay auto-qualifies roughly the top 10 of each daily batch. Leads be
 WHEN TO USE: when the user wants more qualified leads than what's currently shown, or when a lead looks promising in leadbay_pull_leads but has an empty \`qualification_summary\`.
 
 WHEN NOT TO USE: to qualify a single specific lead — that's leadbay_qualify_lead (granular, advanced).
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned a launched or
+running result, that work is queued on Leadbay and runs to completion, and the
+quota it costs is already committed. A discovery, preview or \`dry_run\` result
+launched nothing and is not covered here.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting, never the job. \`cancelled: true\` means we stopped watching, not that the
+work stopped. What to do next depends on what you are holding:
+
+- **A handle.** Poll the status tool with it, and do not launch the work that
+  handle covers a second time — that spends the quota again on the same rows.
+  \`leadbay_import_status\` takes \`importIds\`, so pass the values of \`import_ids\`
+  under that name. A qualification started by \`leadbay_import_and_qualify\` has no
+  notification of its own: resume it with
+  \`leadbay_qualify_status({lead_ids, lens_id})\`.
+- **A handle AND a subset the result says never started** — \`failed[]\` entries
+  with \`error:"not_queued"\`, or a \`rows_pending_upload\` count. Poll the handle
+  for what was launched and re-run for that subset only, never for the whole
+  batch.
+- **No result at all**, because the call timed out or the stream closed before it
+  returned. Check \`leadbay_account_status\` first: the launch may have landed and
+  finished. Calling the same tool again with the same arguments will usually hand
+  back the job already launched rather than starting a second one, but that guard
+  is in-memory, five minutes, and per process, so it is best-effort — say what you
+  are about to re-run before you spend the user's quota on it.
+
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
@@ -1107,6 +1171,23 @@ WHEN TO USE: when the user has already picked WHO they want on a company and you
 
 WHEN NOT TO USE: for bulk enrichment by job title across many leads — use leadbay_enrich_titles, which handles the selection lifecycle and returns a clean preview/launch flow. Not to mark someone as the priority contact — that is leadbay_pin_contact, and pinning does not enrich anyone.
 
+## A launched job cannot be stopped, and this tool has no retry guard
+
+Leadbay has no cancel. Once this call returns having actually launched, the work
+is queued on Leadbay and runs to completion, and the quota it costs is already
+committed. A \`dry_run\` result reached no backend and spent nothing. The user
+cancelling in the chat, a request timeout, or a closed stream stops YOUR waiting,
+never the job.
+
+Unlike the composite launchers, this tool has **no double-launch guard**: calling
+it again always issues a new paid launch, even seconds later with identical
+arguments. So when a call returns nothing at all, do not simply retry. Read the
+record back first — \`leadbay_research_lead_by_id\` or \`leadbay_get_contacts\` for a
+lead, \`leadbay_account_status\` for background work that has since finished — to
+see whether the launch already landed, and tell the user what you are about to
+spend before spending it again.
+
+
 ## QUOTA, NOT CREDITS
 
 Enrichment is gated by QUOTA (the per-window allowance in \`leadbay_account_status\`), not a credit balance. **Never pre-refuse because a credit number looks low or zero** — a freemium/fresh account with quota left can enrich even when its credit counter reads 0. The reveal either fits the remaining quota or the backend returns 429 (\`quota_exceeded\`); only THEN surface the exhausted window + wait-or-top-up choice. The \`credits_remaining\` field on the result is **advisory internal context only — do NOT display it**. Because it can read \`0\` on an account that still has quota, printing \`_(N credits remaining)_\` would falsely tell the user they're out. Do not render a credits balance at all; if the user asks where they stand, call \`leadbay_account_status\` and show the quota gauge instead. The actual per-contact cost (\`enrichment.credits_used\`) appears on the contact after enrichment.
@@ -1123,6 +1204,36 @@ export const leadbay_enrich_titles: string = `Order contact enrichments by job t
 WHEN TO USE: as the agent's go-to enrichment entry point, immediately before proposing outreach.
 
 WHEN NOT TO USE: to enrich a single named contact — that's leadbay_enrich_contacts. Speculatively, before the user has committed to outreaching — enrichment consumes quota. **NOT to add "titles" or "LinkedIn" to a list** — a contact's \`job_title\` and \`linkedin_page\` already ride on the contact record; they are FREE and need no enrichment. If the user asks for "title and LinkedIn only", read those fields directly (e.g. leadbay_get_contacts / leadbay_research_lead_by_id); do NOT launch a job here. This tool is strictly the email / phone reveal, which consumes quota.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned a launched or
+running result, that work is queued on Leadbay and runs to completion, and the
+quota it costs is already committed. A discovery, preview or \`dry_run\` result
+launched nothing and is not covered here.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting, never the job. \`cancelled: true\` means we stopped watching, not that the
+work stopped. What to do next depends on what you are holding:
+
+- **A handle.** Poll the status tool with it, and do not launch the work that
+  handle covers a second time — that spends the quota again on the same rows.
+  \`leadbay_import_status\` takes \`importIds\`, so pass the values of \`import_ids\`
+  under that name. A qualification started by \`leadbay_import_and_qualify\` has no
+  notification of its own: resume it with
+  \`leadbay_qualify_status({lead_ids, lens_id})\`.
+- **A handle AND a subset the result says never started** — \`failed[]\` entries
+  with \`error:"not_queued"\`, or a \`rows_pending_upload\` count. Poll the handle
+  for what was launched and re-run for that subset only, never for the whole
+  batch.
+- **No result at all**, because the call timed out or the stream closed before it
+  returned. Check \`leadbay_account_status\` first: the launch may have landed and
+  finished. Calling the same tool again with the same arguments will usually hand
+  back the job already launched rather than starting a second one, but that guard
+  is in-memory, five minutes, and per process, so it is best-effort — say what you
+  are about to re-run before you spend the user's quota on it.
+
 
 ## ENRICHMENT CONSUMES QUOTA — the model to reason with
 
@@ -1862,6 +1973,36 @@ WHEN TO USE: agent has a list of companies (domains, or CSV-shaped rows from the
 
 WHEN NOT TO USE: discovery (use leadbay_pull_leads); single-lead deep dive (use leadbay_research_lead_by_id); high-cadence or untrusted automation — this mutates user state and consumes ai_rescore + web_fetch quota.
 
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned a launched or
+running result, that work is queued on Leadbay and runs to completion, and the
+quota it costs is already committed. A discovery, preview or \`dry_run\` result
+launched nothing and is not covered here.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting, never the job. \`cancelled: true\` means we stopped watching, not that the
+work stopped. What to do next depends on what you are holding:
+
+- **A handle.** Poll the status tool with it, and do not launch the work that
+  handle covers a second time — that spends the quota again on the same rows.
+  \`leadbay_import_status\` takes \`importIds\`, so pass the values of \`import_ids\`
+  under that name. A qualification started by \`leadbay_import_and_qualify\` has no
+  notification of its own: resume it with
+  \`leadbay_qualify_status({lead_ids, lens_id})\`.
+- **A handle AND a subset the result says never started** — \`failed[]\` entries
+  with \`error:"not_queued"\`, or a \`rows_pending_upload\` count. Poll the handle
+  for what was launched and re-run for that subset only, never for the whole
+  batch.
+- **No result at all**, because the call timed out or the stream closed before it
+  returned. Check \`leadbay_account_status\` first: the launch may have landed and
+  finished. Calling the same tool again with the same arguments will usually hand
+  back the job already launched rather than starting a second one, but that guard
+  is in-memory, five minutes, and per process, so it is best-effort — say what you
+  are about to re-run before you spend the user's quota on it.
+
+
 Budgets: \`total_budget_ms\` caps wall-clock; \`per_lead_budget_ms\` caps each lead's poll. For short transport timeouts, pass \`wait_for_completion:false\` and poll \`leadbay_import_status\`. Outputs \`qualified[]\`, \`still_running[]\`, \`not_imported[]\`, plus the ids that resume it: \`lead_ids\` + \`lens_id\` for leadbay_qualify_status, \`import_ids\` for leadbay_import_status. There is no qualification \`notification_id\` — the qualify phase runs per-lead, so no job notification exists; \`notification_ids[]\` are the file-import ones. Idempotent within a 5-min window. \`dry_run:'preview'\` returns mapping hints + custom-field candidates without importing.
 
 \`not_imported\` rows with \`reason:"uncrawled"\` are **pending a background crawl**, NOT failures: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously (the label doesn't verify the URL resolves — don't call the site bad, but don't certify it valid either). Surface them as pending; the leads populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — \`leadbay_import_status\` returns status/progress only, and \`leadbay_pull_leads\` reads the active lens's wishlist so an imported lead outside that lens may not appear). To pull those specific companies back through the MCP, re-run the import later. A large \`uncrawled\` share on a fresh list is normal.
@@ -1954,7 +2095,7 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 // region: leadbay_import_leads
 export const leadbay_import_leads: string = `Import leads into Leadbay's CRM via the file-import wizard. Returns stable Leadbay leadIds for downstream chaining into leadbay_bulk_qualify_leads / leadbay_research_lead_by_id. For MCP clients with short transport timeouts, pass \`wait_for_completion:false\` to return quickly with \`{status:'running', importIds}\`; poll leadbay_import_status with that handle. For end-to-end import+qualify in one call, prefer leadbay_import_and_qualify. For messy files, prefer the \`leadbay_import_file\` prompt which walks an agent through scan → resolve → preserve → commit phases.
 
-SLOW BACKEND ⇒ \`{status:'running', timed_out:true, importIds}\`. The wizard is sometimes slow; when the poll budget runs out this tool returns that SUCCESS result, not an error. The import is still running server-side. **Do NOT call leadbay_import_leads again** — that re-uploads the file and leaves a duplicate CRM-imports row. Call \`leadbay_import_status({importIds})\` after ~30s — and pass \`dry_run:true\` too if the result carried it; on \`complete\` it returns \`result.leads\` with the leadIds, while \`phase:"committing"\` just means keep polling. Tell the user it's running and you'll check back — it is not a problem to report. Exception: \`rows_pending_upload\` rows never reached the backend and DO need a fresh call for that subset only. In records mode the result also carries \`row_ids\` — the synthetic id of each input row, in your \`records[]\` order — because \`leadbay_import_status\` reports recovered leads by that id; keep it to map them back to your source rows.
+SLOW BACKEND ⇒ \`{status:'running', timed_out:true, importIds}\`. The wizard is sometimes slow; when the poll budget runs out this tool returns that SUCCESS result, not an error. The import is still running server-side. **Do NOT call leadbay_import_leads again** — that re-uploads the file and leaves a duplicate CRM-imports row. Leadbay has no cancel, so a Cancel or timeout is no reason to call it either. Sole exception: a \`wait_for_completion:false\` call that returned NOTHING — and even that can re-upload, so check CRM-imports. Call \`leadbay_import_status({importIds})\` after ~30s — and pass \`dry_run:true\` too if the result carried it; on \`complete\` it returns \`result.leads\` with the leadIds, while \`phase:"committing"\` just means keep polling. Tell the user it's running and you'll check back — it is not a problem to report. Exception: \`rows_pending_upload\` rows never reached the backend and DO need a fresh call for that subset only. In records mode the result also carries \`row_ids\` — the synthetic id of each input row, in your \`records[]\` order — because \`leadbay_import_status\` reports recovered leads by that id; keep it to map them back to your source rows.
 
 TWO MODES: (A) Domain-list shortcut — pass \`domains: [{domain, name?}]\`. The tool builds a 2-column CSV (LEAD_NAME, LEAD_WEBSITE) and imports with the default mapping. (B) Custom records + mapping — pass \`records: [{Col1, Col2, ...}]\` plus \`mappings.fields: {Col1: 'LEAD_NAME', ...}\`. \`mappings.fields\` must include LEADBAY_ID, CRM_ID, SIREN, LEAD_NAME, or LEAD_WEBSITE (resolver needs at least one identity key). Pass exactly one of \`domains\` / \`records\`. Reserved column \`MCP_ROW_ID\` cannot appear in records/mappings — the tool injects it for stable reconciliation.
 
@@ -2058,6 +2199,40 @@ WHEN TO USE: after an async import returns its ids — \`leadbay_import_leads\` 
 
 WHEN NOT TO USE: for the qualification half — use leadbay_qualify_status, with the \`lead_ids\` + \`lens_id\` an \`leadbay_import_and_qualify\` launch returned (it has no qualification \`notification_id\`; its \`notification_ids[]\` are these same file imports); or when you still want the legacy blocking behavior from leadbay_import_leads with \`wait_for_completion=true\`.
 
+## A launched job cannot be stopped
+
+Leadbay has no cancel. A job started by \`leadbay_enrich_titles\`,
+\`leadbay_bulk_qualify_leads\`, \`leadbay_import_leads\` or
+\`leadbay_import_and_qualify\` runs to completion on Leadbay. The user cancelling
+in the chat, a request timeout, or a closed stream stops YOUR waiting, never the
+job, and \`cancelled: true\` on an earlier result means we stopped watching, not
+that the work stopped.
+
+**This tool only reads.** Calling it again launches nothing and spends no quota,
+so poll it as often as the job needs — a timeout here is a reason to call it
+again, not a reason to stop.
+
+One import state does NOT progress: a chunk cancelled before its mappings were
+committed reads \`running\` / \`committing\` forever. If the counts hold flat across
+several spaced polls, say so and stop, rather than polling on.
+
+What must not be repeated is the LAUNCH — for work that actually launched. Re-run
+a launcher only for a subset that never started, never for the whole batch:
+
+- \`failed[]\` entries with \`error:"not_queued"\`;
+- a \`rows_pending_upload\` count;
+- leads in \`still_running\` after a CANCELLED \`leadbay_import_and_qualify\`. Its
+  fan-out is sequential, so an interruption leaves the remainder unlaunched and
+  folds them in with the ones that did launch. Nothing in the result tells the
+  two apart, and this tool cannot start either. Wait until the REST of the batch
+  has settled: what launched settles in order, so leads still unanswered after
+  that are the ones that never started. Only then call
+  \`leadbay_bulk_qualify_leads({leadIds, lensId})\` for exactly those ids. A lead
+  that is merely slow looks identical to one that never launched over a few
+  polls, and re-launching it charges the user twice — when unsure, tell the user
+  rather than guess.
+
+
 ---
 
 ## Status / scalar — single-sentence shape
@@ -2120,6 +2295,23 @@ export const leadbay_launch_bulk_enrichment: string = `Launch a bulk-enrichment 
 WHEN TO USE: low-level.
 
 WHEN NOT TO USE: from agent flow — leadbay_enrich_titles handles selection lifecycle, preview, launch, and cleanup.
+
+## A launched job cannot be stopped, and this tool has no retry guard
+
+Leadbay has no cancel. Once this call returns having actually launched, the work
+is queued on Leadbay and runs to completion, and the quota it costs is already
+committed. A \`dry_run\` result reached no backend and spent nothing. The user
+cancelling in the chat, a request timeout, or a closed stream stops YOUR waiting,
+never the job.
+
+Unlike the composite launchers, this tool has **no double-launch guard**: calling
+it again always issues a new paid launch, even seconds later with identical
+arguments. So when a call returns nothing at all, do not simply retry. Read the
+record back first — \`leadbay_research_lead_by_id\` or \`leadbay_get_contacts\` for a
+lead, \`leadbay_account_status\` for background work that has since finished — to
+see whether the launch already landed, and tell the user what you are about to
+spend before spending it again.
+
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
@@ -3244,6 +3436,23 @@ WHEN TO USE: low-level — when you need to kick qualification on exactly one le
 
 WHEN NOT TO USE: as the agent's bulk-qualify path — use leadbay_bulk_qualify_leads, which paginates past already-qualified leads, fans out, polls, and bails out cleanly on 429.
 
+## A launched job cannot be stopped, and this tool has no retry guard
+
+Leadbay has no cancel. Once this call returns having actually launched, the work
+is queued on Leadbay and runs to completion, and the quota it costs is already
+committed. A \`dry_run\` result reached no backend and spent nothing. The user
+cancelling in the chat, a request timeout, or a closed stream stops YOUR waiting,
+never the job.
+
+Unlike the composite launchers, this tool has **no double-launch guard**: calling
+it again always issues a new paid launch, even seconds later with identical
+arguments. So when a call returns nothing at all, do not simply retry. Read the
+record back first — \`leadbay_research_lead_by_id\` or \`leadbay_get_contacts\` for a
+lead, \`leadbay_account_status\` for background work that has since finished — to
+see whether the launch already landed, and tell the user what you are about to
+spend before spending it again.
+
+
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_qualify_lead
@@ -3261,6 +3470,39 @@ Everything comes straight out of the launch response — nothing is stored on th
 WHEN TO USE: after leadbay_bulk_qualify_leads or leadbay_import_and_qualify came back with a non-empty \`still_running[]\`, call this tool a few minutes later (or hours) with those ids to retrieve the now-completed qualifications without re-running the import or re-spending qualify quota.
 
 WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id — that's a deeper per-lead profile and includes contacts. This tool is purely the qualification answers + signals_count.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. A job started by \`leadbay_enrich_titles\`,
+\`leadbay_bulk_qualify_leads\`, \`leadbay_import_leads\` or
+\`leadbay_import_and_qualify\` runs to completion on Leadbay. The user cancelling
+in the chat, a request timeout, or a closed stream stops YOUR waiting, never the
+job, and \`cancelled: true\` on an earlier result means we stopped watching, not
+that the work stopped.
+
+**This tool only reads.** Calling it again launches nothing and spends no quota,
+so poll it as often as the job needs — a timeout here is a reason to call it
+again, not a reason to stop.
+
+One import state does NOT progress: a chunk cancelled before its mappings were
+committed reads \`running\` / \`committing\` forever. If the counts hold flat across
+several spaced polls, say so and stop, rather than polling on.
+
+What must not be repeated is the LAUNCH — for work that actually launched. Re-run
+a launcher only for a subset that never started, never for the whole batch:
+
+- \`failed[]\` entries with \`error:"not_queued"\`;
+- a \`rows_pending_upload\` count;
+- leads in \`still_running\` after a CANCELLED \`leadbay_import_and_qualify\`. Its
+  fan-out is sequential, so an interruption leaves the remainder unlaunched and
+  folds them in with the ones that did launch. Nothing in the result tells the
+  two apart, and this tool cannot start either. Wait until the REST of the batch
+  has settled: what launched settles in order, so leads still unanswered after
+  that are the ones that never started. Only then call
+  \`leadbay_bulk_qualify_leads({leadIds, lensId})\` for exactly those ids. A lead
+  that is merely slow looks identical to one that never launched over a few
+  polls, and re-launching it charges the user twice — when unsure, tell the user
+  rather than guess.
 `;
 // endregion: leadbay_qualify_status
 
