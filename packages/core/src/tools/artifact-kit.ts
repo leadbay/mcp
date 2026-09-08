@@ -33,6 +33,15 @@ export const artifactKit: Tool<ArtifactKitParams> = {
     openWorldHint: false,
   },
   description: ARTIFACT_KIT_DESCRIPTION,
+  outputSchema: {
+    type: "object",
+    properties: {
+      version: { type: "string", description: "Kit version; bump means the runtime changed." },
+      runtime: { type: "string", description: "The self-contained JS the artifact inlines." },
+      usage_guide: { type: "string", description: "Markdown guide for building the artifact." },
+    },
+    required: ["version", "runtime", "usage_guide"],
+  },
   write: false,
   inputSchema: {
     type: "object",

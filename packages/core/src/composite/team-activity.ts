@@ -80,6 +80,64 @@ export const teamActivity: Tool<TeamActivityParams> = {
     openWorldHint: true,
   },
   description: TEAM_ACTIVITY_DESCRIPTION,
+  outputSchema: {
+    type: "object",
+    properties: {
+      range: {
+        type: "object",
+        description: "The window actually queried, after `weeks` was resolved to dates.",
+        properties: {
+          from: { type: "string", description: "ISO date (YYYY-MM-DD), inclusive." },
+          to: { type: "string", description: "ISO date (YYYY-MM-DD), inclusive." },
+          periodicity: { type: "string", description: "DAILY or WEEKLY — the trend bucket size." },
+        },
+        required: ["from", "to", "periodicity"],
+      },
+      reps: {
+        type: "array",
+        description:
+          "One row per rep, already renamed from the backend's KPI vocabulary. " +
+          "Non-admins get only themselves; the backend does that scoping.",
+        items: {
+          type: "object",
+          properties: {
+            user_id: { type: "string" },
+            name: { type: ["string", "null"] },
+            email: { type: ["string", "null"] },
+            total_activities: { type: "number" },
+            likes: { type: "number" },
+            saves: { type: "number" },
+            website_clicks: { type: "number" },
+            exported: { type: "number" },
+            profile_views: { type: "number" },
+            contacts_added: { type: "number" },
+            contacts_purchased: { type: "number" },
+            notes: { type: "number" },
+            meetings_or_interest: {
+              type: "number",
+              description: "Epilogue outcomes logged in the window — the 'deals' signal.",
+            },
+            could_not_reach: { type: "number" },
+            lost: { type: "number" },
+            still_chasing: { type: "number" },
+          },
+        },
+      },
+      trend: {
+        type: "array",
+        description: "Activity over time, one point per period.",
+        items: {
+          type: "object",
+          properties: {
+            date: { type: "string" },
+            count: { type: "number" },
+          },
+        },
+      },
+      _meta: { type: "object", description: "Region + any server-injected notices." },
+    },
+    required: ["range", "reps", "trend"],
+  },
   write: false,
   inputSchema: {
     type: "object",

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.36.0 — 2026-09-08 — The assistant reads four more results properly
+
+- **Four tools now hand the assistant a typed result instead of a wall of text.**
+  Your account history, your team's activity, the guided walkthrough and the
+  artifact kit each describe their own shape now, so the assistant stops
+  guessing at what a field means and reads the numbers straight. Nothing you
+  ask for changes; the answers should just be less prone to misreading.
+
 ## 0.35.2 — 2026-09-08 — A shortened lead id gets a straight answer
 
 - **When Leadbay rejects an argument, the assistant is now told so, and told
