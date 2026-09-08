@@ -52,7 +52,7 @@ describe("LeadbayClient — a backend bad_request 400 is BAD_INPUT, not API_ERRO
       hint = err.hint;
     }
     expect(hint).toContain("will fail the same way");
-    expect(hint).toContain("36-character");
+    expect(hint).toContain("parameter named in the message");
     expect(hint).not.toContain("Try again");
   });
 

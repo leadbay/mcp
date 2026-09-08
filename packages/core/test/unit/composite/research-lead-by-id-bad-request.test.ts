@@ -54,7 +54,7 @@ describe("leadbay_research_lead_by_id — a shortened lead id (product#4085)", (
     });
   });
 
-  it("the hint says the call fails the same way on retry and that ids are full UUIDs", async () => {
+  it("the hint says the call fails the same way on retry and that ids are passed as returned", async () => {
     mockIncident();
     let err: any;
     try {
@@ -63,7 +63,7 @@ describe("leadbay_research_lead_by_id — a shortened lead id (product#4085)", (
       err = e;
     }
     expect(err?.hint).toContain("will fail the same way");
-    expect(err?.hint).toContain("36-character");
+    expect(err?.hint).toContain("parameter named in the message");
     expect(err?.hint).not.toContain("Try again");
   });
 

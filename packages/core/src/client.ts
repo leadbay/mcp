@@ -1081,7 +1081,7 @@ export class LeadbayClient {
       return this.makeError(
         "BAD_INPUT",
         parsed?.error?.message || parsed?.message || "Leadbay rejected the request as malformed",
-        "Leadbay's input validation rejected this call, so the same call will fail the same way — do not retry it unchanged. Fix the named parameter first: ids must be the full values Leadbay returned (a lead id is a 36-character UUID), never shortened or reconstructed.",
+        "Leadbay's input validation rejected this call, so the same call will fail the same way — do not retry it unchanged. Fix the parameter named in the message first; if it is an id, pass it exactly as Leadbay returned it, never shortened or reconstructed.",
         endpoint,
         null,
         status
