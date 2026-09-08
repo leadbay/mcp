@@ -225,5 +225,24 @@ jobs:
       - name: Validate server.json
         run: ./mcp-publisher validate packages/mcp/server.json
       - name: Publish
-        run: ./mcp-publisher publish packages/mcp/server.json
+        # The registry re-checks npm before it will register the version, and
+        # on mcp-v0.34.1 it got there first: "NPM package '@leadbay/mcp'
+        # exists, but version '0.34.1' was not found (status: 404)", HTTP 400,
+        # and 0.34.1 never reached the registry. The error text itself says to
+        # wait and retry, so do that rather than losing a release to npm's
+        # propagation delay.
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if ./mcp-publisher publish packages/mcp/server.json; then
+              echo "Published on attempt $attempt"
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              echo "Publish attempt $attempt failed; waiting 30s for npm to propagate"
+              sleep 30
+            fi
+          done
+          echo "mcp-publisher still failing after 5 attempts"
+          exit 1
 
