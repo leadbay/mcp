@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.35.1 — 2026-09-08 — Claude Desktop and the directory catch up
+
+- **The Claude Desktop bundle is on 0.35.0 again.** 0.35.0 reached npm and the
+  hosted assistant but its download never got built, so anyone installing the
+  desktop extension was still getting 0.34. The download is back, and
+  `releases/latest/download/leadbay-latest.dxt` points at it.
+- **Leadbay is listed at its current version in the MCP directory.** The
+  listing had been stuck two versions back.
+
+Nothing about the assistant's behaviour changes in this release.
+
 ## 0.35.0 — 2026-09-02 — Background jobs you can come back to
 
 - **A job you start without waiting now hands back Leadbay's own id.**

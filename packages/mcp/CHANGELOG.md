@@ -1,5 +1,26 @@
 # Changelog — @leadbay/mcp
 
+## 0.35.1 — 2026-09-08
+
+Release-pipeline only. No source change, no behaviour change: `packages/core`
+and `packages/mcp` are byte-identical to 0.35.0. This version exists because
+the MCP Registry can only be reached by a tag push, and the two `release.yml`
+bugs fixed in #208 had to ship before a tag could carry it.
+
+**What was broken.** 0.35.0 published to npm and then the workflow died
+before creating the GitHub Release: the release-notes pipeline ended in
+`head -60` under `set -euo pipefail`, the 0.35.0 changelog section is 115
+lines, so `head` closed the pipe, GNU sed failed its final flush and the step
+exited 4. No Release meant no `.dxt`/`.mcpb`, and `Publish to MCP Registry`
+was skipped for `needs:`-ing the job that failed. Separately, on 0.34.1 the
+registry job did run and the registry refused it — it re-checks npm itself and
+got a 404 for a version published seconds earlier. Between the two, the
+directory listing sat at 0.34.0 and the desktop bundle at 0.34.x while npm and
+the hosted server were on 0.35.0.
+
+0.35.0's Release and its four assets were created by hand once #208 landed;
+this release is what carries the fix through the pipeline itself.
+
 ## 0.35.0 — 2026-09-02
 
 The MCP no longer keeps any record of the jobs it starts (product#4005,
