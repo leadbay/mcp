@@ -30,6 +30,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      # claude-code-action installs the Claude Code native build into
+      # ~/.local/bin and then execs it from there. On this runner the
+      # installer's launcher step can fail with "claude command at
+      # /home/runner/.local/bin/claude missing or broken (/home/runner/.local/bin
+      # does not exist)" while STILL printing "successfully installed", so the
+      # action proceeds and dies on executable_not_found. It is not the build:
+      # 2.1.265 installed cleanly on one PR and failed three attempts in a row
+      # on the next, same runner image, same action tag. Creating the directory
+      # first removes the one precondition the installer does not create for
+      # itself. Delete this once the installer stops depending on it.
+      - name: Ensure ~/.local/bin exists for the Claude Code installer
+        run: mkdir -p "$HOME/.local/bin"
+
       - name: Find last reviewed commit
         id: last-review
         if: github.event.action == 'synchronize'
