@@ -586,6 +586,57 @@ function extractTriggeredBy(args: Record<string, unknown>): {
   return { triggered_by: trimmed, cleaned };
 }
 
+// The SDK does not validate `inputSchema` before dispatch (the mandate comment
+// in the CallTool handler says so), so a wrong-SHAPED argument reached
+// `execute` raw: `lead_ids: "<uuid>"` threw `(params.lead_ids ?? []).filter is
+// not a function` out of leadbay_set_lead_status five times in 29s
+// (product#4079), and `locations: "Paris"` threw `texts.filter is not a
+// function` out of leadbay_new_lens (2026-08-04). A raw TypeError names no
+// argument, so the agent re-sends the same call. This checks the two shapes JS
+// cannot coerce — array and object — against the schema every tool already
+// declares, and answers with the same BAD_INPUT envelope a tool returns
+// itself. Scalars are left alone on purpose (hosts send "20" for a number and
+// tools coerce). A string is never promoted to a one-element array: a
+// JSON-stringified array would become one bogus id. First mismatch only, in
+// schema order; `null` counts as absent.
+function findShapeMismatch(
+  tool: Tool,
+  args: Record<string, unknown>
+): { error: true; code: "BAD_INPUT"; message: string; hint: string } | undefined {
+  const schema = tool.inputSchema as Record<string, unknown> | undefined;
+  if (!schema || schema.type !== "object") return undefined;
+  const props = schema.properties as Record<string, unknown> | undefined;
+  if (!props || typeof props !== "object") return undefined;
+  for (const [key, spec] of Object.entries(props)) {
+    if (key === TRIGGERED_BY_FIELD || !spec || typeof spec !== "object") continue;
+    const declared = (spec as Record<string, unknown>).type;
+    if (declared !== "array" && declared !== "object") continue;
+    const value = args[key];
+    if (value === undefined || value === null) continue;
+    const isArray = Array.isArray(value);
+    const got = isArray ? "array" : typeof value;
+    if (declared === "array" && !isArray) {
+      const items = (spec as Record<string, unknown>).items as Record<string, unknown> | undefined;
+      const of = typeof items?.type === "string" ? ` of ${items.type}s` : "";
+      return {
+        error: true,
+        code: "BAD_INPUT",
+        message: `${key} must be a JSON array (got ${got})`,
+        hint: `Re-call with ${key} as a JSON array${of}, e.g. ${key}: ["…"]. Do not JSON-stringify the array.`,
+      };
+    }
+    if (declared === "object" && (typeof value !== "object" || isArray)) {
+      return {
+        error: true,
+        code: "BAD_INPUT",
+        message: `${key} must be a JSON object (got ${got})`,
+        hint: `Re-call with ${key} as a JSON object, e.g. ${key}: {…}.`,
+      };
+    }
+  }
+  return undefined;
+}
+
 function toolsListPayload(tools: Tool[]) {
   return tools.map((t) => {
     const out: Record<string, unknown> = {
@@ -1308,7 +1359,13 @@ export function buildServer(
       // instead of surviving the call that wanted it (product#4003). That is
       // what bounds a stalled backend — the host's own policy, not a wall-clock
       // number we would have to guess on Leadbay's behalf.
-      const result = await runWithRequestSignal(extra.signal, () => tool.execute(client, args, {
+      // Shape gate (product#4079): a container-typed argument sent as the wrong
+      // JSON type is answered with BAD_INPUT before execute, through the same
+      // envelope branch a tool's own BAD_INPUT takes below. Runs AFTER the
+      // LAST_PROMPT_REQUIRED guard so a composite missing `_triggered_by`
+      // still hears about the mandate first.
+      const shapeError = findShapeMismatch(tool, args);
+      const result = shapeError ?? await runWithRequestSignal(extra.signal, () => tool.execute(client, args, {
         logger: opts.logger,
         notificationsInbox: opts.notificationsInbox,
         signal: extra.signal,

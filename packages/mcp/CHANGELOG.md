@@ -116,6 +116,44 @@ thing where it counts, driving the real Hono app on a real socket through
 `StreamableHTTPServerTransport` and reading `tools/list` — the catalogue objects
 the audit reads are not what a chat host receives.
 
+## 0.34.1 — 2026-09-07
+
+`leadbay_set_lead_status` threw `TypeError: (params.lead_ids ?? []).filter is
+not a function` five times in 29 s on the hosted route (product#4079, Sentry
+MCP-3T): a scheduled agent passed `lead_ids` as something other than an array.
+The same class hit `leadbay_new_lens` on 2026-08-04 (`texts.filter is not a
+function`, `locations` as a string, MCP-3B). Both times the agent retried the
+identical call four or five times, because a raw TypeError names no argument.
+
+The CallTool handler in `server.ts` never checked `inputSchema` before
+`tool.execute`; its own comment said enforcement was ours, and it only enforced
+`_triggered_by`. 32 tools declare a top-level `array` or `object` parameter and
+none of them defended against a string: four threw, two silently corrupted
+(`adjust_audience` spread `"tech"` into `["t","e","c","h"]`), the rest forwarded
+the string to the backend.
+
+One guard now runs before `execute`, after the `LAST_PROMPT_REQUIRED` check
+(`findShapeMismatch`): for each top-level schema property whose `type` is
+`array` or `object`, a present non-null argument of the wrong JSON shape returns
+`BAD_INPUT` naming the field, the expected shape and the received type
+(`lead_ids must be a JSON array (got string)`), through the same envelope branch
+a tool's own `BAD_INPUT` takes. So PostHog sees `ok:false error_code:BAD_INPUT`
+and Sentry groups the event with the tool's existing `BAD_INPUT` issue
+(`source:business`) instead of a `source:unexpected` stack fingerprint.
+
+Deliberately not done: no coercion of a bare string into a one-element array (a
+JSON-stringified array would become one bogus id and fail per lead inside
+`failed[]`); no scalar checks (hosts send `"20"` for a number and tools coerce);
+no `required`, `items`, nested or `additionalProperties` validation; no runtime
+dependency. `null` counts as absent. One visible change on an existing tool:
+`leadbay_report_outreach` with `verification` given as a string answered
+`VERIFICATION_REQUIRED`; it now answers `BAD_INPUT … must be a JSON object (got
+string)`. Tools executed directly outside the MCP server (OpenClaw consumes
+`@leadbay/core` without `buildServer`) keep the raw throw.
+
+Test: `packages/mcp/test/unit/input-shape-guard.test.ts` drives `tools/call`
+through `buildServer` with the incident shapes.
+
 ## 0.34.0 — 2026-09-02
 
 The OpenAI app directory rejects an app that sells digital goods — "plugins may

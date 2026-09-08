@@ -23,6 +23,15 @@
   starting it over, and when part of a batch never started, it re-runs only that
   part. So you stop paying twice for rows Leadbay is already working on.
 
+## 0.34.1 — 2026-09-07 — A wrong-shaped argument gets a straight answer
+
+- **The assistant is now told which field it got wrong and what shape it
+  needs.** When it sends a list as plain text (one lead id instead of a list of
+  ids, "Paris" instead of a list of places), Leadbay answers "`lead_ids` must be
+  a JSON array (got string)" and the assistant fixes the call on the next try.
+  Before, the call died with an internal error that named nothing, and the
+  assistant repeated the same call five times before giving up.
+
 ## 0.34.0 — 2026-09-02 — Leadbay on ChatGPT gets its own address
 
 - **On ChatGPT, add Leadbay as `https://mcp.leadbay.app/chatgpt/mcp`.** Same
