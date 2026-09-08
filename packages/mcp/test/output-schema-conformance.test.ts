@@ -1454,7 +1454,24 @@ const CASES: ConformanceCase[] = [
           status: 200,
           body: [],
         },
+        {
+          method: "GET",
+          path: /\/1\.6\/leads\/lead-1\/contacts/,
+          status: 200,
+          body: [],
+        },
         { method: "GET", path: "/1.6/leads/lead-1/web_fetch", status: 200, body: {} },
+        {
+          // research_lead_by_id reads its own activities?count=20 BEFORE
+          // account_history reads activities?count=5. mockHttp consumes a script
+          // once, so both need one — otherwise the second falls through to "no
+          // script matched", account_history .catch()es to an empty timeline and
+          // the case silently asserts the degraded shape.
+          method: "GET",
+          path: /\/1\.6\/leads\/lead-1\/activities\?count=20/,
+          status: 200,
+          body: { items: [], pagination: { total: 0 } },
+        },
         {
           method: "GET",
           path: /\/1\.6\/leads\/lead-1\/notes/,

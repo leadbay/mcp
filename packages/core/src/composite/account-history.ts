@@ -43,7 +43,11 @@ export const accountHistory: Tool<AccountHistoryParams> = {
         required: ["id"],
       },
       signals: {
-        type: ["object", "null"],
+        // An ARRAY of priority-ordered sections, matching what
+        // research_lead_by_id's own outputSchema declares — this is its payload
+        // passed straight through. Null when the research call has no web-fetch
+        // content to reshape.
+        type: ["array", "null"],
         description: "Live signals, verbatim from leadbay_research_lead_by_id — why this account is hot NOW.",
       },
       firmographics: { type: ["object", "null"], description: "Company facts, verbatim from research." },

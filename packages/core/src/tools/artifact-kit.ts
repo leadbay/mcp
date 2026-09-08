@@ -39,6 +39,10 @@ export const artifactKit: Tool<ArtifactKitParams> = {
       version: { type: "string", description: "Kit version; bump means the runtime changed." },
       runtime: { type: "string", description: "The self-contained JS the artifact inlines." },
       usage_guide: { type: "string", description: "Markdown guide for building the artifact." },
+      // buildServer injects _meta.update_available / _meta.notifications into
+      // successful object results before emitting structuredContent, so it is a
+      // real top-level key at runtime even though execute() never writes it.
+      _meta: { type: "object", description: "Server-injected notices, when present." },
     },
     required: ["version", "runtime", "usage_guide"],
   },

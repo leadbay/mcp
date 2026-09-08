@@ -337,7 +337,11 @@ following as high-priority (P0/P1) issues:
   backtick-wrapped `leadbay_*` identifier must resolve.
 
 - **Tests.** New tests go in **new** files — do not modify existing test
-  files. Flag unit tests that make real network calls: the `node:https`
+  files. One sanctioned exception: `output-schema-conformance.test.ts`'s
+  `CASES` / `OPT_OUT` registries. Its own drift-catcher fails any tool that
+  declares an `outputSchema` without an entry in one of them, so adding a
+  schema *requires* editing that file. Add the entry there and put any new
+  behavioural assertions in a new file. Flag unit tests that make real network calls: the `node:https`
   harness throws on any undeclared endpoint, so tests must declare their HTTP
   responses via `mockHttp([...])`.
 

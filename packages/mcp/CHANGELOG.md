@@ -18,6 +18,26 @@ against the schema. Mutation-checked — renaming `trend` in the team_activity
 schema fails with `$.trend: return contains key not declared in
 outputSchema.properties (drift)`.
 
+A local Codex review of this branch found three real defects in the first pass,
+all fixed here:
+
+- `account_history` declared `signals` as an object. `research_lead_by_id`,
+  whose payload it passes straight through, declares it an **array**. The
+  conformance walk checks required keys and undeclared keys, not types, so it
+  did not catch this.
+- The `account_history` conformance case under-mocked the fan-out. It never
+  mocked `/leads/{id}/contacts?IncludeEnriched=true`, and gave one generic
+  `/activities` script for the two reads that happen (research's `count=20`,
+  then the tool's own `count=<n>`). The harness consumes a script once, so the
+  second read rejected, `.catch()`ed to empty, and the case asserted a degraded
+  timeline while staying schema-conformant. Proven: with the old mocks the new
+  `account-history-full-fanout.test.ts` fails `expected [] to have a length of
+  1`.
+- `artifact_kit`'s schema omitted `_meta`. `buildServer` injects
+  `_meta.update_available` / `_meta.notifications` into successful object
+  results before setting `structuredContent`, so it is a real top-level key at
+  runtime. The other three declared it.
+
 Two deliberate limits:
 
 - **`leadbay_list_sectors` is excluded.** It returns a bare array, and
