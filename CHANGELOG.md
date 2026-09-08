@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.35.2 — 2026-09-08 — A shortened lead id gets a straight answer
+
+- **When Leadbay rejects an argument, the assistant is now told so, and told
+  not to retry.** When it sends a lead id that is not the full UUID (the first
+  eight characters instead of all thirty-six), Leadbay answers "bad 'leadId'
+  parameter" and says the same call will fail the same way, so the assistant
+  fixes the id instead of repeating the call. Before, the same rejection came
+  back as a generic API error with the advice "Try again", and an unattended
+  morning routine tried again twenty times in 39 seconds and produced nothing
+  (product#4085).
+
 ## 0.35.1 — 2026-09-08 — Claude Desktop and the directory catch up
 
 - **The Claude Desktop bundle is on 0.35.0 again.** 0.35.0 reached npm and the

@@ -1,5 +1,26 @@
 # Changelog — @leadbay/mcp
 
+## 0.35.2 — 2026-09-08
+
+A backend `bad_request` 400 is now `BAD_INPUT` (product#4085).
+
+**What happened.** On 8 Sep an unattended routine on the hosted server called
+`leadbay_research_lead_by_id` twenty times in 39 seconds with the first block
+of each lead UUID (`/lenses/48110/leads/5585c198`, …). The backend rejected
+every call in ~30 ms with `400 {"error":{"code":"bad_request","message":"bad
+'leadId' parameter"}}`. `client.ts` `mapErrorResponse` filed that under the
+`API_ERROR` catch-all, whose hint reads "Try again or check the Leadbay API
+status". The agent did what it was told. The same pattern ran on 31 Aug.
+
+**Change.** A 400 whose body carries the backend's `bad_request` code (a path
+or query parameter that failed to parse, a body that failed to deserialize) is
+`BAD_INPUT`, with the backend message verbatim and a hint that the call fails
+identically on retry and that ids are the full values Leadbay returned. Other
+400 codes (`duplicate`, `unpaid_invoice`, `not_allowed`, …) are domain answers
+and stay `API_ERROR`. `leadbay_research_lead_by_id`'s `leadId` schema
+description now says the id is the full 36-character UUID from
+`leadbay_pull_leads` `items[].id`, never shortened. No template change.
+
 ## 0.35.1 — 2026-09-08
 
 Release-pipeline only. No source change, no behaviour change: `packages/core`
