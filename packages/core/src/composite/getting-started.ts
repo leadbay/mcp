@@ -432,7 +432,7 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         "not a key this tool reads, so it is dropped and the paid call falls back to " +
         "the default wishlist selection, charging for the whole batch — plus the " +
         "chosen title, confirm:true and email:true. Poll leadbay_bulk_enrich_status " +
-        "with the returned bulk_id until all_done (or the count plateaus), and " +
+        "with the returned notification_id and lead_ids until all_done (or the count plateaus), and " +
         "report the contact that actually resolved. NEVER launch the reveal without " +
         "an explicit confirm: silence is not consent, and neither is 'they clicked " +
         "the gate'. If they decline, keep the draft and the title and move on — " +

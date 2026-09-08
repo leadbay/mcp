@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.35.0 — 2026-09-02 — Background jobs you can come back to
+
+- **A job you start without waiting now hands back Leadbay's own id.**
+  Qualification, imports and contact enrichment launched in the background
+  return the same id Leadbay keeps for thirty days. Ask about it in the next
+  message, the next conversation, or tomorrow, and the assistant picks it up.
+  On the hosted assistant those three requests used to fail every time with
+  "No BulkTracker configured"; they now work.
+- **Nothing of yours is kept on our server between messages.** The assistant
+  no longer writes imported rows or lead lists to a file of its own; Leadbay
+  is the only record.
+- **Old ticket names are answered, not crashed.** An assistant still passing
+  `bulk_id`, `qualify_id` or `handle_id` is told which id to pass instead.
+- **The wrong kind of id is caught.** An import's id given to the enrichment
+  status (or the other way round) is named as such, instead of a confident
+  wrong answer.
+- **Work you start keeps running, even if you stop the assistant.** An import,
+  an enrichment or a qualification cannot be called back once it has started —
+  Leadbay finishes it. Stopping the assistant, or a slow reply, only stops the
+  waiting. The assistant now knows this: it checks on the job rather than
+  starting it over, and when part of a batch never started, it re-runs only that
+  part. So you stop paying twice for rows Leadbay is already working on.
+
 ## 0.34.1 — 2026-09-07 — A wrong-shaped argument gets a straight answer
 
 - **The assistant is now told which field it got wrong and what shape it

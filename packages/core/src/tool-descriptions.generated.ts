@@ -220,7 +220,7 @@ Some Leadbay tool responses include a \`_meta.notifications\` array listing **ba
   - \`leadbay_qualify_status\` → \`still_running\` is empty: every launched lead has finished or failed. (\`in_progress\` also reads \`false\` on the fast path, but it can be \`null\` on the legacy/fallback read — so treat an empty \`still_running\` as terminal on its own; only require \`in_progress:false\` when that field is actually present.) LIKE imports, large qualification runs are async by design: \`leadbay_bulk_qualify_leads\` defaults to \`wait_for_completion:false\` for \`count > 5\` or chained workflows because blocking can time out, and \`leadbay_qualify_status\` may take minutes/hours. So don't force a long polling loop on a big run — return the handle/progress and let completion arrive via \`_meta.notifications\` — UNLESS the user explicitly asked to wait, or it's a small run that finishes quickly. A small \`wait_for_completion:true\` run you can poll to \`still_running\` empty inline.
   - \`leadbay_import_status\` → \`status:"complete"\` (or \`"failed"\`). BUT imports are the exception to the stay-active loop: a large \`leadbay_import_leads({wait_for_completion:false})\` is meant to return a handle and resolve over minutes, and the tool does ONE refresh pass per call. Don't block the conversation looping on it — surface the returned progress/handle and let the completion arrive via \`_meta.notifications\` — UNLESS the user explicitly asked you to wait for the import, or it's a small import that finishes quickly.
 
-  Enrichment polls to completion in-turn BY DEFAULT — the exception is when the user explicitly said to start it in the background / not wait ("kick it off, I'll check later"), in which case hand back the bulk_id and let completion arrive via \`_meta.notifications\` (only when a notification id exists; if none was returned, tell the user to ask again / that you'll poll later, since nothing will auto-surface). For qualification and imports, poll inline only for small/quick runs or when the user explicitly asked you to wait; otherwise return the handle and let \`_meta.notifications\` deliver it. Either way, the user should never have to ask "is it done yet?" for work you kicked off in the same turn — you either report it or hand back a clear in-progress handle.
+  Enrichment polls to completion in-turn BY DEFAULT — the exception is when the user explicitly said to start it in the background / not wait ("kick it off, I'll check later"), in which case hand back the notification_id and let completion arrive via \`_meta.notifications\` (only when a notification id exists; if none was returned, tell the user to ask again / that you'll poll later, since nothing will auto-surface). For qualification and imports, poll inline only for small/quick runs or when the user explicitly asked you to wait; otherwise return the handle and let \`_meta.notifications\` deliver it. Either way, the user should never have to ask "is it done yet?" for work you kicked off in the same turn — you either report it or hand back a clear in-progress handle.
 
 Also surfaced as a top-level \`notifications\` array on \`leadbay_account_status\` — same shape, same handling.
 
@@ -551,11 +551,45 @@ WHEN NOT TO USE: the user wants a plain data answer (route to leadbay_pull_leads
 // endregion: leadbay_artifact_kit
 
 // region: leadbay_bulk_enrich_status
-export const leadbay_bulk_enrich_status: string = `Check status + per-lead contacts for a bulk enrichment you previously launched via leadbay_enrich_titles. Returns the \`bulk_id\`, progress per lead (done/total enrichable contacts), and overall progress. When \`include_contacts=true\` (opt-in), includes each contact's email/phone_number/job_title/enrichment.done.
+export const leadbay_bulk_enrich_status: string = `Check status + per-lead contacts for a bulk enrichment you previously launched via leadbay_enrich_titles. Pass the \`notification_id\` for the job counters in one call, and/or the \`lead_ids\` + \`titles\` + \`email\` / \`phone\` the launch returned for per-lead progress. \`lead_ids\` alone is a valid call and is the reliable one: the job lookup is a scan of your recent notifications, so an archived job may not be found, and an enrichment notification does not always carry counters (then the tool answers \`ENRICH_JOB_NO_COUNTERS\` with the backend's running/finished flag and asks for \`lead_ids\`) — but the leads always answer. When \`include_contacts=true\` (opt-in), includes each contact's email/phone_number/job_title/enrichment.done.
 
-WHEN TO USE: poll this REPEATEDLY after leadbay_enrich_titles returns a \`bulk_id\`, staying active until the job is done — don't stop after one check, and don't hand the turn back to the user while progress is still climbing. "Done" = \`all_done:true\`, OR \`overall_progress.done\` has held steady across several SPACED polls (~15–30s apart) over at least ~90s–2 min of elapsed time (some contacts are unresolvable and never flip, so \`all_done\` can stay false forever — don't spin indefinitely). Do NOT declare a plateau from the first few back-to-back reads: right after launch, \`overall_progress.done\` can sit flat while the backend is still spinning the job up, so space your polls out and give it real elapsed time before treating a flat count as terminal. Also do NOT declare a plateau while the result carries \`partial_failures\` — a flat \`done\` there means a transient per-lead fetch error (e.g. a 429), NOT an unresolvable contact; keep polling (respecting any \`retry_after\`) or surface it as a temporary status failure, rather than reporting those leads as permanently unresolved. Default \`include_contacts=false\` for the cheap interim polls; set \`include_contacts=true\` on the read you report from to pull each lead's enriched contacts for the completion report.
+WHEN TO USE: poll this REPEATEDLY after leadbay_enrich_titles returns a \`notification_id\`, staying active until the job is done — don't stop after one check, and don't hand the turn back to the user while progress is still climbing. "Done" = \`all_done:true\`, OR \`overall_progress.done\` has held steady across several SPACED polls (~15–30s apart) over at least ~90s–2 min of elapsed time (some contacts are unresolvable and never flip, so \`all_done\` can stay false forever — don't spin indefinitely). Do NOT declare a plateau from the first few back-to-back reads: right after launch, \`overall_progress.done\` can sit flat while the backend is still spinning the job up, so space your polls out and give it real elapsed time before treating a flat count as terminal. Also do NOT declare a plateau while the result carries \`partial_failures\` — a flat \`done\` there means a transient per-lead fetch error (e.g. a 429), NOT an unresolvable contact; keep polling (respecting any \`retry_after\`) or surface it as a temporary status failure, rather than reporting those leads as permanently unresolved. Default \`include_contacts=false\` for the cheap interim polls; set \`include_contacts=true\` on the read you report from to pull each lead's enriched contacts for the completion report.
 
 WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id — that already includes enriched contacts for a single lead.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. A job started by \`leadbay_enrich_titles\`,
+\`leadbay_bulk_qualify_leads\`, \`leadbay_import_leads\` or
+\`leadbay_import_and_qualify\` runs to completion on Leadbay. The user cancelling
+in the chat, a request timeout, or a closed stream stops YOUR waiting, never the
+job, and \`cancelled: true\` on an earlier result means we stopped watching, not
+that the work stopped.
+
+**This tool only reads.** Calling it again launches nothing and spends no quota,
+so poll it as often as the job needs — a timeout here is a reason to call it
+again, not a reason to stop.
+
+One import state does NOT progress: a chunk cancelled before its mappings were
+committed reads \`running\` / \`committing\` forever. If the counts hold flat across
+several spaced polls, say so and stop, rather than polling on.
+
+What must not be repeated is the LAUNCH — for work that actually launched. Re-run
+a launcher only for a subset that never started, never for the whole batch:
+
+- \`failed[]\` entries with \`error:"not_queued"\`;
+- a \`rows_pending_upload\` count;
+- leads in \`still_running\` after a CANCELLED \`leadbay_import_and_qualify\`. Its
+  fan-out is sequential, so an interruption leaves the remainder unlaunched and
+  folds them in with the ones that did launch. Nothing in the result tells the
+  two apart, and this tool cannot start either. Wait until the REST of the batch
+  has settled: what launched settles in order, so leads still unanswered after
+  that are the ones that never started. Only then call
+  \`leadbay_bulk_qualify_leads({leadIds, lensId})\` for exactly those ids. A lead
+  that is merely slow looks identical to one that never launched over a few
+  polls, and re-launching it charges the user twice — when unsure, tell the user
+  rather than guess.
+
 
 ## QUOTA — show where the user stands after the spend
 
@@ -563,20 +597,50 @@ Enrichment consumes QUOTA (the per-window allowance), not a separate credit wall
 
 ## COMPLETION REPORT — what to tell the user when the job is done
 
-The result always carries \`overall_progress:{done,total,done_ratio}\` and, with \`include_contacts:true\`, \`leads[]\` each with contacts' \`email\` / \`phone_number\` / \`job_title\` / \`enrichment.done\`. When the read came back on the notification fast path it ALSO carries \`bulk_progress:{total_count,success_count,failure_count,quota_hit_count}\` — but the legacy per-lead fallback (older records with no \`notification_id\`, or a notification not yet visible) returns NO \`bulk_progress\`, so derive counts from \`overall_progress\` in that case rather than assuming \`bulk_progress\` is present. A contact counts as done only when the REQUESTED channel actually landed — for a phone run, \`enrichment.done:true\` with no \`phone_number\` is NOT done (the contact may have been email-enriched earlier); read \`email\` / \`phone_number\` against the requested channels, don't rely on the \`enrichment.done\` flag alone (\`overall_progress\` already accounts for this). \`include_contacts\` returns each lead's FULL contact list (it fans out through \`leadbay_get_contacts\`), so it can include contacts of other roles that were enriched in earlier runs — filter your report to the \`titles\` this bulk enriched (match each contact's \`job_title\`), don't attribute a pre-existing email of an unrelated role to this run. Report it yourself in the SAME turn, without a reprompt and without deferring to a scheduled re-check: name which of the just-enriched contacts now have emails / phones, the done/total counts, and — if \`bulk_progress\` is present — any \`quota_hit_count\` (if non-zero, say some contacts were skipped because the quota window was exhausted, and point to \`leadbay_account_status\` for the wait-or-top-up choice). If you stopped on a plateau (not \`all_done\`), say so plainly — report the resolved contacts and name the ones that didn't resolve, keyed to the requested channel and the returned fields (no \`email\` → "no email found"; no \`phone_number\` → "no phone number found") — rather than implying the job fully finished. Then show refreshed quota via \`leadbay_account_status\` (see QUOTA above); do NOT print a credits-remaining line.
+The result always carries \`overall_progress:{done,total,done_ratio}\` and, with \`include_contacts:true\`, \`leads[]\` each with contacts' \`email\` / \`phone_number\` / \`job_title\` / \`enrichment.done\`. \`bulk_progress:{total_count,success_count,failure_count,quota_hit_count}\` is present only when you passed a \`notification_id\` AND the job was found; derive counts from \`overall_progress\` rather than assuming \`bulk_progress\` is there. With \`lead_ids\`, each entry carries \`enrichment_progress:{done,total}\` — \`done\` counts only contacts whose REQUESTED channel has landed, scoped to the \`titles\` this run enriched, so a lead's pre-existing CFO email cannot inflate a CEO run. A contact counts as done only when the REQUESTED channel actually landed — for a phone run, \`enrichment.done:true\` with no \`phone_number\` is NOT done (the contact may have been email-enriched earlier); read \`email\` / \`phone_number\` against the requested channels, don't rely on the \`enrichment.done\` flag alone (\`overall_progress\` already accounts for this). \`include_contacts\` returns each lead's FULL contact list (it fans out through \`leadbay_get_contacts\`), so it can include contacts of other roles that were enriched in earlier runs — filter your report to the \`titles\` this bulk enriched (match each contact's \`job_title\`), don't attribute a pre-existing email of an unrelated role to this run. Report it yourself in the SAME turn, without a reprompt and without deferring to a scheduled re-check: name which of the just-enriched contacts now have emails / phones, the done/total counts, and — if \`bulk_progress\` is present — any \`quota_hit_count\` (if non-zero, say some contacts were skipped because the quota window was exhausted, and point to \`leadbay_account_status\` for the wait-or-top-up choice). If you stopped on a plateau (not \`all_done\`), say so plainly — report the resolved contacts and name the ones that didn't resolve, keyed to the requested channel and the returned fields (no \`email\` → "no email found"; no \`phone_number\` → "no phone number found") — rather than implying the job fully finished. Then show refreshed quota via \`leadbay_account_status\` (see QUOTA above); do NOT print a credits-remaining line.
 `;
 // endregion: leadbay_bulk_enrich_status
 
 // region: leadbay_bulk_qualify_leads
-export const leadbay_bulk_qualify_leads: string = `Pick the next N unqualified leads in the active lens and qualify them (run AI rescore + web fetch). Pass \`wait_for_completion:false\` to return quickly with \`{status:'running', qualify_id}\`; poll leadbay_qualify_status with that id. With \`wait_for_completion\` omitted/true, the legacy behavior polls until the answers are populated or a budget is exhausted. Already-qualified leads (those with a non-null \`ai_agent_lead_score\`) are silently no-ops on the backend, so this composite paginates past them to find fresh candidates. On 429 mid-fanout, stops launching but keeps polling already-launched leads.
+export const leadbay_bulk_qualify_leads: string = `Pick the next N unqualified leads in the active lens and qualify them (run AI rescore + web fetch). Pass \`wait_for_completion:false\` to return quickly with \`{status:'running', notification_id}\`; poll leadbay_qualify_status with that id. With \`wait_for_completion\` omitted/true, the legacy behavior polls until the answers are populated or a budget is exhausted. Already-qualified leads (those with a non-null \`ai_agent_lead_score\`) are silently no-ops on the backend, so this composite paginates past them to find fresh candidates. On 429 mid-fanout, stops launching but keeps polling already-launched leads.
 
-**Default to \`wait_for_completion:false\`** for any \`count > 5\` or when chained inside a multi-phase workflow — the blocking default can hit the MCP per-call timeout and surface as \`"Request timed out"\` even when the server is still working fine. The async pattern (capture \`qualify_id\`, poll \`leadbay_qualify_status\` every ~10s) is timeout-proof. Reserve the blocking form for tiny single-digit counts in interactive use.
+**Default to \`wait_for_completion:false\`** for any \`count > 5\` or when chained inside a multi-phase workflow — the blocking default can hit the MCP per-call timeout and surface as \`"Request timed out"\` even when the server is still working fine. The async pattern (capture \`notification_id\`, poll \`leadbay_qualify_status\` every ~10s) is timeout-proof. Reserve the blocking form for tiny single-digit counts in interactive use.
 
 Context: Leadbay auto-qualifies roughly the top 10 of each daily batch. Leads below the top ~10 are NOT worse — the system is saving resources. This tool is how the agent spends more resources to go deeper on promising-looking leads the user hasn't had time to surface yet.
 
 WHEN TO USE: when the user wants more qualified leads than what's currently shown, or when a lead looks promising in leadbay_pull_leads but has an empty \`qualification_summary\`.
 
 WHEN NOT TO USE: to qualify a single specific lead — that's leadbay_qualify_lead (granular, advanced).
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned a launched or
+running result, that work is queued on Leadbay and runs to completion, and the
+quota it costs is already committed. A discovery, preview or \`dry_run\` result
+launched nothing and is not covered here.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting, never the job. \`cancelled: true\` means we stopped watching, not that the
+work stopped. What to do next depends on what you are holding:
+
+- **A handle.** Poll the status tool with it, and do not launch the work that
+  handle covers a second time — that spends the quota again on the same rows.
+  \`leadbay_import_status\` takes \`importIds\`, so pass the values of \`import_ids\`
+  under that name. A qualification started by \`leadbay_import_and_qualify\` has no
+  notification of its own: resume it with
+  \`leadbay_qualify_status({lead_ids, lens_id})\`.
+- **A handle AND a subset the result says never started** — \`failed[]\` entries
+  with \`error:"not_queued"\`, or a \`rows_pending_upload\` count. Poll the handle
+  for what was launched and re-run for that subset only, never for the whole
+  batch.
+- **No result at all**, because the call timed out or the stream closed before it
+  returned. Check \`leadbay_account_status\` first: the launch may have landed and
+  finished. Calling the same tool again with the same arguments will usually hand
+  back the job already launched rather than starting a second one, but that guard
+  is in-memory, five minutes, and per process, so it is best-effort — say what you
+  are about to re-run before you spend the user's quota on it.
+
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
@@ -599,7 +663,7 @@ After the status line, propose the obvious refresh / progress-check / recovery a
 
 Specifically for bulk qualify:
 
-- Kicked off async → \`"✓ Qualifying N lead(s) (qualify_id <id>) — typically ~M minutes. I'll refresh your leads view when it's done."\`
+- Kicked off async → \`"✓ Qualifying N lead(s) (notification_id <id>) — typically ~M minutes. I'll refresh your leads view when it's done."\`
 - Blocking call returned with answers → \`"✓ Qualified N lead(s). Refresh your leads to see the new ❖ caps."\`
 - Already-qualified short-circuit → \`"All N leads are already qualified — no work to do."\`
 - 429 mid-fanout → \`"⚠ Rate-limited after launching M of N — already-launched leads will complete; re-call later for the rest."\`
@@ -1107,6 +1171,23 @@ WHEN TO USE: when the user has already picked WHO they want on a company and you
 
 WHEN NOT TO USE: for bulk enrichment by job title across many leads — use leadbay_enrich_titles, which handles the selection lifecycle and returns a clean preview/launch flow. Not to mark someone as the priority contact — that is leadbay_pin_contact, and pinning does not enrich anyone.
 
+## A launched job cannot be stopped, and this tool has no retry guard
+
+Leadbay has no cancel. Once this call returns having actually launched, the work
+is queued on Leadbay and runs to completion, and the quota it costs is already
+committed. A \`dry_run\` result reached no backend and spent nothing. The user
+cancelling in the chat, a request timeout, or a closed stream stops YOUR waiting,
+never the job.
+
+Unlike the composite launchers, this tool has **no double-launch guard**: calling
+it again always issues a new paid launch, even seconds later with identical
+arguments. So when a call returns nothing at all, do not simply retry. Read the
+record back first — \`leadbay_research_lead_by_id\` or \`leadbay_get_contacts\` for a
+lead, \`leadbay_account_status\` for background work that has since finished — to
+see whether the launch already landed, and tell the user what you are about to
+spend before spending it again.
+
+
 ## QUOTA, NOT CREDITS
 
 Enrichment is gated by QUOTA (the per-window allowance in \`leadbay_account_status\`), not a credit balance. **Never pre-refuse because a credit number looks low or zero** — a freemium/fresh account with quota left can enrich even when its credit counter reads 0. The reveal either fits the remaining quota or the backend returns 429 (\`quota_exceeded\`); only THEN surface the exhausted window + wait-or-top-up choice. The \`credits_remaining\` field on the result is **advisory internal context only — do NOT display it**. Because it can read \`0\` on an account that still has quota, printing \`_(N credits remaining)_\` would falsely tell the user they're out. Do not render a credits balance at all; if the user asks where they stand, call \`leadbay_account_status\` and show the quota gauge instead. The actual per-contact cost (\`enrichment.credits_used\`) appears on the contact after enrichment.
@@ -1123,6 +1204,36 @@ export const leadbay_enrich_titles: string = `Order contact enrichments by job t
 WHEN TO USE: as the agent's go-to enrichment entry point, immediately before proposing outreach.
 
 WHEN NOT TO USE: to enrich a single named contact — that's leadbay_enrich_contacts. Speculatively, before the user has committed to outreaching — enrichment consumes quota. **NOT to add "titles" or "LinkedIn" to a list** — a contact's \`job_title\` and \`linkedin_page\` already ride on the contact record; they are FREE and need no enrichment. If the user asks for "title and LinkedIn only", read those fields directly (e.g. leadbay_get_contacts / leadbay_research_lead_by_id); do NOT launch a job here. This tool is strictly the email / phone reveal, which consumes quota.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned a launched or
+running result, that work is queued on Leadbay and runs to completion, and the
+quota it costs is already committed. A discovery, preview or \`dry_run\` result
+launched nothing and is not covered here.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting, never the job. \`cancelled: true\` means we stopped watching, not that the
+work stopped. What to do next depends on what you are holding:
+
+- **A handle.** Poll the status tool with it, and do not launch the work that
+  handle covers a second time — that spends the quota again on the same rows.
+  \`leadbay_import_status\` takes \`importIds\`, so pass the values of \`import_ids\`
+  under that name. A qualification started by \`leadbay_import_and_qualify\` has no
+  notification of its own: resume it with
+  \`leadbay_qualify_status({lead_ids, lens_id})\`.
+- **A handle AND a subset the result says never started** — \`failed[]\` entries
+  with \`error:"not_queued"\`, or a \`rows_pending_upload\` count. Poll the handle
+  for what was launched and re-run for that subset only, never for the whole
+  batch.
+- **No result at all**, because the call timed out or the stream closed before it
+  returned. Check \`leadbay_account_status\` first: the launch may have landed and
+  finished. Calling the same tool again with the same arguments will usually hand
+  back the job already launched rather than starting a second one, but that guard
+  is in-memory, five minutes, and per process, so it is best-effort — say what you
+  are about to re-run before you spend the user's quota on it.
+
 
 ## ENRICHMENT CONSUMES QUOTA — the model to reason with
 
@@ -1146,7 +1257,7 @@ Do NOT rely on a bare call (no \`confirm\`, no \`dry_run\`, no channels) as a "s
 
 ## AFTER LAUNCH — STAY ACTIVE UNTIL DONE
 
-When a launch returns \`mode:"launched"\` with a \`bulk_id\`, the enrichment runs ASYNC on the backend — the tool returns immediately, before any email/phone is attached. **Unless the user explicitly said to start it in the background / not to wait** (e.g. "kick it off, I'll check later", "don't wait for it"), stay active and report in-turn — do NOT end your turn on the ack, and do NOT say "I'll let you know when it's done." (If the user DID ask you not to wait, honor that: hand back the \`bulk_id\` and a one-line "running — you can ask any time". Only promise that completion will auto-surface via \`_meta.notifications\` when the launch returned a non-null \`notification_id\`; if \`notification_id\` is null (the nullable-backend path), say instead that you'll re-check when asked / they should ask again later — nothing surfaces automatically without a notification id. Don't force a poll loop against explicit intent.) In the default (stay-active) case: call \`leadbay_bulk_enrich_status({bulk_id})\` in a loop, re-polling until the job is done (small batches typically finish in under ~2 min). Pass \`include_contacts:true\` on the read you intend to report from, so you get each lead's enriched contacts back. Note that \`include_contacts\` returns each lead's FULL contact list (it fans out through \`leadbay_get_contacts\`), which can include contacts of OTHER roles that were already enriched in earlier runs — so **filter your report to the \`titles\` you just enriched** (match each contact's \`job_title\` to the requested titles). Don't present a pre-existing CFO/Sales email as part of this CEO/Owner/Manager run. Then — on your own, without waiting for the user to reprompt — report the enrichment: which of the just-enriched contacts now have emails / phones, and the counts from \`overall_progress\` (\`done\`/\`total\`). \`leadbay_bulk_enrich_status\` also returns \`bulk_progress.success_count\` / \`failure_count\` / \`quota_hit_count\` on the notification fast path — use those when present, but the legacy per-lead fallback returns \`overall_progress\` only, so don't assume \`bulk_progress\` exists (see the status tool's COMPLETION REPORT). Then show refreshed quota via \`leadbay_account_status\` (see AFTER above).
+When a launch returns \`mode:"launched"\` with a \`notification_id\`, the enrichment runs ASYNC on the backend — the tool returns immediately, before any email/phone is attached. **Unless the user explicitly said to start it in the background / not to wait** (e.g. "kick it off, I'll check later", "don't wait for it"), stay active and report in-turn — do NOT end your turn on the ack, and do NOT say "I'll let you know when it's done." (If the user DID ask you not to wait, honor that: hand back the \`notification_id\` and a one-line "running — you can ask any time". Only promise that completion will auto-surface via \`_meta.notifications\` when the launch returned a non-null \`notification_id\`; if \`notification_id\` is null (the nullable-backend path), say instead that you'll re-check when asked / they should ask again later — nothing surfaces automatically without a notification id. Don't force a poll loop against explicit intent.) In the default (stay-active) case: call \`leadbay_bulk_enrich_status({notification_id})\` in a loop, re-polling until the job is done (small batches typically finish in under ~2 min). Pass \`include_contacts:true\` on the read you intend to report from, so you get each lead's enriched contacts back. Note that \`include_contacts\` returns each lead's FULL contact list (it fans out through \`leadbay_get_contacts\`), which can include contacts of OTHER roles that were already enriched in earlier runs — so **filter your report to the \`titles\` you just enriched** (match each contact's \`job_title\` to the requested titles). Don't present a pre-existing CFO/Sales email as part of this CEO/Owner/Manager run. Then — on your own, without waiting for the user to reprompt — report the enrichment: which of the just-enriched contacts now have emails / phones, and the counts from \`overall_progress\` (\`done\`/\`total\`). \`leadbay_bulk_enrich_status\` also returns \`bulk_progress.success_count\` / \`failure_count\` / \`quota_hit_count\` on the notification fast path — use those when present, but the per-lead path returns \`overall_progress\` only, so don't assume \`bulk_progress\` exists (see the status tool's COMPLETION REPORT). Then show refreshed quota via \`leadbay_account_status\` (see AFTER above).
 
 **"Done" = \`all_done:true\` OR the resolvable work has plateaued.** Keep polling while \`overall_progress.done\` is still climbing. But \`total\` counts every matching contact, and some (unresolvable titles, contacts with no findable email) never flip to done — so a job can sit below 100% with \`all_done:false\` forever. A plateau is only real once the job has had time to run: do NOT declare it from the first few back-to-back reads (early on \`done\` can sit at its initial value while the backend is still spinning the job up). Give it at least ~90s–2 min of actual elapsed polling — space your polls out (~15–30s apart) rather than firing them back-to-back — and only treat the set as complete when \`overall_progress.done\` has held steady across several spaced polls over that window. Then stop polling and report what resolved, naming the ones that didn't. Key the "didn't resolve" wording off the channels the user actually requested and the returned contact fields (contacts carry \`email\` and \`phone_number\`) — a contact enriched for phone that came back with no \`phone_number\` is "no phone number found", one with no \`email\` is "no email found", email+phone that got neither is "no contact details found"; if \`quota_hit_count\` is non-zero say those were skipped because the quota window was exhausted. Do NOT hard-label every non-success as "no email found" when phone was requested. Do NOT spin indefinitely waiting for \`all_done\` on contacts the engine won't resolve, and do NOT \`ScheduleWakeup\` / defer the finished list to a later turn — deliver the resolved results in THIS reply.
 
@@ -1862,9 +1973,39 @@ WHEN TO USE: agent has a list of companies (domains, or CSV-shaped rows from the
 
 WHEN NOT TO USE: discovery (use leadbay_pull_leads); single-lead deep dive (use leadbay_research_lead_by_id); high-cadence or untrusted automation — this mutates user state and consumes ai_rescore + web_fetch quota.
 
-Budgets: \`total_budget_ms\` caps wall-clock; \`per_lead_budget_ms\` caps each lead's poll. For short transport timeouts, pass \`wait_for_completion:false\` and poll \`leadbay_import_status\`. Outputs \`qualified[]\`, \`still_running[]\`, \`not_imported[]\`, \`qualify_id\` (resumable handle). Idempotent within a 5-min window. \`dry_run:'preview'\` returns mapping hints + custom-field candidates without importing.
+## A launched job cannot be stopped
 
-\`not_imported\` rows with \`reason:"uncrawled"\` are **pending a background crawl**, NOT failures: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously (the label doesn't verify the URL resolves — don't call the site bad, but don't certify it valid either). Surface them as pending; the leads populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — \`leadbay_import_status\` reports the rows the wizard has already placed, not leads a later crawl adds, and \`leadbay_pull_leads\` reads the active lens's wishlist so an imported lead outside that lens may not appear). To pull those specific companies back through the MCP, re-run the import later. A large \`uncrawled\` share on a fresh list is normal.
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned a launched or
+running result, that work is queued on Leadbay and runs to completion, and the
+quota it costs is already committed. A discovery, preview or \`dry_run\` result
+launched nothing and is not covered here.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting, never the job. \`cancelled: true\` means we stopped watching, not that the
+work stopped. What to do next depends on what you are holding:
+
+- **A handle.** Poll the status tool with it, and do not launch the work that
+  handle covers a second time — that spends the quota again on the same rows.
+  \`leadbay_import_status\` takes \`importIds\`, so pass the values of \`import_ids\`
+  under that name. A qualification started by \`leadbay_import_and_qualify\` has no
+  notification of its own: resume it with
+  \`leadbay_qualify_status({lead_ids, lens_id})\`.
+- **A handle AND a subset the result says never started** — \`failed[]\` entries
+  with \`error:"not_queued"\`, or a \`rows_pending_upload\` count. Poll the handle
+  for what was launched and re-run for that subset only, never for the whole
+  batch.
+- **No result at all**, because the call timed out or the stream closed before it
+  returned. Check \`leadbay_account_status\` first: the launch may have landed and
+  finished. Calling the same tool again with the same arguments will usually hand
+  back the job already launched rather than starting a second one, but that guard
+  is in-memory, five minutes, and per process, so it is best-effort — say what you
+  are about to re-run before you spend the user's quota on it.
+
+
+Budgets: \`total_budget_ms\` caps wall-clock; \`per_lead_budget_ms\` caps each lead's poll. For short transport timeouts, pass \`wait_for_completion:false\` and poll \`leadbay_import_status\`. Outputs \`qualified[]\`, \`still_running[]\`, \`not_imported[]\`, plus the ids that resume it: \`lead_ids\` + \`lens_id\` for leadbay_qualify_status, \`import_ids\` for leadbay_import_status. There is no qualification \`notification_id\` — the qualify phase runs per-lead, so no job notification exists; \`notification_ids[]\` are the file-import ones. Idempotent within a 5-min window. \`dry_run:'preview'\` returns mapping hints + custom-field candidates without importing.
+
+\`not_imported\` rows with \`reason:"uncrawled"\` are **pending a background crawl**, NOT failures: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously (the label doesn't verify the URL resolves — don't call the site bad, but don't certify it valid either). Surface them as pending; the leads populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — \`leadbay_import_status\` returns status/progress only, and \`leadbay_pull_leads\` reads the active lens's wishlist so an imported lead outside that lens may not appear). To pull those specific companies back through the MCP, re-run the import later. A large \`uncrawled\` share on a fresh list is normal.
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
@@ -1889,9 +2030,9 @@ Otherwise, partition \`not_imported\` by \`reason\` into these buckets before yo
 **Header — single line, choose by status:**
 
 - Completed: \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` (drop any segment whose count is 0)
-- Running, \`handle_id\` present: \`"⏳ Import running — handle_id <id>; poll leadbay_import_status"\`
-- Running with \`timed_out:true\` (blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. \`"⏳ Import still running (the backend is slow today) — I'll check back."\` Then call \`leadbay_import_status({importIds})\`, do NOT re-run leadbay_import_leads. If \`rows_pending_upload\` is present, add \`"⚠ K rows weren't submitted — re-import just those."\`
-- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — qualify_id <id>"\`
+- Running: \`"⏳ Import running — importIds <ids>; poll leadbay_import_status"\`
+- Running with \`timed_out:true\` (the blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. \`"⏳ Import still running (the backend is slow today) — I'll check back."\` Then call \`leadbay_import_status({importIds})\`, do NOT re-run leadbay_import_leads. If \`rows_pending_upload\` is present, add \`"⚠ K rows weren't submitted — re-import just those."\`
+- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — I'll pick it up with leadbay_qualify_status"\` (its resume ids are \`lead_ids\` + \`lens_id\`; there is no qualification notification_id to quote)
 
 Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
 
@@ -1939,7 +2080,7 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 
 | Observation                                    | Suggest                                                       | Calls                                                  |
 |------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
-| Status: running, \`handle_id\` present           | "Check progress"                                              | leadbay_import_status(handle_id)                       |
+| Status: running                                | "Check progress"                                              | leadbay_import_status(importIds)                       |
 | Status: running with \`timed_out:true\`          | "Check progress" — NOT "retry the import"                     | leadbay_import_status(importIds, dry_run if the result carried it) after ~30s; \`result.leads\` carries the leadIds once complete |
 | \`rows_pending_upload\` present                  | "Import the rows that never got submitted"                    | leadbay_import_leads (that subset only)                |
 | Status: complete, imports succeeded            | "Run AI qualification on the imported leads"                  | leadbay_bulk_qualify_leads([leadIds]) — or use leadbay_import_and_qualify next time |
@@ -1952,9 +2093,9 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 // endregion: leadbay_import_and_qualify
 
 // region: leadbay_import_leads
-export const leadbay_import_leads: string = `Import leads into Leadbay's CRM via the file-import wizard. Returns stable Leadbay leadIds for downstream chaining into leadbay_bulk_qualify_leads / leadbay_research_lead_by_id. For MCP clients with short transport timeouts, pass \`wait_for_completion:false\` to return quickly with \`{status:'running', handle_id}\`; poll leadbay_import_status with that handle. For end-to-end import+qualify in one call, prefer leadbay_import_and_qualify. For messy files, prefer the \`leadbay_import_file\` prompt which walks an agent through scan → resolve → preserve → commit phases.
+export const leadbay_import_leads: string = `Import leads into Leadbay's CRM via the file-import wizard. Returns stable Leadbay leadIds for downstream chaining into leadbay_bulk_qualify_leads / leadbay_research_lead_by_id. For MCP clients with short transport timeouts, pass \`wait_for_completion:false\` to return quickly with \`{status:'running', importIds}\`; poll leadbay_import_status with that handle. For end-to-end import+qualify in one call, prefer leadbay_import_and_qualify. For messy files, prefer the \`leadbay_import_file\` prompt which walks an agent through scan → resolve → preserve → commit phases.
 
-SLOW BACKEND ⇒ \`{status:'running', timed_out:true, importIds}\`. The wizard is sometimes slow; when the poll budget runs out this tool returns that SUCCESS result, not an error. The import is still running server-side. **Do NOT call leadbay_import_leads again** — that re-uploads the file and leaves a duplicate CRM-imports row. Call \`leadbay_import_status({importIds})\` after ~30s — and pass \`dry_run:true\` too if the result carried it; on \`complete\` it returns \`result.leads\` with the leadIds, while \`phase:"committing"\` just means keep polling. Tell the user it's running and you'll check back — it is not a problem to report. Exception: \`rows_pending_upload\` rows never reached the backend and DO need a fresh call for that subset only. In records mode the result also carries \`row_ids\` — the synthetic id of each input row, in your \`records[]\` order — because \`leadbay_import_status\` reports recovered leads by that id; keep it to map them back to your source rows.
+SLOW BACKEND ⇒ \`{status:'running', timed_out:true, importIds}\`. The wizard is sometimes slow; when the poll budget runs out this tool returns that SUCCESS result, not an error. The import is still running server-side. **Do NOT call leadbay_import_leads again** — that re-uploads the file and leaves a duplicate CRM-imports row. Leadbay has no cancel, so a Cancel or timeout is no reason to call it either. Sole exception: a \`wait_for_completion:false\` call that returned NOTHING — and even that can re-upload, so check CRM-imports. Call \`leadbay_import_status({importIds})\` after ~30s — and pass \`dry_run:true\` too if the result carried it; on \`complete\` it returns \`result.leads\` with the leadIds, while \`phase:"committing"\` just means keep polling. Tell the user it's running and you'll check back — it is not a problem to report. Exception: \`rows_pending_upload\` rows never reached the backend and DO need a fresh call for that subset only. In records mode the result also carries \`row_ids\` — the synthetic id of each input row, in your \`records[]\` order — because \`leadbay_import_status\` reports recovered leads by that id; keep it to map them back to your source rows.
 
 TWO MODES: (A) Domain-list shortcut — pass \`domains: [{domain, name?}]\`. The tool builds a 2-column CSV (LEAD_NAME, LEAD_WEBSITE) and imports with the default mapping. (B) Custom records + mapping — pass \`records: [{Col1, Col2, ...}]\` plus \`mappings.fields: {Col1: 'LEAD_NAME', ...}\`. \`mappings.fields\` must include LEADBAY_ID, CRM_ID, SIREN, LEAD_NAME, or LEAD_WEBSITE (resolver needs at least one identity key). Pass exactly one of \`domains\` / \`records\`. Reserved column \`MCP_ROW_ID\` cannot appear in records/mappings — the tool injects it for stable reconciliation.
 
@@ -1989,9 +2130,9 @@ Otherwise, partition \`not_imported\` by \`reason\` into these buckets before yo
 **Header — single line, choose by status:**
 
 - Completed: \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` (drop any segment whose count is 0)
-- Running, \`handle_id\` present: \`"⏳ Import running — handle_id <id>; poll leadbay_import_status"\`
-- Running with \`timed_out:true\` (blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. \`"⏳ Import still running (the backend is slow today) — I'll check back."\` Then call \`leadbay_import_status({importIds})\`, do NOT re-run leadbay_import_leads. If \`rows_pending_upload\` is present, add \`"⚠ K rows weren't submitted — re-import just those."\`
-- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — qualify_id <id>"\`
+- Running: \`"⏳ Import running — importIds <ids>; poll leadbay_import_status"\`
+- Running with \`timed_out:true\` (the blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. \`"⏳ Import still running (the backend is slow today) — I'll check back."\` Then call \`leadbay_import_status({importIds})\`, do NOT re-run leadbay_import_leads. If \`rows_pending_upload\` is present, add \`"⚠ K rows weren't submitted — re-import just those."\`
+- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — I'll pick it up with leadbay_qualify_status"\` (its resume ids are \`lead_ids\` + \`lens_id\`; there is no qualification notification_id to quote)
 
 Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
 
@@ -2039,7 +2180,7 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 
 | Observation                                    | Suggest                                                       | Calls                                                  |
 |------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
-| Status: running, \`handle_id\` present           | "Check progress"                                              | leadbay_import_status(handle_id)                       |
+| Status: running                                | "Check progress"                                              | leadbay_import_status(importIds)                       |
 | Status: running with \`timed_out:true\`          | "Check progress" — NOT "retry the import"                     | leadbay_import_status(importIds, dry_run if the result carried it) after ~30s; \`result.leads\` carries the leadIds once complete |
 | \`rows_pending_upload\` present                  | "Import the rows that never got submitted"                    | leadbay_import_leads (that subset only)                |
 | Status: complete, imports succeeded            | "Run AI qualification on the imported leads"                  | leadbay_bulk_qualify_leads([leadIds]) — or use leadbay_import_and_qualify next time |
@@ -2052,11 +2193,45 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 // endregion: leadbay_import_leads
 
 // region: leadbay_import_status
-export const leadbay_import_status: string = `Retrieve the current **status/progress** of a lead import, and its leadIds once it finishes. Pass \`handle_id\` — returned by either \`leadbay_import_leads\` OR \`leadbay_import_and_qualify\` when called with \`wait_for_completion:false\` — to resolve the stored result (leads + not_imported) for that async run. Pass \`importIds[]\` when you don't have a handle: after a blocking \`leadbay_import_leads\` returned \`{status:'running', timed_out:true, importIds}\`, or from any completed import's \`importIds\` (\`leadbay_import_and_qualify\` calls the same field \`import_ids\`). **Both paths return leads.** The \`importIds[]\` path reads the wizard's records directly, so once every named import is \`complete\` (and it wasn't a dry run) the response carries \`result.leads\` + \`result.not_imported\` — that is how you recover the leadIds from an import that timed out mid-poll, without re-importing. \`result.still_settling\` counts rows the wizard hasn't finished placing; they are neither imported nor failed, so poll again rather than reporting them. If \`result\` is absent on a \`complete\` import the records weren't readable — report completion without inventing counts. \`phase:"committing"\` means the import is still being committed, NOT that it finished with nothing: keep polling. Pass \`dry_run:true\` when the importIds came from a dry run (a \`{timed_out:true}\` result carries \`dry_run\` — hand it straight back); a finished dry run and an import mid-commit are identical on the wire, so without that flag this tool reports \`committing\` rather than risk rendering a validation pass as a real import. This status call performs a single refresh pass and never polls in a loop.
+export const leadbay_import_status: string = `Retrieve the current **status/progress** of a lead import, and its leadIds once it finishes. Pass the \`importIds\` the launch returned — \`leadbay_import_leads\` returns \`importIds\`, \`leadbay_import_and_qualify\` returns \`import_ids\`. These are the backend's own import ids, so they resolve from a later message, a later conversation, or the next day; nothing is stored on the MCP side. Also pass the \`dry_run\` the import was launched with, so completion is judged against the right phase (a dry run finishes at preprocess, a real import at processing). This status call performs a single refresh pass and never polls in a loop.
 
-WHEN TO USE: after an async import (\`leadbay_import_leads\` OR \`leadbay_import_and_qualify\` with \`wait_for_completion:false\`) returns \`{status:'running', handle_id}\`, poll with that \`handle_id\`; OR to check whether a finished import is still processing. This tool does NOT surface the leads Leadbay adds later for pending-crawl (\`uncrawled\`) rows — those populate in the user's Leadbay account as the crawl completes; no tool here fetches them on demand (re-run the import to pull them back through the MCP).
+WHEN TO USE: after an async import returns its ids — \`leadbay_import_leads\` as \`{status:'running', importIds}\`, \`leadbay_import_and_qualify\` as \`import_ids\` — poll with those; OR to check whether a finished import is still processing. This tool does NOT surface the leads Leadbay adds later for pending-crawl (\`uncrawled\`) rows — those populate in the user's Leadbay account as the crawl completes; no tool here fetches them on demand (re-run the import to pull them back through the MCP).
 
-WHEN NOT TO USE: for qualification handles returned as \`qualify_id\` — use leadbay_qualify_status for those; or when you still want the legacy blocking behavior from leadbay_import_leads with \`wait_for_completion=true\`.
+WHEN NOT TO USE: for the qualification half — use leadbay_qualify_status, with the \`lead_ids\` + \`lens_id\` an \`leadbay_import_and_qualify\` launch returned (it has no qualification \`notification_id\`; its \`notification_ids[]\` are these same file imports); or when you still want the legacy blocking behavior from leadbay_import_leads with \`wait_for_completion=true\`.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. A job started by \`leadbay_enrich_titles\`,
+\`leadbay_bulk_qualify_leads\`, \`leadbay_import_leads\` or
+\`leadbay_import_and_qualify\` runs to completion on Leadbay. The user cancelling
+in the chat, a request timeout, or a closed stream stops YOUR waiting, never the
+job, and \`cancelled: true\` on an earlier result means we stopped watching, not
+that the work stopped.
+
+**This tool only reads.** Calling it again launches nothing and spends no quota,
+so poll it as often as the job needs — a timeout here is a reason to call it
+again, not a reason to stop.
+
+One import state does NOT progress: a chunk cancelled before its mappings were
+committed reads \`running\` / \`committing\` forever. If the counts hold flat across
+several spaced polls, say so and stop, rather than polling on.
+
+What must not be repeated is the LAUNCH — for work that actually launched. Re-run
+a launcher only for a subset that never started, never for the whole batch:
+
+- \`failed[]\` entries with \`error:"not_queued"\`;
+- a \`rows_pending_upload\` count;
+- leads in \`still_running\` after a CANCELLED \`leadbay_import_and_qualify\`. Its
+  fan-out is sequential, so an interruption leaves the remainder unlaunched and
+  folds them in with the ones that did launch. Nothing in the result tells the
+  two apart, and this tool cannot start either. Wait until the REST of the batch
+  has settled: what launched settles in order, so leads still unanswered after
+  that are the ones that never started. Only then call
+  \`leadbay_bulk_qualify_leads({leadIds, lensId})\` for exactly those ids. A lead
+  that is merely slow looks identical to one that never launched over a few
+  polls, and re-launching it charges the user twice — when unsure, tell the user
+  rather than guess.
+
 
 ---
 
@@ -2076,12 +2251,11 @@ After the status line, propose the obvious refresh / progress-check / recovery a
 
 Specifically for import status:
 
-This tool returns \`status\`, \`importIds\`, and \`progress\` ({phase, records_processed, records_total}). It carries a \`result\` object (with \`leads\` + \`not_imported\`) when resolving an async \`handle_id\` whose run completed in this MCP instance, AND on the \`importIds[]\` path once every named import is \`complete\` and it wasn't a dry run. A \`complete\` import with no \`result\` means the records weren't readable — render completion only. **Render only from the fields actually present; never invent counts.**
+This tool returns \`status\`, \`importIds\`, and \`progress\` ({phase, records_processed, records_total}). Once every named import is \`complete\` and it wasn't a dry run, it also reconciles the wizard's records and carries \`result\` ({leads, not_imported, importIds, still_settling?}) — that is how you recover the leadIds of an import you stopped watching, without re-importing. \`result.still_settling\` counts rows the wizard hasn't finished placing; they are neither imported nor failed, so poll again rather than reporting them. If \`result\` is absent on a \`complete\` import the records weren't readable — report completion without inventing counts. **Render only from the fields actually present; never invent counts.**
 
 Caveat on \`progress\`: \`records_processed\` counts only the rows that MATCHED an existing lead (backend \`imported_records\`), not every row that finished processing — so for a complete import whose rows are mostly/all \`uncrawled\` (pending crawl), \`records_processed\` is legitimately low or 0. Never read a low \`records_processed\` on a \`complete\` import as "stuck" or "failed": once \`status:"complete"\`, processing is done; the pending-crawl rows just matched no existing lead yet.
 
-- Running → \`"⏳ Import still running — phase <phase>; check back in ~M minutes."\` (use the phase; don't turn the matched-count into an "X/Y processed" progress bar). \`phase:"committing"\` is normal for an import that timed out — say it's still being committed, never that it failed or finished empty.
-- Complete with **\`dry_run:true\`** on the response → a VALIDATION pass; nothing was committed. \`"🔎 Dry run complete — input validated, nothing imported. Re-run without dry_run to commit."\` Never render this as a completed import, and never quote a lead count.
+- Running → \`"⏳ Import still running — phase <phase>; check back in ~M minutes."\` (use the phase; don't turn the matched-count into an "X/Y processed" progress bar). \`phase:"committing"\` means the mappings are still being committed — say it's still being committed, never that it failed or finished empty.
 - Complete, **no \`result\`** → \`"✓ Import complete."\` Do NOT append a \`records_processed/records_total\` fraction (it undercounts pending-crawl rows and looks stuck) and do NOT report pending-crawl / need-attention bucket counts — the row-level \`not_imported\` breakdown isn't in this response.
 - Complete with \`result.still_settling > 0\` → say \`"✓ Import complete — N imported, S rows still being placed."\` Never count \`still_settling\` rows as failures.
 - Complete, **\`result\` present AND it was a dry run** (\`result.dry_run:true\`, or every \`result.not_imported\` row has \`reason:"dry_run"\`) → this resolved handle was a VALIDATION pass, nothing committed. Render \`"🔎 Dry run complete — V rows validated, nothing imported. Re-run without dry_run to commit."\` — do NOT render it as a real import completion or use the pending/attention buckets.
@@ -2116,11 +2290,28 @@ How the OTHER reasons map to the "Need attention" bucket (see the render block a
 // endregion: leadbay_import_status
 
 // region: leadbay_launch_bulk_enrichment
-export const leadbay_launch_bulk_enrichment: string = `Launch a bulk-enrichment job against the current selection. The backend requires \`email=true\` OR \`phone=true\` (both can be true). Returns 204 with no body — there is no bulk_id and no per-job status endpoint. Track results by polling individual leads via leadbay_get_contacts after ~60s; a contact is done for this run only when the REQUESTED channel landed (requested \`email\` and/or \`phone_number\` present), not \`contact.enrichment.done\` alone (that flag is already true for a contact enriched on the other channel earlier). \`dry_run:true\` returns the call shape without contacting the backend.
+export const leadbay_launch_bulk_enrichment: string = `Launch a bulk-enrichment job against the current selection. The backend requires \`email=true\` OR \`phone=true\` (both can be true). Returns 204 with no body — there is no notification_id and no per-job status endpoint. Track results by polling individual leads via leadbay_get_contacts after ~60s; a contact is done for this run only when the REQUESTED channel landed (requested \`email\` and/or \`phone_number\` present), not \`contact.enrichment.done\` alone (that flag is already true for a contact enriched on the other channel earlier). \`dry_run:true\` returns the call shape without contacting the backend.
 
 WHEN TO USE: low-level.
 
 WHEN NOT TO USE: from agent flow — leadbay_enrich_titles handles selection lifecycle, preview, launch, and cleanup.
+
+## A launched job cannot be stopped, and this tool has no retry guard
+
+Leadbay has no cancel. Once this call returns having actually launched, the work
+is queued on Leadbay and runs to completion, and the quota it costs is already
+committed. A \`dry_run\` result reached no backend and spent nothing. The user
+cancelling in the chat, a request timeout, or a closed stream stops YOUR waiting,
+never the job.
+
+Unlike the composite launchers, this tool has **no double-launch guard**: calling
+it again always issues a new paid launch, even seconds later with identical
+arguments. So when a call returns nothing at all, do not simply retry. Read the
+record back first — \`leadbay_research_lead_by_id\` or \`leadbay_get_contacts\` for a
+lead, \`leadbay_account_status\` for background work that has since finished — to
+see whether the launch already landed, and tell the user what you are about to
+spend before spending it again.
+
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
@@ -3245,16 +3436,73 @@ WHEN TO USE: low-level — when you need to kick qualification on exactly one le
 
 WHEN NOT TO USE: as the agent's bulk-qualify path — use leadbay_bulk_qualify_leads, which paginates past already-qualified leads, fans out, polls, and bails out cleanly on 429.
 
+## A launched job cannot be stopped, and this tool has no retry guard
+
+Leadbay has no cancel. Once this call returns having actually launched, the work
+is queued on Leadbay and runs to completion, and the quota it costs is already
+committed. A \`dry_run\` result reached no backend and spent nothing. The user
+cancelling in the chat, a request timeout, or a closed stream stops YOUR waiting,
+never the job.
+
+Unlike the composite launchers, this tool has **no double-launch guard**: calling
+it again always issues a new paid launch, even seconds later with identical
+arguments. So when a call returns nothing at all, do not simply retry. Read the
+record back first — \`leadbay_research_lead_by_id\` or \`leadbay_get_contacts\` for a
+lead, \`leadbay_account_status\` for background work that has since finished — to
+see whether the launch already landed, and tell the user what you are about to
+spend before spending it again.
+
+
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_qualify_lead
 
 // region: leadbay_qualify_status
-export const leadbay_qualify_status: string = `Retrieve the current state of an import_and_qualify (or bulk_qualify_leads) launch by \`qualify_id\`. Returns the same \`qualified[]\` / \`still_running[]\` shape as the original composite, refreshed against the backend at call time. The handle is persisted to \`~/.leadbay/bulks.json\` with a 30-day TTL and survives MCP restart.
+export const leadbay_qualify_status: string = `Retrieve the current state of a bulk_qualify_leads or import_and_qualify launch. Which ids to pass depends on which tool launched it, because only one of them creates a qualification job on the backend:
 
-WHEN TO USE: after leadbay_import_and_qualify or leadbay_bulk_qualify_leads returned a \`qualify_id\` with non-empty \`still_running[]\`, call this tool a few minutes later (or hours) to retrieve the now-completed qualifications without re-running the import or re-spending qualify quota.
+- **\`leadbay_bulk_qualify_leads\`** returns a \`notification_id\`. Pass it for progress in ONE call, and add the \`lead_ids\` + \`lens_id\` it also returned for per-lead detail (which settled, which are still running).
+- **\`leadbay_import_and_qualify\`** returns NO qualification \`notification_id\` — its qualify phase runs per-lead, so no job notification exists. Pass the \`lead_ids\` + \`lens_id\` it returned. Its \`notification_ids[]\` are the FILE-IMPORT notifications; handing one of those to this tool is rejected as the wrong kind, and \`leadbay_import_status({importIds})\` is where the import half is polled.
+
+**When it is finished:** \`status\` is always \`"launched"\` — it is not a progress field. On the \`notification_id\` path the job is done when \`in_progress\` is false (or \`bulk_progress.success_count + failure_count\` reaches \`total_count\`); \`still_running[]\` is empty on that path from the very first poll and must NOT be read as "done". On the \`lead_ids\` path the job is done when \`still_running[]\` is empty. Pass both and you get both signals in one call.
+
+Everything comes straight out of the launch response — nothing is stored on the MCP side. A backend job is scoped to the user who launched it, so a \`notification_id\` resolves from a later message, a later conversation, or the next day.
+
+WHEN TO USE: after leadbay_bulk_qualify_leads or leadbay_import_and_qualify came back with a non-empty \`still_running[]\`, call this tool a few minutes later (or hours) with those ids to retrieve the now-completed qualifications without re-running the import or re-spending qualify quota.
 
 WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id — that's a deeper per-lead profile and includes contacts. This tool is purely the qualification answers + signals_count.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. A job started by \`leadbay_enrich_titles\`,
+\`leadbay_bulk_qualify_leads\`, \`leadbay_import_leads\` or
+\`leadbay_import_and_qualify\` runs to completion on Leadbay. The user cancelling
+in the chat, a request timeout, or a closed stream stops YOUR waiting, never the
+job, and \`cancelled: true\` on an earlier result means we stopped watching, not
+that the work stopped.
+
+**This tool only reads.** Calling it again launches nothing and spends no quota,
+so poll it as often as the job needs — a timeout here is a reason to call it
+again, not a reason to stop.
+
+One import state does NOT progress: a chunk cancelled before its mappings were
+committed reads \`running\` / \`committing\` forever. If the counts hold flat across
+several spaced polls, say so and stop, rather than polling on.
+
+What must not be repeated is the LAUNCH — for work that actually launched. Re-run
+a launcher only for a subset that never started, never for the whole batch:
+
+- \`failed[]\` entries with \`error:"not_queued"\`;
+- a \`rows_pending_upload\` count;
+- leads in \`still_running\` after a CANCELLED \`leadbay_import_and_qualify\`. Its
+  fan-out is sequential, so an interruption leaves the remainder unlaunched and
+  folds them in with the ones that did launch. Nothing in the result tells the
+  two apart, and this tool cannot start either. Wait until the REST of the batch
+  has settled: what launched settles in order, so leads still unanswered after
+  that are the ones that never started. Only then call
+  \`leadbay_bulk_qualify_leads({leadIds, lensId})\` for exactly those ids. A lead
+  that is merely slow looks identical to one that never launched over a few
+  polls, and re-launching it charges the user twice — when unsure, tell the user
+  rather than guess.
 `;
 // endregion: leadbay_qualify_status
 
@@ -5047,7 +5295,7 @@ Some Leadbay tool responses include a \`_meta.notifications\` array listing **ba
   - \`leadbay_qualify_status\` → \`still_running\` is empty: every launched lead has finished or failed. (\`in_progress\` also reads \`false\` on the fast path, but it can be \`null\` on the legacy/fallback read — so treat an empty \`still_running\` as terminal on its own; only require \`in_progress:false\` when that field is actually present.) LIKE imports, large qualification runs are async by design: \`leadbay_bulk_qualify_leads\` defaults to \`wait_for_completion:false\` for \`count > 5\` or chained workflows because blocking can time out, and \`leadbay_qualify_status\` may take minutes/hours. So don't force a long polling loop on a big run — return the handle/progress and let completion arrive via \`_meta.notifications\` — UNLESS the user explicitly asked to wait, or it's a small run that finishes quickly. A small \`wait_for_completion:true\` run you can poll to \`still_running\` empty inline.
   - \`leadbay_import_status\` → \`status:"complete"\` (or \`"failed"\`). BUT imports are the exception to the stay-active loop: a large \`leadbay_import_leads({wait_for_completion:false})\` is meant to return a handle and resolve over minutes, and the tool does ONE refresh pass per call. Don't block the conversation looping on it — surface the returned progress/handle and let the completion arrive via \`_meta.notifications\` — UNLESS the user explicitly asked you to wait for the import, or it's a small import that finishes quickly.
 
-  Enrichment polls to completion in-turn BY DEFAULT — the exception is when the user explicitly said to start it in the background / not wait ("kick it off, I'll check later"), in which case hand back the bulk_id and let completion arrive via \`_meta.notifications\` (only when a notification id exists; if none was returned, tell the user to ask again / that you'll poll later, since nothing will auto-surface). For qualification and imports, poll inline only for small/quick runs or when the user explicitly asked you to wait; otherwise return the handle and let \`_meta.notifications\` deliver it. Either way, the user should never have to ask "is it done yet?" for work you kicked off in the same turn — you either report it or hand back a clear in-progress handle.
+  Enrichment polls to completion in-turn BY DEFAULT — the exception is when the user explicitly said to start it in the background / not wait ("kick it off, I'll check later"), in which case hand back the notification_id and let completion arrive via \`_meta.notifications\` (only when a notification id exists; if none was returned, tell the user to ask again / that you'll poll later, since nothing will auto-surface). For qualification and imports, poll inline only for small/quick runs or when the user explicitly asked you to wait; otherwise return the handle and let \`_meta.notifications\` deliver it. Either way, the user should never have to ask "is it done yet?" for work you kicked off in the same turn — you either report it or hand back a clear in-progress handle.
 
 Also surfaced as a top-level \`notifications\` array on \`leadbay_account_status\` — same shape, same handling.
 

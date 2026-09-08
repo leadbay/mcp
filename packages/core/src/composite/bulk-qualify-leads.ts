@@ -1,4 +1,10 @@
 import type { LeadbayClient } from "../client.js";
+import {
+  launchFingerprint,
+  beginLaunch,
+  abandonLaunch,
+  rememberLaunch,
+} from "../jobs/launch-guard.js";
 import type {
   BulkWebFetchResponse,
   Tool,
@@ -40,14 +46,15 @@ interface QualResult {
 
 interface BulkQualifyRunningResult {
   status: "running";
-  handle_id: string;
-  qualify_id: string;
   lead_ids: string[];
   launched_count: number;
   failed: Array<{ lead_id: string; error: string }>;
   quota_exceeded: boolean;
   lens_id: number;
   notification_id: string | null;
+  // Set when the double-launch guard short-circuited an identical call.
+  reused?: boolean;
+  seconds_since_original_launch?: number;
   _meta: { region: "us" | "fr" | "custom" };
 }
 
@@ -144,7 +151,7 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams, any> = {
       wait_for_completion: {
         type: "boolean",
         description:
-          "When false, launch qualification and return `{status:'running', qualify_id}` immediately. Poll leadbay_qualify_status. Default is true for 0.6.x backwards compatibility.",
+          "When false, launch qualification and return `{status:'running', notification_id, lead_ids, lens_id}` immediately. Poll leadbay_qualify_status with them. Default is true for 0.6.x backwards compatibility.",
       },
     },
     additionalProperties: false,
@@ -162,14 +169,16 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams, any> = {
         type: "string",
         description: "`running` when wait_for_completion=false; absent on the legacy blocking result.",
       },
-      handle_id: { type: "string", description: "Alias of qualify_id for handle-oriented callers." },
-      qualify_id: { type: "string", description: "UUIDv4 to poll via leadbay_qualify_status." },
+      notification_id: {
+        type: ["string", "null"],
+        description: "The backend's job id. Carry it to leadbay_qualify_status.",
+      },
       lead_ids: { type: "array", items: { type: "string" } },
       launched_count: { type: "number" },
       still_running: {
         type: "array",
         description:
-          "Leads launched but whose qualification did not complete within budget. Re-poll via leadbay_qualify_status with the bulk_id (when present).",
+          "Leads launched but whose qualification did not complete within budget. Re-poll via leadbay_qualify_status with notification_id (when present) or lead_ids + lens_id.",
         items: { type: "object" },
       },
       failed: {
@@ -205,8 +214,7 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams, any> = {
       {
         required: [
           "status",
-          "handle_id",
-          "qualify_id",
+          "notification_id",
           "lead_ids",
           "launched_count",
           "failed",
@@ -281,63 +289,61 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams, any> = {
     }
 
     if (!waitForCompletion) {
-      if (!ctx?.bulkTracker) {
+      // Double-launch guard only — no store. The handle the agent gets back is
+      // the backend's own notification_id, which the backend retains for 30
+      // days and scopes to the organization.
+      const fingerprint = launchFingerprint(["qualify", candidates, lensId]);
+      const claim = beginLaunch(fingerprint);
+      if (claim.state === "in_flight") {
         throw client.makeError(
-          "BULK_TRACKER_UNAVAILABLE",
-          "No BulkTracker configured on this MCP instance",
-          "leadbay_bulk_qualify_leads wait_for_completion=false needs a BulkTracker so qualify_id survives restart.",
+          "QUALIFY_LAUNCH_IN_FLIGHT",
+          `An identical qualification was started ${claim.seconds_since}s ago and has not returned its job id yet`,
+          "Nothing was launched twice. Call leadbay_bulk_qualify_leads again with the same arguments in a few seconds to receive the notification_id.",
           ""
         );
       }
-      const reservation = await ctx.bulkTracker.findOrCreatePendingQualify({
-        lead_ids: candidates,
-        import_ids: [],
-        lens_id: lensId,
-        mapping_fingerprint: "bulk_qualify_leads",
-        per_lead_budget_ms: perLeadBudget,
-        total_budget_ms: totalBudget,
-      });
-      let launchedCount = 0;
-      let notificationId: string | null = null;
-      let quotaExceeded = false;
-      let failed: Array<{ lead_id: string; error: string }> = [];
-      if (!reservation.reused) {
-        // Use the SELECTION-based bulk endpoint so the backend creates a
-        // progress notification (backend ADR §4). Per-lead error attribution
-        // is coarse-grained here — the eventual bulk_progress on the
-        // notification carries failure_count / quota_hit_count.
-        const launch = await launchBulkQualify(client, candidates, ctx);
-        quotaExceeded = launch.quotaExceeded;
-        notificationId = launch.resp?.notification_id ?? null;
-        const queuedIds = launch.resp?.queued_ids ?? [];
-        const skippedIds = launch.resp?.skipped_ids ?? [];
-        launchedCount = queuedIds.length;
-        // Best-signal NOT_FOUND surface: anything in candidates but absent
-        // from queuedIds ∪ skippedIds was rejected. Don't synthesise an
-        // error string per id since the backend doesn't tell us why; the
-        // qualify-status tool will surface concrete per-lead state later.
-        const seen = new Set<string>([...queuedIds, ...skippedIds]);
-        failed = candidates
-          .filter((id) => !seen.has(id))
-          .map((id) => ({ lead_id: id, error: "not_queued" }));
-        if (queuedIds.length > 0 || quotaExceeded || skippedIds.length > 0 || failed.length === candidates.length) {
-          await ctx.bulkTracker.markLaunched(
-            reservation.record.bulk_id,
-            notificationId
-          );
-        }
-      } else {
-        notificationId = reservation.record.notification_id ?? null;
-        launchedCount = reservation.record.lead_ids.length;
+      const already = claim.state === "settled" ? claim.record : undefined;
+      if (already) {
+        return {
+          status: "running",
+          lead_ids: candidates,
+          launched_count: candidates.length,
+          failed: [],
+          quota_exceeded: false,
+          lens_id: lensId,
+          notification_id: already.notification_id,
+          reused: true,
+          seconds_since_original_launch: already.seconds_since,
+          _meta: { region: client.region },
+        } satisfies BulkQualifyRunningResult;
       }
+
+      // Use the SELECTION-based bulk endpoint so the backend creates a progress
+      // notification (backend ADR §4). Per-lead error attribution is coarse
+      // here — the notification's bulk_progress carries failure_count and
+      // quota_hit_count once the job runs.
+      let launch: Awaited<ReturnType<typeof launchBulkQualify>>;
+      try {
+        launch = await launchBulkQualify(client, candidates, ctx);
+      } catch (err) {
+        abandonLaunch(fingerprint);
+        throw err;
+      }
+      const notificationId = launch.resp?.notification_id ?? null;
+      const queuedIds = launch.resp?.queued_ids ?? [];
+      const skippedIds = launch.resp?.skipped_ids ?? [];
+      const seen = new Set<string>([...queuedIds, ...skippedIds]);
+      const failed = candidates
+        .filter((id) => !seen.has(id))
+        .map((id) => ({ lead_id: id, error: "not_queued" }));
+      rememberLaunch(fingerprint, notificationId);
+
       const out: BulkQualifyRunningResult = {
         status: "running",
-        handle_id: reservation.record.bulk_id,
-        qualify_id: reservation.record.bulk_id,
         lead_ids: candidates,
-        launched_count: launchedCount,
+        launched_count: queuedIds.length,
         failed,
-        quota_exceeded: quotaExceeded,
+        quota_exceeded: launch.quotaExceeded,
         lens_id: lensId,
         notification_id: notificationId,
         _meta: { region: client.region },

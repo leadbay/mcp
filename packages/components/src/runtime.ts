@@ -890,13 +890,13 @@ interface EnrichOpts {
  *  elicitation, or mode:needs_confirmation with no spend), so even an
  *  auto-loaded widget cannot silently spend on a page render. */
 function enrichment(opts: EnrichOpts): Resource {
-  let bulkId: string | null = null;
+  let job: { notification_id: string | null; lead_ids: string[] } | null = null;
   return new Resource({
     ...(opts.autoLoad !== undefined ? { autoLoad: opts.autoLoad } : {}),
     pollEvery: opts.pollEvery ?? 4000,
     until: (d) => Boolean((d as { all_done?: boolean })?.all_done),
     load: async () => {
-      if (!bulkId) {
+      if (!job) {
         const r = (await call("leadbay_enrich_titles", {
           ...(opts.leadIds ? { leadIds: opts.leadIds } : {}),
           titles: opts.titles,
@@ -906,9 +906,14 @@ function enrichment(opts: EnrichOpts): Resource {
           // action). Never a blanket true — page load is not consent.
           ...(opts.confirm !== undefined ? { confirm: opts.confirm } : {}),
           _triggered_by: opts.ask,
-        })) as { bulk_id?: string } & Record<string, unknown>;
-        bulkId = (r?.bulk_id as string | undefined) ?? null;
-        if (!bulkId) {
+        })) as { notification_id?: string | null; lead_ids?: string[] } & Record<string, unknown>;
+        const leadIds = Array.isArray(r?.lead_ids) ? (r.lead_ids as string[]) : [];
+        const notificationId = (r?.notification_id as string | undefined) ?? null;
+        // The handle is the backend's own: notification_id for the job counters,
+        // lead_ids for per-lead progress (and the only handle when the backend
+        // returned no notification). Neither present → nothing was launched.
+        job = notificationId || leadIds.length > 0 ? { notification_id: notificationId, lead_ids: leadIds } : null;
+        if (!job) {
           // No job launched (nothing enrichable / preview-only / awaiting
           // confirmation) — terminal for this resource, not an error. Preserve
           // the FULL response (credits_remaining, would_launch, message,
@@ -918,7 +923,14 @@ function enrichment(opts: EnrichOpts): Resource {
           return { ...r, all_done: true, no_job: true };
         }
       }
-      return call("leadbay_bulk_enrich_status", { bulk_id: bulkId, _triggered_by: opts.ask });
+      return call("leadbay_bulk_enrich_status", {
+        ...(job.notification_id ? { notification_id: job.notification_id } : {}),
+        ...(job.lead_ids.length > 0 ? { lead_ids: job.lead_ids } : {}),
+        ...(opts.titles ? { titles: opts.titles } : {}),
+        ...(opts.email !== undefined ? { email: opts.email } : {}),
+        ...(opts.phone !== undefined ? { phone: opts.phone } : {}),
+        _triggered_by: opts.ask,
+      });
     },
   });
 }

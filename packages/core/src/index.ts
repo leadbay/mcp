@@ -134,20 +134,6 @@ import { artifactKit } from "./tools/artifact-kit.js";
 import type { Tool } from "./types.js";
 
 // Bulk tracking — composite support + public types for MCP/OpenClaw wiring.
-export {
-  LocalBulkStore,
-  InMemoryBulkStore,
-  createDefaultBulkStore,
-  isValidBulkId,
-} from "./jobs/bulk-store.js";
-export type {
-  BulkTracker,
-  BulkRecord,
-  FindOrCreatePendingArgs,
-  FindOrCreatePendingImportArgs,
-  LocalBulkStoreOpts,
-  CreateDefaultBulkStoreOpts,
-} from "./jobs/bulk-store.js";
 
 // Guided first-run walkthrough manifest (issue #3952) — exported so the MCP
 // audit can cross-check the prompt template against the tool's gate labels.
@@ -448,3 +434,14 @@ export const tools: Tool[] = [...compositeTools, ...granularTools];
 // the templates that carry the marker. The MCP server swaps these in on a
 // surface that may not promote a purchase; nothing is reworded.
 export { NO_COMMERCE_TOOL_DESCRIPTIONS } from "./tool-descriptions.generated.js";
+// In-process double-launch guard. All that remains of the old bulk store:
+// job identity, retention and tenancy belong to the backend, so nothing here
+// persists. See jobs/launch-guard.ts.
+export {
+  launchFingerprint,
+  beginLaunch,
+  abandonLaunch,
+  recallLaunch,
+  rememberLaunch,
+  resetLaunchGuard,
+} from "./jobs/launch-guard.js";

@@ -5,7 +5,7 @@
  * out mid-poll could be observed as "complete" and STILL leave the agent with
  * no leadIds — and its only route to them was re-running the whole import,
  * which is the loop we're closing. This path exists specifically because the
- * hosted MCP has no BulkTracker, i.e. `handle_id` is not available to every
+ * the handle is the backend's importIds, available to every
  * caller. `importIds` is.
  *
  * The load-bearing subtlety, probed on us-staging 2026-09-01: an import whose
@@ -29,7 +29,6 @@ vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
 import { importStatus } from "../../../src/composite/import-status.js";
-import { InMemoryBulkStore } from "../../../src/jobs/bulk-store.js";
 
 const BASE = "https://api-us.leadbay.app";
 const IMPORT_ID = "imp-1";
@@ -611,31 +610,6 @@ describe("leadbay_import_status — reconciles leads from importIds alone", () =
     expect(out.result).toBeUndefined();
   });
 
-  it("handle_id with a stored result is unchanged — no reconciliation traffic", async () => {
-    const store = new InMemoryBulkStore();
-    const reservation = await store.findOrCreatePendingImport({
-      import_fingerprint: "fp-1",
-      mode: "domains",
-      dry_run: false,
-      records_total: 1,
-    });
-    await store.setImportIds(reservation.record.bulk_id, [IMPORT_ID]);
-    await store.markImportComplete(reservation.record.bulk_id, {
-      leads: [{ domain: "acme-imports.fr", leadId: "stored-lead", name: "Acme Imports" }],
-      not_imported: [],
-      importIds: [IMPORT_ID],
-    });
-
-    mockHttp([]);
-    const out: any = await importStatus.execute(
-      newClient(),
-      { handle_id: reservation.record.bulk_id },
-      { bulkTracker: store }
-    );
-    expect(out.status).toBe("complete");
-    expect(out.result.leads).toEqual([
-      { domain: "acme-imports.fr", leadId: "stored-lead", name: "Acme Imports" },
-    ]);
-    expect(getHttpRequests()).toEqual([]);
-  });
+  // The handle_id path is gone with the bulk store (product#4005): the only
+  // handle is the backend's importIds, which every case below already uses.
 });

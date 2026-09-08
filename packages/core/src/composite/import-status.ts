@@ -8,7 +8,6 @@ import type {
   ImportRecordPayload,
   PaginatedResponse,
 } from "../types.js";
-import { isValidBulkId } from "../jobs/bulk-store.js";
 import {
   reconcileRecords,
   settlingDeficit,
@@ -19,14 +18,12 @@ import { commitFailureFor } from "./_import-commit-log.js";
 
 import { leadbay_import_status as IMPORT_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface ImportStatusParams {
-  handle_id?: string;
   importIds?: string[];
   dry_run?: boolean;
 }
 
 interface ImportStatusResult {
   status: "running" | "complete" | "failed";
-  handle_id?: string;
   importIds: string[];
   progress: {
     phase: string;
@@ -238,10 +235,6 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
   inputSchema: {
     type: "object",
     properties: {
-      handle_id: {
-        type: "string",
-        description: "UUIDv4 handle returned by leadbay_import_leads when wait_for_completion=false.",
-      },
       importIds: {
         type: "array",
         description:
@@ -260,13 +253,12 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
     type: "object",
     properties: {
       status: { type: "string", description: "running, complete, or failed." },
-      handle_id: { type: "string" },
       importIds: { type: "array", items: { type: "string" } },
       progress: { type: "object" },
       result: {
         type: "object",
         description:
-          "Final import result: {leads, not_imported, importIds, still_settling?}. Present when a handle_id resolves a completed run in this MCP instance, OR when the importIds[] path finds every import complete and reconciles the wizard's records.",
+          "Final import result: {leads, not_imported, importIds, still_settling?}. Present when the importIds[] path finds every import complete and reconciles the wizard's records.",
       },
       error: { type: "string" },
       dry_run: {
@@ -284,111 +276,11 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
     params: ImportStatusParams,
     ctx?: ToolContext
   ): Promise<ImportStatusResult> => {
-    let handleId = params.handle_id;
+    // No local handle: leadbay_import_leads returns the backend's own
+    // importIds, and those are what this reads. The backend owns the import,
+    // its progress and its retention, so this resolves from any process on any
+    // day without the MCP storing anything.
     let importIds = params.importIds ?? [];
-    // A dry run and an import parked mid-commit are indistinguishable on the
-    // wire (probed us-staging 2026-09-01), so the caller has to tell us. The
-    // running result from a timed-out `leadbay_import_leads` carries
-    // `dry_run`; pass it straight back here.
-    let handleDryRun: boolean | undefined = params.dry_run;
-
-    if (handleId) {
-      if (!isValidBulkId(handleId)) {
-        throw client.makeError(
-          "BULK_INVALID_ID",
-          "handle_id is not a valid UUIDv4",
-          "Pass the handle_id returned by leadbay_import_leads verbatim.",
-          ""
-        );
-      }
-      if (!ctx?.bulkTracker) {
-        throw client.makeError(
-          "BULK_TRACKER_UNAVAILABLE",
-          "No BulkTracker configured on this MCP instance",
-          "leadbay_import_status needs a BulkTracker to resolve handle_id. Pass importIds[] directly as a fallback.",
-          ""
-        );
-      }
-      const record = await ctx.bulkTracker.getImport(handleId);
-      if (!record) {
-        const any = await ctx.bulkTracker.get(handleId);
-        if (any && any.kind !== "import") {
-          throw client.makeError(
-            "BULK_WRONG_KIND",
-            "This handle was not created by leadbay_import_leads",
-            "Use leadbay_qualify_status for qualify ids or leadbay_bulk_enrich_status for enrich ids.",
-            ""
-          );
-        }
-        throw client.makeError(
-          "BULK_NOT_FOUND",
-          "No import record for that handle_id",
-          "It may have expired (30-day TTL) or the MCP process was restarted without persistence.",
-          ""
-        );
-      }
-      importIds = record.import_ids;
-      handleDryRun = record.dry_run ?? handleDryRun;
-      if (record.status === "complete" && record.result) {
-        return {
-          status: "complete",
-          handle_id: handleId,
-          importIds,
-          progress: record.progress ?? {
-            phase: "complete",
-            records_processed: record.records_total,
-            records_total: record.records_total,
-          },
-          result: record.result,
-          region: client.region,
-          _meta: client.lastMeta ?? {
-            region: client.region,
-            endpoint: "bulk-store",
-            latency_ms: null,
-            retry_after: null,
-          },
-        };
-      }
-      if (record.status === "failed") {
-        return {
-          status: "failed",
-          handle_id: handleId,
-          importIds,
-          progress: record.progress ?? {
-            phase: "failed",
-            records_processed: 0,
-            records_total: record.records_total,
-          },
-          error: record.error ?? "import failed",
-          region: client.region,
-          _meta: client.lastMeta ?? {
-            region: client.region,
-            endpoint: "bulk-store",
-            latency_ms: null,
-            retry_after: null,
-          },
-        };
-      }
-      if (importIds.length === 0) {
-        return {
-          status: "running",
-          handle_id: handleId,
-          importIds,
-          progress: record.progress ?? {
-            phase: "queued",
-            records_processed: 0,
-            records_total: record.records_total,
-          },
-          region: client.region,
-          _meta: client.lastMeta ?? {
-            region: client.region,
-            endpoint: "bulk-store",
-            latency_ms: null,
-            retry_after: null,
-          },
-        };
-      }
-    }
 
     // The same id passed twice would double-fetch it AND double-count its
     // declared rows against a record set that dedupes, pinning
@@ -398,8 +290,8 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
     if (importIds.length === 0) {
       throw client.makeError(
         "IMPORT_STATUS_INPUT_REQUIRED",
-        "Pass either handle_id or importIds[]",
-        "Call leadbay_import_leads with wait_for_completion=false first, then pass its handle_id.",
+        "Pass importIds[]",
+        "Call leadbay_import_leads with wait_for_completion=false first, then pass back the importIds it returned.",
         ""
       );
     }
@@ -409,14 +301,14 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
         client.request<FileImportPayloadV15>("GET", `/imports/${id}`)
       )
     );
-    const progress = summarizeImports(imports, handleDryRun);
+    const progress = summarizeImports(imports, params.dry_run);
     const failed = imports.find(
       (i) => i.pre_processing?.error || i.processing?.error
     );
     const complete = imports.every((i) => {
       if (i.pre_processing?.error || i.processing?.error) return false;
-      if (handleDryRun === true) return Boolean(i.pre_processing?.finished);
-      if (handleDryRun === false) return Boolean(i.processing?.finished);
+      if (params.dry_run === true) return Boolean(i.pre_processing?.finished);
+      if (params.dry_run === false) return Boolean(i.processing?.finished);
       return Boolean(i.processing?.finished || (i.pre_processing?.finished && !i.processing));
     });
     // A complete, non-dry-run import can hand back the leadIds the caller
@@ -440,7 +332,7 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
       (n, i) => n + Number(i.total_records ?? 0),
       0
     );
-    if (!failed && complete && handleDryRun !== true && importIds.length > 0) {
+    if (!failed && complete && params.dry_run !== true && importIds.length > 0) {
       try {
         reconciled = await fetchReconciledRecords(
           client,
@@ -467,9 +359,8 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
 
     return {
       status: failed || commitError ? "failed" : settled ? "complete" : "running",
-      ...(handleId ? { handle_id: handleId } : {}),
       importIds,
-      ...(handleDryRun === true ? { dry_run: true } : {}),
+      ...(params.dry_run === true ? { dry_run: true } : {}),
       progress: notReady
         ? { ...progress, phase: "committing" }
         : progress,

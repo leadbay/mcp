@@ -830,10 +830,6 @@ export interface ToolLogger {
 
 export interface ToolContext {
   logger?: ToolLogger;
-  // Optional BulkTracker for composites that mint/look up client-side bulk_ids
-  // while the Leadbay backend doesn't yet issue real job handles. Granular tools
-  // don't need this. See packages/core/src/jobs/bulk-store.ts.
-  bulkTracker?: import("./jobs/bulk-store.js").BulkTracker;
   // Notifications inbox — populated by the MCP server's WS listener with
   // terminal bulk-progress notifications. The account-status composite
   // surfaces inbox entries on every check-in, and the MCP server decorates

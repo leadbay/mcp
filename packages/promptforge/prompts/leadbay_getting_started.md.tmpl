@@ -352,7 +352,7 @@ account's **default wishlist selection** while `confirm`/`email` are set — so
 it would reveal and charge for the whole batch instead of the one lead the user
 agreed to.
 
-It returns a `bulk_id` and runs async — poll `leadbay_bulk_enrich_status`
+It returns a `notification_id` and runs async — poll `leadbay_bulk_enrich_status`
 with that id (`include_contacts=true`) until `all_done`, or until the resolved
 count plateaus across a few spaced polls. Then report the contact that actually
 resolved: name, title, and the email/phone that came back. Contacts sometimes
