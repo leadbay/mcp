@@ -1069,6 +1069,24 @@ export class LeadbayClient {
         status
       );
     }
+    // `bad_request` is the backend's input-validation rejection (a path or
+    // query parameter that failed to parse, a body that failed to
+    // deserialize). It is an answer about the arguments, not about Leadbay,
+    // so it gets the same BAD_INPUT the dispatcher and the tools use for a
+    // malformed argument. Filed under API_ERROR it carried "Try again", and
+    // an unattended agent did exactly that twenty times in 39 seconds on an
+    // 8-character lead id (product#4085). Other 400 codes (duplicate,
+    // unpaid_invoice, not_allowed, …) are domain answers and stay API_ERROR.
+    if (status === 400 && parsed?.error?.code === "bad_request") {
+      return this.makeError(
+        "BAD_INPUT",
+        parsed?.error?.message || parsed?.message || "Leadbay rejected the request as malformed",
+        "Leadbay's input validation rejected this call, so the same call will fail the same way — do not retry it unchanged. Fix the parameter named in the message first; if it is an id, pass it exactly as Leadbay returned it, never shortened or reconstructed.",
+        endpoint,
+        null,
+        status
+      );
+    }
     return this.makeError(
       "API_ERROR",
       parsed?.message || parsed?.error?.message || `API error (${status})`,
