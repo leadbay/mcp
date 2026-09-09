@@ -14,6 +14,7 @@ import {
   collectJobSnapshot,
   canonicalSet,
   coerceArrayParams,
+  readSpendFlag,
   canonicalIdSet,
   canonicalLabelSet,
   canonicalOptionalObject,
@@ -238,11 +239,21 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     // explicit qualify:true and/or requested channels costs money. When it
     // does, the submit is withheld pending `confirm: true` and a real
     // dry-run quote is returned instead.
+    // Normalize the three flags the gate reads BEFORE reading them, and use the
+    // normalized values from here on — including on the wire. An untyped
+    // `qualify: "true"` is FALSE to `=== true` but TRUE to the backend, so the
+    // raw read decided "free", skipped the gate, and posted a body that
+    // charged. Measured on production: 94 cost_cents on an unconsented call.
+    const qualify = readSpendFlag(params.qualify, "qualify");
+    const dryRun = readSpendFlag(params.dry_run, "dry_run");
+    const confirm = readSpendFlag(params.confirm, "confirm");
+    params = { ...params, qualify, dry_run: dryRun, confirm };
+
     const buysChannels = (params.channels?.length ?? 0) > 0;
-    const buysQualification = params.qualify === true;
+    const buysQualification = qualify === true;
     const isPaid = buysQualification || buysChannels;
-    const vetoed = params.confirm === false;
-    const consented = !vetoed && params.confirm === true;
+    const vetoed = confirm === false;
+    const consented = !vetoed && confirm === true;
 
     // `request_id` is schema-`required`, but the server does not validate
     // schemas before dispatch, so a caller can omit it and compactBody would
@@ -301,7 +312,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       example_lead: params.example_lead,
       filters: normalizeSearchFilters(params.filters),
       count: params.count,
-      qualify: params.qualify,
+      qualify,
       min_ai_score: params.min_ai_score,
       contact_titles: params.contact_titles,
       title_gate: params.title_gate,
@@ -319,10 +330,17 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       exploration_cap: params.exploration_cap,
       request_id: requestId,
       lang: params.lang,
-      dry_run: params.dry_run,
+      dry_run: dryRun,
     });
 
-    if (params.dry_run) {
+    // AFTER the spend gate below would be safer still, but a dry run is the
+    // one path that must stay reachable when the gate would withhold — it is
+    // how the caller GETS the quote. What made it dangerous was the truthiness
+    // read: `dry_run: "false"` is truthy in JS and `false` to the backend, so
+    // this branch posted a REAL submit and then labelled the answer
+    // `dry_run: true`. `dryRun` is a real boolean now, so `"false"` takes the
+    // submit path with the gate in front of it, exactly like an omitted flag.
+    if (dryRun === true) {
       const forecast = await client.request<McpDryRunResponse>(
         "POST",
         "/mcp/search",

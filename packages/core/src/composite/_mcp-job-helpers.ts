@@ -1031,6 +1031,45 @@ export function rejectOversizedLeadRefs(refs: unknown): void {
   };
 }
 
+/** Read a flag that decides whether the user is charged.
+ *
+ *  The wire is untyped. `server.ts`'s `findShapeMismatch` validates array and
+ *  object shapes and leaves scalars alone on purpose — hosts legitimately send
+ *  `"20"` for a number — so a boolean arrives exactly as the host typed it.
+ *  Jackson then coerces `"true"` to `true` backend-side. So a raw
+ *  `params.qualify === true` reads a string `"true"` as FALSE, decides the call
+ *  is free, skips the spend gate, and posts a body the backend charges for.
+ *  Measured on production 2026-09-08: `qualify: "true"` with no `confirm`
+ *  submitted a real job and spent 94 cost_cents.
+ *
+ *  So every flag the gate reads is normalized here, BEFORE the gate, and the
+ *  normalized value is what goes on the wire — the decision and the request
+ *  have to describe the same thing.
+ *
+ *  Recognised spellings only. `1`, `"yes"`, `"on"` are refused rather than
+ *  guessed: a wrong guess on these three fields either charges a user who did
+ *  not consent or withholds work they asked for. */
+export function readSpendFlag(
+  value: unknown,
+  field: string
+): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const t = value.trim().toLowerCase();
+    if (t === "true") return true;
+    if (t === "false") return false;
+  }
+  throw {
+    error: true,
+    code: "BAD_INPUT",
+    message: `${field} must be a boolean (got ${
+      Array.isArray(value) ? "array" : typeof value
+    }: ${JSON.stringify(value)}).`,
+    hint: `Re-call the tool with ${field}: true or ${field}: false as a JSON boolean, not a string or a number. This flag decides whether the user is charged, so an unrecognised value is refused rather than guessed.`,
+  };
+}
+
 export function rejectCountryLocations(
   locations: unknown,
   region?: string

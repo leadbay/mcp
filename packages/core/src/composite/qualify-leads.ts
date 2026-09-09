@@ -29,6 +29,7 @@ import {
   type McpDryRunResponse,
   type McpSubmitResponse,
   rejectOversizedLeadRefs,
+  readSpendFlag,
 } from "./_mcp-job-helpers.js";
 import { normalizeDomain } from "./import-leads.js";
 import { leadbay_qualify_leads as QUALIFY_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -359,13 +360,23 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     //
     // FREE calls pass straight through: qualify:false with no channels buys
     // nothing, so demanding consent there would be friction with no spend.
+    // Normalize before reading. This tool's gate is `!== false`, which fails
+    // SAFE on a string, but `dry_run` was read for truthiness and `"false"` is
+    // truthy in JS and `false` to the backend — so that branch posted a real
+    // submit and answered `dry_run: true`. The normalized values are what go on
+    // the wire too: the decision and the request must describe the same call.
+    const qualify = readSpendFlag(params.qualify, "qualify");
+    const dryRun = readSpendFlag(params.dry_run, "dry_run");
+    const confirm = readSpendFlag(params.confirm, "confirm");
+    params = { ...params, qualify, dry_run: dryRun, confirm };
+
     const buysChannels = (params.channels?.length ?? 0) > 0;
-    const buysQualification = params.qualify !== false;
+    const buysQualification = qualify !== false;
     const isPaid = buysQualification || buysChannels;
     // An explicit confirm:false is a VETO — decline the spend outright, no
     // quote round-trip. Distinct from confirm being absent (which earns a quote).
-    const vetoed = params.confirm === false;
-    const consented = !vetoed && params.confirm === true;
+    const vetoed = confirm === false;
+    const consented = !vetoed && confirm === true;
 
     // A paid submit without an idempotency key can be re-run by any timeout or
     // agent retry, re-charging fresh qualification and channel purchases for
@@ -381,17 +392,17 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     const body = compactBody({
       lead_refs: params.lead_refs,
       prior_deliveries: params.prior_deliveries,
-      qualify: params.qualify,
+      qualify,
       contact_titles: params.contact_titles,
       title_gate: params.title_gate,
       channels: params.channels,
       max_cost: params.max_cost,
       request_id: requestId,
       lang: params.lang,
-      dry_run: params.dry_run,
+      dry_run: dryRun,
     });
 
-    if (params.dry_run) {
+    if (dryRun === true) {
       const forecast = await client.request<McpDryRunResponse>(
         "POST",
         "/mcp/qualify",
