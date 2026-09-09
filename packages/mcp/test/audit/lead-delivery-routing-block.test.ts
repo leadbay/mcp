@@ -1,12 +1,15 @@
 /**
  * Audit: the MCP-first delivery tools carry a usable routing block.
  *
- * Same contract `routing-block.test.ts` enforces for the tools listed in its
- * TOOLS_WITH_ROUTING set — `## WHEN TO USE` inside the 600-char window every
- * chat host loads even when truncating, trigger phrases, the shared memory
- * pointer, and ≥2 positive AND ≥2 negative examples. Asserted here instead of
- * by appending three names to that established set, so the audit file itself
- * stays unchanged.
+ * The three names ARE in `routing-block.test.ts`'s TOOLS_WITH_ROUTING set, as
+ * that file's own comment instructs ("when they do, append here") and as
+ * CLAUDE.md requires of every new user-facing tool. That set is a registry, and
+ * the repo already sanctions editing one — `output-schema-conformance.test.ts`
+ * has the same shape.
+ *
+ * This file adds what the registry check does not reach: the cross-routing
+ * between the three and their older neighbours, and the example counts read
+ * from the generated description rather than the frontmatter.
  *
  * This matters more for these three than for most tools. Each has a
  * plausible-looking older neighbour (`leadbay_pull_leads`,
