@@ -29,7 +29,9 @@ export const updateCustomField: Tool<UpdateCustomFieldParams> = {
   annotations: {
     title: "Update CRM custom field",
     readOnlyHint: false,
-    destructiveHint: false,
+    // Overwrites an existing field's value. Same reasoning as
+    // leadbay_update_contact; leadbay_create_custom_field stays non-destructive.
+    destructiveHint: true,
     idempotentHint: true,
     openWorldHint: true,
   },

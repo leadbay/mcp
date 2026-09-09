@@ -10,8 +10,13 @@
     {
       "name": "leadbay",
       "source": "./.claude-plugin/plugins/leadbay",
-      "description": "AI lead discovery, qualification, and outreach prep - wraps @leadbay/mcp via npx.",
-      "tags": ["mcp", "sales", "lead-generation", "b2b"]
+      "description": "AI lead discovery, qualification, and outreach prep - connects to the hosted Leadbay MCP over OAuth.",
+      "tags": [
+        "mcp",
+        "sales",
+        "lead-generation",
+        "b2b"
+      ]
     }
   ]
 }

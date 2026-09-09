@@ -681,7 +681,7 @@ Accepted values: `"true"|"1"|"yes"|"on"` enable; `"false"|"0"|"no"|"off"` disabl
 
 **Override the destinations** with `LEADBAY_POSTHOG_KEY=<your-project-key>` and/or `LEADBAY_SENTRY_DSN=<your-dsn>` if you'd rather pipe to your own projects. Telemetry is also disabled automatically when `NODE_ENV=test`.
 
-Contact data fetched through this server stays local to your MCP client session — telemetry never carries it. Requests to Leadbay are subject to the [Leadbay privacy policy](https://leadbay.ai/privacy).
+Contact data fetched through this server stays local to your MCP client session — telemetry never carries it. Requests to Leadbay are subject to the [Leadbay privacy policy](https://www.leadbay.ai/privacy-policy).
 
 ## 9. For developers — testing a local build
 

@@ -1,5 +1,66 @@
 # Changelog — @leadbay/mcp
 
+## 0.37.0 — 2026-09-09
+
+Groundwork for the Anthropic Connectors Directory re-submission. The first
+review rejected the connector (product#3943) over silent conversation capture;
+this pass clears the remaining items on Anthropic's published review criteria.
+
+- **`leadbay_update_contact` and `leadbay_update_custom_field` now carry
+  `destructiveHint: true`.** Both overwrite a record the user already has, and
+  Claude's auto-permissions read that hint: read-only tools run without
+  confirmation, destructive tools always prompt. The surface had drifted — the
+  strictly additive `leadbay_add_note` prompted while an overwrite did not.
+  `leadbay_add_contact`, `leadbay_create_custom_field` and the pin/unpin pair
+  stay non-destructive on purpose. New audit:
+  `test/audit/destructive-hint-on-overwrites.test.ts`.
+
+- **`_triggered_by` is described as the call's input provenance, not a message.**
+  The prose asked for "the verbatim portion of the user's most recent message";
+  recency was never the point, and it invited quoting whatever was newest. It
+  now asks for the instruction this call is executing, once, with "never
+  surrounding turns, never a summary of the conversation" stated in the schema
+  the agent reads. The optional variant no longer offers "or short paraphrase"
+  or "last 1-3 sentences". The 500-char bound at `server.ts:585` is unchanged
+  and now locked by `test/audit/triggered-by-single-message.test.ts`.
+
+- **The top-up prose states the two options instead of pushing one.** Anthropic's
+  pre-submission checklist rejects tool descriptions that "promote products and
+  services". "Top-ups always beat waiting", "OFFER it on every quota wall" and
+  "top up now (I can generate the link)" are gone; the text now says a top-up is
+  not bound to the window and clears the throttle immediately, and to let the
+  user pick. Both commerce tools stay, and `/chatgpt/mcp` still deletes rather
+  than rewords — `commerce-gate.test.ts` tracks the new phrases.
+
+- **The Claude Code / Cowork plugin connects over OAuth instead of a pasted
+  token.** `.claude-plugin/plugins/leadbay` now declares
+  `{"type": "http", "url": "https://mcp.leadbay.app/mcp"}` and has no
+  `userConfig` at all. It had been pinned to `@leadbay/mcp@0.29` with a required
+  `LEADBAY_TOKEN` for seven releases because nothing checked it; new audit
+  `test/audit/plugin-manifest-version.test.ts` ties the manifest version to
+  `packages/mcp/package.json` and forbids a `command`/`args` pin. Adds a
+  `SETUP.md` setup skill.
+
+- **Dead documentation links.** `docs.leadbay.ai` does not resolve (NXDOMAIN);
+  both README links now point at `docs.leadbay.app`. `packages/mcp/README.md`
+  linked `leadbay.ai/privacy`, a 404 — now `www.leadbay.ai/privacy-policy`.
+
+- **README privacy section rewritten.** It claimed the server "does not read
+  your conversation history", which read as contradicted by `last_prompt`. It
+  now states what is collected, the 500-char bound, the secret stripping, that
+  it is tied to the Leadbay account rather than anonymous, and how to opt out.
+
+- **Template frontmatter now matches the registered Tool.** A tool declares its
+  annotations twice and only the code copy reaches the wire, so seven templates
+  had drifted. `leadbay_create_topup_link` and `leadbay_open_billing_portal`
+  both claimed `readOnlyHint: true` for tools that mint a Stripe URL. New audit:
+  `packages/promptforge/test/annotations-frontmatter-match.test.ts`.
+
+- Submission packets rewritten for the current portals:
+  `submission-packets/claude-ai-connector.md` (11 portal steps) and
+  `submission-packets/claude-plugin-directory.md`. The stale MCPB packet is
+  deleted.
+
 ## 0.36.0 — 2026-09-08
 
 The OpenAI submission form flags every tool without an `outputSchema`

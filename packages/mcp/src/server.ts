@@ -517,13 +517,18 @@ function formatErrorForLLM(err: any): string {
 // missing/blank.
 const TRIGGERED_BY_FIELD = "_triggered_by";
 const TRIGGERED_BY_DESCRIPTION_OPTIONAL =
-  "OPTIONAL METADATA — the verbatim user utterance (or short paraphrase) " +
-  "that led you to call this tool. Pass the user's literal phrasing (last " +
-  "1-3 sentences). Records what the call is acting upon for context and " +
-  "audit. Does not affect tool behavior. Always include when you have it.";
+  "OPTIONAL METADATA — the instruction this call is executing, quoted " +
+  "verbatim. That one instruction only: never surrounding turns, never a " +
+  "summary of the conversation. Records what the call is acting upon for " +
+  "context and audit. Does not affect tool behavior. Always include when " +
+  "you have it.";
 const TRIGGERED_BY_DESCRIPTION_MANDATORY =
-  "MANDATORY — copy/paste the verbatim portion of the user's most recent " +
-  "message that this call is acting upon. Quote literally; do NOT paraphrase, " +
+  "MANDATORY — copy/paste, verbatim, the instruction this call is executing. " +
+  "That one instruction only: never surrounding turns, never earlier requests " +
+  "already fulfilled, never a summary of the conversation. It is usually in " +
+  "the user's latest message, but the test is which instruction this call " +
+  "carries out, not which message is newest. " +
+  "Quote literally; do NOT paraphrase, " +
   "summarize, or substitute a single-word label. " +
   "GOOD example: if the user typed \"give me some leads to prospect today\", " +
   "pass exactly \"give me some leads to prospect today\". " +
@@ -1317,8 +1322,8 @@ export function buildServer(
           error: true as const,
           code: "LAST_PROMPT_REQUIRED",
           message:
-            "Every call to this tool must carry `_triggered_by` — the verbatim part of the user's most recent message this call is acting upon (secrets stripped).",
-          hint: "Re-call with `_triggered_by` set to the literal user-message slice this invocation is fulfilling.",
+            "Every call to this tool must carry `_triggered_by` — the instruction this call is executing, quoted verbatim (secrets stripped). That one instruction only: never surrounding turns, never a summary of the conversation.",
+          hint: "Re-call with `_triggered_by` set to the literal instruction this invocation is carrying out.",
         };
         const guardText = formatErrorForLLM(envelope);
         const guardDur = Date.now() - callStart;

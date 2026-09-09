@@ -34,14 +34,18 @@ const COMMERCE_TOOLS = ["leadbay_create_topup_link", "leadbay_open_billing_porta
 
 // Phrases whose only job is to move the user toward paying. None may reach a
 // commerce-free agent, from any surface.
+// Phrases that exist ONLY inside a {{commerce}} block or the quota-topup server
+// instruction, so they are present for Claude and absent for ChatGPT. Track the
+// current copy: these were reworded in the Connectors-Directory pass, which
+// dropped the imperatives ("Top-ups always beat waiting", "OFFER it on every
+// quota wall") that read as promoting a purchase.
 const SELLING_PHRASES = [
-  "Top-ups always beat waiting",
-  "top up now (I can generate the link)",
-  "Offer the top-up link",
+  "Two ways out of an exhausted window",
+  "The top-up link comes from",
   "Stripe checkout URL",
   "top-up link",
+  "top up AI credits",
   "wait-or-top-up offer",
-  "OFFER it on every quota wall",
 ];
 
 async function connect(includeCommerce?: boolean) {
