@@ -1338,6 +1338,160 @@ const CASES: ConformanceCase[] = [
       ]);
     },
   },
+  // ── The five tools OpenAI's submission form flagged for a missing
+  // outputSchema. list_sectors is deliberately NOT here: it returns a bare
+  // array, and server.ts only emits structuredContent for plain objects, so
+  // declaring a schema there would promise a payload the server never sends.
+  {
+    toolName: "leadbay_getting_started",
+    arguments: {},
+    setupMocks: () => {
+      // Static manifest — makes no HTTP call at all. An empty script is the
+      // assertion: any request would fail with "no script matched".
+      mockHttp([]);
+    },
+  },
+  {
+    toolName: "leadbay_artifact_kit",
+    arguments: {},
+    setupMocks: () => {
+      mockHttp([]);
+    },
+  },
+  {
+    toolName: "leadbay_team_activity",
+    arguments: { weeks: 4 },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: /\/1\.6\/kpi\/users/,
+          status: 200,
+          body: [
+            {
+              user: { id: "u-1", name: "Rep One", email: "rep@leadbay.test", admin: false },
+              total_activities: 12,
+              likes: 3,
+              saves: 1,
+              website: 2,
+              exported: 0,
+              lead_profile_views: 4,
+              create_lead_contact: 1,
+              purchase_lead_contact: 1,
+              create_lead_note: 2,
+              epilogue_interest_validated_or_meeting_planed: 1,
+              epilogue_could_not_reach_still_trying: 0,
+              epilogue_not_interested_lost: 0,
+              epilogue_still_chasing: 1,
+            },
+          ],
+        },
+        {
+          method: "GET",
+          path: /\/1\.6\/kpi\/trends/,
+          status: 200,
+          body: [{ date: "2026-09-01", count: 5 }],
+        },
+      ]);
+    },
+  },
+  {
+    toolName: "leadbay_account_history",
+    arguments: { leadId: "lead-1", lensId: 42, activityCount: 5 },
+    setupMocks: () => {
+      // Fans out through research_lead_by_id's chain, then adds notes +
+      // activities. Both of those .catch() to empty on rejection, so they are
+      // mocked explicitly — otherwise the case would silently assert the
+      // degraded shape instead of the real one.
+      mockHttp([
+        { method: "POST", path: "/1.6/interactions", status: 200, body: {} },
+        {
+          method: "GET",
+          path: /\/1\.6\/lenses\/42\/leads\/lead-1$/,
+          status: 200,
+          body: {
+            id: "lead-1",
+            name: "Acme",
+            sector_id: 7,
+            score: 80,
+            ai_agent_lead_score: 70,
+            tags: [],
+            size: null,
+            location: null,
+            website: "acme.com",
+            description: null,
+            short_description: null,
+            social: {},
+            liked: false,
+            disliked: false,
+            contacts_count: 0,
+            org_contacts_count: 0,
+            notes_count: 1,
+            epilogue_actions_count: 0,
+            prospecting_actions_count: 0,
+            recommended_contact_title: null,
+            recommended_contact: null,
+          },
+        },
+        {
+          method: "GET",
+          path: "/1.6/leads/lead-1/ai_agent_responses",
+          status: 200,
+          body: [
+            {
+              question: "Why this lead?",
+              question_created_at: "2026-04-20T00:00:00Z",
+              lead_id: "lead-1",
+              score: 8,
+              response: "good fit",
+              computed_at: "2026-04-20T00:00:00Z",
+            },
+          ],
+        },
+        {
+          method: "GET",
+          path: /\/1\.6\/leads\/lead-1\/enrich\/contacts/,
+          status: 200,
+          body: [],
+        },
+        {
+          method: "GET",
+          path: /\/1\.6\/leads\/lead-1\/contacts/,
+          status: 200,
+          body: [],
+        },
+        { method: "GET", path: "/1.6/leads/lead-1/web_fetch", status: 200, body: {} },
+        {
+          // research_lead_by_id reads its own activities?count=20 BEFORE
+          // account_history reads activities?count=5. mockHttp consumes a script
+          // once, so both need one — otherwise the second falls through to "no
+          // script matched", account_history .catch()es to an empty timeline and
+          // the case silently asserts the degraded shape.
+          method: "GET",
+          path: /\/1\.6\/leads\/lead-1\/activities\?count=20/,
+          status: 200,
+          body: { items: [], pagination: { total: 0 } },
+        },
+        {
+          method: "GET",
+          path: /\/1\.6\/leads\/lead-1\/notes/,
+          status: 200,
+          body: [
+            { id: "n-1", note: "Met at trade show.", created_at: "2026-05-01T00:00:00Z" },
+          ],
+        },
+        {
+          method: "GET",
+          path: /\/1\.6\/leads\/lead-1\/activities/,
+          status: 200,
+          body: {
+            items: [{ type: "LEAD_LIKED", date: "2026-05-02T00:00:00Z" }],
+            pagination: { total: 1 },
+          },
+        },
+      ]);
+    },
+  },
 ];
 
 // -----------------------------------------------------------------------

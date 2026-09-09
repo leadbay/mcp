@@ -1,5 +1,59 @@
 # Changelog — @leadbay/mcp
 
+## 0.36.0 — 2026-09-08
+
+The OpenAI submission form flags every tool without an `outputSchema`
+("Recommended: Add an outputSchema so models can better understand this tool's
+results"). 43 of the 58 tools on `/chatgpt/mcp` already had one. This adds four
+of the remaining 15:
+
+- `leadbay_account_history`, `leadbay_team_activity` — rich nested payloads the
+  model previously had to infer from prose.
+- `leadbay_getting_started`, `leadbay_artifact_kit` — static manifests; cheap to
+  declare, and both are consumed programmatically.
+
+Each gets a real entry in `output-schema-conformance.test.ts` CASES, not an
+OPT_OUT: a mocked happy-path round-trip whose structuredContent is asserted
+against the schema. Mutation-checked — renaming `trend` in the team_activity
+schema fails with `$.trend: return contains key not declared in
+outputSchema.properties (drift)`.
+
+A local Codex review of this branch found three real defects in the first pass,
+all fixed here:
+
+- `account_history` declared `signals` as an object. `research_lead_by_id`,
+  whose payload it passes straight through, declares it an **array**. The
+  conformance walk checks required keys and undeclared keys, not types, so it
+  did not catch this.
+- The `account_history` conformance case under-mocked the fan-out. It never
+  mocked `/leads/{id}/contacts?IncludeEnriched=true`, and gave one generic
+  `/activities` script for the two reads that happen (research's `count=20`,
+  then the tool's own `count=<n>`). The harness consumes a script once, so the
+  second read rejected, `.catch()`ed to empty, and the case asserted a degraded
+  timeline while staying schema-conformant. Proven: with the old mocks the new
+  `account-history-full-fanout.test.ts` fails `expected [] to have a length of
+  1`.
+- `artifact_kit`'s schema omitted `_meta`. `buildServer` injects
+  `_meta.update_available` / `_meta.notifications` into successful object
+  results before setting `structuredContent`, so it is a real top-level key at
+  runtime. The other three declared it.
+
+Two deliberate limits:
+
+- **`leadbay_list_sectors` is excluded.** It returns a bare array, and
+  `server.ts` only emits `structuredContent` for plain objects, so a schema
+  there would promise a payload the server never sends. Making it honest means
+  changing the return to an object, which breaks existing callers.
+- On `account_history`, the blobs passed through verbatim from
+  `research_lead_by_id` (`signals`, `firmographics`, `contacts`, `engagement`)
+  are declared as bare objects with no `properties`. The conformance walk only
+  recurses into declared object-properties that carry their own `properties`,
+  so research can grow a field without breaking this tool.
+
+The remaining 10 tools without a schema are write acknowledgements
+(`pin_contact`, `like_lead`, `set_telemetry`, …). A schema for `{ok:true}`
+teaches the model nothing; left alone on purpose.
+
 ## 0.35.2 — 2026-09-08
 
 A backend `bad_request` 400 is now `BAD_INPUT` (product#4085).

@@ -464,6 +464,37 @@ export const gettingStarted: Tool<GettingStartedParams> = {
     openWorldHint: false,
   },
   description: GETTING_STARTED_DESCRIPTION,
+  outputSchema: {
+    type: "object",
+    properties: {
+      version: { type: "number", description: "Manifest version; bump means the script changed." },
+      intro: { type: "string", description: "What to say before gate 1." },
+      one_option_rule: {
+        type: "string",
+        description: "The invariant every gate obeys: one way forward plus one way out, never three.",
+      },
+      docs_url: { type: "string", description: "The canonical setup guide." },
+      docs_note: { type: "string", description: "The only two moments that link may appear." },
+      calendly_url: { type: "string", description: "1:1 setup session, offered on exit only." },
+      exit_offer: { type: "string", description: "How and when to make that offer." },
+      steps: {
+        type: "array",
+        description:
+          "The gates, in order. Each carries n, gate_label, gate_description, explain, " +
+          "next_steps (the widget payload), calls, args, and optional forbidden_args / " +
+          "spend / quota_note / pin / branches. Render next_steps VERBATIM.",
+      },
+      keep_going: {
+        type: "array",
+        description:
+          "The hand-off cards: what the user should TYPE to get each thing back once " +
+          "the buttons are gone. Every phrase is lifted from a tool's own routing triggers.",
+      },
+      stop: { type: "string", description: "How to close the tour." },
+      _meta: { type: "object", description: "Server-injected notices, when present." },
+    },
+    required: ["version", "intro", "steps", "keep_going", "stop"],
+  },
   write: false,
   inputSchema: {
     type: "object",
