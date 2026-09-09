@@ -1,6 +1,6 @@
 # Changelog — @leadbay/mcp
 
-## 0.35.0 — 2026-09-02
+## 0.37.0 — 2026-09-08
 
 Expose the backend MCP-first delivery endpoints (`POST /1.6/mcp/search`,
 `POST /1.6/mcp/qualify`, `GET /1.6/mcp/jobs/{id}`) as three composites —
@@ -19,6 +19,256 @@ retired: the routes shipped to production in backend v3.22.0 (2026-08-22) and
 were verified live on `api-us` and `api-fr`. The `leadbay_new_leads` prompt is
 still hidden on a read-only server (`LEADBAY_MCP_WRITE=0`), since every phase of
 it calls a write-tier tool.
+
+## 0.36.0 — 2026-09-08
+
+The OpenAI submission form flags every tool without an `outputSchema`
+("Recommended: Add an outputSchema so models can better understand this tool's
+results"). 43 of the 58 tools on `/chatgpt/mcp` already had one. This adds four
+of the remaining 15:
+
+- `leadbay_account_history`, `leadbay_team_activity` — rich nested payloads the
+  model previously had to infer from prose.
+- `leadbay_getting_started`, `leadbay_artifact_kit` — static manifests; cheap to
+  declare, and both are consumed programmatically.
+
+Each gets a real entry in `output-schema-conformance.test.ts` CASES, not an
+OPT_OUT: a mocked happy-path round-trip whose structuredContent is asserted
+against the schema. Mutation-checked — renaming `trend` in the team_activity
+schema fails with `$.trend: return contains key not declared in
+outputSchema.properties (drift)`.
+
+A local Codex review of this branch found three real defects in the first pass,
+all fixed here:
+
+- `account_history` declared `signals` as an object. `research_lead_by_id`,
+  whose payload it passes straight through, declares it an **array**. The
+  conformance walk checks required keys and undeclared keys, not types, so it
+  did not catch this.
+- The `account_history` conformance case under-mocked the fan-out. It never
+  mocked `/leads/{id}/contacts?IncludeEnriched=true`, and gave one generic
+  `/activities` script for the two reads that happen (research's `count=20`,
+  then the tool's own `count=<n>`). The harness consumes a script once, so the
+  second read rejected, `.catch()`ed to empty, and the case asserted a degraded
+  timeline while staying schema-conformant. Proven: with the old mocks the new
+  `account-history-full-fanout.test.ts` fails `expected [] to have a length of
+  1`.
+- `artifact_kit`'s schema omitted `_meta`. `buildServer` injects
+  `_meta.update_available` / `_meta.notifications` into successful object
+  results before setting `structuredContent`, so it is a real top-level key at
+  runtime. The other three declared it.
+
+Two deliberate limits:
+
+- **`leadbay_list_sectors` is excluded.** It returns a bare array, and
+  `server.ts` only emits `structuredContent` for plain objects, so a schema
+  there would promise a payload the server never sends. Making it honest means
+  changing the return to an object, which breaks existing callers.
+- On `account_history`, the blobs passed through verbatim from
+  `research_lead_by_id` (`signals`, `firmographics`, `contacts`, `engagement`)
+  are declared as bare objects with no `properties`. The conformance walk only
+  recurses into declared object-properties that carry their own `properties`,
+  so research can grow a field without breaking this tool.
+
+The remaining 10 tools without a schema are write acknowledgements
+(`pin_contact`, `like_lead`, `set_telemetry`, …). A schema for `{ok:true}`
+teaches the model nothing; left alone on purpose.
+
+## 0.35.2 — 2026-09-08
+
+A backend `bad_request` 400 is now `BAD_INPUT` (product#4085).
+
+**What happened.** On 8 Sep an unattended routine on the hosted server called
+`leadbay_research_lead_by_id` twenty times in 39 seconds with the first block
+of each lead UUID (`/lenses/48110/leads/5585c198`, …). The backend rejected
+every call in ~30 ms with `400 {"error":{"code":"bad_request","message":"bad
+'leadId' parameter"}}`. `client.ts` `mapErrorResponse` filed that under the
+`API_ERROR` catch-all, whose hint reads "Try again or check the Leadbay API
+status". The agent did what it was told. The same pattern ran on 31 Aug.
+
+**Change.** A 400 whose body carries the backend's `bad_request` code (a path
+or query parameter that failed to parse, a body that failed to deserialize) is
+`BAD_INPUT`, with the backend message verbatim and a hint that the call fails
+identically on retry and that ids are the full values Leadbay returned. Other
+400 codes (`duplicate`, `unpaid_invoice`, `not_allowed`, …) are domain answers
+and stay `API_ERROR`. `leadbay_research_lead_by_id`'s `leadId` schema
+description now says the id is the full 36-character UUID from
+`leadbay_pull_leads` `items[].id`, never shortened. No template change.
+
+## 0.35.1 — 2026-09-08
+
+Release-pipeline only. No source change, no behaviour change: `packages/core`
+and `packages/mcp` are byte-identical to 0.35.0. This version exists because
+the MCP Registry can only be reached by a tag push, and the two `release.yml`
+bugs fixed in #208 had to ship before a tag could carry it.
+
+**What was broken.** 0.35.0 published to npm and then the workflow died
+before creating the GitHub Release: the release-notes pipeline ended in
+`head -60` under `set -euo pipefail`, the 0.35.0 changelog section is 115
+lines, so `head` closed the pipe, GNU sed failed its final flush and the step
+exited 4. No Release meant no `.dxt`/`.mcpb`, and `Publish to MCP Registry`
+was skipped for `needs:`-ing the job that failed. Separately, on 0.34.1 the
+registry job did run and the registry refused it — it re-checks npm itself and
+got a 404 for a version published seconds earlier. Between the two, the
+directory listing sat at 0.34.0 and the desktop bundle at 0.34.x while npm and
+the hosted server were on 0.35.0.
+
+0.35.0's Release and its four assets were created by hand once #208 landed;
+this release is what carries the fix through the pipeline itself.
+
+## 0.35.0 — 2026-09-02
+
+The MCP no longer keeps any record of the jobs it starts (product#4005,
+product#4039). Every launch already receives a durable id from the Leadbay
+backend, and the status tools now take that id.
+
+**Why.** Three tools — `leadbay_bulk_qualify_leads`, `leadbay_import_leads`,
+`leadbay_import_and_qualify` — failed on the hosted server with
+`BULK_TRACKER_UNAVAILABLE` (9 customers, 53 times; `import_and_qualify` never
+once worked there). The file they depended on (`~/.leadbay/bulks.json`) was only
+ever created by the stdio entrypoint. Its own header said it existed *"while the
+Leadbay backend doesn't yet issue a real bulk_id"*; the backend now does.
+
+**Breaking.** `bulk_id`, `handle_id` and `qualify_id` are gone as inputs, with
+no transition period — they were valid for minutes on a local install and never
+worked on the server.
+
+| Tool | Now returns / takes |
+|---|---|
+| `leadbay_enrich_titles`, `leadbay_bulk_qualify_leads` | return the backend's `notification_id` + `lead_ids` (+ `lens_id`) |
+| `leadbay_import_leads`, `leadbay_import_and_qualify` | return the backend's `importIds` / `import_ids` |
+| `leadbay_bulk_enrich_status`, `leadbay_qualify_status` | take `notification_id` and/or `lead_ids` (+ `lens_id`) |
+| `leadbay_import_status` | takes `importIds`, which it already accepted |
+
+`packages/core/src/jobs/bulk-store.ts` and its tests are deleted, along with
+`LEADBAY_BULK_STORE_PATH`, `LEADBAY_BULK_STORE_ALLOW_MEMORY` and the `BULK_*`
+error codes. What survives is a five-minute in-memory guard so an assistant
+retry does not charge twice (`jobs/launch-guard.ts`); it claims the launch
+BEFORE firing it, so a concurrent identical call is told `launch_in_flight`
+rather than handed an empty ticket (product#4039).
+
+Verified live on staging through fresh server processes: a job started in one
+process resolves by its backend id from another, including after the
+notification was archived with `leadbay_acknowledge_notification`. The
+notification is listable within a second of the launch ack.
+
+Found in that run and fixed in the same release:
+
+- **A notification of the wrong kind was answered as if it were the right
+  one.** A qualification's notification fed to `leadbay_bulk_enrich_status`
+  read as a finished enrichment; an enrichment's fed to `leadbay_qualify_status`
+  read as a running qualification. Both tools now check the notification's kind
+  (`ENRICH_JOB_WRONG_KIND` / `QUALIFY_JOB_WRONG_KIND`) and name the right tool.
+- **Enrichment notifications do not always carry counters.** On staging the
+  finished row had `in_progress` and a title but no `bulk_progress`, so the
+  `notification_id`-only call said "not a bulk job". It now says
+  `ENRICH_JOB_NO_COUNTERS` with the backend's running/finished flag and asks for
+  the `lead_ids` the launch returned, which always answer.
+- `leadbay_qualify_status` no longer throws not-found when the caller also
+  passed `lead_ids` + `lens_id`; it answers per lead, as its own hint says to.
+- `leadbay_enrich_titles` declared `notification_id` / `lead_ids` / `reused`
+  as inputs instead of outputs; `leadbay_bulk_enrich_status` required
+  `notification_id` in its output when the `lead_ids`-only path omits it.
+- The artifact SDK's `lb.enrichment()` (`@leadbay/components`) still read
+  `bulk_id`, so every widget enrichment reported done instantly with no job
+  polled. It now carries `notification_id` + `lead_ids`.
+- The live eval harness and two live smoke suites still imported the deleted
+  store; tool copy in eight places still told the assistant to poll with a
+  `bulk_id` / `qualify_id`.
+
+**The assistant is now told, in the tool descriptions, that a launched job
+cannot be stopped.** Leadbay has no cancel: enrichment, qualification and
+imports have a launch route and a read route and nothing else
+(`LeadsRoutes.kt`, `ImportsRoutes.kt`, `/1.6` specs). The retired store made
+this reachable in the wrong direction — a host cancellation flipped a local
+record to `cancelled`, and the status tools answered *"no further work is in
+flight … relaunch"*, which spends the quota a second time on rows Leadbay is
+still processing. That text is gone with the store; the true rule now ships on
+the surface the assistant actually reads. Three variants ship, because handing a tool
+the wrong one is its own bug.
+
+| Tools | Snippet | Why |
+|---|---|---|
+| `enrich_titles`, `bulk_qualify_leads`, `import_and_qualify` | `heuristics/launched-work-cannot-be-stopped.md` | they call `beginLaunch`, so a re-call inside the window returns the ids the first call produced — best-effort, never a guarantee |
+| `bulk_enrich_status`, `qualify_status`, `import_status` | `heuristics/launched-work-poll-only.md` | read-only. Re-calling launches nothing, and the launcher's "check your quota before retrying" text would stall the poll loop these tools exist for |
+| `qualify_lead`, `enrich_contacts`, `launch_bulk_enrichment` | `heuristics/unguarded-launch.md` | they POST directly with no guard, so the guarded re-call advice would buy a second paid launch. `enrich_contacts` is on the hosted route, so this is not only an advanced-mode concern |
+
+Those same three tools shipped `idempotentHint: true`, which this repo defines as
+*"calling the same tool twice with the same arguments is safe and produces the
+same observable outcome (no double-write side-effect)"*. That is the
+machine-readable half of the claim the prose now contradicts, and a host may act
+on it automatically. They are `idempotentHint: false` now. This is the one
+behaviour change in an otherwise text-only release;
+`packages/mcp/test/annotations.test.ts` carried the old value in its expectation
+table and is corrected with the code.
+
+The six prompts that already carry the long-running-tool rules carry the guarded
+variant too. `leadbay_import_leads` sits 157 chars under the
+17,000 cap and states the cancel case in one sentence instead; its own SLOW
+BACKEND paragraph already carries the rest.
+
+The rule applies to a launched or running result only, never to a discovery,
+preview or `dry_run` result, and it branches because recovery does. With a
+handle: poll it, and do not launch the work that handle covers again. With a
+handle and a subset the result says never started — `failed[]` entries with
+`error:"not_queued"`, or a `rows_pending_upload` count — re-run that subset
+only. With no result at all: read `leadbay_account_status` first, because the
+double-launch guard is in-memory, five minutes and per process, and
+`bulk-qualify-leads.ts` drops its claim when the launch POST throws even if the
+backend accepted it. The rule says so rather than promising a recovery the guard
+cannot deliver.
+
+`cancelled: true` on the two import results is described the same way instead of
+as *"ctx.signal aborted mid-flight"*, each names the flag a timeout uses instead,
+and the import one says the counts can stop moving on a chunk cancelled before
+its mappings were committed (product#4064).
+`packages/mcp/test/audit/launched-work-not-cancellable.test.ts` holds both halves
+— every branch is present on the guarded tools, the no-guard warning on the
+unguarded ones with the guarded advice asserted absent, matched on collapsed
+whitespace so a rewrap cannot silently pass it, and no generated description or
+prompt can tell the assistant to relaunch after a cancel again.
+`packages/mcp/test/launched-work-rule-over-the-wire-e2e.test.ts` proves the same
+thing where it counts, driving the real Hono app on a real socket through
+`StreamableHTTPServerTransport` and reading `tools/list` — the catalogue objects
+the audit reads are not what a chat host receives.
+
+## 0.34.1 — 2026-09-07
+
+`leadbay_set_lead_status` threw `TypeError: (params.lead_ids ?? []).filter is
+not a function` five times in 29 s on the hosted route (product#4079, Sentry
+MCP-3T): a scheduled agent passed `lead_ids` as something other than an array.
+The same class hit `leadbay_new_lens` on 2026-08-04 (`texts.filter is not a
+function`, `locations` as a string, MCP-3B). Both times the agent retried the
+identical call four or five times, because a raw TypeError names no argument.
+
+The CallTool handler in `server.ts` never checked `inputSchema` before
+`tool.execute`; its own comment said enforcement was ours, and it only enforced
+`_triggered_by`. 32 tools declare a top-level `array` or `object` parameter and
+none of them defended against a string: four threw, two silently corrupted
+(`adjust_audience` spread `"tech"` into `["t","e","c","h"]`), the rest forwarded
+the string to the backend.
+
+One guard now runs before `execute`, after the `LAST_PROMPT_REQUIRED` check
+(`findShapeMismatch`): for each top-level schema property whose `type` is
+`array` or `object`, a present non-null argument of the wrong JSON shape returns
+`BAD_INPUT` naming the field, the expected shape and the received type
+(`lead_ids must be a JSON array (got string)`), through the same envelope branch
+a tool's own `BAD_INPUT` takes. So PostHog sees `ok:false error_code:BAD_INPUT`
+and Sentry groups the event with the tool's existing `BAD_INPUT` issue
+(`source:business`) instead of a `source:unexpected` stack fingerprint.
+
+Deliberately not done: no coercion of a bare string into a one-element array (a
+JSON-stringified array would become one bogus id and fail per lead inside
+`failed[]`); no scalar checks (hosts send `"20"` for a number and tools coerce);
+no `required`, `items`, nested or `additionalProperties` validation; no runtime
+dependency. `null` counts as absent. One visible change on an existing tool:
+`leadbay_report_outreach` with `verification` given as a string answered
+`VERIFICATION_REQUIRED`; it now answers `BAD_INPUT … must be a JSON object (got
+string)`. Tools executed directly outside the MCP server (OpenClaw consumes
+`@leadbay/core` without `buildServer`) keep the raw throw.
+
+Test: `packages/mcp/test/unit/input-shape-guard.test.ts` drives `tools/call`
+through `buildServer` with the incident shapes.
 
 ## 0.34.0 — 2026-09-02
 

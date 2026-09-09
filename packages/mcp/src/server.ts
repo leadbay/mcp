@@ -29,7 +29,6 @@ import {
   granularWriteTools,
   NO_COMMERCE_TOOL_DESCRIPTIONS,
   COMPOSITE_FILE_TOOL_NAMES,
-  type BulkTracker,
   type LeadbayClient,
   type NotificationInboxEntry,
   type Tool,
@@ -292,13 +291,14 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
     "lead_job_status",
   ].filter((n) => has(`leadbay_${n}`));
   // Cancellation is NOT the same story for both families, so they get separate
-  // lists. The legacy bulk tools own a bulk-store entry that flips to
-  // 'cancelled' and makes later status polls return BULK_CANCELLED. The
-  // delivery jobs own no such record: cancelling stops OUR wait, while the
-  // backend job keeps running. Naming them in the bulk sentence promised a
-  // transition that never happens and told the agent to stop polling a job
-  // that was still live.
-  const bulkStoreRunners = longRunners.filter(
+  // lists — but the difference is no longer bulk-store vs not. The bulk store
+  // was deleted in 0.36.0 (product#4005), so nothing flips to 'cancelled' and
+  // no status poll returns BULK_CANCELLED any more; the legacy tools now hand
+  // back the backend's own handle (notification_id / importIds). The delivery
+  // jobs carry a `job_id` instead and are re-read with leadbay_lead_job_status.
+  // Both families share the same truth — cancelling stops OUR wait while the
+  // backend job runs on — and differ only in which handle picks it back up.
+  const legacyRunners = longRunners.filter(
     (n) => !["find_new_leads", "qualify_leads", "lead_job_status"].includes(n)
   );
   const deliveryRunners = longRunners.filter((n) =>
@@ -331,27 +331,27 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
     );
   }
 
-  if (bulkStoreRunners.length > 0 || deliveryRunners.length > 0) {
+  if (legacyRunners.length > 0 || deliveryRunners.length > 0) {
     const clauses: string[] = [];
-    if (bulkStoreRunners.length > 0) {
+    if (legacyRunners.length > 0) {
       clauses.push(
         "On " +
-          bulkStoreRunners.map((n) => `leadbay_${n}`).join(", ") +
-          " the polling loop exits within \u22642 seconds AND the bulk-store entry transitions to " +
-          "'cancelled'; subsequent status polls return `BULK_CANCELLED` so the agent stops polling."
+          legacyRunners.map((n) => `leadbay_${n}`).join(", ") +
+          " the job itself keeps running on the backend; poll its notification_id / importIds later to " +
+          "pick it up."
       );
     }
     if (deliveryRunners.length > 0) {
       clauses.push(
         "On " +
           deliveryRunners.map((n) => `leadbay_${n}`).join(", ") +
-          " the wait exits within \u22642 seconds but the job is BACKEND-owned and keeps running \u2014 " +
-          "there is no bulk-store entry and no `BULK_CANCELLED`. Any work already paid for still completes; " +
-          "poll `leadbay_lead_job_status` later to collect it."
+          " the job is BACKEND-owned and likewise keeps running. Any work already paid for still " +
+          "completes; poll `leadbay_lead_job_status` with the `job_id` later to collect it."
       );
     }
     parts.push(
-      "(2) `notifications/cancelled` — when the user clicks Cancel in the host UI. " +
+      "(2) `notifications/cancelled` — when the user clicks Cancel in the host UI, the polling loop exits " +
+        "within \u22642 seconds. " +
         clauses.join(" ")
     );
   } else {
@@ -473,7 +473,6 @@ interface BuildServerOptions {
    */
   includeCommerce?: boolean;
   logger?: ToolLogger;
-  bulkTracker?: BulkTracker;
   // Server version reported on `initialize`. The CLI passes the build-time
   // package.json#version (via tsup's __LEADBAY_MCP_VERSION__ define) so this
   // stays in lock-step with the published package. Tests omit it and fall
@@ -624,6 +623,57 @@ function extractTriggeredBy(args: Record<string, unknown>): {
   void _omit;
   const trimmed = raw.length > 500 ? `${raw.slice(0, 500)}…` : raw;
   return { triggered_by: trimmed, cleaned };
+}
+
+// The SDK does not validate `inputSchema` before dispatch (the mandate comment
+// in the CallTool handler says so), so a wrong-SHAPED argument reached
+// `execute` raw: `lead_ids: "<uuid>"` threw `(params.lead_ids ?? []).filter is
+// not a function` out of leadbay_set_lead_status five times in 29s
+// (product#4079), and `locations: "Paris"` threw `texts.filter is not a
+// function` out of leadbay_new_lens (2026-08-04). A raw TypeError names no
+// argument, so the agent re-sends the same call. This checks the two shapes JS
+// cannot coerce — array and object — against the schema every tool already
+// declares, and answers with the same BAD_INPUT envelope a tool returns
+// itself. Scalars are left alone on purpose (hosts send "20" for a number and
+// tools coerce). A string is never promoted to a one-element array: a
+// JSON-stringified array would become one bogus id. First mismatch only, in
+// schema order; `null` counts as absent.
+function findShapeMismatch(
+  tool: Tool,
+  args: Record<string, unknown>
+): { error: true; code: "BAD_INPUT"; message: string; hint: string } | undefined {
+  const schema = tool.inputSchema as Record<string, unknown> | undefined;
+  if (!schema || schema.type !== "object") return undefined;
+  const props = schema.properties as Record<string, unknown> | undefined;
+  if (!props || typeof props !== "object") return undefined;
+  for (const [key, spec] of Object.entries(props)) {
+    if (key === TRIGGERED_BY_FIELD || !spec || typeof spec !== "object") continue;
+    const declared = (spec as Record<string, unknown>).type;
+    if (declared !== "array" && declared !== "object") continue;
+    const value = args[key];
+    if (value === undefined || value === null) continue;
+    const isArray = Array.isArray(value);
+    const got = isArray ? "array" : typeof value;
+    if (declared === "array" && !isArray) {
+      const items = (spec as Record<string, unknown>).items as Record<string, unknown> | undefined;
+      const of = typeof items?.type === "string" ? ` of ${items.type}s` : "";
+      return {
+        error: true,
+        code: "BAD_INPUT",
+        message: `${key} must be a JSON array (got ${got})`,
+        hint: `Re-call with ${key} as a JSON array${of}, e.g. ${key}: ["…"]. Do not JSON-stringify the array.`,
+      };
+    }
+    if (declared === "object" && (typeof value !== "object" || isArray)) {
+      return {
+        error: true,
+        code: "BAD_INPUT",
+        message: `${key} must be a JSON object (got ${got})`,
+        hint: `Re-call with ${key} as a JSON object, e.g. ${key}: {…}.`,
+      };
+    }
+  }
+  return undefined;
 }
 
 function toolsListPayload(tools: Tool[]) {
@@ -1359,9 +1409,14 @@ export function buildServer(
       // instead of surviving the call that wanted it (product#4003). That is
       // what bounds a stalled backend — the host's own policy, not a wall-clock
       // number we would have to guess on Leadbay's behalf.
-      const result = await runWithRequestSignal(extra.signal, () => tool.execute(client, args, {
+      // Shape gate (product#4079): a container-typed argument sent as the wrong
+      // JSON type is answered with BAD_INPUT before execute, through the same
+      // envelope branch a tool's own BAD_INPUT takes below. Runs AFTER the
+      // LAST_PROMPT_REQUIRED guard so a composite missing `_triggered_by`
+      // still hears about the mandate first.
+      const shapeError = findShapeMismatch(tool, args);
+      const result = shapeError ?? await runWithRequestSignal(extra.signal, () => tool.execute(client, args, {
         logger: opts.logger,
-        bulkTracker: opts.bulkTracker,
         notificationsInbox: opts.notificationsInbox,
         signal: extra.signal,
         progress,

@@ -1,7 +1,11 @@
 /**
+ * Rewritten for leadbay/product#4005: the handle is the backend's importIds.
+ * There is no local record to seed, resolve, or lose.
+ *
  * Unit tests for leadbay_import_status.
  */
 
+import { resetLaunchGuard } from "../../../src/jobs/launch-guard.js";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,7 +21,6 @@ vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
 import { importStatus } from "../../../src/composite/import-status.js";
-import { InMemoryBulkStore, LocalBulkStore } from "../../../src/jobs/bulk-store.js";
 
 const BASE = "https://api-us.leadbay.app";
 
@@ -29,6 +32,7 @@ let tmpDirs: string[] = [];
 
 beforeEach(() => {
   resetHttpMock();
+  resetLaunchGuard();
   tmpDirs = [];
 });
 
@@ -36,240 +40,121 @@ afterEach(async () => {
   await Promise.all(tmpDirs.map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-describe("leadbay_import_status", () => {
-  it("returns progress for a persisted handle with a single backend refresh", async () => {
-    const tracker = new InMemoryBulkStore();
-    const { record } = await tracker.findOrCreatePendingImport({
-      import_fingerprint: "fp-progress",
-      mode: "domains",
-      dry_run: false,
-      records_total: 10,
-    });
-    await tracker.setImportIds(record.bulk_id, ["imp-1"]);
-
+describe("leadbay_import_status — polls the backend by importIds", () => {
+  it("reports progress from the backend rows", async () => {
     mockHttp([
       {
         method: "GET",
         path: "/1.6/imports/imp-1",
         status: 200,
-        body: importPayload({
+        body: {
           id: "imp-1",
-          totalRecords: 10,
-          importedRecords: 4,
-          preFinished: true,
-          procFinished: false,
-        }),
+          pre_processing: { finished: true },
+          processing: { finished: false },
+        },
       },
     ]);
-
-    const out = await importStatus.execute(
-      newClient(),
-      { handle_id: record.bulk_id },
-      { bulkTracker: tracker }
-    );
-
-    expect(out).toMatchObject({
-      status: "running",
-      handle_id: record.bulk_id,
-      importIds: ["imp-1"],
-      progress: {
-        phase: "process",
-        records_processed: 4,
-        records_total: 10,
-      },
-    });
-    expect(getHttpRequests().map((r) => `${r.method} ${r.path}`)).toEqual([
-      "GET /1.6/imports/imp-1",
-    ]);
-  });
-
-  it("does not mark a non-dry-run handle complete after preprocess only", async () => {
-    const tracker = new InMemoryBulkStore();
-    const { record } = await tracker.findOrCreatePendingImport({
-      import_fingerprint: "fp-preprocess-only",
-      mode: "domains",
-      dry_run: false,
-      records_total: 1,
-    });
-    await tracker.setImportIds(record.bulk_id, ["imp-pre"]);
-
-    mockHttp([
-      {
-        method: "GET",
-        path: "/1.6/imports/imp-pre",
-        status: 200,
-        body: importPayload({
-          id: "imp-pre",
-          totalRecords: 1,
-          importedRecords: 0,
-          preFinished: true,
-        }),
-      },
-    ]);
-
-    const out = await importStatus.execute(
-      newClient(),
-      { handle_id: record.bulk_id },
-      { bulkTracker: tracker }
-    );
-
+    const out: any = await importStatus.execute(newClient(), { importIds: ["imp-1"] });
     expect(out.status).toBe("running");
-    expect(out.progress.phase).toBe("process");
+    expect(out.importIds).toEqual(["imp-1"]);
   });
 
-  it("returns the stored final result without HTTP once the handle is complete", async () => {
-    const tracker = new InMemoryBulkStore();
-    const { record } = await tracker.findOrCreatePendingImport({
-      import_fingerprint: "fp-complete",
-      mode: "domains",
-      dry_run: false,
-      records_total: 1,
-    });
-    await tracker.markImportComplete(record.bulk_id, {
-      leads: [{ domain: "apple.com", leadId: "lead-apple", name: "Apple Inc." }],
-      not_imported: [],
+  it("a non-dry-run import is not complete after preprocess alone", async () => {
+    mockHttp([
+      {
+        method: "GET",
+        path: "/1.6/imports/imp-1",
+        status: 200,
+        body: {
+          id: "imp-1",
+          pre_processing: { finished: true },
+          processing: { finished: false },
+        },
+      },
+    ]);
+    const out: any = await importStatus.execute(newClient(), {
       importIds: ["imp-1"],
+      dry_run: false,
     });
+    expect(out.status).toBe("running");
+  });
 
-    const out = await importStatus.execute(
-      newClient(),
-      { handle_id: record.bulk_id },
-      { bulkTracker: tracker }
-    );
-
+  it("a dry run IS complete after preprocess", async () => {
+    mockHttp([
+      {
+        method: "GET",
+        path: "/1.6/imports/imp-1",
+        status: 200,
+        body: {
+          id: "imp-1",
+          pre_processing: { finished: true },
+          processing: { finished: false },
+        },
+      },
+    ]);
+    const out: any = await importStatus.execute(newClient(), {
+      importIds: ["imp-1"],
+      dry_run: true,
+    });
     expect(out.status).toBe("complete");
-    expect(out.result).toEqual({
-      leads: [{ domain: "apple.com", leadId: "lead-apple", name: "Apple Inc." }],
-      not_imported: [],
-      importIds: ["imp-1"],
-    });
-    expect(getHttpRequests()).toEqual([]);
   });
 
-  it("accepts legacy importIds[] and reports completion from the backend row", async () => {
+  it("reports completion once the backend says processing finished", async () => {
     mockHttp([
       {
         method: "GET",
-        path: "/1.6/imports/imp-legacy",
+        path: "/1.6/imports/imp-1",
         status: 200,
-        body: importPayload({
-          id: "imp-legacy",
-          totalRecords: 3,
-          importedRecords: 3,
-          preFinished: true,
-          procFinished: true,
-        }),
+        body: {
+          id: "imp-1",
+          pre_processing: { finished: true },
+          processing: { finished: true },
+        },
       },
     ]);
-
-    const out = await importStatus.execute(newClient(), {
-      importIds: ["imp-legacy"],
-    });
-
-    expect(out).toMatchObject({
-      status: "complete",
-      importIds: ["imp-legacy"],
-      progress: {
-        phase: "complete",
-        records_processed: 3,
-        records_total: 3,
-      },
-    });
+    const out: any = await importStatus.execute(newClient(), { importIds: ["imp-1"] });
+    expect(out.status).toBe("complete");
   });
 
-  it("resolves a handle after recreating LocalBulkStore", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "leadbay-import-status-"));
-    tmpDirs.push(dir);
-    const path = join(dir, "bulks.json");
-    const firstStore = new LocalBulkStore({
-      backend: "file",
-      path,
-      allowUnsafePath: true,
-    });
-    const { record } = await firstStore.findOrCreatePendingImport({
-      import_fingerprint: "fp-restart",
-      mode: "domains",
-      dry_run: false,
-      records_total: 2,
-    });
-    await firstStore.setImportIds(record.bulk_id, ["imp-restart"]);
-    await firstStore.setImportProgress(record.bulk_id, {
-      phase: "preprocess",
-      records_processed: 0,
-      records_total: 2,
-    });
-
-    const secondStore = new LocalBulkStore({
-      backend: "file",
-      path,
-      allowUnsafePath: true,
-    });
-
+  it("surfaces a backend-side import failure", async () => {
     mockHttp([
       {
         method: "GET",
-        path: "/1.6/imports/imp-restart",
+        path: "/1.6/imports/imp-1",
         status: 200,
-        body: importPayload({
-          id: "imp-restart",
-          totalRecords: 2,
-          importedRecords: 1,
-          preFinished: true,
-          procFinished: false,
-        }),
+        body: {
+          id: "imp-1",
+          pre_processing: { finished: true, error: "bad csv" },
+          processing: { finished: false },
+        },
       },
     ]);
+    const out: any = await importStatus.execute(newClient(), { importIds: ["imp-1"] });
+    expect(out.status).toBe("failed");
+    expect(out.error).toBe("bad csv");
+  });
 
-    const out = await importStatus.execute(
-      newClient(),
-      { handle_id: record.bulk_id },
-      { bulkTracker: secondStore }
-    );
+  it("resolves the SAME importIds from a fresh client — nothing is held locally", async () => {
+    // The point of the change: a different process, a different day, the same
+    // answer, because the backend owns the import.
+    const row = {
+      id: "imp-1",
+      pre_processing: { finished: true },
+      processing: { finished: true },
+    };
+    mockHttp([
+      { method: "GET", path: "/1.6/imports/imp-1", status: 200, body: row },
+      { method: "GET", path: "/1.6/imports/imp-1", status: 200, body: row },
+    ]);
+    const first: any = await importStatus.execute(newClient(), { importIds: ["imp-1"] });
+    const second: any = await importStatus.execute(newClient(), { importIds: ["imp-1"] });
+    expect(second).toMatchObject({ status: first.status, importIds: first.importIds });
+  });
 
-    expect(out).toMatchObject({
-      status: "running",
-      handle_id: record.bulk_id,
-      importIds: ["imp-restart"],
-      progress: {
-        phase: "process",
-        records_processed: 1,
-        records_total: 2,
-      },
+  it("with no importIds it says what to pass", async () => {
+    mockHttp([]);
+    await expect(importStatus.execute(newClient(), {})).rejects.toMatchObject({
+      code: "IMPORT_STATUS_INPUT_REQUIRED",
     });
   });
 });
-
-function importPayload(opts: {
-  id: string;
-  totalRecords: number;
-  importedRecords: number;
-  preFinished: boolean;
-  procFinished?: boolean;
-  preError?: string | null;
-  procError?: string | null;
-}) {
-  return {
-    id: opts.id,
-    date: new Date().toISOString(),
-    file_name: "mcp-import.csv",
-    imported_records: opts.importedRecords,
-    pending_imported_records: Math.max(0, opts.totalRecords - opts.importedRecords),
-    total_records: opts.totalRecords,
-    mappings: null,
-    pre_processing: {
-      finished: opts.preFinished,
-      error: opts.preError ?? null,
-      hints: null,
-      samples: [],
-      status_samples: null,
-    },
-    processing:
-      opts.procFinished === undefined
-        ? null
-        : {
-            progress: opts.procFinished ? 1 : opts.importedRecords / opts.totalRecords,
-            finished: opts.procFinished,
-            error: opts.procError ?? null,
-          },
-  };
-}

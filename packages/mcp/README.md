@@ -460,7 +460,7 @@ Then the final `tools/call` response.
 
 ### `notifications/cancelled` — actually cancelling
 
-Send the cancellation by id; the server's `ToolContext.signal` aborts the polling loop within ≤2 seconds, the bulk-store entry is marked `cancelled`, and the next `bulk_enrich_status` returns `BULK_CANCELLED` so the agent stops polling.
+Send the cancellation by id; the server's `ToolContext.signal` aborts the polling loop within ≤2 seconds. The job itself keeps running on the backend — poll `leadbay_bulk_enrich_status` with the `notification_id` later to pick it up.
 
 ```json
 { "jsonrpc": "2.0", "method": "notifications/cancelled",

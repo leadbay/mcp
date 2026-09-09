@@ -30,6 +30,65 @@ export const accountHistory: Tool<AccountHistoryParams> = {
     openWorldHint: true,
   },
   description: ACCOUNT_HISTORY_DESCRIPTION,
+  outputSchema: {
+    type: "object",
+    properties: {
+      lead: {
+        type: "object",
+        description: "Which account this history is about.",
+        properties: {
+          id: { type: "string" },
+          name: { type: ["string", "null"] },
+        },
+        required: ["id"],
+      },
+      signals: {
+        // An ARRAY of priority-ordered sections, matching what
+        // research_lead_by_id's own outputSchema declares — this is its payload
+        // passed straight through. Null when the research call has no web-fetch
+        // content to reshape.
+        type: ["array", "null"],
+        description: "Live signals, verbatim from leadbay_research_lead_by_id — why this account is hot NOW.",
+      },
+      firmographics: { type: ["object", "null"], description: "Company facts, verbatim from research." },
+      qualification: { type: "array", description: "Per-question qualification answers, verbatim from research." },
+      contacts: { type: ["object", "null"], description: "Reachable contacts + candidates, verbatim from research." },
+      engagement: { type: ["object", "null"], description: "Engagement counters, verbatim from research." },
+      notes: {
+        type: "array",
+        description: "FULL note bodies — the part research only counts. Oldest first.",
+      },
+      activities: {
+        type: "object",
+        description: "The interaction timeline research only summarizes.",
+        properties: {
+          activities: {
+            type: "array",
+            description: "One entry per logged interaction.",
+            items: {
+              type: "object",
+              properties: {
+                type: { type: "string" },
+                date: { type: "string" },
+              },
+            },
+          },
+          total: {
+            type: "number",
+            description: "Total on the server, which can exceed the number returned.",
+          },
+        },
+        required: ["activities", "total"],
+      },
+      _meta: {
+        type: "object",
+        description:
+          "Research's pass-through metadata (lens_id, web_fetch_in_progress, " +
+          "has_reachable_contact, …) plus region and this call's counts.",
+      },
+    },
+    required: ["lead", "notes", "activities"],
+  },
   inputSchema: {
     type: "object",
     properties: {
