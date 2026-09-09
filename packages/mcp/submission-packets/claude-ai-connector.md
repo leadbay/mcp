@@ -190,16 +190,42 @@ summaries, or the user's files.
 ## 8. Test & launch
 
 Reviewer account: **production, not staging** — the connector points at prod.
-Fill in before submitting:
 
-- Sign-up/login URL: `https://app.leadbay.app`
-- Email: `TODO`
-- Password: `TODO`
-- Region shown at consent: `TODO (US or FR)`
+| | |
+|---|---|
+| Email | `milstan+anthropic@leadbay.ai` |
+| Password | `Lb-Anthropic-Review-2026!` |
+| User id | `a65c99c1-46fb-4e71-80e9-b1e42ccb3e4e` |
+| Org id | `8d6d3240-0531-4f12-a1de-b40026f42841` (US) |
+| Org profile | Leadbay, `leadbay.ai`, 12 people, B2B sales software, New York NY. ICP: US B2B companies running outbound or field sales, 20-500 people, in software, business services, industrial equipment and logistics; reaching founders, VPs of Sales, heads of BD and sales-ops leaders. |
 
-The account must be fully populated: at least one lens with scored leads,
-contacts on those leads, one campaign, prior outreach records and notes, so
-every tool returns real data rather than an empty list.
+**Created on the US backend on purpose.** `POST https://stargate.leadbay.app/1.0/login`
+routes by the **caller's IP country**, not by where the account lives: an
+Anthropic reviewer in the US lands on `api-us.leadbay.app` whatever we do. The
+older `milstan+openai@leadbay.ai` account is thin on US (no audience, 2
+enrichable contacts) and was not reused.
+
+State verified end to end through `https://mcp.leadbay.app/mcp` with this
+account's bearer, 2026-09-09:
+
+| Check | Result |
+|---|---|
+| `tools/list` | 60 tools |
+| `leadbay_pull_leads` | 20 scored leads, 58 to 95, each with a recommended contact and a job title |
+| `leadbay_research_lead_by_id` | qualification, signals, firmographics, 20 contacts on the top lead |
+| `leadbay_enrich_titles` | 18 contacts enriched across the top 5 leads; the org reports `credits_remaining: "unlimited"` (fresh trial) |
+| `leadbay_prepare_outreach` | returns a reachable contact with a real work email |
+
+The fileless-import failure that left the older US demo org with an empty lens
+did **not** recur; the lens reports `not_enough_lead_candidates: false`. If a
+future rebuild does hit it, US uses the **NAICS** taxonomy, so setting an
+audience by sector *name* resolves to nothing — pull `leadbay_list_sectors` (the
+field is `label`) and pass `sector_ids`.
+
+**`leadbay_pull_followups` returns nothing until the reviewer logs an outreach.**
+`skip_import` leaves the Monitor view empty. Step 5 of the walk-through below
+creates the first follow-up, so run the steps in order. The follow-up half of
+`leadbay_tour_plan` is empty for the same reason.
 
 Reviewer walk-through:
 
