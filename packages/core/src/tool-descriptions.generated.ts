@@ -610,7 +610,7 @@ Context: Leadbay auto-qualifies roughly the top 10 of each daily batch. Leads be
 
 WHEN TO USE: when the user wants more qualified leads than what's currently shown, or when a lead looks promising in leadbay_pull_leads but has an empty \`qualification_summary\`.
 
-WHEN NOT TO USE: to qualify a single specific lead — that's leadbay_qualify_lead (granular, advanced). And NOT for companies the user names or lists themselves (CRM rows, websites, prior deliveries) — that's leadbay_qualify_leads (only if listed — it is release-gated; server-side batch with per-item verdicts and contact matching); this tool only walks the ACTIVE LENS top-down.
+WHEN NOT TO USE: to qualify a single specific lead — that's leadbay_qualify_lead (granular, advanced). And NOT for companies the user names or lists themselves (CRM rows, websites, prior deliveries) — that's leadbay_qualify_leads (server-side batch with per-item verdicts and contact matching); this tool only walks the ACTIVE LENS top-down.
 
 ## A launched job cannot be stopped
 
@@ -1293,7 +1293,7 @@ export const leadbay_extend_lens: string = `## WHEN TO USE
 
 Trigger phrases: "I want more leads on this lens", "extend the lens", "I need a bigger batch today", "fill more leads, I've burned through these", "more leads like the ones in this lens".
 
-Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "find me companies that <different profile than the lens>" → \`leadbay_find_new_leads\` (only if listed); "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me X" → \`leadbay_refine_prompt\`.
+Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "find me companies that <different profile than the lens>" → \`leadbay_find_new_leads\`; "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me X" → \`leadbay_refine_prompt\`.
 
 Prefer when: user has bigger appetite than the daily lens fill delivers — additive refill on same criteria
 
@@ -1387,9 +1387,9 @@ If nothing matches cleanly, default to "pull leads now to see what's queued" —
 // region: leadbay_find_new_leads
 export const leadbay_find_new_leads: string = `## WHEN TO USE
 
-Trigger phrases: "find me new leads", "find me N companies that <profile>", "get me new prospects like <company>", "I need leads in <place> that <do X>", "search for companies that would buy <product>", "net-new leads outside my current pipeline", "we're entering <market> — who should we target".
+Trigger phrases: "find me N companies that <profile>", "get me new prospects like <company>", "I need leads in <place> that <do X>", "search for companies that would buy <product>", "net-new leads outside my current pipeline", "we're entering <market> — who should we target".
 
-Do NOT use for: "show me today's leads / what's new today" → \`leadbay_pull_leads\`; "more leads like the ones in my lens" → \`leadbay_extend_lens\`; "qualify / vet these companies I have" → \`leadbay_qualify_leads\`; "qualify the top N of my batch" → \`leadbay_bulk_qualify_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "tell me about <one company>" → \`leadbay_research_lead_by_name_fuzzy\`.
+Do NOT use for: "show me today's leads / what's new today" → \`leadbay_pull_leads\`; "find me new leads (no profile, no count named)" → \`leadbay_pull_leads\`; "more leads like the ones in my lens" → \`leadbay_extend_lens\`; "qualify / vet these companies I have" → \`leadbay_qualify_leads\`; "qualify the top N of my batch" → \`leadbay_bulk_qualify_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "tell me about <one company>" → \`leadbay_research_lead_by_name_fuzzy\`.
 
 Prefer when: the user describes a target profile or names a count of NEW companies — craft the example_lead per the seed rules below BEFORE calling; never pass the user's raw sentence as query.
 
@@ -3713,7 +3713,7 @@ export const leadbay_pull_leads: string = `## WHEN TO USE
 
 Trigger phrases: "show me leads", "show me new leads", "show me today's leads", "today's prospects", "best new leads", "fresh leads", "what's new today".
 
-Do NOT use for: "find me N companies that <specific profile>" → \`leadbay_find_new_leads\` (only if listed); "new prospects like <company> with their emails" → \`leadbay_find_new_leads\` (only if listed); "leads I should follow up with" → \`leadbay_pull_followups\`; "I'm going to <city>" → \`leadbay_tour_plan\`; "I'm in <city> next week — who's worth meeting" → \`leadbay_tour_plan\`; "who should I meet in <city>" → \`leadbay_tour_plan\`; "visiting <city> — who's worth meeting / seeing" → \`leadbay_tour_plan\`; "leads I should reach out to" → \`leadbay_pull_followups\`; "leads to get back to" → \`leadbay_pull_followups\`; "leads to contact today" → \`leadbay_pull_followups\`; "should I contact" → \`leadbay_pull_followups\`; "reconnect with" → \`leadbay_pull_followups\`; "re-engage" → \`leadbay_pull_followups\`.
+Do NOT use for: "find me N companies that <specific profile>" → \`leadbay_find_new_leads\`; "new prospects like <company> with their emails" → \`leadbay_find_new_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "I'm going to <city>" → \`leadbay_tour_plan\`; "I'm in <city> next week — who's worth meeting" → \`leadbay_tour_plan\`; "who should I meet in <city>" → \`leadbay_tour_plan\`; "visiting <city> — who's worth meeting / seeing" → \`leadbay_tour_plan\`; "leads I should reach out to" → \`leadbay_pull_followups\`; "leads to get back to" → \`leadbay_pull_followups\`; "leads to contact today" → \`leadbay_pull_followups\`; "should I contact" → \`leadbay_pull_followups\`; "reconnect with" → \`leadbay_pull_followups\`; "re-engage" → \`leadbay_pull_followups\`.
 
 Prefer when: fresh Discover leads; if a lens is named, pass \`lensId\` and pin it
 
@@ -6067,9 +6067,9 @@ WHEN NOT TO USE: as a pre-flight gate before bulk ops — operations themselves 
 `,
   leadbay_find_new_leads: `## WHEN TO USE
 
-Trigger phrases: "find me new leads", "find me N companies that <profile>", "get me new prospects like <company>", "I need leads in <place> that <do X>", "search for companies that would buy <product>", "net-new leads outside my current pipeline", "we're entering <market> — who should we target".
+Trigger phrases: "find me N companies that <profile>", "get me new prospects like <company>", "I need leads in <place> that <do X>", "search for companies that would buy <product>", "net-new leads outside my current pipeline", "we're entering <market> — who should we target".
 
-Do NOT use for: "show me today's leads / what's new today" → \`leadbay_pull_leads\`; "more leads like the ones in my lens" → \`leadbay_extend_lens\`; "qualify / vet these companies I have" → \`leadbay_qualify_leads\`; "qualify the top N of my batch" → \`leadbay_bulk_qualify_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "tell me about <one company>" → \`leadbay_research_lead_by_name_fuzzy\`.
+Do NOT use for: "show me today's leads / what's new today" → \`leadbay_pull_leads\`; "find me new leads (no profile, no count named)" → \`leadbay_pull_leads\`; "more leads like the ones in my lens" → \`leadbay_extend_lens\`; "qualify / vet these companies I have" → \`leadbay_qualify_leads\`; "qualify the top N of my batch" → \`leadbay_bulk_qualify_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "tell me about <one company>" → \`leadbay_research_lead_by_name_fuzzy\`.
 
 Prefer when: the user describes a target profile or names a count of NEW companies — craft the example_lead per the seed rules below BEFORE calling; never pass the user's raw sentence as query.
 

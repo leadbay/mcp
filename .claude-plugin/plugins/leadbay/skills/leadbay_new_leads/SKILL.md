@@ -1,6 +1,6 @@
 ---
 name: leadbay_new_leads
-description: "Guided net-new lead delivery — turn a natural-language need (\"gyms around Dallas that would buy our flooring\") into ICP-perfect NEW companies with qualification evidence and the right contact, via leadbay_find_new_leads. Trigger on \"find me new leads\", \"get me N companies that <profile>\", \"we're entering <market>\". Do NOT trigger on \"today's leads\" (leadbay_daily_check_in) or \"qualify these companies I have\" (leadbay_qualify_leads)."
+description: "Guided net-new lead delivery — turn a described need (\"gyms around Dallas that would buy our flooring\") into ICP-perfect NEW companies with qualification evidence and the right contact, via leadbay_find_new_leads. Trigger when the user DESCRIBES who they want: \"get me N companies that <profile>\", \"we're entering <market>\". A bare \"find me new leads\" with no profile, and \"today's leads\", are the daily lens batch — leadbay_pull_leads. \"Qualify these companies I have\" is leadbay_qualify_leads."
 ---
 
 

@@ -10,7 +10,6 @@ short_description: |
   already has (leadbay_qualify_leads).
 routing:
   triggers:
-    - "find me new leads"
     - "find me N companies that <profile>"
     - "get me new prospects like <company>"
     - "I need leads in <place> that <do X>"
@@ -19,6 +18,13 @@ routing:
     - "we're entering <market> — who should we target"
   anti_triggers:
     - phrase: "show me today's leads / what's new today"
+      route_to: leadbay_pull_leads
+    # A BARE "find me new leads", with no profile and no count, is the daily
+    # inbox — that phrasing reached leadbay_pull_leads before this tool existed
+    # and must keep doing so. This tool needs a described target; without one
+    # it runs a minutes-long net-new search outside the user's lens and answers
+    # a question they did not ask.
+    - phrase: "find me new leads (no profile, no count named)"
       route_to: leadbay_pull_leads
     - phrase: "more leads like the ones in my lens"
       route_to: leadbay_extend_lens

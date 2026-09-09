@@ -968,6 +968,19 @@ export class LeadbayClient {
       }
       return left;
     };
+    // Only a TOTAL bounds the queue wait. `timeoutMs` is documented as a bound
+    // on one ATTEMPT, and waiting for a concurrency slot is not an attempt —
+    // nothing has been sent yet. Handing the per-attempt budget to the
+    // semaphore would newly fail calls that main completes: the one existing
+    // caller passing `timeoutMs` is research_lead_by_name_fuzzy at 10s against
+    // `/leads/resolve`, which is measured at up to 61.7s, so under five
+    // concurrent requests its slot wait alone can exceed 10s. On main
+    // acquireSemaphore takes no deadline and cannot expire.
+    const queueDeadlineAt = (): number | undefined => totalDeadlineAt;
+    const queueBudget = (): number | undefined =>
+      typeof opts?.totalTimeoutMs === "number" && opts.totalTimeoutMs > 0
+        ? opts.totalTimeoutMs
+        : undefined;
     // Mapped like any other transport failure. This acquire sits OUTSIDE the
     // main try/finally on purpose — that finally releases a slot on the
     // assumption we hold one, which a failed acquire does not — so without this
@@ -977,8 +990,8 @@ export class LeadbayClient {
     try {
       await this.acquireSemaphore(
         opts?.signal ?? opts?.preSendSignal,
-        phaseDeadlineAt(),
-        grantedBudget()
+        queueDeadlineAt(),
+        queueBudget()
       );
     } catch (e) {
       throw this.mapTransportError(e, `${method} ${path}`);
