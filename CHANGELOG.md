@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.37.0 — 2026-09-09 — Clearer prompts before we overwrite your data
+
+- **Claude now asks before it overwrites a contact or a custom field.** Updating
+  a contact replaces what was there, so it should not happen silently. Adding a
+  contact or a note still goes through without a prompt.
+- **Quota messages stopped nudging.** When you hit a quota wall, the assistant
+  now tells you both ways out — wait for the window to reset, or top up, which
+  lifts the limit straight away — and lets you choose, instead of steering you
+  to the top-up.
+- **The Claude Code plugin signs you in instead of asking for a token.**
+  Installing it now opens the normal Leadbay sign-in; there is no key to copy
+  and paste, and no region to pick.
+- **The privacy section says what we actually record.** To improve the tools, we
+  keep the single instruction behind each call — capped, with anything that
+  looks like a password or card number removed, and nothing else from your
+  conversation. It is linked to your account, so it is not anonymous, and you
+  can switch it off by telling the assistant to turn off telemetry.
+- Fixed two broken links in the documentation that led nowhere.
+
 ## 0.36.0 — 2026-09-08 — The assistant reads four more results properly
 
 - **Four tools now hand the assistant a typed result instead of a wall of text.**

@@ -58,7 +58,11 @@ export const updateContact: Tool<UpdateContactParams, UpdateContactResult> = {
   annotations: {
     title: "Update a contact",
     readOnlyHint: false,
-    destructiveHint: false,
+    // Overwrites fields on an existing contact, so Claude prompts before each
+    // call. Anthropic's directory review criteria set destructiveHint for tools
+    // that "modify or delete data" — an update is the modify half. The purely
+    // additive leadbay_add_contact stays non-destructive.
+    destructiveHint: true,
     idempotentHint: true,
     openWorldHint: true,
   },

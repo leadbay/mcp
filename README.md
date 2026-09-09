@@ -25,7 +25,7 @@
 
 Get Leadbay MCP running inside your AI assistant in a couple of minutes. No coding required.
 
-> **New to Leadbay?** The friendly, screenshot-driven walkthrough — what a lens is, how scoring works, and the full MCP setup for every assistant — lives in the **[Leadbay user guide](https://docs.leadbay.ai/leadbay-mcp/what-is-leadbay-mcp)**. This README is the technical companion.
+> **New to Leadbay?** The friendly, screenshot-driven walkthrough — what a lens is, how scoring works, and the full MCP setup for every assistant — lives in the **[Leadbay user guide](https://docs.leadbay.app/doc/leadbay-mcp/what-is-leadbay-mcp)**. This README is the technical companion.
 
 > **No Leadbay account yet?** [Create one here](https://wow.leadbay.ai/?register=true) first — you'll need it to sign in during setup.
 
@@ -167,7 +167,7 @@ Opens the uninstall wizard — only shows clients that already have Leadbay MCP 
 
 ## Tools
 
-Your assistant calls these on your behalf — you never call them directly. You ask in plain language ("show me today's leads", "research acme.com", "log that I emailed Jane") and the agent picks the right tool. The default surface below is always exposed; the [full per-tool reference](https://docs.leadbay.ai/leadbay-mcp/tools-reference) lives in the user guide.
+Your assistant calls these on your behalf — you never call them directly. You ask in plain language ("show me today's leads", "research acme.com", "log that I emailed Jane") and the agent picks the right tool. The default surface below is always exposed; the [full per-tool reference](https://docs.leadbay.app/doc/leadbay-mcp/tools-reference) lives in the user guide.
 
 ### Read-only (always on)
 
@@ -350,8 +350,18 @@ leadbay_import_leads → leadbay_bulk_qualify_leads                             
 
 The Leadbay MCP server accesses your Leadbay account data (leads, contacts,
 campaigns, notes) on your behalf through the Leadbay API, using a token you
-authorize via OAuth. It does not read your conversation history, Claude memory,
-or local files. Data handling is governed by the Leadbay
+authorize via OAuth. It does not read Claude memory or your local files.
+
+Leadbay MCP improves itself from the instructions its tools are asked to carry
+out. Each tool call records that one instruction — the request the call is
+executing — capped at 500 characters, with API keys, passwords, card numbers and
+addresses replaced by `[REDACTED]` before it leaves your machine. Surrounding
+conversation is never sent. It is tied to your Leadbay account, so treat it as
+identified rather than anonymous. Turn it off at any time by telling the agent
+"turn off telemetry" (`leadbay_set_telemetry`), or set
+`LEADBAY_TELEMETRY_ENABLED=0`, which disables product analytics entirely.
+
+Data handling is governed by the Leadbay
 [privacy policy](https://www.leadbay.ai/privacy-policy) and
 [terms of use](https://www.leadbay.ai/terms-of-use).
 
