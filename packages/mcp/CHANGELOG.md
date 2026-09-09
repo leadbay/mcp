@@ -50,6 +50,12 @@ this pass clears the remaining items on Anthropic's published review criteria.
   now states what is collected, the 500-char bound, the secret stripping, that
   it is tied to the Leadbay account rather than anonymous, and how to opt out.
 
+- **Template frontmatter now matches the registered Tool.** A tool declares its
+  annotations twice and only the code copy reaches the wire, so seven templates
+  had drifted. `leadbay_create_topup_link` and `leadbay_open_billing_portal`
+  both claimed `readOnlyHint: true` for tools that mint a Stripe URL. New audit:
+  `packages/promptforge/test/annotations-frontmatter-match.test.ts`.
+
 - Submission packets rewritten for the current portals:
   `submission-packets/claude-ai-connector.md` (11 portal steps) and
   `submission-packets/claude-plugin-directory.md`. The stale MCPB packet is
