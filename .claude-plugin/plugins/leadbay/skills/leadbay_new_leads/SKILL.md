@@ -19,6 +19,15 @@ GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships i
 If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
 
 
+**First, check `leadbay_find_new_leads` is in your tool set.** Every phase below
+calls it or `leadbay_qualify_leads`, and both are write-tier: on a read-only
+deployment (`LEADBAY_MCP_WRITE=0`) neither is registered. The MCP prompt hides
+itself there; this file is a static Claude skill with no runtime gate, so the
+check has to be here. If they're missing: say plainly that net-new search isn't
+enabled on this connection, and offer `leadbay_pull_leads` for today's batch
+instead. Starting a workflow whose first call does not exist is worse than
+saying so up front.
+
 Find net-new leads for me. My need, in my words:
 
 > <What the user is looking for, in their own words (e.g. '10 gyms around Dallas that would buy modular flooring, with phone numbers'). Optional — the session starts by asking when absent. Optional.>
