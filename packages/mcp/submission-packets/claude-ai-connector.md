@@ -145,16 +145,21 @@ Redirect URI to register for the hosted Claude surfaces:
 redirect on an ephemeral port, so `http://localhost/callback` and
 `http://127.0.0.1/callback` must match port-agnostically.
 
-Known gaps, both in `leadbay/backend` + stargate, tracked separately:
+**One listing blocker, in `leadbay/backend` + stargate:** Stargate does not
+advertise `client_id_metadata_document_supported`, so Claude falls back to DCR
+and registers a fresh client on every connection. `POST /1.0/oauth/register` is
+capped at 10 per IP per hour (measured 2026-09-09: attempt 11 returns 429
+`too many registrations`) and **all** Anthropic traffic originates from
+`160.79.104.0/21`, so the 11th user to connect in an hour fails at consent.
+Filed as leadbay/product#4093. Advertise CIMD, or allowlist the range, before
+the listing goes live.
 
-1. Stargate does not advertise `client_id_metadata_document_supported`, so Claude
-   falls back to DCR and registers a fresh client per connection. Registration is
-   rate-limited to ~10 per IP per hour and **all** Anthropic traffic originates
-   from `160.79.104.0/21`. Advertise CIMD (or allowlist the range) before the
-   listing goes live.
-2. `grant_types_supported` lists only `authorization_code`, and there is no
-   `scopes_supported` / `offline_access`. Confirm whether the token endpoint
-   returns a `refresh_token`; without one, users face a full re-consent at expiry.
+**Refresh tokens are not a gap.** `grant_types_supported` lists only
+`authorization_code` and the token response carries neither `expires_in` nor
+`refresh_token` (`routes/OAuthRoutes.kt`, `exchangeCode`). The access token is
+opaque and does not expire, so there is nothing for Claude to refresh and no
+expiry-driven re-consent. A 401 only occurs if the grant is revoked, and a
+re-consent is the correct answer there.
 
 ## 7. Data handling
 
