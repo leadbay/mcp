@@ -1300,6 +1300,40 @@ success_criteria:
 prompt: "Any results yet from that lead search you started earlier? Job id is 281d8b55-b357-43ed-aca9-63e50bce84a6"
 ```
 
+```yaml expected
+workflow_name: Lens management — list / switch audiences
+prompt_name: ~
+required_calls:
+  - leadbay_my_lenses
+forbidden_calls:
+  - leadbay_new_lens
+success_criteria:
+  - "called leadbay_my_lenses and listed the org's lenses by NAME, marking which one is active"
+  - "if the user names a lens that does not exist on this account, said so honestly instead of inventing one or creating a new lens"
+  - "did NOT call leadbay_new_lens — listing/switching never creates an audience"
+```
+
+```yaml scenario
+prompt: "Show me my lenses — which audiences do I have, and which one is active?"
+```
+
+```yaml expected
+workflow_name: Lead CRM status — wanted / won / lost
+prompt_name: ~
+required_calls:
+  - leadbay_set_lead_status
+forbidden_calls:
+  - leadbay_report_outreach
+success_criteria:
+  - "pulled leads first so the status write targets a real lead id from this account, then called leadbay_set_lead_status on it"
+  - "reported the write outcome honestly — if the result carries a non-empty failed[], surfaced it instead of claiming a clean sweep"
+  - "did NOT call leadbay_report_outreach — a deal status is not an outreach attempt; the epilogue system is a separate write"
+```
+
+```yaml scenario
+prompt: "Pull my top 3 leads and mark the first one as wanted — they're a target this quarter"
+```
+
 ## How this stays normative
 
 `packages/mcp/test/audit/workflows.test.ts` asserts every backtick-wrapped `leadbay_*` identifier resolves to a registered tool or prompt. Proposed names for not-yet-shipped tools go in italics, not backticks.
