@@ -281,7 +281,29 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
     "enrich_titles",
     "bulk_enrich_status",
     "qualify_status",
+    // The MCP-first delivery jobs block-poll for 45s by default and up to
+    // 180s. Without a progressToken ctx.progress is absent, so the call looks
+    // frozen for minutes — the exact case this paragraph exists to prevent.
+    // `.filter(has)` keeps the iter-12 invariant: a deployment without the
+    // delivery flag never sees them named.
+    "find_new_leads",
+    "qualify_leads",
+    "lead_job_status",
   ].filter((n) => has(`leadbay_${n}`));
+  // Cancellation is NOT the same story for both families, so they get separate
+  // lists — but the difference is no longer bulk-store vs not. The bulk store
+  // was deleted in 0.36.0 (product#4005), so nothing flips to 'cancelled' and
+  // no status poll returns BULK_CANCELLED any more; the legacy tools now hand
+  // back the backend's own handle (notification_id / importIds). The delivery
+  // jobs carry a `job_id` instead and are re-read with leadbay_lead_job_status.
+  // Both families share the same truth — cancelling stops OUR wait while the
+  // backend job runs on — and differ only in which handle picks it back up.
+  const legacyRunners = longRunners.filter(
+    (n) => !["find_new_leads", "qualify_leads", "lead_job_status"].includes(n)
+  );
+  const deliveryRunners = longRunners.filter((n) =>
+    ["find_new_leads", "qualify_leads", "lead_job_status"].includes(n)
+  );
   const elicitTools = [
     "refine_prompt clarifications",
     "report_outreach.user_confirmed",
@@ -309,11 +331,28 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
     );
   }
 
-  if (longRunners.length > 0) {
+  if (legacyRunners.length > 0 || deliveryRunners.length > 0) {
+    const clauses: string[] = [];
+    if (legacyRunners.length > 0) {
+      clauses.push(
+        "On " +
+          legacyRunners.map((n) => `leadbay_${n}`).join(", ") +
+          " the job itself keeps running on the backend; poll its notification_id / importIds later to " +
+          "pick it up."
+      );
+    }
+    if (deliveryRunners.length > 0) {
+      clauses.push(
+        "On " +
+          deliveryRunners.map((n) => `leadbay_${n}`).join(", ") +
+          " the job is BACKEND-owned and likewise keeps running. Any work already paid for still " +
+          "completes; poll `leadbay_lead_job_status` with the `job_id` later to collect it."
+      );
+    }
     parts.push(
       "(2) `notifications/cancelled` — when the user clicks Cancel in the host UI, the polling loop exits " +
-        "within ≤2 seconds. The job itself keeps running on the backend; poll its notification_id / " +
-        "importIds later to pick it up."
+        "within \u22642 seconds. " +
+        clauses.join(" ")
     );
   } else {
     parts.push(
@@ -747,11 +786,22 @@ export function buildServer(
 
   // Prompts: pull-based slash commands the user can invoke directly.
   // See packages/mcp/src/prompts.ts for the catalog.
+  // Pass includeWrite through: a prompt whose workflow needs write-tier tools
+  // must not be offered on a read-only server, or the user gets a slash
+  // command whose every call is missing from tools/list.
+  // Normalize to the SAME truthiness the tool list uses above (`if
+  // (opts.includeWrite)`), so an omitted flag means "no write tools" for the
+  // prompt gate too rather than being read as write-enabled.
+  const promptGate = { includeWrite: Boolean(opts.includeWrite) };
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({
-    prompts: listPrompts(),
+    prompts: listPrompts(promptGate),
   }));
   server.setRequestHandler(GetPromptRequestSchema, async (req) => {
-    return getPrompt(req.params.name, (req.params.arguments ?? {}) as Record<string, string | undefined>);
+    return getPrompt(
+      req.params.name,
+      (req.params.arguments ?? {}) as Record<string, string | undefined>,
+      promptGate
+    );
   });
 
   // Resources: URI-addressable read-only payloads (lead://, lens://, org://).

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { assemble, type AssembleResult } from "./assembler.js";
 import { emit, emitServerInstructions, diff, writeIfDifferent } from "./emit.js";
 import { buildSkillFiles, type SkillFile } from "./skills.js";
@@ -51,6 +51,11 @@ interface AssembleAndEmitOutput {
   promptsModule: string;
   toolDescriptionsModule: string;
   skillFiles: SkillFile[];
+  // Prompts marked release_gated emit NO SKILL.md. Their paths are returned so
+  // the build can DELETE a previously-emitted skill: writeIfDifferent only
+  // writes, so a prompt gated after the fact would otherwise leave a static,
+  // auto-triggering skill on disk to be committed and shipped.
+  gatedSkillPaths: string[];
   result: AssembleResult;
 }
 
@@ -59,11 +64,15 @@ function runAssemble(): AssembleAndEmitOutput {
   const result = assemble({ root: PKG_ROOT, registeredToolNames: registered });
   const { promptsModule, toolDescriptionsModule } = emit(result);
   const skillFiles = buildSkillFiles(result.prompts);
-  return { promptsModule, toolDescriptionsModule, skillFiles, result };
+  const gatedSkillPaths = result.prompts
+    .filter((p) => p.frontmatter.release_gated === true)
+    .map((p) => join(SKILLS_OUT_DIR, p.frontmatter.name, "SKILL.md"));
+  return { promptsModule, toolDescriptionsModule, skillFiles, gatedSkillPaths, result };
 }
 
 function cmdBuild(): void {
-  const { promptsModule, toolDescriptionsModule, skillFiles } = runAssemble();
+  const { promptsModule, toolDescriptionsModule, skillFiles, gatedSkillPaths } =
+    runAssemble();
   const serverInstructionsModule = emitServerInstructions(SERVER_INSTRUCTIONS_SNIPPETS);
   const r1 = writeIfDifferent(PROMPTS_OUT, promptsModule);
   const r2 = writeIfDifferent(TOOL_DESC_OUT, toolDescriptionsModule);
@@ -78,10 +87,22 @@ function cmdBuild(): void {
       `[forge] ${fullPath.replace(REPO_ROOT + "/", "")}: ${r.changed ? "wrote" : "unchanged"}`,
     );
   }
+  // A skill is a static file that auto-triggers with no runtime gate, so a
+  // prompt marked release_gated must not leave one behind. writeIfDifferent
+  // only ever writes, so deletion has to be explicit.
+  for (const path of gatedSkillPaths) {
+    if (existsSync(path)) {
+      rmSync(dirname(path), { recursive: true, force: true });
+      console.log(
+        `[forge] ${path.replace(REPO_ROOT + "/", "")}: removed (release_gated)`,
+      );
+    }
+  }
 }
 
 function cmdCheck(): void {
-  const { promptsModule, toolDescriptionsModule, skillFiles } = runAssemble();
+  const { promptsModule, toolDescriptionsModule, skillFiles, gatedSkillPaths } =
+    runAssemble();
   const serverInstructionsModule = emitServerInstructions(SERVER_INSTRUCTIONS_SNIPPETS);
   const d1 = diff(PROMPTS_OUT, promptsModule);
   const d2 = diff(TOOL_DESC_OUT, toolDescriptionsModule);
@@ -91,12 +112,26 @@ function cmdCheck(): void {
     const fullPath = join(SKILLS_OUT_DIR, skill.relativePath);
     if (!diff(fullPath, skill.content).matches) staleSkills.push(fullPath);
   }
-  if (!d1.matches || !d2.matches || !d3.matches || staleSkills.length > 0) {
+  // A gated prompt must ship NO skill — a leftover file would auto-trigger a
+  // workflow whose tools are hidden, so fail rather than let it be committed.
+  const orphanedGated = gatedSkillPaths.filter((p) => existsSync(p));
+  if (
+    !d1.matches ||
+    !d2.matches ||
+    !d3.matches ||
+    staleSkills.length > 0 ||
+    orphanedGated.length > 0
+  ) {
     if (!d1.matches) console.error(`[forge] ${PROMPTS_OUT} is stale. Run pnpm prompts:build.`);
     if (!d2.matches) console.error(`[forge] ${TOOL_DESC_OUT} is stale. Run pnpm prompts:build.`);
     if (!d3.matches) console.error(`[forge] ${SERVER_INSTRUCTIONS_OUT} is stale. Run pnpm prompts:build.`);
     for (const path of staleSkills) {
       console.error(`[forge] ${path} is stale. Run pnpm prompts:build.`);
+    }
+    for (const path of orphanedGated) {
+      console.error(
+        `[forge] ${path} belongs to a release_gated prompt and must not ship. Run pnpm prompts:build.`,
+      );
     }
     process.exit(1);
   }

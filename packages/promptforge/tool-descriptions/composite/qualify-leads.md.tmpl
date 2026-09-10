@@ -1,0 +1,105 @@
+---
+name: leadbay_qualify_leads
+kind: tool-description
+short_description: |
+  Qualify companies the user ALREADY has — CRM rows, spreadsheet websites,
+  prior deliveries — and get the right contact on each, in one server-side
+  batch (up to 500). Per-item verdicts with evidence; a bad ref never fails
+  the job. Use when the user names/lists the companies. Don't use it to
+  FIND new companies (leadbay_find_new_leads) or for the lens top-N
+  (leadbay_bulk_qualify_leads).
+routing:
+  triggers:
+    - "qualify these companies"
+    - "vet this list"
+    - "which of these fit our ICP"
+    - "score these websites / accounts"
+    - "get me the right contact at these companies"
+    - "re-qualify what you delivered last week"
+  anti_triggers:
+    - phrase: "find me new leads / companies that <profile>"
+      route_to: leadbay_find_new_leads
+    - phrase: "qualify the top N of my lens batch"
+      route_to: leadbay_bulk_qualify_leads
+    - phrase: "import this CSV file"
+      route_to: leadbay_import_leads
+    - phrase: "tell me about <one company> in depth"
+      route_to: leadbay_research_lead_by_name_fuzzy
+    - phrase: "add emails to the contacts I selected"
+      route_to: leadbay_enrich_titles
+  prefer_when: >-
+    the user points at SPECIFIC companies (ids, websites, names, a pasted
+    list, "what you found yesterday") and wants fit verdicts and/or the
+    right person to talk to.
+  examples:
+    positive:
+      - "Here are 60 restaurant websites from my Austin sweep — which fit, and who's the owner?"
+      - "Re-qualify last week's delivery and get phone numbers for the good ones."
+      - "Vet these 12 accounts from my spreadsheet against our criteria."
+    negative:
+      - "Find me 10 new gyms in Texas."
+      - "Qualify the top 10 leads in my batch."
+      - "I have a CSV of 400 attendees to import."
+rendering_hint: |
+  3-col table for delivered items (fit bar + company / why-fits ≤20 words /
+  contact + channels) in returned order, then a compact Ref → Outcome table
+  for skipped refs (not_in_universe, low_confidence_identity, ... in plain
+  words), then the honest funnel + cost line. Full algorithm below.
+next_steps: qualify-leads
+annotations:
+  readOnlyHint: false
+  destructiveHint: false
+  idempotentHint: false
+  openWorldHint: true
+---
+Submit a qualify batch over companies the org already has (or that exist in
+the Leadbay universe): each ref is resolved to a known company, freshly
+researched + AI-qualified against the org's questions / tags / ideal buyer
+profile (frozen at submit), matched to the requested contact titles, and —
+when asked — enriched with verified channels. Answers arrive per-item from a
+job; this tool polls up to `wait_seconds` (default 45) and hands off to
+`leadbay_lead_job_status` when the batch needs longer.
+
+**Refs are flexible; outcomes are per-item.** `lead_refs` accepts any mix of
+`lead_id`, `website`, `name`(+`location`), or a stable `contact_id` from a
+prior result (enrichment then targets exactly that person, never a re-match).
+`prior_deliveries` expands past MCP deliveries into refs — billed leads stay
+re-readable this way even after the 30-day result window. Duplicates collapse.
+A ref that can't be served comes back `skipped` with an honest
+`status_reason` (`not_in_universe`, `low_confidence_identity` with the
+`resolution.alternatives` to choose from, `no_matching_contact`, ...) — that
+is an ANSWER about the ref, not an error, and it costs nothing.
+
+**Disqualified ≠ dropped.** Companies the org owns that fail qualification
+are DELIVERED with their negative evidence (question verdicts, tag misses,
+IBP reasoning) — "here's why to skip this account" is a deliverable.
+
+**Cost — never spend silently.** Resolution and identity are free.
+`qualify: true` (the default) costs ~94 cost_cents per lead needing FRESH
+research+scoring — but repeat calls reuse every fresh cached stage
+(`from_cache` flags on the items) and converge to near-zero cost. `channels`
+purchase verified email (25c) / phone (250c) on success only;
+`already_owned` values cost nothing.
+
+The gate is enforced in code, not just here: a PAID call (`qualify` left at
+its default or set true, and/or any `channels`) is WITHHELD unless it carries
+`confirm: true`. Without it the tool submits nothing and returns
+`mode: "needs_confirmation"` with a real backend quote — show that quote to
+the user, get the go-ahead (an explicit "spend / get their emails" in their
+message counts), then re-call with `confirm: true`. `confirm: false` is a
+veto: nothing is submitted and no quote round-trip is made. A fully FREE
+call (`qualify: false`, no `channels`) needs no `confirm` and passes straight
+through. Set `request_id` and reuse it on retries of the same batch.
+
+**Limits**: 500 refs/job, 3 active jobs/org, 10 submits/hour (429 +
+Retry-After beyond — wait, don't hammer), 30-min job wall clock.
+
+---
+
+{{include:rendering/lead-delivery-table}}
+
+{{include:rendering/disqualified-delivered}}
+
+---
+
+{{include:next-steps/qualify-leads}}
