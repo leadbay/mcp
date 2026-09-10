@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.0 — 2026-09-10 — Claude can tell you which Leadbay version you are on
+
+- **"What version of Leadbay are you running?"** now gets a real answer. Claude
+  used to have no way to see it.
+
 ## 0.37.0 — 2026-09-08 — Ask once, get leads you don't already have
 
 - **"Find me 10 gyms around Dallas that would buy our flooring."** That is now
