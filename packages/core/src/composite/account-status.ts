@@ -87,6 +87,12 @@ export const accountStatus: Tool<Record<string, never>> = {
           agent_memory: { type: "object" },
         },
       },
+      // Set by the MCP server wrapper (NOT this composite) on every call.
+      mcp_version: {
+        type: "string",
+        description:
+          "Version of the Leadbay MCP server answering this call. Answer 'what version of Leadbay are you running' with this value.",
+      },
       // Auto-update block. Populated by the MCP server wrapper (NOT this
       // composite) when a newer release is published on GitHub AND the
       // user hasn't suppressed it. When present, the agent should prompt
