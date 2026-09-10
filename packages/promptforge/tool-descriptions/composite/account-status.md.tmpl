@@ -12,6 +12,7 @@ routing:
     - "how much quota do I have"
     - "what lens am I on"
     - "I topped up / I bought credits / I added credits"
+    - "what version of Leadbay am I running"
   anti_triggers:
     - phrase: "show me leads"
       route_to: leadbay_pull_leads
@@ -20,6 +21,7 @@ routing:
     positive:
       - "What's my account status?"
       - "How much quota do I have left this week?"
+      - "Which version of the Leadbay connector is this?"
     negative:
       - "Show me today's leads."
       - "What should I follow up on?"
@@ -46,6 +48,8 @@ Show the user's account state — admin rights, language, last-active lens, quot
 {{/commerce}}
 
 **After a user tops up, do NOT keep refusing — RETRY.** If the user signals they topped up / bought credits / added credits, the previous QUOTA_EXCEEDED is invalidated the moment the Stripe webhook lands. RE-CALL `leadbay_account_status` to pick up the new state AND retry the originally failed call. The retry itself does not require a successful account_status check first — a topped-up user has cleared the throttle whether or not your cached snapshot reflects it yet.{{commerce}} If the retry hits the wall again, only then re-offer top-up / wait.{{/commerce}} **A stale quota snapshot is never a reason to gate-keep a topped-up user.**
+
+**`mcp_version`** is the version of the Leadbay MCP server answering the call. When the user asks which Leadbay version they are running, answer with it.
 
 **`notifications` block.** The response now includes a top-level `notifications` array listing background work the user (or agent) initiated that has since completed (`bulk_enrich`, `bulk_qualify`, `import`). These are signals to revise prior agent outputs the just-finished work might have made stale — they're NOT a pending-task list for the user. After revising (or confirming nothing is affected), call `leadbay_acknowledge_notification(notification_id)`. Full handling protocol below.
 

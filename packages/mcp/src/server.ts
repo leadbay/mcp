@@ -1460,6 +1460,18 @@ export function buildServer(
       // cold cache on the first call can settle the in-flight check before we
       // conclude there's no update to show (no-op once the cache is warm).
       await maybeAttachUpdate(name, result);
+      // The model has no other way to learn which server version it is talking
+      // to: hosts keep `serverInfo` from `initialize` out of its context, and
+      // `update_available.current_version` only exists while an update is pending.
+      if (
+        name === "leadbay_account_status" &&
+        result !== null &&
+        typeof result === "object" &&
+        !Array.isArray(result) &&
+        (result as Record<string, unknown>).error !== true
+      ) {
+        (result as Record<string, unknown>).mcp_version = serverVersion;
+      }
       // Inject `_meta.notifications` into ANY tool result when the inbox
       // is non-empty. Same timing as maybeAttachUpdate so the field rides
       // along regardless of whether the response is markdown or JSON.

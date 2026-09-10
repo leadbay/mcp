@@ -1,5 +1,20 @@
 # Changelog — @leadbay/mcp
 
+## 0.38.0 — 2026-09-10
+
+`leadbay_account_status` now returns `mcp_version`, the version of the server
+answering the call, on every call and on both the stdio and hosted servers.
+
+Before this, an agent asked "what version of Leadbay are you running" had no
+answer. The version reached the host only in `initialize`'s `serverInfo`, which
+hosts keep out of the model's context, and in
+`update_available.current_version`, which exists only while an update is
+pending and never on hosted (`http-server.ts` wires no update store).
+
+The server wrapper sets the field next to `update_available`; the composite's
+`outputSchema` declares it, and the description gains a routing trigger and one
+sentence telling the agent to answer version questions with it.
+
 ## 0.37.0 — 2026-09-08
 
 Expose the backend MCP-first delivery endpoints (`POST /1.6/mcp/search`,
