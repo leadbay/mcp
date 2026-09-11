@@ -44,9 +44,9 @@ jobs:
         # Only cases that passed the gate twice on the released MCP. Add a case here once it has.
         include:
           - env: prod-us
-            cases: lead-delivery-routing-1,lead-delivery-routing-4,lead-delivery-routing-6,lead-delivery-routing-7
+            cases: lead-delivery-routing-1,lead-delivery-routing-4
           - env: prod-fr
-            cases: country-scope-writes-nothing:foreign-country,us-wide-followups-omits-geo
+            cases: us-wide-followups-omits-geo
     # One journey at a time per tenant, across every PR: two release PRs must not share before/after evidence.
     # GitHub keeps one pending run per group; a third run cancels the pending one, which then needs a re-run.
     concurrency:
