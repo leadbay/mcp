@@ -1,0 +1,13 @@
+version: 1
+id: lead-delivery-routing-8
+regions:
+- us
+languages:
+- en
+starting_state:
+- A dedicated tenant with a saved ICP, test credits, known region, and the relevant delivery tools exposed.
+- The current product conversation already contains a real lead delivery job handle and its original search
+  request. The operator records that context and job state before continuation.
+user_decisions: []
+variants: []
+datasets: []

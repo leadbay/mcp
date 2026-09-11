@@ -1,0 +1,14 @@
+version: 1
+id: pull-leads-offers-enrich-top-leads
+regions:
+- us
+languages:
+- en
+starting_state:
+- Discover returns lead-northwind, NORTHWIND (82, VP of Operations), then lead-cascadia, CASCADIA (77,
+  Owner).
+- Both have unrevealed contact channels and are eligible for a two-contact free enrichment preview. The
+  default selection differs from these displayed lead IDs.
+user_decisions: []
+variants: []
+datasets: []

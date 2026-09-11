@@ -1,0 +1,26 @@
+version: 1
+id: lead-delivery-routing-4
+regions:
+- us
+languages:
+- en
+starting_state:
+- A dedicated tenant with a saved ICP, test credits, known region, and the relevant delivery tools exposed.
+- The user's Austin restaurant sweep is a plain list of 60 websites, the one in the first user decision below.
+  The user has no other material.
+user_decisions:
+- when: The product asks for the list, or needs it to proceed.
+  reply: franklinbbq.com, uchiaustin.com, torchystacos.com, homeslicepizza.com, kerbeylanecafe.com, magnoliacafeaustin.com,
+    matt-elrancho.com, chuys.com, terryblacksbbq.com, laborbecue.com, micklethwaitcraftmeats.com, interstellarbbq.com,
+    salt-lick.com, stubbsaustin.com, hutsfrankandangies.com, dirtymartins.com, jugglingacts.com, odd-duck.com,
+    barleyswine.com, emmerandrye.com, olamaie.com, jeffreysofaustin.com, launderette.com, suerte-atx.com, fondasanmiguel.com,
+    elnaranjo.com, veracruzallnatural.com, juanintamillion.com, tacodeli.com, cabo-bobs.com, pluckers.com, hopdoddy.com,
+    p-terrys.com, jack-allens.com, moonshinegrill.com, guerosaustin.com, polvosaustin.com, maudies.com, trudys.com,
+    bouldincreekcafe.com, thevegannomad.com, counter-culture-austin.com, kome-austin.com, ramen-tatsuya.com, lorotx.com,
+    ottoausausage.com, thepeachedtortilla.com, eastsidekingaustin.com, thai-fresh.com, titaya.com, licha-cantina.com,
+    snackbar-austin.com, perlasaustin.com, clarkoysterbar.com, quality-seafood.com, red-ash.com, sway-austin.com,
+    lin-asiabar.com, wu-chow.com, viaverde-atx.com
+- when: The product asks which criteria to qualify against.
+  reply: Use our saved qualification criteria.
+variants: []
+datasets: []

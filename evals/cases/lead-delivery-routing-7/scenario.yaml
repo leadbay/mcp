@@ -1,0 +1,18 @@
+version: 1
+id: lead-delivery-routing-7
+regions:
+- us
+languages:
+- en
+starting_state:
+- A dedicated tenant with a saved ICP, test credits, known region, and the relevant delivery tools exposed.
+- The current product conversation already contains a real lead delivery job and its original search request.
+  Its first user turn was, verbatim, "Find me 10 gyms around Dallas that would buy our flooring, with someone
+  I can call." The product started a lead search job in reply. request.md is the next user turn in that same
+  conversation.
+user_decisions:
+- when: In that first turn, the product asks the user to decide anything before it starts the job, for example
+    whether to spend credits.
+  reply: Go with the free option, don't spend anything.
+variants: []
+datasets: []

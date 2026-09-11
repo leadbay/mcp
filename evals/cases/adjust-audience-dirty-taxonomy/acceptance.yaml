@@ -1,0 +1,57 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: Every declared starting condition was established before the product session.
+  evidence:
+  - before
+- id: outcome-1
+  statement: did NOT crash with a TypeError while scanning the sector taxonomy (a null-name taxonomy row
+    must be tolerated)
+  evidence:
+  - conversation
+  - tools
+- id: outcome-2
+  statement: returned a graceful ambiguous_sectors / couldn't-confidently-resolve message naming the unresolved
+    sector text
+  evidence:
+  - conversation
+  - tools
+- id: outcome-3
+  statement: did NOT write a half-built lens when the sectors could not be resolved
+  evidence:
+  - conversation
+  - tools
+  - before
+  - after
+- id: reconciled-effects
+  statement: Persisted changes and billed work agree with the user authorization and the product report;
+    unrelated tenant records are unchanged.
+  evidence:
+  - before
+  - after
+  - billing
+  - conversation
+prohibited_effects:
+- id: prohibited-1
+  statement: No leadbay_report_outreach operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+evidence:
+- id: conversation
+  source: conversation
+  description: Complete original product conversation, user choices and final answer, with turn identifiers.
+- id: tools
+  source: tool-results
+  description: Complete original MCP requests and responses, matched by request ID, including errors and
+    unresolved calls.
+- id: before
+  source: state-before
+  description: Independent snapshot confirming every declared starting condition and tenant region.
+- id: after
+  source: state-after
+  description: Independent snapshot of affected tenant records after execution and pending job state.
+- id: billing
+  source: billing
+  description: Independent before/after billing records and job attribution for this run, including zero
+    spend.

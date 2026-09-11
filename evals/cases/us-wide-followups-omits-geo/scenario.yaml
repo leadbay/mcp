@@ -1,0 +1,14 @@
+version: 1
+id: us-wide-followups-omits-geo
+regions:
+- us
+- fr
+languages:
+- en
+starting_state:
+- An authenticated dedicated tenant with at least two existing Monitor follow-up candidates in different
+  cities of its country.
+- The Monitor is populated, so an empty fixture cannot substitute for delivering follow-up candidates.
+user_decisions: []
+variants: []
+datasets: []

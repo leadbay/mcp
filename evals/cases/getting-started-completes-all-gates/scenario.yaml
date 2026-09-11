@@ -1,0 +1,25 @@
+version: 1
+id: getting-started-completes-all-gates
+regions:
+- us
+languages:
+- en
+starting_state:
+- The user is signed in to Getting Started Co. Account identity succeeds, but the quota subrequest returns
+  401.
+- Discover contains FAIRHAVEN LOGISTICS (84, Head of Operations), BRIGHTWELL MANUFACTURING (79, Plant
+  Manager), STONECOURT PROPERTIES (71, Managing Director). No contact names, emails or phones are revealed.
+- Three contacts are eligible for a free discovery preview. The user has never authorized a paid reveal.
+user_decisions:
+- when: After the preceding choice has been handled and the product asks what to do next.
+  reply: Check my account
+- when: After the preceding choice has been handled and the product asks what to do next.
+  reply: Pull today's leads
+- when: After the preceding choice has been handled and the product asks what to do next.
+  reply: Draft the first email
+- when: After the preceding choice has been handled and the product asks what to do next.
+  reply: Find who to email
+- when: After the preceding choice has been handled and the product asks what to do next.
+  reply: I'm done for now
+variants: []
+datasets: []

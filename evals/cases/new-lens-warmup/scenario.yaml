@@ -1,0 +1,13 @@
+version: 1
+id: new-lens-warmup
+regions:
+- us
+languages:
+- en
+starting_state:
+- The active base lens ID is 40445. English sector taxonomy contains Fintech, a null name and Plomberie.
+- Creating Warmup yields a persisted lens whose first wishlist is empty while computing_wishlist and computing_scores
+  are true.
+user_decisions: []
+variants: []
+datasets: []

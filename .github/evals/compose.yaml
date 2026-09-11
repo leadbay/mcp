@@ -1,0 +1,164 @@
+# Infrastructure only. No scenario supplies an executable or a command argument.
+x-sandbox: &sandbox
+  image: leadbay-eval-artifacts:local
+  build:
+    context: .
+  user: '1000:1000'
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+  tmpfs:
+    - /tmp:uid=1000,gid=1000,mode=0700
+    - /scratch:uid=1000,gid=1000,mode=0700
+    - /home/node:uid=1000,gid=1000,mode=0700
+  working_dir: /scratch
+  pids_limit: 256
+  init: true
+  # Linux runners have no host.docker.internal by default; Docker Desktop ignores this.
+  extra_hosts: ['host.docker.internal:host-gateway']
+services:
+  contracts:
+    <<: *sandbox
+    network_mode: none
+    working_dir: /repo
+    environment:
+      EVAL_BUNDLE: ${EVAL_BUNDLE:-}
+    volumes:
+      - type: bind
+        source: ../..
+        target: /repo
+        read_only: true
+      - type: bind
+        source: ${EVAL_RUN:-../..}
+        target: /bundle
+        read_only: true
+        bind: {create_host_path: false}
+    # Execute the exact CI validation step, not a second local implementation.
+    entrypoint: [python, -c]
+    command:
+      - "import subprocess,yaml; a=yaml.safe_load(open('.github/evals/action.yml')); s=next(s for s in a['runs']['steps'] if s.get('id')=='validate'); subprocess.run(['bash','-eu','-o','pipefail','-c',s['run']],check=True)"
+  tester:
+    <<: *sandbox
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+    volumes:
+      - type: bind
+        source: ${EVAL_CASE:-../../evals/cases/country-scope-writes-nothing}/scenario.yaml
+        target: /test/scenario.yaml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${EVAL_CASE:-../../evals/cases/country-scope-writes-nothing}/request.md
+        target: /test/request.md
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./tester.md
+        target: /policy/tester.md
+        read_only: true
+      - type: bind
+        source: ${EVAL_CONNECTION:-../../.context/eval-connection}/target.md
+        target: /connection/target.md
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${EVAL_CONNECTION:-../../.context/eval-connection}/mcp.json
+        target: /connection/mcp.json
+        read_only: true
+        bind: {create_host_path: false}
+      # The only writable evidence path: raw product-session streams, read by the verifier as originals.
+      - type: bind
+        source: ${EVAL_RUN:-../../.context/eval-run}/observed/subject
+        target: /subject
+        bind: {create_host_path: false}
+    entrypoint: [claude]
+    command:
+      - --setting-sources
+      - ""
+      - --disable-slash-commands
+      - --no-chrome
+      - --dangerously-skip-permissions
+      - --strict-mcp-config
+      - --mcp-config
+      - '{"mcpServers":{}}'
+      - --model
+      - ${EVAL_EXECUTOR_MODEL:-}
+      - --max-budget-usd
+      - ${EVAL_EXECUTOR_BUDGET_USD:-10}
+      - --tools
+      - Read,Write,Edit,Bash
+      - --output-format
+      - stream-json
+      - --verbose
+      - --print
+      - Read /policy/tester.md and conduct the supplied journey. Report execution evidence, never a grade.
+  verifier:
+    <<: *sandbox
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+    volumes:
+      - type: bind
+        source: ${EVAL_CASE:-../../evals/cases/country-scope-writes-nothing}/acceptance.yaml
+        target: /test/acceptance.yaml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${EVAL_CASE:-../../evals/cases/country-scope-writes-nothing}/scenario.yaml
+        target: /test/scenario.yaml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${EVAL_CASE:-../../evals/cases/country-scope-writes-nothing}/request.md
+        target: /test/request.md
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./verifier.md
+        target: /policy/verifier.md
+        read_only: true
+      - type: bind
+        source: ./contracts.schema.json
+        target: /policy/contracts.schema.json
+        read_only: true
+      - type: bind
+        source: ${EVAL_RUN:-../../.context/eval-run}/observed
+        target: /evidence/observed
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${EVAL_RUN:-../../.context/eval-run}/execution
+        target: /evidence/execution
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${EVAL_RUN:-../../.context/eval-run}/run.yaml
+        target: /evidence/run.yaml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${EVAL_RUN:-../../.context/eval-run}/verifier
+        target: /output
+        bind: {create_host_path: false}
+    entrypoint: [claude]
+    command:
+      - --setting-sources
+      - ""
+      - --disable-slash-commands
+      - --no-chrome
+      - --dangerously-skip-permissions
+      - --strict-mcp-config
+      - --mcp-config
+      - '{"mcpServers":{}}'
+      - --model
+      - ${EVAL_VERIFIER_MODEL:-}
+      - --max-budget-usd
+      - ${EVAL_VERIFIER_BUDGET_USD:-10}
+      - --tools
+      - Read,Write,Edit,Bash
+      - --output-format
+      - stream-json
+      - --verbose
+      - --print
+      - Read /policy/verifier.md. Independently verify the sealed evidence and write /output/verdict.yaml.

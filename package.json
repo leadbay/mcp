@@ -14,10 +14,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm components:check && pnpm prompts:check && pnpm -r test",
     "test:smoke": "pnpm --filter @leadbay/core --filter @leadbay/mcp test:smoke",
-    "test:eval": "EVAL=1 pnpm --filter @leadbay/mcp exec vitest run --config vitest.eval.config.ts",
-    "test:gate": "EVAL=1 EVAL_TIER=gate pnpm --filter @leadbay/mcp exec vitest run --config vitest.eval.config.ts",
-    "test:periodic": "EVAL=1 EVAL_TIER=periodic pnpm --filter @leadbay/mcp exec vitest run --config vitest.eval.config.ts",
-    "eval:drift": "tsx packages/mcp/test/eval/scripts/drift-detector.ts"
+    "test:eval": "docker compose -f .github/evals/compose.yaml run --build --rm contracts"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

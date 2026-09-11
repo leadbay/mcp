@@ -1,0 +1,14 @@
+version: 1
+id: enrich-titles-linkedin-only-no-spend
+regions:
+- us
+languages:
+- en
+starting_state:
+- Lead lead-a-3848 has Dana Reyes, VP of Sales, with LinkedIn profile https://www.linkedin.com/in/dana-reyes.
+  Lead lead-b-3848 has Erin Walsh, Head of Growth, with profile https://www.linkedin.com/in/erin-walsh.
+- Both contact records already contain free titles and LinkedIn profiles. Neither record has revealed
+  email or phone data. Twelve contacts are eligible for paid enrichment; 500 test credits are available.
+user_decisions: []
+variants: []
+datasets: []

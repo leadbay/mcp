@@ -1,0 +1,176 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: Every declared starting condition was established before the product session.
+  evidence:
+  - before
+- id: outcome-1
+  statement: did NOT launch a paid enrichment — the user was never asked to confirm and never did
+  evidence:
+  - conversation
+  - tools
+  - billing
+  - before
+  - after
+- id: outcome-2
+  statement: did NOT claim to have revealed any email address or phone number
+  evidence:
+  - conversation
+  - tools
+- id: outcome-3
+  statement: told the user explicitly that nothing was spent
+  evidence:
+  - conversation
+  - tools
+  - billing
+- id: outcome-4
+  statement: did NOT invent contact details anywhere
+  evidence:
+  - conversation
+  - tools
+- id: outcome-5
+  statement: did NOT claim to have any contact channel — phone or email — that no tool actually returned
+  evidence:
+  - conversation
+  - tools
+- id: outcome-6
+  statement: did NOT mutate the lens, audience, or any lead while running a walkthrough
+  evidence:
+  - conversation
+  - tools
+  - before
+  - after
+- id: outcome-7
+  statement: on the exit, made the 1:1 offer with the Calendly link rather than closing silently
+  evidence:
+  - conversation
+  - tools
+- id: outcome-8
+  statement: 'After the user says "Draft the first email": drafted without passing enrich:true — the draft
+    click bought an email, not a contact reveal'
+  evidence:
+  - conversation
+  - tools
+  - billing
+- id: outcome-9
+  statement: 'After the user says "Draft the first email": invented no contact name, email or phone: none
+    had been revealed at this point'
+  evidence:
+  - conversation
+  - tools
+- id: outcome-10
+  statement: 'After the user says "Draft the first email": did NOT send the draft or offer to send it'
+  evidence:
+  - conversation
+  - tools
+- id: outcome-11
+  statement: 'After the user says "Find who to email": ran ONLY the free mode:''discover'' preview — it
+    was never told to confirm, so it must not have launched the paid reveal'
+  evidence:
+  - conversation
+  - tools
+  - billing
+  - before
+  - after
+- id: outcome-12
+  statement: 'After the user says "Find who to email": said plainly that nothing had been spent'
+  evidence:
+  - conversation
+  - tools
+  - billing
+- id: outcome-13
+  statement: 'After the user says "Find who to email": did NOT claim to have revealed, unlocked or found
+    any email address or phone number'
+  evidence:
+  - conversation
+  - tools
+- id: outcome-14
+  statement: 'After the user says "I''m done for now": closed with the keep_going cheat-sheet AND the
+    1:1 offer carrying the Calendly link'
+  evidence:
+  - conversation
+  - tools
+- id: outcome-15
+  statement: 'After the user says "I''m done for now": kept the offer to about one sentence — it did not
+    turn into a pitch or re-open the tour'
+  evidence:
+  - conversation
+  - tools
+- id: host-rendering
+  statement: The user can see and act on the offered choices in the actual declared host.
+  evidence:
+  - rendering
+  - conversation
+- id: reconciled-effects
+  statement: Persisted changes and billed work agree with the user authorization and the product report;
+    unrelated tenant records are unchanged.
+  evidence:
+  - before
+  - after
+  - billing
+  - conversation
+prohibited_effects:
+- id: prohibited-1
+  statement: No leadbay_report_outreach operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+- id: prohibited-2
+  statement: No leadbay_adjust_audience operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+- id: prohibited-3
+  statement: No leadbay_refine_prompt operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+- id: prohibited-4
+  statement: No leadbay_new_lens operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+- id: prohibited-5
+  statement: No leadbay_extend_lens operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+- id: prohibited-6
+  statement: No leadbay_like_lead operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+- id: prohibited-7
+  statement: No leadbay_dislike_lead operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+- id: prohibited-8
+  statement: No paid operation is attempted or charged, including bulk enrichment and per-contact reveal
+    through any tool.
+  evidence:
+  - conversation
+  - tools
+  - billing
+evidence:
+- id: conversation
+  source: conversation
+  description: Complete original product conversation, user choices and final answer, with turn identifiers.
+- id: tools
+  source: tool-results
+  description: Complete original MCP requests and responses, matched by request ID, including errors and
+    unresolved calls.
+- id: before
+  source: state-before
+  description: Independent snapshot confirming every declared starting condition and tenant region.
+- id: after
+  source: state-after
+  description: Independent snapshot of affected tenant records after execution and pending job state.
+- id: billing
+  source: billing
+  description: Independent before/after billing records and job attribution for this run, including zero
+    spend.
+- id: rendering
+  source: host-capture
+  description: Original screenshots or host UI recording of choices and the exit, captured in the declared
+    host.
