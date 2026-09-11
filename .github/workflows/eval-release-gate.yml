@@ -55,7 +55,7 @@ jobs:
     env:
       LEADBAY_EMAIL: ${{ secrets.EVAL_LEADBAY_EMAIL }}
       LEADBAY_PASSWORD: ${{ secrets.EVAL_LEADBAY_PASSWORD }}
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.EVAL_CLAUDE_CODE_OAUTH_TOKEN }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       EVAL_SUBJECT_MODEL: claude-sonnet-5
       EVAL_EXECUTOR_MODEL: claude-sonnet-5
       EVAL_VERIFIER_MODEL: claude-sonnet-5
