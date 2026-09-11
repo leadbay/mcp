@@ -1,0 +1,13 @@
+version: 1
+id: lead-delivery-routing-4
+regions:
+- us
+languages:
+- en
+starting_state:
+- A dedicated tenant with a saved ICP, test credits, known region, and the relevant delivery tools exposed.
+- The user has supplied the referenced spreadsheet or website list in the actual host. Its sanitized contents
+  and digest are recorded by the operator before the run.
+user_decisions: []
+variants: []
+datasets: []

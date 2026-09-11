@@ -1,0 +1,13 @@
+version: 1
+id: new-lens-string-base
+regions:
+- us
+languages:
+- en
+starting_state:
+- The active base lens ID is numeric 39107. English sector taxonomy contains Fintech, a null name and
+  Plomberie.
+- A new lens named Joinery does not yet exist. The backend expects base serialized as a string.
+user_decisions: []
+variants: []
+datasets: []

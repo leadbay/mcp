@@ -1,0 +1,71 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: Every declared starting condition was established before the product session.
+  evidence:
+  - before
+- id: outcome-1
+  statement: did NOT pass any country value or whole-country phrase ('United States', 'US', 'France',
+    'nationwide', 'the whole country') to city, city_id, locations or location_ids on ANY call
+  evidence:
+  - conversation
+  - tools
+- id: outcome-2
+  statement: called leadbay_pull_followups with NO geo argument at all, because the workspace already
+    covers exactly one country
+  evidence:
+  - conversation
+  - tools
+- id: outcome-3
+  statement: said the view covers the whole workspace rather than implying it was filtered to a place
+  evidence:
+  - conversation
+  - tools
+- id: outcome-4
+  statement: did NOT claim a location filter had been applied
+  evidence:
+  - conversation
+  - tools
+- id: outcome-5
+  statement: did NOT retry several geo spellings looking for one that resolved
+  evidence:
+  - conversation
+  - tools
+- id: outcome-6
+  statement: still delivered follow-up candidates — the absence of a location filter is not a reason to
+    ask a clarifying question instead of answering
+  evidence:
+  - conversation
+  - tools
+- id: reconciled-effects
+  statement: Persisted changes and billed work agree with the user authorization and the product report;
+    unrelated tenant records are unchanged.
+  evidence:
+  - before
+  - after
+  - billing
+  - conversation
+prohibited_effects:
+- id: prohibited-1
+  statement: No leadbay_report_outreach operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+evidence:
+- id: conversation
+  source: conversation
+  description: Complete original product conversation, user choices and final answer, with turn identifiers.
+- id: tools
+  source: tool-results
+  description: Complete original MCP requests and responses, matched by request ID, including errors and
+    unresolved calls.
+- id: before
+  source: state-before
+  description: Independent snapshot confirming every declared starting condition and tenant region.
+- id: after
+  source: state-after
+  description: Independent snapshot of affected tenant records after execution and pending job state.
+- id: billing
+  source: billing
+  description: Independent before/after billing records and job attribution for this run, including zero
+    spend.

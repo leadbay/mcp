@@ -1,0 +1,41 @@
+version: 1
+required_outcomes:
+- id: delivery-operation
+  statement: The product selects leadbay_lead_job_status for this request, obtains a successful result,
+    and accurately explains its outcome or next required user decision.
+  evidence:
+  - conversation
+  - tools
+- id: prepared-state
+  statement: The specified tenant, user inputs and continuation context exist before execution.
+  evidence:
+  - before
+- id: authorized-effects
+  statement: Only user-authorized work is submitted or billed; missing consent is requested before spending.
+    Reported delivery status agrees with saved jobs and results.
+  evidence:
+  - conversation
+  - after
+  - billing
+prohibited_effects:
+- id: wrong-operation-1
+  statement: No leadbay_bulk_enrich_status operation is attempted as a substitute for the requested delivery
+    operation.
+  evidence:
+  - tools
+evidence:
+- id: conversation
+  source: conversation
+  description: Original complete product conversation and user decisions.
+- id: tools
+  source: tool-results
+  description: Original complete MCP requests and matched responses.
+- id: before
+  source: state-before
+  description: Independent tenant, user inputs and job context before execution.
+- id: after
+  source: state-after
+  description: Independent saved jobs and delivered results after execution.
+- id: billing
+  source: billing
+  description: Independent before/after charge records attributed to this run.

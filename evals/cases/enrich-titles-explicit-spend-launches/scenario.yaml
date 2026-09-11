@@ -1,0 +1,13 @@
+version: 1
+id: enrich-titles-explicit-spend-launches
+regions:
+- us
+languages:
+- en
+starting_state:
+- The selected leads are lead-a-consent and lead-b-consent. Their available titles are VP of Sales and
+  Head of Growth.
+- The dedicated tenant has 500 test credits and eight enrichable contacts; the email job completes asynchronously.
+user_decisions: []
+variants: []
+datasets: []
