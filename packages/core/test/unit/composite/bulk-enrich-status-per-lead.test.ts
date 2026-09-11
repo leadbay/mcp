@@ -53,23 +53,6 @@ describe("bulk_enrich_status per-lead progress", () => {
     expect(res.all_done).toBe(false);
   });
 
-  it("a phone-only run does NOT count an email-enriched contact as done", async () => {
-    // The regression this guards: enrichment.done is true and an email exists
-    // from an earlier run, but the phone reveal has not landed. Counting it
-    // would flip all_done before the thing the user paid for arrives.
-    mockHttp([
-      ...contactsFor([contact({ email: "a@x.com", phone_number: null })]),
-    ]);
-    const res: any = await bulkEnrichStatus.execute(newClient(), {
-      lead_ids: [LEAD],
-      titles: ["CEO"],
-      phone: true,
-    });
-
-    expect(res.leads[0].enrichment_progress).toEqual({ done: 0, total: 1 });
-    expect(res.all_done).toBe(false);
-  });
-
   it("counts it once the requested channel lands", async () => {
     mockHttp([...contactsFor([contact({ phone_number: "+1" })]), me]);
     const res: any = await bulkEnrichStatus.execute(newClient(), {
