@@ -47,11 +47,12 @@ def main():
     for t in threads:
         t.join()
 
-    lines = ['| Journey | Gate | Criteria |', '|---|---|---|']
+    # Criterion ids and counts only: verifier explanations quote tenant data and stay on the runner.
+    lines = ['| Journey | Gate | Criteria | Not passing |', '|---|---|---|---|']
     failed = 0
     for name, r in sorted(results.items()):
         verdict = out / name / 'verdict.yaml'
-        crit = ''
+        crit, bad = '', ''
         if verdict.exists():
             import yaml
             v = yaml.safe_load(verdict.read_text())
@@ -59,9 +60,10 @@ def main():
             for c in v['criteria']:
                 counts[c['status']] = counts.get(c['status'], 0) + 1
             crit = ', '.join(f'{k} {n}' for k, n in sorted(counts.items()))
+            bad = ', '.join(f"{c['id']} ({c['status']})" for c in v['criteria'] if c['status'] != 'pass')
         ok = r.get('gate_exit_code') == 0
         failed += 0 if ok else 1
-        lines.append(f"| {name} | {'PASS' if ok else 'FAIL'} | {crit} |")
+        lines.append(f"| {name} | {'PASS' if ok else 'FAIL'} | {crit} | {bad} |")
     table = '\n'.join(lines)
     print(table)
     if a.summary:

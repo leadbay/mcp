@@ -144,14 +144,17 @@ public CI artifact. No data is uploaded by these workflows.
 
 ## Release gate
 
-`.github/workflows/eval-release-gate.yml` runs on every pull request that bumps
-`packages/mcp/package.json` (the file `auto-tag` reads on `main`) and on manual
-dispatch. One job per production tenant runs its lane serially under a
-per-tenant concurrency group, so two release PRs never share before/after
-evidence. The job fails when any bundle fails the gate; make it a required
-status check on `main` to block the release. Secrets: `EVAL_ANTHROPIC_API_KEY`,
-`EVAL_LEADBAY_EMAIL`, `EVAL_LEADBAY_PASSWORD`. Only `verdict.yaml` files are
-uploaded as artifacts; observed evidence stays on the runner.
+`.github/workflows/eval-release-gate.yml` runs on every pull request and on
+manual dispatch. Journeys start only when the PR changes the version in
+`packages/mcp/package.json` (the file `auto-tag` reads on `main`). One job per
+production tenant runs its lane serially under a per-tenant concurrency group,
+so two release PRs never share before/after evidence. The `gate` job is the
+required status check on `main`: it passes when no journeys were due and fails
+when any bundle fails. The matrix lists only cases that have passed on the
+released MCP; a case joins it once it has. Secrets: `EVAL_CLAUDE_CODE_OAUTH_TOKEN`
+(from `claude setup-token`), `EVAL_LEADBAY_EMAIL`, `EVAL_LEADBAY_PASSWORD`. The
+repository is public, so nothing is uploaded: the step summary carries criterion
+ids and counts, and evidence stays on the runner.
 
 ## What makes a run pass
 

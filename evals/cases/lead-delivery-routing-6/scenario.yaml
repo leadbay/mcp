@@ -6,8 +6,15 @@ languages:
 - en
 starting_state:
 - A dedicated tenant with a saved ICP, test credits, known region, and the relevant delivery tools exposed.
-- The user has supplied the referenced spreadsheet or website list in the actual host. Its sanitized contents
-  and digest are recorded by the operator before the run.
-user_decisions: []
+- The user's spreadsheet has 12 rows of company name and website, the ones in the first user decision below.
+  The user has no other material.
+user_decisions:
+- when: The product asks for the rows, or needs them to proceed.
+  reply: Gold's Gym (goldsgym.com), Orangetheory Fitness (orangetheory.com), Crunch Fitness (crunch.com), Planet
+    Fitness (planetfitness.com), Life Time (lifetime.life), F45 Training (f45training.com), Equinox (equinox.com),
+    24 Hour Fitness (24hourfitness.com), Anytime Fitness (anytimefitness.com), CrossFit Central (crossfitcentral.com),
+    YMCA of Austin (austinymca.org), Castle Hill Fitness (castlehillfitness.com)
+- when: The product asks which criteria to vet against.
+  reply: Our saved qualification criteria.
 variants: []
 datasets: []
