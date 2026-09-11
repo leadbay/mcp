@@ -82,10 +82,11 @@ jobs:
           echo "EVAL_CLAUDE_CREDENTIALS=$f" >> "$GITHUB_ENV"
       - name: Run the lane
         shell: bash
-        run: |
-          env="${{ github.event_name == 'workflow_dispatch' && inputs.env || matrix.env }}"
-          cases="${{ github.event_name == 'workflow_dispatch' && inputs.cases || matrix.cases }}"
-          python .github/evals/lane.py --env "$env" --cases "$cases" --out "$RUNNER_TEMP/journeys"
+        # Inputs reach the shell as variables, never as text substituted into the script.
+        env:
+          LANE_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.env || matrix.env }}
+          LANE_CASES: ${{ github.event_name == 'workflow_dispatch' && inputs.cases || matrix.cases }}
+        run: python .github/evals/lane.py --env "$LANE_ENV" --cases "$LANE_CASES" --out "$RUNNER_TEMP/journeys"
       # This repo is public. Evidence and verifier explanations quote tenant data, so nothing is uploaded;
       # the step summary carries criterion ids and counts only.
   gate:
