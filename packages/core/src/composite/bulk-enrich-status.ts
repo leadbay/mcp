@@ -81,11 +81,13 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
       },
       email: {
         type: "boolean",
-        description: "The `email` flag the launch returned. A contact counts as done only once the requested channel has landed.",
+        description:
+          "The `email` flag the launch returned. Scopes counting to reservations that asked for email (`enrichment.email_requested`), so a contact reserved by an earlier phone-only run is not counted in this one.",
       },
       phone: {
         type: "boolean",
-        description: "The `phone` flag the launch returned. Same rule as `email`.",
+        description:
+          "The `phone` flag the launch returned. Same rule as `email`, on `enrichment.phone_requested`.",
       },
       include_contacts: {
         type: "boolean",
@@ -197,17 +199,21 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
       const wantTitles = new Set(
         (params.titles ?? []).map((t) => t.trim().toLowerCase())
       );
-      // A contact counts only if the run requested its role, and only once the
-      // requested CHANNEL has landed. A contact email-enriched earlier
-      // (enrichment.done:true, has email) but with no phone_number is NOT done
-      // for a phone-only run — counting it would flip all_done before the phone
-      // reveal arrives.
-      const channelResolved = (c: any): boolean => {
-        if (c?.enrichment?.done !== true) return false;
-        if (params.email && !c.email) return false;
-        if (params.phone && !c.phone_number) return false;
+      // A reservation belongs to this run if it asked for the channels this run
+      // asked for (`enrichment.email_requested` / `phone_requested`). A contact
+      // reserved by an earlier email-only run is not re-reserved by a phone run
+      // (the backend keeps one reservation per contact and skips reserved ones),
+      // so it is left out of both done and total rather than counted either way.
+      // "Done" is the reservation's own settled flag. The email / phone_number
+      // values are NOT read here: `enrichment` sits on the source:"paid" record,
+      // which never carries them — the revealed values land on the person's
+      // source:"org" twin (product#4102).
+      const inThisRun = (c: any): boolean => {
+        if (params.email && c.enrichment.email_requested === false) return false;
+        if (params.phone && c.enrichment.phone_requested === false) return false;
         return true;
       };
+      const settled = (c: any): boolean => c.enrichment.done === true;
 
       let doneSoFar = 0;
       const totalLeads = leadIds.length;
@@ -225,6 +231,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
               (c) =>
                 c &&
                 c.enrichment &&
+                inThisRun(c) &&
                 (wantTitles.size === 0 ||
                   (typeof c.job_title === "string" &&
                     wantTitles.has(c.job_title.trim().toLowerCase())))
@@ -250,7 +257,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
             return {
               kind: "ok" as const,
               lead_id: leadId,
-              done: enrichable.filter(channelResolved).length,
+              done: enrichable.filter(settled).length,
               total: enrichable.length,
               ...(includeContacts ? { contacts } : {}),
             };
