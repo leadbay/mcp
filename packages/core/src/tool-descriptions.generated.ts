@@ -300,7 +300,7 @@ days"), computed against now — mirroring the widget's "réinitialisé dans X".
 raw value is an ISO-8601 timestamp.
 
 **Top-up (optional, subordinate).** When \`quota.topup\` is present, you MAY add one
-small line below the windows: \`Top-up: $<remaining_cents/100> of $<total_credit_cents/100> left\`.
+small line below the windows: \`Top-up: $<(remaining_cents / 100).toFixed(2)> of $<(total_credit_cents / 100).toFixed(2)> left\`.
 Keep it secondary — the three window gauges are the headline. Omit when null.
 
 **Legend** (once, below): \`\` \`▰\` used · \`▱\` remaining \`\`.
@@ -590,11 +590,11 @@ a launcher only for a subset that never started, never for the whole batch:
   that are the ones that never started. Only then call
   \`leadbay_bulk_qualify_leads({leadIds, lensId})\` for exactly those ids. A lead
   that is merely slow looks identical to one that never launched over a few
-  polls, and re-launching it charges the user twice — when unsure, tell the user
+  polls, and re-launching it uses the user's quota twice — when unsure, tell the user
   rather than guess.
 
 
-## QUOTA — show where the user stands after the spend
+## QUOTA — show where the user stands after the run
 
 Enrichment consumes QUOTA (the per-window allowance), not a separate credit wall. Once the job is done (all_done, or a plateau — see WHEN TO USE), show the user their refreshed quota: call \`leadbay_account_status\` and render the per-window quota it returns (the canonical surface). The result's \`credits_remaining\` field is **advisory internal context only — do NOT display it**: it comes from \`billing.ai_credits\` (a consumed counter, not remaining), so printing \`_(N credits remaining)_\` can show a fresh/quota-backed account a false "0 remaining." Never render a credits balance; the \`leadbay_account_status\` quota gauge is the only place the user's standing is shown. Do NOT report a "credits used" figure for this run either: the per-contact cost can't be scoped to this specific enrichment (a lead's contact list mixes in earlier runs), so any "X used" number would be misleading. Do the account_status refresh ONCE at completion — not on every in-progress poll.
 
@@ -620,7 +620,7 @@ WHEN NOT TO USE: to qualify a single specific lead — that's leadbay_qualify_le
 Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
 \`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned a launched or
 running result, that work is queued on Leadbay and runs to completion, and the
-quota it costs is already committed. A discovery, preview or \`dry_run\` result
+quota it uses is already committed. A discovery, preview or \`dry_run\` result
 launched nothing and is not covered here.
 
 The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
@@ -628,7 +628,7 @@ waiting, never the job. \`cancelled: true\` means we stopped watching, not that 
 work stopped. What to do next depends on what you are holding:
 
 - **A handle.** Poll the status tool with it, and do not launch the work that
-  handle covers a second time — that spends the quota again on the same rows.
+  handle covers a second time — that uses the quota again on the same rows.
   \`leadbay_import_status\` takes \`importIds\`, so pass the values of \`import_ids\`
   under that name. A qualification started by \`leadbay_import_and_qualify\` has no
   notification of its own: resume it with
@@ -642,7 +642,7 @@ work stopped. What to do next depends on what you are holding:
   finished. Calling the same tool again with the same arguments will usually hand
   back the job already launched rather than starting a second one, but that guard
   is in-memory, five minutes, and per process, so it is best-effort — say what you
-  are about to re-run before you spend the user's quota on it.
+  are about to re-run before you use the user's quota on it.
 
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
@@ -1177,18 +1177,18 @@ WHEN NOT TO USE: for bulk enrichment by job title across many leads — use lead
 ## A launched job cannot be stopped, and this tool has no retry guard
 
 Leadbay has no cancel. Once this call returns having actually launched, the work
-is queued on Leadbay and runs to completion, and the quota it costs is already
-committed. A \`dry_run\` result reached no backend and spent nothing. The user
+is queued on Leadbay and runs to completion, and the quota it uses is already
+committed. A \`dry_run\` result reached no backend and used nothing. The user
 cancelling in the chat, a request timeout, or a closed stream stops YOUR waiting,
 never the job.
 
 Unlike the composite launchers, this tool has **no double-launch guard**: calling
-it again always issues a new paid launch, even seconds later with identical
+it again always issues a new launch that uses quota again, even seconds later with identical
 arguments. So when a call returns nothing at all, do not simply retry. Read the
 record back first — \`leadbay_research_lead_by_id\` or \`leadbay_get_contacts\` for a
 lead, \`leadbay_account_status\` for background work that has since finished — to
 see whether the launch already landed, and tell the user what you are about to
-spend before spending it again.
+run before running it again.
 
 
 ## QUOTA, NOT CREDITS
@@ -1202,7 +1202,7 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_enrich_contacts
 
 // region: leadbay_enrich_titles
-export const leadbay_enrich_titles: string = `Order contact enrichments by job title across many leads. Contacts are NOT returned by default with a lead (Leadbay keeps enrichment out-of-band to control cost); the agent requests them on demand via this tool when it's ready to actually reach out. Two modes: (A) NO \`titles\` param — returns the available titles + Leadbay's \`title_suggestions\` + \`auto_included_titles\` + a count of enrichable contacts, so the agent can ask the user which titles to enrich. (B) \`titles\` given — calls preview, then launches if there's anything enrichable. On 429 returns \`{status:'quota_exceeded'}\` cleanly. Selection lifecycle is wrapped in a try/finally so the user's selection is left clean even on error.
+export const leadbay_enrich_titles: string = `Order contact enrichments by job title across many leads. Contacts are NOT returned by default with a lead (Leadbay keeps enrichment out-of-band); the agent requests them on demand via this tool when it's ready to actually reach out. Two modes: (A) NO \`titles\` param — returns the available titles + Leadbay's \`title_suggestions\` + \`auto_included_titles\` + a count of enrichable contacts, so the agent can ask the user which titles to enrich. (B) \`titles\` given — calls preview, then launches if there's anything enrichable. On 429 returns \`{status:'quota_exceeded'}\` cleanly. Selection lifecycle is wrapped in a try/finally so the user's selection is left clean even on error.
 
 WHEN TO USE: as the agent's go-to enrichment entry point, immediately before proposing outreach.
 
@@ -1213,7 +1213,7 @@ WHEN NOT TO USE: to enrich a single named contact — that's leadbay_enrich_cont
 Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
 \`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned a launched or
 running result, that work is queued on Leadbay and runs to completion, and the
-quota it costs is already committed. A discovery, preview or \`dry_run\` result
+quota it uses is already committed. A discovery, preview or \`dry_run\` result
 launched nothing and is not covered here.
 
 The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
@@ -1221,7 +1221,7 @@ waiting, never the job. \`cancelled: true\` means we stopped watching, not that 
 work stopped. What to do next depends on what you are holding:
 
 - **A handle.** Poll the status tool with it, and do not launch the work that
-  handle covers a second time — that spends the quota again on the same rows.
+  handle covers a second time — that uses the quota again on the same rows.
   \`leadbay_import_status\` takes \`importIds\`, so pass the values of \`import_ids\`
   under that name. A qualification started by \`leadbay_import_and_qualify\` has no
   notification of its own: resume it with
@@ -1235,7 +1235,7 @@ work stopped. What to do next depends on what you are holding:
   finished. Calling the same tool again with the same arguments will usually hand
   back the job already launched rather than starting a second one, but that guard
   is in-memory, five minutes, and per process, so it is best-effort — say what you
-  are about to re-run before you spend the user's quota on it.
+  are about to re-run before you use the user's quota on it.
 
 
 ## ENRICHMENT CONSUMES QUOTA — the model to reason with
@@ -1244,17 +1244,17 @@ Each email reveal and each phone reveal **consumes quota** (the per-window daily
 
 ## CONSENT — email is the default channel; phone is opt-in; never launch silently
 
-The \`email\` channel defaults **ON**; \`phone\` defaults **OFF**. A bare "enrich these titles" is **NOT** consent to spend quota.
+The \`email\` channel defaults **ON**; \`phone\` defaults **OFF**. A bare "enrich these titles" is **NOT** consent to use quota.
 
 **When the user asks to enrich without naming channels, ASK which channels via \`ask_user_input_v0\`** — email is included by default, so the real question is whether to add phone: \`"Enrich email only, or email + phone? (phone reveals use more quota)"\` → \`["Email only", "Email + phone"]\`. Then launch with the chosen channels (\`email:true\` always; \`phone:true\` if they picked email + phone). Only skip this question if the user already named the channel(s) explicitly ("just emails", "get their phone numbers too", etc.).
 
-**To preview with ZERO spend risk on ANY host, pass \`dry_run:true\`** (or \`confirm:false\`). Either returns \`enrichable_contacts\` + the \`would_launch\` channels and launches nothing — guaranteed, regardless of host. Use this as your first call. Then surface the volume, get the user's explicit go-ahead (and channel choice, above), and re-call with \`confirm:true\` (and explicit \`email:true\`/\`phone:true\` for the channels they chose) to launch.
+**To preview with nothing launched on ANY host, pass \`dry_run:true\`** (or \`confirm:false\`). Either returns \`enrichable_contacts\` + the \`would_launch\` channels and launches nothing — guaranteed, regardless of host. Use this as your first call. Then surface the volume, get the user's explicit go-ahead (and channel choice, above), and re-call with \`confirm:true\` (and explicit \`email:true\`/\`phone:true\` for the channels they chose) to launch.
 
-Do NOT rely on a bare call (no \`confirm\`, no \`dry_run\`, no channels) as a "safe preview": on an elicitation-capable host it asks the user and withholds on decline (\`mode:"needs_confirmation"\`), but on a host WITHOUT elicitation (some direct/embedded callers) a bare call launches the default email spend directly. If you're unsure whether the host can elicit, use \`dry_run:true\`/\`confirm:false\` for the preview. Passing \`email:true\`/\`phone:true\` (or \`confirm:true\`) always counts as consent and launches.
+Do NOT rely on a bare call (no \`confirm\`, no \`dry_run\`, no channels) as a "safe preview": on an elicitation-capable host it asks the user and withholds on decline (\`mode:"needs_confirmation"\`), but on a host WITHOUT elicitation (some direct/embedded callers) a bare call launches the default email reveal directly. If you're unsure whether the host can elicit, use \`dry_run:true\`/\`confirm:false\` for the preview. Passing \`email:true\`/\`phone:true\` (or \`confirm:true\`) always counts as consent and launches.
 
 ## SHOW WHAT WILL RUN, AND WHERE QUOTA STANDS
 
-**BEFORE (confirm before launching).** The discover / preview_only / dry_run modes return \`enrichable_contacts\` (the volume that would be enriched). Tell the user plainly: **"This will enrich {enrichable_contacts} contacts (email + phone reveals consume quota)."** then confirm the channels + go-ahead via \`ask_user_input_v0\` before launching. Do NOT quote an exact cost or a "credits" figure — the per-reveal rate is backend-side and enrichment is gated by quota, not a credit balance. The \`credits_remaining\` field is advisory context only; never present it as a spend gate and never refuse based on it.
+**BEFORE (confirm before launching).** The discover / preview_only / dry_run modes return \`enrichable_contacts\` (the volume that would be enriched). Tell the user plainly: **"This will enrich {enrichable_contacts} contacts (email + phone reveals consume quota)."** then confirm the channels + go-ahead via \`ask_user_input_v0\` before launching. Do NOT quote an exact cost or a "credits" figure — the per-reveal rate is backend-side and enrichment is gated by quota, not a credit balance. The \`credits_remaining\` field is advisory context only; never present it as a gate and never refuse based on it.
 
 **AFTER (show refreshed quota).** Once the job is done (see the STAY ACTIVE section below), call \`leadbay_account_status\` and show the refreshed per-window quota — the canonical surface — so the user sees the usage they just consumed. Do NOT invent a "credits used" figure for the run (per-run cost can't be scoped reliably — a lead's contacts mix earlier enrichments).
 
@@ -1410,8 +1410,8 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 3-col table of delivered leads in returned order: col 1 = 10-segment fit
 bar + linked company · location · size; col 2 = why-fits ≤20 words; col 3
-= contact + purchased channels. ALWAYS close with the honest funnel line
-(matched/examined/delivered/stop reason/spend) — especially on 0
+= contact + found channels. ALWAYS close with the honest funnel line
+(matched/examined/delivered/stop reason) — especially on 0
 delivered. Full algorithm below.
 
 ---
@@ -1419,19 +1419,19 @@ delivered. Full algorithm below.
 Submit a net-new lead search: the backend matches an ICP seed against the full
 company universe, applies hard filters, skips what the org already knows
 (\`novelty: org\`), optionally qualifies against the org's own intelligence
-(questions, tags, ideal buyer profile — frozen at submit), and optionally buys
+(questions, tags, ideal buyer profile — frozen at submit), and optionally reveals
 contact channels. Polls up to \`wait_seconds\` (default 45); a longer job returns
 \`still_running\` + \`next_poll\` — hand off to \`leadbay_lead_job_status\`. Jobs run
 ≤30 min, results kept 30 days.
 
-**Free vs paid — never spend silently.** Default (\`qualify: false\`,
+**Free vs usage quota — never use quota silently.** Default (\`qualify: false\`,
 \`channels: []\`) is FREE: company profile + fit score + cached research +
-contact identity. Paid: \`qualify: true\` (~94 cost_cents per candidate
-EXAMINED, capped by \`exploration_cap\`/\`max_cost\`) and \`channels\` (email 25c /
-phone 250c, success-only). Enforced in code: a paid call is WITHHELD unless it
+contact identity. \`qualify: true\` (per candidate EXAMINED, capped by
+\`exploration_cap\`/\`max_cost\`) and \`channels\` (only when a value is found) draw
+on the org's usage quota; nothing is invoiced. Enforced in code: such a call is WITHHELD unless it
 carries \`confirm: true\` — nothing is submitted and you get
 \`mode: "needs_confirmation"\` with a real quote to show the user. Re-call with
-\`confirm: true\` on their go-ahead ("spend / get their emails" counts).
+\`confirm: true\` on their go-ahead ("go ahead / get their emails" counts).
 \`confirm: false\` vetoes. Free needs no consent. **Preview free first** —
 reshaping an off-profile seed is free, exploring it with \`qualify: true\` is
 not.
@@ -1439,7 +1439,7 @@ not.
 **Ad-hoc exclusions ("no chains") are enforced by NO tier** — \`filters\` has no
 exclusion key, and \`qualify\` scores against the org's FROZEN questions and IBP,
 which need not mention chains; the seed's inverse only shifts ranking.
-Violators can survive, be paid for and be delivered — post-filter them yourself
+Violators can survive, use quota and be delivered — post-filter them yourself
 and say the tier didn't enforce it. Durable enforcement →
 \`leadbay_refine_prompt\`.
 
@@ -1486,9 +1486,9 @@ measured:
 
 **Parameter notes**
 - \`request_id\` (REQUIRED) is the retry contract: SAME value retrying the same
-  ask (same live job, no double spend); NEW for a changed ask. Derive from ask
+  ask (same live job, no double launch); NEW for a changed ask. Derive from ask
   + archetype + date: \`gyms-dallas-2026-07-28\`.
-- Never lower \`min_ai_score\` together with \`channels\` — that buys emails for
+- Never lower \`min_ai_score\` together with \`channels\` — that reveals emails for
   leads the AI just scored as junk.
 - \`count\` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After —
   wait, don't hammer).
@@ -1528,7 +1528,7 @@ when nothing was delivered.
 **Column 3 — Contact**
 
 - \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
-  exists; plain name otherwise). Below it, the PURCHASED channels only:
+  exists; plain name otherwise). Below it, the FOUND channels only:
   \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
 - Channel statuses: \`delivered\` → show value; \`already_owned\` → value +
   *(already yours)*; \`masked\` → "on file — reveal via channels";
@@ -1539,16 +1539,17 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, from \`funnel\` + \`cost\` +
+One short line narrating the delivery honestly, from \`funnel\` +
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
+> the Y asked** · stopped: <stop_reason in plain words>.
 
-**Money: divide, then symbol.** Every amount (\`cost.spent\`,
-\`estimated_cost.max\`, quotes) is \`cost_cents\` — divide by 100, two decimals,
-so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
-\`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
+**No money, anywhere.** \`cost.*\`, \`estimated_cost.max\` and quotes are internal
+usage units. Never render them, never convert them to a currency, never call
+them a charge: the user's plan or top-up covers this work, and a price reads as
+a bill. If the user asks what a job used, show \`leadbay_account_status\`'s quota
+windows.
 
 "of the Y asked" needs \`summary.items_requested\`, which submits carry but a
 later \`leadbay_lead_job_status\` snapshot does not. Without it write **delivered
@@ -1556,7 +1557,7 @@ X** and stop — never back-fill Y from \`matched\`/\`examined\` (they count
 candidates), never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
-"ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
+"ran out of matching candidates", \`max_cost\` → "hit the job's usage cap", \`quota\` →
 "hit an org quota", \`time_budget\` → "hit the 30-min time budget".
 
 **When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
@@ -1581,7 +1582,7 @@ table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
 \`no_matching_contact\` → "no contact with the requested title",
 \`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
-\`enrichment_failed\` → "channel could not be sourced (not billed)".
+\`enrichment_failed\` → "channel could not be sourced (no quota used)".
 
 **\`items_truncated\`**: rows are a PREFIX, not the batch. Say so, and offer
 \`leadbay_lead_job_status(job_id, since: next_since)\` for the rest.
@@ -1630,10 +1631,10 @@ Pick the 2-3 options that match what actually happened — never all seven:
 | Observation | Suggest | Calls |
 |---|---|---|
 | Job still running (\`still_running: true\`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
-| Free run delivered on-profile leads | "Qualify these N against your criteria (paid — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
+| Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
-| Stopped at cost cap (\`stop_reason: max_cost\`) | "Raise the cap to X and get the remaining N" — X in the account's currency per the funnel-line rule, never a hard-coded \`$\` | leadbay_find_new_leads, NEW request_id (same-id only dedupes onto a LIVE job) + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered), not the original + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered; these are what it misses — without them the rerun re-buys the same losers) |
+| Stopped at the job's usage cap (\`stop_reason: max_cost\`) | "Raise the job's cap and get the remaining N" — no amount, no currency | leadbay_find_new_leads, NEW request_id (same-id only dedupes onto a LIVE job) + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered), not the original + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered; these are what it misses — without them the rerun re-buys the same losers) |
 | Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it cannot clear an org quota and burns a submit slot to stop in the same place | leadbay_account_status |
 | Stopped on org quota and the user does not want to wait | "Top up to finish this run" | leadbay_create_topup_link |
 | User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |
@@ -2180,7 +2181,7 @@ Per step: \`gate_label\` / \`gate_description\` are the widget's forward option,
 | 1 | Check my account | \`leadbay_account_status\` (no args) |
 | 2 | Pull today's leads | \`leadbay_pull_leads\` (no args) |
 | 3 | Draft the first email | \`leadbay_prepare_outreach\` — \`leadId\` ONLY, never \`enrich\` |
-| 4 | Find who to email | \`leadbay_enrich_titles\` — free preview, then a consented paid reveal |
+| 4 | Find who to email | \`leadbay_enrich_titles\` — free preview, then a reveal on consent |
 
 Steps 1, 2 and 3 carry \`branches[]\`, and steps 3 and 4 carry \`spend\` (+ \`quota_note\` on 4). Every step also carries \`explain\` (say this BEFORE firing) and \`next_steps\` (\`{question, options[]}\` — already the widget's shape, map it verbatim).
 
@@ -2192,9 +2193,9 @@ The manifest also carries **\`keep_going\`**: the closing cheat-sheet of *what y
 
 **Step 1 shows the real account, and is silent about two things.** The click is labelled *check my account status*, so deliver it: user + org, then the **full quota windows** the way the web app renders them — Daily / Weekly / Monthly with a \`▰▱\` gauge, % used, $ spent against the cap, resets countdown, and the per-resource breakdown. Never raw "credits". But apply the silence gate first: when \`quota\` is null, \`quota_error\` is set, or the org has \`unlimited_credits\`, say **nothing** about quota — never mention a 401, never suggest logging in again (the token is fine, the same response just read their account), and never announce "unlimited". And **never volunteer the lens**: the response withholds it unless the user asked, so there is nothing to report and no other tool to reach for. Both are pinned regressions (WORKFLOWS #30 / #31).
 
-**Step 3 drafts, and spends nothing.** Call \`leadbay_prepare_outreach\` with \`leadId\` alone — **never \`enrich: true\`**, which launches a paid contact reveal off the back of a *draft* click. \`recommended_contact\` returns with \`email\`/\`phone\` null; that is expected, and it is the hook for step 4. Render through \`message_compose_v1\` (2–3 strategy-labelled variants), address it to the job TITLE — no name exists yet, and inventing one is fabrication — and never send it or offer to.
+**Step 3 drafts, and uses no quota.** Call \`leadbay_prepare_outreach\` with \`leadId\` alone — **never \`enrich: true\`**, which launches a contact reveal off the back of a *draft* click. \`recommended_contact\` returns with \`email\`/\`phone\` null; that is expected, and it is the hook for step 4. Render through \`message_compose_v1\` (2–3 strategy-labelled variants), address it to the job TITLE — no name exists yet, and inventing one is fabrication — and never send it or offer to.
 
-**Step 4 runs in two beats — free first, paid only on consent.** Scoped to the ONE lead step 3 drafted for. Beat 1 omits \`titles\` and returns \`mode:"discover"\`, the free list of job titles at that company; say plainly that nothing has been spent. Beat 2 names the title the draft is addressed to, states the cost BEFORE they decide (one contact, one credit), and only on confirmation calls again with \`titles\` + \`confirm:true\` + \`email:true\` — polled via \`leadbay_bulk_enrich_status\` until done, reporting only what actually resolved. The gate click bought the free look, not the reveal: never launch without an explicit confirm.
+**Step 4 runs in two beats — free first, the reveal only on consent.** Scoped to the ONE lead step 3 drafted for. Beat 1 omits \`titles\` and returns \`mode:"discover"\`, the free list of job titles at that company; say plainly that nothing has run yet. Beat 2 names the title the draft is addressed to, says BEFORE they decide that revealing one contact uses a little of their plan's quota (no amount, no price), and only on confirmation calls again with \`titles\` + \`confirm:true\` + \`email:true\` — polled via \`leadbay_bulk_enrich_status\` until done, reporting only what actually resolved. The gate click bought the free look, not the reveal: never launch without an explicit confirm.
 
 ## Empty first batch is normal, not an error
 
@@ -2234,7 +2235,7 @@ WHEN NOT TO USE: discovery (use leadbay_pull_leads); single-lead deep dive (use 
 Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
 \`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned a launched or
 running result, that work is queued on Leadbay and runs to completion, and the
-quota it costs is already committed. A discovery, preview or \`dry_run\` result
+quota it uses is already committed. A discovery, preview or \`dry_run\` result
 launched nothing and is not covered here.
 
 The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
@@ -2242,7 +2243,7 @@ waiting, never the job. \`cancelled: true\` means we stopped watching, not that 
 work stopped. What to do next depends on what you are holding:
 
 - **A handle.** Poll the status tool with it, and do not launch the work that
-  handle covers a second time — that spends the quota again on the same rows.
+  handle covers a second time — that uses the quota again on the same rows.
   \`leadbay_import_status\` takes \`importIds\`, so pass the values of \`import_ids\`
   under that name. A qualification started by \`leadbay_import_and_qualify\` has no
   notification of its own: resume it with
@@ -2256,7 +2257,7 @@ work stopped. What to do next depends on what you are holding:
   finished. Calling the same tool again with the same arguments will usually hand
   back the job already launched rather than starting a second one, but that guard
   is in-memory, five minutes, and per process, so it is best-effort — say what you
-  are about to re-run before you spend the user's quota on it.
+  are about to re-run before you use the user's quota on it.
 
 
 Budgets: \`total_budget_ms\` caps wall-clock; \`per_lead_budget_ms\` caps each lead's poll. For short transport timeouts, pass \`wait_for_completion:false\` and poll \`leadbay_import_status\`. Outputs \`qualified[]\`, \`still_running[]\`, \`not_imported[]\`, plus the ids that resume it: \`lead_ids\` + \`lens_id\` for leadbay_qualify_status, \`import_ids\` for leadbay_import_status. There is no qualification \`notification_id\` — the qualify phase runs per-lead, so no job notification exists; \`notification_ids[]\` are the file-import ones. Idempotent within a 5-min window. \`dry_run:'preview'\` returns mapping hints + custom-field candidates without importing.
@@ -2485,7 +2486,7 @@ a launcher only for a subset that never started, never for the whole batch:
   that are the ones that never started. Only then call
   \`leadbay_bulk_qualify_leads({leadIds, lensId})\` for exactly those ids. A lead
   that is merely slow looks identical to one that never launched over a few
-  polls, and re-launching it charges the user twice — when unsure, tell the user
+  polls, and re-launching it uses the user's quota twice — when unsure, tell the user
   rather than guess.
 
 
@@ -2555,18 +2556,18 @@ WHEN NOT TO USE: from agent flow — leadbay_enrich_titles handles selection lif
 ## A launched job cannot be stopped, and this tool has no retry guard
 
 Leadbay has no cancel. Once this call returns having actually launched, the work
-is queued on Leadbay and runs to completion, and the quota it costs is already
-committed. A \`dry_run\` result reached no backend and spent nothing. The user
+is queued on Leadbay and runs to completion, and the quota it uses is already
+committed. A \`dry_run\` result reached no backend and used nothing. The user
 cancelling in the chat, a request timeout, or a closed stream stops YOUR waiting,
 never the job.
 
 Unlike the composite launchers, this tool has **no double-launch guard**: calling
-it again always issues a new paid launch, even seconds later with identical
+it again always issues a new launch that uses quota again, even seconds later with identical
 arguments. So when a call returns nothing at all, do not simply retry. Read the
 record back first — \`leadbay_research_lead_by_id\` or \`leadbay_get_contacts\` for a
 lead, \`leadbay_account_status\` for background work that has since finished — to
 see whether the launch already landed, and tell the user what you are about to
-spend before spending it again.
+run before running it again.
 
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
@@ -2594,14 +2595,16 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 Terminal job -> render the full delivery per the lead-delivery table +
 honest funnel line. Still running -> one progress line (examined /
-delivered / spent so far) and offer to check again in ~1 min. Never
+delivered so far) and offer to check again in ~1 min. Never
 render UUIDs or cursors.
 
 ---
 
 Cumulative snapshot of a lead-delivery job: state, funnel counters, every
-item emitted so far (full lead payloads for delivered/degraded, honest
-status_reason for skipped), spend + breakdown, and the \`explain\` block
+item emitted so far (compact lead payloads for delivered/degraded, with
+one reason and the freshest signals; full evidence via
+\`leadbay_research_lead_by_id\`; honest status_reason for skipped), internal
+usage counters (never render them), and the \`explain\` block
 (basis, seed strategy, scope notes). Items are immutable once emitted —
 polling never re-reads live data, so numbers only ever grow.
 
@@ -2610,7 +2613,7 @@ completion when the user asked for results "in this reply". \`since\` (from a
 prior poll's \`next_since\`) pages only the new items. Jobs terminalize
 server-side: past the 30-min wall clock a job reads \`completed_partial\`
 (time budget), past 30 days \`expired\` (items no longer listed — re-read
-billed leads via leadbay_qualify_leads \`prior_deliveries\`). A 404 means
+delivered leads via leadbay_qualify_leads \`prior_deliveries\`). A 404 means
 unknown job or another org's job.
 
 ---
@@ -2645,7 +2648,7 @@ when nothing was delivered.
 **Column 3 — Contact**
 
 - \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
-  exists; plain name otherwise). Below it, the PURCHASED channels only:
+  exists; plain name otherwise). Below it, the FOUND channels only:
   \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
 - Channel statuses: \`delivered\` → show value; \`already_owned\` → value +
   *(already yours)*; \`masked\` → "on file — reveal via channels";
@@ -2656,16 +2659,17 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, from \`funnel\` + \`cost\` +
+One short line narrating the delivery honestly, from \`funnel\` +
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
+> the Y asked** · stopped: <stop_reason in plain words>.
 
-**Money: divide, then symbol.** Every amount (\`cost.spent\`,
-\`estimated_cost.max\`, quotes) is \`cost_cents\` — divide by 100, two decimals,
-so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
-\`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
+**No money, anywhere.** \`cost.*\`, \`estimated_cost.max\` and quotes are internal
+usage units. Never render them, never convert them to a currency, never call
+them a charge: the user's plan or top-up covers this work, and a price reads as
+a bill. If the user asks what a job used, show \`leadbay_account_status\`'s quota
+windows.
 
 "of the Y asked" needs \`summary.items_requested\`, which submits carry but a
 later \`leadbay_lead_job_status\` snapshot does not. Without it write **delivered
@@ -2673,7 +2677,7 @@ X** and stop — never back-fill Y from \`matched\`/\`examined\` (they count
 candidates), never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
-"ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
+"ran out of matching candidates", \`max_cost\` → "hit the job's usage cap", \`quota\` →
 "hit an org quota", \`time_budget\` → "hit the 30-min time budget".
 
 **When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
@@ -2698,7 +2702,7 @@ table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
 \`no_matching_contact\` → "no contact with the requested title",
 \`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
-\`enrichment_failed\` → "channel could not be sourced (not billed)".
+\`enrichment_failed\` → "channel could not be sourced (no quota used)".
 
 **\`items_truncated\`**: rows are a PREFIX, not the batch. Say so, and offer
 \`leadbay_lead_job_status(job_id, since: next_since)\` for the rest.
@@ -2765,7 +2769,7 @@ is a status tool, keep it terse:
 |---|---|---|
 | Still running | "Keep waiting (~1 min) or leave it — results are kept 30 days" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
 | Terminal (completed / partial / failed) | Render the delivery per the RENDERING block, then offer the matching find_new_leads / qualify_leads NEXT STEPS | — |
-| \`expired\` (past the 30-day window) | "Re-read the billed leads from your delivery ledger" — there is nothing left to render: the job terminalized and its items are no longer listed, so do NOT present an empty delivery as a result | leadbay_qualify_leads(prior_deliveries: {job_id}) |
+| \`expired\` (past the 30-day window) | "Re-read the delivered leads from your delivery ledger" — there is nothing left to render: the job terminalized and its items are no longer listed, so do NOT present an empty delivery as a result | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 `;
 // endregion: leadbay_lead_job_status
 
@@ -3483,9 +3487,9 @@ The "log outreach" step is the most-important follow-up — it closes the loop a
 // endregion: leadbay_prepare_outreach
 
 // region: leadbay_preview_bulk_enrichment
-export const leadbay_preview_bulk_enrichment: string = `Preview a bulk-enrichment cost given a set of job titles applied to the current selection. Returns \`{selected_leads, enriched_contacts, enrichable_contacts, title_suggestions, auto_included_titles, previously_enriched_titles}\`. \`previously_enriched_titles\` is a newer field (in prod soon) — when present, the agent can recommend repeating those titles for new leads.
+export const leadbay_preview_bulk_enrichment: string = `Preview a bulk enrichment given a set of job titles applied to the current selection. Returns \`{selected_leads, enriched_contacts, enrichable_contacts, title_suggestions, auto_included_titles, previously_enriched_titles}\`. \`previously_enriched_titles\` is a newer field (in prod soon) — when present, the agent can recommend repeating those titles for new leads.
 
-WHEN TO USE: between selecting leads and launching, to know what the enrichment will cost.
+WHEN TO USE: between selecting leads and launching, to know how many contacts the enrichment will reveal.
 
 WHEN NOT TO USE: from agent flow — leadbay_enrich_titles wraps preview + launch with the right safety checks.
 `;
@@ -3892,18 +3896,18 @@ WHEN NOT TO USE: as the agent's bulk-qualify path — use leadbay_bulk_qualify_l
 ## A launched job cannot be stopped, and this tool has no retry guard
 
 Leadbay has no cancel. Once this call returns having actually launched, the work
-is queued on Leadbay and runs to completion, and the quota it costs is already
-committed. A \`dry_run\` result reached no backend and spent nothing. The user
+is queued on Leadbay and runs to completion, and the quota it uses is already
+committed. A \`dry_run\` result reached no backend and used nothing. The user
 cancelling in the chat, a request timeout, or a closed stream stops YOUR waiting,
 never the job.
 
 Unlike the composite launchers, this tool has **no double-launch guard**: calling
-it again always issues a new paid launch, even seconds later with identical
+it again always issues a new launch that uses quota again, even seconds later with identical
 arguments. So when a call returns nothing at all, do not simply retry. Read the
 record back first — \`leadbay_research_lead_by_id\` or \`leadbay_get_contacts\` for a
 lead, \`leadbay_account_status\` for background work that has since finished — to
 see whether the launch already landed, and tell the user what you are about to
-spend before spending it again.
+run before running it again.
 
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
@@ -3934,7 +3938,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 3-col table for delivered items (fit bar + company / why-fits ≤20 words /
 contact + channels) in returned order, then a compact Ref → Outcome table
 for skipped refs (not_in_universe, low_confidence_identity, ... in plain
-words), then the honest funnel + cost line. Full algorithm below.
+words), then the honest funnel line. Full algorithm below.
 
 ---
 
@@ -3949,29 +3953,29 @@ job; this tool polls up to \`wait_seconds\` (default 45) and hands off to
 **Refs are flexible; outcomes are per-item.** \`lead_refs\` accepts any mix of
 \`lead_id\`, \`website\`, \`name\`(+\`location\`), or a stable \`contact_id\` from a
 prior result (enrichment then targets exactly that person, never a re-match).
-\`prior_deliveries\` expands past MCP deliveries into refs — billed leads stay
+\`prior_deliveries\` expands past MCP deliveries into refs — delivered leads stay
 re-readable this way even after the 30-day result window. Duplicates collapse.
 A ref that can't be served comes back \`skipped\` with an honest
 \`status_reason\` (\`not_in_universe\`, \`low_confidence_identity\` with the
 \`resolution.alternatives\` to choose from, \`no_matching_contact\`, ...) — that
-is an ANSWER about the ref, not an error, and it costs nothing.
+is an ANSWER about the ref, not an error, and it uses no quota.
 
 **Disqualified ≠ dropped.** Companies the org owns that fail qualification
 are DELIVERED with their negative evidence (question verdicts, tag misses,
 IBP reasoning) — "here's why to skip this account" is a deliverable.
 
-**Cost — never spend silently.** Resolution and identity are free.
-\`qualify: true\` (the default) costs ~94 cost_cents per lead needing FRESH
-research+scoring — but repeat calls reuse every fresh cached stage
-(\`from_cache\` flags on the items) and converge to near-zero cost. \`channels\`
-purchase verified email (25c) / phone (250c) on success only;
-\`already_owned\` values cost nothing.
+**Usage quota — never use it silently.** Resolution and identity are free.
+\`qualify: true\` (the default) draws on the org's usage quota for each lead
+needing FRESH research+scoring — but repeat calls reuse every fresh cached stage
+(\`from_cache\` flags on the items) and converge to near-zero. \`channels\` draw on
+it only when a verified email / phone is found; \`already_owned\` values are
+free. Nothing is invoiced.
 
-The gate is enforced in code, not just here: a PAID call (\`qualify\` left at
+The gate is enforced in code, not just here: a call that uses quota (\`qualify\` left at
 its default or set true, and/or any \`channels\`) is WITHHELD unless it carries
 \`confirm: true\`. Without it the tool submits nothing and returns
 \`mode: "needs_confirmation"\` with a real backend quote — show that quote to
-the user, get the go-ahead (an explicit "spend / get their emails" in their
+the user, get the go-ahead (an explicit "go ahead / get their emails" in their
 message counts), then re-call with \`confirm: true\`. \`confirm: false\` is a
 veto: nothing is submitted and no quote round-trip is made. A fully FREE
 call (\`qualify: false\`, no \`channels\`) needs no \`confirm\` and passes straight
@@ -4012,7 +4016,7 @@ when nothing was delivered.
 **Column 3 — Contact**
 
 - \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
-  exists; plain name otherwise). Below it, the PURCHASED channels only:
+  exists; plain name otherwise). Below it, the FOUND channels only:
   \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
 - Channel statuses: \`delivered\` → show value; \`already_owned\` → value +
   *(already yours)*; \`masked\` → "on file — reveal via channels";
@@ -4023,16 +4027,17 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, from \`funnel\` + \`cost\` +
+One short line narrating the delivery honestly, from \`funnel\` +
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
+> the Y asked** · stopped: <stop_reason in plain words>.
 
-**Money: divide, then symbol.** Every amount (\`cost.spent\`,
-\`estimated_cost.max\`, quotes) is \`cost_cents\` — divide by 100, two decimals,
-so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
-\`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
+**No money, anywhere.** \`cost.*\`, \`estimated_cost.max\` and quotes are internal
+usage units. Never render them, never convert them to a currency, never call
+them a charge: the user's plan or top-up covers this work, and a price reads as
+a bill. If the user asks what a job used, show \`leadbay_account_status\`'s quota
+windows.
 
 "of the Y asked" needs \`summary.items_requested\`, which submits carry but a
 later \`leadbay_lead_job_status\` snapshot does not. Without it write **delivered
@@ -4040,7 +4045,7 @@ X** and stop — never back-fill Y from \`matched\`/\`examined\` (they count
 candidates), never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
-"ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
+"ran out of matching candidates", \`max_cost\` → "hit the job's usage cap", \`quota\` →
 "hit an org quota", \`time_budget\` → "hit the 30-min time budget".
 
 **When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
@@ -4065,7 +4070,7 @@ table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
 \`no_matching_contact\` → "no contact with the requested title",
 \`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
-\`enrichment_failed\` → "channel could not be sourced (not billed)".
+\`enrichment_failed\` → "channel could not be sourced (no quota used)".
 
 **\`items_truncated\`**: rows are a PREFIX, not the batch. Say so, and offer
 \`leadbay_lead_job_status(job_id, since: next_since)\` for the rest.
@@ -4133,7 +4138,7 @@ Pick the 2-3 options that match what actually happened:
 | Fit leads with contacts delivered | "Draft outreach for the qualified ones" | leadbay_prepare_outreach |
 | Items skipped \`not_in_universe\` | "Import those companies first, then re-qualify" | leadbay_import_leads → leadbay_qualify_leads |
 | Items skipped \`low_confidence_identity\` | "Pick the right match" (show \`resolution.alternatives\`) | leadbay_qualify_leads with the chosen lead_id |
-| Contacts delivered without channels | "Purchase verified emails/phones for the keepers (state cost first)" | leadbay_qualify_leads(lead_refs with contact_id, channels) |
+| Contacts delivered without channels | "Get verified emails/phones for the keepers (uses quota — say so first)" | leadbay_qualify_leads(lead_refs with contact_id, channels) |
 | Disqualified with evidence | "Review why — adjust qualification questions if the criteria are off" | leadbay_get_qualification_questions |
 `;
 // endregion: leadbay_qualify_leads
@@ -4182,7 +4187,7 @@ a launcher only for a subset that never started, never for the whole batch:
   that are the ones that never started. Only then call
   \`leadbay_bulk_qualify_leads({leadIds, lensId})\` for exactly those ids. A lead
   that is merely slow looks identical to one that never launched over a few
-  polls, and re-launching it charges the user twice — when unsure, tell the user
+  polls, and re-launching it uses the user's quota twice — when unsure, tell the user
   rather than guess.
 `;
 // endregion: leadbay_qualify_status
@@ -6059,7 +6064,7 @@ days"), computed against now — mirroring the widget's "réinitialisé dans X".
 raw value is an ISO-8601 timestamp.
 
 **Top-up (optional, subordinate).** When \`quota.topup\` is present, you MAY add one
-small line below the windows: \`Top-up: $<remaining_cents/100> of $<total_credit_cents/100> left\`.
+small line below the windows: \`Top-up: $<(remaining_cents / 100).toFixed(2)> of $<(total_credit_cents / 100).toFixed(2)> left\`.
 Keep it secondary — the three window gauges are the headline. Omit when null.
 
 **Legend** (once, below): \`\` \`▰\` used · \`▱\` remaining \`\`.
@@ -6093,8 +6098,8 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 3-col table of delivered leads in returned order: col 1 = 10-segment fit
 bar + linked company · location · size; col 2 = why-fits ≤20 words; col 3
-= contact + purchased channels. ALWAYS close with the honest funnel line
-(matched/examined/delivered/stop reason/spend) — especially on 0
+= contact + found channels. ALWAYS close with the honest funnel line
+(matched/examined/delivered/stop reason) — especially on 0
 delivered. Full algorithm below.
 
 ---
@@ -6102,19 +6107,19 @@ delivered. Full algorithm below.
 Submit a net-new lead search: the backend matches an ICP seed against the full
 company universe, applies hard filters, skips what the org already knows
 (\`novelty: org\`), optionally qualifies against the org's own intelligence
-(questions, tags, ideal buyer profile — frozen at submit), and optionally buys
+(questions, tags, ideal buyer profile — frozen at submit), and optionally reveals
 contact channels. Polls up to \`wait_seconds\` (default 45); a longer job returns
 \`still_running\` + \`next_poll\` — hand off to \`leadbay_lead_job_status\`. Jobs run
 ≤30 min, results kept 30 days.
 
-**Free vs paid — never spend silently.** Default (\`qualify: false\`,
+**Free vs usage quota — never use quota silently.** Default (\`qualify: false\`,
 \`channels: []\`) is FREE: company profile + fit score + cached research +
-contact identity. Paid: \`qualify: true\` (~94 cost_cents per candidate
-EXAMINED, capped by \`exploration_cap\`/\`max_cost\`) and \`channels\` (email 25c /
-phone 250c, success-only). Enforced in code: a paid call is WITHHELD unless it
+contact identity. \`qualify: true\` (per candidate EXAMINED, capped by
+\`exploration_cap\`/\`max_cost\`) and \`channels\` (only when a value is found) draw
+on the org's usage quota; nothing is invoiced. Enforced in code: such a call is WITHHELD unless it
 carries \`confirm: true\` — nothing is submitted and you get
 \`mode: "needs_confirmation"\` with a real quote to show the user. Re-call with
-\`confirm: true\` on their go-ahead ("spend / get their emails" counts).
+\`confirm: true\` on their go-ahead ("go ahead / get their emails" counts).
 \`confirm: false\` vetoes. Free needs no consent. **Preview free first** —
 reshaping an off-profile seed is free, exploring it with \`qualify: true\` is
 not.
@@ -6122,7 +6127,7 @@ not.
 **Ad-hoc exclusions ("no chains") are enforced by NO tier** — \`filters\` has no
 exclusion key, and \`qualify\` scores against the org's FROZEN questions and IBP,
 which need not mention chains; the seed's inverse only shifts ranking.
-Violators can survive, be paid for and be delivered — post-filter them yourself
+Violators can survive, use quota and be delivered — post-filter them yourself
 and say the tier didn't enforce it. Durable enforcement →
 \`leadbay_refine_prompt\`.
 
@@ -6169,9 +6174,9 @@ measured:
 
 **Parameter notes**
 - \`request_id\` (REQUIRED) is the retry contract: SAME value retrying the same
-  ask (same live job, no double spend); NEW for a changed ask. Derive from ask
+  ask (same live job, no double launch); NEW for a changed ask. Derive from ask
   + archetype + date: \`gyms-dallas-2026-07-28\`.
-- Never lower \`min_ai_score\` together with \`channels\` — that buys emails for
+- Never lower \`min_ai_score\` together with \`channels\` — that reveals emails for
   leads the AI just scored as junk.
 - \`count\` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After —
   wait, don't hammer).
@@ -6211,7 +6216,7 @@ when nothing was delivered.
 **Column 3 — Contact**
 
 - \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
-  exists; plain name otherwise). Below it, the PURCHASED channels only:
+  exists; plain name otherwise). Below it, the FOUND channels only:
   \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
 - Channel statuses: \`delivered\` → show value; \`already_owned\` → value +
   *(already yours)*; \`masked\` → "on file — reveal via channels";
@@ -6222,16 +6227,17 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, from \`funnel\` + \`cost\` +
+One short line narrating the delivery honestly, from \`funnel\` +
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
+> the Y asked** · stopped: <stop_reason in plain words>.
 
-**Money: divide, then symbol.** Every amount (\`cost.spent\`,
-\`estimated_cost.max\`, quotes) is \`cost_cents\` — divide by 100, two decimals,
-so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
-\`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
+**No money, anywhere.** \`cost.*\`, \`estimated_cost.max\` and quotes are internal
+usage units. Never render them, never convert them to a currency, never call
+them a charge: the user's plan or top-up covers this work, and a price reads as
+a bill. If the user asks what a job used, show \`leadbay_account_status\`'s quota
+windows.
 
 "of the Y asked" needs \`summary.items_requested\`, which submits carry but a
 later \`leadbay_lead_job_status\` snapshot does not. Without it write **delivered
@@ -6239,7 +6245,7 @@ X** and stop — never back-fill Y from \`matched\`/\`examined\` (they count
 candidates), never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
-"ran out of matching candidates", \`max_cost\` → "hit the cost cap", \`quota\` →
+"ran out of matching candidates", \`max_cost\` → "hit the job's usage cap", \`quota\` →
 "hit an org quota", \`time_budget\` → "hit the 30-min time budget".
 
 **When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
@@ -6264,7 +6270,7 @@ table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
 \`no_matching_contact\` → "no contact with the requested title",
 \`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
-\`enrichment_failed\` → "channel could not be sourced (not billed)".
+\`enrichment_failed\` → "channel could not be sourced (no quota used)".
 
 **\`items_truncated\`**: rows are a PREFIX, not the batch. Say so, and offer
 \`leadbay_lead_job_status(job_id, since: next_since)\` for the rest.
@@ -6313,10 +6319,10 @@ Pick the 2-3 options that match what actually happened — never all seven:
 | Observation | Suggest | Calls |
 |---|---|---|
 | Job still running (\`still_running: true\`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
-| Free run delivered on-profile leads | "Qualify these N against your criteria (paid — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
+| Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
-| Stopped at cost cap (\`stop_reason: max_cost\`) | "Raise the cap to X and get the remaining N" — X in the account's currency per the funnel-line rule, never a hard-coded \`$\` | leadbay_find_new_leads, NEW request_id (same-id only dedupes onto a LIVE job) + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered), not the original + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered; these are what it misses — without them the rerun re-buys the same losers) |
+| Stopped at the job's usage cap (\`stop_reason: max_cost\`) | "Raise the job's cap and get the remaining N" — no amount, no currency | leadbay_find_new_leads, NEW request_id (same-id only dedupes onto a LIVE job) + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered), not the original + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered; these are what it misses — without them the rerun re-buys the same losers) |
 | Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it cannot clear an org quota and burns a submit slot to stop in the same place | leadbay_account_status |
 | User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |
 `,

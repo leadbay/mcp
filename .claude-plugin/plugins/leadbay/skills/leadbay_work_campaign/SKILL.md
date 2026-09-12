@@ -50,7 +50,7 @@ Call `leadbay_campaign_call_sheet({campaign_id})`. The response carries `summary
 
 - "📞 Start calling now" — IF `ready_for_calling`. Top option when phones are there.
 - "✉ Email session instead" — IF `ready_for_emailing` AND `email_ratio > phone_ratio`. Don't surface this when calling is more obvious.
-- "🔧 Enrich titles first" — IF `needs_enrichment`. Top option when most leads have no contacts. Phrase as "<N> leads have no reachable contact yet — enrich titles before we start?" so the user understands the cost.
+- "🔧 Enrich titles first" — IF `needs_enrichment`. Top option when most leads have no contacts. Phrase as "<N> leads have no reachable contact yet — enrich titles before we start?" so the user knows it uses quota.
 - "🗺 View on a map" — IF `travel_friendly` **AND** the user hasn't previously signaled disinterest in maps (check your conversation memory; if you've seen the user dismiss map renders before in this session or saved a "no maps" preference, drop this option).
 
 If the MCP prompt argument `mode` was actually supplied, skip the proposal and jump to the matching mode below. If `mode` was omitted, do not treat `call_sheet` as implicit user consent — propose first.

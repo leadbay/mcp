@@ -44,7 +44,7 @@ rendering_hint: |
   3-col table for delivered items (fit bar + company / why-fits ≤20 words /
   contact + channels) in returned order, then a compact Ref → Outcome table
   for skipped refs (not_in_universe, low_confidence_identity, ... in plain
-  words), then the honest funnel + cost line. Full algorithm below.
+  words), then the honest funnel line. Full algorithm below.
 next_steps: qualify-leads
 annotations:
   readOnlyHint: false
@@ -63,29 +63,29 @@ job; this tool polls up to `wait_seconds` (default 45) and hands off to
 **Refs are flexible; outcomes are per-item.** `lead_refs` accepts any mix of
 `lead_id`, `website`, `name`(+`location`), or a stable `contact_id` from a
 prior result (enrichment then targets exactly that person, never a re-match).
-`prior_deliveries` expands past MCP deliveries into refs — billed leads stay
+`prior_deliveries` expands past MCP deliveries into refs — delivered leads stay
 re-readable this way even after the 30-day result window. Duplicates collapse.
 A ref that can't be served comes back `skipped` with an honest
 `status_reason` (`not_in_universe`, `low_confidence_identity` with the
 `resolution.alternatives` to choose from, `no_matching_contact`, ...) — that
-is an ANSWER about the ref, not an error, and it costs nothing.
+is an ANSWER about the ref, not an error, and it uses no quota.
 
 **Disqualified ≠ dropped.** Companies the org owns that fail qualification
 are DELIVERED with their negative evidence (question verdicts, tag misses,
 IBP reasoning) — "here's why to skip this account" is a deliverable.
 
-**Cost — never spend silently.** Resolution and identity are free.
-`qualify: true` (the default) costs ~94 cost_cents per lead needing FRESH
-research+scoring — but repeat calls reuse every fresh cached stage
-(`from_cache` flags on the items) and converge to near-zero cost. `channels`
-purchase verified email (25c) / phone (250c) on success only;
-`already_owned` values cost nothing.
+**Usage quota — never use it silently.** Resolution and identity are free.
+`qualify: true` (the default) draws on the org's usage quota for each lead
+needing FRESH research+scoring — but repeat calls reuse every fresh cached stage
+(`from_cache` flags on the items) and converge to near-zero. `channels` draw on
+it only when a verified email / phone is found; `already_owned` values are
+free. Nothing is invoiced.
 
-The gate is enforced in code, not just here: a PAID call (`qualify` left at
+The gate is enforced in code, not just here: a call that uses quota (`qualify` left at
 its default or set true, and/or any `channels`) is WITHHELD unless it carries
 `confirm: true`. Without it the tool submits nothing and returns
 `mode: "needs_confirmation"` with a real backend quote — show that quote to
-the user, get the go-ahead (an explicit "spend / get their emails" in their
+the user, get the go-ahead (an explicit "go ahead / get their emails" in their
 message counts), then re-call with `confirm: true`. `confirm: false` is a
 veto: nothing is submitted and no quote round-trip is made. A fully FREE
 call (`qualify: false`, no `channels`) needs no `confirm` and passes straight

@@ -112,7 +112,7 @@ If `pull_leads` itself fails and you have no prior batch, then yes — retry it,
 Leadbay has no cancel. Once `leadbay_enrich_titles`, `leadbay_bulk_qualify_leads`,
 `leadbay_import_leads` or `leadbay_import_and_qualify` has returned a launched or
 running result, that work is queued on Leadbay and runs to completion, and the
-quota it costs is already committed. A discovery, preview or `dry_run` result
+quota it uses is already committed. A discovery, preview or `dry_run` result
 launched nothing and is not covered here.
 
 The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
@@ -120,7 +120,7 @@ waiting, never the job. `cancelled: true` means we stopped watching, not that th
 work stopped. What to do next depends on what you are holding:
 
 - **A handle.** Poll the status tool with it, and do not launch the work that
-  handle covers a second time — that spends the quota again on the same rows.
+  handle covers a second time — that uses the quota again on the same rows.
   `leadbay_import_status` takes `importIds`, so pass the values of `import_ids`
   under that name. A qualification started by `leadbay_import_and_qualify` has no
   notification of its own: resume it with
@@ -134,7 +134,7 @@ work stopped. What to do next depends on what you are holding:
   finished. Calling the same tool again with the same arguments will usually hand
   back the job already launched rather than starting a second one, but that guard
   is in-memory, five minutes, and per process, so it is best-effort — say what you
-  are about to re-run before you spend the user's quota on it.
+  are about to re-run before you use the user's quota on it.
 
 
 
@@ -355,11 +355,11 @@ Cash-to-capture is not available: it needs `ca12` from my invoicing system, whic
 
 # PHASE 5 — CONTACTS (consent-gated)
 
-Each card needs a reachable decision-maker. `leadbay_enrich_titles({leadIds, lensId})` in discovery mode first — that reveals what's enrichable and spends nothing. Render whatever contact detail is already on the record; many accounts already carry a named contact.
+Each card needs a reachable decision-maker. `leadbay_enrich_titles({leadIds, lensId})` in discovery mode first — that reveals what's enrichable and uses no quota. Render whatever contact detail is already on the record; many accounts already carry a named contact.
 
-**Do NOT stop and wait for enrichment consent before delivering.** Asking for a plan is not authorization to spend quota on <the count_or_default (as extracted above)> accounts — but neither is it a reason to end the turn on a spending question with no plan attached. Ship the ranked plan (Phase 6), then **offer** the paid reveal alongside it. The discovery call returned no `titles`, so it only told you what's *available* — **the offer must therefore carry the titles you propose to enrich AND the channels**, not just a volume: "enrich N contacts at these titles (`<the titles you picked from available_titles / title_suggestions>`), email only / email + phone — reveals consume quota". A bare "yes" to a volume-only question is not a mandate to pick titles yourself, and re-running discovery instead of launching wastes a turn.
+**Do NOT stop and wait for enrichment consent before delivering.** Asking for a plan is not authorization to use quota on <the count_or_default (as extracted above)> accounts — but neither is it a reason to end the turn on a consent question with no plan attached. Ship the ranked plan (Phase 6), then **offer** the reveal alongside it. The discovery call returned no `titles`, so it only told you what's *available* — **the offer must therefore carry the titles you propose to enrich AND the channels**, not just a volume: "enrich N contacts at these titles (`<the titles you picked from available_titles / title_suggestions>`), email only / email + phone — reveals consume quota". A bare "yes" to a volume-only question is not a mandate to pick titles yourself, and re-running discovery instead of launching wastes a turn.
 
-⚠ **Do NOT quote a cost or a credits figure.** The per-reveal rate is backend-side and enrichment is gated by quota, not a credit balance; `credits_remaining` is advisory context only. A spend number invented to make the offer concrete is the same failure as an invented euro on a card.
+⚠ **Do NOT quote a cost or a credits figure.** The per-reveal rate is backend-side and enrichment is gated by quota, not a credit balance; `credits_remaining` is advisory context only. A usage number invented to make the offer concrete is the same failure as an invented euro on a card.
 
 On an explicit yes, launch with the agreed `titles` + channels, then poll `leadbay_bulk_enrich_status` until done and **keep the `notification_id` handles** for the deck.
 
@@ -507,9 +507,9 @@ ChatGPT exposes the same routing pattern via `_meta.openai/outputTemplate`. We d
 - One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
 
 
-⚠ **The deck's contact layer depends on what actually happened in Phase 5.** Bind a `leadbay_bulk_enrich_status` resource ONLY if a paid reveal was launched and you hold a `notification_id`. If the user accepted the deck but not the reveal, render the contacts already on record and carry the paid-reveal offer inside the deck — never wire a status resource with no handle (it renders permanently empty) and never launch enrichment from the deck to manufacture one.
+⚠ **The deck's contact layer depends on what actually happened in Phase 5.** Bind a `leadbay_bulk_enrich_status` resource ONLY if a reveal was launched and you hold a `notification_id`. If the user accepted the deck but not the reveal, render the contacts already on record and carry the reveal offer inside the deck — never wire a status resource with no handle (it renders permanently empty) and never launch enrichment from the deck to manufacture one.
 
-On acceptance, call `leadbay_artifact_kit`, read its `usage_guide` before writing any code, and build a single-file deck. Wire the live layer from the handles you kept: a poll-until-done resource per `notification_id` for the qualification pills, and one over `leadbay_bulk_enrich_status` for the contacts. ⚠ **If enrichment already ran this session, bind the existing `notification_id` — re-launching enrichment from the deck double-spends my quota.** Per-card notes and outcomes go through the pre-wired note/outreach view-models (they carry the required verification and `_triggered_by` fields; hand-rolling those is where it breaks). Keep the checklists in local storage, and always wire a Refresh — auto-poll is host-dependent. List every tool the deck calls in its `mcp_tools`, and render the bridge-unavailable branch, or the pills silently show empty.
+On acceptance, call `leadbay_artifact_kit`, read its `usage_guide` before writing any code, and build a single-file deck. Wire the live layer from the handles you kept: a poll-until-done resource per `notification_id` for the qualification pills, and one over `leadbay_bulk_enrich_status` for the contacts. ⚠ **If enrichment already ran this session, bind the existing `notification_id` — re-launching enrichment from the deck uses my quota twice.** Per-card notes and outcomes go through the pre-wired note/outreach view-models (they carry the required verification and `_triggered_by` fields; hand-rolling those is where it breaks). Keep the checklists in local storage, and always wire a Refresh — auto-poll is host-dependent. List every tool the deck calls in its `mcp_tools`, and render the bridge-unavailable branch, or the pills silently show empty.
 
 # Iron laws
 
@@ -519,7 +519,7 @@ On acceptance, call `leadbay_artifact_kit`, read its `usage_guide` before writin
 - **Deliver first, ask alongside.** Do not end a turn without a ranked list of real accounts. The benchmark, the Tier-1 threshold, the territory, a missing lens, a short question set and an unanswered enrichment offer are all NON-blocking — carry them next to the plan. Only an unresolvable identity mismatch (whose plan is this?) may stop delivery.
 - **One motif per account, from the closed set of six**, with its deciding evidence stated.
 - **The org's real qualification questions**, read from Leadbay — never invented.
-- **Consent before any paid enrichment**, and never re-launch a bulk that already exists.
+- **Consent before any enrichment**, and never re-launch a bulk that already exists.
 - **Offer the deck; don't force it.** The chat answer must stand alone as useful.
 - Carry the captured `lensId` on the calls whose schema **accepts** it (`leadbay_pull_leads`, `leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`). Do NOT add it to `leadbay_pull_followups`, `leadbay_scan_portfolio_signals`, `leadbay_qualify_status` or `leadbay_bulk_enrich_status` — they declare no such argument and reject unknown properties.
 - Building a plan is not outreaching — do not send anything and do not call `leadbay_report_outreach`.

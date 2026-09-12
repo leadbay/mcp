@@ -707,7 +707,7 @@ export class LeadbayClient {
     return this.makeError(
       "REQUEST_CANCELLED",
       "The request was cancelled before it was sent.",
-      "Re-call the tool if you still want the result — nothing reached the API, so nothing was charged."
+      "Re-call the tool if you still want the result — nothing reached the API, so nothing ran."
     );
   }
 
@@ -1308,6 +1308,39 @@ export class LeadbayClient {
           : "Tokens don't expire on a timer, so this isn't stale. This call wasn't auto-retried, so it's the first attempt — a Leadbay-side hiccup, or the user logged out. Try again once, else report it.",
         endpoint,
         null,
+        status
+      );
+    }
+    // Two lead-job refusals are 429s as well, and no top-up lifts them: 10 new
+    // jobs per rolling hour per org, and 3 jobs running at once
+    // (McpSubmitService.refusal). Reported as a credit wall, they made the
+    // agent offer a Stripe link on an unlimited org (SnapLock rehearsal,
+    // 2026-09-11). The code stays QUOTA_EXCEEDED for the callers that branch
+    // on it. Only the two submit endpoints send these codes, so the wording is
+    // scoped to them: a real quota 429 elsewhere keeps its top-up hint.
+    const refusalCode =
+      typeof parsed?.error === "string" ? parsed.error : parsed?.error?.code;
+    if (
+      status === 429 &&
+      (refusalCode === "rate_limited" || refusalCode === "active_job_cap") &&
+      /^\/mcp\/(search|qualify)(\?|$)/.test(endpoint)
+    ) {
+      const wait = retryAfter ? `${retryAfter}s` : "a few minutes";
+      return this.makeError(
+        "QUOTA_EXCEEDED",
+        refusalCode === "rate_limited"
+          ? `Too many lead jobs started this hour — retry in ${wait}`
+          : "Too many lead jobs running at once",
+        (refusalCode === "rate_limited"
+          ? `Leadbay starts at most 10 new lead jobs per org in a rolling hour. `
+          : `Leadbay runs at most 3 lead jobs per org at a time. `) +
+          `This is a pacing limit, not credits: a top-up does not lift it, so do not offer one and do not talk about credits. ` +
+          `Jobs already started keep running — read them with leadbay_lead_job_status meanwhile. ` +
+          (refusalCode === "rate_limited"
+            ? `Wait ${wait}, then retry the same call once. If it is refused again, the hour has not rolled over yet: wait longer rather than retrying in a loop.`
+            : `Retry this call when one of the running jobs finishes.`),
+        endpoint,
+        retryAfter,
         status
       );
     }

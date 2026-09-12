@@ -1,5 +1,36 @@
 # Changelog — @leadbay/mcp
 
+## 0.38.1 — 2026-09-12
+
+Five fixes merged since 0.38.0 (#216, #219, #220, #221, #225). The backend
+changes #219 and #220 describe (backend#2030, #2031) reached production in
+backend v3.24.0.
+
+- **`leadbay_lead_job_status` results fit in one host result** (#221). A
+  delivered item carried the backend's whole `QualifiedLead` (~6.6 KB). 23 of
+  them made a 158 KB result that Claude Code moved to a file the session could
+  not open (SnapLock rehearsal, prod job `24203dfe`). `splitItems` now keeps
+  what the tables read, and trims later rows to company, scores and contact.
+  The real job went from 152,750 to 32,114 chars.
+- **A pacing 429 is not a credit wall** (#221). The 10-per-hour and 3-running
+  lead-job refusals (`rate_limited` / `active_job_cap`) said "Quota exceeded …
+  top up", so the agent offered a Stripe link on an unlimited org. On the
+  submit endpoints they now say it is a pacing limit, to wait, and to read the
+  running jobs. The code stays `QUOTA_EXCEEDED`.
+- **`leadbay_bulk_enrich_status` counts settled reservations** (#216,
+  product#4102). It read `email` / `phone_number` off the `source:"paid"`
+  record, which never carries them, so every email or phone poll read
+  `done: 0`. It now reads `enrichment.done`.
+- **`max_cost` defaults to 100000 on every plan** (#219). `find_new_leads` and
+  `qualify_leads` described a plan-tier default (500/2000/5000). The backend
+  now keeps what the requested emails and phones cost out of qualification's
+  reach, and refuses a cap below it.
+- **Usage is a share of the plan's quota** (#220, #225). Descriptions, prompts
+  and runtime hints no longer quote per-lead prices or call reveals "paid" or
+  "billed". Consent asks name what will run, with no amount. The
+  `leadbay_account_status` quota gauge keeps its dollars, because there the
+  user knows it is their plan.
+
 ## 0.38.0 — 2026-09-10
 
 `leadbay_account_status` now returns `mcp_version`, the version of the server
