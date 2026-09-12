@@ -9,7 +9,7 @@ interface PreviewBulkEnrichmentParams {
 export const previewBulkEnrichment: Tool<PreviewBulkEnrichmentParams> = {
   name: "leadbay_preview_bulk_enrichment",
   annotations: {
-    title: "Preview bulk enrichment cost",
+    title: "Preview bulk enrichment",
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,

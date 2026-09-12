@@ -707,7 +707,7 @@ export class LeadbayClient {
     return this.makeError(
       "REQUEST_CANCELLED",
       "The request was cancelled before it was sent.",
-      "Re-call the tool if you still want the result — nothing reached the API, so nothing was charged."
+      "Re-call the tool if you still want the result — nothing reached the API, so nothing ran."
     );
   }
 

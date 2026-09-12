@@ -26,24 +26,24 @@ failure_modes:
   - Rewrites the gate's own `next_steps` payload (its `question`, `label` or `description`) instead of mapping it into the widget verbatim, or merges two gates into a single multi-option widget
   - Fires a THIRD option, or turns the exit into an alternative route ("show me my lenses instead") — each gate carries exactly one forward action plus the `I'm done for now` exit, never a menu of paths
   - Fires a single-option widget — the host requires 2–4 options, so a lone option is rejected or silently degrades to prose ("say the word and I'll check it"), which is the exact defect this rule exists to prevent
-  - Launches the PAID reveal at gate 4 BEFORE the user has picked leads and confirmed — beat 1 must be the free `mode:"discover"` preview (no `titles`, no `confirm`, no `email`, no `phone`); the gate click bought the free look, not the reveal, and silence is never consent
+  - Launches the contact reveal at gate 4 BEFORE the user has picked leads and confirmed — beat 1 must be the free `mode:"discover"` preview (no `titles`, no `confirm`, no `email`, no `phone`); the gate click bought the free look, not the reveal, and silence is never consent
   - Stops at the free preview after the user DID pick leads and confirm — they asked for real contact details, so the second call must actually run with `confirm:true` and the chosen titles
   - Reports the enrichment without polling `leadbay_bulk_enrich_status` to completion, so it claims contacts it never actually saw resolve
-  - Reveals contacts and never says what it cost — the user just spent credits and deserves the one-line "N contacts = N credits", which is also what makes gate 1's quota numbers concrete
+  - Reveals contacts and never says the reveal used a little of their plan's quota — that one line, with no amount and no price, is what makes gate 1's quota numbers concrete
   - Reports "no leads" on an empty batch while `computing_wishlist` / `computing_scores` is true — the lens is still building; render the tool's own two-option warm-up widget verbatim and pause
   - Rewords, reorders or prose-ifies the `next_steps` payload from `leadbay_pull_leads` instead of mapping `options[]` into the widget verbatim
   - Runs all four steps in one turn without waiting for the user's click between gates — the walkthrough is a sequence of gates, not a script to recite
   - Skips `leadbay_pull_leads` and jumps straight to enrichment, leaving gate 4 with no `leadIds` to scope
-  - Passes a singular `leadId` to `leadbay_enrich_titles` on the confirmed reveal — that key does not exist on this tool, so it is dropped and the paid call falls back to the whole default wishlist selection, charging for far more than the one lead the user agreed to. it is always the `leadIds` ARRAY, even for a single lead
+  - Passes a singular `leadId` to `leadbay_enrich_titles` on the confirmed reveal — that key does not exist on this tool, so it is dropped and the reveal falls back to the whole default wishlist selection, revealing far more than the one lead the user agreed to. it is always the `leadIds` ARRAY, even for a single lead
   - Drops the pinned `lens.id` between gates, so gate 4 enriches against a different lens than the one the user just saw
   - Ends the completed walkthrough without the `keep_going` cheat-sheet — the buttons disappear with the tour, so a user who was never told what to TYPE learned to click a tutorial and nothing about using Leadbay tomorrow
   - Invents phrases for the cheat-sheet, or rewords them into something that sounds nicer but doesn't match the tool's real triggers — teaching a phrase that doesn't route is worse than teaching none
   - SENDS the gate 3 draft, or offers to send it — the walkthrough drafts and stops there; the email is the user's to judge, and nothing leaves the chat
-  - Passes `enrich:true` to `leadbay_prepare_outreach` at gate 3 — that launches a PAID contact reveal off the back of a DRAFT click, spending credits the user never agreed to
+  - Passes `enrich:true` to `leadbay_prepare_outreach` at gate 3 — that launches a contact reveal off the back of a DRAFT click, using quota the user never agreed to
   - Invents a contact NAME for the gate 3 draft — `recommended_contact` still has null email/name at that point, so the draft is addressed to the job TITLE; a fabricated name is the one thing that makes the whole draft untrustworthy
   - Treats the null email at gate 3 as a failure — apologising for it, retrying, or calling another tool to fill it in. It is the setup for gate 4 — an email written, nobody to send it to yet
   - Pastes the drafted email into chat prose alongside `message_compose_v1` instead of letting the composer BE the answer
-  - Enriches leads other than the one it drafted for at gate 3 — gate 4 reveals the person that email is going to, so it is scoped to that ONE lead, one contact, one credit
+  - Enriches leads other than the one it drafted for at gate 3 — gate 4 reveals the person that email is going to, so it is scoped to that ONE lead, one contact
   - Renders the cheat-sheet on the exit and stops there, dropping the 1:1 offer — the observed failure is that the agent feels finished once the table is on screen, so the user who just stepped out never hears about the help that would bring them back. ENDING B is not complete without the offer, and the offer goes LAST
   - Treats the exit click as ENDING C (typed off-script) and closes in silence, or treats a typed request as ENDING B and buries their real answer under a cheat-sheet and a booking link
   - Turns the exit offer into a pitch — several sentences, a re-opened gate, or an argument for finishing the tour. They said they were done; it is one line and a link
@@ -270,9 +270,9 @@ Say plainly that this only **drafts** — nothing is sent, and they see it first
 On click: call `leadbay_prepare_outreach` with `leadId` = the top lead's id,
 **and nothing else**.
 
-**This gate spends NOTHING. Never pass `enrich: true`** — that launches a paid
+**This gate uses NO quota. Never pass `enrich: true`** — that launches a
 contact reveal off the back of a *draft* click. They agreed to see an email
-written, not to spend. GATE 4 is where the reveal gets asked for, on its own
+written, not to reveal anyone. GATE 4 is where the reveal gets asked for, on its own
 terms.
 
 `recommended_contact` comes back in its post-enrichment shape with `email` and
@@ -306,7 +306,7 @@ pitching whoever answers the switchboard — the difference between a
 conversation and a dead end.
 
 Say plainly that the first look is **free**, and that revealing the contact
-costs credits and needs their say-so.
+uses a little of their plan's quota and needs their say-so.
 
 **First, check `leadbay_enrich_titles` is in your tool set.** On a read-only
 deployment it is not registered, and a gate whose tool cannot run is a dead
@@ -319,23 +319,23 @@ does nothing.
 
 This gate runs in **TWO BEATS**. Do not collapse them.
 
-## BEAT 1 — the free look (spends nothing)
+## BEAT 1 — the free look (uses no quota)
 
 On click: call `leadbay_enrich_titles` with `leadIds` = **the one lead you
 drafted for at GATE 3** and `lensId` = the pinned lens id.
 
-**This call must spend NOTHING.** Omit `titles` entirely: that returns
+**This call must use NO quota.** Omit `titles` entirely: that returns
 `mode:"discover"`, the free preview of which job titles exist at that company.
 Do NOT pass `titles`, `confirm=true`, `email=true` or `phone=true` on this call
-— any one of them launches the paid reveal before the user has chosen anything.
+— any one of them launches the reveal before the user has chosen anything.
 
-Present the discovered titles and say plainly: "nothing spent yet."
+Present the discovered titles and say plainly: "nothing revealed yet."
 
-## BEAT 2 — reveal the person the draft is for (spends credits)
+## BEAT 2 — reveal the person the draft is for (uses quota)
 
-Name the title the GATE 3 draft is addressed to, and tell them the cost
-**before** they decide: one credit per contact revealed — here that's **one
-contact, one credit**. Then ask them to confirm.
+Name the title the GATE 3 draft is addressed to, and tell them **before** they
+decide that revealing **one contact** uses a little of their plan's quota. No
+amount, no price. Then ask them to confirm.
 
 **Wait for an explicit confirmation.** Silence is not consent, and neither is
 "they clicked the gate earlier" — the gate click bought the free look, not the
@@ -343,13 +343,13 @@ reveal.
 
 Once confirmed, call `leadbay_enrich_titles` AGAIN with
 `leadIds: [<the drafted lead's id>]` — **the array, always, even for one lead**
-— plus the chosen `titles`, `confirm: true` and `email: true`. That's the real,
-paid reveal.
+— plus the chosen `titles`, `confirm: true` and `email: true`. That's the real
+reveal.
 
 `leadIds` is the only key this tool reads for scope. A singular `leadId` is not
 a parameter: it is silently ignored, and the call then falls back to the
 account's **default wishlist selection** while `confirm`/`email` are set — so
-it would reveal and charge for the whole batch instead of the one lead the user
+it would reveal the whole batch instead of the one lead the user
 agreed to.
 
 It returns a `notification_id` and runs async — poll `leadbay_bulk_enrich_status`
@@ -358,8 +358,8 @@ count plateaus across a few spaced polls. Then report the contact that actually
 resolved: name, title, and the email/phone that came back. Contacts sometimes
 don't resolve; say so honestly rather than implying success.
 
-**Then close the loop** — one line: one credit per contact revealed, so this
-cost one. And say the thing that makes it land: the draft from GATE 3 now has a
+**Then close the loop** — one line: the reveal used a little of their plan's
+quota, never a price. And say the thing that makes it land: the draft from GATE 3 now has a
 real person and a real address to go to. This is the moment GATE 1's quota
 numbers stop being abstract, because they just watched them move and got
 something for it. Don't turn it into a pricing pitch.

@@ -28,7 +28,7 @@ when nothing was delivered.
 **Column 3 — Contact**
 
 - `[Name](linkedin) · role` (linked name mandatory when a LinkedIn URL
-  exists; plain name otherwise). Below it, the PURCHASED channels only:
+  exists; plain name otherwise). Below it, the FOUND channels only:
   `✉ value` / `☎ value` inline as plain text (they auto-linkify).
 - Channel statuses: `delivered` → show value; `already_owned` → value +
   *(already yours)*; `masked` → "on file — reveal via channels";
@@ -39,16 +39,17 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, from `funnel` + `cost` +
+One short line narrating the delivery honestly, from `funnel` +
 `explain.scope_notes`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
+> the Y asked** · stopped: <stop_reason in plain words>.
 
-**Money: divide, then symbol.** Every amount (`cost.spent`,
-`estimated_cost.max`, quotes) is `cost_cents` — divide by 100, two decimals,
-so `165` renders `1.65`, NEVER `165.00`. Symbol from the account region: US
-`$`, France `€`, unknown → bare. Never hard-code `$`: it misstates a charge.
+**No money, anywhere.** `cost.*`, `estimated_cost.max` and quotes are internal
+usage units. Never render them, never convert them to a currency, never call
+them a charge: the user's plan or top-up covers this work, and a price reads as
+a bill. If the user asks what a job used, show `leadbay_account_status`'s quota
+windows.
 
 "of the Y asked" needs `summary.items_requested`, which submits carry but a
 later `leadbay_lead_job_status` snapshot does not. Without it write **delivered
@@ -56,7 +57,7 @@ X** and stop — never back-fill Y from `matched`/`examined` (they count
 candidates), never guess it.
 
 Plain-word stop reasons: `target_reached` → omit (success), `pool_exhausted` →
-"ran out of matching candidates", `max_cost` → "hit the cost cap", `quota` →
+"ran out of matching candidates", `max_cost` → "hit the job's usage cap", `quota` →
 "hit an org quota", `time_budget` → "hit the 30-min time budget".
 
 **When `delivered` is 0**: NEVER say just "no results". Render no table; give
@@ -81,7 +82,7 @@ table `Ref → Outcome` translating `status_reason` to plain words:
 `low_confidence_identity` → "couldn't safely match — check `resolution.alternatives`",
 `no_matching_contact` → "no contact with the requested title",
 `disqualified` → "evaluated: does not fit" (evidence is in the item when owned),
-`enrichment_failed` → "channel could not be sourced (not billed)".
+`enrichment_failed` → "channel could not be sourced (no quota used)".
 
 **`items_truncated`**: rows are a PREFIX, not the batch. Say so, and offer
 `leadbay_lead_job_status(job_id, since: next_since)` for the rest.

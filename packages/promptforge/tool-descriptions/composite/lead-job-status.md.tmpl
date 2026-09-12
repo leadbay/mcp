@@ -3,7 +3,7 @@ name: leadbay_lead_job_status
 kind: tool-description
 short_description: |
   Poll a running leadbay_find_new_leads / leadbay_qualify_leads job by
-  job_id — cumulative results, funnel, spend. Use when a delivery tool
+  job_id — cumulative results and funnel. Use when a delivery tool
   returned still_running:true or the user asks "is it done / any results
   yet". Don't use it for enrichment jobs (leadbay_bulk_enrich_status) or
   imports (leadbay_import_status).
@@ -32,7 +32,7 @@ routing:
 rendering_hint: |
   Terminal job -> render the full delivery per the lead-delivery table +
   honest funnel line. Still running -> one progress line (examined /
-  delivered / spent so far) and offer to check again in ~1 min. Never
+  delivered so far) and offer to check again in ~1 min. Never
   render UUIDs or cursors.
 next_steps: lead-job-status
 annotations:
@@ -44,7 +44,8 @@ annotations:
 Cumulative snapshot of a lead-delivery job: state, funnel counters, every
 item emitted so far (compact lead payloads for delivered/degraded, with
 one reason and the freshest signals; full evidence via
-`leadbay_research_lead_by_id`; honest status_reason for skipped), spend + breakdown, and the `explain` block
+`leadbay_research_lead_by_id`; honest status_reason for skipped), internal
+usage counters (never render them), and the `explain` block
 (basis, seed strategy, scope notes). Items are immutable once emitted —
 polling never re-reads live data, so numbers only ever grow.
 
@@ -53,7 +54,7 @@ completion when the user asked for results "in this reply". `since` (from a
 prior poll's `next_since`) pages only the new items. Jobs terminalize
 server-side: past the 30-min wall clock a job reads `completed_partial`
 (time budget), past 30 days `expired` (items no longer listed — re-read
-billed leads via leadbay_qualify_leads `prior_deliveries`). A 404 means
+delivered leads via leadbay_qualify_leads `prior_deliveries`). A 404 means
 unknown job or another org's job.
 
 ---

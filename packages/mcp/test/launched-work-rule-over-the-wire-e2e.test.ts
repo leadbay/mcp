@@ -159,8 +159,8 @@ describe("the no-cancel rule reaches a hosted connector (product#4039)", () => {
       expect(d, "leadbay_enrich_contacts is missing from tools/list").toBeTypeOf("string");
       expect(d).toContain("Leadbay has no cancel");
       expect(d).toContain("no double-launch guard");
-      expect(d).toContain("`dry_run` result reached no backend and spent nothing");
-      expect(d).toContain("calling it again always issues a new paid launch");
+      expect(d).toContain("`dry_run` result reached no backend and used nothing");
+      expect(d).toContain("calling it again always issues a new launch that uses quota again");
       // The guarded variant would tell it to just re-call. That spends twice.
       expect(d).not.toContain("hand back the job already launched");
     } finally {

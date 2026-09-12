@@ -34,9 +34,11 @@ poll → enrich → poll), and both are **jobs**: submit returns in <1s, results
 stream per-item and are collected by polling.
 
 Free tier: `qualify: false, channels: []` costs **0** and still returns company
-+ fit score + cached research + contact identity. Paid capabilities (fresh AI
-qualification ~94c/candidate examined, email 25c / phone 250c on success) are
-opt-in flags with a `dry_run` forecast and a `max_cost` cap.
++ fit score + cached research + contact identity. Fresh AI qualification and
+email / phone draw on the org's usage quota; they are opt-in flags with a
+`dry_run` forecast and a `max_cost` cap. The descriptions carry no unit prices:
+qualification is far cheaper on a lead already crawled, and an agent quoting a
+per-lead rate misinforms the user.
 
 ## Personas
 
@@ -115,7 +117,7 @@ Feeds the team, owns spend, coaches with evidence. Runs org-level intelligence
   funnel, deliveries that respect the org's questions/tags/IBP snapshot.
 - **Unhappy**: a rep burning the org's monthly budget in an afternoon (the org's
   spend quotas, the 100000 default job cap and an explicit `max_cost` are the
-  guardrails; the agent must state costs *before* paid runs).
+  guardrails; the agent must get consent *before* quota-using runs).
 
 ### P5 — Founder-led sales, FR SMB (Sol Mur: revêtements; Home Spirit: mobilier B2B)
 Non-technical, prospecting in bursts between deliveries; speaks French to the
@@ -175,8 +177,9 @@ individual leads.
    funnel (`matched/examined/qualified/disqualified` + `stop_reason` +
    `scope_notes`) tells an honest story the agent must render. "9 examined, 8
    disqualified, stopped at your cost cap" is actionable; "no results" is not.
-3. **Cost literacy up-front.** `qualify: true` bills ~94c per *examined*
-   candidate (survivor or not). `max_cost` defaults to 100000 on every plan, and
+3. **Consent before quota, not price lists.** `qualify: true` uses quota per
+   *examined* candidate (survivor or not), far less on a lead already crawled,
+   so the agent shows the backend's quote, never a per-lead rate. `max_cost` defaults to 100000 on every plan, and
    qualification never spends what the requested channels cost — before
    2026-09-12 a plan-tier default stopped jobs mid-exploration (probe:
    stop=max_cost at 609c; prod job 24203dfe bought no contact). The agent should

@@ -213,7 +213,8 @@ describe("leadbay_getting_started", () => {
 
     // Beat 2 is the real, paid reveal — but ONLY after a pick + confirm.
     expect(step.spend).toMatch(/confirm:true/);
-    expect(step.spend).toMatch(/ONE contact, one credit|one credit/i);
+    expect(step.spend).toMatch(/ONE contact/);
+    expect(step.spend).not.toMatch(/credit/i);
     expect(step.spend).toMatch(/leadbay_bulk_enrich_status/);
     // The consent rule, stated so it can't be rationalized away.
     expect(step.spend).toMatch(/silence is not consent/i);
@@ -224,7 +225,7 @@ describe("leadbay_getting_started", () => {
     // like a surprise bill later.
     const step = GETTING_STARTED_MANIFEST.steps[3];
     expect(step.quota_note, "step 4 must explain the spend").toBeTypeOf("string");
-    expect(step.quota_note).toMatch(/one credit per contact/i);
+    expect(step.quota_note).toMatch(/plan's quota/i);
     expect(step.quota_note).toMatch(/pricing pitch/i);
   });
 
@@ -353,7 +354,7 @@ describe("leadbay_getting_started", () => {
     expect(step.calls).toBe("leadbay_prepare_outreach");
     expect(Object.keys(step.args ?? {})).toEqual(["leadId"]);
     expect(step.forbidden_args?.join(" ")).toMatch(/enrich/);
-    expect(step.spend).toMatch(/spends NOTHING/i);
+    expect(step.spend).toMatch(/uses NO quota/i);
   });
 
   it("gate 3 addresses the draft to a TITLE, because no name exists yet", () => {

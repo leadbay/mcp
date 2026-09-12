@@ -74,7 +74,7 @@ async function launchOnSelection(
       titles,
       message:
         `An identical enrichment was started ${claim.seconds_since}s ago and has not returned its job id yet. ` +
-        "Nothing was launched twice and no quota was spent.",
+        "Nothing was launched twice and no quota was used.",
       next_action:
         "Wait a few seconds and call leadbay_enrich_titles again with the same arguments — it will hand back the job id once the first call settles. Do not treat this as a running job; there is no id to poll yet.",
     };
@@ -94,7 +94,7 @@ async function launchOnSelection(
       notification_id: already.notification_id,
       launched_at: already.launched_at,
       message:
-        `An identical enrichment was launched ${already.seconds_since}s ago; this call did NOT spend quota again. ` +
+        `An identical enrichment was launched ${already.seconds_since}s ago; this call did NOT use quota again. ` +
         "Poll the original job rather than relaunching.",
       next_action:
         "Poll leadbay_bulk_enrich_status({notification_id, lead_ids, titles, email, phone, include_contacts: true}) until all_done, or until overall_progress.done holds steady across spaced polls (~15-30s apart) — a reservation the provider never answers never flips. Pass titles/email/phone every time: they scope counting to the roles and channel THIS run asked for, so a contact enriched earlier cannot report the run as finished. Then report what landed and name what didn't.",
@@ -237,7 +237,7 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
       confirm: {
         type: "boolean",
         description:
-          "Explicit spend decision for the paid enrichment. true = go ahead and launch. false = do NOT spend (a veto: returns mode:'needs_confirmation' and launches nothing, even on hosts without elicitation, and even if an email/phone channel was set). Omitted (and no explicit email/phone channel) → an elicitation-capable host asks the user before launching; a decline returns mode:'needs_confirmation'. Passing email:true/phone:true also counts as consent.",
+          "Explicit go-ahead for the email/phone reveal (uses quota). true = go ahead and launch. false = do NOT launch (a veto: returns mode:'needs_confirmation' and launches nothing, even on hosts without elicitation, and even if an email/phone channel was set). Omitted (and no explicit email/phone channel) → an elicitation-capable host asks the user before launching; a decline returns mode:'needs_confirmation'. Passing email:true/phone:true also counts as consent.",
       },
     },
     additionalProperties: false,
@@ -245,7 +245,7 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
   outputSchema: {
     type: "object",
     description:
-      "Branchy return shape; the `mode` (or `status`) field tells the agent which branch it got. Modes: 'discover' (no titles passed), 'preview_only' (no enrichable contacts), 'dry_run', 'needs_confirmation' (paid launch withheld pending user consent), 'already_launched' (idempotent reuse), 'launch_in_flight' (an identical launch is mid-flight and has no id yet), 'launched' (happy path). Status: 'quota_exceeded' (429).",
+      "Branchy return shape; the `mode` (or `status`) field tells the agent which branch it got. Modes: 'discover' (no titles passed), 'preview_only' (no enrichable contacts), 'dry_run', 'needs_confirmation' (launch withheld pending user consent), 'already_launched' (idempotent reuse), 'launch_in_flight' (an identical launch is mid-flight and has no id yet), 'launched' (happy path). Status: 'quota_exceeded' (429).",
     properties: {
       mode: {
         type: "string",
@@ -282,7 +282,7 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
       credits_remaining: {
         type: ["number", "string", "null"],
         description:
-          "Advisory-only balance (billing.ai_credits), present in discover / preview_only / dry_run modes. Enrichment is gated by QUOTA (email + phone reveals consume the per-window allowance in leadbay_account_status), NOT by this number — do NOT present it as a spend gate, do NOT say 'you have N credits', and NEVER refuse enrichment because it's low or zero. Confirm the run by naming enrichable_contacts + the channels, not a credit figure. Null = billing unavailable. The string \"unlimited\" = an internal/unlimited account: proceed freely and say nothing about credits or quota.",
+          "Advisory-only balance (billing.ai_credits), present in discover / preview_only / dry_run modes. Enrichment is gated by QUOTA (email + phone reveals consume the per-window allowance in leadbay_account_status), NOT by this number — do NOT present it as a gate, do NOT say 'you have N credits', and NEVER refuse enrichment because it's low or zero. Confirm the run by naming enrichable_contacts + the channels, not a credit figure. Null = billing unavailable. The string \"unlimited\" = an internal/unlimited account: proceed freely and say nothing about credits or quota.",
       },
       selected_lead_count: {
         type: "number",
@@ -581,11 +581,11 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
                 credits_remaining: await readCreditsRemaining(client),
                 available_titles: availableTitles,
                 message:
-                  "Enrichment not launched — confirm:false was passed (spend declined). " +
+                  "Enrichment not launched — confirm:false was passed (declined). " +
                   "Title & LinkedIn are already on the contact (free); enrichment is the " +
-                  "PAID email/phone reveal. Re-call with confirm:true (or email:true) to spend.",
+                  "email/phone reveal, which uses quota. Re-call with confirm:true (or email:true) to launch.",
                 next_action:
-                  "Re-call leadbay_enrich_titles with confirm:true once the user approves the spend.",
+                  "Re-call leadbay_enrich_titles with confirm:true once the user approves the reveal.",
               },
             };
           } else if (!willElicit) {
@@ -710,10 +710,10 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
         available_titles: availableTitles,
         message:
           "Enrichment not launched — awaiting confirmation. Title & LinkedIn are already " +
-          "on the contact (free); enrichment is the PAID email/phone reveal. Re-call with " +
-          "confirm:true (or email:true) to spend.",
+          "on the contact (free); enrichment is the email/phone reveal, which uses quota. Re-call with " +
+          "confirm:true (or email:true) to launch.",
         next_action:
-          "Confirm the spend with the user, then call leadbay_enrich_titles again with confirm:true.",
+          "Confirm the reveal with the user, then call leadbay_enrich_titles again with confirm:true.",
       };
     }
 
