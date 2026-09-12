@@ -69,9 +69,8 @@ export interface McpJobItem {
   cost?: { billed: number; unit: string; breakdown?: Record<string, number> } | null;
   completed_at?: string | null;
   seq: number;
-  // Full QualifiedLead payload (company / fit / web_research / contact /
-  // alternative_contacts / novelty / engagement) — relayed verbatim so the
-  // agent renders from rich signal without follow-up calls.
+  // QualifiedLead payload (company / fit / signals / contact /
+  // alternative_contacts). splitItems compacts it before it reaches the agent.
   lead?: Record<string, any> | null;
 }
 
@@ -798,16 +797,136 @@ export function mockedSubmitPreview(
 
 /** Sort a snapshot's items into the envelope every delivery tool returns:
  *  full leads for delivered/degraded, compact skip records for the rest. */
+// A delivered item carries the backend's whole QualifiedLead, about 6.6 KB:
+// every qualification answer with its reasoning, up to nine signals and the
+// full web research. Relayed as is, 23 leads made a 158 KB tool result. Hosts
+// cap a result near 25k tokens and move the rest to a file the agent cannot
+// open, so the session never saw the leads it paid for (SnapLock rehearsal,
+// 2026-09-11, job 24203dfe). Keep every field the rendering rules read, cut
+// the prose to one reason and the two freshest signals. The full evidence is
+// one call away: leadbay_research_lead_by_id(lead_id).
+const LEAD_REASON_CHARS = 180;
+const SIGNAL_CHARS = 140;
+const MAX_SIGNALS = 2;
+const MAX_ALTERNATIVE_CONTACTS = 1;
+// The host inlined a 56,591-char result and moved a 61.4 KB one to a file.
+// Leads get what the skipped rows leave, minus ~4 KB for funnel, cost and
+// explain.
+const RESULT_CHARS = 52_000;
+// What a row costs once its prose is dropped. Every row still to come keeps
+// this much in reserve, so a 50-lead job keeps its last contacts.
+const LEAN_ROW_CHARS = 700;
+
+function clip(s: unknown, n: number): string | undefined {
+  if (typeof s !== "string" || s.length === 0) return undefined;
+  return s.length <= n ? s : s.slice(0, n - 1).trimEnd() + "…";
+}
+
+function compactContact(c: any): any {
+  if (!c || typeof c !== "object") return c ?? null;
+  const channels: Record<string, unknown> = {};
+  for (const [name, state] of Object.entries(c.channels ?? {})) {
+    const s = state as any;
+    channels[name] = s?.value != null ? { status: s.status, value: s.value } : { status: s?.status };
+  }
+  return {
+    lead_contact_id: c.lead_contact_id,
+    name: c.name,
+    role: clip(c.role, 80),
+    linkedin: c.linkedin,
+    channels,
+  };
+}
+
+export function compactLead(lead: Record<string, any>, lean = false): Record<string, any> {
+  const company = lead.company ?? {};
+  const fit = lead.fit ?? {};
+  const q = fit.components?.qualification ?? {};
+  const answers: any[] = Array.isArray(q.questions) ? q.questions : [];
+  const best = answers
+    .filter((a) => a?.verdict === "yes")
+    .sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0))[0];
+  const signals = (Array.isArray(lead.signals) ? lead.signals : [])
+    .filter((s: any) => s?.summary)
+    .sort(
+      (a: any, b: any) =>
+        Number(!!b.hot) - Number(!!a.hot) || String(b.date ?? "").localeCompare(String(a.date ?? ""))
+    )
+    .slice(0, MAX_SIGNALS)
+    .map((s: any) => ({ summary: clip(s.summary, SIGNAL_CHARS), date: s.date, source_url: s.source_url }));
+  const location = company.location
+    ? { city: company.location.city, region: company.location.region, country: company.location.country }
+    : undefined;
+  return {
+    lead_id: lead.lead_id,
+    company: {
+      name: company.name,
+      website: company.website,
+      location,
+      employees: company.employees,
+      // Kept on trimmed rows too: it is the rendering rules' last fallback for
+      // "why it fits" once the reason and the tags are gone.
+      description: clip(company.description ?? company.short_description, lean ? 80 : 140),
+    },
+    fit: {
+      available: fit.available,
+      score: fit.score,
+      reasoning: lean ? undefined : clip(best?.reasoning ?? q.ibp?.reasoning, LEAD_REASON_CHARS),
+      components: {
+        qualification: {
+          available: q.available,
+          ai_score: q.ai_score,
+          matched_tags: lean
+            ? undefined
+            : (Array.isArray(q.matched_tags) ? q.matched_tags : [])
+                .map((t: any) => (typeof t === "string" ? t : t?.tag))
+                .filter(Boolean),
+        },
+      },
+    },
+    signals: lean ? undefined : signals,
+    contact: compactContact(lead.contact),
+    alternative_contacts: lean
+      ? undefined
+      : (Array.isArray(lead.alternative_contacts) ? lead.alternative_contacts : [])
+          .slice(0, MAX_ALTERNATIVE_CONTACTS)
+          .map(compactContact),
+    // Unbounded, so only full rows carry it: they are measured, trimmed rows
+    // are only reserved for.
+    custom_fields:
+      !lean && Array.isArray(lead.custom_fields) && lead.custom_fields.length > 0
+        ? lead.custom_fields
+        : undefined,
+    evidence_trimmed: lean ? true : undefined,
+  };
+}
+
 export function splitItems(snapshot: McpJobSnapshot): {
   leads: McpJobItem[];
   skipped: McpJobItem[];
 } {
-  const leads: McpJobItem[] = [];
-  const skipped: McpJobItem[] = [];
-  for (const item of snapshot.items) {
-    if (item.status === "skipped") skipped.push(item);
-    else leads.push(item);
-  }
+  // A lean row keeps what the tables read and drops the per-item bookkeeping
+  // (cost, completed_at, from_cache), which the rendering rules never show.
+  const leanRow = (item: McpJobItem): McpJobItem => ({
+    ref: item.ref,
+    status: item.status,
+    status_reason: item.status_reason,
+    ...(item.resolution ? { resolution: item.resolution } : {}),
+    seq: item.seq,
+    ...(item.lead ? { lead: compactLead(item.lead, true) } : {}),
+  });
+  const skipped = snapshot.items.filter((i) => i.status === "skipped").map(leanRow);
+  const rows = snapshot.items.filter((i) => i.status !== "skipped");
+  let room = RESULT_CHARS - JSON.stringify(skipped).length;
+  const leads = rows.map((item, i) => {
+    const { from_cache: _fromCache, ...rest } = item;
+    const full = item.lead ? { ...rest, lead: compactLead(item.lead) } : rest;
+    const fullChars = JSON.stringify(full).length;
+    const reserve = (rows.length - i - 1) * LEAN_ROW_CHARS;
+    const out = fullChars + reserve <= room ? full : leanRow(item);
+    room -= out === full ? fullChars : JSON.stringify(out).length;
+    return out;
+  });
   return { leads, skipped };
 }
 
