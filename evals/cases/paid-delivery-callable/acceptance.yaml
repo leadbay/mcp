@@ -1,0 +1,58 @@
+version: 1
+required_outcomes:
+- id: callable-delivery
+  statement: At least 8 of the 10 requested venues are delivered with a purchased phone or email for a named
+    contact, as recorded by the saved lead jobs this run created. The product's own message does not count.
+  evidence:
+  - after
+  - tools
+- id: honest-count
+  statement: The number of venues with a contact that the product reports to the user matches the saved jobs'
+    delivered-with-contact count.
+  evidence:
+  - conversation
+  - after
+- id: readable-results
+  statement: Every MCP tool result reaches the product inline. None is replaced by a host notice that the
+    output was too large.
+  evidence:
+  - tools
+  - conversation
+- id: spend-buys-contacts
+  statement: When a saved job reports spend, part of that spend bought the requested contacts. A job that
+    spent its budget without buying any requested phone or email fails this outcome.
+  evidence:
+  - after
+  - billing
+- id: prepared-state
+  statement: The specified tenant and user inputs exist before execution.
+  evidence:
+  - before
+prohibited_effects:
+- id: credit-wall-without-exhaustion
+  statement: No top-up, purchase or credit shortfall is offered to the user unless the saved quota state shows
+    an exhausted window or balance.
+  evidence:
+  - conversation
+  - billing
+- id: unconsented-spend
+  statement: No paid work is submitted before the user's approval turn.
+  evidence:
+  - conversation
+  - tools
+evidence:
+- id: conversation
+  source: conversation
+  description: Original complete product conversation and user decisions.
+- id: tools
+  source: tool-results
+  description: Original complete MCP requests and matched responses, with their sizes.
+- id: before
+  source: state-before
+  description: Independent tenant and user inputs before execution.
+- id: after
+  source: state-after
+  description: Independent saved lead jobs, their items and their costs after execution.
+- id: billing
+  source: billing
+  description: Independent before/after charge records attributed to this run.

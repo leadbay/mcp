@@ -319,6 +319,13 @@ execution logs outside Git. A new case does not change agent policy or CI code.
 Infrastructure in `.github/evals/` validates formats and isolates tester/verifier
 permissions. `pnpm test:eval` checks contracts, not live behavioral success.
 
+The MCP's main job is leads a salesperson can call: qualified companies with a
+purchased phone or email. No eval that stops at a price quote, or grades only
+which tools were called, shows that this works. `paid-delivery-callable` is the
+case that does: it approves the spend and counts contacts from the saved jobs.
+Run it before telling anyone lead delivery works, and add it to the release gate
+as soon as it has passed twice.
+
 ## Review guidelines
 
 The Claude review bot
