@@ -133,7 +133,7 @@ describe("status tools are told polling is free", () => {
     says(tool, "Wait until the REST of the batch has settled");
     says(tool, "leadbay_bulk_qualify_leads({leadIds, lensId})");
     // The two are indistinguishable over a few polls, and guessing charges twice.
-    says(tool, "re-launching it charges the user twice");
+    says(tool, "re-launching it uses the user's quota twice");
   });
 
   it.each(POLL_ONLY_TOOLS)("%s does not carry the launcher retry warning", (tool) => {
@@ -145,11 +145,11 @@ describe("status tools are told polling is free", () => {
 describe("unguarded launchers are told they have no guard", () => {
   it.each(UNGUARDED_TOOLS)("%s warns every call is a new paid launch", (tool) => {
     says(tool, "no double-launch guard");
-    says(tool, "calling it again always issues a new paid launch");
+    says(tool, "calling it again always issues a new launch that uses quota again");
   });
 
   it.each(UNGUARDED_TOOLS)("%s exempts a dry run from the quota claim", (tool) => {
-    says(tool, "`dry_run` result reached no backend and spent nothing");
+    says(tool, "`dry_run` result reached no backend and used nothing");
   });
 
   it.each(UNGUARDED_TOOLS)("%s does not promise the guarded re-call", (tool) => {

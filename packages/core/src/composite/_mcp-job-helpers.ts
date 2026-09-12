@@ -783,7 +783,7 @@ export function mockedSubmitPreview(
       error: true,
       code: "MALFORMED_SUBMIT_RESPONSE",
       message: `${tool}: the submit succeeded but the response carried no job_id, so the job cannot be polled.`,
-      hint: "The job may still be running server-side. Do not re-submit blindly — reuse the same request_id so a retry dedupes instead of double-spending.",
+      hint: "The job may still be running server-side. Do not re-submit blindly — reuse the same request_id so a retry dedupes instead of launching twice.",
     };
   }
   return {
@@ -977,7 +977,7 @@ export function rejectMalformedExclusions(ids: unknown): void {
     error: true,
     code: "INVALID_EXCLUDE_LEAD_ID",
     message: `exclude_lead_ids has ${bad.length} entr${bad.length === 1 ? "y" : "ies"} that is not a lead id: ${bad.join(", ")}.`,
-    hint: "Drop or fix those entries and re-call — every entry must be a non-blank lead id string. Silently skipping them would run the search without an exclusion you asked for, and could re-deliver and charge for that exact lead.",
+    hint: "Drop or fix those entries and re-call — every entry must be a non-blank lead id string. Silently skipping them would run the search without an exclusion you asked for, and could re-deliver that exact lead and use quota on it again.",
   };
 }
 
@@ -1066,7 +1066,7 @@ export function readSpendFlag(
     message: `${field} must be a boolean (got ${
       Array.isArray(value) ? "array" : typeof value
     }: ${JSON.stringify(value)}).`,
-    hint: `Re-call the tool with ${field}: true or ${field}: false as a JSON boolean, not a string or a number. This flag decides whether the user is charged, so an unrecognised value is refused rather than guessed.`,
+    hint: `Re-call the tool with ${field}: true or ${field}: false as a JSON boolean, not a string or a number. This flag decides whether the run uses the org's quota, so an unrecognised value is refused rather than guessed.`,
   };
 }
 

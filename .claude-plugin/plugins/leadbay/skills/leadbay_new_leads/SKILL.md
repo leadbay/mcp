@@ -81,12 +81,12 @@ Call `leadbay_find_new_leads` with the seed, `filters`, `count`,
 from the ask + the ARCHETYPE + today's date. `count` is the TOTAL I asked
 for, not a per-search number: with two archetypes and a request for 10,
 split it (5 + 5, or whatever weighting fits my ask) rather than sending 10
-to each — otherwise I get 20 leads and, on the paid pass, pay for 20.
+to each — otherwise I get 20 leads and, on the qualifying pass, use quota on 20.
 
 When you RETRY a search — it timed out, or the job is still live — reuse the
 `request_id` you already sent, verbatim. Do not recompute it: rederiving from
 "today's date" after midnight yields a new key, the backend cannot dedupe, and
-a second paid, novelty-claiming search launches. Roll the date only when I am
+a second quota-using, novelty-claiming search launches. Roll the date only when I am
 genuinely asking for a new batch. The archetype component is not
 optional: `request_id` is the idempotency key, so two archetype searches
 sharing one id dedupe to the same job and the second archetype is never
@@ -101,52 +101,54 @@ kind of companies I asked for?
 - **Off-profile or empty** (terminal) → read `funnel` +
   `explain.scope_notes`, tell me what went wrong in one line (wrong
   archetype? too narrow a filter? thin universe?), reshape the seed or
-  filters, and retry under a NEW request_id. Reshaping is free; do not pay
-  to explore a bad seed.
+  filters, and retry under a NEW request_id. Reshaping is free; do not use
+  quota to explore a bad seed.
 
-# PHASE 4 — PAID DEPTH (only with my explicit go-ahead)
+# PHASE 4 — QUALIFIED DEPTH (uses my plan's quota; only with my explicit go-ahead)
 
 When I want qualification evidence and/or reachable contacts:
-1. Quote first: `dry_run: true` on the tool you will actually run, with the
-   exact flags I asked for, and tell me the worst-case cost in plain money.
+1. Check first: `dry_run: true` on the tool you will actually run, with the
+   exact flags I asked for. Tell me what will run (how many companies, which
+   channels) and that it uses my plan's quota. No amounts and no money: my plan
+   or top-up covers this, and a price reads as a bill.
    The two tools take DIFFERENT flags — passing the wrong one is rejected
    outright (`additionalProperties: false`):
    - `leadbay_qualify_leads`: `qualify: true`, `contact_titles`,
      `title_gate`, `channels`, `max_cost`. **No `min_ai_score`.**
    - `leadbay_find_new_leads`: the same, PLUS `min_ai_score` and `count`.
 2. On my go-ahead, prefer feeding the free preview's deliveries to
-   `leadbay_qualify_leads` (`prior_deliveries: {job_id}`) — one paid pass PER
+   `leadbay_qualify_leads` (`prior_deliveries: {job_id}`) — one qualifying pass PER
    preview job when Phase 3 ran several archetypes, or merge their delivered
    refs into a single `lead_refs` call. Never qualify just the first job and
    call it done: the other archetypes are part of what I asked for. It only
-   spends on
-   companies already known to match. Paid calls need `confirm: true`; without
+   uses quota on
+   companies already known to match. Calls that use quota need `confirm: true`; without
    it the tool withholds the submit and hands back a quote instead of
-   spending. That applies to `leadbay_find_new_leads` too whenever you set
+   running. That applies to `leadbay_find_new_leads` too whenever you set
    `qualify: true` or ask for channels.
 
    If the preview delivered FEWER than I asked for, do both halves and do not
    conflate them: qualify what the preview already found, and run the fresh
    search only for the SHORTFALL — `count` = what is still missing, never the
    original number, under a NEW `request_id`. Reusing the preview's id dedupes
-   the paid submit back into the free job; keeping the original count buys a
+   the qualifying submit back into the free job; keeping the original count runs a
    whole second batch, because `novelty: org` already excludes everything the
    preview delivered.
 
-   The same arithmetic applies AFTER the paid pass. A full-count preview can
+   The same arithmetic applies AFTER the qualifying pass. A full-count preview can
    still end short once qualification disqualifies rows or a strict title /
    channel match misses: what I asked for is n QUALIFIED, CONTACTABLE leads,
    not n examined. Count the delivered-and-callable rows; if they fall short,
-   tell me the gap in one line and offer to top it up — another shortfall-sized
-   search under a NEW `request_id`, quoted first like any paid run. Never
-   silently hand back fewer than I asked for and paid toward.
+   tell me the gap in one line and offer to fill the gap — another shortfall-sized
+   search under a NEW `request_id`, confirmed first like any run that uses
+   quota. Never silently hand back fewer than I asked for.
 
-   Pass the leads already EXAMINED-AND-REJECTED into that top-up's
+   Pass the leads already EXAMINED-AND-REJECTED into that search's
    `exclude_lead_ids` — disqualified and skipped, from both the preview and
-   the paid pass. `novelty: org` already excludes prior DELIVERIES, so
+   the qualifying pass. `novelty: org` already excludes prior DELIVERIES, so
    delivered ids are redundant there; the rejected ones are exactly what it
-   misses, and without them the top-up re-picks the same misses and charges
-   again to close no gap. **`exclude_lead_ids` caps at 500** — a wide
+   misses, and without them that search re-picks the same misses and uses
+   quota again to close no gap. **`exclude_lead_ids` caps at 500** — a wide
    `exploration_cap` can examine more than that, so send the most recent 500
    rejects rather than an over-long list the tool refuses outright.
 3. While the job runs, poll with `leadbay_lead_job_status`
@@ -162,7 +164,7 @@ best fit is under 30, say "weak matches only" and propose reshaping before
 showing more than 3.
 
 Render per the lead-delivery table, then ALWAYS the funnel line: matched /
-examined / qualified / disqualified / delivered / stop reason / spend. Zero
+examined / qualified / disqualified / delivered / stop reason. Zero
 delivered gets a diagnosis and a concrete next move, never a shrug. Close
 with NEXT STEPS from the tool description — and STOP; take no further action
 without my say-so.

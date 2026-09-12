@@ -37,7 +37,7 @@ expected_calls:
   - leadbay_new_lens
   - leadbay_adjust_audience
 failure_modes:
-  - "Pauses to confirm before enriching (or asks 'enrich these N now?' via ask_user_input_v0) — this prompt runs to goal with NO confirm gate; asking for the campaign IS the authorization. Never stop for a spend confirmation."
+  - "Pauses to confirm before enriching (or asks 'enrich these N now?' via ask_user_input_v0) — this prompt runs to goal with NO confirm gate; asking for the campaign IS the authorization. Never stop for an enrichment confirmation."
   - "Stops to confirm a lens switch when the user named a fresh audience — naming the audience IS the authorization; switch, state which lens in one line, and don't ask."
   - "Pauses at any point to ask the user to choose, confirm, or hand off — the only acceptable stops are lens exhaustion (can't supply the count) or a backend 429 (quota out). Anything else is purpose drift."
   - "Stops at fewer than the target `count` of actionable leads without looping back to pull / qualify / enrich more — must run to the target, or honestly report the lens is exhausted and offer to widen."
@@ -58,7 +58,7 @@ failure_modes:
 
 Build me a Leadbay campaign from scratch{{arg:campaign_name_paren}} — a cohort of **{{arg:count_or_default}}** fully-actionable leads: each in-ICP, high `ai_agent_lead_score`, AND with a reachable buyer contact. {{arg:audience_block}} {{arg:job_titles_block}}
 
-**Run this end-to-end, autonomously, without pausing.** Do NOT stop to confirm the audience, do NOT stop to confirm the enrichment spend, do NOT ask me to pick, and do NOT stop to hand off — just keep discovering, qualifying, enriching, and swapping until the cohort holds **{{arg:count_or_default}}** leads that each meet EVERY requirement (in-ICP, high `ai_agent_lead_score`, and a reachable target-title contact whose email/phone actually landed). The ONLY reasons to stop short: the lens genuinely can't supply that many buyer-ready in-ICP leads, or enrichment quota is exhausted (a backend 429). In those cases, finish with whatever you locked and tell me plainly how many you got and why it stopped. Enrichment consumes quota, not credits — never pre-refuse on a credit balance.
+**Run this end-to-end, autonomously, without pausing.** Do NOT stop to confirm the audience, do NOT stop to confirm the enrichment, do NOT ask me to pick, and do NOT stop to hand off — just keep discovering, qualifying, enriching, and swapping until the cohort holds **{{arg:count_or_default}}** leads that each meet EVERY requirement (in-ICP, high `ai_agent_lead_score`, and a reachable target-title contact whose email/phone actually landed). The ONLY reasons to stop short: the lens genuinely can't supply that many buyer-ready in-ICP leads, or enrichment quota is exhausted (a backend 429). In those cases, finish with whatever you locked and tell me plainly how many you got and why it stopped. Enrichment consumes quota, not credits — never pre-refuse on a credit balance.
 
 {{include:gates/defer-to-tool-rendering}}
 
@@ -89,7 +89,7 @@ If I named specific leads, seed with those (still apply the Phase 3 buyer-covera
 
 # PHASE 3 — ENRICH THE RIGHT CONTACTS (load-bearing)
 
-This is the phase that decides whether the campaign is worth a salesperson's time. Contacts aren't attached by default and enrichment is paid — so spend it ONLY on the people who would actually **buy what I sell**, at the target titles, not on whoever is most senior.
+This is the phase that decides whether the campaign is worth a salesperson's time. Contacts aren't attached by default and enrichment uses quota — so use it ONLY on the people who would actually **buy what I sell**, at the target titles, not on whoever is most senior.
 
 **Step A — settle the target titles / buyer persona.**
 
@@ -115,7 +115,7 @@ Call `leadbay_recall_ordered_titles({leadIds, lensId})` and `leadbay_enrich_titl
 
 Tell me what you swapped in one line ("dropped Corbett + RBS — ops-only; swapped in Acme + Globex which have Sales VPs").
 
-**Step C — enrich (NO confirm gate — just spend).** You do NOT need my permission: I authorized this spend by asking for the campaign. Do NOT call `ask_user_input_v0`, do NOT ask "enrich these N now?", do NOT wait. State the persona + titles + "enriching {enrichable_contacts} contacts (email + phone, consumes quota)" in one line for the record, then immediately launch: `leadbay_enrich_titles({leadIds, lensId, titles:[...chosen], email:true, phone:true})`. Enrich up to {{arg:count_or_default}} best target-title contacts. Do NOT quote a "credits" figure or refuse on a credit balance — the only real limit is quota (a backend 429). If a 429 stops you mid-run, keep the leads already enriched, note how many landed, and continue to Phase 4 with those.
+**Step C — enrich (NO confirm gate — just launch).** You do NOT need my permission: I authorized this enrichment by asking for the campaign. Do NOT call `ask_user_input_v0`, do NOT ask "enrich these N now?", do NOT wait. State the persona + titles + "enriching {enrichable_contacts} contacts (email + phone, consumes quota)" in one line for the record, then immediately launch: `leadbay_enrich_titles({leadIds, lensId, titles:[...chosen], email:true, phone:true})`. Enrich up to {{arg:count_or_default}} best target-title contacts. Do NOT quote a "credits" figure or refuse on a credit balance — the only real limit is quota (a backend 429). If a 429 stops you mid-run, keep the leads already enriched, note how many landed, and continue to Phase 4 with those.
 
 **Step D — poll + count only landed.** Poll `leadbay_bulk_enrich_status` until done (enrichment can take several minutes — keep polling, don't render an empty sheet prematurely). Once `all_done`, call `leadbay_account_status` and show my refreshed quota so I see what the run consumed. A lead only counts toward the {{arg:count_or_default}} once its target-title contact actually landed (email/phone present); if some came back empty, swap + enrich replacements (loop back to Step B.5) until the cohort is genuinely {{arg:count_or_default}} deep or the lens is exhausted.
 
@@ -140,7 +140,7 @@ Building a campaign is NOT outreaching — do not send anything and do not call 
 # Iron laws
 
 - **Run to the goal, autonomously.** Keep discovering → qualifying → enriching → swapping until the cohort holds {{arg:count_or_default}} leads that are ALL in-ICP, high-score, and buyer-covered — or the lens is genuinely exhausted. Do NOT stop early, do NOT ask me to pick, do NOT hand off mid-flow.
-- **No confirm gates. No pauses.** Do NOT confirm the audience switch, and do NOT confirm the enrichment spend (no `ask_user_input_v0` before enriching) — asking for the campaign IS the authorization. The only acceptable stops are lens exhaustion or a backend 429.
+- **No confirm gates. No pauses.** Do NOT confirm the audience switch, and do NOT confirm the enrichment (no `ask_user_input_v0` before enriching) — asking for the campaign IS the authorization. The only acceptable stops are lens exhaustion or a backend 429.
 - Enrichment targets MY buyer titles — the people who would actually buy what *I* sell (my given titles, or the persona derived from my product/ICP) — NOT generic seniority. For a sales/prospecting tool that means the revenue org; a Director of Operations, COO, or logistics manager is useless no matter how senior.
 - Selection is DATA-DRIVEN (`leadbay_recall_ordered_titles` + `leadbay_enrich_titles` discovery) but FILTERED to the target titles — never blindly repeat past-enriched or suggested titles that don't match who buys my product.
 - The FINAL cohort must be all buyer-ready: a lead counts only once its target-title contact actually landed. Drop/swap + re-enrich any lead with no reachable buyer rather than shipping it empty.

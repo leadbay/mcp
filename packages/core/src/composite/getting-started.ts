@@ -274,7 +274,7 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         {
           when: "quota is readable",
           then:
-            "Show them their ACTUAL account — this is the payoff of the click. One line on who they're signed in as and their organization, then render the quota windows in full the way the web app does: Daily / Weekly / Monthly, each with a ▰▱ gauge, % used, $ spent against the cap, and when it resets, plus the per-resource breakdown underneath. Follow the canonical quota-windows rendering (never raw 'credits'). A one-line 'you're connected as X' under-delivers on a button labelled 'check my account status'. THEN EXPLAIN IT in one or two plain lines — a first-run user has never seen these numbers and can't tell if they're good or bad: say what it counts (the AI work Leadbay does for them — researching companies and qualifying leads, not something they spend by clicking around) and why it matters (it paces how many fresh leads arrive; heavy use now means a bigger batch queued for next time, and it's where a smaller-than-expected batch would show its reason). Keep it to a sentence or two, don't walk through every resource row, and don't turn it into a pricing pitch.",
+            "Show them their ACTUAL account — this is the payoff of the click. One line on who they're signed in as and their organization, then render the quota windows in full the way the web app does: Daily / Weekly / Monthly, each with a ▰▱ gauge, % used, and when it resets, plus the per-resource breakdown underneath. Follow the canonical quota-windows rendering (never raw 'credits'). A one-line 'you're connected as X' under-delivers on a button labelled 'check my account status'. THEN EXPLAIN IT in one or two plain lines — a first-run user has never seen these numbers and can't tell if they're good or bad: say what it counts (the AI work Leadbay does for them — researching companies and qualifying leads, not something they spend by clicking around) and why it matters (it paces how many fresh leads arrive; heavy use now means a bigger batch queued for next time, and it's where a smaller-than-expected batch would show its reason). Keep it to a sentence or two, don't walk through every resource row, and don't turn it into a pricing pitch.",
         },
         {
           when: "quota is null, quota_error is set, or organization.unlimited_credits is true",
@@ -360,10 +360,10 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         leadId: "<the highest-scoring lead id from step 2>",
       },
       forbidden_args: [
-        "enrich — enrich:true launches a PAID contact reveal off the back of a DRAFT click. They agreed to see an email written, not to spend. Gate 4 is where the reveal gets asked for, explicitly and on its own terms.",
+        "enrich — enrich:true launches a contact reveal, which uses quota, off the back of a DRAFT click. They agreed to see an email written, not to reveal anyone. Gate 4 is where the reveal gets asked for, explicitly and on its own terms.",
       ],
       spend:
-        "This gate spends NOTHING. Call leadbay_prepare_outreach with leadId and " +
+        "This gate uses NO quota. Call leadbay_prepare_outreach with leadId and " +
         "nothing else. `recommended_contact` comes back in its post-enrichment " +
         "shape with email and phone still null — that is EXPECTED, not a failure, " +
         "and it is precisely the hook for gate 4: an email written, and nobody to " +
@@ -395,7 +395,7 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         "operations director by name instead of pitching whoever answers the " +
         "switchboard — the difference between a conversation and a dead end. Say " +
         "plainly that the first look is free, and that revealing the contact " +
-        "costs credits and needs their say-so.",
+        "uses a little of their plan's quota and needs their say-so.",
       next_steps: {
         question: "Want to find out who to send that email to?",
         options: [
@@ -424,13 +424,13 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         "confirms. Beat 1: call leadbay_enrich_titles with the drafted lead's id + " +
         "lensId and NO titles / NO confirm / NO email / NO phone. That returns " +
         "mode:'discover' — the FREE list of job titles at that company. Say plainly " +
-        "that nothing has been spent yet. Beat 2: name the title the draft is " +
-        "addressed to, tell them BEFORE they decide what it costs (one credit per " +
-        "contact revealed — here that is ONE contact, one credit), and ask them to " +
+        "that nothing has run yet. Beat 2: name the title the draft is " +
+        "addressed to, tell them BEFORE they decide that revealing it uses their " +
+        "plan's quota (here ONE contact; no amount, no price), and ask them to " +
         "confirm. Only then call leadbay_enrich_titles AGAIN with leadIds: [<that " +
         "lead id>] — ALWAYS the array, even for a single lead: `leadId` singular is " +
-        "not a key this tool reads, so it is dropped and the paid call falls back to " +
-        "the default wishlist selection, charging for the whole batch — plus the " +
+        "not a key this tool reads, so it is dropped and the reveal falls back to " +
+        "the default wishlist selection, revealing the whole batch — plus the " +
         "chosen title, confirm:true and email:true. Poll leadbay_bulk_enrich_status " +
         "with the returned notification_id and lead_ids until all_done (or the count plateaus), and " +
         "report the contact that actually resolved. NEVER launch the reveal without " +
@@ -438,8 +438,8 @@ export const GETTING_STARTED_MANIFEST: GettingStartedManifest = {
         "the gate'. If they decline, keep the draft and the title and move on — " +
         "that is a normal outcome, not a failure.",
       quota_note:
-        "After the reveal, close the loop on gate 1 in one line: one credit per " +
-        "contact revealed, so this cost one. Then say the thing that makes it land " +
+        "After the reveal, close the loop on gate 1 in one line: the reveal used a " +
+        "little of their plan's quota, never a price. Then say the thing that makes it land " +
         "— the draft from gate 3 now has a real person and a real address to go " +
         "to. Re-check leadbay_account_status if you want to show the moved windows. " +
         "This is where gate 1's numbers stop being abstract: they just watched them " +

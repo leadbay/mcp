@@ -11,7 +11,7 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Order contact enrichments by job title across many leads. Contacts are NOT returned by default with a lead (Leadbay keeps enrichment out-of-band to control cost); the agent requests them on demand via this tool when it's ready to actually reach out. Two modes: (A) NO `titles` param — returns the available titles + Leadbay's `title_suggestions` + `auto_included_titles` + a count of enrichable contacts, so the agent can ask the user which titles to enrich. (B) `titles` given — calls preview, then launches if there's anything enrichable. On 429 returns `{status:'quota_exceeded'}` cleanly. Selection lifecycle is wrapped in a try/finally so the user's selection is left clean even on error.
+Order contact enrichments by job title across many leads. Contacts are NOT returned by default with a lead (Leadbay keeps enrichment out-of-band); the agent requests them on demand via this tool when it's ready to actually reach out. Two modes: (A) NO `titles` param — returns the available titles + Leadbay's `title_suggestions` + `auto_included_titles` + a count of enrichable contacts, so the agent can ask the user which titles to enrich. (B) `titles` given — calls preview, then launches if there's anything enrichable. On 429 returns `{status:'quota_exceeded'}` cleanly. Selection lifecycle is wrapped in a try/finally so the user's selection is left clean even on error.
 
 {{include:headers/tool-when-to-use}} as the agent's go-to enrichment entry point, immediately before proposing outreach.
 
@@ -25,17 +25,17 @@ Each email reveal and each phone reveal **consumes quota** (the per-window daily
 
 ## CONSENT — email is the default channel; phone is opt-in; never launch silently
 
-The `email` channel defaults **ON**; `phone` defaults **OFF**. A bare "enrich these titles" is **NOT** consent to spend quota.
+The `email` channel defaults **ON**; `phone` defaults **OFF**. A bare "enrich these titles" is **NOT** consent to use quota.
 
 **When the user asks to enrich without naming channels, ASK which channels via `ask_user_input_v0`** — email is included by default, so the real question is whether to add phone: `"Enrich email only, or email + phone? (phone reveals use more quota)"` → `["Email only", "Email + phone"]`. Then launch with the chosen channels (`email:true` always; `phone:true` if they picked email + phone). Only skip this question if the user already named the channel(s) explicitly ("just emails", "get their phone numbers too", etc.).
 
-**To preview with ZERO spend risk on ANY host, pass `dry_run:true`** (or `confirm:false`). Either returns `enrichable_contacts` + the `would_launch` channels and launches nothing — guaranteed, regardless of host. Use this as your first call. Then surface the volume, get the user's explicit go-ahead (and channel choice, above), and re-call with `confirm:true` (and explicit `email:true`/`phone:true` for the channels they chose) to launch.
+**To preview with nothing launched on ANY host, pass `dry_run:true`** (or `confirm:false`). Either returns `enrichable_contacts` + the `would_launch` channels and launches nothing — guaranteed, regardless of host. Use this as your first call. Then surface the volume, get the user's explicit go-ahead (and channel choice, above), and re-call with `confirm:true` (and explicit `email:true`/`phone:true` for the channels they chose) to launch.
 
-Do NOT rely on a bare call (no `confirm`, no `dry_run`, no channels) as a "safe preview": on an elicitation-capable host it asks the user and withholds on decline (`mode:"needs_confirmation"`), but on a host WITHOUT elicitation (some direct/embedded callers) a bare call launches the default email spend directly. If you're unsure whether the host can elicit, use `dry_run:true`/`confirm:false` for the preview. Passing `email:true`/`phone:true` (or `confirm:true`) always counts as consent and launches.
+Do NOT rely on a bare call (no `confirm`, no `dry_run`, no channels) as a "safe preview": on an elicitation-capable host it asks the user and withholds on decline (`mode:"needs_confirmation"`), but on a host WITHOUT elicitation (some direct/embedded callers) a bare call launches the default email reveal directly. If you're unsure whether the host can elicit, use `dry_run:true`/`confirm:false` for the preview. Passing `email:true`/`phone:true` (or `confirm:true`) always counts as consent and launches.
 
 ## SHOW WHAT WILL RUN, AND WHERE QUOTA STANDS
 
-**BEFORE (confirm before launching).** The discover / preview_only / dry_run modes return `enrichable_contacts` (the volume that would be enriched). Tell the user plainly: **"This will enrich {enrichable_contacts} contacts (email + phone reveals consume quota)."** then confirm the channels + go-ahead via `ask_user_input_v0` before launching. Do NOT quote an exact cost or a "credits" figure — the per-reveal rate is backend-side and enrichment is gated by quota, not a credit balance. The `credits_remaining` field is advisory context only; never present it as a spend gate and never refuse based on it.
+**BEFORE (confirm before launching).** The discover / preview_only / dry_run modes return `enrichable_contacts` (the volume that would be enriched). Tell the user plainly: **"This will enrich {enrichable_contacts} contacts (email + phone reveals consume quota)."** then confirm the channels + go-ahead via `ask_user_input_v0` before launching. Do NOT quote an exact cost or a "credits" figure — the per-reveal rate is backend-side and enrichment is gated by quota, not a credit balance. The `credits_remaining` field is advisory context only; never present it as a gate and never refuse based on it.
 
 **AFTER (show refreshed quota).** Once the job is done (see the STAY ACTIVE section below), call `leadbay_account_status` and show the refreshed per-window quota — the canonical surface — so the user sees the usage they just consumed. Do NOT invent a "credits used" figure for the run (per-run cost can't be scoped reliably — a lead's contacts mix earlier enrichments).
 

@@ -345,7 +345,7 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
       clauses.push(
         "On " +
           deliveryRunners.map((n) => `leadbay_${n}`).join(", ") +
-          " the job is BACKEND-owned and likewise keeps running. Any work already paid for still " +
+          " the job is BACKEND-owned and likewise keeps running. Any work already launched still " +
           "completes; poll `leadbay_lead_job_status` with the `job_id` later to collect it."
       );
     }
