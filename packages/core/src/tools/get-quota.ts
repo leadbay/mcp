@@ -27,7 +27,7 @@ export const getQuota: Tool<Record<string, never>> = {
           spend: {
             type: "array",
             description:
-              "Per-window %-used gauge. Each: {current_units, max_units, window_type, resets_at} — % used = current_units/max_units. Render the percentage only, never the units or money. Empty when the org has no OVERALL_SPEND (COST_CENTS) quota provisioned (internal/free orgs).",
+              "Per-window DOLLAR-SPEND gauge. Each: {current_units, max_units, window_type, resets_at} in dollar_cents — % used = current_units/max_units, $ = /100. Empty when the org has no OVERALL_SPEND (COST_CENTS) quota provisioned (internal/free orgs).",
             items: { type: "object" },
           },
           resources: {

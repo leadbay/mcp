@@ -19,8 +19,8 @@ failure_modes:
   - Presents a gate as prose ("let me know if you want me to pull your leads") instead of CALLING the host choice widget — the click IS the lesson, and prose turns the walkthrough into a lecture
   - Runs a step's tool WITHOUT firing that step's widget first and waiting for the click — the walkthrough becomes an automated demo the user only watches, which is the exact opposite of learning by doing
   - Fires the widget without the EXPLAIN beat, so the user gets an unexplained button and learns nothing about what a lens or an enrichment actually is
-  - Answers gate 1 with a bare "you're connected as X at Y" when the quota IS readable — the user clicked a button labelled `check my account status`, so the quota windows (Daily/Weekly/Monthly gauges, % used, resets) ARE the answer, not an optional extra
-  - Renders quota as raw "credits" or as money instead of the web app's percentage gauges, or dumps raw `resource_type` strings the user has never seen
+  - Answers gate 1 with a bare "you're connected as X at Y" when the quota IS readable — the user clicked a button labelled `check my account status`, so the quota windows (Daily/Weekly/Monthly gauges, % used, $ spent, resets) ARE the answer, not an optional extra
+  - Renders quota as raw "credits" instead of the web app's percentage + dollar-spend gauges, or dumps raw `resource_type` strings the user has never seen
   - Opens with a wall of text — previewing all four steps, explaining lenses up front, or writing several paragraphs before the first widget. The opening is TWO lines then the button; a first-run user wants to see it work, not read a syllabus
   - Ends the first message without firing gate 1's widget, leaving the user to reply "ok" before anything happens
   - Rewrites the gate's own `next_steps` payload (its `question`, `label` or `description`) instead of mapping it into the widget verbatim, or merges two gates into a single multi-option widget
@@ -170,7 +170,7 @@ On click: call `leadbay_account_status` (it takes no arguments).
 **Show them their actual account — this is the payoff of the click.** Lead with
 one line on who they're signed in as and their organization, then render their
 **quota windows in full**, exactly as the web app shows them: Daily / Weekly /
-Monthly, each with a `▰▱` gauge, % used, and when it
+Monthly, each with a `▰▱` gauge, % used, $ spent against the cap, and when it
 resets — plus the per-resource breakdown underneath. A one-line "you're
 connected as X" is an under-delivery: they clicked a button labelled *check my
 account status*, so show them the status.
@@ -183,7 +183,7 @@ good, bad, or something to worry about. Say, in your own words:
 
 - **What it counts** — the AI work Leadbay does on their behalf: researching
   companies on the web and qualifying leads against their criteria. Not
-  "credits" and not money: it is work their plan already includes, not a bill.
+  "credits", and not something they spend by clicking around.
 - **Why it matters to them** — it paces how many fresh leads arrive. Heavy use
   now means Leadbay queues up a bigger batch for next time; and if a batch ever
   comes back smaller than expected, this is where they'd see why. Each window

@@ -176,12 +176,12 @@ Report user + org, AND quota whenever readable — include quota even on a plain
 \`last_requested_lens_name\`, never the id). SILENT on quota ONLY when
 \`quota_error\` set, \`unlimited_credits\` true, or quota null. Else render
 Daily/Weekly/Monthly from \`quota.user\` (fall back to \`quota.org\` if \`user\`
-absent) as \`N% used · resets\` (or a resource-count table when \`spend[]\`
-empty). Never say raw "credits", never show money.
+absent) as \`$used / $cap (N% used) · resets\` (or a resource-count table when
+\`spend[]\` empty). Never say raw "credits".
 
 ---
 
-Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **Show quota the way the web app does — a percentage-used gauge per window, never raw "credits" and never money: the plan or top-up covers this work, so a dollar figure reads as a bill.** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` (% used = the ratio; never print the units); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
+Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **Show quota the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` in dollar_cents (% used = the ratio, $ = \`/100\`); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
 
 **Top-ups always beat waiting.** When a quota window is hit, the user has two options: wait for the window reset (\`resets_at\` in each quota entry) OR top up AI credits. Top-ups clear the throttle IMMEDIATELY; they are not subject to the same window. When you tell the user about a 429 / quota exhaustion, ALWAYS surface both options — "wait until <reset>" or "top up now (I can generate the link)" — and let them pick. Never default-recommend "wait until tomorrow" when a 30-second top-up unblocks the same operation.
 
@@ -230,13 +230,12 @@ Also surfaced as a top-level \`notifications\` array on \`leadbay_account_status
 
 ---
 
-## RENDERING — quota windows (percentage used, like the frontend)
+## RENDERING — quota windows (percentage + $, like the frontend)
 
 Mirror the Leadbay web quota widget: three windows side by side — **Daily**,
-**Weekly**, **Monthly** — each headlined by a **% used** gauge, with a
-per-resource usage breakdown underneath. **Never speak in raw "credits" or in
-money** for quota — the unit is a percentage of the plan's allowance. The user's
-plan or top-up covers this work; a dollar figure reads as a bill.
+**Weekly**, **Monthly** — each headlined by a **% used** gauge and a **$ spend /
+$ cap** figure, with a per-resource usage breakdown underneath. **Never speak in
+raw "credits"** for quota — the unit is a percentage and a dollar spend.
 
 **Include the quota whenever it is readable** — as part of the default account
 answer, even when the user only asked "what account am I connected to?". The
@@ -270,14 +269,14 @@ this pre-check exists to avoid.
 \`window_type\` (\`"daily"\` / \`"weekly"\` / \`"monthly"\`).
 
 **Headline — when \`<group>.spend[]\` has an entry for the window (the % gauge):**
-- \`pct = round(current_units / max_units × 100)\`. The units are internal: never
-  print them and never convert them to money.
+- \`pct = round(current_units / max_units × 100)\` (both are dollar_cents).
+- \`$used = (current_units / 100).toFixed(2)\`, \`$cap = (max_units / 100).toFixed(2)\`.
 - 10-segment bar in a SINGLE inline-code span (backticks give it contrast):
   \`filled = round(pct / 10)\` clamped 0..10; \`bar = "▰"×filled + "▱"×(10 − filled)\`.
   Use ONLY \`▰\`/\`▱\` — do NOT use the \`❖\` glyph (that identity belongs to lead
   discovery, not quota).
-- Line: **\`<Window>\`** \`\` \`▰▰▱▱▱▱▱▱▱▱\` \`\` \`<pct>% used · resets <resets_at, relative>\`.
-  e.g. \`**Daily** \` + \`\` \`▰▱▱▱▱▱▱▱▱▱\` \`\` + \` 7% used · resets in ~7 h\`.
+- Line: **\`<Window>\`** \`\` \`▰▰▱▱▱▱▱▱▱▱\` \`\` \`<pct>% used · $<used> / $<cap> · resets <resets_at, relative>\`.
+  e.g. \`**Daily** \` + \`\` \`▰▱▱▱▱▱▱▱▱▱\` \`\` + \` 7% used · $0.84 / $12.00 · resets in ~7 h\`.
 
 **Fallback — when \`<group>.spend[]\` is empty** (internal / free orgs have no
 OVERALL_SPEND quota): no gauge. Render the per-window resource breakdown as a
@@ -301,7 +300,7 @@ days"), computed against now — mirroring the widget's "réinitialisé dans X".
 raw value is an ISO-8601 timestamp.
 
 **Top-up (optional, subordinate).** When \`quota.topup\` is present, you MAY add one
-small line below the windows: \`Top-up: <round(remaining_cents / total_credit_cents × 100)>% left\`.
+small line below the windows: \`Top-up: $<(remaining_cents / 100).toFixed(2)> of $<(total_credit_cents / 100).toFixed(2)> left\`.
 Keep it secondary — the three window gauges are the headline. Omit when null.
 
 **Legend** (once, below): \`\` \`▰\` used · \`▱\` remaining \`\`.
@@ -2078,7 +2077,7 @@ render verbatim.
 // endregion: leadbay_get_qualification_questions
 
 // region: leadbay_get_quota
-export const leadbay_get_quota: string = `Read quota usage across daily, weekly, and monthly windows. The response has two scope groups: **\`user\`** (present for every caller) and **\`org\`** (admin-only — \`null\` for non-admins). **Read from \`user\` first**, falling back to \`org\` only when \`user\` is absent. Each group carries \`spend[]\` (the %-used gauge: % used = \`current_units\` / \`max_units\`; never show the units or money) and \`resources[]\` (per-resource usage: \`{resource_type, count (used), max_units (cap or null), window_type, resets_at}\`). \`spend[]\` is empty for orgs with no OVERALL_SPEND quota — fall back to the \`resources[]\` counts then. There is also a top-level \`topup\` ({remaining_cents, total_credit_cents}) when present. Resource types may arrive lowercase (\`lens_extra_refill\`) or uppercase — match case-insensitively. Present quota as a percentage / dollar figure, never raw "credits".
+export const leadbay_get_quota: string = `Read quota / spend across daily, weekly, and monthly windows. The response has two scope groups: **\`user\`** (present for every caller) and **\`org\`** (admin-only — \`null\` for non-admins). **Read from \`user\` first**, falling back to \`org\` only when \`user\` is absent. Each group carries \`spend[]\` (the dollar-spend gauge: \`current_units\` / \`max_units\` in dollar_cents → % used = the ratio, $ = \`/100\`) and \`resources[]\` (per-resource usage: \`{resource_type, count (used), max_units (cap or null), window_type, resets_at}\`). \`spend[]\` is empty for orgs with no OVERALL_SPEND quota — fall back to the \`resources[]\` counts then. There is also a top-level \`topup\` ({remaining_cents, total_credit_cents}) when present. Resource types may arrive lowercase (\`lens_extra_refill\`) or uppercase — match case-insensitively. Present quota as a percentage / dollar figure, never raw "credits".
 
 WHEN TO USE: after a 429 error, to explain to the user which window was hit and when it resets.
 
@@ -2192,7 +2191,7 @@ The manifest also carries **\`keep_going\`**: the closing cheat-sheet of *what y
 
 ## Three hard rules the manifest encodes
 
-**Step 1 shows the real account, and is silent about two things.** The click is labelled *check my account status*, so deliver it: user + org, then the **full quota windows** the way the web app renders them — Daily / Weekly / Monthly with a \`▰▱\` gauge, % used, resets countdown, and the per-resource breakdown. Never raw "credits", never money. But apply the silence gate first: when \`quota\` is null, \`quota_error\` is set, or the org has \`unlimited_credits\`, say **nothing** about quota — never mention a 401, never suggest logging in again (the token is fine, the same response just read their account), and never announce "unlimited". And **never volunteer the lens**: the response withholds it unless the user asked, so there is nothing to report and no other tool to reach for. Both are pinned regressions (WORKFLOWS #30 / #31).
+**Step 1 shows the real account, and is silent about two things.** The click is labelled *check my account status*, so deliver it: user + org, then the **full quota windows** the way the web app renders them — Daily / Weekly / Monthly with a \`▰▱\` gauge, % used, $ spent against the cap, resets countdown, and the per-resource breakdown. Never raw "credits". But apply the silence gate first: when \`quota\` is null, \`quota_error\` is set, or the org has \`unlimited_credits\`, say **nothing** about quota — never mention a 401, never suggest logging in again (the token is fine, the same response just read their account), and never announce "unlimited". And **never volunteer the lens**: the response withholds it unless the user asked, so there is nothing to report and no other tool to reach for. Both are pinned regressions (WORKFLOWS #30 / #31).
 
 **Step 3 drafts, and uses no quota.** Call \`leadbay_prepare_outreach\` with \`leadId\` alone — **never \`enrich: true\`**, which launches a contact reveal off the back of a *draft* click. \`recommended_contact\` returns with \`email\`/\`phone\` null; that is expected, and it is the hook for step 4. Render through \`message_compose_v1\` (2–3 strategy-labelled variants), address it to the job TITLE — no name exists yet, and inventing one is fabrication — and never send it or offer to.
 
@@ -5943,12 +5942,12 @@ Report user + org, AND quota whenever readable — include quota even on a plain
 \`last_requested_lens_name\`, never the id). SILENT on quota ONLY when
 \`quota_error\` set, \`unlimited_credits\` true, or quota null. Else render
 Daily/Weekly/Monthly from \`quota.user\` (fall back to \`quota.org\` if \`user\`
-absent) as \`N% used · resets\` (or a resource-count table when \`spend[]\`
-empty). Never say raw "credits", never show money.
+absent) as \`$used / $cap (N% used) · resets\` (or a resource-count table when
+\`spend[]\` empty). Never say raw "credits".
 
 ---
 
-Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **Show quota the way the web app does — a percentage-used gauge per window, never raw "credits" and never money: the plan or top-up covers this work, so a dollar figure reads as a bill.** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` (% used = the ratio; never print the units); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
+Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **Show quota the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` in dollar_cents (% used = the ratio, $ = \`/100\`); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
 
 **After a user tops up, do NOT keep refusing — RETRY.** If the user signals they topped up / bought credits / added credits, the previous QUOTA_EXCEEDED is invalidated the moment the Stripe webhook lands. RE-CALL \`leadbay_account_status\` to pick up the new state AND retry the originally failed call. The retry itself does not require a successful account_status check first — a topped-up user has cleared the throttle whether or not your cached snapshot reflects it yet. **A stale quota snapshot is never a reason to gate-keep a topped-up user.**
 
@@ -5993,13 +5992,12 @@ Also surfaced as a top-level \`notifications\` array on \`leadbay_account_status
 
 ---
 
-## RENDERING — quota windows (percentage used, like the frontend)
+## RENDERING — quota windows (percentage + $, like the frontend)
 
 Mirror the Leadbay web quota widget: three windows side by side — **Daily**,
-**Weekly**, **Monthly** — each headlined by a **% used** gauge, with a
-per-resource usage breakdown underneath. **Never speak in raw "credits" or in
-money** for quota — the unit is a percentage of the plan's allowance. The user's
-plan or top-up covers this work; a dollar figure reads as a bill.
+**Weekly**, **Monthly** — each headlined by a **% used** gauge and a **$ spend /
+$ cap** figure, with a per-resource usage breakdown underneath. **Never speak in
+raw "credits"** for quota — the unit is a percentage and a dollar spend.
 
 **Include the quota whenever it is readable** — as part of the default account
 answer, even when the user only asked "what account am I connected to?". The
@@ -6033,14 +6031,14 @@ this pre-check exists to avoid.
 \`window_type\` (\`"daily"\` / \`"weekly"\` / \`"monthly"\`).
 
 **Headline — when \`<group>.spend[]\` has an entry for the window (the % gauge):**
-- \`pct = round(current_units / max_units × 100)\`. The units are internal: never
-  print them and never convert them to money.
+- \`pct = round(current_units / max_units × 100)\` (both are dollar_cents).
+- \`$used = (current_units / 100).toFixed(2)\`, \`$cap = (max_units / 100).toFixed(2)\`.
 - 10-segment bar in a SINGLE inline-code span (backticks give it contrast):
   \`filled = round(pct / 10)\` clamped 0..10; \`bar = "▰"×filled + "▱"×(10 − filled)\`.
   Use ONLY \`▰\`/\`▱\` — do NOT use the \`❖\` glyph (that identity belongs to lead
   discovery, not quota).
-- Line: **\`<Window>\`** \`\` \`▰▰▱▱▱▱▱▱▱▱\` \`\` \`<pct>% used · resets <resets_at, relative>\`.
-  e.g. \`**Daily** \` + \`\` \`▰▱▱▱▱▱▱▱▱▱\` \`\` + \` 7% used · resets in ~7 h\`.
+- Line: **\`<Window>\`** \`\` \`▰▰▱▱▱▱▱▱▱▱\` \`\` \`<pct>% used · $<used> / $<cap> · resets <resets_at, relative>\`.
+  e.g. \`**Daily** \` + \`\` \`▰▱▱▱▱▱▱▱▱▱\` \`\` + \` 7% used · $0.84 / $12.00 · resets in ~7 h\`.
 
 **Fallback — when \`<group>.spend[]\` is empty** (internal / free orgs have no
 OVERALL_SPEND quota): no gauge. Render the per-window resource breakdown as a
@@ -6064,7 +6062,7 @@ days"), computed against now — mirroring the widget's "réinitialisé dans X".
 raw value is an ISO-8601 timestamp.
 
 **Top-up (optional, subordinate).** When \`quota.topup\` is present, you MAY add one
-small line below the windows: \`Top-up: <round(remaining_cents / total_credit_cents × 100)>% left\`.
+small line below the windows: \`Top-up: $<(remaining_cents / 100).toFixed(2)> of $<(total_credit_cents / 100).toFixed(2)> left\`.
 Keep it secondary — the three window gauges are the headline. Omit when null.
 
 **Legend** (once, below): \`\` \`▰\` used · \`▱\` remaining \`\`.
