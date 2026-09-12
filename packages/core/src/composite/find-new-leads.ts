@@ -184,7 +184,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       max_cost: {
         type: "number",
         description:
-          "Spend cap for the whole job in cost_cents. Defaults by plan tier (500/2000/5000). The job stops honestly at the cap (stop_reason max_cost).",
+          "Spend cap for the whole job in cost_cents. Default 100000 on every plan. What the requested channels cost is kept for them, so qualification never spends it; a cap below that is refused, naming the minimum. The job stops honestly at the cap (stop_reason max_cost).",
       },
       exploration_cap: {
         type: "number",

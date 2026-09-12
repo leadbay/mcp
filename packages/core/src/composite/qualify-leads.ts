@@ -300,7 +300,7 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
       },
       max_cost: {
         type: "number",
-        description: "Spend cap in cost_cents (plan-tier default when unset).",
+        description: "Spend cap in cost_cents (default 100000). What the requested channels cost is kept for them; a cap below that is refused, naming the minimum.",
       },
       request_id: {
         type: "string",
