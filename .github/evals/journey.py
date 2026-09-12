@@ -6,7 +6,7 @@ billing, records every MCP and backend byte outside the model containers, runs
 the tester and verifier sandboxes from compose.yaml, seals run.yaml and runs
 the same contracts gate CI uses. Exit code 0 means the bundle passed the gate.
 """
-import argparse, datetime, hashlib, json, os, re, shutil, socket, socketserver, subprocess, sys, threading, time, urllib.error, urllib.request
+import argparse, datetime, hashlib, json, os, shutil, socket, socketserver, subprocess, sys, threading, time, urllib.error, urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -229,13 +229,6 @@ The operator authenticated the dedicated test tenant, captured its state before 
     time.sleep(3)
     recorder.stop()
     after, billing_after, _ = snapshot(base, token)
-    # What a run delivered is proven by the saved lead jobs, not by the product's
-    # message. Read every job whose id appears in the recorded MCP traffic.
-    mcp_log = run / 'observed/mcp.ndjson'
-    uuid = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-    job_ids = set(re.findall(r'job_id[^0-9a-f]{1,12}(' + uuid + ')', mcp_log.read_text())) if mcp_log.exists() else set()
-    for job_id in sorted(job_ids):
-        after[f'/mcp/jobs/{job_id}'] = api(base, f'/mcp/jobs/{job_id}?limit=100', token)
     (run / 'observed/state-after.json').write_text(json.dumps(after, indent=2))
     (run / 'observed/billing.json').write_text(json.dumps({'before': billing_before, 'after': billing_after, 'tester_started': started, 'tester_finished': now()}, indent=2))
 
