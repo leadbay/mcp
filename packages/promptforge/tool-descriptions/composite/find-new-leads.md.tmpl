@@ -52,8 +52,8 @@ routing:
 rendering_hint: |
   3-col table of delivered leads in returned order: col 1 = 10-segment fit
   bar + linked company · location · size; col 2 = why-fits ≤20 words; col 3
-  = contact + purchased channels. ALWAYS close with the honest funnel line
-  (matched/examined/delivered/stop reason/spend) — especially on 0
+  = contact + found channels. ALWAYS close with the honest funnel line
+  (matched/examined/delivered/stop reason) — especially on 0
   delivered. Full algorithm below.
 next_steps: find-new-leads
 annotations:
@@ -65,19 +65,19 @@ annotations:
 Submit a net-new lead search: the backend matches an ICP seed against the full
 company universe, applies hard filters, skips what the org already knows
 (`novelty: org`), optionally qualifies against the org's own intelligence
-(questions, tags, ideal buyer profile — frozen at submit), and optionally buys
+(questions, tags, ideal buyer profile — frozen at submit), and optionally reveals
 contact channels. Polls up to `wait_seconds` (default 45); a longer job returns
 `still_running` + `next_poll` — hand off to `leadbay_lead_job_status`. Jobs run
 ≤30 min, results kept 30 days.
 
-**Free vs paid — never spend silently.** Default (`qualify: false`,
+**Free vs usage quota — never use quota silently.** Default (`qualify: false`,
 `channels: []`) is FREE: company profile + fit score + cached research +
-contact identity. Paid: `qualify: true` (~94 cost_cents per candidate
-EXAMINED, capped by `exploration_cap`/`max_cost`) and `channels` (email 25c /
-phone 250c, success-only). Enforced in code: a paid call is WITHHELD unless it
+contact identity. `qualify: true` (per candidate EXAMINED, capped by
+`exploration_cap`/`max_cost`) and `channels` (only when a value is found) draw
+on the org's usage quota; nothing is invoiced. Enforced in code: such a call is WITHHELD unless it
 carries `confirm: true` — nothing is submitted and you get
 `mode: "needs_confirmation"` with a real quote to show the user. Re-call with
-`confirm: true` on their go-ahead ("spend / get their emails" counts).
+`confirm: true` on their go-ahead ("go ahead / get their emails" counts).
 `confirm: false` vetoes. Free needs no consent. **Preview free first** —
 reshaping an off-profile seed is free, exploring it with `qualify: true` is
 not.
@@ -85,7 +85,7 @@ not.
 **Ad-hoc exclusions ("no chains") are enforced by NO tier** — `filters` has no
 exclusion key, and `qualify` scores against the org's FROZEN questions and IBP,
 which need not mention chains; the seed's inverse only shifts ranking.
-Violators can survive, be paid for and be delivered — post-filter them yourself
+Violators can survive, use quota and be delivered — post-filter them yourself
 and say the tier didn't enforce it. Durable enforcement →
 `leadbay_refine_prompt`.
 
@@ -93,9 +93,9 @@ and say the tier didn't enforce it. Durable enforcement →
 
 **Parameter notes**
 - `request_id` (REQUIRED) is the retry contract: SAME value retrying the same
-  ask (same live job, no double spend); NEW for a changed ask. Derive from ask
+  ask (same live job, no double launch); NEW for a changed ask. Derive from ask
   + archetype + date: `gyms-dallas-2026-07-28`.
-- Never lower `min_ai_score` together with `channels` — that buys emails for
+- Never lower `min_ai_score` together with `channels` — that reveals emails for
   leads the AI just scored as junk.
 - `count` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After —
   wait, don't hammer).

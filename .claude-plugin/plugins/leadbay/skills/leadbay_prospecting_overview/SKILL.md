@@ -46,7 +46,7 @@ If `pull_leads` itself fails and you have no prior batch, then yes — retry it,
 Leadbay has no cancel. Once `leadbay_enrich_titles`, `leadbay_bulk_qualify_leads`,
 `leadbay_import_leads` or `leadbay_import_and_qualify` has returned a launched or
 running result, that work is queued on Leadbay and runs to completion, and the
-quota it costs is already committed. A discovery, preview or `dry_run` result
+quota it uses is already committed. A discovery, preview or `dry_run` result
 launched nothing and is not covered here.
 
 The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
@@ -54,7 +54,7 @@ waiting, never the job. `cancelled: true` means we stopped watching, not that th
 work stopped. What to do next depends on what you are holding:
 
 - **A handle.** Poll the status tool with it, and do not launch the work that
-  handle covers a second time — that spends the quota again on the same rows.
+  handle covers a second time — that uses the quota again on the same rows.
   `leadbay_import_status` takes `importIds`, so pass the values of `import_ids`
   under that name. A qualification started by `leadbay_import_and_qualify` has no
   notification of its own: resume it with
@@ -68,7 +68,7 @@ work stopped. What to do next depends on what you are holding:
   finished. Calling the same tool again with the same arguments will usually hand
   back the job already launched rather than starting a second one, but that guard
   is in-memory, five minutes, and per process, so it is best-effort — say what you
-  are about to re-run before you spend the user's quota on it.
+  are about to re-run before you use the user's quota on it.
 
 
 

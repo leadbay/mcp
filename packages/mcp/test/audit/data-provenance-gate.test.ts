@@ -72,7 +72,7 @@ describe("audit: data-provenance gate (leadbay_top_accounts_to_activate)", () =>
   });
 
   it("pins the enrichment double-spend caveat", () => {
-    expect(leadbay_top_accounts_to_activate).toContain("double-spend");
+    expect(leadbay_top_accounts_to_activate).toContain("uses my quota twice");
   });
 
   it("requires the conquest plan to ship even though revenue is unavailable", () => {

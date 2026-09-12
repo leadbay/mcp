@@ -28,5 +28,5 @@ a launcher only for a subset that never started, never for the whole batch:
   that are the ones that never started. Only then call
   `leadbay_bulk_qualify_leads({leadIds, lensId})` for exactly those ids. A lead
   that is merely slow looks identical to one that never launched over a few
-  polls, and re-launching it charges the user twice — when unsure, tell the user
+  polls, and re-launching it uses the user's quota twice — when unsure, tell the user
   rather than guess.
