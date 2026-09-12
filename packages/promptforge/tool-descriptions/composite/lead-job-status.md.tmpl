@@ -3,7 +3,7 @@ name: leadbay_lead_job_status
 kind: tool-description
 short_description: |
   Poll a running leadbay_find_new_leads / leadbay_qualify_leads job by
-  job_id — cumulative results, funnel, spend. Use when a delivery tool
+  job_id — cumulative results and funnel. Use when a delivery tool
   returned still_running:true or the user asks "is it done / any results
   yet". Don't use it for enrichment jobs (leadbay_bulk_enrich_status) or
   imports (leadbay_import_status).
@@ -32,7 +32,7 @@ routing:
 rendering_hint: |
   Terminal job -> render the full delivery per the lead-delivery table +
   honest funnel line. Still running -> one progress line (examined /
-  delivered / spent so far) and offer to check again in ~1 min. Never
+  delivered so far) and offer to check again in ~1 min. Never
   render UUIDs or cursors.
 next_steps: lead-job-status
 annotations:

@@ -171,17 +171,17 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-Report user + org, AND quota whenever readable — include quota even on a plain
-"what account?" ask. NEVER mention the lens unless asked (use
-\`last_requested_lens_name\`, never the id). SILENT on quota ONLY when
+Report user + org; show quota only when asked (quota / account status) or a
+window is exhausted. NEVER mention the lens unless asked (use
+\`last_requested_lens_name\`, never the id). SILENT on quota when
 \`quota_error\` set, \`unlimited_credits\` true, or quota null. Else render
 Daily/Weekly/Monthly from \`quota.user\` (fall back to \`quota.org\` if \`user\`
-absent) as \`$used / $cap (N% used) · resets\` (or a resource-count table when
+absent) as \`N% used · resets\` (or a resource-count table when
 \`spend[]\` empty). Never say raw "credits".
 
 ---
 
-Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **Show quota the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` in dollar_cents (% used = the ratio, $ = \`/100\`); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
+Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **When you show quota, show it the way the web app does — a percentage-used gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` (% used = the ratio); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
 
 **Top-ups always beat waiting.** When a quota window is hit, the user has two options: wait for the window reset (\`resets_at\` in each quota entry) OR top up AI credits. Top-ups clear the throttle IMMEDIATELY; they are not subject to the same window. When you tell the user about a 429 / quota exhaustion, ALWAYS surface both options — "wait until <reset>" or "top up now (I can generate the link)" — and let them pick. Never default-recommend "wait until tomorrow" when a 30-second top-up unblocks the same operation.
 
@@ -230,17 +230,17 @@ Also surfaced as a top-level \`notifications\` array on \`leadbay_account_status
 
 ---
 
-## RENDERING — quota windows (percentage + $, like the frontend)
+## RENDERING — quota windows (percentage used, like the frontend)
 
 Mirror the Leadbay web quota widget: three windows side by side — **Daily**,
-**Weekly**, **Monthly** — each headlined by a **% used** gauge and a **$ spend /
-$ cap** figure, with a per-resource usage breakdown underneath. **Never speak in
-raw "credits"** for quota — the unit is a percentage and a dollar spend.
+**Weekly**, **Monthly** — each headlined by a **% used** gauge and its reset
+time, with a per-resource usage breakdown underneath. **Never speak in raw
+"credits"** for quota — the unit is a percentage.
 
-**Include the quota whenever it is readable** — as part of the default account
-answer, even when the user only asked "what account am I connected to?". The
-sole reason to omit it is the silence gate below (unreadable quota, or an
-unlimited account); it is NOT gated on the user explicitly asking for quota.
+**Show the quota only when it matters** — when the user asks about their quota,
+usage or account status, or when a window is exhausted and blocks what they
+asked for. A plain "what account am I connected to?" is answered with user +
+org alone. Even then, the silence gate below comes first.
 
 **Silence gate (check FIRST).** Render NOTHING about quota when any of these
 holds — do not mention quota at all, do not say "unreadable", never tell the user
@@ -270,13 +270,12 @@ this pre-check exists to avoid.
 
 **Headline — when \`<group>.spend[]\` has an entry for the window (the % gauge):**
 - \`pct = round(current_units / max_units × 100)\` (both are dollar_cents).
-- \`$used = (current_units / 100).toFixed(2)\`, \`$cap = (max_units / 100).toFixed(2)\`.
 - 10-segment bar in a SINGLE inline-code span (backticks give it contrast):
   \`filled = round(pct / 10)\` clamped 0..10; \`bar = "▰"×filled + "▱"×(10 − filled)\`.
   Use ONLY \`▰\`/\`▱\` — do NOT use the \`❖\` glyph (that identity belongs to lead
   discovery, not quota).
-- Line: **\`<Window>\`** \`\` \`▰▰▱▱▱▱▱▱▱▱\` \`\` \`<pct>% used · $<used> / $<cap> · resets <resets_at, relative>\`.
-  e.g. \`**Daily** \` + \`\` \`▰▱▱▱▱▱▱▱▱▱\` \`\` + \` 7% used · $0.84 / $12.00 · resets in ~7 h\`.
+- Line: **\`<Window>\`** \`\` \`▰▰▱▱▱▱▱▱▱▱\` \`\` \`<pct>% used · resets <resets_at, relative>\`.
+  e.g. \`**Daily** \` + \`\` \`▰▱▱▱▱▱▱▱▱▱\` \`\` + \` 7% used · resets in ~7 h\`.
 
 **Fallback — when \`<group>.spend[]\` is empty** (internal / free orgs have no
 OVERALL_SPEND quota): no gauge. Render the per-window resource breakdown as a
@@ -299,16 +298,12 @@ Skip any resource type not in this map silently — never dump the raw
 days"), computed against now — mirroring the widget's "réinitialisé dans X". The
 raw value is an ISO-8601 timestamp.
 
-**Top-up (optional, subordinate).** When \`quota.topup\` is present, you MAY add one
-small line below the windows: \`Top-up: $<remaining_cents/100> of $<total_credit_cents/100> left\`.
-Keep it secondary — the three window gauges are the headline. Omit when null.
-
 **Legend** (once, below): \`\` \`▰\` used · \`▱\` remaining \`\`.
 
 
 ---
 
-WHEN TO USE: at the start of a session to know what the agent can/can't do, after a 429 to explain to the user which resource window was exhausted and when it resets (and to offer the top-up alternative), and after the user signals a top-up so the agent can resume the interrupted workflow.
+WHEN TO USE: when the user asks about their account, quota or version, after a 429 to explain to the user which resource window was exhausted and when it resets (and to offer the top-up alternative), and after the user signals a top-up so the agent can resume the interrupted workflow.
 
 WHEN NOT TO USE: as a pre-flight gate before bulk ops — operations themselves return 429; this tool is for context, not gating. And: a recent quota snapshot showing "exhausted" is NOT a reason to refuse a write call when the user has just topped up — re-call this tool first, then proceed.
 `;
@@ -594,13 +589,13 @@ a launcher only for a subset that never started, never for the whole batch:
   rather than guess.
 
 
-## QUOTA — show where the user stands after the spend
+## QUOTA, NOT CREDITS
 
-Enrichment consumes QUOTA (the per-window allowance), not a separate credit wall. Once the job is done (all_done, or a plateau — see WHEN TO USE), show the user their refreshed quota: call \`leadbay_account_status\` and render the per-window quota it returns (the canonical surface). The result's \`credits_remaining\` field is **advisory internal context only — do NOT display it**: it comes from \`billing.ai_credits\` (a consumed counter, not remaining), so printing \`_(N credits remaining)_\` can show a fresh/quota-backed account a false "0 remaining." Never render a credits balance; the \`leadbay_account_status\` quota gauge is the only place the user's standing is shown. Do NOT report a "credits used" figure for this run either: the per-contact cost can't be scoped to this specific enrichment (a lead's contact list mixes in earlier runs), so any "X used" number would be misleading. Do the account_status refresh ONCE at completion — not on every in-progress poll.
+Enrichment consumes QUOTA (the per-window allowance), not a separate credit wall. The result's \`credits_remaining\` field is **advisory internal context only — do NOT display it**: it comes from \`billing.ai_credits\` (a consumed counter, not remaining), so printing \`_(N credits remaining)_\` can show a fresh/quota-backed account a false "0 remaining." Never render a credits balance; the \`leadbay_account_status\` quota gauge is the only place the user's standing is shown. Do NOT report a "credits used" figure for this run either: the per-contact cost can't be scoped to this specific enrichment (a lead's contact list mixes in earlier runs), so any "X used" number would be misleading. Do the account_status refresh ONCE at completion — not on every in-progress poll.
 
 ## COMPLETION REPORT — what to tell the user when the job is done
 
-The result always carries \`overall_progress:{done,total,done_ratio}\` and, with \`include_contacts:true\`, \`leads[]\` each with contacts' \`email\` / \`phone_number\` / \`job_title\` / \`enrichment.done\`. \`bulk_progress:{total_count,success_count,failure_count,quota_hit_count}\` is present only when you passed a \`notification_id\` AND the job was found; derive counts from \`overall_progress\` rather than assuming \`bulk_progress\` is there. With \`lead_ids\`, each entry carries \`enrichment_progress:{done,total}\` — \`total\` counts the reservations this run made (scoped to the \`titles\` it enriched, and to reservations whose \`enrichment.email_requested\` / \`phone_requested\` match the \`email\` / \`phone\` you pass, so a lead's pre-existing CFO email cannot inflate a CEO run) and \`done\` counts those that have settled (\`enrichment.done:true\`, found or not). The \`enrichment\` record sits on the \`source:"paid"\` entry and never carries \`email\` / \`phone_number\`: the revealed values land on the same person's \`source:"org"\` entry (match on name and \`job_title\`). Read what landed from the org entries — an org entry with \`email\` = email found, with \`phone_number\` = phone found — and a settled paid entry with \`credits_used:0\` = nothing found for that person. \`include_contacts\` returns each lead's FULL contact list (it fans out through \`leadbay_get_contacts\`), so it can include contacts of other roles that were enriched in earlier runs — filter your report to the \`titles\` this bulk enriched (match each contact's \`job_title\`), don't attribute a pre-existing email of an unrelated role to this run. Report it yourself in the SAME turn, without a reprompt and without deferring to a scheduled re-check: name which of the just-enriched contacts now have emails / phones, the done/total counts, and — if \`bulk_progress\` is present — any \`quota_hit_count\` (if non-zero, say some contacts were skipped because the quota window was exhausted, and point to \`leadbay_account_status\` for the wait-or-top-up choice). If you stopped on a plateau (not \`all_done\`), say so plainly — report the resolved contacts and name the ones that didn't resolve, keyed to the requested channel and the returned fields (no \`email\` → "no email found"; no \`phone_number\` → "no phone number found") — rather than implying the job fully finished. Then show refreshed quota via \`leadbay_account_status\` (see QUOTA above); do NOT print a credits-remaining line.
+The result always carries \`overall_progress:{done,total,done_ratio}\` and, with \`include_contacts:true\`, \`leads[]\` each with contacts' \`email\` / \`phone_number\` / \`job_title\` / \`enrichment.done\`. \`bulk_progress:{total_count,success_count,failure_count,quota_hit_count}\` is present only when you passed a \`notification_id\` AND the job was found; derive counts from \`overall_progress\` rather than assuming \`bulk_progress\` is there. With \`lead_ids\`, each entry carries \`enrichment_progress:{done,total}\` — \`total\` counts the reservations this run made (scoped to the \`titles\` it enriched, and to reservations whose \`enrichment.email_requested\` / \`phone_requested\` match the \`email\` / \`phone\` you pass, so a lead's pre-existing CFO email cannot inflate a CEO run) and \`done\` counts those that have settled (\`enrichment.done:true\`, found or not). The \`enrichment\` record sits on the \`source:"paid"\` entry and never carries \`email\` / \`phone_number\`: the revealed values land on the same person's \`source:"org"\` entry (match on name and \`job_title\`). Read what landed from the org entries — an org entry with \`email\` = email found, with \`phone_number\` = phone found — and a settled paid entry with \`credits_used:0\` = nothing found for that person. \`include_contacts\` returns each lead's FULL contact list (it fans out through \`leadbay_get_contacts\`), so it can include contacts of other roles that were enriched in earlier runs — filter your report to the \`titles\` this bulk enriched (match each contact's \`job_title\`), don't attribute a pre-existing email of an unrelated role to this run. Report it yourself in the SAME turn, without a reprompt and without deferring to a scheduled re-check: name which of the just-enriched contacts now have emails / phones, the done/total counts, and — if \`bulk_progress\` is present — any \`quota_hit_count\` (if non-zero, say some contacts were skipped because the quota window was exhausted, and point to \`leadbay_account_status\` for the wait-or-top-up choice). If you stopped on a plateau (not \`all_done\`), say so plainly — report the resolved contacts and name the ones that didn't resolve, keyed to the requested channel and the returned fields (no \`email\` → "no email found"; no \`phone_number\` → "no phone number found") — rather than implying the job fully finished. Do NOT print a credits-remaining line.
 `;
 // endregion: leadbay_bulk_enrich_status
 
@@ -1193,7 +1188,7 @@ spend before spending it again.
 
 ## QUOTA, NOT CREDITS
 
-Enrichment is gated by QUOTA (the per-window allowance in \`leadbay_account_status\`), not a credit balance. **Never pre-refuse because a credit number looks low or zero** — a freemium/fresh account with quota left can enrich even when its credit counter reads 0. The reveal either fits the remaining quota or the backend returns 429 (\`quota_exceeded\`); only THEN surface the exhausted window + wait-or-top-up choice. The \`credits_remaining\` field on the result is **advisory internal context only — do NOT display it**. Because it can read \`0\` on an account that still has quota, printing \`_(N credits remaining)_\` would falsely tell the user they're out. Do not render a credits balance at all; if the user asks where they stand, call \`leadbay_account_status\` and show the quota gauge instead. The actual per-contact cost (\`enrichment.credits_used\`) appears on the contact after enrichment.
+Enrichment is gated by QUOTA (the per-window allowance in \`leadbay_account_status\`), not a credit balance. **Never pre-refuse because a credit number looks low or zero** — a freemium/fresh account with quota left can enrich even when its credit counter reads 0. The reveal either fits the remaining quota or the backend returns 429 (\`quota_exceeded\`); only THEN surface the exhausted window + wait-or-top-up choice. The \`credits_remaining\` field on the result is **advisory internal context only — do NOT display it**. Because it can read \`0\` on an account that still has quota, printing \`_(N credits remaining)_\` would falsely tell the user they're out. Do not render a credits balance at all; if the user asks where they stand, call \`leadbay_account_status\` and show the quota gauge instead.
 
 **Channels: when the user asks to enrich a contact without naming a channel, confirm scope via \`ask_user_input_v0\`** — \`"Enrich email only, or email + phone? (phone uses more quota)"\` → \`["Email only", "Email + phone"]\` — then pass the chosen \`email\`/\`phone\` flags. Skip the question only if they already said which channel(s) they want.
 
@@ -1252,15 +1247,15 @@ The \`email\` channel defaults **ON**; \`phone\` defaults **OFF**. A bare "enric
 
 Do NOT rely on a bare call (no \`confirm\`, no \`dry_run\`, no channels) as a "safe preview": on an elicitation-capable host it asks the user and withholds on decline (\`mode:"needs_confirmation"\`), but on a host WITHOUT elicitation (some direct/embedded callers) a bare call launches the default email spend directly. If you're unsure whether the host can elicit, use \`dry_run:true\`/\`confirm:false\` for the preview. Passing \`email:true\`/\`phone:true\` (or \`confirm:true\`) always counts as consent and launches.
 
-## SHOW WHAT WILL RUN, AND WHERE QUOTA STANDS
+## SHOW WHAT WILL RUN
 
 **BEFORE (confirm before launching).** The discover / preview_only / dry_run modes return \`enrichable_contacts\` (the volume that would be enriched). Tell the user plainly: **"This will enrich {enrichable_contacts} contacts (email + phone reveals consume quota)."** then confirm the channels + go-ahead via \`ask_user_input_v0\` before launching. Do NOT quote an exact cost or a "credits" figure — the per-reveal rate is backend-side and enrichment is gated by quota, not a credit balance. The \`credits_remaining\` field is advisory context only; never present it as a spend gate and never refuse based on it.
 
-**AFTER (show refreshed quota).** Once the job is done (see the STAY ACTIVE section below), call \`leadbay_account_status\` and show the refreshed per-window quota — the canonical surface — so the user sees the usage they just consumed. Do NOT invent a "credits used" figure for the run (per-run cost can't be scoped reliably — a lead's contacts mix earlier enrichments).
+**AFTER.** Do NOT invent a "credits used" figure for the run (per-run cost can't be scoped reliably — a lead's contacts mix earlier enrichments).
 
 ## AFTER LAUNCH — STAY ACTIVE UNTIL DONE
 
-When a launch returns \`mode:"launched"\` with a \`notification_id\`, the enrichment runs ASYNC on the backend — the tool returns immediately, before any email/phone is attached. **Unless the user explicitly said to start it in the background / not to wait** (e.g. "kick it off, I'll check later", "don't wait for it"), stay active and report in-turn — do NOT end your turn on the ack, and do NOT say "I'll let you know when it's done." (If the user DID ask you not to wait, honor that: hand back the \`notification_id\` and a one-line "running — you can ask any time". Only promise that completion will auto-surface via \`_meta.notifications\` when the launch returned a non-null \`notification_id\`; if \`notification_id\` is null (the nullable-backend path), say instead that you'll re-check when asked / they should ask again later — nothing surfaces automatically without a notification id. Don't force a poll loop against explicit intent.) In the default (stay-active) case: call \`leadbay_bulk_enrich_status({notification_id})\` in a loop, re-polling until the job is done (small batches typically finish in under ~2 min). Pass \`include_contacts:true\` on the read you intend to report from, so you get each lead's enriched contacts back. Note that \`include_contacts\` returns each lead's FULL contact list (it fans out through \`leadbay_get_contacts\`), which can include contacts of OTHER roles that were already enriched in earlier runs — so **filter your report to the \`titles\` you just enriched** (match each contact's \`job_title\` to the requested titles). Don't present a pre-existing CFO/Sales email as part of this CEO/Owner/Manager run. Then — on your own, without waiting for the user to reprompt — report the enrichment: which of the just-enriched contacts now have emails / phones, and the counts from \`overall_progress\` (\`done\`/\`total\`). \`leadbay_bulk_enrich_status\` also returns \`bulk_progress.success_count\` / \`failure_count\` / \`quota_hit_count\` on the notification fast path — use those when present, but the per-lead path returns \`overall_progress\` only, so don't assume \`bulk_progress\` exists (see the status tool's COMPLETION REPORT). Then show refreshed quota via \`leadbay_account_status\` (see AFTER above).
+When a launch returns \`mode:"launched"\` with a \`notification_id\`, the enrichment runs ASYNC on the backend — the tool returns immediately, before any email/phone is attached. **Unless the user explicitly said to start it in the background / not to wait** (e.g. "kick it off, I'll check later", "don't wait for it"), stay active and report in-turn — do NOT end your turn on the ack, and do NOT say "I'll let you know when it's done." (If the user DID ask you not to wait, honor that: hand back the \`notification_id\` and a one-line "running — you can ask any time". Only promise that completion will auto-surface via \`_meta.notifications\` when the launch returned a non-null \`notification_id\`; if \`notification_id\` is null (the nullable-backend path), say instead that you'll re-check when asked / they should ask again later — nothing surfaces automatically without a notification id. Don't force a poll loop against explicit intent.) In the default (stay-active) case: call \`leadbay_bulk_enrich_status({notification_id})\` in a loop, re-polling until the job is done (small batches typically finish in under ~2 min). Pass \`include_contacts:true\` on the read you intend to report from, so you get each lead's enriched contacts back. Note that \`include_contacts\` returns each lead's FULL contact list (it fans out through \`leadbay_get_contacts\`), which can include contacts of OTHER roles that were already enriched in earlier runs — so **filter your report to the \`titles\` you just enriched** (match each contact's \`job_title\` to the requested titles). Don't present a pre-existing CFO/Sales email as part of this CEO/Owner/Manager run. Then — on your own, without waiting for the user to reprompt — report the enrichment: which of the just-enriched contacts now have emails / phones, and the counts from \`overall_progress\` (\`done\`/\`total\`). \`leadbay_bulk_enrich_status\` also returns \`bulk_progress.success_count\` / \`failure_count\` / \`quota_hit_count\` on the notification fast path — use those when present, but the per-lead path returns \`overall_progress\` only, so don't assume \`bulk_progress\` exists (see the status tool's COMPLETION REPORT).
 
 **"Done" = \`all_done:true\` OR the resolvable work has plateaued.** Keep polling while \`overall_progress.done\` is still climbing. But a reservation the provider never answers stays \`done:false\` — so a job can sit below 100% with \`all_done:false\` forever (a contact with no findable email does flip, to \`done:true\` with \`credits_used:0\`). A plateau is only real once the job has had time to run: do NOT declare it from the first few back-to-back reads (early on \`done\` can sit at its initial value while the backend is still spinning the job up). Give it at least ~90s–2 min of actual elapsed polling — space your polls out (~15–30s apart) rather than firing them back-to-back — and only treat the set as complete when \`overall_progress.done\` has held steady across several spaced polls over that window. Then stop polling and report what resolved, naming the ones that didn't. Key the "didn't resolve" wording off the channels the user actually requested and the returned contact fields (contacts carry \`email\` and \`phone_number\`) — a contact enriched for phone that came back with no \`phone_number\` is "no phone number found", one with no \`email\` is "no email found", email+phone that got neither is "no contact details found"; if \`quota_hit_count\` is non-zero say those were skipped because the quota window was exhausted. Do NOT hard-label every non-success as "no email found" when phone was requested. Do NOT spin indefinitely waiting for \`all_done\` on contacts the engine won't resolve, and do NOT \`ScheduleWakeup\` / defer the finished list to a later turn — deliver the resolved results in THIS reply.
 
@@ -1411,7 +1406,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 3-col table of delivered leads in returned order: col 1 = 10-segment fit
 bar + linked company · location · size; col 2 = why-fits ≤20 words; col 3
 = contact + purchased channels. ALWAYS close with the honest funnel line
-(matched/examined/delivered/stop reason/spend) — especially on 0
+(matched/examined/delivered/stop reason) — especially on 0
 delivered. Full algorithm below.
 
 ---
@@ -1539,15 +1534,15 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, from \`funnel\` + \`cost\` +
+One short line narrating the delivery honestly, from \`funnel\` +
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
+> the Y asked** · stopped: <stop_reason in plain words>.
 
-**Money: divide, then symbol.** Every amount (\`cost.spent\`,
-\`estimated_cost.max\`, quotes) is \`cost_cents\` — divide by 100, two decimals,
-so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
+**Money: divide, then symbol.** Amounts appear only in quotes and cost-cap
+stops (\`estimated_cost.max\`, quotes); each is \`cost_cents\` — divide by 100, two
+decimals, so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
 \`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
 
 "of the Y asked" needs \`summary.items_requested\`, which submits carry but a
@@ -1581,7 +1576,7 @@ table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
 \`no_matching_contact\` → "no contact with the requested title",
 \`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
-\`enrichment_failed\` → "channel could not be sourced (not billed)".
+\`enrichment_failed\` → "channel could not be sourced".
 
 **\`items_truncated\`**: rows are a PREFIX, not the batch. Say so, and offer
 \`leadbay_lead_job_status(job_id, since: next_since)\` for the rest.
@@ -2076,7 +2071,7 @@ render verbatim.
 // endregion: leadbay_get_qualification_questions
 
 // region: leadbay_get_quota
-export const leadbay_get_quota: string = `Read quota / spend across daily, weekly, and monthly windows. The response has two scope groups: **\`user\`** (present for every caller) and **\`org\`** (admin-only — \`null\` for non-admins). **Read from \`user\` first**, falling back to \`org\` only when \`user\` is absent. Each group carries \`spend[]\` (the dollar-spend gauge: \`current_units\` / \`max_units\` in dollar_cents → % used = the ratio, $ = \`/100\`) and \`resources[]\` (per-resource usage: \`{resource_type, count (used), max_units (cap or null), window_type, resets_at}\`). \`spend[]\` is empty for orgs with no OVERALL_SPEND quota — fall back to the \`resources[]\` counts then. There is also a top-level \`topup\` ({remaining_cents, total_credit_cents}) when present. Resource types may arrive lowercase (\`lens_extra_refill\`) or uppercase — match case-insensitively. Present quota as a percentage / dollar figure, never raw "credits".
+export const leadbay_get_quota: string = `Read quota / spend across daily, weekly, and monthly windows. The response has two scope groups: **\`user\`** (present for every caller) and **\`org\`** (admin-only — \`null\` for non-admins). **Read from \`user\` first**, falling back to \`org\` only when \`user\` is absent. Each group carries \`spend[]\` (the usage gauge: \`current_units\` / \`max_units\` → % used = the ratio) and \`resources[]\` (per-resource usage: \`{resource_type, count (used), max_units (cap or null), window_type, resets_at}\`). \`spend[]\` is empty for orgs with no OVERALL_SPEND quota — fall back to the \`resources[]\` counts then. There is also a top-level \`topup\` ({remaining_cents, total_credit_cents}) when present. Resource types may arrive lowercase (\`lens_extra_refill\`) or uppercase — match case-insensitively. Present quota as a percentage used, never raw "credits".
 
 WHEN TO USE: after a 429 error, to explain to the user which window was hit and when it resets.
 
@@ -2190,7 +2185,7 @@ The manifest also carries **\`keep_going\`**: the closing cheat-sheet of *what y
 
 ## Three hard rules the manifest encodes
 
-**Step 1 shows the real account, and is silent about two things.** The click is labelled *check my account status*, so deliver it: user + org, then the **full quota windows** the way the web app renders them — Daily / Weekly / Monthly with a \`▰▱\` gauge, % used, $ spent against the cap, resets countdown, and the per-resource breakdown. Never raw "credits". But apply the silence gate first: when \`quota\` is null, \`quota_error\` is set, or the org has \`unlimited_credits\`, say **nothing** about quota — never mention a 401, never suggest logging in again (the token is fine, the same response just read their account), and never announce "unlimited". And **never volunteer the lens**: the response withholds it unless the user asked, so there is nothing to report and no other tool to reach for. Both are pinned regressions (WORKFLOWS #30 / #31).
+**Step 1 shows the real account, and is silent about two things.** The click is labelled *check my account status*, so deliver it: user + org, then the quota windows the way the web app renders them — Daily / Weekly / Monthly with a \`▰▱\` gauge, % used, resets countdown, and the per-resource breakdown. Never raw "credits". But apply the silence gate first: when \`quota\` is null, \`quota_error\` is set, or the org has \`unlimited_credits\`, say **nothing** about quota — never mention a 401, never suggest logging in again (the token is fine, the same response just read their account), and never announce "unlimited". And **never volunteer the lens**: the response withholds it unless the user asked, so there is nothing to report and no other tool to reach for. Both are pinned regressions (WORKFLOWS #30 / #31).
 
 **Step 3 drafts, and spends nothing.** Call \`leadbay_prepare_outreach\` with \`leadId\` alone — **never \`enrich: true\`**, which launches a paid contact reveal off the back of a *draft* click. \`recommended_contact\` returns with \`email\`/\`phone\` null; that is expected, and it is the hook for step 4. Render through \`message_compose_v1\` (2–3 strategy-labelled variants), address it to the job TITLE — no name exists yet, and inventing one is fabrication — and never send it or offer to.
 
@@ -2594,7 +2589,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 Terminal job -> render the full delivery per the lead-delivery table +
 honest funnel line. Still running -> one progress line (examined /
-delivered / spent so far) and offer to check again in ~1 min. Never
+delivered so far) and offer to check again in ~1 min. Never
 render UUIDs or cursors.
 
 ---
@@ -2656,15 +2651,15 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, from \`funnel\` + \`cost\` +
+One short line narrating the delivery honestly, from \`funnel\` +
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
+> the Y asked** · stopped: <stop_reason in plain words>.
 
-**Money: divide, then symbol.** Every amount (\`cost.spent\`,
-\`estimated_cost.max\`, quotes) is \`cost_cents\` — divide by 100, two decimals,
-so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
+**Money: divide, then symbol.** Amounts appear only in quotes and cost-cap
+stops (\`estimated_cost.max\`, quotes); each is \`cost_cents\` — divide by 100, two
+decimals, so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
 \`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
 
 "of the Y asked" needs \`summary.items_requested\`, which submits carry but a
@@ -2698,7 +2693,7 @@ table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
 \`no_matching_contact\` → "no contact with the requested title",
 \`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
-\`enrichment_failed\` → "channel could not be sourced (not billed)".
+\`enrichment_failed\` → "channel could not be sourced".
 
 **\`items_truncated\`**: rows are a PREFIX, not the batch. Say so, and offer
 \`leadbay_lead_job_status(job_id, since: next_since)\` for the rest.
@@ -3934,7 +3929,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 3-col table for delivered items (fit bar + company / why-fits ≤20 words /
 contact + channels) in returned order, then a compact Ref → Outcome table
 for skipped refs (not_in_universe, low_confidence_identity, ... in plain
-words), then the honest funnel + cost line. Full algorithm below.
+words), then the honest funnel line. Full algorithm below.
 
 ---
 
@@ -4023,15 +4018,15 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, from \`funnel\` + \`cost\` +
+One short line narrating the delivery honestly, from \`funnel\` +
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
+> the Y asked** · stopped: <stop_reason in plain words>.
 
-**Money: divide, then symbol.** Every amount (\`cost.spent\`,
-\`estimated_cost.max\`, quotes) is \`cost_cents\` — divide by 100, two decimals,
-so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
+**Money: divide, then symbol.** Amounts appear only in quotes and cost-cap
+stops (\`estimated_cost.max\`, quotes); each is \`cost_cents\` — divide by 100, two
+decimals, so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
 \`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
 
 "of the Y asked" needs \`summary.items_requested\`, which submits carry but a
@@ -4065,7 +4060,7 @@ table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
 \`no_matching_contact\` → "no contact with the requested title",
 \`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
-\`enrichment_failed\` → "channel could not be sourced (not billed)".
+\`enrichment_failed\` → "channel could not be sourced".
 
 **\`items_truncated\`**: rows are a PREFIX, not the batch. Say so, and offer
 \`leadbay_lead_job_status(job_id, since: next_since)\` for the rest.
@@ -5934,17 +5929,17 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-Report user + org, AND quota whenever readable — include quota even on a plain
-"what account?" ask. NEVER mention the lens unless asked (use
-\`last_requested_lens_name\`, never the id). SILENT on quota ONLY when
+Report user + org; show quota only when asked (quota / account status) or a
+window is exhausted. NEVER mention the lens unless asked (use
+\`last_requested_lens_name\`, never the id). SILENT on quota when
 \`quota_error\` set, \`unlimited_credits\` true, or quota null. Else render
 Daily/Weekly/Monthly from \`quota.user\` (fall back to \`quota.org\` if \`user\`
-absent) as \`$used / $cap (N% used) · resets\` (or a resource-count table when
+absent) as \`N% used · resets\` (or a resource-count table when
 \`spend[]\` empty). Never say raw "credits".
 
 ---
 
-Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **Show quota the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` in dollar_cents (% used = the ratio, $ = \`/100\`); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
+Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **When you show quota, show it the way the web app does — a percentage-used gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` (% used = the ratio); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
 
 **After a user tops up, do NOT keep refusing — RETRY.** If the user signals they topped up / bought credits / added credits, the previous QUOTA_EXCEEDED is invalidated the moment the Stripe webhook lands. RE-CALL \`leadbay_account_status\` to pick up the new state AND retry the originally failed call. The retry itself does not require a successful account_status check first — a topped-up user has cleared the throttle whether or not your cached snapshot reflects it yet. **A stale quota snapshot is never a reason to gate-keep a topped-up user.**
 
@@ -5989,17 +5984,17 @@ Also surfaced as a top-level \`notifications\` array on \`leadbay_account_status
 
 ---
 
-## RENDERING — quota windows (percentage + $, like the frontend)
+## RENDERING — quota windows (percentage used, like the frontend)
 
 Mirror the Leadbay web quota widget: three windows side by side — **Daily**,
-**Weekly**, **Monthly** — each headlined by a **% used** gauge and a **$ spend /
-$ cap** figure, with a per-resource usage breakdown underneath. **Never speak in
-raw "credits"** for quota — the unit is a percentage and a dollar spend.
+**Weekly**, **Monthly** — each headlined by a **% used** gauge and its reset
+time, with a per-resource usage breakdown underneath. **Never speak in raw
+"credits"** for quota — the unit is a percentage.
 
-**Include the quota whenever it is readable** — as part of the default account
-answer, even when the user only asked "what account am I connected to?". The
-sole reason to omit it is the silence gate below (unreadable quota, or an
-unlimited account); it is NOT gated on the user explicitly asking for quota.
+**Show the quota only when it matters** — when the user asks about their quota,
+usage or account status, or when a window is exhausted and blocks what they
+asked for. A plain "what account am I connected to?" is answered with user +
+org alone. Even then, the silence gate below comes first.
 
 **Silence gate (check FIRST).** Render NOTHING about quota when any of these
 holds — do not mention quota at all, do not say "unreadable", never tell the user
@@ -6029,13 +6024,12 @@ this pre-check exists to avoid.
 
 **Headline — when \`<group>.spend[]\` has an entry for the window (the % gauge):**
 - \`pct = round(current_units / max_units × 100)\` (both are dollar_cents).
-- \`$used = (current_units / 100).toFixed(2)\`, \`$cap = (max_units / 100).toFixed(2)\`.
 - 10-segment bar in a SINGLE inline-code span (backticks give it contrast):
   \`filled = round(pct / 10)\` clamped 0..10; \`bar = "▰"×filled + "▱"×(10 − filled)\`.
   Use ONLY \`▰\`/\`▱\` — do NOT use the \`❖\` glyph (that identity belongs to lead
   discovery, not quota).
-- Line: **\`<Window>\`** \`\` \`▰▰▱▱▱▱▱▱▱▱\` \`\` \`<pct>% used · $<used> / $<cap> · resets <resets_at, relative>\`.
-  e.g. \`**Daily** \` + \`\` \`▰▱▱▱▱▱▱▱▱▱\` \`\` + \` 7% used · $0.84 / $12.00 · resets in ~7 h\`.
+- Line: **\`<Window>\`** \`\` \`▰▰▱▱▱▱▱▱▱▱\` \`\` \`<pct>% used · resets <resets_at, relative>\`.
+  e.g. \`**Daily** \` + \`\` \`▰▱▱▱▱▱▱▱▱▱\` \`\` + \` 7% used · resets in ~7 h\`.
 
 **Fallback — when \`<group>.spend[]\` is empty** (internal / free orgs have no
 OVERALL_SPEND quota): no gauge. Render the per-window resource breakdown as a
@@ -6058,16 +6052,12 @@ Skip any resource type not in this map silently — never dump the raw
 days"), computed against now — mirroring the widget's "réinitialisé dans X". The
 raw value is an ISO-8601 timestamp.
 
-**Top-up (optional, subordinate).** When \`quota.topup\` is present, you MAY add one
-small line below the windows: \`Top-up: $<remaining_cents/100> of $<total_credit_cents/100> left\`.
-Keep it secondary — the three window gauges are the headline. Omit when null.
-
 **Legend** (once, below): \`\` \`▰\` used · \`▱\` remaining \`\`.
 
 
 ---
 
-WHEN TO USE: at the start of a session to know what the agent can/can't do, after a 429 to explain to the user which resource window was exhausted and when it resets, and after the user signals a top-up so the agent can resume the interrupted workflow.
+WHEN TO USE: when the user asks about their account, quota or version, after a 429 to explain to the user which resource window was exhausted and when it resets, and after the user signals a top-up so the agent can resume the interrupted workflow.
 
 WHEN NOT TO USE: as a pre-flight gate before bulk ops — operations themselves return 429; this tool is for context, not gating. And: a recent quota snapshot showing "exhausted" is NOT a reason to refuse a write call when the user has just topped up — re-call this tool first, then proceed.
 `,
@@ -6094,7 +6084,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 3-col table of delivered leads in returned order: col 1 = 10-segment fit
 bar + linked company · location · size; col 2 = why-fits ≤20 words; col 3
 = contact + purchased channels. ALWAYS close with the honest funnel line
-(matched/examined/delivered/stop reason/spend) — especially on 0
+(matched/examined/delivered/stop reason) — especially on 0
 delivered. Full algorithm below.
 
 ---
@@ -6222,15 +6212,15 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, from \`funnel\` + \`cost\` +
+One short line narrating the delivery honestly, from \`funnel\` +
 \`explain.scope_notes\`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
+> the Y asked** · stopped: <stop_reason in plain words>.
 
-**Money: divide, then symbol.** Every amount (\`cost.spent\`,
-\`estimated_cost.max\`, quotes) is \`cost_cents\` — divide by 100, two decimals,
-so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
+**Money: divide, then symbol.** Amounts appear only in quotes and cost-cap
+stops (\`estimated_cost.max\`, quotes); each is \`cost_cents\` — divide by 100, two
+decimals, so \`165\` renders \`1.65\`, NEVER \`165.00\`. Symbol from the account region: US
 \`$\`, France \`€\`, unknown → bare. Never hard-code \`$\`: it misstates a charge.
 
 "of the Y asked" needs \`summary.items_requested\`, which submits carry but a
@@ -6264,7 +6254,7 @@ table \`Ref → Outcome\` translating \`status_reason\` to plain words:
 \`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
 \`no_matching_contact\` → "no contact with the requested title",
 \`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
-\`enrichment_failed\` → "channel could not be sourced (not billed)".
+\`enrichment_failed\` → "channel could not be sourced".
 
 **\`items_truncated\`**: rows are a PREFIX, not the batch. Say so, and offer
 \`leadbay_lead_job_status(job_id, since: next_since)\` for the rest.

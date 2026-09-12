@@ -512,7 +512,7 @@ export async function waitForJob(
       total: itemsRequested,
       message: `${snap.job.state}: ${f.examined ?? 0} examined, ${
         f.delivered ?? 0
-      } delivered, ${snap.cost.spent}c spent`,
+      } delivered`,
     });
   }
   return snap;
