@@ -113,9 +113,9 @@ Feeds the team, owns spend, coaches with evidence. Runs org-level intelligence
   3 delivered, €6.09 — stopped at your cost cap").
 - **Happy**: predictable spend (`dry_run` forecast, `max_cost`), auditable
   funnel, deliveries that respect the org's questions/tags/IBP snapshot.
-- **Unhappy**: a rep burning the org's monthly budget in an afternoon (plan-tier
-  default caps + explicit `max_cost` are the guardrails; the agent must state
-  costs *before* paid runs).
+- **Unhappy**: a rep burning the org's monthly budget in an afternoon (the org's
+  spend quotas, the 100000 default job cap and an explicit `max_cost` are the
+  guardrails; the agent must state costs *before* paid runs).
 
 ### P5 — Founder-led sales, FR SMB (Sol Mur: revêtements; Home Spirit: mobilier B2B)
 Non-technical, prospecting in bursts between deliveries; speaks French to the
@@ -176,9 +176,11 @@ individual leads.
    `scope_notes`) tells an honest story the agent must render. "9 examined, 8
    disqualified, stopped at your cost cap" is actionable; "no results" is not.
 3. **Cost literacy up-front.** `qualify: true` bills ~94c per *examined*
-   candidate (survivor or not). Default `max_cost` (plan tier) can stop a job
-   mid-exploration (probe: stop=max_cost at 609c). The agent should `dry_run`
-   before the first paid run of a session and state the worst case.
+   candidate (survivor or not). `max_cost` defaults to 100000 on every plan, and
+   qualification never spends what the requested channels cost — before
+   2026-09-12 a plan-tier default stopped jobs mid-exploration (probe:
+   stop=max_cost at 609c; prod job 24203dfe bought no contact). The agent should
+   `dry_run` before the first paid run of a session and state the worst case.
 4. **Need-B refs resolve against the known universe.** Off-universe websites
    come back `not_in_universe` per-item (cost 0) — an answer, not an error.
 5. **Jobs are minutes-scale.** Submit <1s; free search ~seconds-minutes; paid
