@@ -26,9 +26,20 @@ import * as PROMPTS from "../../src/prompts.generated.js";
 const BASE = "https://api-us.leadbay.app";
 const BUYING_TOOLS = new Set(["leadbay_create_topup_link", "leadbay_open_billing_portal"]);
 
+// Dollars in the quota gauge ($ used of $ cap) are fine: there the context says
+// it is the plan's quota. These are the only surfaces that render that gauge.
+const QUOTA_SURFACES = new Set([
+  "tool leadbay_account_status",
+  "output schema leadbay_account_status",
+  "tool leadbay_get_quota",
+  "output schema leadbay_get_quota",
+  "tool leadbay_getting_started",
+  "prompt leadbay_getting_started",
+  "prompt meta leadbay_getting_started",
+]);
+const QUOTA_DOLLARS = /\$\s?spen[dt]|dollar[- ]spend|\$<used>|\$<cap>/i;
+
 // Each pattern is wording that made an agent speak of Leadbay usage as money.
-// The account-status quota gauge ($ used of $ cap) is exempt: there the context
-// says it is a quota, so dollars read as a share of the plan, not a bill.
 const BILL_FRAMING: RegExp[] = [
   /spent C\.CC/i,
   /\bPAID\b/,
@@ -60,7 +71,13 @@ async function surfaces(): Promise<Array<[string, string]>> {
   }
   out.push(["server instructions", ((server as any)._instructions as string) ?? ""]);
   for (const [name, value] of Object.entries(PROMPTS)) {
-    out.push([`prompt ${name}`, typeof value === "string" ? value : JSON.stringify(value)]);
+    if (name === "PROMPT_META") {
+      for (const [prompt, meta] of Object.entries(value as Record<string, unknown>)) {
+        out.push([`prompt meta ${prompt}`, JSON.stringify(meta)]);
+      }
+    } else {
+      out.push([`prompt ${name}`, typeof value === "string" ? value : JSON.stringify(value)]);
+    }
   }
   return out;
 }
@@ -69,7 +86,8 @@ describe("audit: no billing framing", () => {
   it("no tool, schema, prompt or instruction speaks of Leadbay usage as money", async () => {
     const offenders: string[] = [];
     for (const [where, text] of await surfaces()) {
-      for (const re of BILL_FRAMING) {
+      const patterns = QUOTA_SURFACES.has(where) ? BILL_FRAMING : [QUOTA_DOLLARS, ...BILL_FRAMING];
+      for (const re of patterns) {
         const m = text.match(re);
         if (m) offenders.push(`${where}: "${m[0]}"`);
       }
