@@ -296,7 +296,7 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
         type: "array",
         items: { type: "string", enum: ["email", "phone"] },
         description:
-          "Channels to PURCHASE (email 25c, phone 250c, success-only, already-owned values are free). Empty = free identity tier.",
+          "Channels to PURCHASE (email ~8, phone ~84 cost_cents, success-only, already-owned values are free). Empty = free identity tier.",
       },
       max_cost: {
         type: "number",

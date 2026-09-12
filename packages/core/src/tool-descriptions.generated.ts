@@ -1427,8 +1427,8 @@ contact channels. Polls up to \`wait_seconds\` (default 45); a longer job return
 **Free vs paid — never spend silently.** Default (\`qualify: false\`,
 \`channels: []\`) is FREE: company profile + fit score + cached research +
 contact identity. Paid: \`qualify: true\` (~94 cost_cents per candidate
-EXAMINED, capped by \`exploration_cap\`/\`max_cost\`) and \`channels\` (email 25c /
-phone 250c, success-only). Enforced in code: a paid call is WITHHELD unless it
+EXAMINED, capped by \`exploration_cap\`/\`max_cost\`) and \`channels\` (email ~8 /
+phone ~84 cost_cents, success-only; the quote is exact). Enforced in code: a paid call is WITHHELD unless it
 carries \`confirm: true\` — nothing is submitted and you get
 \`mode: "needs_confirmation"\` with a real quote to show the user. Re-call with
 \`confirm: true\` on their go-ahead ("spend / get their emails" counts).
@@ -3964,7 +3964,7 @@ IBP reasoning) — "here's why to skip this account" is a deliverable.
 \`qualify: true\` (the default) costs ~94 cost_cents per lead needing FRESH
 research+scoring — but repeat calls reuse every fresh cached stage
 (\`from_cache\` flags on the items) and converge to near-zero cost. \`channels\`
-purchase verified email (25c) / phone (250c) on success only;
+purchase verified email (~8) / phone (~84 cost_cents) on success only;
 \`already_owned\` values cost nothing.
 
 The gate is enforced in code, not just here: a PAID call (\`qualify\` left at
@@ -6110,8 +6110,8 @@ contact channels. Polls up to \`wait_seconds\` (default 45); a longer job return
 **Free vs paid — never spend silently.** Default (\`qualify: false\`,
 \`channels: []\`) is FREE: company profile + fit score + cached research +
 contact identity. Paid: \`qualify: true\` (~94 cost_cents per candidate
-EXAMINED, capped by \`exploration_cap\`/\`max_cost\`) and \`channels\` (email 25c /
-phone 250c, success-only). Enforced in code: a paid call is WITHHELD unless it
+EXAMINED, capped by \`exploration_cap\`/\`max_cost\`) and \`channels\` (email ~8 /
+phone ~84 cost_cents, success-only; the quote is exact). Enforced in code: a paid call is WITHHELD unless it
 carries \`confirm: true\` — nothing is submitted and you get
 \`mode: "needs_confirmation"\` with a real quote to show the user. Re-call with
 \`confirm: true\` on their go-ahead ("spend / get their emails" counts).

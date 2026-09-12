@@ -167,7 +167,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
         type: "array",
         items: { type: "string", enum: ["email", "phone"] },
         description:
-          "Contact channels to PURCHASE (email 25c, phone 250c, billed on success only). Empty = free identity tier.",
+          "Contact channels to PURCHASE (email ~8, phone ~84 cost_cents, billed on success only). Empty = free identity tier.",
       },
       exclude_lead_ids: {
         type: "array",

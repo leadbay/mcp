@@ -35,7 +35,7 @@ stream per-item and are collected by polling.
 
 Free tier: `qualify: false, channels: []` costs **0** and still returns company
 + fit score + cached research + contact identity. Paid capabilities (fresh AI
-qualification ~94c/candidate examined, email 25c / phone 250c on success) are
+qualification ~94c/candidate examined, email ~8c / phone ~84c on success) are
 opt-in flags with a `dry_run` forecast and a `max_cost` cap.
 
 ## Personas
