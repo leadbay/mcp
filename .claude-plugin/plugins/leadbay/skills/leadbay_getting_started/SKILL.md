@@ -201,18 +201,17 @@ On click: call `leadbay_account_status` (it takes no arguments).
 **Show them their actual account — this is the payoff of the click.** Lead with
 one line on who they're signed in as and their organization, then render their
 **quota windows in full**, exactly as the web app shows them: Daily / Weekly /
-Monthly, each with a `▰▱` gauge, % used, and when it
+Monthly, each with a `▰▱` gauge, % used, $ spent against the cap, and when it
 resets — plus the per-resource breakdown underneath. A one-line "you're
 connected as X" is an under-delivery: they clicked a button labelled *check my
 account status*, so show them the status.
 
-## RENDERING — quota windows (percentage used, like the frontend)
+## RENDERING — quota windows (percentage + $, like the frontend)
 
 Mirror the Leadbay web quota widget: three windows side by side — **Daily**,
-**Weekly**, **Monthly** — each headlined by a **% used** gauge, with a
-per-resource usage breakdown underneath. **Never speak in raw "credits" or in
-money** for quota — the unit is a percentage of the plan's allowance. The user's
-plan or top-up covers this work; a dollar figure reads as a bill.
+**Weekly**, **Monthly** — each headlined by a **% used** gauge and a **$ spend /
+$ cap** figure, with a per-resource usage breakdown underneath. **Never speak in
+raw "credits"** for quota — the unit is a percentage and a dollar spend.
 
 **Include the quota whenever it is readable** — as part of the default account
 answer, even when the user only asked "what account am I connected to?". The
@@ -246,14 +245,14 @@ this pre-check exists to avoid.
 `window_type` (`"daily"` / `"weekly"` / `"monthly"`).
 
 **Headline — when `<group>.spend[]` has an entry for the window (the % gauge):**
-- `pct = round(current_units / max_units × 100)`. The units are internal: never
-  print them and never convert them to money.
+- `pct = round(current_units / max_units × 100)` (both are dollar_cents).
+- `$used = (current_units / 100).toFixed(2)`, `$cap = (max_units / 100).toFixed(2)`.
 - 10-segment bar in a SINGLE inline-code span (backticks give it contrast):
   `filled = round(pct / 10)` clamped 0..10; `bar = "▰"×filled + "▱"×(10 − filled)`.
   Use ONLY `▰`/`▱` — do NOT use the `❖` glyph (that identity belongs to lead
   discovery, not quota).
-- Line: **`<Window>`** `` `▰▰▱▱▱▱▱▱▱▱` `` `<pct>% used · resets <resets_at, relative>`.
-  e.g. `**Daily** ` + `` `▰▱▱▱▱▱▱▱▱▱` `` + ` 7% used · resets in ~7 h`.
+- Line: **`<Window>`** `` `▰▰▱▱▱▱▱▱▱▱` `` `<pct>% used · $<used> / $<cap> · resets <resets_at, relative>`.
+  e.g. `**Daily** ` + `` `▰▱▱▱▱▱▱▱▱▱` `` + ` 7% used · $0.84 / $12.00 · resets in ~7 h`.
 
 **Fallback — when `<group>.spend[]` is empty** (internal / free orgs have no
 OVERALL_SPEND quota): no gauge. Render the per-window resource breakdown as a
@@ -277,7 +276,7 @@ days"), computed against now — mirroring the widget's "réinitialisé dans X".
 raw value is an ISO-8601 timestamp.
 
 **Top-up (optional, subordinate).** When `quota.topup` is present, you MAY add one
-small line below the windows: `Top-up: <round(remaining_cents / total_credit_cents × 100)>% left`.
+small line below the windows: `Top-up: $<remaining_cents/100> of $<total_credit_cents/100> left`.
 Keep it secondary — the three window gauges are the headline. Omit when null.
 
 **Legend** (once, below): `` `▰` used · `▱` remaining ``.
@@ -289,7 +288,7 @@ good, bad, or something to worry about. Say, in your own words:
 
 - **What it counts** — the AI work Leadbay does on their behalf: researching
   companies on the web and qualifying leads against their criteria. Not
-  "credits" and not money: it is work their plan already includes, not a bill.
+  "credits", and not something they spend by clicking around.
 - **Why it matters to them** — it paces how many fresh leads arrive. Heavy use
   now means Leadbay queues up a bigger batch for next time; and if a batch ever
   comes back smaller than expected, this is where they'd see why. Each window

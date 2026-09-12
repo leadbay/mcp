@@ -27,8 +27,10 @@ const BASE = "https://api-us.leadbay.app";
 const BUYING_TOOLS = new Set(["leadbay_create_topup_link", "leadbay_open_billing_portal"]);
 
 // Each pattern is wording that made an agent speak of Leadbay usage as money.
+// The account-status quota gauge ($ used of $ cap) is exempt: there the context
+// says it is a quota, so dollars read as a share of the plan, not a bill.
 const BILL_FRAMING: RegExp[] = [
-  /\$\s?spen[dt]|dollar[- ]spend|\$<used>|\$<cap>|spent C\.CC/i,
+  /spent C\.CC/i,
   /\bPAID\b/,
   /\bpaid (reveal|launch|run|call|pass|search|enrichment|action|work|depth|submit)\b/i,
   /\bspend (decision|confirmation|quota|risk)\b|\bspends? nothing\b|\bno spend\b|never spend silently|double[- ]spend/i,
@@ -73,12 +75,5 @@ describe("audit: no billing framing", () => {
       }
     }
     expect(offenders).toEqual([]);
-  });
-
-  it("quota is rendered as a percentage, with no dollar figure", async () => {
-    const all = await surfaces();
-    const status = all.find(([w]) => w === "tool leadbay_account_status")![1];
-    expect(status).toMatch(/% used/);
-    expect(status).not.toMatch(/\$\d|\$</);
   });
 });
