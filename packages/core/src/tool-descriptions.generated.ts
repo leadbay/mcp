@@ -2600,8 +2600,9 @@ render UUIDs or cursors.
 ---
 
 Cumulative snapshot of a lead-delivery job: state, funnel counters, every
-item emitted so far (full lead payloads for delivered/degraded, honest
-status_reason for skipped), spend + breakdown, and the \`explain\` block
+item emitted so far (compact lead payloads for delivered/degraded, with
+one reason and the freshest signals; full evidence via
+\`leadbay_research_lead_by_id\`; honest status_reason for skipped), spend + breakdown, and the \`explain\` block
 (basis, seed strategy, scope notes). Items are immutable once emitted —
 polling never re-reads live data, so numbers only ever grow.
 
