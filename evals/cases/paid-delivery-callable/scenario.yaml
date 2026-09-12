@@ -1,0 +1,17 @@
+version: 1
+id: paid-delivery-callable
+regions:
+- us
+languages:
+- en
+starting_state:
+- A dedicated tenant with a saved ICP, credits that cover the request, known region, and the relevant delivery tools exposed.
+user_decisions:
+- when: The product asks the user to approve spending before it starts or continues the work.
+  reply: Yes, spend is approved.
+- when: The product reports that the work is still running.
+  reply: Check on it.
+- when: The product asks which people to look for.
+  reply: The owner, the general manager or the events manager, with phone and email.
+variants: []
+datasets: []
