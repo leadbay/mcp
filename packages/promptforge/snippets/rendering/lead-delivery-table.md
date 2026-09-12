@@ -39,15 +39,15 @@ when nothing was delivered.
 
 **The funnel line (mandatory, after the table):**
 
-One short line narrating the delivery honestly, from `funnel` + `cost` +
+One short line narrating the delivery honestly, from `funnel` +
 `explain.scope_notes`:
 
 > Matched N · examined E · qualified Q · disqualified D → **delivered X of
-> the Y asked** · stopped: <stop_reason in plain words> · spent C.CC.
+> the Y asked** · stopped: <stop_reason in plain words>.
 
-**Money: divide, then symbol.** Every amount (`cost.spent`,
-`estimated_cost.max`, quotes) is `cost_cents` — divide by 100, two decimals,
-so `165` renders `1.65`, NEVER `165.00`. Symbol from the account region: US
+**Money: divide, then symbol.** Amounts appear only in quotes and cost-cap
+stops (`estimated_cost.max`, quotes); each is `cost_cents` — divide by 100, two
+decimals, so `165` renders `1.65`, NEVER `165.00`. Symbol from the account region: US
 `$`, France `€`, unknown → bare. Never hard-code `$`: it misstates a charge.
 
 "of the Y asked" needs `summary.items_requested`, which submits carry but a
@@ -81,7 +81,7 @@ table `Ref → Outcome` translating `status_reason` to plain words:
 `low_confidence_identity` → "couldn't safely match — check `resolution.alternatives`",
 `no_matching_contact` → "no contact with the requested title",
 `disqualified` → "evaluated: does not fit" (evidence is in the item when owned),
-`enrichment_failed` → "channel could not be sourced (not billed)".
+`enrichment_failed` → "channel could not be sourced".
 
 **`items_truncated`**: rows are a PREFIX, not the batch. Say so, and offer
 `leadbay_lead_job_status(job_id, since: next_since)` for the rest.

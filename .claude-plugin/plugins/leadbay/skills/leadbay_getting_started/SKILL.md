@@ -206,17 +206,17 @@ resets — plus the per-resource breakdown underneath. A one-line "you're
 connected as X" is an under-delivery: they clicked a button labelled *check my
 account status*, so show them the status.
 
-## RENDERING — quota windows (percentage + $, like the frontend)
+## RENDERING — quota windows (percentage used, like the frontend)
 
 Mirror the Leadbay web quota widget: three windows side by side — **Daily**,
-**Weekly**, **Monthly** — each headlined by a **% used** gauge and a **$ spend /
-$ cap** figure, with a per-resource usage breakdown underneath. **Never speak in
-raw "credits"** for quota — the unit is a percentage and a dollar spend.
+**Weekly**, **Monthly** — each headlined by a **% used** gauge and its reset
+time, with a per-resource usage breakdown underneath. **Never speak in raw
+"credits"** for quota — the unit is a percentage.
 
-**Include the quota whenever it is readable** — as part of the default account
-answer, even when the user only asked "what account am I connected to?". The
-sole reason to omit it is the silence gate below (unreadable quota, or an
-unlimited account); it is NOT gated on the user explicitly asking for quota.
+**Show the quota only when it matters** — when the user asks about their quota,
+usage or account status, or when a window is exhausted and blocks what they
+asked for. A plain "what account am I connected to?" is answered with user +
+org alone. Even then, the silence gate below comes first.
 
 **Silence gate (check FIRST).** Render NOTHING about quota when any of these
 holds — do not mention quota at all, do not say "unreadable", never tell the user
@@ -246,13 +246,12 @@ this pre-check exists to avoid.
 
 **Headline — when `<group>.spend[]` has an entry for the window (the % gauge):**
 - `pct = round(current_units / max_units × 100)` (both are dollar_cents).
-- `$used = (current_units / 100).toFixed(2)`, `$cap = (max_units / 100).toFixed(2)`.
 - 10-segment bar in a SINGLE inline-code span (backticks give it contrast):
   `filled = round(pct / 10)` clamped 0..10; `bar = "▰"×filled + "▱"×(10 − filled)`.
   Use ONLY `▰`/`▱` — do NOT use the `❖` glyph (that identity belongs to lead
   discovery, not quota).
-- Line: **`<Window>`** `` `▰▰▱▱▱▱▱▱▱▱` `` `<pct>% used · $<used> / $<cap> · resets <resets_at, relative>`.
-  e.g. `**Daily** ` + `` `▰▱▱▱▱▱▱▱▱▱` `` + ` 7% used · $0.84 / $12.00 · resets in ~7 h`.
+- Line: **`<Window>`** `` `▰▰▱▱▱▱▱▱▱▱` `` `<pct>% used · resets <resets_at, relative>`.
+  e.g. `**Daily** ` + `` `▰▱▱▱▱▱▱▱▱▱` `` + ` 7% used · resets in ~7 h`.
 
 **Fallback — when `<group>.spend[]` is empty** (internal / free orgs have no
 OVERALL_SPEND quota): no gauge. Render the per-window resource breakdown as a
@@ -274,10 +273,6 @@ Skip any resource type not in this map silently — never dump the raw
 **`resets_at`.** Show as a relative countdown ("resets in ~7 h", "resets in 3
 days"), computed against now — mirroring the widget's "réinitialisé dans X". The
 raw value is an ISO-8601 timestamp.
-
-**Top-up (optional, subordinate).** When `quota.topup` is present, you MAY add one
-small line below the windows: `Top-up: $<remaining_cents/100> of $<total_credit_cents/100> left`.
-Keep it secondary — the three window gauges are the headline. Omit when null.
 
 **Legend** (once, below): `` `▰` used · `▱` remaining ``.
 
@@ -533,11 +528,8 @@ count plateaus across a few spaced polls. Then report the contact that actually
 resolved: name, title, and the email/phone that came back. Contacts sometimes
 don't resolve; say so honestly rather than implying success.
 
-**Then close the loop** — one line: one credit per contact revealed, so this
-cost one. And say the thing that makes it land: the draft from GATE 3 now has a
-real person and a real address to go to. This is the moment GATE 1's quota
-numbers stop being abstract, because they just watched them move and got
-something for it. Don't turn it into a pricing pitch.
+**Then close the loop** — one line that makes it land: the draft from GATE 3
+now has a real person and a real address to go to.
 
 If they decline the reveal, that's fine — keep the draft and the title, and
 let it go without pushing — the tour is done either way.

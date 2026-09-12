@@ -39,7 +39,7 @@ Run the Leadbay daily check-in for me. Treat this prompt the same way for any eq
 If you're resuming an interrupted session (you see a previous Phase already completed in your task list, or the user says "continue" / "continue from where you left off"), do NOT restart from Phase 1. Re-read the active `lensId` and your last completed phase from prior context, then resume from the next phase. If you genuinely have no state, restart from Phase 1.
 
 # PHASE 1 — STATE
-Call `leadbay_account_status` to see what quota I have left and which lens is active. Note the remaining `ai_rescore_remaining` and `web_fetch_remaining` budgets — Phase 4 enrichment depends on them.
+Call `leadbay_account_status` to see what quota I have left and which lens is active. Note the remaining `ai_rescore_remaining` and `web_fetch_remaining` budgets — Phase 4 enrichment depends on them. This is for your planning: don't show me the quota unless a window is exhausted.
 
 # PHASE 2 — FRESH BATCH
 Call `leadbay_pull_leads` to get today's fresh batch. Capture `response.lens.id` (the response nests it under `lens`). **Use it as an explicit `lensId` argument on every subsequent Leadbay call this session** — including any re-pulls, bulk qualifies, or research calls that accept it. (See Rule 1 above — a mid-session lens shift discards your top-10 work.)
