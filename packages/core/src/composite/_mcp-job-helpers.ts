@@ -815,7 +815,7 @@ const MAX_ALTERNATIVE_CONTACTS = 1;
 const RESULT_CHARS = 52_000;
 // What a row costs once its prose is dropped. Every row still to come keeps
 // this much in reserve, so a 50-lead job keeps its last contacts.
-const LEAN_ROW_CHARS = 650;
+const LEAN_ROW_CHARS = 700;
 
 function clip(s: unknown, n: number): string | undefined {
   if (typeof s !== "string" || s.length === 0) return undefined;
@@ -864,7 +864,9 @@ export function compactLead(lead: Record<string, any>, lean = false): Record<str
       website: company.website,
       location,
       employees: company.employees,
-      description: lean ? undefined : clip(company.description ?? company.short_description, 140),
+      // Kept on trimmed rows too: it is the rendering rules' last fallback for
+      // "why it fits" once the reason and the tags are gone.
+      description: clip(company.description ?? company.short_description, lean ? 80 : 140),
     },
     fit: {
       available: fit.available,
@@ -889,8 +891,12 @@ export function compactLead(lead: Record<string, any>, lean = false): Record<str
       : (Array.isArray(lead.alternative_contacts) ? lead.alternative_contacts : [])
           .slice(0, MAX_ALTERNATIVE_CONTACTS)
           .map(compactContact),
+    // Unbounded, so only full rows carry it: they are measured, trimmed rows
+    // are only reserved for.
     custom_fields:
-      Array.isArray(lead.custom_fields) && lead.custom_fields.length > 0 ? lead.custom_fields : undefined,
+      !lean && Array.isArray(lead.custom_fields) && lead.custom_fields.length > 0
+        ? lead.custom_fields
+        : undefined,
     evidence_trimmed: lean ? true : undefined,
   };
 }

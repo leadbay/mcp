@@ -162,6 +162,22 @@ describe("lead-job results fit in one host result", () => {
     expect(last.fit.score).toBe(90);
     expect(last.contact.channels.email.value).toBe("nate@venue49.com");
   });
+
+  it("trimmed rows keep a short description and drop unbounded custom fields", async () => {
+    const body = snapshot(50);
+    for (const item of body.items as any[]) {
+      item.lead.custom_fields = [{ name: "notes", value: text(2000) }];
+    }
+    mockHttp([{ method: "GET", path: `/1.6/mcp/jobs/${JOB_ID}?limit=100`, status: 200, body }]);
+    const result = await leadJobStatus.execute(newClient(), { job_id: JOB_ID });
+    expect(JSON.stringify(result).length).toBeLessThan(HOST_RESULT_CHARS);
+
+    const last = result.leads[49].lead;
+    expect(last.evidence_trimmed).toBe(true);
+    expect(last.company.description.length).toBeLessThanOrEqual(80);
+    expect(last.custom_fields).toBeUndefined();
+    expect(result.leads[0].lead.custom_fields).toHaveLength(1);
+  });
 });
 
 describe("lead-job pacing 429s are not a credit wall", () => {
@@ -218,5 +234,20 @@ describe("lead-job pacing 429s are not a credit wall", () => {
       .catch((e) => e);
     expect(err.code).toBe("QUOTA_EXCEEDED");
     expect(err.hint).toMatch(/leadbay_create_topup_link/);
+  });
+
+  it("the pacing wording applies to the submit endpoints only", async () => {
+    mockHttp([
+      {
+        method: "GET",
+        path: `/1.6/mcp/jobs/${JOB_ID}?limit=100`,
+        status: 429,
+        body: { error: { code: "rate_limited", message: "slow down" } },
+      },
+    ]);
+    const err: any = await leadJobStatus.execute(newClient(), { job_id: JOB_ID }).catch((e) => e);
+    expect(err.code).toBe("QUOTA_EXCEEDED");
+    expect(err.hint).toMatch(/leadbay_create_topup_link/);
+    expect(err.hint).not.toMatch(/not credits/);
   });
 });

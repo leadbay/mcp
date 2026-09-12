@@ -1316,10 +1316,15 @@ export class LeadbayClient {
     // (McpSubmitService.refusal). Reported as a credit wall, they made the
     // agent offer a Stripe link on an unlimited org (SnapLock rehearsal,
     // 2026-09-11). The code stays QUOTA_EXCEEDED for the callers that branch
-    // on it.
+    // on it. Only the two submit endpoints send these codes, so the wording is
+    // scoped to them: a real quota 429 elsewhere keeps its top-up hint.
     const refusalCode =
       typeof parsed?.error === "string" ? parsed.error : parsed?.error?.code;
-    if (status === 429 && (refusalCode === "rate_limited" || refusalCode === "active_job_cap")) {
+    if (
+      status === 429 &&
+      (refusalCode === "rate_limited" || refusalCode === "active_job_cap") &&
+      /^\/mcp\/(search|qualify)(\?|$)/.test(endpoint)
+    ) {
       const wait = retryAfter ? `${retryAfter}s` : "a few minutes";
       return this.makeError(
         "QUOTA_EXCEEDED",
