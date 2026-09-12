@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.38.1 — 2026-09-12 — A big lead list reaches Claude whole
+
+- **Asking for 30 leads no longer loses the answer.** A finished search with
+  many leads came back too big for Claude to read, so it saw nothing and
+  started guessing. The result is now about a fifth of the size and lands in
+  the conversation.
+- **"Slow down" no longer reads as "out of credits".** Start too many searches
+  at once and Claude now says to wait a few minutes. It used to offer you a
+  top-up, even on an unlimited plan.
+- **Checking on an email or phone lookup counts right.** It used to show 0
+  done while the contacts were arriving.
+- **A search asked to find contacts keeps enough budget to buy them.** Leadbay
+  no longer spends it all on qualification first, and Claude now describes
+  that correctly.
+- **Claude talks about your plan's quota, not prices.** It no longer quotes a
+  cost per lead. Your account status still shows the quota you have used.
+
 ## 0.38.0 — 2026-09-10 — Claude can tell you which Leadbay version you are on
 
 - **"What version of Leadbay are you running?"** now gets a real answer. Claude
