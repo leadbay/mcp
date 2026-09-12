@@ -63,7 +63,7 @@ describe("leadbay_find_new_leads — malformed exclude_lead_ids", () => {
     // The hint has to carry the consequence: this is a PAID path and the
     // dropped exclusion is the lead the caller is trying not to pay for.
     const e = await refusal([123]);
-    expect(e!.hint).toMatch(/charge|pay/i);
+    expect(e!.hint).toMatch(/quota/i);
   });
 
   it("nothing reaches the wire", async () => {
