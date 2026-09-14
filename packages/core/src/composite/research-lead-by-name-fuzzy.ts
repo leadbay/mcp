@@ -86,6 +86,36 @@ function suggestionLeadId(suggestion: SearchSuggestion): string | undefined {
   return suggestion.lead_id ?? suggestion.leadId;
 }
 
+function nameWords(name: string): string[] {
+  return name
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+}
+
+// /search/suggest is a typeahead. Besides word matches, it returns any lead
+// whose name is within trigram similarity 0.3 of the query, so "THEOMA GESTION
+// PRIVEE" comes back as PILOTE GESTION (product#4130). This tool answers with
+// one company, so a company hit counts only when every word of one name is in
+// the other: "Wink Lab" still finds WINK, "acme" still finds Acme Labs. Domain
+// and contact hits are substring and word matches already.
+export function isWordMatch(
+  query: string,
+  suggestion: SearchSuggestion
+): boolean {
+  const matchType = suggestion.match_type ?? suggestion.matchType;
+  if (matchType === "DOMAIN" || matchType === "PERSON") return true;
+  const asked = nameWords(query);
+  const found = nameWords(suggestionName(suggestion));
+  if (asked.length === 0 || found.length === 0) return false;
+  return (
+    asked.every((word) => found.includes(word)) ||
+    found.every((word) => asked.includes(word))
+  );
+}
+
 function isLeadbayError(error: unknown): error is LeadbayError {
   return (
     typeof error === "object" &&
@@ -183,6 +213,7 @@ async function resolveAcrossVisibleCorpus(
     `/search/suggest?q=${encodeURIComponent(query)}`
   );
   return suggestions
+    .filter((suggestion) => isWordMatch(query, suggestion))
     .map((suggestion) => {
       const id = suggestionLeadId(suggestion);
       return {
