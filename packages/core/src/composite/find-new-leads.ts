@@ -148,12 +148,15 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       },
       min_ai_score: {
         type: "number",
+        minimum: -30,
+        maximum: 30,
         description:
           "Disqualification floor on the [-30,+30] qualification DELTA (not the 0-100 fit score). Default 0. Lower to -30 to keep every evaluated lead with its evidence.",
       },
       contact_titles: {
         type: "array",
         items: { type: "string" },
+        maxItems: 10,
         description:
           "Wanted decision-maker titles (max 10), matched semantically cross-language.",
       },
