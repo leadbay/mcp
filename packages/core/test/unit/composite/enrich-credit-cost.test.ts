@@ -11,6 +11,7 @@
  * New file (existing test files are never modified).
  */
 
+import { resetLaunchGuard } from "../../../src/jobs/launch-guard.js";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockHttp, resetHttpMock, httpsMockFactory } from "../../harness.js";
 
@@ -19,9 +20,10 @@ vi.mock("node:https", () => httpsMockFactory());
 import { LeadbayClient } from "../../../src/client.js";
 import { enrichTitles } from "../../../src/composite/enrich-titles.js";
 import { bulkEnrichStatus } from "../../../src/composite/bulk-enrich-status.js";
-import { InMemoryBulkStore } from "../../../src/jobs/bulk-store.js";
 import { readCreditsRemaining } from "../../../src/composite/_credits-helpers.js";
 
+const LEAD_IDS = ["lead-a", "lead-b"];
+const NOTIF_ID = "11d949d5-f4e9-4591-b106-f289b863b298";
 const BASE = "https://api-us.leadbay.app";
 const LENS_ID = 7;
 const LEAD_A = "lead-a";
@@ -51,13 +53,35 @@ function contact(id: string, enrichment: any) {
   };
 }
 
-beforeEach(() => resetHttpMock());
+beforeEach(() => {
+  resetHttpMock();
+  resetLaunchGuard();
+});
 
 // ─── helper in isolation ────────────────────────────────────────────────────
 
 describe("readCreditsRemaining", () => {
   it("returns ai_credits from billing", async () => {
     mockHttp([
+      {
+        method: "GET",
+        path: /^\/1\.6\/notifications/,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: NOTIF_ID,
+              created_at: "2026-09-01T10:00:00Z",
+              in_progress: false,
+              links: [{ type: "bulk_enrichment", id: 7 }],
+              bulk_progress: { total_count: 1, success_count: 1, failure_count: 0, quota_hit_count: 0 },
+              file_import_id: null,
+            },
+          ],
+          total_unseen: 0,
+          pagination: { page: 0, pages: 1, count: 1 },
+        },
+      },
       {
         method: "GET",
         path: "/1.6/users/me",
@@ -72,6 +96,25 @@ describe("readCreditsRemaining", () => {
     mockHttp([
       {
         method: "GET",
+        path: /^\/1\.6\/notifications/,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: NOTIF_ID,
+              created_at: "2026-09-01T10:00:00Z",
+              in_progress: false,
+              links: [{ type: "bulk_enrichment", id: 7 }],
+              bulk_progress: { total_count: 1, success_count: 1, failure_count: 0, quota_hit_count: 0 },
+              file_import_id: null,
+            },
+          ],
+          total_unseen: 0,
+          pagination: { page: 0, pages: 1, count: 1 },
+        },
+      },
+      {
+        method: "GET",
         path: "/1.6/users/me",
         status: 200,
         body: { id: "u", organization: { id: "org-1" } },
@@ -82,6 +125,25 @@ describe("readCreditsRemaining", () => {
 
   it("returns null when /users/me fails — advisory, never throws", async () => {
     mockHttp([
+      {
+        method: "GET",
+        path: /^\/1\.6\/notifications/,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: NOTIF_ID,
+              created_at: "2026-09-01T10:00:00Z",
+              in_progress: false,
+              links: [{ type: "bulk_enrichment", id: 7 }],
+              bulk_progress: { total_count: 1, success_count: 1, failure_count: 0, quota_hit_count: 0 },
+              file_import_id: null,
+            },
+          ],
+          total_unseen: 0,
+          pagination: { page: 0, pages: 1, count: 1 },
+        },
+      },
       { method: "GET", path: "/1.6/users/me", status: 500, body: { message: "boom" } },
     ]);
     expect(await readCreditsRemaining(newClient())).toBeNull();
@@ -92,18 +154,27 @@ describe("readCreditsRemaining", () => {
 
 describe("bulk_enrich_status — credits_remaining only", () => {
   it("re-reads balance when all_done and does NOT report a credits-used figure", async () => {
-    const tracker = new InMemoryBulkStore();
-    const { record } = await tracker.findOrCreatePending({
-      lead_ids: [LEAD_A, LEAD_B],
-      titles: [TITLE],
-      email: true,
-      phone: false,
-      lens_id: LENS_ID,
-      selection_source: "explicit",
-    });
-    await tracker.markLaunched(record.bulk_id);
 
     mockHttp([
+      {
+        method: "GET",
+        path: /^\/1\.6\/notifications/,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: NOTIF_ID,
+              created_at: "2026-09-01T10:00:00Z",
+              in_progress: false,
+              links: [{ type: "bulk_enrichment", id: 7 }],
+              bulk_progress: { total_count: 1, success_count: 1, failure_count: 0, quota_hit_count: 0 },
+              file_import_id: null,
+            },
+          ],
+          total_unseen: 0,
+          pagination: { page: 0, pages: 1, count: 1 },
+        },
+      },
       {
         method: "GET",
         path: /\/leads\/lead-a\/contacts\?IncludeEnriched=true/,
@@ -139,8 +210,8 @@ describe("bulk_enrich_status — credits_remaining only", () => {
 
     const status: any = await bulkEnrichStatus.execute(
       newClient(),
-      { bulk_id: record.bulk_id },
-      { bulkTracker: tracker }
+      { notification_id: NOTIF_ID, lead_ids: LEAD_IDS, include_contacts: true },
+      { }
     );
 
     expect(status.all_done).toBe(true);
@@ -154,18 +225,27 @@ describe("bulk_enrich_status — credits_remaining only", () => {
     // The bug scenario: LEAD_A already has a CFO contact enriched earlier
     // (credits_used: 9). This bulk only ordered the CEO. getContacts returns
     // BOTH. We must NOT surface 9 (or 9+anything) as this run's spend.
-    const tracker = new InMemoryBulkStore();
-    const { record } = await tracker.findOrCreatePending({
-      lead_ids: [LEAD_A],
-      titles: [TITLE],
-      email: true,
-      phone: false,
-      lens_id: LENS_ID,
-      selection_source: "explicit",
-    });
-    await tracker.markLaunched(record.bulk_id);
 
     mockHttp([
+      {
+        method: "GET",
+        path: /^\/1\.6\/notifications/,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: NOTIF_ID,
+              created_at: "2026-09-01T10:00:00Z",
+              in_progress: false,
+              links: [{ type: "bulk_enrichment", id: 7 }],
+              bulk_progress: { total_count: 1, success_count: 1, failure_count: 0, quota_hit_count: 0 },
+              file_import_id: null,
+            },
+          ],
+          total_unseen: 0,
+          pagination: { page: 0, pages: 1, count: 1 },
+        },
+      },
       {
         method: "GET",
         path: /\/leads\/lead-a\/contacts\?IncludeEnriched=true/,
@@ -191,8 +271,8 @@ describe("bulk_enrich_status — credits_remaining only", () => {
 
     const status: any = await bulkEnrichStatus.execute(
       newClient(),
-      { bulk_id: record.bulk_id },
-      { bulkTracker: tracker }
+      { notification_id: NOTIF_ID, lead_ids: [LEAD_A], titles: [TITLE], include_contacts: true },
+      { }
     );
 
     expect(status.all_done).toBe(true);
@@ -206,7 +286,6 @@ describe("bulk_enrich_status — credits_remaining only", () => {
 
 describe("enrich_titles BEFORE — balance + volume, no fabricated cost", () => {
   it("dry_run returns credits_remaining + enrichable_contacts; does not launch", async () => {
-    const tracker = new InMemoryBulkStore();
     const { requests } = mockHttp([
       { method: "POST", path: /\/leads\/selection\/select/, status: 204 },
       {
@@ -234,7 +313,7 @@ describe("enrich_titles BEFORE — balance + volume, no fabricated cost", () => 
     const res: any = await enrichTitles.execute(
       newClient(),
       { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE], dry_run: true },
-      { bulkTracker: tracker }
+      { }
     );
 
     expect(res.mode).toBe("dry_run");
@@ -246,8 +325,26 @@ describe("enrich_titles BEFORE — balance + volume, no fabricated cost", () => 
   });
 
   it("discover mode surfaces credits_remaining alongside enrichable_contacts", async () => {
-    const tracker = new InMemoryBulkStore();
     mockHttp([
+      {
+        method: "GET",
+        path: /^\/1\.6\/notifications/,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: NOTIF_ID,
+              created_at: "2026-09-01T10:00:00Z",
+              in_progress: false,
+              links: [{ type: "bulk_enrichment", id: 7 }],
+              bulk_progress: { total_count: 1, success_count: 1, failure_count: 0, quota_hit_count: 0 },
+              file_import_id: null,
+            },
+          ],
+          total_unseen: 0,
+          pagination: { page: 0, pages: 1, count: 1 },
+        },
+      },
       { method: "POST", path: /\/leads\/selection\/select/, status: 204 },
       {
         method: "GET",
@@ -273,7 +370,7 @@ describe("enrich_titles BEFORE — balance + volume, no fabricated cost", () => 
     const res: any = await enrichTitles.execute(
       newClient(),
       { leadIds: [LEAD_A], lensId: LENS_ID }, // no titles → discover
-      { bulkTracker: tracker }
+      { }
     );
 
     expect(res.mode).toBe("discover");
@@ -282,8 +379,26 @@ describe("enrich_titles BEFORE — balance + volume, no fabricated cost", () => 
   });
 
   it("dry_run with billing absent → credits_remaining null, still returns volume", async () => {
-    const tracker = new InMemoryBulkStore();
     mockHttp([
+      {
+        method: "GET",
+        path: /^\/1\.6\/notifications/,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: NOTIF_ID,
+              created_at: "2026-09-01T10:00:00Z",
+              in_progress: false,
+              links: [{ type: "bulk_enrichment", id: 7 }],
+              bulk_progress: { total_count: 1, success_count: 1, failure_count: 0, quota_hit_count: 0 },
+              file_import_id: null,
+            },
+          ],
+          total_unseen: 0,
+          pagination: { page: 0, pages: 1, count: 1 },
+        },
+      },
       { method: "POST", path: /\/leads\/selection\/select/, status: 204 },
       {
         method: "GET",
@@ -309,7 +424,7 @@ describe("enrich_titles BEFORE — balance + volume, no fabricated cost", () => 
     const res: any = await enrichTitles.execute(
       newClient(),
       { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE], dry_run: true },
-      { bulkTracker: tracker }
+      { }
     );
 
     expect(res.mode).toBe("dry_run");

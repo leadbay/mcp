@@ -309,6 +309,16 @@ shared snippet to any of the three needs a matching trim in the same commit.
 `pnpm -r test` and `pnpm -r typecheck` must be green on every PR.
 Before committing, run the full workspace pass.
 
+## Agent evaluation artifacts
+
+Behavioral evals live in `evals/`, governed by `evals/AGENTS.md`. Each case is
+exactly `scenario.yaml`, `request.md` and `acceptance.yaml`. No TypeScript,
+Python, shell helpers, callbacks or executable fields belong in a case.
+Disposable scripts are the isolated testing agent's responsibility; retain their
+execution logs outside Git. A new case does not change agent policy or CI code.
+Infrastructure in `.github/evals/` validates formats and isolates tester/verifier
+permissions. `pnpm test:eval` checks contracts, not live behavioral success.
+
 ## Review guidelines
 
 The Claude review bot
@@ -337,7 +347,11 @@ following as high-priority (P0/P1) issues:
   backtick-wrapped `leadbay_*` identifier must resolve.
 
 - **Tests.** New tests go in **new** files — do not modify existing test
-  files. Flag unit tests that make real network calls: the `node:https`
+  files. One sanctioned exception: `output-schema-conformance.test.ts`'s
+  `CASES` / `OPT_OUT` registries. Its own drift-catcher fails any tool that
+  declares an `outputSchema` without an entry in one of them, so adding a
+  schema *requires* editing that file. Add the entry there and put any new
+  behavioural assertions in a new file. Flag unit tests that make real network calls: the `node:https`
   harness throws on any undeclared endpoint, so tests must declare their HTTP
   responses via `mockHttp([...])`.
 
@@ -370,7 +384,7 @@ graph TD
     subgraph mcp["packages/mcp  (MCP stdio server)"]
         MCP_S["server.ts\nJSON-RPC entrypoint"]
         MCP_P["prompts.generated.ts\n(from promptforge)"]
-        MCP_T["tests/\n  audit/ · eval/ · smoke/ · unit/"]
+        MCP_T["tests/\n  audit/ · smoke/ · unit/"]
     end
 
     subgraph core["packages/core  (shared library)"]

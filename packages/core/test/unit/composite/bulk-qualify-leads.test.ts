@@ -5,10 +5,11 @@
  * (`POST /1.6/leads/selection/web_fetch`) so the backend creates one
  * progress notification per call — see backend/docs/adr/notifications.md
  * §4. We expect: select(leadIds) → bulk web_fetch → clear, with
- * BulkWebFetchResponsePayload.notification_id captured on the tracker
+ * BulkWebFetchResponsePayload.notification_id handed back to the agent
  * record.
  */
 
+import { resetLaunchGuard } from "../../../src/jobs/launch-guard.js";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   mockHttp,
@@ -21,7 +22,6 @@ vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
 import { bulkQualifyLeads } from "../../../src/composite/bulk-qualify-leads.js";
-import { InMemoryBulkStore } from "../../../src/jobs/bulk-store.js";
 
 const BASE = "https://api-us.leadbay.app";
 
@@ -31,11 +31,11 @@ function newClient() {
 
 beforeEach(() => {
   resetHttpMock();
+  resetLaunchGuard();
 });
 
 describe("leadbay_bulk_qualify_leads", () => {
   it("wait_for_completion=false launches bulk web_fetch via selection and persists notification_id", async () => {
-    const tracker = new InMemoryBulkStore();
     const NOTIF_ID = "11111111-2222-4333-8444-555555555555";
     mockHttp([
       {
@@ -70,14 +70,12 @@ describe("leadbay_bulk_qualify_leads", () => {
         lensId: 21580,
         wait_for_completion: false,
       },
-      { bulkTracker: tracker }
+      { }
     );
 
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(out).toMatchObject({
       status: "running",
-      handle_id: expect.any(String),
-      qualify_id: expect.any(String),
       lead_ids: ["lead-1", "lead-2"],
       launched_count: 2,
       failed: [],
@@ -90,10 +88,5 @@ describe("leadbay_bulk_qualify_leads", () => {
       "POST /1.6/leads/selection/web_fetch?force_fetch=false",
       "POST /1.6/leads/selection/clear",
     ]);
-
-    const record = await tracker.getQualify(out.qualify_id);
-    expect(record?.status).toBe("launched");
-    expect(record?.lead_ids).toEqual(["lead-1", "lead-2"]);
-    expect(record?.notification_id).toBe(NOTIF_ID);
   });
 });

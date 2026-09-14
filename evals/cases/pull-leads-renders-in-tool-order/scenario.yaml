@@ -1,0 +1,14 @@
+version: 1
+id: pull-leads-renders-in-tool-order
+regions:
+- fr
+languages:
+- en
+starting_state:
+- Discover returns AVILINE (61, new today), BRIDGEWELL (88, not new), CALDERA (74, not new), in exactly
+  that order.
+- These are French leads. Qualification overlays do not change these scores; no recommended contacts are
+  supplied.
+user_decisions: []
+variants: []
+datasets: []

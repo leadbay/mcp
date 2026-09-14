@@ -1,0 +1,75 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: Every declared starting condition was established before the product session.
+  evidence:
+  - before
+- id: outcome-1
+  statement: called leadbay_pull_leads exactly once to get today's batch
+  evidence:
+  - conversation
+  - tools
+- id: outcome-2
+  statement: surfaced an 'Enrich top leads' next step among the offered options (reveal decision-maker
+    email/phone on the top leads) — did NOT finish without offering the enrichment move
+  evidence:
+  - conversation
+  - tools
+  - billing
+- id: outcome-3
+  statement: if it acted on the enrich option, it scoped enrichment to the leads JUST shown (passed the
+    visible leads[].id, not the tool's default page-0 candidate set) and OMITTED titles so it ran the
+    no-spend discovery preview — not a paid launch
+  evidence:
+  - conversation
+  - tools
+  - billing
+  - before
+  - after
+- id: outcome-4
+  statement: did NOT silently launch a paid enrichment — the user only asked to see leads, so it did NOT
+    POST /leads/selection/enrichment/launch
+  evidence:
+  - conversation
+  - tools
+  - billing
+  - before
+  - after
+- id: outcome-5
+  statement: did NOT claim it enriched or revealed any emails/phones
+  evidence:
+  - conversation
+  - tools
+  - billing
+- id: reconciled-effects
+  statement: Persisted changes and billed work agree with the user authorization and the product report;
+    unrelated tenant records are unchanged.
+  evidence:
+  - before
+  - after
+  - billing
+  - conversation
+prohibited_effects:
+- id: prohibited-1
+  statement: No leadbay_report_outreach operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+evidence:
+- id: conversation
+  source: conversation
+  description: Complete original product conversation, user choices and final answer, with turn identifiers.
+- id: tools
+  source: tool-results
+  description: Complete original MCP requests and responses, matched by request ID, including errors and
+    unresolved calls.
+- id: before
+  source: state-before
+  description: Independent snapshot confirming every declared starting condition and tenant region.
+- id: after
+  source: state-after
+  description: Independent snapshot of affected tenant records after execution and pending job state.
+- id: billing
+  source: billing
+  description: Independent before/after billing records and job attribution for this run, including zero
+    spend.

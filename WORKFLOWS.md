@@ -66,6 +66,9 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 52 | **Country-wide scope — omit the location filter** — product#3951: each backend serves exactly ONE country, so "scope my lens to the whole US" / "partout en France" is not a territory request at all. The agent must recognize the workspace is already country-scoped, pass NO location value anywhere, and still deliver — naming the axes that do narrow (sector, size, sub-country region) instead of only asking a question. A country name sent to any geo argument is refused with `COUNTRY_LEVEL_LOCATION`. | `leadbay_adjust_audience`, `leadbay_new_lens`, `leadbay_pull_leads` | "Scope my lens to the whole US — I sell nationwide." |
 | 53 | **Lead CRM status — wanted / won / lost** — the rep states a commercial outcome on leads already on screen ("we signed Acme", "mark these three as lost", "they're a target this quarter"). `leadbay_set_lead_status` writes the org-wide `LeadStatus` (`POST /leads/{leadId}/set_status`, plus `POST /leads/{leadId}/set_status_date` when the user names a close date). Distinct from the epilogue system: epilogue records how one outreach ATTEMPT went and drives `leadbay_pull_followups` ranking, whereas lead status is the deal outcome every rep in the org sees — an agent that conflates them corrupts both. Each lead is written individually, so the result carries a `failed[]` the agent MUST report rather than claiming a clean sweep. Also reachable from a cowork artifact: `leadbay_artifact_kit`'s runtime ships `lb.leadStatus()` (the picker field) + `lb.setStatus()` (the write, with the partial-failure check baked in) so a lead board can carry a status dropdown per row. | `leadbay_set_lead_status`, `leadbay_artifact_kit` | "We just won Acme — mark them as won, closed 14 March" |
 | 54 | **Enrich one named person** — product#4050: the user (or their scheduled agent) has already picked WHO they want on a company — "get the DG's email, not the Président's" — and wants that person's email / phone. `leadbay_enrich_contacts` takes the lead id + that contact's own id and enriches exactly that person (paid-candidate path first, org-contact path on NOT_FOUND); a `source:"paid"` candidate from `leadbay_research_lead_by_id` is the normal input. On the default write surface since 0.33.4 — before that it sat behind `LEADBAY_MCP_ADVANCED=1`, which hosted never sets, so hosted agents reached for `leadbay_pin_contact` instead and got `contact not found` every time. Distinct from `leadbay_enrich_titles`, which picks people by JOB TITLE across many leads. Pinning does not enrich anyone. | `leadbay_enrich_contacts`, `leadbay_research_lead_by_id` | "Get me the managing director's email at Cromology, not the president's" |
+| 55 | **Net-new lead delivery (one ask → qualified, contactable leads)** — "find me 10 gyms around Dallas that would buy our flooring, with someone I can call". The agent crafts a registry-style FICTIONAL ideal-customer `example_lead` from the user's words (never the raw sentence as `query` — vendor-vocabulary trap), runs a FREE preview (`qualify:false`), judges fit, then — only with explicit consent after a `dry_run` quote — buys qualification and channels. Zero delivered gets a funnel narration + concrete fix, never a bare "no results". Backend: `POST /1.6/mcp/search` job. | `leadbay_new_leads` | "Find me 10 gyms around Dallas that would buy our modular flooring, with someone I can call" |
+| 56 | **Batch qualify + right contact on known companies** — "here are 60 restaurant websites from my sweep — which fit, and who's the owner?". `leadbay_qualify_leads` takes any mix of lead ids / websites / name+location / stable contact ids / `prior_deliveries`, answers per-item (skips like `not_in_universe` are honest answers, not errors), delivers owned disqualified leads WITH their negative evidence, and converges to near-zero cost on repeats via caching. Backend: `POST /1.6/mcp/qualify` job. | `leadbay_qualify_leads` | "Vet these companies from my spreadsheet against our criteria and get me the right contact at each" |
+| 57 | **Lead-delivery job polling** — a `leadbay_find_new_leads` / `leadbay_qualify_leads` run that outlives its poll window hands back a `job_id`; `leadbay_lead_job_status` re-reads the cumulative snapshot (state, funnel, items, spend) and block-waits with `wait_seconds` when the user asked to wait. | `leadbay_lead_job_status` | "Any results yet from that lead search?" |
 
 ---
 
@@ -1217,7 +1220,6 @@ render_checks:
 prompt: "Walk me through Leadbay."
 ```
 
-
 ```yaml expected
 workflow_name: Country-wide scope — omit the location filter
 prompt_name: ~
@@ -1239,6 +1241,63 @@ success_criteria:
 
 ```yaml scenario
 prompt: "Scope my lens to the whole US — I sell nationwide."
+```
+
+```yaml expected
+workflow_name: Net-new lead delivery (one ask → qualified, contactable leads)
+prompt_name: leadbay_new_leads
+required_calls:
+  - leadbay_find_new_leads
+forbidden_calls:
+  - leadbay_pull_leads
+  - leadbay_extend_lens
+success_criteria:
+  - "crafted a registry-style example_lead description of the BUYER (a fictional typical gym operator), not the seller's product, and did NOT pass the user's raw sentence as query"
+  - "left example_lead.name unset (no invented brand name)"
+  - "first call was FREE (qualify:false, no channels) with a request_id derived from the ask"
+  - "did NOT launch qualify:true or channels without a dry_run quote and explicit user consent"
+  - "rendered the delivery table and closed with the honest funnel line (matched/examined/delivered/stop reason/spend)"
+```
+
+```yaml scenario
+prompt: "Find me 10 gyms around Dallas that would buy our modular flooring, with someone I can call"
+```
+
+```yaml expected
+workflow_name: Batch qualify + right contact on known companies
+prompt_name: ~
+required_calls:
+  - leadbay_qualify_leads
+forbidden_calls:
+  - leadbay_find_new_leads
+  - leadbay_bulk_qualify_leads
+success_criteria:
+  - "passed the user's companies as lead_refs (websites/names), not as a search"
+  - "requested the Owner/General Manager titles via contact_titles"
+  - "rendered per-item outcomes including skips (not_in_universe etc.) in plain words — a skip is an answer, not an error"
+  - "did NOT purchase channels without explicit consent"
+```
+
+```yaml scenario
+prompt: "Here are 3 restaurant websites from my Austin sweep: franklinbbq.com, uchiaustin.com, terry-blacks-bbq.com — which fit our merchant profile, and who's the owner at each?"
+```
+
+```yaml expected
+workflow_name: Lead-delivery job polling
+prompt_name: ~
+required_calls:
+  - leadbay_lead_job_status
+forbidden_calls:
+  - leadbay_bulk_enrich_status
+  - leadbay_import_status
+success_criteria:
+  - "polled leadbay_lead_job_status with the job_id from the prior delivery"
+  - "did NOT misroute to the enrichment or import status tools"
+  - "on a terminal state, rendered the full delivery per the lead-delivery table; on running, reported progress and offered to check again"
+```
+
+```yaml scenario
+prompt: "Any results yet from that lead search you started earlier? Job id is 281d8b55-b357-43ed-aca9-63e50bce84a6"
 ```
 
 ## How this stays normative

@@ -1,0 +1,11 @@
+version: 1
+id: lead-delivery-routing-1
+regions:
+- us
+languages:
+- en
+starting_state:
+- A dedicated tenant with a saved ICP, test credits, known region, and the relevant delivery tools exposed.
+user_decisions: []
+variants: []
+datasets: []

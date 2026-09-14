@@ -7,6 +7,7 @@
  * enrich-titles tests are not modified.
  */
 
+import { resetLaunchGuard } from "../../../src/jobs/launch-guard.js";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockHttp, resetHttpMock, httpsMockFactory } from "../../harness.js";
 
@@ -14,7 +15,6 @@ vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
 import { enrichTitles } from "../../../src/composite/enrich-titles.js";
-import { InMemoryBulkStore } from "../../../src/jobs/bulk-store.js";
 import type { ToolContext } from "../../../src/types.js";
 
 const BASE = "https://api-us.leadbay.app";
@@ -51,13 +51,16 @@ function flow() {
   ]);
 }
 
-beforeEach(() => resetHttpMock());
+beforeEach(() => {
+  resetHttpMock();
+  resetLaunchGuard();
+});
 
 describe("enrich_titles — no-channel elicitation offers the phone opt-in", () => {
   it("elicit requests an include_phone toggle when phone was not pre-set", async () => {
     flow();
     const elicit = vi.fn(async () => ({ action: "accept" as const, content: { confirm: true } }));
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore(), elicit };
+    const ctx: ToolContext = { elicit };
 
     await enrichTitles.execute(
       newClient(),
@@ -77,7 +80,7 @@ describe("enrich_titles — no-channel elicitation offers the phone opt-in", () 
       action: "accept" as const,
       content: { confirm: true, include_phone: true },
     }));
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore(), elicit };
+    const ctx: ToolContext = { elicit };
 
     const res: any = await enrichTitles.execute(
       newClient(),
@@ -93,7 +96,7 @@ describe("enrich_titles — no-channel elicitation offers the phone opt-in", () 
   it("accepting WITHOUT include_phone launches email-only (phone stays off)", async () => {
     flow();
     const elicit = vi.fn(async () => ({ action: "accept" as const, content: { confirm: true } }));
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore(), elicit };
+    const ctx: ToolContext = { elicit };
 
     const res: any = await enrichTitles.execute(
       newClient(),
@@ -110,7 +113,7 @@ describe("enrich_titles — no-channel elicitation offers the phone opt-in", () 
     // Assert the toggle is not surfaced by confirming elicit isn't consulted.
     flow();
     const elicit = vi.fn(async () => ({ action: "accept" as const, content: { confirm: true } }));
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore(), elicit };
+    const ctx: ToolContext = { elicit };
 
     const res: any = await enrichTitles.execute(
       newClient(),

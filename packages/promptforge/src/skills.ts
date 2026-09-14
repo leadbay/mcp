@@ -138,9 +138,15 @@ export interface SkillFile {
  * comparing against disk (cmdCheck) or writing (cmdBuild).
  */
 export function buildSkillFiles(artifacts: AssembledArtifact[]): SkillFile[] {
-  return artifacts.map((a) => ({
-    name: a.frontmatter.name,
-    relativePath: `${a.frontmatter.name}/SKILL.md`,
-    content: buildSkillMarkdown(a),
-  }));
+  return artifacts
+    // A SKILL.md is a static file that auto-triggers with no runtime gate, so
+    // a release_gated prompt must not ship one at all — otherwise Claude Code
+    // enters a guided workflow whose first tool call is missing from
+    // tools/list. The MCP prompt is filtered at runtime instead.
+    .filter((a) => a.frontmatter.release_gated !== true)
+    .map((a) => ({
+      name: a.frontmatter.name,
+      relativePath: `${a.frontmatter.name}/SKILL.md`,
+      content: buildSkillMarkdown(a),
+    }));
 }

@@ -1,0 +1,13 @@
+version: 1
+id: scan-finds-ma-cohort
+regions:
+- us
+languages:
+- en
+starting_state:
+- Monitor contains QUEST DRAPE, LLC, ACME EVENTS GROUP and STILLWATER RENTALS INC.
+- Cached research says QUEST acquired Drape Kings in March 2025 (Dealroom); ACME acquired a regional competitor
+  in Q1 2025 (PR Newswire). STILLWATER only opened a warehouse and hired seasonal staff.
+user_decisions: []
+variants: []
+datasets: []

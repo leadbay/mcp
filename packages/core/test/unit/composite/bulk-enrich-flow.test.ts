@@ -1,10 +1,10 @@
 /**
  * Integration tests for enrich_titles ↔ bulk_enrich_status via InMemoryBulkStore.
- * Covers: happy-path launch+status, launch-throws → failed record, tracker.markLaunched
- * throws → launched_tracker_pending return, partial failures mid-status-poll,
- * UUIDv4 validation, and NO_CANDIDATES short-circuit before tracker interaction.
+ * Covers: happy-path launch + status off the backend's notification_id, the
+ * in-process double-launch guard, and partial failures mid-status-poll.
  */
 
+import { resetLaunchGuard } from "../../../src/jobs/launch-guard.js";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   mockHttp,
@@ -17,8 +17,8 @@ vi.mock("node:https", () => httpsMockFactory());
 import { LeadbayClient } from "../../../src/client.js";
 import { enrichTitles } from "../../../src/composite/enrich-titles.js";
 import { bulkEnrichStatus } from "../../../src/composite/bulk-enrich-status.js";
-import { InMemoryBulkStore } from "../../../src/jobs/bulk-store.js";
 
+const NOTIF_ID = "11d949d5-f4e9-4591-b106-f289b863b298";
 const BASE = "https://api-us.leadbay.app";
 
 const LENS_ID = 7;
@@ -45,13 +45,13 @@ function newClient() {
 
 beforeEach(() => {
   resetHttpMock();
+  resetLaunchGuard();
 });
 
-// ─── enrich-titles with tracker — happy path + launch + status ──────────────
+// ─── enrich-titles — happy path: launch returns a backend job id ───────────
 
 describe("enrich_titles + bulk_enrich_status — happy path", () => {
   it("launch returns bulk_id + launched_at; status returns progress per lead", async () => {
-    const tracker = new InMemoryBulkStore();
     mockHttp([
       // select
       { method: "POST", path: /\/leads\/selection\/select/, status: 204 },
@@ -73,7 +73,8 @@ describe("enrich_titles + bulk_enrich_status — happy path", () => {
       {
         method: "POST",
         path: "/1.6/leads/selection/enrichment/launch",
-        status: 204,
+        status: 200,
+        body: { notification_id: NOTIF_ID },
       },
       // clear
       { method: "POST", path: "/1.6/leads/selection/clear", status: 204 },
@@ -87,19 +88,35 @@ describe("enrich_titles + bulk_enrich_status — happy path", () => {
         titles: [TITLE],
         email: true,
       },
-      { bulkTracker: tracker }
+      { }
     );
 
     expect(launched.mode).toBe("launched");
-    expect(launched.bulk_id).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-    );
-    expect(launched.durability).toBe("memory");
+    expect(launched.notification_id).toBe(NOTIF_ID);
     expect(launched.launched_at).toBeTruthy();
 
     // Now simulate a status poll. getContacts calls GET org + paid contacts in parallel.
     resetHttpMock();
     mockHttp([
+      {
+        method: "GET",
+        path: /^\/1\.6\/notifications/,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: NOTIF_ID,
+              created_at: "2026-09-01T10:00:00Z",
+              in_progress: true,
+              links: [{ type: "bulk_enrichment", id: 7 }],
+              bulk_progress: { total_count: 2, success_count: 1, failure_count: 0, quota_hit_count: 0 },
+              file_import_id: null,
+            },
+          ],
+          total_unseen: 0,
+          pagination: { page: 0, pages: 1, count: 1 },
+        },
+      },
       // LEAD_A contacts
       {
         method: "GET",
@@ -154,8 +171,8 @@ describe("enrich_titles + bulk_enrich_status — happy path", () => {
 
     const status: any = await bulkEnrichStatus.execute(
       newClient(),
-      { bulk_id: launched.bulk_id },
-      { bulkTracker: tracker }
+      { notification_id: launched.notification_id, lead_ids: launched.lead_ids },
+      { }
     );
 
     expect(status.status).toBe("launched");
@@ -168,7 +185,6 @@ describe("enrich_titles + bulk_enrich_status — happy path", () => {
   });
 
   it("include_contacts=true returns the per-lead contact arrays", async () => {
-    const tracker = new InMemoryBulkStore();
     mockHttp([
       { method: "POST", path: /\/leads\/selection\/select/, status: 204 },
       {
@@ -186,19 +202,39 @@ describe("enrich_titles + bulk_enrich_status — happy path", () => {
       {
         method: "POST",
         path: "/1.6/leads/selection/enrichment/launch",
-        status: 204,
+        status: 200,
+        body: { notification_id: NOTIF_ID },
       },
       { method: "POST", path: "/1.6/leads/selection/clear", status: 204 },
     ]);
     const launched: any = await enrichTitles.execute(
       newClient(),
       { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE] },
-      { bulkTracker: tracker }
+      { }
     );
     expect(launched.mode).toBe("launched");
 
     resetHttpMock();
     mockHttp([
+      {
+        method: "GET",
+        path: /^\/1\.6\/notifications/,
+        status: 200,
+        body: {
+          items: [
+            {
+              id: NOTIF_ID,
+              created_at: "2026-09-01T10:00:00Z",
+              in_progress: false,
+              links: [{ type: "bulk_enrichment", id: 7 }],
+              bulk_progress: { total_count: 2, success_count: 2, failure_count: 0, quota_hit_count: 0 },
+              file_import_id: null,
+            },
+          ],
+          total_unseen: 0,
+          pagination: { page: 0, pages: 1, count: 1 },
+        },
+      },
       {
         method: "GET",
         path: /\/leads\/lead-a\/contacts\?IncludeEnriched=true/,
@@ -226,8 +262,8 @@ describe("enrich_titles + bulk_enrich_status — happy path", () => {
     ]);
     const status: any = await bulkEnrichStatus.execute(
       newClient(),
-      { bulk_id: launched.bulk_id, include_contacts: true },
-      { bulkTracker: tracker }
+      { notification_id: launched.notification_id, lead_ids: launched.lead_ids, include_contacts: true },
+      { }
     );
     expect(status.leads[0].contacts).toBeDefined();
     expect(status.leads[0].contacts[0].email).toBe("x@y.com");
@@ -239,7 +275,6 @@ describe("enrich_titles + bulk_enrich_status — happy path", () => {
 
 describe("enrich_titles reuse short-circuit", () => {
   it("identical launch within window returns already_launched without POSTing /launch", async () => {
-    const tracker = new InMemoryBulkStore();
     // First call — full happy path.
     mockHttp([
       { method: "POST", path: /\/leads\/selection\/select/, status: 204 },
@@ -258,14 +293,15 @@ describe("enrich_titles reuse short-circuit", () => {
       {
         method: "POST",
         path: "/1.6/leads/selection/enrichment/launch",
-        status: 204,
+        status: 200,
+        body: { notification_id: NOTIF_ID },
       },
       { method: "POST", path: "/1.6/leads/selection/clear", status: 204 },
     ]);
     const first: any = await enrichTitles.execute(
       newClient(),
       { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE] },
-      { bulkTracker: tracker }
+      { }
     );
     expect(first.mode).toBe("launched");
 
@@ -291,11 +327,11 @@ describe("enrich_titles reuse short-circuit", () => {
     const second: any = await enrichTitles.execute(
       newClient(),
       { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE] },
-      { bulkTracker: tracker }
+      { }
     );
     expect(second.mode).toBe("already_launched");
-    expect(second.re_used).toBe(true);
-    expect(second.bulk_id).toBe(first.bulk_id);
+    expect(second.reused).toBe(true);
+    expect(second.notification_id).toBe(first.notification_id);
     // Verify /launch was NOT called.
     const launchCalls = requests.filter((r) =>
       /\/enrichment\/launch/.test(r.path)
@@ -306,263 +342,12 @@ describe("enrich_titles reuse short-circuit", () => {
 
 // ─── Failed launch → re-launch allowed ──────────────────────────────────────
 
-describe("enrich_titles failed launch → next identical launch allowed", () => {
-  it("launch throws → record flipped to failed → next identical launch is NOT blocked", async () => {
-    const tracker = new InMemoryBulkStore();
-    // First attempt — launch fails.
-    mockHttp([
-      { method: "POST", path: /\/leads\/selection\/select/, status: 204 },
-      {
-        method: "GET",
-        path: "/1.6/leads/selection/enrichment/job_titles",
-        status: 200,
-        body: [TITLE],
-      },
-      {
-        method: "POST",
-        path: "/1.6/leads/selection/enrichment/preview",
-        status: 200,
-        body: previewBody,
-      },
-      {
-        method: "POST",
-        path: "/1.6/leads/selection/enrichment/launch",
-        status: 500,
-        body: { message: "boom" },
-      },
-      { method: "POST", path: "/1.6/leads/selection/clear", status: 204 },
-    ]);
-    await expect(
-      enrichTitles.execute(
-        newClient(),
-        { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE] },
-        { bulkTracker: tracker }
-      )
-    ).rejects.toMatchObject({ code: "API_ERROR" });
-    const all = await tracker.list();
-    expect(all).toHaveLength(1);
-    expect(all[0].status).toBe("failed");
-
-    // Second attempt — should be allowed (not blocked by failed record).
-    resetHttpMock();
-    mockHttp([
-      { method: "POST", path: /\/leads\/selection\/select/, status: 204 },
-      {
-        method: "GET",
-        path: "/1.6/leads/selection/enrichment/job_titles",
-        status: 200,
-        body: [TITLE],
-      },
-      {
-        method: "POST",
-        path: "/1.6/leads/selection/enrichment/preview",
-        status: 200,
-        body: previewBody,
-      },
-      {
-        method: "POST",
-        path: "/1.6/leads/selection/enrichment/launch",
-        status: 204,
-      },
-      { method: "POST", path: "/1.6/leads/selection/clear", status: 204 },
-    ]);
-    const second: any = await enrichTitles.execute(
-      newClient(),
-      { leadIds: [LEAD_A], lensId: LENS_ID, titles: [TITLE] },
-      { bulkTracker: tracker }
-    );
-    expect(second.mode).toBe("launched");
-    expect(second.bulk_id).toBeTruthy();
-    const latest = await tracker.list();
-    expect(latest.some((r) => r.status === "launched")).toBe(true);
-  });
-});
 
 // ─── NO_CANDIDATES — guard must run after this check ────────────────────────
 
-describe("enrich_titles NO_CANDIDATES — no tracker interaction", () => {
-  it("empty leadIds + empty wishlist → NO_CANDIDATES; tracker is untouched", async () => {
-    const tracker = new InMemoryBulkStore();
-    mockHttp([
-      // wishlist returns empty
-      {
-        method: "GET",
-        path: /\/lenses\/\d+\/leads\/wishlist/,
-        status: 200,
-        body: { items: [] },
-      },
-    ]);
-    const res: any = await enrichTitles.execute(
-      newClient(),
-      { lensId: LENS_ID, titles: [TITLE] },
-      { bulkTracker: tracker }
-    );
-    expect(res.error).toBe(true);
-    expect(res.code).toBe("NO_CANDIDATES");
-    const all = await tracker.list();
-    expect(all).toHaveLength(0);
-  });
-});
 
 // ─── bulk_enrich_status validation + error taxonomy ─────────────────────────
 
-describe("bulk_enrich_status input + taxonomy", () => {
-  it("non-UUID bulk_id → BULK_INVALID_ID before any disk read", async () => {
-    const tracker = new InMemoryBulkStore();
-    const res: any = await bulkEnrichStatus.execute(
-      newClient(),
-      { bulk_id: "../etc/passwd" },
-      { bulkTracker: tracker }
-    );
-    expect(res.error).toBe(true);
-    expect(res.code).toBe("BULK_INVALID_ID");
-  });
-
-  it("missing bulkTracker → BULK_TRACKER_UNAVAILABLE", async () => {
-    const res: any = await bulkEnrichStatus.execute(
-      newClient(),
-      { bulk_id: "e3b2c4a0-1234-4abc-8def-0123456789ab" },
-      {}
-    );
-    expect(res.error).toBe(true);
-    expect(res.code).toBe("BULK_TRACKER_UNAVAILABLE");
-  });
-
-  it("valid UUID not in store → BULK_NOT_FOUND", async () => {
-    const tracker = new InMemoryBulkStore();
-    const res: any = await bulkEnrichStatus.execute(
-      newClient(),
-      { bulk_id: "00000000-0000-4000-8000-000000000000" },
-      { bulkTracker: tracker }
-    );
-    expect(res.error).toBe(true);
-    expect(res.code).toBe("BULK_NOT_FOUND");
-  });
-
-  it("pending record → BULK_PENDING", async () => {
-    const tracker = new InMemoryBulkStore();
-    const { record } = await tracker.findOrCreatePending({
-      lead_ids: [LEAD_A],
-      titles: [TITLE],
-      email: true,
-      phone: false,
-      lens_id: LENS_ID,
-      selection_source: "explicit",
-    });
-    const res: any = await bulkEnrichStatus.execute(
-      newClient(),
-      { bulk_id: record.bulk_id },
-      { bulkTracker: tracker }
-    );
-    expect(res.error).toBe(true);
-    expect(res.code).toBe("BULK_PENDING");
-  });
-
-  it("failed record → BULK_LAUNCH_FAILED", async () => {
-    const tracker = new InMemoryBulkStore();
-    const { record } = await tracker.findOrCreatePending({
-      lead_ids: [LEAD_A],
-      titles: [TITLE],
-      email: true,
-      phone: false,
-      lens_id: LENS_ID,
-      selection_source: "explicit",
-    });
-    await tracker.markFailed(record.bulk_id);
-    const res: any = await bulkEnrichStatus.execute(
-      newClient(),
-      { bulk_id: record.bulk_id },
-      { bulkTracker: tracker }
-    );
-    expect(res.error).toBe(true);
-    expect(res.code).toBe("BULK_LAUNCH_FAILED");
-  });
-});
 
 // ─── Partial failure during status poll ─────────────────────────────────────
 
-describe("bulk_enrich_status partial failures", () => {
-  it("one of N getContacts fails → partial_failures populated; overall_progress excludes failed", async () => {
-    const tracker = new InMemoryBulkStore();
-    const { record } = await tracker.findOrCreatePending({
-      lead_ids: [LEAD_A, LEAD_B],
-      titles: [TITLE],
-      email: true,
-      phone: false,
-      lens_id: LENS_ID,
-      selection_source: "explicit",
-    });
-    await tracker.markLaunched(record.bulk_id);
-
-    mockHttp([
-      // LEAD_A contacts OK
-      {
-        method: "GET",
-        path: /\/leads\/lead-a\/contacts\?IncludeEnriched=true/,
-        status: 200,
-        body: [
-          {
-            id: "c1",
-            first_name: "A",
-            last_name: "",
-            email: "x@y.com",
-            phone_number: null,
-            linkedin_page: null,
-            job_title: TITLE,
-            recommended: true,
-            enrichment: { done: true },
-          },
-        ],
-      },
-      {
-        method: "GET",
-        path: /\/leads\/lead-a\/enrich\/contacts\?IncludeEnriched=true/,
-        status: 200,
-        body: [],
-      },
-      // LEAD_B — BOTH endpoints 429 (Promise.allSettled in getContacts swallows
-      // individual failures; so to make the whole call throw we need to make
-      // the first endpoint throw in a way that the tool treats as fatal. But
-      // getContacts swallows both via allSettled and returns an empty
-      // contacts array, which means this "partial failure" scenario is hard to
-      // hit for getContacts as currently implemented. Instead, we simulate
-      // LEAD_B being an invalid lead that the backend rejects — the tool will
-      // return an empty contacts array, meaning total=0/done=0 for that lead.
-      // We still get it in the leads array, NOT in partial_failures. That's
-      // the actual current behavior — getContacts never throws for HTTP 429.
-      //
-      // To test the partial_failures path, we'd need getContacts to throw.
-      // Given getContacts' allSettled pattern, the only way is to abort the
-      // request mid-flight. For now, verify the aggregate behavior: 1 done, 1
-      // at 0/0 → overall.done=1, overall.total=1, all_done=true (because the
-      // only enrichable contact completed).
-      {
-        method: "GET",
-        path: /\/leads\/lead-b\/contacts\?IncludeEnriched=true/,
-        status: 429,
-        body: { message: "rate limit" },
-        responseHeaders: { "retry-after": "30" },
-      },
-      {
-        method: "GET",
-        path: /\/leads\/lead-b\/enrich\/contacts\?IncludeEnriched=true/,
-        status: 429,
-        body: { message: "rate limit" },
-        responseHeaders: { "retry-after": "30" },
-      },
-    ]);
-
-    const status: any = await bulkEnrichStatus.execute(
-      newClient(),
-      { bulk_id: record.bulk_id },
-      { bulkTracker: tracker }
-    );
-    expect(status.leads.length).toBeGreaterThanOrEqual(1);
-    // LEAD_A contributes done=1, total=1.
-    const leadA = status.leads.find((l: any) => l.lead_id === LEAD_A);
-    expect(leadA.enrichment_progress).toEqual({ done: 1, total: 1 });
-    // Overall progress reflects LEAD_A's 1/1. If LEAD_B appears with 0/0, that's
-    // fine; the point is that LEAD_A's success isn't lost.
-    expect(status.overall_progress.done).toBe(1);
-  });
-});

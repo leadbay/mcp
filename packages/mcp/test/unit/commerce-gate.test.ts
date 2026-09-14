@@ -203,7 +203,7 @@ describe("commerce gate — includeCommerce:false", () => {
         ?.description ?? "";
     expect(desc).toContain("A stale quota snapshot is never a reason to gate-keep");
     // And the neutral half of the quota instruction still ships.
-    expect(instructionsOf(server)).toContain("Show the refreshed quota AFTER a paid action");
+    expect(instructionsOf(server)).toContain("Show the refreshed quota AFTER a quota-using action");
   });
 
   it("calling a dropped tool errors — it is genuinely gone, not just hidden", async () => {

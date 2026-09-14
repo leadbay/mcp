@@ -1,0 +1,12 @@
+version: 1
+id: lead-delivery-routing-5
+regions:
+- us
+languages:
+- en
+starting_state:
+- A dedicated tenant with a saved ICP, test credits, known region, and the relevant delivery tools exposed.
+- The tenant has a recorded cohort delivered last week, with known lead IDs and delivery dates.
+user_decisions: []
+variants: []
+datasets: []

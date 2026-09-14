@@ -78,7 +78,7 @@ describe("audit: getting-started walkthrough", () => {
     // (leadbay_enrich_titles matches its mutatingPattern).
     expect(modes.length).toBeGreaterThanOrEqual(3);
     const joined = modes.join("\n");
-    expect(joined).toMatch(/PAID reveal/);
+    expect(joined).toMatch(/contact reveal at gate 4/);
     expect(joined).toMatch(/forward action plus the/);
   });
 
@@ -176,14 +176,14 @@ describe("audit: getting-started walkthrough", () => {
     // Beat 1 is free; beat 2 spends. The ordering is the consent guarantee, so
     // the template must state both halves and the rule between them.
     expect(BODY).toMatch(/TWO BEATS\*\*\. Do not collapse them/);
-    expect(BODY).toMatch(/This call must spend NOTHING/);
-    expect(BODY).toMatch(/one\s*\n?\s*contact, one credit/i);
+    expect(BODY).toMatch(/This call must use NO quota/);
+    expect(BODY).toMatch(/revealing \*\*one contact\*\* uses a little of their plan's quota/);
     expect(BODY).toMatch(/Silence is not consent/);
     // …and the real launch, plus polling so it reports only resolved contacts.
     expect(BODY).toMatch(/`confirm: true`/);
     expect(BODY).toMatch(/leadbay_bulk_enrich_status/);
     // …and it must say what that cost.
-    expect(BODY).toMatch(/one credit per\s*\n?\s*contact revealed/i);
+    expect(BODY).toMatch(/the reveal used a little of their plan's\s*\n?\s*quota/i);
   });
 
   it("the prompt body handles the warming lens instead of reporting empty", () => {
@@ -227,7 +227,7 @@ describe("audit: getting-started walkthrough", () => {
     // One draft → one recipient → one credit. Fanning across the batch loses
     // the thread back to the email the user just watched being written.
     expect(BODY).toMatch(/the one lead you\s*\n?\s*drafted for at GATE 3/i);
-    expect(BODY).toMatch(/one\s*\n?\s*contact, one credit/i);
+    expect(BODY).toMatch(/revealing \*\*one contact\*\* uses a little of their plan's quota/);
   });
 
   it("the exit offers Zoe's 1:1, using the manifest's URL", () => {

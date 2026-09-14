@@ -1,0 +1,59 @@
+name: eval-artifact-contracts
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/evals
+  isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build generic agent sandbox
+        run: docker compose -f .github/evals/compose.yaml build contracts
+      - name: Exercise tester and verifier filesystem boundaries without a model call
+        env:
+          EVAL_CASE: ${{ github.workspace }}/evals/cases/country-scope-writes-nothing
+          EVAL_RUN: ${{ github.workspace }}/.context/eval-isolation
+          EVAL_CONNECTION: ${{ github.workspace }}/.context/eval-connection
+        run: |
+          mkdir -p "$EVAL_RUN/observed/subject" "$EVAL_RUN/execution" "$EVAL_RUN/verifier" "$EVAL_CONNECTION"
+          chmod 777 "$EVAL_RUN/verifier" "$EVAL_RUN/observed/subject"
+          echo probe > "$EVAL_RUN/observed/probe.txt"
+          echo probe > "$EVAL_RUN/run.yaml"
+          echo 'Permission probe only; do not run a product session.' > "$EVAL_CONNECTION/target.md"
+          echo '{"mcpServers":{}}' > "$EVAL_CONNECTION/mcp.json"
+          docker compose -f .github/evals/compose.yaml run --rm -T --entrypoint python tester -c '
+          import errno,os
+          from pathlib import Path
+          assert os.getuid() == 1000
+          for name in ["/test/acceptance.yaml","/repo","/evidence","/policy/verifier.md","/var/run/docker.sock"]:
+              assert not Path(name).exists(), name
+          for name in ["/test/request.md","/test/scenario.yaml","/policy/tester.md"]:
+              assert Path(name).read_text()
+              try: Path(name).write_text("tamper")
+              except OSError as e: assert e.errno in [errno.EROFS,errno.EACCES], e
+              else: raise AssertionError("Writable test: "+name)
+          Path("/scratch/adhoc.py").write_text("print(42)")
+          print("Tester: public tests read-only, grading absent, scratch writable")
+          '
+          docker compose -f .github/evals/compose.yaml run --rm -T --entrypoint python verifier -c '
+          import errno,os
+          from pathlib import Path
+          assert os.getuid() == 1000
+          assert not Path("/connection").exists()
+          for name in ["/test/acceptance.yaml","/evidence/observed/probe.txt","/evidence/run.yaml"]:
+              assert Path(name).read_text()
+              try: Path(name).write_text("tamper")
+              except OSError as e: assert e.errno in [errno.EROFS,errno.EACCES], e
+              else: raise AssertionError("Writable evidence: "+name)
+          Path("/output/probe.txt").write_text("verifier output")
+          print("Verifier: criteria and evidence read-only, product credentials absent")
+          '

@@ -1,0 +1,103 @@
+name: eval-release-gate
+# A release PR is one that changes the version in packages/mcp/package.json (auto-tag reads that file on main).
+# In this repo feature PRs usually carry the bump, so most PRs are release PRs.
+# The workflow runs on every PR so the required check always reports; only a version bump starts journeys.
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Tenant environment
+        default: prod-us
+        type: choice
+        options: [prod-us, prod-fr, staging-us, staging-fr]
+      cases:
+        description: Comma-separated case ids (case:variant allowed)
+        required: true
+permissions:
+  contents: read
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+    outputs:
+      bump: ${{ steps.check.outputs.bump }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - id: check
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then echo bump=true >> "$GITHUB_OUTPUT"; exit 0; fi
+          base=$(git show "origin/${{ github.base_ref }}:packages/mcp/package.json" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).version')
+          head=$(node -pe 'require("./packages/mcp/package.json").version')
+          echo "base=$base head=$head"
+          [ "$base" != "$head" ] && echo bump=true >> "$GITHUB_OUTPUT" || echo bump=false >> "$GITHUB_OUTPUT"
+  journeys:
+    needs: release-pr
+    # Fork PRs get no secrets; they cannot run journeys, so the gate below fails them on a bump.
+    if: needs.release-pr.outputs.bump == 'true' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        # Only cases that passed the gate twice on the released MCP. Add a case here once it has.
+        include:
+          - env: prod-us
+            cases: lead-delivery-routing-1,lead-delivery-routing-4
+          - env: prod-fr
+            cases: us-wide-followups-omits-geo
+    # One journey at a time per tenant, across every PR: two release PRs must not share before/after evidence.
+    # GitHub keeps one pending run per group; a third run cancels the pending one, which then needs a re-run.
+    concurrency:
+      group: eval-tenant-${{ github.event_name == 'workflow_dispatch' && inputs.env || matrix.env }}
+      cancel-in-progress: false
+    env:
+      LEADBAY_EMAIL: ${{ secrets.EVAL_LEADBAY_EMAIL }}
+      LEADBAY_PASSWORD: ${{ secrets.EVAL_LEADBAY_PASSWORD }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      EVAL_SUBJECT_MODEL: claude-sonnet-5
+      EVAL_EXECUTOR_MODEL: claude-sonnet-5
+      EVAL_VERIFIER_MODEL: claude-sonnet-5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: {version: 10}
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: pnpm}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install PyYAML==6.0.2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      - run: docker compose -f .github/evals/compose.yaml build contracts
+      # The tester's Bash strips auth variables from its children, so the nested product session
+      # authenticates from a read-only credentials file (compose.oauth.yaml), as in local runs.
+      - name: Claude credentials file
+        shell: bash
+        run: |
+          f="$RUNNER_TEMP/claude-credentials.json"
+          node -e 'process.stdout.write(JSON.stringify({claudeAiOauth:{accessToken:process.env.CLAUDE_CODE_OAUTH_TOKEN,expiresAt:Date.now()+365*864e5,scopes:["user:inference"]}}))' > "$f"
+          chmod 644 "$f"
+          echo "EVAL_CLAUDE_CREDENTIALS=$f" >> "$GITHUB_ENV"
+      - name: Run the lane
+        shell: bash
+        # Inputs reach the shell as variables, never as text substituted into the script.
+        env:
+          LANE_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.env || matrix.env }}
+          LANE_CASES: ${{ github.event_name == 'workflow_dispatch' && inputs.cases || matrix.cases }}
+        run: python .github/evals/lane.py --env "$LANE_ENV" --cases "$LANE_CASES" --out "$RUNNER_TEMP/journeys"
+      # This repo is public. Evidence and verifier explanations quote tenant data, so nothing is uploaded;
+      # the step summary carries criterion ids and counts only.
+  gate:
+    # The one required status check. Passes when no journeys were due, fails when any lane did not pass.
+    needs: [release-pr, journeys]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - shell: bash
+        run: |
+          echo "bump=${{ needs.release-pr.outputs.bump }} release-pr=${{ needs.release-pr.result }} journeys=${{ needs.journeys.result }}"
+          [ "${{ needs.release-pr.result }}" = success ] || exit 1
+          [ "${{ needs.release-pr.outputs.bump }}" = true ] || exit 0
+          [ "${{ needs.journeys.result }}" = success ]

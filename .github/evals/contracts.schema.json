@@ -1,0 +1,488 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "regions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "us",
+              "fr"
+            ]
+          },
+          "minItems": 1
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "en",
+              "fr"
+            ]
+          },
+          "minItems": 1
+        },
+        "starting_state": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "user_decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "when": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reply": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "when",
+              "reply"
+            ]
+          },
+          "minItems": 0
+        },
+        "variants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "changes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "id",
+              "changes"
+            ]
+          },
+          "minItems": 0
+        },
+        "datasets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "provider": {
+                "enum": [
+                  "posthog",
+                  "sentry",
+                  "artifact-store"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "revision": {
+                "type": "string",
+                "minLength": 1,
+                "not": {
+                  "enum": [
+                    "latest",
+                    "HEAD",
+                    "main"
+                  ]
+                }
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "provider",
+              "id",
+              "revision",
+              "sha256"
+            ]
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "regions",
+        "languages",
+        "starting_state",
+        "user_decisions",
+        "variants",
+        "datasets"
+      ]
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "required_outcomes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "id",
+              "statement",
+              "evidence"
+            ]
+          },
+          "minItems": 1
+        },
+        "prohibited_effects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "id",
+              "statement",
+              "evidence"
+            ]
+          },
+          "minItems": 0
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "source": {
+                "enum": [
+                  "conversation",
+                  "tool-results",
+                  "backend-recording",
+                  "state-before",
+                  "state-after",
+                  "billing",
+                  "host-capture"
+                ]
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "source",
+              "description"
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "version",
+        "required_outcomes",
+        "prohibited_effects",
+        "evidence"
+      ]
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "case_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "insufficient-evidence"
+          ]
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "status": {
+                "enum": [
+                  "pass",
+                  "fail",
+                  "insufficient-evidence"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              },
+              "citations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "requirement": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9-]*$"
+                    },
+                    "file": {
+                      "type": "string",
+                      "pattern": "^(observed|execution)/[a-zA-Z0-9_./-]+$"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "location": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "requirement",
+                    "file",
+                    "sha256",
+                    "location"
+                  ]
+                },
+                "minItems": 0
+              }
+            },
+            "required": [
+              "id",
+              "status",
+              "explanation",
+              "citations"
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "version",
+        "case_id",
+        "status",
+        "criteria"
+      ]
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "case_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scenario.yaml": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "request.md": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "acceptance.yaml": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "scenario.yaml",
+            "request.md",
+            "acceptance.yaml"
+          ]
+        },
+        "subject": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "surface": {
+              "enum": [
+                "claude-code",
+                "claude",
+                "chatgpt"
+              ]
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "mcp_revision": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tenant": {
+              "type": "string",
+              "minLength": 1
+            },
+            "region": {
+              "enum": [
+                "us",
+                "fr"
+              ]
+            },
+            "language": {
+              "enum": [
+                "en",
+                "fr"
+              ]
+            }
+          },
+          "required": [
+            "surface",
+            "model",
+            "mcp_revision",
+            "tenant",
+            "region",
+            "language"
+          ]
+        },
+        "executor_exit_code": {
+          "type": "integer"
+        },
+        "verifier_exit_code": {
+          "type": "integer"
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "file": {
+                "type": "string",
+                "pattern": "^(observed|execution)/[a-zA-Z0-9_./-]+$"
+              },
+              "kind": {
+                "enum": [
+                  "conversation",
+                  "tool-results",
+                  "backend-recording",
+                  "state-before",
+                  "state-after",
+                  "billing",
+                  "host-capture"
+                ]
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "file",
+              "kind",
+              "sha256"
+            ]
+          }
+        },
+        "variant": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "version",
+        "case_id",
+        "artifacts",
+        "subject",
+        "executor_exit_code",
+        "verifier_exit_code",
+        "sources",
+        "variant"
+      ]
+    }
+  }
+}

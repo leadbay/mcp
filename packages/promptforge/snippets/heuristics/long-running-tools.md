@@ -1,6 +1,6 @@
 # Resilience rules for Leadbay long-running tools
 
-These four rules apply to every Leadbay workflow that calls `leadbay_pull_leads`, `leadbay_bulk_qualify_leads`, `leadbay_research_lead_by_id`, `leadbay_import_and_qualify`, or `leadbay_enrich_titles`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
+These rules apply to every Leadbay workflow that calls `leadbay_pull_leads`, `leadbay_bulk_qualify_leads`, `leadbay_research_lead_by_id`, `leadbay_import_and_qualify`, or `leadbay_enrich_titles`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
 
 ## Rule 1 — Pin the lens
 
@@ -8,7 +8,7 @@ After your first `leadbay_pull_leads` call, capture `response.lens.id` into your
 
 ## Rule 2 — Prefer async for bulk operations
 
-`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false`, which returns `{status:'running', qualify_id}` immediately. Then poll `leadbay_qualify_status` (or `leadbay_import_status`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
+`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false` and return immediately. They hand back different ids: `bulk_qualify_leads` returns `{status:'running', notification_id, lead_ids, lens_id}` — poll `leadbay_qualify_status` with those. `import_and_qualify` returns `{status:'running', import_ids}` and no `notification_id` at all — poll `leadbay_import_status({importIds, dry_run})` with those. Poll every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
 
 ## Rule 3 — Serialize `leadbay_research_lead_by_id` fan-out
 
@@ -23,3 +23,5 @@ If a Leadbay tool returns `"Request timed out"`, `"stream closed"`, or any other
 3. **Do not** switch strategies (e.g. "the endpoint is broken, let me re-pull from scratch"). The earlier work is still valid; the timeout was the wire.
 
 If `pull_leads` itself fails and you have no prior batch, then yes — retry it, explicitly pass the lensId you captured (if any), and continue.
+
+{{include:heuristics/launched-work-cannot-be-stopped}}

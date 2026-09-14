@@ -4,7 +4,6 @@ import { basename } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   createClient,
-  createDefaultBulkStore,
   formatLoginError,
   NotificationsInbox,
   NotificationsWsClient,
@@ -1621,9 +1620,6 @@ async function main(): Promise<void> {
   const includeAdvanced = process.env.LEADBAY_MCP_ADVANCED === "1";
   const includeWrite = parseWriteEnv();
 
-  // Bulk tracker: file-backed by default at ~/.leadbay/bulks.json.
-  // Fails loudly unless LEADBAY_BULK_STORE_ALLOW_MEMORY=1 is set.
-  const bulkTracker = await createDefaultBulkStore({ logger });
 
   // Auto-update state — best-effort; falls back to in-memory when
   // ~/.leadbay is unwritable. Created BEFORE the version-check kicks
@@ -1685,7 +1681,6 @@ async function main(): Promise<void> {
     includeAdvanced,
     includeWrite,
     logger,
-    bulkTracker,
     notificationsInbox,
     version: VERSION,
     telemetry,
@@ -1710,7 +1705,7 @@ async function main(): Promise<void> {
   });
   const transport = new StdioServerTransport();
   logger.info?.(
-    `Starting MCP server v${VERSION} (advanced=${includeAdvanced}, write=${includeWrite}, baseUrl=${client.baseUrl}, bulk_store=${bulkTracker.durability}, notifications_ws=${WS_DISABLED ? "disabled" : "enabled"}, auth_state=${authState})`
+    `Starting MCP server v${VERSION} (advanced=${includeAdvanced}, write=${includeWrite}, baseUrl=${client.baseUrl}, notifications_ws=${WS_DISABLED ? "disabled" : "enabled"}, auth_state=${authState})`
   );
   await server.connect(transport);
 

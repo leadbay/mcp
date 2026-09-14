@@ -13,7 +13,9 @@ export const qualifyLead: Tool<QualifyLeadParams> = {
     title: "Qualify a single lead",
     readOnlyHint: false,
     destructiveHint: true,
-    idempotentHint: true,
+    // No double-launch guard: this POSTs straight through, so an identical
+    // repeat is a second paid launch, not a no-op (product#4039).
+    idempotentHint: false,
     openWorldHint: true,
   },
   description: QUALIFY_LEAD_DESCRIPTION,

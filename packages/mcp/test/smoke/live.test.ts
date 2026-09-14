@@ -429,18 +429,20 @@ describe.skipIf(!runLive)("@leadbay/mcp — live composite suite (#3504)", () =>
   }, 90_000);
 
   it("leadbay_bulk_enrich_status — schema check or skip", async () => {
-    const bulkId = process.env.LEADBAY_TEST_BULK_ID;
-    if (!bulkId) {
-      console.log("[smoke] skipped: set LEADBAY_TEST_BULK_ID to exercise bulk_enrich_status");
+    // The handle is the backend's own notification_id (product#4005), as
+    // returned by leadbay_enrich_titles.
+    const notificationId = process.env.LEADBAY_TEST_NOTIFICATION_ID;
+    if (!notificationId) {
+      console.log("[smoke] skipped: set LEADBAY_TEST_NOTIFICATION_ID to exercise bulk_enrich_status");
       return;
     }
     const { result, verdict } = await exerciseAndJudge(
       client,
       "leadbay_bulk_enrich_status",
-      { bulk_id: bulkId },
-      ["bulk_id", "status"]
+      { notification_id: notificationId },
+      ["notification_id", "status"]
     );
-    expect(result.bulk_id).toBe(bulkId);
+    expect(result.notification_id).toBe(notificationId);
     expect(verdict?.verdict, `judge: ${verdict?.reason}`).not.toBe("broken");
   }, 90_000);
 

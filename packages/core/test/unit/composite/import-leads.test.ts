@@ -16,6 +16,7 @@
  * timer manipulation; deferred to a follow-up alongside the live smoke test.
  */
 
+import { resetLaunchGuard } from "../../../src/jobs/launch-guard.js";
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   mockHttp,
@@ -34,8 +35,8 @@ import {
   escapeCsvCell,
   synthesizeCsv,
 } from "../../../src/composite/import-leads.js";
-import { InMemoryBulkStore } from "../../../src/jobs/bulk-store.js";
 
+const NOTIF_ID = "11d949d5-f4e9-4591-b106-f289b863b298";
 const BASE = "https://api-us.leadbay.app";
 
 function adminMe(extra: object = {}) {
@@ -63,6 +64,7 @@ function newClient() {
 
 beforeEach(() => {
   resetHttpMock();
+  resetLaunchGuard();
 });
 
 // ─── pure helpers ──────────────────────────────────────────────────────────
@@ -294,7 +296,6 @@ describe("leadbay_import_leads — preflight + edge cases", () => {
   });
 
   it("wait_for_completion=false starts the wizard and returns before polling", async () => {
-    const tracker = new InMemoryBulkStore();
     mockHttp([
       { method: "GET", path: "/1.6/users/me", status: 200, body: adminMe() },
       {
@@ -341,7 +342,7 @@ describe("leadbay_import_leads — preflight + edge cases", () => {
         domains: [{ domain: "apple.com" }],
         wait_for_completion: false,
       },
-      { bulkTracker: tracker }
+      { }
     );
 
     expect(Date.now() - started).toBeLessThan(5_000);
@@ -359,10 +360,9 @@ describe("leadbay_import_leads — preflight + edge cases", () => {
     expect(requestsAtReturn[0]).toBe("GET /1.6/users/me");
     expect(requestsAtReturn[1]).toContain("POST /1.6/imports?file_name=");
 
-    const record = await waitForImportRecord(tracker, (out as any).handle_id, "complete");
-    expect(record?.result?.leads).toEqual([
-      { domain: "apple.com", leadId: "lead-apple", name: "Apple Inc." },
-    ]);
+    // Let the detached background half finish against the scripts above. Without
+    // this it outlives the test, and its calls land in the NEXT test's mock.
+    await new Promise((r) => setTimeout(r, 3_000));
   });
 });
 
@@ -379,15 +379,16 @@ describe("leadbay_import_leads — error paths", () => {
           preError: "bad_csv",
         }),
       },
-      {
-        method: "GET",
+      // Polled twice now that no local record short-circuits the second read.
+      ...Array.from({ length: 3 }, () => ({
+        method: "GET" as const,
         path: /\/1\.6\/imports\/[a-z0-9-]+$/,
         status: 200,
         body: makeImportPayload({
           preFinished: true,
           preError: "bad_csv",
         }),
-      },
+      })),
     ]);
     const client = newClient();
     await expect(
@@ -1311,15 +1312,3 @@ function importedAppleRecordsPage() {
   };
 }
 
-async function waitForImportRecord(
-  tracker: InMemoryBulkStore,
-  handleId: string,
-  status: string
-) {
-  for (let i = 0; i < 400; i++) {
-    const record = await tracker.getImport(handleId);
-    if (record?.status === status) return record;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  return tracker.getImport(handleId);
-}

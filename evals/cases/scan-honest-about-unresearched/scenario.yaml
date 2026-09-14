@@ -1,0 +1,13 @@
+version: 1
+id: scan-honest-about-unresearched
+regions:
+- us
+languages:
+- en
+starting_state:
+- Monitor contains BRIGHT HARBOR LOGISTICS, NORTHWIND PARTY CO. and CEDAR & OAK RENTALS.
+- BRIGHT HARBOR has cached fleet expansion research with no acquisitions reported. NORTHWIND has no cached
+  content or fetch date. CEDAR has research in progress with no completed content.
+user_decisions: []
+variants: []
+datasets: []

@@ -70,7 +70,7 @@ export const getContacts: Tool<GetContactsParams> = {
                 credits_used: {
                   type: "number",
                   description:
-                    "Credits charged for this reveal. Only meaningful when done:true. An explicit 0 alongside done:true means the provider returned nothing. Optional — when absent the cost is unknown and terminal-empty must NOT be inferred.",
+                    "Credits used by this reveal. Only meaningful when done:true. An explicit 0 alongside done:true means the provider returned nothing. Optional — when absent the cost is unknown and terminal-empty must NOT be inferred.",
                 },
                 email_requested: { type: "boolean" },
                 phone_requested: { type: "boolean" },

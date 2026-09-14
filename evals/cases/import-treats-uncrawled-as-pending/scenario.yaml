@@ -1,0 +1,13 @@
+version: 1
+id: import-treats-uncrawled-as-pending
+regions:
+- us
+languages:
+- en
+starting_state:
+- Stripe and Figma are already known; Linear, Vanta and Ramp are not crawled.
+- Import processing finishes with Stripe and Figma IMPORTED and the other three NO_MATCH and IMPORTING.
+  Counts are two imported and three pending, with no processing error.
+user_decisions: []
+variants: []
+datasets: []

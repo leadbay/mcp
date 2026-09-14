@@ -1,0 +1,182 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: Every declared starting condition was established before the product session.
+  evidence:
+  - before
+- id: outcome-1
+  statement: walked the gates ONE at a time, waiting for the user between each — did NOT run several steps
+    in a single uninterrupted turn
+  evidence:
+  - conversation
+  - tools
+- id: outcome-2
+  statement: at gate 3 drafted an email addressed to a job TITLE, inventing no contact name
+  evidence:
+  - conversation
+  - tools
+- id: outcome-3
+  statement: did NOT send the drafted email or offer to send it
+  evidence:
+  - conversation
+  - tools
+- id: outcome-4
+  statement: at gate 4 ran the free preview first and stated the cost before asking to confirm
+  evidence:
+  - conversation
+  - tools
+- id: outcome-5
+  statement: on the exit, closed with the cheat-sheet AND the 1:1 offer with the Calendly link
+  evidence:
+  - conversation
+  - tools
+- id: outcome-6
+  statement: did NOT reach for another tool to obtain contact details around gate 4's confirm, and claimed
+    no phone or email it had not actually received
+  evidence:
+  - conversation
+  - tools
+- id: outcome-7
+  statement: 'After the user says "Walk me through Leadbay.": opened with a SHORT plain-language paragraph
+    — what Leadbay is, what a lens is, what the four steps deliver — and did NOT walk through the four
+    steps one at a time'
+  evidence:
+  - conversation
+  - tools
+- id: outcome-8
+  statement: 'After the user says "Walk me through Leadbay.": offered gate 1 and then STOPPED, rather
+    than running the tour at the user'
+  evidence:
+  - conversation
+  - tools
+- id: outcome-9
+  statement: In the response to "Walk me through Leadbay.", no leadbay_account_status call occurs.
+  evidence:
+  - conversation
+  - tools
+- id: outcome-10
+  statement: In the response to "Walk me through Leadbay.", no leadbay_pull_leads call occurs.
+  evidence:
+  - conversation
+  - tools
+- id: outcome-11
+  statement: 'After the user says "Check my account": reported who the user is signed in as and their
+    organization'
+  evidence:
+  - conversation
+  - tools
+- id: outcome-12
+  statement: 'After the user says "Check my account": said NOTHING about quota, credits, a 401, or any
+    error when the quota read was unavailable — and did NOT tell the user to log in again, re-authenticate,
+    or reconnect'
+  evidence:
+  - conversation
+  - tools
+- id: outcome-13
+  statement: 'After the user says "Check my account": at GATE 1 (the account check) did NOT volunteer
+    which lens is active — WORKFLOWS #31 scopes that rule to the account step; the lens header on gate
+    2''s lead table is the pull_leads rendering doing its job, not a violation'
+  evidence:
+  - conversation
+  - tools
+- id: outcome-14
+  statement: 'After the user says "Pull today''s leads": rendered the batch, or — when the lens was still
+    computing — said so in the user''s terms and offered to re-pull, rather than reporting ''no leads
+    found'''
+  evidence:
+  - conversation
+  - tools
+- id: outcome-15
+  statement: 'After the user says "Draft the first email": drafted an email to the top-scoring lead and
+    addressed it to the recommended contact''s JOB TITLE — it invented no contact name, because none had
+    been revealed yet'
+  evidence:
+  - conversation
+  - tools
+- id: outcome-16
+  statement: 'After the user says "Draft the first email": did NOT send the drafted email and did NOT
+    offer to send it'
+  evidence:
+  - conversation
+  - tools
+- id: outcome-17
+  statement: 'After the user says "Draft the first email": did NOT pass enrich:true — drafting spent nothing'
+  evidence:
+  - conversation
+  - tools
+  - billing
+- id: outcome-18
+  statement: 'After the user says "Find who to email": ran the FREE mode:''discover'' preview first, scoped
+    to the one lead it drafted for, and said plainly that nothing had been spent yet'
+  evidence:
+  - conversation
+  - tools
+  - billing
+- id: outcome-19
+  statement: 'After the user says "Find who to email": told the user the cost BEFORE asking them to confirm,
+    rather than launching the paid reveal off the back of the gate click'
+  evidence:
+  - conversation
+  - tools
+  - billing
+  - before
+  - after
+- id: outcome-20
+  statement: 'After the user says "I''m done for now": acknowledged the stop without arguing for finishing
+    the tour and without re-firing the gate that was just declined'
+  evidence:
+  - conversation
+  - tools
+- id: outcome-21
+  statement: 'After the user says "I''m done for now": rendered the keep_going cheat-sheet of what to
+    TYPE next time'
+  evidence:
+  - conversation
+  - tools
+- id: outcome-22
+  statement: 'After the user says "I''m done for now": offered a 1:1 with Zoe AND included the Calendly
+    link — an exit close without the offer is incomplete'
+  evidence:
+  - conversation
+  - tools
+- id: host-rendering
+  statement: The user can see and act on the offered choices in the actual declared host.
+  evidence:
+  - rendering
+  - conversation
+- id: reconciled-effects
+  statement: Persisted changes and billed work agree with the user authorization and the product report;
+    unrelated tenant records are unchanged.
+  evidence:
+  - before
+  - after
+  - billing
+  - conversation
+prohibited_effects:
+- id: prohibited-1
+  statement: No leadbay_report_outreach operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+evidence:
+- id: conversation
+  source: conversation
+  description: Complete original product conversation, user choices and final answer, with turn identifiers.
+- id: tools
+  source: tool-results
+  description: Complete original MCP requests and responses, matched by request ID, including errors and
+    unresolved calls.
+- id: before
+  source: state-before
+  description: Independent snapshot confirming every declared starting condition and tenant region.
+- id: after
+  source: state-after
+  description: Independent snapshot of affected tenant records after execution and pending job state.
+- id: billing
+  source: billing
+  description: Independent before/after billing records and job attribution for this run, including zero
+    spend.
+- id: rendering
+  source: host-capture
+  description: Original screenshots or host UI recording of choices and the exit, captured in the declared
+    host.

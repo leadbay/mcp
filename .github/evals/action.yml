@@ -1,0 +1,189 @@
+name: Eval artifact contracts
+description: Validate declarative journeys and, optionally, a completed evidence bundle.
+inputs:
+  bundle:
+    description: Optional path to a sealed run bundle to gate. Empty validates definitions only.
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - shell: bash
+      run: python -m pip install PyYAML==6.0.2 jsonschema==4.23.0
+    - id: validate
+      shell: bash
+      env:
+        EVAL_BUNDLE: ${{ inputs.bundle }}
+      run: |
+        python - <<'PY'
+        import hashlib, json, os, re, stat
+        from pathlib import Path
+        import yaml
+        from jsonschema import Draft202012Validator
+
+        root = Path('evals')
+        schema = json.loads(Path('.github/evals/contracts.schema.json').read_text())
+        Draft202012Validator.check_schema(schema)
+
+        class UniqueLoader(yaml.SafeLoader):
+            def construct_mapping(self, node, deep=False):
+                keys = [self.construct_object(k, deep=deep) for k, _ in node.value]
+                if any(not isinstance(k, str) for k in keys) or len(keys) != len(set(keys)):
+                    raise ValueError('Mapping keys must be unique strings')
+                return super().construct_mapping(node, deep)
+
+        def document(path):
+            text = path.read_text()
+            if any(isinstance(t, (yaml.tokens.AliasToken, yaml.tokens.AnchorToken, yaml.tokens.TagToken)) for t in yaml.scan(text)):
+                raise ValueError(f'{path}: YAML aliases, anchors and tags are not allowed')
+            return yaml.load(text, Loader=UniqueLoader)
+
+        def validate(kind, value):
+            Draft202012Validator({'$ref': f'#/$defs/{kind}', '$defs': schema['$defs']}).validate(value)
+
+        def regular(path):
+            mode = path.lstat().st_mode
+            if not stat.S_ISREG(mode) or mode & 0o111 or path.stat().st_nlink != 1:
+                raise ValueError(f'{path}: expected a non-executable regular file, not a link')
+
+        def unique(items, label):
+            ids = [item['id'] for item in items]
+            if len(ids) != len(set(ids)):
+                raise ValueError(f'{label}: duplicate IDs')
+            return set(ids)
+
+        def check_case(folder):
+            expected = {'scenario.yaml', 'request.md', 'acceptance.yaml'}
+            if {p.name for p in folder.iterdir()} != expected:
+                raise ValueError(f'{folder}: exactly {sorted(expected)} are permitted')
+            for p in folder.iterdir():
+                regular(p)
+            request = (folder/'request.md').read_text()
+            if not request.strip() or '```' in request or '~~~' in request or request.startswith('---'):
+                raise ValueError(f'{folder}: request.md must be nonempty prose, without code fences or frontmatter')
+            scenario = document(folder/'scenario.yaml')
+            acceptance = document(folder/'acceptance.yaml')
+            validate('scenario', scenario)
+            validate('acceptance', acceptance)
+            if scenario['id'] != folder.name:
+                raise ValueError(f'{folder}: scenario ID must match its directory')
+            unique(scenario['variants'], str(folder))
+            criteria = acceptance['required_outcomes'] + acceptance['prohibited_effects']
+            unique(criteria, str(folder))
+            evidence = unique(acceptance['evidence'], str(folder))
+            referenced = {ref for c in criteria for ref in c['evidence']}
+            if referenced != evidence:
+                raise ValueError(f'{folder}: evidence IDs must resolve and every declaration must be used')
+            return acceptance
+
+        # Fail on additions as well as modifications: no ignored scripts or symlinked folders.
+        for p in root.rglob('*'):
+            if p.is_symlink():
+                raise ValueError(f'{p}: symlinks are forbidden')
+            if p.is_file():
+                regular(p)
+                rel = p.relative_to(root).parts
+                if rel in [('README.md',), ('AGENTS.md',)]:
+                    continue
+                if len(rel) != 3 or rel[0] != 'cases' or rel[2] not in {'scenario.yaml','request.md','acceptance.yaml'}:
+                    raise ValueError(f'{p}: unsupported eval artifact')
+            elif not p.is_dir():
+                raise ValueError(f'{p}: unsupported filesystem entry')
+        cases = list((root/'cases').iterdir())
+        if not cases:
+            raise ValueError('The eval corpus must not be empty')
+        for folder in cases:
+            if not folder.is_dir() or folder.is_symlink():
+                raise ValueError(f'{folder}: expected a case directory')
+            check_case(folder)
+        if Path('packages/mcp/test/eval').exists() or Path('packages/mcp/vitest.eval.config.ts').exists():
+            raise ValueError('The retired code-based eval entrypoint must not return')
+        print(f'Validated {len(cases)} artifact-only cases. This is not a behavioral eval result.')
+
+        # Guardrail qualification uses disposable mutations, never test implementation files.
+        import copy, tempfile
+        example = document(cases[0]/'scenario.yaml')
+        for key in ['command', 'run', 'script', 'import', 'evaluator', 'setup']:
+            broken = copy.deepcopy(example)
+            broken[key] = 'arbitrary code'
+            try:
+                validate('scenario', broken)
+            except Exception:
+                pass
+            else:
+                raise AssertionError(f'Accepted forbidden field {key}')
+        for fragment in ['id: first\nid: second\n', 'id: &name foo\nother: *name\n', 'id: !!str foo\n']:
+            with tempfile.TemporaryDirectory() as temp:
+                path = Path(temp)/'bad.yaml'
+                path.write_text(fragment)
+                try:
+                    document(path)
+                except Exception:
+                    pass
+                else:
+                    raise AssertionError('Accepted ambiguous YAML')
+
+        bundle_name = os.environ.get('EVAL_BUNDLE', '')
+        if bundle_name:
+            bundle = Path(bundle_name).resolve()
+            regular(bundle/'run.yaml')
+            regular(bundle/'verdict.yaml')
+            run = document(bundle/'run.yaml')
+            verdict = document(bundle/'verdict.yaml')
+            validate('run', run)
+            validate('verdict', verdict)
+            folder = root/'cases'/run['case_id']
+            acceptance = check_case(folder)
+            scenario = document(folder/'scenario.yaml')
+            if run['subject']['region'] not in scenario['regions'] or run['subject']['language'] not in scenario['languages']:
+                raise ValueError('Run does not match a declared region/language')
+            if run['variant'] is not None and run['variant'] not in {v['id'] for v in scenario['variants']}:
+                raise ValueError('Run names an undeclared variant')
+            if verdict['case_id'] != run['case_id']:
+                raise ValueError('Verdict belongs to another case')
+            for filename, digest in run['artifacts'].items():
+                if hashlib.sha256((folder/filename).read_bytes()).hexdigest() != digest:
+                    raise ValueError(f'{filename}: definition changed after execution')
+            if run['executor_exit_code'] != 0 or run['verifier_exit_code'] != 0:
+                raise ValueError('An incomplete agent process cannot pass')
+            sources = {}
+            for source in run['sources']:
+                rel = Path(source['file'])
+                if rel.is_absolute() or '..' in rel.parts:
+                    raise ValueError('Evidence must stay within its bundle')
+                p = bundle/rel
+                if any(part.is_symlink() for part in [p, *p.parents] if part != bundle.parent):
+                    raise ValueError('Evidence links are forbidden')
+                regular(p)
+                if not p.read_bytes() or hashlib.sha256(p.read_bytes()).hexdigest() != source['sha256']:
+                    raise ValueError(f'{rel}: missing or changed original evidence')
+                if source['file'] in sources:
+                    raise ValueError('Duplicate source file')
+                sources[source['file']] = source
+            checks = {c['id']:c for c in acceptance['required_outcomes'] + acceptance['prohibited_effects']}
+            if unique(verdict['criteria'], 'verdict') != set(checks):
+                raise ValueError('Verdict must cover every criterion exactly once')
+            requirements = {e['id']:e['source'] for e in acceptance['evidence']}
+            for result in verdict['criteria']:
+                expected = set(checks[result['id']]['evidence'])
+                cited = set()
+                for citation in result['citations']:
+                    source = sources.get(citation['file'])
+                    if source is None or citation['sha256'] != source['sha256']:
+                        raise ValueError('Citation does not match sealed original evidence')
+                    # A citation counts for a requirement only when its source has the declared kind;
+                    # extra supporting citations of another kind are ignored, never fatal.
+                    requirement = citation['requirement']
+                    if requirement in expected and source['kind'] == requirements[requirement]:
+                        cited.add(requirement)
+                if result['status'] == 'pass' and cited != expected:
+                    raise ValueError('Passing criterion lacks required original evidence')
+            statuses = [c['status'] for c in verdict['criteria']]
+            derived = 'fail' if 'fail' in statuses else 'insufficient-evidence' if 'insufficient-evidence' in statuses else 'pass'
+            if verdict['status'] != derived or derived != 'pass':
+                raise ValueError(f'Eval is not passing: {derived}')
+            print(f"PASS: {run['case_id']} with all criteria and evidence present")
+        PY

@@ -19,6 +19,7 @@
  * New file (existing test files are never modified).
  */
 
+import { resetLaunchGuard } from "../../../src/jobs/launch-guard.js";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   mockHttp,
@@ -30,7 +31,6 @@ vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
 import { enrichTitles } from "../../../src/composite/enrich-titles.js";
-import { InMemoryBulkStore } from "../../../src/jobs/bulk-store.js";
 import type { ToolContext } from "../../../src/types.js";
 
 const BASE = "https://api-us.leadbay.app";
@@ -109,7 +109,10 @@ function launchCalls(requests: { path: string }[]) {
   return requests.filter((r) => /\/enrichment\/launch/.test(r.path));
 }
 
-beforeEach(() => resetHttpMock());
+beforeEach(() => {
+  resetHttpMock();
+  resetLaunchGuard();
+});
 
 describe("enrich_titles consent gate (#3848)", () => {
   it("elicit present + user declines → needs_confirmation, NO paid launch", async () => {
@@ -117,7 +120,6 @@ describe("enrich_titles consent gate (#3848)", () => {
     const { requests } = baseFlow({ withCredits: true });
     const elicit = vi.fn(async () => ({ action: "decline" as const }));
     const ctx: ToolContext = {
-      bulkTracker: new InMemoryBulkStore(),
       elicit,
     };
 
@@ -157,7 +159,7 @@ describe("enrich_titles consent gate (#3848)", () => {
       { method: "GET", path: "/1.6/users/me", status: 200, body: meBody },
       { method: "POST", path: "/1.6/leads/selection/clear", status: 204 },
     ]);
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() };
+    const ctx: ToolContext = { };
 
     const res: any = await enrichTitles.execute(
       newClient(),
@@ -179,7 +181,7 @@ describe("enrich_titles consent gate (#3848)", () => {
     // BAD_INPUT, which was too aggressive and blocked confirm:true+phone:false.)
     const { requests } = baseFlow({ withCredits: true });
     const elicit = vi.fn(async () => ({ action: "decline" as const }));
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore(), elicit };
+    const ctx: ToolContext = { elicit };
 
     const res: any = await enrichTitles.execute(
       newClient(),
@@ -198,7 +200,7 @@ describe("enrich_titles consent gate (#3848)", () => {
     // default email channel or trip BAD_INPUT. This is the documented confirm
     // retry shape (agents add confirm:true and carry phone:false along).
     const { requests } = baseFlow({ withLaunch: true });
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() };
+    const ctx: ToolContext = { };
 
     const res: any = await enrichTitles.execute(
       newClient(),
@@ -219,7 +221,7 @@ describe("enrich_titles consent gate (#3848)", () => {
     // With the channel-default fix, email stays OFF (not defaulted true) when a
     // channel was explicitly chosen, so the launch body is phone-only.
     const { requests } = baseFlow({ withLaunch: true });
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() };
+    const ctx: ToolContext = { };
 
     const res: any = await enrichTitles.execute(
       newClient(),
@@ -243,7 +245,6 @@ describe("enrich_titles consent gate (#3848)", () => {
     const { requests } = baseFlow({ withLaunch: true });
     const elicit = vi.fn(async () => ({ action: "decline" as const }));
     const ctx: ToolContext = {
-      bulkTracker: new InMemoryBulkStore(),
       elicit,
     };
 
@@ -263,7 +264,6 @@ describe("enrich_titles consent gate (#3848)", () => {
   it("elicit present + user cancels → needs_confirmation, NO launch", async () => {
     const { requests } = baseFlow({ withCredits: true });
     const ctx: ToolContext = {
-      bulkTracker: new InMemoryBulkStore(),
       elicit: async () => ({ action: "cancel" as const }),
     };
 
@@ -285,7 +285,6 @@ describe("enrich_titles consent gate (#3848)", () => {
       content: { confirm: true },
     }));
     const ctx: ToolContext = {
-      bulkTracker: new InMemoryBulkStore(),
       elicit,
     };
 
@@ -296,7 +295,7 @@ describe("enrich_titles consent gate (#3848)", () => {
     );
 
     expect(res.mode).toBe("launched");
-    expect(res.bulk_id).toBeTruthy();
+    expect(res.notification_id).toBeDefined();
     expect(elicit).toHaveBeenCalledTimes(1);
     expect(launchCalls(requests)).toHaveLength(1);
   });
@@ -304,7 +303,6 @@ describe("enrich_titles consent gate (#3848)", () => {
   it("elicit present + accept with content.confirm:false → withheld", async () => {
     const { requests } = baseFlow({ withCredits: true });
     const ctx: ToolContext = {
-      bulkTracker: new InMemoryBulkStore(),
       elicit: async () => ({
         action: "accept" as const,
         content: { confirm: false },
@@ -323,7 +321,7 @@ describe("enrich_titles consent gate (#3848)", () => {
 
   it("explicit email:true (no elicit) → launches, no confirmation needed", async () => {
     const { requests } = baseFlow({ withLaunch: true });
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() };
+    const ctx: ToolContext = { };
 
     const res: any = await enrichTitles.execute(
       newClient(),
@@ -337,7 +335,7 @@ describe("enrich_titles consent gate (#3848)", () => {
 
   it("confirm:true (no elicit) → launches with default email channel", async () => {
     const { requests } = baseFlow({ withLaunch: true });
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() };
+    const ctx: ToolContext = { };
 
     const res: any = await enrichTitles.execute(
       newClient(),
@@ -354,7 +352,6 @@ describe("enrich_titles consent gate (#3848)", () => {
     const { requests } = baseFlow({ withLaunch: true });
     const elicit = vi.fn(async () => ({ action: "decline" as const }));
     const ctx: ToolContext = {
-      bulkTracker: new InMemoryBulkStore(),
       elicit,
     };
 
@@ -374,7 +371,7 @@ describe("enrich_titles consent gate (#3848)", () => {
     // declining the spend. Previously willElicit was false so it launched
     // anyway; now the veto returns needs_confirmation with no /launch.
     const { requests } = baseFlow({ withCredits: true });
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() }; // no elicit
+    const ctx: ToolContext = { }; // no elicit
 
     const res: any = await enrichTitles.execute(
       newClient(),
@@ -390,7 +387,7 @@ describe("enrich_titles consent gate (#3848)", () => {
   it("confirm:false VETOES even an explicit channel → withholds", async () => {
     // A veto wins over an explicit channel flag: the caller said "don't spend".
     const { requests } = baseFlow({ withCredits: true });
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() };
+    const ctx: ToolContext = { };
 
     const res: any = await enrichTitles.execute(
       newClient(),
@@ -407,7 +404,7 @@ describe("enrich_titles consent gate (#3848)", () => {
     // already declined via the arg.
     const { requests } = baseFlow({ withCredits: true });
     const elicit = vi.fn(async () => ({ action: "accept" as const, content: { confirm: true } }));
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore(), elicit };
+    const ctx: ToolContext = { elicit };
 
     const res: any = await enrichTitles.execute(
       newClient(),
@@ -422,7 +419,7 @@ describe("enrich_titles consent gate (#3848)", () => {
 
   it("no channel + no elicit → launches (back-compat; keeps pinned suite green)", async () => {
     const { requests } = baseFlow({ withLaunch: true });
-    const ctx: ToolContext = { bulkTracker: new InMemoryBulkStore() };
+    const ctx: ToolContext = { };
 
     const res: any = await enrichTitles.execute(
       newClient(),
@@ -438,7 +435,6 @@ describe("enrich_titles consent gate (#3848)", () => {
     const { requests } = baseFlow({ withCredits: true });
     const elicit = vi.fn(async () => ({ action: "accept" as const }));
     const ctx: ToolContext = {
-      bulkTracker: new InMemoryBulkStore(),
       elicit,
     };
 
@@ -464,7 +460,6 @@ describe("enrich_titles consent gate (#3848)", () => {
     let lockWasFreeDuringElicit = false;
 
     const ctx: ToolContext = {
-      bulkTracker: new InMemoryBulkStore(),
       elicit: async () => {
         // Would hang forever if the lock were still held by phase 1.
         await client.acquireSelectionLock();

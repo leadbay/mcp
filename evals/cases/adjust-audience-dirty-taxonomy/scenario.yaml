@@ -1,0 +1,14 @@
+version: 1
+id: adjust-audience-dirty-taxonomy
+regions:
+- fr
+languages:
+- fr
+starting_state:
+- The tenant uses French taxonomy. Sector rows include Pergola aluminium, a null name, Pergola bioclimatique
+  and Menuiserie.
+- The requested combined trade description is ambiguous. An existing active lens and its filters are recorded
+  before the run.
+user_decisions: []
+variants: []
+datasets: []

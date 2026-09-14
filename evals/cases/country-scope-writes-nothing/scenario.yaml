@@ -1,0 +1,19 @@
+version: 1
+id: country-scope-writes-nothing
+regions:
+- us
+- fr
+languages:
+- en
+starting_state:
+- An authenticated dedicated tenant whose region is independently known. The user sells nationwide and
+  has an existing audience refinement.
+- The product exposes its ordinary tool catalog. No geography instructions or evaluation guidance are
+  injected into the product conversation.
+user_decisions: []
+variants:
+- id: foreign-country
+  changes:
+  - Run against a verified French tenant while preserving the US request. The request does not identify
+    the tenant country.
+datasets: []

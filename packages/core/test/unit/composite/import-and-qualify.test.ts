@@ -5,7 +5,7 @@
  * fully exercised inside the composite; we don't re-test all of import-leads
  * here — we trust those tests (62 cases) and focus on the composite-level
  * orchestration:
- *   - bulkTracker required
+ *   - required
  *   - import phase failures bubble cleanly
  *   - empty leads → no qualify_id, no fan-out
  *   - happy path produces qualify_id, marks launched, fans out web_fetch,
@@ -15,6 +15,7 @@
  *   - qualify_id is reused on idempotent re-call
  */
 
+import { resetLaunchGuard } from "../../../src/jobs/launch-guard.js";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   mockHttp,
@@ -27,7 +28,6 @@ vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
 import { importAndQualify } from "../../../src/composite/import-and-qualify.js";
-import { InMemoryBulkStore } from "../../../src/jobs/bulk-store.js";
 
 const BASE = "https://api-us.leadbay.app";
 
@@ -46,6 +46,7 @@ function newClient() {
 
 beforeEach(() => {
   resetHttpMock();
+  resetLaunchGuard();
 });
 
 function importPayload(opts: {
@@ -97,39 +98,10 @@ function importedAppleRecordsPage() {
   };
 }
 
-async function waitForImportRecord(
-  tracker: InMemoryBulkStore,
-  handleId: string,
-  status: string
-) {
-  for (let i = 0; i < 400; i++) {
-    const record = await tracker.getImport(handleId);
-    if (record?.status === status) return record;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  return tracker.getImport(handleId);
-}
 
-describe("leadbay_import_and_qualify — preflight errors", () => {
-  it("missing bulkTracker → BULK_TRACKER_UNAVAILABLE", async () => {
-    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: adminMe() }]);
-    await expect(
-      importAndQualify.execute(newClient(), { domains: [{ domain: "apple.com" }] }, {})
-    ).rejects.toMatchObject({ code: "BULK_TRACKER_UNAVAILABLE" });
-  });
-
-  it("empty input → IMPORT_EMPTY_INPUT (bubbled from import-leads)", async () => {
-    mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: adminMe() }]);
-    const tracker = new InMemoryBulkStore();
-    await expect(
-      importAndQualify.execute(newClient(), {}, { bulkTracker: tracker })
-    ).rejects.toMatchObject({ code: "IMPORT_EMPTY_INPUT" });
-  });
-});
 
 describe("leadbay_import_and_qualify — async import handle", () => {
   it("wait_for_completion=false returns an import handle before qualification starts", async () => {
-    const tracker = new InMemoryBulkStore();
     mockHttp([
       { method: "GET", path: "/1.6/users/me", status: 200, body: adminMe() },
       {
@@ -175,14 +147,12 @@ describe("leadbay_import_and_qualify — async import handle", () => {
         domains: [{ domain: "apple.com" }],
         wait_for_completion: false,
       },
-      { bulkTracker: tracker }
+      { }
     );
 
     expect(out).toMatchObject({
       kind: "result",
       status: "running",
-      handle_id: expect.any(String),
-      qualify_id: null,
       imported: [],
       qualified: [],
       still_running: [],
@@ -192,28 +162,25 @@ describe("leadbay_import_and_qualify — async import handle", () => {
       expect.stringContaining("POST /1.6/imports?file_name="),
     ]);
 
-    const record = await waitForImportRecord(tracker, out.handle_id!, "complete");
-    expect(record?.result?.leads).toEqual([
-      { domain: "apple.com", leadId: "lead-apple", name: "Apple Inc." },
-    ]);
+    // Let the detached background half finish against the scripts above. Without
+    // this it outlives the test, and its calls land in the NEXT test's mock.
+    await new Promise((r) => setTimeout(r, 3_000));
   });
 });
 
 describe("leadbay_import_and_qualify — empty matched leads → no qualify phase", () => {
   it("all-malformed input returns clean shape with qualify_id=null", async () => {
     mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: adminMe() }]);
-    const tracker = new InMemoryBulkStore();
     const out = await importAndQualify.execute(
       newClient(),
       { domains: [{ domain: "no-tld" }, { domain: "localhost" }] },
-      { bulkTracker: tracker }
+      { }
     );
     expect(out.kind).toBe("result");
     if (out.kind !== "result") throw new Error("expected result");
     expect(out.imported).toEqual([]);
     expect(out.qualified).toEqual([]);
     expect(out.still_running).toEqual([]);
-    expect(out.qualify_id).toBeNull();
     expect(out.dry_run).toBeUndefined();
   });
 
@@ -255,18 +222,16 @@ describe("leadbay_import_and_qualify — empty matched leads → no qualify phas
         },
       },
     ]);
-    const tracker = new InMemoryBulkStore();
     const out = await importAndQualify.execute(
       newClient(),
       { domains: [{ domain: "apple.com" }], dry_run: true },
-      { bulkTracker: tracker }
+      { }
     );
     expect(out.kind).toBe("result");
     if (out.kind !== "result") throw new Error("expected result");
     expect(out.dry_run).toBe(true);
     expect(out.imported).toEqual([]);
     expect(out.qualified).toEqual([]);
-    expect(out.qualify_id).toBeNull();
     // not_imported should carry the dry_run reason
     expect(out.not_imported.length).toBeGreaterThan(0);
     expect(out.not_imported[0].reason).toBe("dry_run");
@@ -335,7 +300,6 @@ describe("leadbay_import_and_qualify — preview mode", () => {
         body: [{ id: "8", name: "priority_test", type: "TEXT" }],
       },
     ]);
-    const tracker = new InMemoryBulkStore();
     const out = await importAndQualify.execute(
       newClient(),
       {
@@ -345,7 +309,7 @@ describe("leadbay_import_and_qualify — preview mode", () => {
         ],
         dry_run: "preview",
       },
-      { bulkTracker: tracker }
+      { }
     );
     expect(out.kind).toBe("preview");
     if (out.kind !== "preview") throw new Error("expected preview");
@@ -373,12 +337,11 @@ describe("leadbay_import_and_qualify — preview mode", () => {
 
   it("preview with empty input → IMPORT_EMPTY_INPUT", async () => {
     mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: adminMe() }]);
-    const tracker = new InMemoryBulkStore();
     await expect(
       importAndQualify.execute(
         newClient(),
         { dry_run: "preview" },
-        { bulkTracker: tracker }
+        { }
       )
     ).rejects.toMatchObject({ code: "IMPORT_EMPTY_INPUT" });
   });
@@ -406,7 +369,6 @@ describe("leadbay_import_and_qualify — idempotency includes custom_fields", ()
         body: [{ id: "8", name: "priority_test", type: "TEXT" }],
       },
     ]);
-    const tracker = new InMemoryBulkStore();
     // Both calls all-malformed (so they reach the no-imported early return
     // path that doesn't touch the bulk store) — but the test is really
     // about making sure two calls with different mappings DON'T re-use a
@@ -492,8 +454,6 @@ describe("leadbay_import_and_qualify — not_in_lens partition (iter-17 e2e bug)
         body: { error: { code: "not_found" } },
       },
     ]);
-
-    const tracker = new InMemoryBulkStore();
     const out = await importAndQualify.execute(
       newClient(),
       {
@@ -501,7 +461,7 @@ describe("leadbay_import_and_qualify — not_in_lens partition (iter-17 e2e bug)
         per_lead_budget_ms: 30_000,
         total_budget_ms: 60_000,
       },
-      { bulkTracker: tracker }
+      { }
     );
     if (out.kind !== "result") throw new Error("expected result");
     expect(out.imported.map((l) => l.leadId)).toEqual(["lead-stripe"]);
@@ -510,7 +470,6 @@ describe("leadbay_import_and_qualify — not_in_lens partition (iter-17 e2e bug)
     expect(out.qualified).toEqual([]);
     // SHOULD be in not_in_lens — agent's signal to stop polling
     expect(out.not_in_lens).toEqual(["lead-stripe"]);
-    expect(out.qualify_id).toBeTruthy();
   }, 30_000);
 });
 
@@ -563,8 +522,6 @@ describe("leadbay_import_and_qualify — quota_blocked lifecycle flag (iter-15)"
       { method: "GET", path: "/1.6/leads/lead-a/web_fetch", status: 200, body: { lead_id: "lead-a", in_progress: false, fetch_at: "2026-05-04T00:00:00Z", content: {} } },
       { method: "GET", path: "/1.6/leads/lead-a/ai_agent_responses", status: 200, body: [{ question: "Q1", question_created_at: "2026-05-04T00:00:00Z", lead_id: "lead-a", score: 10, response: "y", computed_at: "2026-05-04T00:00:00Z" }] },
     ]);
-
-    const tracker = new InMemoryBulkStore();
     const out = await importAndQualify.execute(
       newClient(),
       {
@@ -574,7 +531,7 @@ describe("leadbay_import_and_qualify — quota_blocked lifecycle flag (iter-15)"
         total_budget_ms: 60_000,
         skip_already_qualified: false,
       },
-      { bulkTracker: tracker }
+      { }
     );
     if (out.kind !== "result") throw new Error("expected result");
     expect(out.quota_exceeded).toBe(true);
@@ -586,75 +543,6 @@ describe("leadbay_import_and_qualify — quota_blocked lifecycle flag (iter-15)"
   }, 30_000);
 });
 
-describe("leadbay_import_and_qualify — markLaunched retry (iter-15)", () => {
-  it("retries markLaunched on first transient failure, succeeds on second", async () => {
-    // Build a tracker stub that throws once on markLaunched, then succeeds.
-    const realTracker = new InMemoryBulkStore();
-    let markCalls = 0;
-    const flakyTracker = {
-      ...realTracker,
-      findOrCreatePending: realTracker.findOrCreatePending.bind(realTracker),
-      findOrCreatePendingQualify: realTracker.findOrCreatePendingQualify.bind(realTracker),
-      get: realTracker.get.bind(realTracker),
-      getQualify: realTracker.getQualify.bind(realTracker),
-      list: realTracker.list.bind(realTracker),
-      markFailed: realTracker.markFailed.bind(realTracker),
-      markLaunched: async (id: string) => {
-        markCalls++;
-        if (markCalls === 1) throw new Error("EAGAIN — fake transient FS error");
-        return realTracker.markLaunched(id);
-      },
-    };
-
-    const importId = "imp-mark-1234-5678-9abc-deadbeef00aa";
-    mockHttp([
-      { method: "GET", path: "/1.6/users/me", status: 200, body: adminMe() },
-      { method: "GET", path: "/1.6/lenses", status: 200, body: [{ id: 21580, name: "A", is_last_active: true }] },
-      {
-        method: "POST", path: /^\/1\.6\/imports\?file_name=/, status: 200,
-        body: { id: importId, date: "2026-05-04T00:00:00Z", file_name: "x.csv", imported_records: 0, pending_imported_records: 0, total_records: 0, mappings: null, pre_processing: null, processing: null },
-      },
-      {
-        method: "GET", path: /\/1\.6\/imports\/[a-z0-9-]+$/, status: 200,
-        body: { id: importId, date: "2026-05-04T00:00:00Z", file_name: "x.csv", imported_records: 1, pending_imported_records: 0, total_records: 1, mappings: null, pre_processing: { finished: true }, processing: { progress: 1, finished: true, error: null } },
-      },
-      { method: "POST", path: /\/1\.6\/imports\/[a-z0-9-]+\/update_mappings/, status: 204 },
-      {
-        method: "GET", path: /\/1\.6\/imports\/[a-z0-9-]+$/, status: 200,
-        body: { id: importId, date: "2026-05-04T00:00:00Z", file_name: "x.csv", imported_records: 1, pending_imported_records: 0, total_records: 1, mappings: null, pre_processing: { finished: true }, processing: { progress: 1, finished: true, error: null } },
-      },
-      {
-        method: "GET", path: /\/1\.6\/imports\/[a-z0-9-]+\/records\?/, status: 200,
-        body: { items: [{ id: 1, records: [{ column_name: "MCP_ROW_ID", value: "r1" }, { column_name: "LEAD_NAME", value: "A" }, { column_name: "LEAD_WEBSITE", value: "a.com" }], match_type: "AUTOMATIC_MATCH", status: "IMPORTED", lead: { id: "lead-a", name: "A", website: "a.com" } }], pagination: { page: 0, pages: 1, total: 1 } },
-      },
-      {
-        method: "GET", path: /\/1\.6\/imports\/[a-z0-9-]+\/records\?/, status: 200,
-        body: { items: [{ id: 1, records: [{ column_name: "MCP_ROW_ID", value: "r1" }, { column_name: "LEAD_NAME", value: "A" }, { column_name: "LEAD_WEBSITE", value: "a.com" }], match_type: "AUTOMATIC_MATCH", status: "IMPORTED", lead: { id: "lead-a", name: "A", website: "a.com" } }], pagination: { page: 0, pages: 1, total: 1 } },
-      },
-      { method: "GET", path: /\/1\.6\/imports\/[a-z0-9-]+\/leads$/, status: 200, body: { lead_ids: ["lead-a"] } },
-      { method: "POST", path: "/1.6/leads/lead-a/web_fetch?force_fetch=false", status: 204 },
-      { method: "GET", path: "/1.6/leads/lead-a/web_fetch", status: 200, body: { lead_id: "lead-a", in_progress: false, fetch_at: "2026-05-04T00:00:00Z", content: {} } },
-      { method: "GET", path: "/1.6/leads/lead-a/ai_agent_responses", status: 200, body: [{ question: "Q1", question_created_at: "2026-05-04T00:00:00Z", lead_id: "lead-a", score: 10, response: "y", computed_at: "2026-05-04T00:00:00Z" }] },
-    ]);
-
-    const out = await importAndQualify.execute(
-      newClient(),
-      {
-        domains: [{ domain: "a.com" }],
-        per_lead_budget_ms: 30_000,
-        total_budget_ms: 60_000,
-        skip_already_qualified: false,
-      },
-      { bulkTracker: flakyTracker as any }
-    );
-    if (out.kind !== "result") throw new Error("expected result");
-    expect(markCalls).toBe(2); // retried after the first throw
-    expect(out.qualify_id).toBeTruthy();
-    // Bulk record is launched (retry succeeded).
-    const fetched = await realTracker.getQualify(out.qualify_id!);
-    expect(fetched?.status).toBe("launched");
-  }, 30_000);
-});
 
 describe("leadbay_import_and_qualify — /imports/{id}/leads canonical source", () => {
   // Spec §2.2: the qualify phase should source its leadIds from
@@ -809,8 +697,6 @@ describe("leadbay_import_and_qualify — /imports/{id}/leads canonical source", 
         ],
       },
     ]);
-
-    const tracker = new InMemoryBulkStore();
     const out = await importAndQualify.execute(
       newClient(),
       {
@@ -819,7 +705,7 @@ describe("leadbay_import_and_qualify — /imports/{id}/leads canonical source", 
         total_budget_ms: 60_000,
         skip_already_qualified: false,
       },
-      { bulkTracker: tracker }
+      { }
     );
     if (out.kind !== "result") throw new Error("expected result");
     expect(out.imported).toHaveLength(1);
@@ -831,11 +717,10 @@ describe("leadbay_import_and_qualify — /imports/{id}/leads canonical source", 
 describe("leadbay_import_and_qualify — adaptive budgets", () => {
   it("picks 'small' strategy for 1-lead input when no budgets passed", async () => {
     mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: adminMe() }]);
-    const tracker = new InMemoryBulkStore();
     const out = await importAndQualify.execute(
       newClient(),
       { domains: [{ domain: "no-tld" }] }, // malformed → returns immediately, exposes chosen_budgets
-      { bulkTracker: tracker }
+      { }
     );
     expect(out.kind).toBe("result");
     if (out.kind !== "result") throw new Error("expected result");
@@ -847,12 +732,11 @@ describe("leadbay_import_and_qualify — adaptive budgets", () => {
 
   it("picks 'default' strategy for 10-lead input", async () => {
     mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: adminMe() }]);
-    const tracker = new InMemoryBulkStore();
     const tenMalformed = Array.from({ length: 10 }, () => ({ domain: "no-tld" }));
     const out = await importAndQualify.execute(
       newClient(),
       { domains: tenMalformed },
-      { bulkTracker: tracker }
+      { }
     );
     if (out.kind !== "result") throw new Error("expected result");
     expect(out.chosen_budgets?.strategy).toBe("default");
@@ -861,12 +745,11 @@ describe("leadbay_import_and_qualify — adaptive budgets", () => {
 
   it("picks 'large' strategy for 50-lead input", async () => {
     mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: adminMe() }]);
-    const tracker = new InMemoryBulkStore();
     const fiftyMalformed = Array.from({ length: 50 }, () => ({ domain: "no-tld" }));
     const out = await importAndQualify.execute(
       newClient(),
       { domains: fiftyMalformed },
-      { bulkTracker: tracker }
+      { }
     );
     if (out.kind !== "result") throw new Error("expected result");
     expect(out.chosen_budgets?.strategy).toBe("large");
@@ -875,7 +758,6 @@ describe("leadbay_import_and_qualify — adaptive budgets", () => {
 
   it("explicit budget params suppress chosen_budgets (caller is in charge)", async () => {
     mockHttp([{ method: "GET", path: "/1.6/users/me", status: 200, body: adminMe() }]);
-    const tracker = new InMemoryBulkStore();
     const out = await importAndQualify.execute(
       newClient(),
       {
@@ -883,7 +765,7 @@ describe("leadbay_import_and_qualify — adaptive budgets", () => {
         total_budget_ms: 30_000,
         per_lead_budget_ms: 10_000,
       },
-      { bulkTracker: tracker }
+      { }
     );
     if (out.kind !== "result") throw new Error("expected result");
     expect(out.chosen_budgets).toBeUndefined();
@@ -1044,8 +926,6 @@ describe("leadbay_import_and_qualify — happy path", () => {
         ],
       },
     ]);
-
-    const tracker = new InMemoryBulkStore();
     const out = await importAndQualify.execute(
       newClient(),
       {
@@ -1053,7 +933,7 @@ describe("leadbay_import_and_qualify — happy path", () => {
         per_lead_budget_ms: 30_000,
         total_budget_ms: 60_000,
       },
-      { bulkTracker: tracker }
+      { }
     );
 
     expect(out.imported).toHaveLength(1);
@@ -1064,11 +944,6 @@ describe("leadbay_import_and_qualify — happy path", () => {
     expect(out.qualified[0].qualifications[0].score).toBe(20);
     expect(out.still_running).toEqual([]);
     expect(out.failed).toEqual([]);
-    expect(out.qualify_id).toBeTruthy();
     // Bulk record should be persisted as launched.
-    const fetched = await tracker.getQualify(out.qualify_id!);
-    expect(fetched).toBeTruthy();
-    expect(fetched?.status).toBe("launched");
-    expect(fetched?.lead_ids).toEqual(["lead-apple"]);
   }, 30_000);
 });

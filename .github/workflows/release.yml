@@ -157,7 +157,12 @@ jobs:
             # Extract the changelog section for this version (text between
             # the matching "## X.Y.Z" header and the next "## " header).
             VERSION="${TAG#mcp-v}"
-            NOTES=$(awk "/^## ${VERSION}/{found=1; next} found && /^## /{exit} found{print}" packages/mcp/CHANGELOG.md | sed '/^[[:space:]]*$/{ N; /^\n$/d }' | head -60)
+            # No `head` here: it closes the pipe, `sed` takes SIGPIPE, and
+            # `set -o pipefail` fails the whole step. That is what happened on
+            # mcp-v0.35.0, whose section is 115 lines — npm published, then the
+            # release was never created, so no .dxt/.mcpb and the registry job
+            # was skipped. The sections are a few KB; GitHub allows 125k.
+            NOTES=$(awk "/^## ${VERSION}/{found=1; next} found && /^## /{exit} found{print}" packages/mcp/CHANGELOG.md | sed '/^[[:space:]]*$/{ N; /^\n$/d }')
             if [ -z "$NOTES" ]; then
               NOTES="See [CHANGELOG.md](https://github.com/leadbay/mcp/blob/main/packages/mcp/CHANGELOG.md) for details."
             fi
@@ -220,5 +225,24 @@ jobs:
       - name: Validate server.json
         run: ./mcp-publisher validate packages/mcp/server.json
       - name: Publish
-        run: ./mcp-publisher publish packages/mcp/server.json
+        # The registry re-checks npm before it will register the version, and
+        # on mcp-v0.34.1 it got there first: "NPM package '@leadbay/mcp'
+        # exists, but version '0.34.1' was not found (status: 404)", HTTP 400,
+        # and 0.34.1 never reached the registry. The error text itself says to
+        # wait and retry, so do that rather than losing a release to npm's
+        # propagation delay.
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if ./mcp-publisher publish packages/mcp/server.json; then
+              echo "Published on attempt $attempt"
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              echo "Publish attempt $attempt failed; waiting 30s for npm to propagate"
+              sleep 30
+            fi
+          done
+          echo "mcp-publisher still failing after 5 attempts"
+          exit 1
 

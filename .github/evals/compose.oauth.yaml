@@ -1,0 +1,15 @@
+# Optional standard Claude subscription credentials for nested product CLI sessions.
+# The CLI removes its own auth environment from child Bash processes. A read-only
+# credential file lets the product CLI authenticate without exposing it in a prompt.
+services:
+  tester:
+    # The bind below would otherwise make Docker create /home/node/.claude as root inside the
+    # tmpfs home, which leaves the CLI unable to persist sessions, so --resume cannot find them.
+    tmpfs:
+      - /home/node/.claude:uid=1000,gid=1000,mode=0700
+    volumes:
+      - type: bind
+        source: ${EVAL_CLAUDE_CREDENTIALS:?Set a private external Claude credentials file}
+        target: /home/node/.claude/.credentials.json
+        read_only: true
+        bind: {create_host_path: false}

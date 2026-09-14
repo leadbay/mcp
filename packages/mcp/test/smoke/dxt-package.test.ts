@@ -79,7 +79,6 @@ describe.skipIf(!dxtPath)("@leadbay/dxt — .dxt bundle shape", () => {
           LEADBAY_REGION: "us",
           LEADBAY_UPDATE_CHECK_DISABLED: "1",
           LEADBAY_TELEMETRY_ENABLED: "false",
-          LEADBAY_BULK_STORE_ALLOW_MEMORY: "1",
         },
       });
       const client = new Client({ name: "dxt-smoke", version: "0.0.1" }, {});

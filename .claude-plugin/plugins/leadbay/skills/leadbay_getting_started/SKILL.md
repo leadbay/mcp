@@ -38,7 +38,7 @@ If the prompt's body and the tool's RENDERING appear to conflict, the tool's REN
 
 # Resilience rules for Leadbay long-running tools
 
-These four rules apply to every Leadbay workflow that calls `leadbay_pull_leads`, `leadbay_bulk_qualify_leads`, `leadbay_research_lead_by_id`, `leadbay_import_and_qualify`, or `leadbay_enrich_titles`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
+These rules apply to every Leadbay workflow that calls `leadbay_pull_leads`, `leadbay_bulk_qualify_leads`, `leadbay_research_lead_by_id`, `leadbay_import_and_qualify`, or `leadbay_enrich_titles`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
 
 ## Rule 1 — Pin the lens
 
@@ -46,7 +46,7 @@ After your first `leadbay_pull_leads` call, capture `response.lens.id` into your
 
 ## Rule 2 — Prefer async for bulk operations
 
-`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false`, which returns `{status:'running', qualify_id}` immediately. Then poll `leadbay_qualify_status` (or `leadbay_import_status`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
+`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false` and return immediately. They hand back different ids: `bulk_qualify_leads` returns `{status:'running', notification_id, lead_ids, lens_id}` — poll `leadbay_qualify_status` with those. `import_and_qualify` returns `{status:'running', import_ids}` and no `notification_id` at all — poll `leadbay_import_status({importIds, dry_run})` with those. Poll every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
 
 ## Rule 3 — Serialize `leadbay_research_lead_by_id` fan-out
 
@@ -61,6 +61,36 @@ If a Leadbay tool returns `"Request timed out"`, `"stream closed"`, or any other
 3. **Do not** switch strategies (e.g. "the endpoint is broken, let me re-pull from scratch"). The earlier work is still valid; the timeout was the wire.
 
 If `pull_leads` itself fails and you have no prior batch, then yes — retry it, explicitly pass the lensId you captured (if any), and continue.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once `leadbay_enrich_titles`, `leadbay_bulk_qualify_leads`,
+`leadbay_import_leads` or `leadbay_import_and_qualify` has returned a launched or
+running result, that work is queued on Leadbay and runs to completion, and the
+quota it uses is already committed. A discovery, preview or `dry_run` result
+launched nothing and is not covered here.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting, never the job. `cancelled: true` means we stopped watching, not that the
+work stopped. What to do next depends on what you are holding:
+
+- **A handle.** Poll the status tool with it, and do not launch the work that
+  handle covers a second time — that uses the quota again on the same rows.
+  `leadbay_import_status` takes `importIds`, so pass the values of `import_ids`
+  under that name. A qualification started by `leadbay_import_and_qualify` has no
+  notification of its own: resume it with
+  `leadbay_qualify_status({lead_ids, lens_id})`.
+- **A handle AND a subset the result says never started** — `failed[]` entries
+  with `error:"not_queued"`, or a `rows_pending_upload` count. Poll the handle
+  for what was launched and re-run for that subset only, never for the whole
+  batch.
+- **No result at all**, because the call timed out or the stream closed before it
+  returned. Check `leadbay_account_status` first: the launch may have landed and
+  finished. Calling the same tool again with the same arguments will usually hand
+  back the job already launched rather than starting a second one, but that guard
+  is in-memory, five minutes, and per process, so it is best-effort — say what you
+  are about to re-run before you use the user's quota on it.
+
 
 
 # THE ONE-FORWARD-OPTION RULE — the structural contract of this walkthrough
@@ -246,7 +276,7 @@ days"), computed against now — mirroring the widget's "réinitialisé dans X".
 raw value is an ISO-8601 timestamp.
 
 **Top-up (optional, subordinate).** When `quota.topup` is present, you MAY add one
-small line below the windows: `Top-up: $<remaining_cents/100> of $<total_credit_cents/100> left`.
+small line below the windows: `Top-up: $<(remaining_cents / 100).toFixed(2)> of $<(total_credit_cents / 100).toFixed(2)> left`.
 Keep it secondary — the three window gauges are the headline. Omit when null.
 
 **Legend** (once, below): `` `▰` used · `▱` remaining ``.
@@ -415,9 +445,9 @@ Say plainly that this only **drafts** — nothing is sent, and they see it first
 On click: call `leadbay_prepare_outreach` with `leadId` = the top lead's id,
 **and nothing else**.
 
-**This gate spends NOTHING. Never pass `enrich: true`** — that launches a paid
+**This gate uses NO quota. Never pass `enrich: true`** — that launches a
 contact reveal off the back of a *draft* click. They agreed to see an email
-written, not to spend. GATE 4 is where the reveal gets asked for, on its own
+written, not to reveal anyone. GATE 4 is where the reveal gets asked for, on its own
 terms.
 
 `recommended_contact` comes back in its post-enrichment shape with `email` and
@@ -451,7 +481,7 @@ pitching whoever answers the switchboard — the difference between a
 conversation and a dead end.
 
 Say plainly that the first look is **free**, and that revealing the contact
-costs credits and needs their say-so.
+uses a little of their plan's quota and needs their say-so.
 
 **First, check `leadbay_enrich_titles` is in your tool set.** On a read-only
 deployment it is not registered, and a gate whose tool cannot run is a dead
@@ -464,23 +494,23 @@ does nothing.
 
 This gate runs in **TWO BEATS**. Do not collapse them.
 
-## BEAT 1 — the free look (spends nothing)
+## BEAT 1 — the free look (uses no quota)
 
 On click: call `leadbay_enrich_titles` with `leadIds` = **the one lead you
 drafted for at GATE 3** and `lensId` = the pinned lens id.
 
-**This call must spend NOTHING.** Omit `titles` entirely: that returns
+**This call must use NO quota.** Omit `titles` entirely: that returns
 `mode:"discover"`, the free preview of which job titles exist at that company.
 Do NOT pass `titles`, `confirm=true`, `email=true` or `phone=true` on this call
-— any one of them launches the paid reveal before the user has chosen anything.
+— any one of them launches the reveal before the user has chosen anything.
 
-Present the discovered titles and say plainly: "nothing spent yet."
+Present the discovered titles and say plainly: "nothing revealed yet."
 
-## BEAT 2 — reveal the person the draft is for (spends credits)
+## BEAT 2 — reveal the person the draft is for (uses quota)
 
-Name the title the GATE 3 draft is addressed to, and tell them the cost
-**before** they decide: one credit per contact revealed — here that's **one
-contact, one credit**. Then ask them to confirm.
+Name the title the GATE 3 draft is addressed to, and tell them **before** they
+decide that revealing **one contact** uses a little of their plan's quota. No
+amount, no price. Then ask them to confirm.
 
 **Wait for an explicit confirmation.** Silence is not consent, and neither is
 "they clicked the gate earlier" — the gate click bought the free look, not the
@@ -488,23 +518,23 @@ reveal.
 
 Once confirmed, call `leadbay_enrich_titles` AGAIN with
 `leadIds: [<the drafted lead's id>]` — **the array, always, even for one lead**
-— plus the chosen `titles`, `confirm: true` and `email: true`. That's the real,
-paid reveal.
+— plus the chosen `titles`, `confirm: true` and `email: true`. That's the real
+reveal.
 
 `leadIds` is the only key this tool reads for scope. A singular `leadId` is not
 a parameter: it is silently ignored, and the call then falls back to the
 account's **default wishlist selection** while `confirm`/`email` are set — so
-it would reveal and charge for the whole batch instead of the one lead the user
+it would reveal the whole batch instead of the one lead the user
 agreed to.
 
-It returns a `bulk_id` and runs async — poll `leadbay_bulk_enrich_status`
+It returns a `notification_id` and runs async — poll `leadbay_bulk_enrich_status`
 with that id (`include_contacts=true`) until `all_done`, or until the resolved
 count plateaus across a few spaced polls. Then report the contact that actually
 resolved: name, title, and the email/phone that came back. Contacts sometimes
 don't resolve; say so honestly rather than implying success.
 
-**Then close the loop** — one line: one credit per contact revealed, so this
-cost one. And say the thing that makes it land: the draft from GATE 3 now has a
+**Then close the loop** — one line: the reveal used a little of their plan's
+quota, never a price. And say the thing that makes it land: the draft from GATE 3 now has a
 real person and a real address to go to. This is the moment GATE 1's quota
 numbers stop being abstract, because they just watched them move and got
 something for it. Don't turn it into a pricing pitch.

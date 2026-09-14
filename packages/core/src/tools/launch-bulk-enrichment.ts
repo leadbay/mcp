@@ -24,7 +24,9 @@ export const launchBulkEnrichment: Tool<LaunchBulkEnrichmentParams> = {
     title: "Launch bulk enrichment",
     readOnlyHint: false,
     destructiveHint: true,
-    idempotentHint: true,
+    // No double-launch guard: this POSTs straight through, so an identical
+    // repeat is a second paid launch, not a no-op (product#4039).
+    idempotentHint: false,
     openWorldHint: true,
   },
   description: LAUNCH_BULK_ENRICHMENT_DESCRIPTION,

@@ -1,0 +1,13 @@
+version: 1
+id: import-all-uncrawled-still-reassures
+regions:
+- us
+languages:
+- en
+starting_state:
+- None of Cortex (cortex.io), Warp (warp.dev), Resend (resend.com), or Baseten (baseten.co) has been crawled.
+- Import processing finishes with zero imported records and four pending records, each NO_MATCH and IMPORTING.
+  There is no processing error. Crawl completion occurs after the conversation.
+user_decisions: []
+variants: []
+datasets: []

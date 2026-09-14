@@ -41,6 +41,13 @@ const TOOLS_WITH_ROUTING = new Set([
   "leadbay_list_campaigns",
   "leadbay_pull_followups",
   "leadbay_pull_leads",
+  // MCP-first lead delivery. The registry is the file's own instruction
+  // ("when they do, append here"); the behavioural assertions for these three
+  // live in lead-delivery-routing-block.test.ts, which covers the cross-routing
+  // and example counts this audit does not.
+  "leadbay_find_new_leads",
+  "leadbay_qualify_leads",
+  "leadbay_lead_job_status",
   "leadbay_report_friction",
   "leadbay_send_feedback",
   "leadbay_research_lead_by_id",

@@ -13,7 +13,7 @@ What Leadbay does need is anything that changes **who it should find**. When the
 
 Build me a Leadbay campaign from scratch<if the user supplied this argument, render the short parenthetical or inline clause derived from it; otherwise empty. Source: Optional: a name for the campaign. Omit and one is derived from the lens/audience + date (or the backend AI-names it).> — a cohort of **<the user-supplied value if any; otherwise a sensible default. Source: Optional: how many fully-actionable leads to build (default 20). The loop keeps discovering, qualifying and enriching until this many in-ICP leads each have a reachable target-title contact — or the lens is exhausted. Higher counts take longer and consume more quota.>** fully-actionable leads: each in-ICP, high `ai_agent_lead_score`, AND with a reachable buyer contact. <if the user supplied this argument, render the short block derived from it; otherwise empty. Source: Optional: a fresh audience to target (e.g. 'dental clinics in Texas'). Omit to build from your ACTIVE lens — the default.> <if the user supplied this argument, render the short block derived from it; otherwise empty. Source: Optional: the exact buyer job titles to enrich, comma-separated (e.g. 'VP Sales, Head of Growth, Director of Business Development'). Omit and the buyer persona is derived from what you sell. A lead only counts toward the target when it has a reachable contact matching one of these titles.>
 
-**Run this end-to-end, autonomously, without pausing.** Do NOT stop to confirm the audience, do NOT stop to confirm the enrichment spend, do NOT ask me to pick, and do NOT stop to hand off — just keep discovering, qualifying, enriching, and swapping until the cohort holds **<the count_or_default (as extracted above)>** leads that each meet EVERY requirement (in-ICP, high `ai_agent_lead_score`, and a reachable target-title contact whose email/phone actually landed). The ONLY reasons to stop short: the lens genuinely can't supply that many buyer-ready in-ICP leads, or enrichment quota is exhausted (a backend 429). In those cases, finish with whatever you locked and tell me plainly how many you got and why it stopped. Enrichment consumes quota, not credits — never pre-refuse on a credit balance.
+**Run this end-to-end, autonomously, without pausing.** Do NOT stop to confirm the audience, do NOT stop to confirm the enrichment, do NOT ask me to pick, and do NOT stop to hand off — just keep discovering, qualifying, enriching, and swapping until the cohort holds **<the count_or_default (as extracted above)>** leads that each meet EVERY requirement (in-ICP, high `ai_agent_lead_score`, and a reachable target-title contact whose email/phone actually landed). The ONLY reasons to stop short: the lens genuinely can't supply that many buyer-ready in-ICP leads, or enrichment quota is exhausted (a backend 429). In those cases, finish with whatever you locked and tell me plainly how many you got and why it stopped. Enrichment consumes quota, not credits — never pre-refuse on a credit balance.
 
 GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
 
@@ -22,7 +22,7 @@ If the prompt's body and the tool's RENDERING appear to conflict, the tool's REN
 
 # Resilience rules for Leadbay long-running tools
 
-These four rules apply to every Leadbay workflow that calls `leadbay_pull_leads`, `leadbay_bulk_qualify_leads`, `leadbay_research_lead_by_id`, `leadbay_import_and_qualify`, or `leadbay_enrich_titles`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
+These rules apply to every Leadbay workflow that calls `leadbay_pull_leads`, `leadbay_bulk_qualify_leads`, `leadbay_research_lead_by_id`, `leadbay_import_and_qualify`, or `leadbay_enrich_titles`. **Treat timeouts and stream-closed errors as transient, not as signals to replan.**
 
 ## Rule 1 — Pin the lens
 
@@ -30,7 +30,7 @@ After your first `leadbay_pull_leads` call, capture `response.lens.id` into your
 
 ## Rule 2 — Prefer async for bulk operations
 
-`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false`, which returns `{status:'running', qualify_id}` immediately. Then poll `leadbay_qualify_status` (or `leadbay_import_status`) every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
+`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false` and return immediately. They hand back different ids: `bulk_qualify_leads` returns `{status:'running', notification_id, lead_ids, lens_id}` — poll `leadbay_qualify_status` with those. `import_and_qualify` returns `{status:'running', import_ids}` and no `notification_id` at all — poll `leadbay_import_status({importIds, dry_run})` with those. Poll every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
 
 ## Rule 3 — Serialize `leadbay_research_lead_by_id` fan-out
 
@@ -45,6 +45,36 @@ If a Leadbay tool returns `"Request timed out"`, `"stream closed"`, or any other
 3. **Do not** switch strategies (e.g. "the endpoint is broken, let me re-pull from scratch"). The earlier work is still valid; the timeout was the wire.
 
 If `pull_leads` itself fails and you have no prior batch, then yes — retry it, explicitly pass the lensId you captured (if any), and continue.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once `leadbay_enrich_titles`, `leadbay_bulk_qualify_leads`,
+`leadbay_import_leads` or `leadbay_import_and_qualify` has returned a launched or
+running result, that work is queued on Leadbay and runs to completion, and the
+quota it uses is already committed. A discovery, preview or `dry_run` result
+launched nothing and is not covered here.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting, never the job. `cancelled: true` means we stopped watching, not that the
+work stopped. What to do next depends on what you are holding:
+
+- **A handle.** Poll the status tool with it, and do not launch the work that
+  handle covers a second time — that uses the quota again on the same rows.
+  `leadbay_import_status` takes `importIds`, so pass the values of `import_ids`
+  under that name. A qualification started by `leadbay_import_and_qualify` has no
+  notification of its own: resume it with
+  `leadbay_qualify_status({lead_ids, lens_id})`.
+- **A handle AND a subset the result says never started** — `failed[]` entries
+  with `error:"not_queued"`, or a `rows_pending_upload` count. Poll the handle
+  for what was launched and re-run for that subset only, never for the whole
+  batch.
+- **No result at all**, because the call timed out or the stream closed before it
+  returned. Check `leadbay_account_status` first: the launch may have landed and
+  finished. Calling the same tool again with the same arguments will usually hand
+  back the job already launched rather than starting a second one, but that guard
+  is in-memory, five minutes, and per process, so it is best-effort — say what you
+  are about to re-run before you use the user's quota on it.
+
 
 
 # PHASE 0 — STATE + AUDIENCE
@@ -142,7 +172,7 @@ If I named specific leads, seed with those (still apply the Phase 3 buyer-covera
 
 # PHASE 3 — ENRICH THE RIGHT CONTACTS (load-bearing)
 
-This is the phase that decides whether the campaign is worth a salesperson's time. Contacts aren't attached by default and enrichment is paid — so spend it ONLY on the people who would actually **buy what I sell**, at the target titles, not on whoever is most senior.
+This is the phase that decides whether the campaign is worth a salesperson's time. Contacts aren't attached by default and enrichment uses quota — so use it ONLY on the people who would actually **buy what I sell**, at the target titles, not on whoever is most senior.
 
 **Step A — settle the target titles / buyer persona.**
 
@@ -168,7 +198,7 @@ Call `leadbay_recall_ordered_titles({leadIds, lensId})` and `leadbay_enrich_titl
 
 Tell me what you swapped in one line ("dropped Corbett + RBS — ops-only; swapped in Acme + Globex which have Sales VPs").
 
-**Step C — enrich (NO confirm gate — just spend).** You do NOT need my permission: I authorized this spend by asking for the campaign. Do NOT call `ask_user_input_v0`, do NOT ask "enrich these N now?", do NOT wait. State the persona + titles + "enriching {enrichable_contacts} contacts (email + phone, consumes quota)" in one line for the record, then immediately launch: `leadbay_enrich_titles({leadIds, lensId, titles:[...chosen], email:true, phone:true})`. Enrich up to <the count_or_default (as extracted above)> best target-title contacts. Do NOT quote a "credits" figure or refuse on a credit balance — the only real limit is quota (a backend 429). If a 429 stops you mid-run, keep the leads already enriched, note how many landed, and continue to Phase 4 with those.
+**Step C — enrich (NO confirm gate — just launch).** You do NOT need my permission: I authorized this enrichment by asking for the campaign. Do NOT call `ask_user_input_v0`, do NOT ask "enrich these N now?", do NOT wait. State the persona + titles + "enriching {enrichable_contacts} contacts (email + phone, consumes quota)" in one line for the record, then immediately launch: `leadbay_enrich_titles({leadIds, lensId, titles:[...chosen], email:true, phone:true})`. Enrich up to <the count_or_default (as extracted above)> best target-title contacts. Do NOT quote a "credits" figure or refuse on a credit balance — the only real limit is quota (a backend 429). If a 429 stops you mid-run, keep the leads already enriched, note how many landed, and continue to Phase 4 with those.
 
 **Step D — poll + count only landed.** Poll `leadbay_bulk_enrich_status` until done (enrichment can take several minutes — keep polling, don't render an empty sheet prematurely). Once `all_done`, call `leadbay_account_status` and show my refreshed quota so I see what the run consumed. A lead only counts toward the <the count_or_default (as extracted above)> once its target-title contact actually landed (email/phone present); if some came back empty, swap + enrich replacements (loop back to Step B.5) until the cohort is genuinely <the count_or_default (as extracted above)> deep or the lens is exhausted.
 
@@ -193,7 +223,7 @@ Building a campaign is NOT outreaching — do not send anything and do not call 
 # Iron laws
 
 - **Run to the goal, autonomously.** Keep discovering → qualifying → enriching → swapping until the cohort holds <the count_or_default (as extracted above)> leads that are ALL in-ICP, high-score, and buyer-covered — or the lens is genuinely exhausted. Do NOT stop early, do NOT ask me to pick, do NOT hand off mid-flow.
-- **No confirm gates. No pauses.** Do NOT confirm the audience switch, and do NOT confirm the enrichment spend (no `ask_user_input_v0` before enriching) — asking for the campaign IS the authorization. The only acceptable stops are lens exhaustion or a backend 429.
+- **No confirm gates. No pauses.** Do NOT confirm the audience switch, and do NOT confirm the enrichment (no `ask_user_input_v0` before enriching) — asking for the campaign IS the authorization. The only acceptable stops are lens exhaustion or a backend 429.
 - Enrichment targets MY buyer titles — the people who would actually buy what *I* sell (my given titles, or the persona derived from my product/ICP) — NOT generic seniority. For a sales/prospecting tool that means the revenue org; a Director of Operations, COO, or logistics manager is useless no matter how senior.
 - Selection is DATA-DRIVEN (`leadbay_recall_ordered_titles` + `leadbay_enrich_titles` discovery) but FILTERED to the target titles — never blindly repeat past-enriched or suggested titles that don't match who buys my product.
 - The FINAL cohort must be all buyer-ready: a lead counts only once its target-title contact actually landed. Drop/swap + re-enrich any lead with no reachable buyer rather than shipping it empty.

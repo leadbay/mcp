@@ -207,7 +207,11 @@ export const researchLeadById: Tool<ResearchLeadByIdParams> = {
   inputSchema: {
     type: "object",
     properties: {
-      leadId: { type: "string", description: "Lead UUID (required)" },
+      leadId: {
+        type: "string",
+        description:
+          "Full 36-character lead UUID exactly as returned in leadbay_pull_leads items[].id (never shortened)",
+      },
       lensId: {
         type: "number",
         description:

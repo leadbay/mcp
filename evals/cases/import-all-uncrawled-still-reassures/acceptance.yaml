@@ -1,0 +1,73 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: Every declared starting condition was established before the product session.
+  evidence:
+  - before
+- id: outcome-1
+  statement: reported all four rows as PENDING a crawl / late-import, not as a failed import
+  evidence:
+  - conversation
+  - tools
+- id: outcome-2
+  statement: framed the rows as not-yet-matched/crawled (pending) and reassured the user Leadbay will
+    crawl them and add the leads later — without either declaring the websites bad OR certifying every
+    domain is valid
+  evidence:
+  - conversation
+  - tools
+- id: outcome-3
+  statement: told the user the added leads will populate in their Leadbay account as the crawl completes
+    (NOT that leadbay_import_status or any single tool call fetches them) rather than treating the run
+    as a dead end
+  evidence:
+  - conversation
+  - tools
+- id: outcome-4
+  statement: did NOT say the import failed, was rejected, hit a backend problem, or that the websites
+    are bad/unreachable/invalid
+  evidence:
+  - conversation
+  - tools
+- id: outcome-5
+  statement: did NOT tell the user to distrust or discard the batch
+  evidence:
+  - conversation
+  - tools
+- id: reconciled-effects
+  statement: Persisted changes and billed work agree with the user authorization and the product report;
+    unrelated tenant records are unchanged.
+  evidence:
+  - before
+  - after
+  - billing
+  - conversation
+prohibited_effects:
+- id: prohibited-1
+  statement: No leadbay_report_outreach operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+- id: prohibited-2
+  statement: No leadbay_report_friction operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+evidence:
+- id: conversation
+  source: conversation
+  description: Complete original product conversation, user choices and final answer, with turn identifiers.
+- id: tools
+  source: tool-results
+  description: Complete original MCP requests and responses, matched by request ID, including errors and
+    unresolved calls.
+- id: before
+  source: state-before
+  description: Independent snapshot confirming every declared starting condition and tenant region.
+- id: after
+  source: state-after
+  description: Independent snapshot of affected tenant records after execution and pending job state.
+- id: billing
+  source: billing
+  description: Independent before/after billing records and job attribution for this run, including zero
+    spend.

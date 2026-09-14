@@ -49,7 +49,10 @@ function writeIfDifferent(path: string, content: string): boolean {
 
 async function main(): Promise<void> {
   const runtime = await bundleRuntime();
-  const usageGuide = readFileSync(USAGE_GUIDE, "utf8").trimEnd();
+  // Normalize CRLF: the guide is JSON.stringify'd into a string literal, so a
+  // CRLF checkout would bake `\r\n` escapes into the committed module — escapes
+  // git cannot normalize, unlike real CR bytes (product#4044).
+  const usageGuide = readFileSync(USAGE_GUIDE, "utf8").replace(/\r\n/g, "\n").trimEnd();
 
   // JSON.stringify gives a safely-escaped TS string literal — no backtick or
   // `${` hazards from the minified runtime or the markdown.
