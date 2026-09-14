@@ -95,13 +95,58 @@ function nameWords(name: string): string[] {
     .filter(Boolean);
 }
 
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length];
+}
+
+// A typo is one letter wrong, missing or extra. Words of three letters or
+// fewer only take a letter added or dropped at the end, like SA and SAS: AK
+// and AOL are two companies, not a typo. Two typos would make INVEST and
+// INVESTED one word.
+function isSameWord(a: string, b: string): boolean {
+  if (Math.max(a.length, b.length) > 3) return editDistance(a, b) <= 1;
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  return (
+    shorter === longer ||
+    (longer.length === shorter.length + 1 && longer.startsWith(shorter))
+  );
+}
+
+function coversWords(
+  words: string[],
+  pool: string[],
+  lastMayBeCut: boolean
+): boolean {
+  return words.every((word, i) =>
+    pool.some(
+      (other) =>
+        isSameWord(word, other) ||
+        (lastMayBeCut && i === words.length - 1 && other.startsWith(word))
+    )
+  );
+}
+
 // /search/suggest is a typeahead. Besides word matches, it returns any lead
 // whose name is within trigram similarity 0.3 of the query, so "THEOMA GESTION
 // PRIVEE" comes back as PILOTE GESTION (product#4130). This tool answers with
-// one company, so a company hit counts only when every word of one name is in
-// the other: "Wink Lab" still finds WINK, "acme" still finds Acme Labs. Domain
-// and contact hits are substring and word matches already.
-function isWordMatch(
+// one company. A typo changes letters inside a word, a different company has
+// a word the other name lacks. So a company hit counts when every word of one
+// name is in the other, with a typo per word allowed, the query's last word
+// possibly cut short ("Acme Ro"), or the words run together ("WINKLAB").
+// Domain and contact hits are substring and word matches already.
+export function isWordMatch(
   query: string,
   suggestion: SearchSuggestion
 ): boolean {
@@ -111,8 +156,9 @@ function isWordMatch(
   const found = nameWords(suggestionName(suggestion));
   if (asked.length === 0 || found.length === 0) return false;
   return (
-    asked.every((word) => found.includes(word)) ||
-    found.every((word) => asked.includes(word))
+    coversWords(asked, found, true) ||
+    coversWords(found, asked, false) ||
+    asked.join("") === found.join("")
   );
 }
 
