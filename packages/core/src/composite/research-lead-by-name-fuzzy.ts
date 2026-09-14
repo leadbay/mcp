@@ -101,7 +101,7 @@ function nameWords(name: string): string[] {
 // one company, so a company hit counts only when every word of one name is in
 // the other: "Wink Lab" still finds WINK, "acme" still finds Acme Labs. Domain
 // and contact hits are substring and word matches already.
-export function isWordMatch(
+function isWordMatch(
   query: string,
   suggestion: SearchSuggestion
 ): boolean {
