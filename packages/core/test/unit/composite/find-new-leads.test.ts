@@ -248,7 +248,7 @@ describe("leadbay_find_new_leads", () => {
     await expect(
       findNewLeads.execute(newClient(), {
         example_lead: { description: "College with employer-facing B2B programs." },
-        filters: { locations: ["United States"] },
+        filters: { locations: ["Canada"] },
         count: 5,
         request_id: "probe-country",
       })
