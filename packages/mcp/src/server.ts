@@ -472,6 +472,9 @@ interface BuildServerOptions {
    * test/unit/commerce-gate.test.ts.
    */
   includeCommerce?: boolean;
+  // Local stdio install only (bin.ts): lets a tool hand the user a file on
+  // their own disk. The hosted server omits it. See ToolContext.saveFile.
+  saveFile?: ToolContext["saveFile"];
   logger?: ToolLogger;
   // Server version reported on `initialize`. The CLI passes the build-time
   // package.json#version (via tsup's __LEADBAY_MCP_VERSION__ define) so this
@@ -1427,6 +1430,7 @@ export function buildServer(
         // RAW value: the friction redaction above is an ANALYTICS control, and
         // must not change in-process tool behaviour.
         triggered_by: rawTriggeredBy,
+        saveFile: opts.saveFile,
         // Route leadbay_send_feedback to Sentry's feedback inbox (same place
         // the web app's form lands). NOOP_TELEMETRY returns false, so the
         // tool reports honestly when telemetry is off.

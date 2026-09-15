@@ -12,6 +12,8 @@ import {
   type McpJobItem,
   type McpJobSnapshot,
 } from "./_mcp-job-helpers.js";
+import { synthesizeCsv } from "./import-leads.js";
+import type { ToolContext } from "../types.js";
 
 /** Rows per tool result. At ~170 chars a row, 100 rows stay near 17k chars,
  *  well inside what a host inlines. A 500-ref job pages through
@@ -99,6 +101,58 @@ export function identityCoverage(rows: IdentityRow[]) {
     with_linkedin: withLinkedin,
     without_website: resolved - withWebsite,
   };
+}
+
+const CSV_HEADER = [
+  "row",
+  "input",
+  "status",
+  "reason",
+  "company",
+  "website",
+  "linkedin",
+  "lead_id",
+];
+
+/** Every row as a CSV a spreadsheet opens. `row` is the 1-based line in the
+ *  user's list; two lines that resolved to one company share a row. Cells go
+ *  through the import path's escaping, formula-injection guard included. */
+export function identityCsv(rows: IdentityRow[]): string {
+  return synthesizeCsv(
+    CSV_HEADER,
+    rows.map((r) => ({
+      row: (r.input_indexes ?? []).map((i) => i + 1).join(";"),
+      input: r.input ?? "",
+      status: r.status,
+      reason: r.status_reason ?? "",
+      company: r.name ?? "",
+      website: r.website ?? "",
+      linkedin: r.linkedin ?? "",
+      lead_id: r.lead_id ?? "",
+    }))
+  );
+}
+
+/** Local install only: saves every row of a finished job as a CSV on the
+ *  user's disk and returns its path. Nothing is written when ctx.saveFile is
+ *  absent (the hosted server), while the job still runs, or when the read
+ *  stopped early, because that file would be missing rows. A failed write
+ *  is reported and never fails the call: the rows are still in the result. */
+export async function saveIdentityFile(
+  ctx: ToolContext | undefined,
+  jobId: string,
+  snapshot: McpJobSnapshot,
+  items: McpJobItem[]
+): Promise<{ file?: string; file_error?: string }> {
+  if (!ctx?.saveFile) return {};
+  if (!TERMINAL_JOB_STATES.has(snapshot.job.state)) return {};
+  if (snapshot.items_truncated || items.length === 0) return {};
+  try {
+    const name = `leadbay-companies-${jobId.slice(0, 8)}.csv`;
+    return { file: await ctx.saveFile(name, identityCsv(identityRows(items))) };
+  } catch (e) {
+    return { file_error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Hosts send numbers as strings; anything unreadable starts at the top. */

@@ -13,3 +13,6 @@ missing ones up one by one.
 
 Done job with `next_poll.offset`: say "showing N of `rows_total`" and offer
 the rest via `leadbay_lead_job_status(job_id, compact: true, offset)`.
+
+`file` set (local install only): every row is saved there as a CSV. Give the
+user that path.

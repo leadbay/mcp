@@ -14,7 +14,11 @@ import {
   TERMINAL_JOB_STATES,
   waitForJob,
 } from "./_mcp-job-helpers.js";
-import { identityAnswer, readOffset } from "./_identity-rows.js";
+import {
+  identityAnswer,
+  readOffset,
+  saveIdentityFile,
+} from "./_identity-rows.js";
 import { leadbay_lead_job_status as LEAD_JOB_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface LeadJobStatusParams {
@@ -114,6 +118,7 @@ export const leadJobStatus: Tool<LeadJobStatusParams, any> = {
           snapshot.items,
           readOffset(params.offset)
         ),
+        ...(await saveIdentityFile(ctx, params.job_id, snapshot, snapshot.items)),
         region: client.region,
       };
     }

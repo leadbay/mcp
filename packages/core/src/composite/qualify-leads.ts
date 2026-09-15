@@ -32,7 +32,7 @@ import {
   readSpendFlag,
 } from "./_mcp-job-helpers.js";
 import { normalizeDomain } from "./import-leads.js";
-import { identityAnswer } from "./_identity-rows.js";
+import { identityAnswer, saveIdentityFile } from "./_identity-rows.js";
 import { leadbay_qualify_leads as QUALIFY_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface QualifyLeadsParams {
@@ -508,6 +508,7 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
         input_indexes_remapped: (submit.duplicate ?? false)
           ? indexed.remapped
           : null,
+        ...(await saveIdentityFile(ctx, submit.job_id, snapshot, view.items)),
         region: client.region,
       };
     }
