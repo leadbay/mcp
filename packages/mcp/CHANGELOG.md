@@ -1,5 +1,33 @@
 # Changelog — @leadbay/mcp
 
+## 0.38.2 — 2026-09-14
+
+Four fixes merged since 0.38.1 (#224, #227, #228, #229).
+
+- **Quota shows only when it matters** (#224). `leadbay_account_status`
+  answers a plain "what account am I connected to?" with user and org. The
+  quota gauge appears when the user asks about quota, usage or account status,
+  or when a window is exhausted. It keeps its dollars. The `QUOTA_REFRESH`
+  server instruction and the `enrich_titles`, `bulk_enrich_status` and
+  `build_campaign` descriptions no longer show refreshed quota after every
+  enrichment run. The job progress message drops its cents-spent segment.
+- **A name lookup no longer answers with a different company** (#229,
+  product#4130). `leadbay_research_lead_by_name_fuzzy` took the typeahead's
+  first hit, which also matches on trigram similarity above 0.3, so "THEOMA
+  GESTION PRIVEE" returned PILOTE GESTION. A company hit now counts only when
+  every word of one name is in the other, with one wrong, missing or extra
+  letter per word. Otherwise the lookup goes on to the registry.
+- **`leadbay_research_lead_by_id` refuses a missing `leadId`** (#228, Sentry
+  MCP-46). The call reached `/lenses/48189/leads/undefined` plus five
+  sub-requests. It is now `INVALID_PARAMS` before any request. `new_lens`,
+  `set_qualification_questions` and `find_new_leads` declare the backend's
+  limits: 255 characters, `min_ai_score` in [-30, 30], at most 10
+  `contact_titles`.
+- **Artifact skin readable in dark mode** (#227, product#4057). The default
+  chip label read 1.16:1 in dark mode. The semantic colour pairs now flip with
+  the theme, long emails wrap inside the card, success and error pills carry
+  different glyphs, and a saved button stops showing "saved" after 1.6 s.
+
 ## 0.38.1 — 2026-09-12
 
 Five fixes merged since 0.38.0 (#216, #219, #220, #221, #225). The backend
