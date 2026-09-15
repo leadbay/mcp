@@ -142,7 +142,7 @@ describe("identity pass — CSV on a local install", () => {
     expect(result.rows).toHaveLength(3);
   });
 
-  it("leadbay_lead_job_status compact saves the same file once the job is done", async () => {
+  it("leadbay_lead_job_status writes nothing: it is annotated read-only", async () => {
     mockHttp([
       { method: "GET", path: `/1.6/mcp/jobs/${JOB_ID}?limit=100`, status: 200, body: snapshot("completed") },
     ]);
@@ -152,7 +152,8 @@ describe("identity pass — CSV on a local install", () => {
       { job_id: JOB_ID, compact: true },
       { saveFile }
     );
-    expect(result.file).toBe("/home/someone/leadbay-companies-3f57d723.csv");
-    expect(saveFile).toHaveBeenCalledTimes(1);
+    expect(leadJobStatus.annotations?.readOnlyHint).toBe(true);
+    expect(saveFile).not.toHaveBeenCalled();
+    expect(result.rows).toHaveLength(3);
   });
 });
