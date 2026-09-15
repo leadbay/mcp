@@ -1,3 +1,4 @@
+import { distance } from "fastest-levenshtein";
 import type { LeadbayClient } from "../client.js";
 import type {
   LeadbayError,
@@ -95,28 +96,12 @@ function nameWords(name: string): string[] {
     .filter(Boolean);
 }
 
-function editDistance(a: string, b: string): number {
-  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= a.length; i++) {
-    const current = [i];
-    for (let j = 1; j <= b.length; j++) {
-      current[j] = Math.min(
-        previous[j] + 1,
-        current[j - 1] + 1,
-        previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
-      );
-    }
-    previous = current;
-  }
-  return previous[b.length];
-}
-
 // A typo is one letter wrong, missing or extra. Words of three letters or
 // fewer only take a letter added or dropped at the end, like SA and SAS: AK
 // and AOL are two companies, not a typo. Two typos would make INVEST and
 // INVESTED one word.
 function isSameWord(a: string, b: string): boolean {
-  if (Math.max(a.length, b.length) > 3) return editDistance(a, b) <= 1;
+  if (Math.max(a.length, b.length) > 3) return distance(a, b) <= 1;
   const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
   return (
     shorter === longer ||
