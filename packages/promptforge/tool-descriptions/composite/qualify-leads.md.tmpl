@@ -2,14 +2,15 @@
 name: leadbay_qualify_leads
 kind: tool-description
 short_description: |
-  Qualify companies the user ALREADY has — CRM rows, spreadsheet websites,
-  prior deliveries — and get the right contact on each, in one server-side
-  batch (up to 500). Per-item verdicts with evidence; a bad ref never fails
-  the job. Use when the user names/lists the companies. Don't use it to
-  FIND new companies (leadbay_find_new_leads) or for the lens top-N
-  (leadbay_bulk_qualify_leads).
+  One server-side batch (up to 500) over companies the user ALREADY names —
+  a pasted list, a file, CRM rows, prior deliveries. Free identity pass
+  (qualify:false): is each one in Leadbay, its website and LinkedIn. Paid
+  pass: fit verdicts with evidence and the right contact on each. Use when
+  the user lists the companies. Don't use it to FIND new companies
+  (leadbay_find_new_leads) or for the lens top-N (leadbay_bulk_qualify_leads).
 routing:
   triggers:
+    - "for each of these companies, give me the website / LinkedIn"
     - "qualify these companies"
     - "vet this list"
     - "which of these fit our ICP"
@@ -33,6 +34,7 @@ routing:
     right person to talk to.
   examples:
     positive:
+      - "For each of these 300 brokers, give me the website and LinkedIn, nothing else."
       - "Here are 60 restaurant websites from my Austin sweep — which fit, and who's the owner?"
       - "Re-qualify last week's delivery and get phone numbers for the good ones."
       - "Vet these 12 accounts from my spreadsheet against our criteria."
@@ -41,7 +43,8 @@ routing:
       - "Qualify the top 10 leads in my batch."
       - "I have a CSV of 400 attendees to import."
 rendering_hint: |
-  3-col table for delivered items (fit bar + company / why-fits ≤20 words /
+  Identity pass (`rows[]`): one table Company / Website / LinkedIn, then the
+  coverage line. Otherwise a 3-col table for delivered items (fit bar + company / why-fits ≤20 words /
   contact + channels) in returned order, then a compact Ref → Outcome table
   for skipped refs (not_in_universe, low_confidence_identity, ... in plain
   words), then the honest funnel line. Full algorithm below.
@@ -59,6 +62,14 @@ profile (frozen at submit), matched to the requested contact titles, and —
 when asked — enriched with verified channels. Answers arrive per-item from a
 job; this tool polls up to `wait_seconds` (default 45) and hands off to
 `leadbay_lead_job_status` when the batch needs longer.
+
+**A list of companies is ONE call, never a loop** of
+`leadbay_research_lead_by_name_fuzzy`: "for each of these companies give me
+X", a pasted list, a file. Identity only (in Leadbay or not, website,
+LinkedIn) → `qualify: false`: free, no `confirm`, returns `rows[]` and
+coverage counts. A fit question over the list ("which of these do
+factoring") keeps `qualify: true` and its quote. Over 500: one call per 500,
+each with its own `request_id`.
 
 **Refs are flexible; outcomes are per-item.** `lead_refs` accepts any mix of
 `lead_id`, `website`, `name`(+`location`), or a stable `contact_id` from a
@@ -95,6 +106,8 @@ through. Set `request_id` and reuse it on retries of the same batch.
 Retry-After beyond — wait, don't hammer), 30-min job wall clock.
 
 ---
+
+{{include:rendering/identity-rows}}
 
 {{include:rendering/lead-delivery-table}}
 

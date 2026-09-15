@@ -32,6 +32,7 @@ import {
   readSpendFlag,
 } from "./_mcp-job-helpers.js";
 import { normalizeDomain } from "./import-leads.js";
+import { identityAnswer } from "./_identity-rows.js";
 import { leadbay_qualify_leads as QUALIFY_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface QualifyLeadsParams {
@@ -373,6 +374,14 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     const buysChannels = (params.channels?.length ?? 0) > 0;
     const buysQualification = qualify !== false;
     const isPaid = buysQualification || buysChannels;
+    // Nothing to buy and no person to find: the caller asked who these
+    // companies are, and gets one compact row each (product#4131).
+    // prior_deliveries re-reads leads already delivered, contacts included, so
+    // it keeps the full payload.
+    const identityOnly =
+      !isPaid &&
+      (params.contact_titles?.length ?? 0) === 0 &&
+      params.prior_deliveries == null;
     // An explicit confirm:false is a VETO — decline the spend outright, no
     // quote round-trip. Distinct from confirm being absent (which earns a quote).
     const vetoed = confirm === false;
@@ -481,6 +490,27 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
       ? remapInputIndexes(snapshot.items, params.lead_refs)
       : { items: snapshot.items, remapped: true };
     const view = { ...snapshot, items: indexed.items };
+
+    if (identityOnly) {
+      const answer = identityAnswer(submit.job_id, snapshot, view.items, 0);
+      return {
+        job_id: submit.job_id,
+        request_id: requestId ?? null,
+        duplicate_submit: submit.duplicate ?? false,
+        state: snapshot.job.state,
+        done,
+        ...answer,
+        summary: {
+          refs_submitted: params.lead_refs?.length ?? 0,
+          items_requested: submit.items_requested,
+          ...answer.summary,
+        },
+        input_indexes_remapped: (submit.duplicate ?? false)
+          ? indexed.remapped
+          : null,
+        region: client.region,
+      };
+    }
 
     return {
       job_id: submit.job_id,

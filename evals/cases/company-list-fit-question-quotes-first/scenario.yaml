@@ -1,0 +1,15 @@
+version: 1
+id: company-list-fit-question-quotes-first
+regions:
+- fr
+languages:
+- fr
+starting_state:
+- A dedicated FR tenant with test credits, known region, and the delivery tools exposed.
+- The user's message carries 50 French insurance-broker company names (NAF 66.22Z) drawn from the FR
+  tenant's universe before the session.
+user_decisions:
+- when: The product asks the user to approve spending before it starts the work.
+  reply: Non, ne lance rien pour l'instant.
+variants: []
+datasets: []

@@ -2616,7 +2616,27 @@ server-side: past the 30-min wall clock a job reads \`completed_partial\`
 delivered leads via leadbay_qualify_leads \`prior_deliveries\`). A 404 means
 unknown job or another org's job.
 
+\`compact: true\` (pass it whenever \`next_poll\` carries it) returns the rows of
+a free identity pass, 100 at a time from \`offset\`, instead of leads.
+
 ---
+
+## RENDERING — identity pass (\`rows[]\`)
+
+\`rows[]\` replaces \`leads[]\`: one row per company, in the user's order. One
+table: **Company** (\`input\`, plus \`name\` when it differs) · **Website** ·
+**LinkedIn**. Skipped rows stay in it: \`not_in_universe\` → "not in Leadbay",
+\`low_confidence_identity\` → "several matches — add a city or website".
+
+Then ONE coverage line from \`summary\`: found \`resolved\` of \`rows_total\` ·
+\`with_website\` with a website · \`with_linkedin\` with a LinkedIn ·
+\`ambiguous\` unclear · \`not_found\` not found. When most rows lack what the
+user asked for, that line is the answer: say so, and do not look the
+missing ones up one by one.
+
+Done job with \`next_poll.offset\`: say "showing N of \`rows_total\`" and offer
+the rest via \`leadbay_lead_job_status(job_id, compact: true, offset)\`.
+
 
 ## RENDERING — delivery table + honest funnel line
 
@@ -3917,13 +3937,14 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // region: leadbay_qualify_leads
 export const leadbay_qualify_leads: string = `## WHEN TO USE
 
-Trigger phrases: "qualify these companies", "vet this list", "which of these fit our ICP", "score these websites / accounts", "get me the right contact at these companies", "re-qualify what you delivered last week".
+Trigger phrases: "for each of these companies, give me the website / LinkedIn", "qualify these companies", "vet this list", "which of these fit our ICP", "score these websites / accounts", "get me the right contact at these companies", "re-qualify what you delivered last week".
 
 Do NOT use for: "find me new leads / companies that <profile>" → \`leadbay_find_new_leads\`; "qualify the top N of my lens batch" → \`leadbay_bulk_qualify_leads\`; "import this CSV file" → \`leadbay_import_leads\`; "tell me about <one company> in depth" → \`leadbay_research_lead_by_name_fuzzy\`; "add emails to the contacts I selected" → \`leadbay_enrich_titles\`.
 
 Prefer when: the user points at SPECIFIC companies (ids, websites, names, a pasted list, "what you found yesterday") and wants fit verdicts and/or the right person to talk to.
 
 Examples that SHOULD invoke this tool:
+- "For each of these 300 brokers, give me the website and LinkedIn, nothing else."
 - "Here are 60 restaurant websites from my Austin sweep — which fit, and who's the owner?"
 - "Re-qualify last week's delivery and get phone numbers for the good ones."
 - "Vet these 12 accounts from my spreadsheet against our criteria."
@@ -3935,7 +3956,8 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-3-col table for delivered items (fit bar + company / why-fits ≤20 words /
+Identity pass (\`rows[]\`): one table Company / Website / LinkedIn, then the
+coverage line. Otherwise a 3-col table for delivered items (fit bar + company / why-fits ≤20 words /
 contact + channels) in returned order, then a compact Ref → Outcome table
 for skipped refs (not_in_universe, low_confidence_identity, ... in plain
 words), then the honest funnel line. Full algorithm below.
@@ -3949,6 +3971,14 @@ profile (frozen at submit), matched to the requested contact titles, and —
 when asked — enriched with verified channels. Answers arrive per-item from a
 job; this tool polls up to \`wait_seconds\` (default 45) and hands off to
 \`leadbay_lead_job_status\` when the batch needs longer.
+
+**A list of companies is ONE call, never a loop** of
+\`leadbay_research_lead_by_name_fuzzy\`: "for each of these companies give me
+X", a pasted list, a file. Identity only (in Leadbay or not, website,
+LinkedIn) → \`qualify: false\`: free, no \`confirm\`, returns \`rows[]\` and
+coverage counts. A fit question over the list ("which of these do
+factoring") keeps \`qualify: true\` and its quote. Over 500: one call per 500,
+each with its own \`request_id\`.
 
 **Refs are flexible; outcomes are per-item.** \`lead_refs\` accepts any mix of
 \`lead_id\`, \`website\`, \`name\`(+\`location\`), or a stable \`contact_id\` from a
@@ -3985,6 +4015,23 @@ through. Set \`request_id\` and reuse it on retries of the same batch.
 Retry-After beyond — wait, don't hammer), 30-min job wall clock.
 
 ---
+
+## RENDERING — identity pass (\`rows[]\`)
+
+\`rows[]\` replaces \`leads[]\`: one row per company, in the user's order. One
+table: **Company** (\`input\`, plus \`name\` when it differs) · **Website** ·
+**LinkedIn**. Skipped rows stay in it: \`not_in_universe\` → "not in Leadbay",
+\`low_confidence_identity\` → "several matches — add a city or website".
+
+Then ONE coverage line from \`summary\`: found \`resolved\` of \`rows_total\` ·
+\`with_website\` with a website · \`with_linkedin\` with a LinkedIn ·
+\`ambiguous\` unclear · \`not_found\` not found. When most rows lack what the
+user asked for, that line is the answer: say so, and do not look the
+missing ones up one by one.
+
+Done job with \`next_poll.offset\`: say "showing N of \`rows_total\`" and offer
+the rest via \`leadbay_lead_job_status(job_id, compact: true, offset)\`.
+
 
 ## RENDERING — delivery table + honest funnel line
 
@@ -4140,6 +4187,8 @@ Pick the 2-3 options that match what actually happened:
 | Items skipped \`low_confidence_identity\` | "Pick the right match" (show \`resolution.alternatives\`) | leadbay_qualify_leads with the chosen lead_id |
 | Contacts delivered without channels | "Get verified emails/phones for the keepers (uses quota — say so first)" | leadbay_qualify_leads(lead_refs with contact_id, channels) |
 | Disqualified with evidence | "Review why — adjust qualification questions if the criteria are off" | leadbay_get_qualification_questions |
+| Identity pass, list over 500 | "Run the next 500" | leadbay_qualify_leads(next 500, qualify: false) |
+| Identity pass, \`summary.without_website\` > 0. LAST option, never run unasked | "N have no website in Leadbay. Web research can look for one. It uses your plan's quota and may find none." | leadbay_qualify_leads(lead_refs: [{lead_id}] of rows without website, qualify: true) → quote first, confirm on the user's yes |
 `;
 // endregion: leadbay_qualify_leads
 
@@ -4651,9 +4700,9 @@ export const leadbay_research_lead_by_name_fuzzy: string = `## WHEN TO USE
 
 Trigger phrases: "look up <Company>", "research <Company>", "what do we know about <Company>".
 
-Do NOT use for: "picked row with leadId" → \`leadbay_research_lead_by_id\`; "draft outreach for <Contact>" → \`leadbay_prepare_outreach\`.
+Do NOT use for: "picked row with leadId" → \`leadbay_research_lead_by_id\`; "draft outreach for <Contact>" → \`leadbay_prepare_outreach\`; "for each of these companies…" → \`leadbay_qualify_leads\`.
 
-Prefer when: a company name or domain in prose, no Leadbay id yet — always pass \`website\` if a domain was mentioned
+Prefer when: ONE company name or domain in prose, no Leadbay id yet — always pass \`website\` if a domain was mentioned
 
 Examples that SHOULD invoke this tool:
 - "Look up Acme Corp for me."
@@ -4663,7 +4712,7 @@ Examples that SHOULD invoke this tool:
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Tell me about that lead I just picked."
 - "Draft outreach to Acme's CTO."
-- "Show me today's leads."
+- "Websites and LinkedIn for these 200 companies."
 
 ---
 
@@ -4677,14 +4726,12 @@ list" into an answer. With only a contact email, pass \`email\`: the company
 domain is derived from it, consumer mailboxes ignored.
 
 When the registry cannot pick one company it returns \`{resolution:
-"ambiguous", query, candidates:[{leadId, name, website, location, …}]}\`
-instead of a card. Ask which one; never guess from \`score\`.
+"ambiguous", query, candidates:[…]}\` instead of a card. Ask which one; never
+guess from \`score\`.
 
 \`LEAD_NOT_FOUND\` is not a dead end: its hint names the field that would have
 found it — \`website\` or \`registry_number\`, both params. Ask for it and call
 again. Do not offer an import before asking.
-
-Offer \`_meta.match_candidates\` when present.
 
 ---
 

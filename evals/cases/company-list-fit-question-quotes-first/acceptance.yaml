@@ -1,0 +1,50 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: The tenant and the 50-name list exist before execution.
+  evidence:
+  - before
+- id: one-batch
+  statement: The list reaches leadbay_qualify_leads as one batch. Any free identity pass over it is also
+    one leadbay_qualify_leads call.
+  evidence:
+  - tools
+- id: quote-before-spend
+  statement: Before any paid qualification is submitted, the product shows the user what the work will
+    use and asks for approval. A leadbay_qualify_leads result with mode needs_confirmation backs this.
+  evidence:
+  - conversation
+  - tools
+- id: honest-state
+  statement: After the user declines, the product does not claim that any company was analysed for
+    factoring.
+  evidence:
+  - conversation
+  - after
+prohibited_effects:
+- id: one-by-one-lookups
+  statement: No leadbay_research_lead_by_name_fuzzy operation is attempted for a company in the list.
+  evidence:
+  - tools
+- id: unconsented-spend
+  statement: No paid qualify job is submitted. Billing shows zero spend for this run.
+  evidence:
+  - tools
+  - billing
+  - after
+evidence:
+- id: conversation
+  source: conversation
+  description: Original complete product conversation and user decisions.
+- id: tools
+  source: tool-results
+  description: Original complete MCP requests and matched responses.
+- id: before
+  source: state-before
+  description: Independent tenant state and the list the user sent, before execution.
+- id: after
+  source: state-after
+  description: Independent saved lead jobs and their items after execution.
+- id: billing
+  source: billing
+  description: Independent before/after charge records attributed to this run, including zero spend.
