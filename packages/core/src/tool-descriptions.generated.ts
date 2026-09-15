@@ -183,11 +183,9 @@ absent) as \`$used / $cap (N% used) · resets\` (or a resource-count table when
 
 Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **Show quota the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` in dollar_cents (% used = the ratio, $ = \`/100\`); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
 
-
 **Top-ups always beat waiting.** When a quota window is hit, the user has two options: wait for the window reset (\`resets_at\` in each quota entry) OR top up AI credits. Top-ups clear the throttle IMMEDIATELY; they are not subject to the same window. When you tell the user about a 429 / quota exhaustion, ALWAYS surface both options — "wait until <reset>" or "top up now (I can generate the link)" — and let them pick. Never default-recommend "wait until tomorrow" when a 30-second top-up unblocks the same operation.
 
 **Offer the top-up link via \`leadbay_create_topup_link\`.** When the user accepts the top-up offer, call \`leadbay_create_topup_link\` and surface the returned Stripe checkout URL as a clickable link. The user completes payment in their browser; nothing is charged just by generating the URL. For ongoing subscription changes (plan upgrade / payment method), use \`leadbay_open_billing_portal\` instead.
-
 
 **After a user tops up, do NOT keep refusing — RETRY.** If the user signals they topped up / bought credits / added credits, the previous QUOTA_EXCEEDED is invalidated the moment the Stripe webhook lands. RE-CALL \`leadbay_account_status\` to pick up the new state AND retry the originally failed call. The retry itself does not require a successful account_status check first — a topped-up user has cleared the throttle whether or not your cached snapshot reflects it yet. If the retry hits the wall again, only then re-offer top-up / wait. **A stale quota snapshot is never a reason to gate-keep a topped-up user.**
 
@@ -1638,9 +1636,7 @@ Pick the 2-3 options that match what actually happened — never all seven:
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
 | Stopped at the job's usage cap (\`stop_reason: max_cost\`) | "Raise the job's cap and get the remaining N" — no amount, no currency | leadbay_find_new_leads, NEW request_id (same-id only dedupes onto a LIVE job) + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered), not the original + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered; these are what it misses — without them the rerun re-buys the same losers) |
 | Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it cannot clear an org quota and burns a submit slot to stop in the same place | leadbay_account_status |
-
 | Stopped on org quota and the user does not want to wait | "Top up to finish this run" | leadbay_create_topup_link |
-
 | User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |
 `;
 // endregion: leadbay_find_new_leads
@@ -4959,11 +4955,9 @@ date are kept (a missing date is not evidence the event is old).
 date + description). Feed the matched \`lead_id\`s straight into
 \`leadbay_add_leads_to_campaign\` / \`leadbay_create_campaign\`.
 
-
 On a 429 mid-scan, partial \`matched\` is returned with \`quota_exceeded: true\` —
 offer the user wait-for-reset OR a top-up link (both unblock; a top-up clears
 the throttle immediately).
-
 
 **SIGNAL HONESTY — never infer signals from freshness.** \`stale_at\`,
 \`web_fetch_in_progress\`, \`fetch_at\` are freshness markers, not signal
@@ -5028,9 +5022,7 @@ A single italic line summarising coverage:
   qualify them and re-scan (see NEXT STEPS).
 - When \`truncated_at\` is set, add: \`_Coverage partial — only the first <truncated_at>
   leads were scanned; narrow the scope or raise max_leads._\`
-
 - When \`quota_exceeded\` is true, add the wait-or-top-up offer.
-
 
 **Hide:** raw \`lead_id\` in prose (use it only for the campaign call), \`_meta\`,
 empty arrays, any freshness field. NEVER present \`not_researched\` leads as
@@ -5069,9 +5061,7 @@ almost always "turn the matched leads into a campaign."
 | Zero matches but leads were researched            | "Widen the query (synonyms) or relax \`since\`"                | leadbay_scan_portfolio_signals(query: "<broader terms>", since: omit-or-earlier)      |
 | \`truncated_at\` set                                | "Scan only covered N — narrow scope or raise the cap"        | leadbay_scan_portfolio_signals({city / set_filter}) or raise \`max_leads\`              |
 | One standout matched lead                          | "Open that lead's full brief"                                | leadbay_research_lead_by_id(leadId)                                                    |
-
 | \`quota_exceeded\`                                  | "Wait for reset OR top up to finish the scan"                | leadbay_create_topup_link                                                              |
-
 
 NEVER report leads in \`not_researched\` as if they had no matching signal — they
 were never read. Distinguish "no signal X found" (researched, no match) from
@@ -5961,7 +5951,6 @@ absent) as \`$used / $cap (N% used) · resets\` (or a resource-count table when
 
 Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **Show quota the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` in dollar_cents (% used = the ratio, $ = \`/100\`); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
 
-
 **After a user tops up, do NOT keep refusing — RETRY.** If the user signals they topped up / bought credits / added credits, the previous QUOTA_EXCEEDED is invalidated the moment the Stripe webhook lands. RE-CALL \`leadbay_account_status\` to pick up the new state AND retry the originally failed call. The retry itself does not require a successful account_status check first — a topped-up user has cleared the throttle whether or not your cached snapshot reflects it yet. **A stale quota snapshot is never a reason to gate-keep a topped-up user.**
 
 **\`mcp_version\`** is the version of the Leadbay MCP server answering the call. When the user asks which Leadbay version they are running, answer with it.
@@ -6414,7 +6403,6 @@ date are kept (a missing date is not evidence the event is old).
 \`location\`, and the matching \`matched_signals[]\` (section + hot + source +
 date + description). Feed the matched \`lead_id\`s straight into
 \`leadbay_add_leads_to_campaign\` / \`leadbay_create_campaign\`.
-
 
 **SIGNAL HONESTY — never infer signals from freshness.** \`stale_at\`,
 \`web_fetch_in_progress\`, \`fetch_at\` are freshness markers, not signal
