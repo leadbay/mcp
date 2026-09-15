@@ -22,3 +22,7 @@ docs/superpowers/
 # Python bytecode cache for helper scripts.
 __pycache__/
 .gstack/
+
+# Agent skill packs + their lockfile — installed locally, not repo content.
+.agents/
+skills-lock.json
