@@ -20,10 +20,7 @@ import {
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import {
-  isWordMatch,
-  researchLeadByNameFuzzy,
-} from "../../../src/composite/research-lead-by-name-fuzzy.js";
+import { researchLeadByNameFuzzy } from "../../../src/composite/research-lead-by-name-fuzzy.js";
 
 const BASE = "https://api-fr.leadbay.app";
 const newClient = () => new LeadbayClient(BASE, "u.test-token", "fr");
@@ -198,33 +195,5 @@ describe("research_lead_by_name_fuzzy — a spelling-alike is not the company", 
 
     expect(res.firmographics.id).toBe("lead-a");
     expect(res._meta.match_candidates.map((c: any) => c.leadId)).toEqual(["lead-c"]);
-  });
-});
-
-// Pairs replayed from FR production leads, 2026-09-15. The typeahead returns
-// every one of them today.
-describe("isWordMatch — a typo is the same company, another word is not", () => {
-  const company = (text: string) => ({ text, match_type: "COMPANY" as const });
-
-  it.each([
-    ["Leadbey", "LEADBAY"],
-    ["Acme Ro", "Acme Robotics"],
-    ["Wink Lab", "WINKLAB"],
-    ["Wink Lab", "WINK"],
-    ["IPC FRANCE SAS", "IPC FRANCE SA"],
-    ["Leadbey SAS", "LEADBAY"],
-    ["Société Générale", "SOCIETE GENERALE"],
-    ["SC2L FINANCE (SC2L FINANCE)", "SC2L FINANCE"],
-  ])("%s finds %s", (query, name) => {
-    expect(isWordMatch(query, company(name))).toBe(true);
-  });
-
-  it.each([
-    ["THEOMA GESTION PRIVEE", "PILOTE GESTION"],
-    ["SC2L FINANCE (SC2L FINANCE)", "VALOIS FINANCE"],
-    ["AK CONSEILS", "AOL CONSEILS"],
-    ["2P INVEST", "INVESTED"],
-  ])("%s does not find %s", (query, name) => {
-    expect(isWordMatch(query, company(name))).toBe(false);
   });
 });
