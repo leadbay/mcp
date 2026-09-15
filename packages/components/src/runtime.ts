@@ -655,6 +655,7 @@ export function bindAction(el: HTMLElement, action: Action): () => void {
   return () => {
     el.removeEventListener("click", onClick);
     unsub();
+    if (settle) clearTimeout(settle);
   };
 }
 
