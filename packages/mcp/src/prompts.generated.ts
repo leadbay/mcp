@@ -202,7 +202,7 @@ Tell me what you swapped in one line ("dropped Corbett + RBS — ops-only; swapp
 
 **Step C — enrich (NO confirm gate — just launch).** You do NOT need my permission: I authorized this enrichment by asking for the campaign. Do NOT call \`ask_user_input_v0\`, do NOT ask "enrich these N now?", do NOT wait. State the persona + titles + "enriching {enrichable_contacts} contacts (email + phone, consumes quota)" in one line for the record, then immediately launch: \`leadbay_enrich_titles({leadIds, lensId, titles:[...chosen], email:true, phone:true})\`. Enrich up to {{arg:count_or_default}} best target-title contacts. Do NOT quote a "credits" figure or refuse on a credit balance — the only real limit is quota (a backend 429). If a 429 stops you mid-run, keep the leads already enriched, note how many landed, and continue to Phase 4 with those.
 
-**Step D — poll + count only landed.** Poll \`leadbay_bulk_enrich_status\` until done (enrichment can take several minutes — keep polling, don't render an empty sheet prematurely). Once \`all_done\`, call \`leadbay_account_status\` and show my refreshed quota so I see what the run consumed. A lead only counts toward the {{arg:count_or_default}} once its target-title contact actually landed (email/phone present); if some came back empty, swap + enrich replacements (loop back to Step B.5) until the cohort is genuinely {{arg:count_or_default}} deep or the lens is exhausted.
+**Step D — poll + count only landed.** Poll \`leadbay_bulk_enrich_status\` until done (enrichment can take several minutes — keep polling, don't render an empty sheet prematurely). A lead only counts toward the {{arg:count_or_default}} once its target-title contact actually landed (email/phone present); if some came back empty, swap + enrich replacements (loop back to Step B.5) until the cohort is genuinely {{arg:count_or_default}} deep or the lens is exhausted.
 
 # PHASE 4 — CREATE THE CAMPAIGN
 
@@ -309,7 +309,7 @@ work stopped. What to do next depends on what you are holding:
 If you're resuming an interrupted session (you see a previous Phase already completed in your task list, or the user says "continue" / "continue from where you left off"), do NOT restart from Phase 1. Re-read the active \`lensId\` and your last completed phase from prior context, then resume from the next phase. If you genuinely have no state, restart from Phase 1.
 
 # PHASE 1 — STATE
-Call \`leadbay_account_status\` to see what quota I have left and which lens is active. Note the remaining \`ai_rescore_remaining\` and \`web_fetch_remaining\` budgets — Phase 4 enrichment depends on them.
+Call \`leadbay_account_status\` to see what quota I have left and which lens is active. Note the remaining \`ai_rescore_remaining\` and \`web_fetch_remaining\` budgets — Phase 4 enrichment depends on them. This is for your planning: don't show me the quota unless a window is exhausted.
 
 # PHASE 2 — FRESH BATCH
 Call \`leadbay_pull_leads\` to get today's fresh batch. Capture \`response.lens.id\` (the response nests it under \`lens\`). **Use it as an explicit \`lensId\` argument on every subsequent Leadbay call this session** — including any re-pulls, bulk qualifies, or research calls that accept it. (See Rule 1 above — a mid-session lens shift discards your top-10 work.)
@@ -1004,10 +1004,10 @@ Mirror the Leadbay web quota widget: three windows side by side — **Daily**,
 $ cap** figure, with a per-resource usage breakdown underneath. **Never speak in
 raw "credits"** for quota — the unit is a percentage and a dollar spend.
 
-**Include the quota whenever it is readable** — as part of the default account
-answer, even when the user only asked "what account am I connected to?". The
-sole reason to omit it is the silence gate below (unreadable quota, or an
-unlimited account); it is NOT gated on the user explicitly asking for quota.
+**Show the quota only when it matters** — when the user asks about their quota,
+usage or account status, or when a window is exhausted and blocks what they
+asked for. A plain "what account am I connected to?" is answered with user +
+org alone. Even then, the silence gate below comes first.
 
 **Silence gate (check FIRST).** Render NOTHING about quota when any of these
 holds — do not mention quota at all, do not say "unreadable", never tell the user
@@ -2103,7 +2103,7 @@ All \`Calls\` below are agent-callable \`leadbay_*\` tools (never an MCP prompt 
 |---------------------------------------------------------------------|--------------------------------------------------------|--------------------------------------------------------------|
 | Fresh discovery batch waiting / user wants new leads                | "See today's best new leads"                           | leadbay_pull_leads(lensId = pinned)                          |
 | Follow-ups due / known leads to re-engage                           | "Show follow-ups due now"                              | leadbay_pull_followups                                       |
-| Quota/credit read shows low or exhausted balance                    | "Review what's eating your quota"                      | leadbay_account_status (deeper read)                         |
+| Quota/credit read shows exhausted balance                           | "Review what's eating your quota"                      | leadbay_account_status (deeper read)                         |
 | Auth/connection blocker (e.g. 401 / AUTH_EXPIRED on a read)         | "Reconnect Leadbay to unblock actions"                 | (guide the user to re-authenticate — no tool call)           |
 | Lens audience looks mismatched (batch is off-ICP)                   | "Adjust the lens audience to match your ICP"           | ASK first — collect the target sectors / sizes / exclusions, THEN leadbay_adjust_audience(...) with those params. NEVER call it with no args (an empty call writes the current filter / may clone the default lens — a no-op or unwanted change). |
 | Status is healthy and nothing is pending                            | propose nothing — the overview is a complete answer    | —                                                            |
