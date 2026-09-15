@@ -1,0 +1,16 @@
+version: 1
+id: company-list-identity-one-batch
+regions:
+- fr
+languages:
+- fr
+starting_state:
+- A dedicated FR tenant with test credits, known region, and the delivery tools exposed.
+- The user's message carries 200 French insurance-broker company names (NAF 66.22Z) drawn from the FR
+  tenant's universe before the session. Most of them exist in Leadbay. Most of those have no website and
+  no LinkedIn on record.
+user_decisions:
+- when: The product offers web research on the companies that have no website.
+  reply: Non, pas maintenant.
+variants: []
+datasets: []

@@ -14,6 +14,7 @@ import {
   TERMINAL_JOB_STATES,
   waitForJob,
 } from "./_mcp-job-helpers.js";
+import { identityAnswer, readOffset } from "./_identity-rows.js";
 import { leadbay_lead_job_status as LEAD_JOB_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface LeadJobStatusParams {
@@ -21,6 +22,8 @@ interface LeadJobStatusParams {
   since?: string;
   limit?: number;
   wait_seconds?: number;
+  compact?: boolean;
+  offset?: number;
 }
 
 export const leadJobStatus: Tool<LeadJobStatusParams, any> = {
@@ -55,6 +58,16 @@ export const leadJobStatus: Tool<LeadJobStatusParams, any> = {
         description:
           "0 (default) = instant snapshot. >0 = keep polling up to this many seconds until the job is terminal — use ~60 when the user asked to wait for results.",
       },
+      compact: {
+        type: "boolean",
+        description:
+          "true = one row per company (name, website, LinkedIn) in the order of the user's list, plus coverage counts, instead of full leads. Pass it when next_poll carries it (a leadbay_qualify_leads identity pass). Reads the whole job; since is ignored.",
+      },
+      offset: {
+        type: "number",
+        description:
+          "With compact: the first row to return (default 0). Each result carries at most 100 rows; take the next value from next_poll.offset.",
+      },
     },
     required: ["job_id"],
     additionalProperties: false,
@@ -65,6 +78,11 @@ export const leadJobStatus: Tool<LeadJobStatusParams, any> = {
     ctx?: ToolContext
   ) => {
     const waitSeconds = clampWaitSeconds(params.wait_seconds, 0);
+    const compact =
+      params.compact === true || (params.compact as unknown) === "true";
+    // Compact rows follow the user's list, which the item cursor does not, so
+    // a compact read drains the whole job and pages by row instead.
+    const since = compact ? undefined : params.since;
     const snapshot =
       waitSeconds > 0
         ? await waitForJob(
@@ -73,18 +91,32 @@ export const leadJobStatus: Tool<LeadJobStatusParams, any> = {
             waitSeconds,
             ctx,
             undefined,
-            params.since,
+            since,
             params.limit
           )
         : await collectJobSnapshot(
             client,
             params.job_id,
-            params.since,
+            since,
             params.limit,
             ctx?.signal
           );
 
     const done = TERMINAL_JOB_STATES.has(snapshot.job.state);
+    if (compact) {
+      return {
+        job_id: params.job_id,
+        state: snapshot.job.state,
+        done,
+        ...identityAnswer(
+          params.job_id,
+          snapshot,
+          snapshot.items,
+          readOffset(params.offset)
+        ),
+        region: client.region,
+      };
+    }
     const { leads, skipped } = splitItems(snapshot);
     return {
       job_id: params.job_id,
