@@ -33,6 +33,7 @@ import {
   type McpDryRunResponse,
   type McpSubmitResponse,
 } from "./_mcp-job-helpers.js";
+import { detectCountryLocations } from "./_country-guard.js";
 import { leadbay_find_new_leads as FIND_NEW_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface FindNewLeadsParams {
@@ -231,6 +232,33 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       "channels",
       "exclude_lead_ids",
     ]);
+    // The workspace's OWN country is redundant, not wrong: the search already
+    // spans it. Refusing it failed a scheduled agent's first call on every run,
+    // because it re-reads the description each time and never learns from the
+    // refusal (product#4132). So it comes off here and the search runs. Any
+    // other country-level value still reaches the guard below and is refused.
+    const homeCountry = detectCountryLocations(
+      params.filters?.locations,
+      "filters.locations",
+      client.region
+    ).filter((hit) => hit.kind === "home_country");
+    let countryNote: { note: string } | undefined;
+    if (homeCountry.length > 0) {
+      const dropped = new Set<unknown>(homeCountry.map((hit) => hit.value));
+      const raw: unknown = params.filters!.locations;
+      const rest = (Array.isArray(raw) ? raw : [raw]).filter((v) => !dropped.has(v));
+      params = {
+        ...params,
+        filters: { ...params.filters, locations: rest.length > 0 ? (rest as string[]) : undefined },
+      };
+      const removed = [...dropped].map((v) => `"${v}"`).join(", ");
+      countryNote = {
+        note:
+          rest.length > 0
+            ? `Removed ${removed} from filters.locations: a country is never a location filter. The search covers ${rest.map((v) => `"${v}"`).join(", ")} only.`
+            : `Removed ${removed} from filters.locations: this workspace holds ${homeCountry[0].country} companies only, so the search already covers all of it.`,
+      };
+    }
     rejectCountryLocations(params.filters?.locations, client.region);
     // Types first, then the cap: counting a list that still contains junk
     // would size the cap against entries that were never going to be sent.
@@ -352,6 +380,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       return {
         dry_run: true,
         ...forecast,
+        ...countryNote,
         region: client.region,
       };
     }
@@ -379,6 +408,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
         hint: vetoed
           ? "confirm:false vetoed the run — nothing was submitted. Re-call with confirm:true to proceed, or drop qualify/channels for a free search."
           : "Tell the user what will run and that it uses their plan's quota (no amounts, no money), get an explicit go-ahead, then re-call with confirm:true. For a free search instead: omit qualify and channels.",
+        ...countryNote,
         region: client.region,
       };
     }
@@ -463,6 +493,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
               since: snapshot.next_since ?? null,
               suggested_wait_seconds: done ? 0 : 60,
             },
+      ...countryNote,
       region: client.region,
     };
   },

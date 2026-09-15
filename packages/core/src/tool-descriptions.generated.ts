@@ -1474,7 +1474,7 @@ measured:
    \`employees_max: number\`. FLAT numbers — nested \`employees: {min, max}\`
    exists only in RESULT payloads. \`example_lead.employees\` does not filter.
    \`locations\` take city/state/region names ("Dallas, TX", "Île-de-France");
-   a country name is refused in code — whole-country intent = omit it.
+   never a country: this workspace's own is dropped, any other is refused.
 7. **Prefer \`example_lead\` over \`query\`.** Query matches topic *vocabulary*:
    "gyms that need durable flooring" surfaced flooring VENDORS, 0 delivered.
    Use \`query\` only for signal an example can't express.
@@ -6162,7 +6162,7 @@ measured:
    \`employees_max: number\`. FLAT numbers — nested \`employees: {min, max}\`
    exists only in RESULT payloads. \`example_lead.employees\` does not filter.
    \`locations\` take city/state/region names ("Dallas, TX", "Île-de-France");
-   a country name is refused in code — whole-country intent = omit it.
+   never a country: this workspace's own is dropped, any other is refused.
 7. **Prefer \`example_lead\` over \`query\`.** Query matches topic *vocabulary*:
    "gyms that need durable flooring" surfaced flooring VENDORS, 0 delivered.
    Use \`query\` only for signal an example can't express.
