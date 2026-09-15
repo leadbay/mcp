@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.38.2 — 2026-09-14 — Claude mentions your quota only when it matters
+
+- **Claude mentions your quota only when it matters.** It shows it when you
+  ask, or when you have run out. It no longer shows it after every contact
+  lookup, or when you only asked which account you are on.
+- **Looking up a company by name finds that company.** "THEOMA GESTION PRIVEE"
+  used to bring back PILOTE GESTION, a different company with a similar name.
+  A typo in the name still finds the right one.
+- **Asking about a lead with no lead named gets a clear answer.** Claude used
+  to get a "bad parameter" error that read like a broken lead.
+- **Claude knows the length limits.** Lens names, lens descriptions and
+  qualification questions stop at 255 characters, so Claude keeps them short
+  instead of being refused.
+- **Lead cards are readable in dark mode.** Some labels were almost
+  invisible. Long email addresses stay inside the card, and success and error
+  no longer look the same to a colour-blind reader.
+
 ## 0.38.1 — 2026-09-12 — A big lead list reaches Claude whole
 
 - **Asking for 30 leads no longer loses the answer.** A finished search with

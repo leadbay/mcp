@@ -5,10 +5,10 @@ Mirror the Leadbay web quota widget: three windows side by side — **Daily**,
 $ cap** figure, with a per-resource usage breakdown underneath. **Never speak in
 raw "credits"** for quota — the unit is a percentage and a dollar spend.
 
-**Include the quota whenever it is readable** — as part of the default account
-answer, even when the user only asked "what account am I connected to?". The
-sole reason to omit it is the silence gate below (unreadable quota, or an
-unlimited account); it is NOT gated on the user explicitly asking for quota.
+**Show the quota only when it matters** — when the user asks about their quota,
+usage or account status, or when a window is exhausted and blocks what they
+asked for. A plain "what account am I connected to?" is answered with user +
+org alone. Even then, the silence gate below comes first.
 
 **Silence gate (check FIRST).** Render NOTHING about quota when any of these
 holds — do not mention quota at all, do not say "unreadable", never tell the user
