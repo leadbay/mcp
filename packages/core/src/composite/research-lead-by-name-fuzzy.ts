@@ -1,3 +1,4 @@
+import { distance } from "fastest-levenshtein";
 import type { LeadbayClient } from "../client.js";
 import type {
   LeadbayError,
@@ -84,6 +85,66 @@ function suggestionName(suggestion: SearchSuggestion): string {
 
 function suggestionLeadId(suggestion: SearchSuggestion): string | undefined {
   return suggestion.lead_id ?? suggestion.leadId;
+}
+
+function nameWords(name: string): string[] {
+  return name
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+}
+
+// A typo is one letter wrong, missing or extra. Words of three letters or
+// fewer only take a letter added or dropped at the end, like SA and SAS: AK
+// and AOL are two companies, not a typo. Two typos would make INVEST and
+// INVESTED one word.
+function isSameWord(a: string, b: string): boolean {
+  if (Math.max(a.length, b.length) > 3) return distance(a, b) <= 1;
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  return (
+    shorter === longer ||
+    (longer.length === shorter.length + 1 && longer.startsWith(shorter))
+  );
+}
+
+function coversWords(
+  words: string[],
+  pool: string[],
+  lastMayBeCut: boolean
+): boolean {
+  return words.every((word, i) =>
+    pool.some(
+      (other) =>
+        isSameWord(word, other) ||
+        (lastMayBeCut && i === words.length - 1 && other.startsWith(word))
+    )
+  );
+}
+
+// /search/suggest is a typeahead. Besides word matches, it returns any lead
+// whose name is within trigram similarity 0.3 of the query, so "THEOMA GESTION
+// PRIVEE" comes back as PILOTE GESTION (product#4130). This tool answers with
+// one company. A typo changes letters inside a word, a different company has
+// a word the other name lacks. So a company hit counts when every word of one
+// name is in the other, with a typo per word allowed, the query's last word
+// possibly cut short ("Acme Ro"), or the words run together ("WINKLAB").
+// Domain and contact hits are substring and word matches already.
+export function isWordMatch(
+  query: string,
+  suggestion: SearchSuggestion
+): boolean {
+  const matchType = suggestion.match_type ?? suggestion.matchType;
+  if (matchType === "DOMAIN" || matchType === "PERSON") return true;
+  const asked = nameWords(query);
+  const found = nameWords(suggestionName(suggestion));
+  if (asked.length === 0 || found.length === 0) return false;
+  return (
+    coversWords(asked, found, true) ||
+    coversWords(found, asked, false) ||
+    asked.join("") === found.join("")
+  );
 }
 
 function isLeadbayError(error: unknown): error is LeadbayError {
@@ -183,6 +244,7 @@ async function resolveAcrossVisibleCorpus(
     `/search/suggest?q=${encodeURIComponent(query)}`
   );
   return suggestions
+    .filter((suggestion) => isWordMatch(query, suggestion))
     .map((suggestion) => {
       const id = suggestionLeadId(suggestion);
       return {
