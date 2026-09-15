@@ -38,13 +38,13 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
     properties: {
       questions: {
         type: "array",
-        items: { type: "string" },
+        items: { type: "string", maxLength: 255 },
         description:
           "Full replacement list of qualification questions (replaces ALL current questions). Mutually exclusive with add/remove.",
       },
       add: {
         type: "array",
-        items: { type: "string" },
+        items: { type: "string", maxLength: 255 },
         description:
           "Questions to append to the current list (deduped). Mutually exclusive with `questions`.",
       },

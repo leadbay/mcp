@@ -55,7 +55,7 @@ export const newLens: Tool<NewLensParams> = {
   inputSchema: {
     type: "object",
     properties: {
-      name: { type: "string", description: "Display name for the new lens (required)." },
+      name: { type: "string", maxLength: 255, description: "Display name for the new lens (required)." },
       sectors: {
         type: "array",
         items: { type: "string" },
@@ -90,7 +90,7 @@ export const newLens: Tool<NewLensParams> = {
         description:
           "Lens id to clone from. Defaults to the active/default lens.",
       },
-      description: { type: "string", description: "Optional lens description." },
+      description: { type: "string", maxLength: 255, description: "Optional lens description." },
       confirm: {
         type: "boolean",
         description:

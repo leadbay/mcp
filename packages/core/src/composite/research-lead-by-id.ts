@@ -453,6 +453,16 @@ export const researchLeadById: Tool<ResearchLeadByIdParams> = {
     params: ResearchLeadByIdParams,
     _ctx?: ToolContext
   ) => {
+    // A call without leadId used to reach the backend as the literal
+    // "undefined" (`/lenses/48189/leads/undefined`, Sentry MCP-46), and the
+    // reply "bad 'leadId' parameter" reads as a malformed id, not a missing one.
+    if (typeof params.leadId !== "string" || params.leadId.trim() === "") {
+      throw client.makeError(
+        "INVALID_PARAMS",
+        "leadId is required and must be a non-empty string",
+        "Pass the lead's full 36-character UUID as `leadId`, exactly as leadbay_pull_leads items[].id returned it. If you only have the company name, call leadbay_research_lead_by_name_fuzzy instead."
+      );
+    }
     const lensId = params.lensId ?? (await client.resolveDefaultLens());
     const leadId = params.leadId;
 
