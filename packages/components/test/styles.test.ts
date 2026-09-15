@@ -102,7 +102,8 @@ describe("the sheet itself", () => {
   });
 
   it("uses the frontend's radii + squircle corners", () => {
-    expect(STYLES).toContain("--lb-radius:1rem");
+    // Concentric: outer = inner + padding (0.625 + 0.875 = 1.5rem).
+    expect(STYLES).toContain("--lb-radius:1.5rem");
     expect(STYLES).toContain("--lb-radius-sm:0.625rem");
     expect(STYLES).toContain("corner-shape:squircle");
   });
