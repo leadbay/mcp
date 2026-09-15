@@ -841,6 +841,11 @@ export interface ToolContext {
   // mid-poll cancellation so the caller can recover via the returned
   // importIds without waiting for the budget to expire.
   signal?: AbortSignal;
+  // Save a file where the user finds it and return its absolute path. Wired
+  // only by the local stdio server (bin.ts), which runs on the user's own
+  // machine. The hosted server leaves it undefined, so tools must null-check
+  // and write nothing there (product#4131).
+  saveFile?: (name: string, content: string) => Promise<string>;
   // Stream progress to the MCP client (per spec notifications/progress).
   // Defined only when the client requested progress (i.e. the request carried
   // _meta.progressToken). Composites should fire-and-forget — the wiring

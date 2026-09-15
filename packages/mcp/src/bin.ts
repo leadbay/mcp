@@ -16,6 +16,7 @@ import {
   type ToolLogger,
 } from "@leadbay/core";
 import { buildServer } from "./server.js";
+import { saveToDownloads } from "./local-files.js";
 import {
   detectClients,
   detectClaudeDesktopMode,
@@ -1685,6 +1686,9 @@ async function main(): Promise<void> {
     version: VERSION,
     telemetry,
     updateStateStore,
+    // This process runs on the user's machine, so a tool can save a file
+    // they will find. The hosted server (http-server.ts) does not pass this.
+    saveFile: saveToDownloads,
     // Non-blocking OAuth bootstrap gate. Read per tool call: once the
     // background flow lands the token (client.isAuthenticated → true) this
     // reports done and tools execute. While waiting it surfaces the live
