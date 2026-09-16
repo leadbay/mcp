@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { LeadbayClient } from "../../../src/client.js";
 import { qualifyLeads } from "../../../src/composite/qualify-leads.js";
+import { findNewLeads } from "../../../src/composite/find-new-leads.js";
 import { MCP_JOB_POLL } from "../../../src/composite/_mcp-job-helpers.js";
 
 // What the host allows one tool call, before it cancels and the user sees an
@@ -89,6 +90,22 @@ describe("a job wait never blocks to the host's 60s ceiling (product#4144)", () 
     const res = (await qualifyLeads.execute(client, { ...oneLead })) as any;
 
     expect(res.next_poll.tool).toBe("leadbay_lead_job_status");
+    expect(res.next_poll.suggested_wait_seconds * 1000).toBeLessThan(
+      HOST_TIMEOUT_MS
+    );
+  });
+
+  // Same submit-then-wait shape, same helper, so the same budget applies.
+  it("bounds find_new_leads the same way", async () => {
+    const { client, elapsedMs } = clockedClient();
+    const res = (await findNewLeads.execute(client, {
+      example_lead: { description: "SaaS analytics for retailers." },
+      count: 3,
+      request_id: "ceiling-probe",
+    })) as any;
+
+    expect(res.still_running).toBe(true);
+    expect(elapsedMs()).toBeLessThan(HOST_TIMEOUT_MS);
     expect(res.next_poll.suggested_wait_seconds * 1000).toBeLessThan(
       HOST_TIMEOUT_MS
     );

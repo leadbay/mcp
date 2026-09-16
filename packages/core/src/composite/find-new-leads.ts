@@ -331,7 +331,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       wait_seconds: {
         type: "number",
         description:
-          "How long to poll before returning (default and maximum 45, 0 = submit + one snapshot). Free searches usually finish inside the window; qualified exploration can take minutes — the result then carries still_running:true and the job_id to check with leadbay_lead_job_status.",
+          "How long to poll before returning (default and maximum 45 — the whole call is bounded by it, so a slow submit shortens the poll; 0 = submit + one snapshot). Free searches usually finish inside the window; qualified exploration can take minutes — the result then carries still_running:true and the job_id to check with leadbay_lead_job_status.",
       },
     },
     required: ["count", "request_id"],
@@ -342,6 +342,9 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     params: FindNewLeadsParams,
     ctx?: ToolContext
   ) => {
+    // The host's 60s timer starts here, not at the wait — so the wait gets
+    // whatever the quote and the submit leave of the budget (product#4144).
+    const startedAt = Date.now();
     // Unvalidated MCP args can arrive singular; coerce BEFORE the spend gate
     // so a shape slip is never a TypeError in place of a quote.
     params = coerceArrayParams(params, [
@@ -565,7 +568,8 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     if (mocked) return mocked;
     const waitSeconds = clampWaitSeconds(
       params.wait_seconds,
-      DEFAULT_WAIT_SECONDS
+      DEFAULT_WAIT_SECONDS,
+      startedAt
     );
     // Every failure past this point must carry submit.job_id: the job exists
     // and may be spending, and this handle is the only way back to it.
