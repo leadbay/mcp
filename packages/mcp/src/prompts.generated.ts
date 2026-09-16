@@ -1707,7 +1707,7 @@ searched. Render the delivery table and judge fit honestly: are these the
 kind of companies I asked for?
 
 - **\`still_running: true\`** → the job is ALIVE. Do not judge the seed and do
-  not relaunch — poll \`leadbay_lead_job_status\` (\`wait_seconds: 60\`) until
+  not relaunch — poll \`leadbay_lead_job_status\` (\`wait_seconds: 45\`) until
   it goes terminal, reporting progress. Relaunching now burns an active-job
   slot and rate-limit budget on a search that may be about to deliver.
 - **On-profile** (terminal) → offer Phase 4.
@@ -1765,7 +1765,7 @@ When I want qualification evidence and/or reachable contacts:
    \`exploration_cap\` can examine more than that, so send the most recent 500
    rejects rather than an over-long list the tool refuses outright.
 3. While the job runs, poll with \`leadbay_lead_job_status\`
-   (\`wait_seconds: 60\`); report progress, not silence.
+   (\`wait_seconds: 45\`); report progress, not silence.
 
 # PHASE 5 — DELIVER
 

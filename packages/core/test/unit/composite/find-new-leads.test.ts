@@ -175,7 +175,7 @@ describe("leadbay_find_new_leads", () => {
     expect(result.next_poll).toMatchObject({
       tool: "leadbay_lead_job_status",
       job_id: JOB_ID,
-      suggested_wait_seconds: 60,
+      suggested_wait_seconds: 45,
     });
     expect(result.leads).toHaveLength(1);
   });

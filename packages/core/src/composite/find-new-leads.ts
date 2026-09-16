@@ -11,6 +11,7 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 import {
   clampWaitSeconds,
+  MAX_WAIT_SECONDS,
   collectJobSnapshot,
   canonicalSet,
   coerceArrayParams,
@@ -330,7 +331,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       wait_seconds: {
         type: "number",
         description:
-          "How long to poll before returning (default 45, max 180, 0 = submit + one snapshot). Free searches usually finish inside the window; qualified exploration can take minutes — the result then carries still_running:true and the job_id to check with leadbay_lead_job_status.",
+          "How long to poll before returning (default and maximum 45, 0 = submit + one snapshot). Free searches usually finish inside the window; qualified exploration can take minutes — the result then carries still_running:true and the job_id to check with leadbay_lead_job_status.",
       },
     },
     required: ["count", "request_id"],
@@ -622,7 +623,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
               // INCREMENTALLY instead of re-reading (and re-rendering) the
               // rows already delivered in this response.
               since: snapshot.next_since ?? null,
-              suggested_wait_seconds: done ? 0 : 60,
+              suggested_wait_seconds: done ? 0 : MAX_WAIT_SECONDS,
             },
       ...sectorNote(attempt.rewritten),
       ...countryNote,
