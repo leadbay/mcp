@@ -55,7 +55,7 @@ annotations:
 
 Build a single-call mixed-mode itinerary for a field sales tour. Combines `leadbay_pull_followups` (Monitor leads in the city — known accounts) with `leadbay_pull_leads` (Discover wishlist — new prospects, then client-side filtered by city) so the agent can answer the canonical #3630 US1 ask: *"I'm visiting Limoges in 4 days — propose 3 customers + 3 qualified prospects + 3 new high-potential discoveries."*
 
-**Geo resolution** is identical to `leadbay_followups_map`: pass `city` (any level from state down to neighborhood — state, *région*, county, city — the `/geo/search` resolver picks the best match), or a pre-resolved `city_id`. Ambiguous matches surface as `status: "ambiguous_locations"` + `location_ambiguities[]`; pick an id and re-call with `city_id`.
+**Geo resolution** is identical to `leadbay_followups_map`: pass `city` (any level from state down to neighborhood — state, *région*, county, city — the `/geo/search` resolver picks the best match), or a pre-resolved `city_id`. Ambiguous matches surface as `status: "ambiguous_locations"` + `location_ambiguities[]`; re-call with `city_id` set to the id you pick AND `city` set to that candidate's `name`. Both are needed: the id scopes the follow-ups, the name scopes the Discover leads, and with `city_id` alone `discover_leads` comes back empty.
 
 {{include:heuristics/single-country-universe}}
 
@@ -67,7 +67,7 @@ not an itinerary. So for ANY country-level `city` — this workspace's own inclu
 visiting and re-call with that. `status: "country_level_location"` carries the
 same instruction in its `hint`.
 
-**Counts**: `followups_count` (default 6 — generous so the agent can split into "customers + qualified" client-side) and `discover_count` (default 6 after client-side geo filter). The composite over-pulls Discover (30 raw) because the wishlist endpoint has no server-side geo filter — it then filters by `location.city/state/country/full` substring match against the requested city. The `discover_filter_note` string in the response tells the agent the match ratio so it can be honest about coverage ("matched 3/30 by city/state" vs. "matched 12/30").
+**Counts**: `followups_count` (default 6 — generous so the agent can split into "customers + qualified" client-side) and `discover_count` (default 6 after client-side geo filter). The composite over-pulls Discover (30 raw) because the wishlist endpoint has no server-side geo filter — it then keeps the leads whose own `location.city` names the requested city, and falls back to `location.state` only when no city matched (which is what a regional ask like "Texas" or "Île-de-France" looks like). `location.country` is never consulted. `discover_filter_note` reports the ratio and which field carried it, so the agent can be honest about coverage. **When it says no Discover lead is in the city, say that** — return the Monitor half and offer `leadbay_find_new_leads` for that city. Never fill the gap with leads from elsewhere.
 
 **What `tour_plan` does NOT do**: it doesn't persist the tour as a campaign artifact. To do that — create a "Limoges Tour – May 24" campaign and attach the selected accounts — chain into `leadbay_create_campaign({lead_ids: [...selected_ids], name: 'Limoges Tour – <date>'})` after the user picks. See the `leadbay_plan_tour_in_city` prompt for the full end-to-end orchestrator.
 

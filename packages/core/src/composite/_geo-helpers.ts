@@ -55,7 +55,12 @@ const CITY_ALIASES: Record<string, string> = {
   nola: "New Orleans",
 };
 
-function expandAlias(text: string): string {
+/**
+ * Exported so `tour_plan` can put its client-side Discover filter through the
+ * same table. "I'm going to NYC in 2 days" is the second most common tour ask
+ * on prod, and the wishlist payload spells that city "City of New York".
+ */
+export function expandAlias(text: string): string {
   const key = text.trim().toLowerCase();
   return CITY_ALIASES[key] ?? text;
 }

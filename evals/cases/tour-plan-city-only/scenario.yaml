@@ -1,0 +1,19 @@
+version: 1
+id: tour-plan-city-only
+regions:
+- us
+languages:
+- en
+starting_state:
+- An authenticated dedicated tenant whose active lens holds Discover leads in several different cities
+  of its country, including at least one lead outside the city the request names.
+- The Discover wishlist is populated, so an empty fixture cannot substitute for delivering an itinerary.
+user_decisions:
+- when: The product asks who to include on the tour.
+  reply: A mix of my known accounts and fresh prospects.
+- when: The product asks whether to enrich contacts that have no phone or email.
+  reply: No, just plan the visits.
+- when: The product asks which Austin it means, or offers several places with similar names.
+  reply: Austin, Texas.
+variants: []
+datasets: []
