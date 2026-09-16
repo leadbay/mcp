@@ -251,6 +251,21 @@ describe("leadbay_find_new_leads — everything else is left alone", () => {
     ).rejects.toMatchObject({ code: "BAD_INPUT" });
   });
 
+  it("an unreachable taxonomy keeps the answer about the sector, not about our recovery", async () => {
+    mockHttp([
+      sectorRejection,
+      { method: "GET", path: "/1.6/users/me", status: 200, body: ME },
+      { method: "GET", path: SECTORS_PATH, status: 503, body: { message: "upstream down" } },
+    ]);
+
+    await expect(
+      findNewLeads.execute(newClient(), JULIEN as any)
+    ).rejects.toMatchObject({
+      code: "BAD_INPUT",
+      message: expect.stringContaining("Professional Services"),
+    });
+  });
+
   it("a sector 400 on a call that passed no sectors still propagates", async () => {
     mockHttp([
       {

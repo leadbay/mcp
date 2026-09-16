@@ -140,8 +140,12 @@ async function submitSearch<T>(
       throw err;
     }
     // The API names only the FIRST value it could not resolve, so re-read all
-    // of them: fixing one at a time would spend a call per bad sector.
-    const taxonomy = await fetchSectorTaxonomy(client, ctx);
+    // of them: fixing one at a time would spend a call per bad sector. If the
+    // taxonomy itself is unreachable the caller keeps the answer about their
+    // sector, not a second error about our recovery.
+    const taxonomy = await fetchSectorTaxonomy(client, ctx).catch(() => {
+      throw err;
+    });
     const fix = resolveSectorValues(asked as string[], taxonomy);
     // Nothing here can name a better value — a taxonomy id that does not exist
     // is the caller's own to correct, and answering it with an empty list of
