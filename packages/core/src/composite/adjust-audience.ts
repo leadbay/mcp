@@ -14,7 +14,7 @@ import {
   geoScopeSurvives,
   detectCountryLocationsIn,
 } from "./_country-guard.js";
-import { sectorLabel } from "./_sector-resolver.js";
+import { matchSector, sectorLabel } from "./_sector-resolver.js";
 import { leadbay_adjust_audience as ADJUST_AUDIENCE_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface AdjustAudienceParams {
   sectors?: string[];           // free text or sector ids
@@ -33,39 +33,6 @@ interface AdjustAudienceParams {
 export interface SectorAmbiguity {
   sector_text: string;
   matches: Array<{ id: string; name: string; score: number }>;
-}
-
-function tokens(s: string | null | undefined): string[] {
-  // Guard: the sector taxonomy (and, defensively, the user's input array) can
-  // carry null/undefined names. Without this, tokens(s.name) throws
-  // "Cannot read properties of undefined (reading 'toLowerCase')" and the whole
-  // resolveSectors → tool call dies while scanning the taxonomy — regardless of
-  // what the user actually asked for.
-  if (!s) return [];
-  return s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-}
-
-function bestMatches(
-  text: string,
-  taxonomy: SectorPayload[]
-): Array<{ id: string; name: string; score: number }> {
-  const want = new Set(tokens(text));
-  if (want.size === 0) return [];
-  const ranked = taxonomy
-    .map((s) => {
-      // The taxonomy names its rows `label`; `name` is never on the wire, so
-      // every row scored 0 and every free-text sector came back as an empty
-      // `matches` list — no lens could be created or narrowed by sector name
-      // (product#4100). sectorLabel() reads whichever field is present.
-      const have = new Set(tokens(sectorLabel(s)));
-      let overlap = 0;
-      for (const t of want) if (have.has(t)) overlap += 1;
-      const score = overlap / Math.max(want.size, 1);
-      return { id: s.id, name: sectorLabel(s), score };
-    })
-    .filter((m) => m.score > 0)
-    .sort((a, b) => b.score - a.score);
-  return ranked.slice(0, 5);
 }
 
 export async function resolveSectors(
@@ -98,16 +65,20 @@ export async function resolveSectors(
   const resolved = [...direct];
   const ambiguities: SectorAmbiguity[] = [];
   for (const text of free) {
-    const matches = bestMatches(text, taxonomy);
-    // Confident match: exactly one with score > 0.66 (most tokens match) AND
-    // no close runner-up.
-    if (
-      matches.length === 1 ||
-      (matches.length >= 2 && matches[0].score >= 0.66 && matches[0].score - matches[1].score >= 0.34)
-    ) {
-      resolved.push(matches[0].id);
+    // Same matcher leadbay_find_new_leads uses. The one that lived here scored
+    // token overlap only, so "Construction" scored 1.0 against the label
+    // "Construction" AND against every label containing the word, no single
+    // match stood out, and the issue's own reproduction came back ambiguous
+    // with the exact label sitting at the top of the list (product#4100).
+    // matchSector settles an exact label first, and never resolves a partial
+    // overlap, which is what ambiguities are for.
+    const match = matchSector(text, taxonomy);
+    if (match.kind === "resolved") {
+      // Every row carrying the label, not just the first: the same sector name
+      // sits at several registry depths and the caller named the name.
+      resolved.push(...match.ids);
     } else {
-      ambiguities.push({ sector_text: text, matches });
+      ambiguities.push({ sector_text: text, matches: match.candidates });
     }
   }
   return { resolved, ambiguities };

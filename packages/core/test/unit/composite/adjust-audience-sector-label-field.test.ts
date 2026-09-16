@@ -71,6 +71,39 @@ describe("leadbay_adjust_audience — sectors named in words", () => {
     );
   });
 
+  it("the exact label wins over every label that merely contains the word", async () => {
+    // product#4100's own reproduction. Token overlap scored "Construction" 1.0
+    // against the label "Construction" AND against "Specialized construction
+    // work", so nothing stood out and the call came back ambiguous with the
+    // exact label sitting at the top of its own list.
+    mockHttp([
+      { method: "GET", path: "/1.6/users/me", status: 200, body: ME },
+      {
+        method: "GET",
+        path: SECTORS_PATH,
+        status: 200,
+        body: [
+          { id: "3706", label: "Construction", number_of_leads: 783569 },
+          { id: "3820", parent: "3706", label: "Specialized construction work", number_of_leads: 400000 },
+          { id: "3821", parent: "3706", label: "Construction of buildings", number_of_leads: 300000 },
+        ],
+      },
+      ...lensWrite,
+    ]);
+
+    const result: any = await adjustAudience.execute(newClient(), {
+      sectors: ["Construction"],
+    });
+
+    expect(result.status).toBe("applied");
+    const write = getHttpRequests().find(
+      (r) => r.method === "POST" && r.path === "/1.6/lenses/4242/filter"
+    );
+    expect(JSON.parse(write!.body!).items[0].criteria).toContainEqual(
+      expect.objectContaining({ type: "sector_ids", sectors: ["3706"] })
+    );
+  });
+
   it("names real candidates when the ask is ambiguous, instead of an empty list", async () => {
     mockHttp([
       { method: "GET", path: "/1.6/users/me", status: 200, body: ME },
