@@ -2432,9 +2432,10 @@ When the response carries \`social_urls\` (the post-fix multi-platform URL block
 
 
 # PHASE 2 — NOT FOUND
-If the resolver returns \`LEAD_NOT_FOUND\`, read its hint: it names the field
-that would have found the company (\`would_help\`, usually \`website\`). **Ask the
-user for that field first** — "what's their website?" — and call the tool again
+If the resolver returns \`resolution: "not_found"\`, that call SUCCEEDED — it is
+the answer, not a failure. Read \`would_help\`: it names the field that would
+have found the company (usually \`website\`). **Ask the user for that field
+first** — "what's their website?" — and call the tool again
 with it. Only when they cannot supply it should you say both their leads and
 the Leadbay registry were searched.
 **Do NOT call \`leadbay_import_and_qualify\` automatically.**

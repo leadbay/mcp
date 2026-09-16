@@ -364,7 +364,7 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
   outputSchema: {
     type: "object",
     description:
-      "Same shape as leadbay_research_lead_by_id, with _meta.resolved_from='companyName'|'resolver', _meta.resolved_query='<needle>', _meta.resolved_matched_on=[...], and _meta.match_candidates=[{leadId,name,score}] populated. When the registry resolver cannot pick one company, returns {resolution:'ambiguous', query, candidates:[{leadId,name,website,location,registry_ids,score,matched_on}]} instead — ask the user which one, then call leadbay_research_lead_by_id.",
+      "Same shape as leadbay_research_lead_by_id, with _meta.resolved_from='companyName'|'resolver', _meta.resolved_query='<needle>', _meta.resolved_matched_on=[...], and _meta.match_candidates=[{leadId,name,score}] populated. When the registry resolver cannot pick one company, returns {resolution:'ambiguous', query, candidates:[{leadId,name,website,location,registry_ids,score,matched_on}]} instead — ask the user which one, then call leadbay_research_lead_by_id. When neither the user's leads nor the registry hold the company, returns {resolution:'not_found', query, summary, would_help:['website'|'registry_number'], next_step} — a successful answer, not an error: ask the user for the field named in would_help and call again.",
     additionalProperties: true,
   },
   execute: async (
@@ -394,11 +394,19 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
       if (scoped.length > 0) {
         return await delegate(scoped, params.lensId);
       }
-      throw client.makeError(
-        "LEAD_NOT_FOUND",
-        `No lead matching "${query}" in lens ${params.lensId}`,
-        "This lookup was intentionally restricted to the supplied lens. Omit lensId to search your visible leads across Discover, Monitor, and Activate and then the Leadbay company registry."
-      );
+      return {
+        resolution: "not_found" as const,
+        query,
+        summary: `No lead matching "${query}" in lens ${params.lensId}`,
+        would_help: [],
+        next_step:
+          "This lookup was intentionally restricted to the supplied lens. Omit lensId to search your visible leads across Discover, Monitor, and Activate and then the Leadbay company registry.",
+        _meta: {
+          region: client.region,
+          lens_id: params.lensId,
+          resolved_query: query,
+        },
+      };
     }
 
     async function delegate(matches: ResolvedMatch[], fallbackLens?: number) {
@@ -575,11 +583,37 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
         ? `The registry could not identify a company from this input (${resolved.reason}). Ask the user for ${asks}, then call this tool again with it.`
         : `The registry found no company for what was supplied. It would match on ${asks}. Ask the user for that — "what's their website?" usually settles it — then call this tool again. Do not offer an import before asking.`;
 
-    throw client.makeError(
-      "LEAD_NOT_FOUND",
-      `No company matching "${query}" ${searched}`,
-      hint,
-      "POST /leads/resolve"
-    );
+    // Only the registry answered. The user's own leads were never checked, so
+    // this is half a verdict on top of an outage — the one case here that is
+    // still an error, and the hint says which half is missing.
+    if (!corpusSearched) {
+      throw client.makeError(
+        "LEAD_NOT_FOUND",
+        `No company matching "${query}" ${searched}`,
+        `${hint} But this lookup did not complete — the lead search route was unreachable, so their own leads were never checked. Retry once before telling the user the company is absent.`,
+        "POST /leads/resolve"
+      );
+    }
+
+    // Both corpora answered, and both said no. That is a correct answer to
+    // "do we have this company?", not a malfunction, so it returns like the
+    // ambiguous branch does instead of throwing. Delivered as an error it also
+    // made the agent retry with `website` as the hint asks, and record a second
+    // failure for the same user question — 677 of this tool's 806 recorded
+    // failures in the 30 days to 2026-09-16 were this (product#4145).
+    return {
+      resolution: "not_found" as const,
+      query,
+      resolver_payload: payload,
+      summary: `No company matching "${query}" ${searched}`,
+      would_help: wanted,
+      next_step: hint,
+      _meta: {
+        region: client.region,
+        resolved_from: "resolver" as const,
+        resolved_query: query,
+        endpoint: "POST /leads/resolve",
+      },
+    };
   },
 };

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.39.6 — 2026-09-16 — "We don't have them" is an answer, not an error
+
+- **Asking about a company Leadbay has never heard of no longer looks like a
+  breakdown.** "Do we have Menuiserie Vercellone in the pipeline?" used to come
+  back as a red error box, even though the search had run correctly and the
+  answer was simply no. Claude now says the company is not in Leadbay yet and
+  asks for their website, which is usually what finds them.
+- **And it no longer fails twice for one question.** The error told Claude to
+  try again with the website; that second attempt was also an error. One
+  question, two failures, nothing broken. Both are answers now.
+- **A search that really is down still says so.** When the lead search cannot
+  be reached, Claude is told the lookup did not finish and to retry, instead of
+  telling you the company is absent on half an answer.
+
 ## 0.39.5 — 2026-09-16 — When you say what makes a lead good, your settings change
 
 - **Telling Claude what you want now changes your Leadbay settings, not just
