@@ -1252,10 +1252,30 @@ export function normalizeSearchFilters(
   return out;
 }
 
+/** The longest a tool call may block, whatever the caller asked for.
+ *
+ *  The MCP SDK cancels a tool call after 60s (DEFAULT_REQUEST_TIMEOUT_MSEC),
+ *  and a host timeout is indistinguishable server-side from the user pressing
+ *  Cancel: the user sees an error while the job they paid for keeps running,
+ *  with no job_id to come back to. A ceiling of 180 let a caller ask for three
+ *  times that (product#4144). 45s leaves the submit that precedes the wait, and
+ *  the result serialization that follows it, inside the host's budget. It is
+ *  also what `next_poll` suggests: an agent that follows the hint verbatim must
+ *  not issue a call that blocks to the ceiling either. */
+export const MAX_WAIT_SECONDS = 45;
+
+/** `startedAtMs` is when the TOOL CALL began, not when the wait did. The host's
+ *  clock started at the call, so a submit that took 20s has already spent 20s
+ *  of the budget — waiting a further full `wait_seconds` on top is how a
+ *  45s wait returned 65s after the call started. */
 export function clampWaitSeconds(
   requested: number | undefined,
-  fallback: number
+  fallback: number,
+  startedAtMs?: number
 ): number {
-  if (requested == null || Number.isNaN(requested)) return fallback;
-  return Math.min(Math.max(requested, 0), 180);
+  const asked = requested == null || Number.isNaN(requested) ? fallback : requested;
+  const bounded = Math.min(Math.max(asked, 0), MAX_WAIT_SECONDS);
+  if (startedAtMs == null) return bounded;
+  const spentSeconds = (Date.now() - startedAtMs) / 1000;
+  return Math.max(0, Math.min(bounded, MAX_WAIT_SECONDS - spentSeconds));
 }

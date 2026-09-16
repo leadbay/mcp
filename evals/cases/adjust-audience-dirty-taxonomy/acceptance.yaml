@@ -4,12 +4,6 @@ required_outcomes:
   statement: Every declared starting condition was established before the product session.
   evidence:
   - before
-- id: outcome-1
-  statement: did NOT crash with a TypeError while scanning the sector taxonomy (a null-name taxonomy row
-    must be tolerated)
-  evidence:
-  - conversation
-  - tools
 - id: outcome-2
   statement: returned a graceful ambiguous_sectors / couldn't-confidently-resolve message naming the unresolved
     sector text

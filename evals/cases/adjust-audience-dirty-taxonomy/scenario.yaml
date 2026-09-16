@@ -3,12 +3,14 @@ id: adjust-audience-dirty-taxonomy
 regions:
 - fr
 languages:
+- en
 - fr
 starting_state:
-- The tenant uses French taxonomy. Sector rows include Pergola aluminium, a null name, Pergola bioclimatique
-  and Menuiserie.
-- The requested combined trade description is ambiguous. An existing active lens and its filters are recorded
-  before the run.
+- The tenant is a French workspace whose sector taxonomy is the SIRENE registry, served in the account's
+  own language. No row in that registry is named Pergola, in either language.
+- Menuiserie sits on several rows at different registry depths, and véranda appears only on one row that
+  also covers greenhouses. No single row answers the requested combination of trades.
+- An existing active lens and its filters are recorded before the run.
 user_decisions: []
 variants: []
 datasets: []
