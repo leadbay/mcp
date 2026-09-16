@@ -3,6 +3,11 @@ import type { Tool, ToolContext, AiAgentQuestionPayload } from "../types.js";
 
 import { leadbay_set_qualification_questions as SET_QUALIFICATION_QUESTIONS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
+// Backend cap (verified live): an org may hold at most this many qualification
+// questions. Exported so the read tool reports free slots off the same number —
+// a backend cap with two sources of truth drifts the first time it moves.
+export const MAX_QUESTIONS = 5;
+
 interface SetQualificationQuestionsParams {
   // Full replacement list. Mutually exclusive with add/remove.
   questions?: string[];
@@ -13,6 +18,35 @@ interface SetQualificationQuestionsParams {
   // Required when the resulting list is SHORTER than the current one
   // (a removal / shrinking replace drops questions the AI scores against).
   confirm?: boolean;
+}
+
+// A question Leadbay's scorer can act on is ESTIMATIVE: the scorer reads public
+// text it cannot verify, so a verifiable question ("Does the company ...?")
+// scores nearly every lead as no. The backend's own generator enforces the same
+// prefix (OpenAiAgentic, qualification_questions section). We do not reject a
+// user-authored question — orgs hold working questions in the bare form — but
+// we tell the caller which ones will score poorly so it can offer a fix
+// (product#4139).
+const ESTIMATIVE_MARKERS = [
+  "is the company likely to",
+  "l'entreprise est-elle susceptible",
+  "l’entreprise est-elle susceptible",
+];
+
+function formWarnings(questions: string[]): string[] {
+  const out: string[] = [];
+  for (const q of questions) {
+    const low = q.trim().toLowerCase();
+    if (!ESTIMATIVE_MARKERS.some((m) => low.startsWith(m))) {
+      out.push(
+        `"${q}" is not in the estimative form. Leadbay scores from public text it cannot verify, so this will mark most leads no. Rewrite it to start "Is the company likely to ..." / "L'entreprise est-elle susceptible de ...".`
+      );
+    }
+    if (q.length > 120) {
+      out.push(`"${q.slice(0, 60)}…" is ${q.length} chars; keep a question under 120.`);
+    }
+  }
+  return out;
 }
 
 // Modify the org's qualification questions (the AI-agent questions every lead is
@@ -40,13 +74,13 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
         type: "array",
         items: { type: "string", maxLength: 255 },
         description:
-          "Full replacement list of qualification questions (replaces ALL current questions). Mutually exclusive with add/remove.",
+          "Full replacement list of qualification questions (replaces ALL current questions). Mutually exclusive with add/remove. A question Leadbay can score has ALL of: the estimative marker — it starts \"Is the company likely to \" in English or \"L'entreprise est-elle susceptible de/d' \" in French (never \"Does the company ...\" or a bare \"L'entreprise est-elle <X> ?\", which the scorer cannot verify and marks no); ONE dimension, not two joined by AND; something estimable from the company's public material, never its budget or its internal plans; and enough bite to split companies roughly 30/70 — a question nearly everyone answers yes to (\"has a website\") adds no signal, so say that and propose a sharper one rather than writing it. Max 120 chars, in the user's language. Never name a specific company in a question. Never re-send an existing question with reworded text that means the same thing — a reword is a delete plus an add, it re-scores every lead in the pipeline against the org's quota, and it surfaces exactly the same companies.",
       },
       add: {
         type: "array",
         items: { type: "string", maxLength: 255 },
         description:
-          "Questions to append to the current list (deduped). Mutually exclusive with `questions`.",
+          "Questions to append to the current list (deduped). Mutually exclusive with `questions`. A question Leadbay can score has ALL of: the estimative marker — it starts \"Is the company likely to \" in English or \"L'entreprise est-elle susceptible de/d' \" in French (never \"Does the company ...\" or a bare \"L'entreprise est-elle <X> ?\", which the scorer cannot verify and marks no); ONE dimension, not two joined by AND; something estimable from the company's public material, never its budget or its internal plans; and enough bite to split companies roughly 30/70 — a question nearly everyone answers yes to (\"has a website\") adds no signal, so say that and propose a sharper one rather than writing it. Max 120 chars, in the user's language. Never name a specific company in a question. Read leadbay_get_qualification_questions first: skip anything an existing question already tests, and anything the lens already filters by sector, headcount or territory.",
       },
       remove: {
         type: "array",
@@ -77,6 +111,12 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
         description: "True when the list was actually written; false on a no-op or an unconfirmed shrink.",
       },
       region: { type: "string" },
+      form_warnings: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Present when a written question will score poorly — not in the estimative 'Is the company likely to ...' form, or over 120 chars. The change WAS applied; tell the user and offer the rewrite.",
+      },
       hint: {
         type: "string",
         description: "Operator note — confirm prompt on a shrink, or a no-op explanation.",
@@ -150,10 +190,6 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
       return true;
     });
 
-    // Backend cap (verified live): an org may hold at most MAX_QUESTIONS
-    // qualification questions. Pre-check so the agent gets an actionable
-    // message instead of a raw 400 from the org POST.
-    const MAX_QUESTIONS = 5;
     if (next.length > MAX_QUESTIONS) {
       throw client.makeError(
         "QUALIFICATION_QUESTIONS_LIMIT",
@@ -206,12 +242,19 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
     // read reflects the change.
     client.invalidateTasteProfile();
 
+    // Only the text THIS call wrote. Warning about questions it carried over
+    // untouched would nag the user into rewording questions that are working,
+    // which is the opposite of what this tool's own guidance says to do.
+    const written = hasSet ? next : (params.add ?? []).map(norm).filter((q) => next.includes(q));
+    const warnings = formWarnings(written);
+
     return {
         qualification_questions: next.map((q) => ({ question: q })),
         count: next.length,
         previous_count: previousCount,
         changed: true,
         region: client.region,
+        ...(warnings.length > 0 ? { form_warnings: warnings } : {}),
       };
   },
 };

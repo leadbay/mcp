@@ -227,12 +227,12 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       query: {
         type: "string",
         description:
-          "Natural-language ICP ask. Matches topic VOCABULARY — can surface vendors of a product as easily as buyers of it. Prefer example_lead; use query only when the user's wording carries signal an example can't.",
+          "Natural-language ICP ask. Matches topic VOCABULARY — can surface vendors of a product as easily as buyers of it. Prefer example_lead. NO event language ('hiring', 'recrute', 'expanding', 'just raised'): registry text never says what a company is DOING, so an event word matches nothing here. Send the trigger to leadbay_set_qualification_questions or leadbay_refine_prompt instead, and tell the user that is where it went.",
       },
       example_lead: {
         type: "object",
         description:
-          "A FICTIONAL typical ideal customer used as a look-alike seed — the highest-leverage input. Put everything in `description` (registry 'About Us' style, what the company IS); leave `name` unset (a distinctive invented name pulls matches toward name-lookalikes).",
+          "A FICTIONAL typical ideal customer used as a look-alike seed — the highest-leverage input. Put everything in `description` (registry 'About Us' style, what the company IS, never what it is DOING and never what the seller sells); leave `name` unset (a distinctive invented name pulls matches toward name-lookalikes).",
         properties: {
           name: { type: "string" },
           description: { type: "string" },

@@ -1,0 +1,49 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: Every declared starting condition was established before the product session.
+  evidence:
+  - before
+- id: outcome-1
+  statement: The org's qualification settings were read.
+  evidence:
+  - tools
+- id: outcome-2
+  statement: The assistant told the user the rule is already covered and named the existing question that
+    covers it.
+  evidence:
+  - conversation
+- id: outcome-3
+  statement: No qualification question was added, removed or reworded, and the stored question rows are
+    byte-identical before and after.
+  evidence:
+  - tools
+  - before
+  - after
+- id: reconciled-effects
+  statement: The tenant's settings are unchanged and the product report says so.
+  evidence:
+  - before
+  - after
+  - conversation
+prohibited_effects:
+- id: prohibited-1
+  statement: No write to the organization's qualification questions, targeting prompt or lens filters was
+    attempted.
+  evidence:
+  - tools
+  - after
+evidence:
+- id: conversation
+  source: conversation
+  description: Complete original product conversation, user choices and final answer, with turn identifiers.
+- id: tools
+  source: tool-results
+  description: Complete original MCP requests and responses, matched by request ID, including errors and
+    unresolved calls.
+- id: before
+  source: state-before
+  description: Independent snapshot confirming every declared starting condition and tenant region.
+- id: after
+  source: state-after
+  description: Independent snapshot of affected tenant records after execution and pending job state.

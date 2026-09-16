@@ -1,0 +1,14 @@
+version: 1
+id: covered-rule-writes-nothing
+regions:
+- fr
+languages:
+- fr
+starting_state:
+- The tenant holds a qualification question asking whether the company is legally active, not struck off
+  and not in liquidation. Its exact text and created_at are recorded before the run.
+- Two further qualification questions cover unrelated dimensions.
+- The org's targeting prompt and ideal buyer profile are recorded before the run.
+user_decisions: []
+variants: []
+datasets: []

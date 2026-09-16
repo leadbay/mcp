@@ -2,16 +2,52 @@
 name: leadbay_set_qualification_questions
 kind: tool-description
 short_description: |
-  Modify the org's qualification questions — the AI-agent questions every lead is
-  scored against. Add, remove, or replace questions. Removing requires
-  confirm:true. Read them first with leadbay_get_qualification_questions.
+  Modify the org's qualification questions — the AI-agent questions every lead
+  is scored against. Use when the user states what makes a lead good or bad
+  and no existing question covers it. Don't use it for a sector/size/territory
+  rule (leadbay_adjust_audience), a named company, or a delivery requirement
+  like "email and phone required".
 annotations:
   readOnlyHint: false
   destructiveHint: true
   idempotentHint: false
   openWorldHint: true
+routing:
+  triggers:
+    - "add / remove / replace a qualification question"
+    - "update my qualification so Leadbay looks for <trait>"
+    - "my best customers are <trait> — target those"
+    - "I don't want <kind of company> at all"
+    - "the leads aren't relevant, fix my criteria"
+  anti_triggers:
+    - phrase: "what are my qualification questions"
+      route_to: leadbay_get_qualification_questions
+    - phrase: "narrow to <sector> / <headcount> / <territory>"
+      route_to: leadbay_adjust_audience
+    - phrase: "a qualitative orientation one yes/no can't express"
+      route_to: leadbay_refine_prompt
+    - phrase: "exclude <named company>"
+      route_to: leadbay_dislike_lead
+    - phrase: "only leads that already have an email and a phone"
+      route_to: leadbay_enrich_titles
+  prefer_when: "the user stated a durable company TRAIT a stranger could estimate from that company's public material, and get_qualification_questions shows nothing covering it. Read first, propose the text, write only on a yes."
+  examples:
+    positive:
+      - "Our best customers are cold-storage plants that run their own maintenance crews — update my qualification for that."
+      - "Écarte les sociétés en liquidation, je ne veux plus les voir."
+      - "Remove the flooring question and add one about install crews."
+    negative:
+      - "What qualification questions does Leadbay use?"
+      - "Add fintech to my Joinery lens."
+      - "Exclude Groupe Solidum, we had an unpaid invoice with them."
+rendering_hint: |
+  Before writing: show the exact question text you propose, say what it
+  changes, and ask for a yes (route via ask_user_input_v0). After writing:
+  one confirmation line ("Added 1 question — you now score leads against 4
+  questions.") then the resulting questions as a numbered list. On a
+  non-changing preview, surface the `hint` and ask — never auto-confirm.
 ---
-Modify the organization's **qualification questions** — the AI-agent questions Leadbay scores every lead against. Use when the user wants to add, remove, or rewrite their qualification questions — e.g. "add a question about whether they run install crews", "remove the flooring question", "replace my questions with these three".
+Modify the organization's **qualification questions** — the AI-agent questions Leadbay scores every lead against. Use when the user wants to add, remove, or rewrite them — e.g. "add a question about whether they run install crews", "remove the flooring question", "replace my questions with these three".
 
 The backend stores the list as a whole, so this tool reads the current questions and applies your change:
 
@@ -23,11 +59,15 @@ Leadbay allows **at most 5** qualification questions. If a change would exceed 5
 
 **Dropping any existing question is destructive** — it changes how every lead is scored. Any change that removes a current question requires `confirm:true` — including a same-count **swap** (remove one + add one) or a `questions` replacement that omits a current question, not only when the list gets shorter. Without `confirm`, the tool previews what would be removed and applies nothing. Pure additions never need confirm.
 
-Returns the resulting `{qualification_questions, count, previous_count, changed}`. Phrase questions as the yes/no scoring prompts Leadbay uses (e.g. "Is the company likely to …?").
+Returns the resulting `{qualification_questions, count, previous_count, changed}`.
 
-{{include:headers/tool-when-to-use}} the user wants to change the org's qualification questions.
+{{include:heuristics/rule-to-setting}}
 
-{{include:headers/tool-when-not-to-use}} to READ the questions (use leadbay_get_qualification_questions) or to change a single lead's data. This is org-level — it affects scoring for ALL leads.
+{{include:headers/tool-when-to-use}} the user stated a durable company trait no existing question covers, and they have agreed to the exact text you proposed.
+
+{{include:headers/tool-when-not-to-use}} to READ the questions (use leadbay_get_qualification_questions), to change a single lead's data, or for any rule the table above sends elsewhere. This is org-level — it affects scoring for ALL leads.
+
+{{include:gates/builtin-widgets}}
 
 ### RENDERING
 

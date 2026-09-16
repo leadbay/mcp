@@ -2,11 +2,11 @@
 name: leadbay_get_qualification_questions
 kind: tool-description
 short_description: |
-  Retrieve the org's qualification questions — the AI-agent questions Leadbay
-  scores every lead against. Use when the user wants to know HOW their leads
-  are being qualified at the org level. Don't use it for one lead's
-  qualification ANSWERS (that's leadbay_research_lead_by_id) or for the broader
-  buyer profile + intent tags (that's leadbay_get_taste_profile).
+  Retrieve the org's qualification questions, its ideal buyer profile and its
+  targeting prompt — everything that decides which leads Leadbay surfaces. Use
+  when the user wants to know HOW their leads are qualified, and ALWAYS before
+  changing any of it. Don't use it for one lead's qualification ANSWERS
+  (that's leadbay_research_lead_by_id).
 routing:
   triggers:
     - "what are my qualification questions"
@@ -14,24 +14,31 @@ routing:
     - "show me the org qualification questions"
     - "how are my leads being qualified"
     - "what's the qualification criteria"
+    - "(before any settings change) what is configured today"
+    - "why am I getting these leads"
+    - "the leads aren't relevant — what are my settings"
   anti_triggers:
     - phrase: "how did this lead score on the qualification questions"
       route_to: leadbay_research_lead_by_id
-    - phrase: "show my ideal buyer profile and intent tags"
-      route_to: leadbay_get_taste_profile
-  prefer_when: "user wants the ORG-level qualification questions catalog, no lead and no buyer profile"
+    - phrase: "change / add / remove a qualification question"
+      route_to: leadbay_set_qualification_questions
+    - phrase: "answer a pending clarification"
+      route_to: leadbay_answer_clarification
+  prefer_when: "user wants the ORG-level qualification settings, or you are about to change any of them — read this FIRST to see whether their rule is already covered"
   examples:
     positive:
       - "What qualification questions does Leadbay use to score my leads?"
       - "Show me my org's qualification questions."
+      - "Why do I keep getting these companies? What are my settings?"
     negative:
       - "How did Acme Corp answer the qualification questions?"
-      - "What's my ideal buyer profile?"
+      - "Add a question about install crews."
 rendering_hint: |
-  Numbered list of the questions (chat-native markdown), each one line. When
-  `is_admin` is true, append the `hint` as a footnote (points at
-  leadbay_set_qualification_questions for editing). When the list is empty,
-  render the `hint` instead.
+  Numbered list of the questions (chat-native markdown), each one line,
+  verbatim. Below it, the ideal buyer profile summary + anti-patterns and the
+  targeting prompt when set. When `is_admin` is true, append the `hint` as a
+  footnote (points at leadbay_set_qualification_questions). When the question
+  list is empty, say so explicitly and render the `hint` instead.
 annotations:
   readOnlyHint: true
   destructiveHint: false
@@ -47,7 +54,15 @@ Returns:
 
 - **`qualification_questions`** — the catalog. Each: `{question, created_at,
   lang}`. Ordered as the backend returns them.
-- **`count`** — number of configured questions.
+- **`count`** — number of configured questions. **Zero is a finding, not a
+  blank** — an org with no questions scores every lead on firmographics alone.
+  Say so and offer a starter set.
+- **`ideal_buyer_profile`** — `{summary, key_characteristics, anti_patterns}`
+  or null. The questions score against THIS. A rule the user states is often
+  already an `anti_pattern` here.
+- **`targeting_prompt`** — the org's free-text instruction to the AI agent, or
+  null. Qualitative rules that no single yes/no can express live here; change
+  it with `leadbay_refine_prompt`.
 - **`is_admin`** — whether the current user is an org admin. Modifying the
   questions (`leadbay_set_qualification_questions`) is an org-admin action; for
   admins a `hint` points there.
@@ -55,22 +70,21 @@ Returns:
   when no questions are configured.
 
 This tool only READS. To change the questions, use
-**leadbay_set_qualification_questions** (add / remove / replace). The result is
-cached on the client (it reuses the same taste-profile fetch as
-`leadbay_get_taste_profile`), so repeated calls in a session are cheap.
+**leadbay_set_qualification_questions**; to change the targeting prompt, use
+**leadbay_refine_prompt**; for sector / size / territory, use
+**leadbay_adjust_audience**. **leadbay_research_lead_by_id** shows how a
+SPECIFIC lead answered these questions.
 
-Companion tools: **leadbay_set_qualification_questions** to modify the questions;
-**leadbay_get_taste_profile** when the user also wants the Ideal Buyer Profile +
-purchase-intent tags; **leadbay_research_lead_by_id** for how a SPECIFIC lead
-answered these questions; **leadbay_refine_prompt** to shape the AI agent's
-behaviour.
+{{include:heuristics/rule-to-setting}}
 
 ### RENDERING
 
 Render `qualification_questions` as a numbered list — one question per line, in
 the order returned. Lead with a short heading like **"Qualification questions
-(N)"**. When `qualification_questions` is empty, render the `hint` sentence
-instead of an empty list. When `is_admin` is true and there are questions,
-append the `hint` as a one-line footnote (points at
-leadbay_set_qualification_questions). Do not invent questions or reword them —
-render verbatim.
+(N)"**. Then, when present, the `ideal_buyer_profile` summary with its
+`anti_patterns` as a short bulleted list, and the `targeting_prompt` as a
+blockquote. When `qualification_questions` is empty, say **"You have no
+qualification questions — leads are scored on firmographics alone"** and render
+the `hint`. When `is_admin` is true and there are questions, append the `hint`
+as a one-line footnote. Do not invent questions or reword them — render
+verbatim.
