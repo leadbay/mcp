@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.39.9 — 2026-09-16 — Asking whether an enrichment finished, with only the job number
+
+- **"Is my enrichment done?" now answers when Claude has only the job number.**
+  Claude keeps that number so it can answer you the next day or in another
+  conversation, and every single time it used the number on its own it got an
+  error back instead of your job. It now reads the job's companies from Leadbay
+  and tells you how many contacts landed, company by company.
+- **The error it used to return is gone.** It asked you to hand back a list of
+  company ids that Claude had no way to still have. Leadbay knows which
+  companies the job covered, so Claude asks Leadbay.
 ## 0.39.8 — 2026-09-16 — Narrowing an audience actually narrows it
 
 - **Swapping one sector or one city for another now drops the old one.**
