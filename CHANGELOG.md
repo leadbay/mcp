@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.39.3 — 2026-09-15 — Writing a city the way you write an address works
+## 0.39.4 — 2026-09-16 — Writing a city the way you write an address works
 
 - **"Washington, DC" is the capital again.** Written with the comma, Claude read
   only the first word and matched the state of Washington, so a tour of the
@@ -9,6 +9,25 @@
 - **Picking a city from a list of same-named places works too.** When Claude
   asks which New York you meant and you pick one, it now keeps the companies in
   that city instead of widening to the whole state.
+
+## 0.39.3 — 2026-09-16 — Naming a sector in your own words finds the sector
+
+- **"Find me professional services firms" no longer comes back empty-handed.**
+  Leadbay files companies under official registry names, and "professional
+  services" is not one of them, so the search was refused outright. Claude now
+  shows you the sector names Leadbay does have, and searches the closest one.
+  On one account a scheduled morning search opened with a failed attempt every
+  weekday.
+- **A small difference in spelling no longer matters.** "construction" for
+  "Construction", or "real estate" for "Real estate activities". Claude finds
+  the sector and tells you which one it searched.
+- **Naming a sector when you build or narrow an audience works again.** Typing
+  "Construction" into an audience matched nothing usable, in both regions. It
+  finds the sector now.
+- **A word that covers several real sectors asks which one you meant.** Ask for
+  "Restaurant" on the French workspace and Leadbay has two: fast-food outlets,
+  about 116,000 companies, and the wider restaurant sector, about 311,000.
+  Claude shows you both and lets you pick, rather than choosing for you.
 
 ## 0.39.2 — 2026-09-15 — A tour of Austin only shows companies in Austin
 
