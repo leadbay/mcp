@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.39.7 — 2026-09-16 — A tour of a city reaches the next town over
+
+- **A tour of Sacramento now shows the company in West Sacramento, 3 miles
+  away.** Claude matched a prospect to your trip by the name of its town, so
+  the town next door was left out of the itinerary. A tour of Paris missed
+  Gennevilliers, Ivry-sur-Seine and Saint-Ouen-sur-Seine, all inside the ring
+  road's reach.
+- **Say how far you are willing to drive and Claude uses that number.** "Les
+  prospects dans un rayon de 10km autour de Colmar" or "20 km around Lyon" now
+  sets the distance. Without a number, the itinerary reaches 20 km, about one
+  metro area. Say "only in the city itself" to turn it off.
+- **Claude tells you which stops are in the city and which are near it.** A
+  company in Courbevoie is a stop on a Paris day, and Claude now names
+  Courbevoie rather than calling it Paris.
+- **A company is still never presented as being somewhere it is not.** A stop
+  joins the itinerary because its own coordinates put it near a company whose
+  record names your city — never because the two names look alike.
+
+## 0.39.6 — 2026-09-16 — "We don't have them" is an answer, not an error
+
+- **Asking about a company Leadbay has never heard of no longer looks like a
+  breakdown.** "Do we have Menuiserie Vercellone in the pipeline?" used to come
+  back as a red error box, even though the search had run correctly and the
+  answer was simply no. Claude now says the company is not in Leadbay yet and
+  asks for their website, which is usually what finds them.
+- **And it no longer fails twice for one question.** The error told Claude to
+  try again with the website; that second attempt was also an error. One
+  question, two failures, nothing broken. Both are answers now.
+- **A search that really is down still says so.** When the lead search cannot
+  be reached, Claude is told the lookup did not finish and to retry, instead of
+  telling you the company is absent on half an answer.
+
 ## 0.39.5 — 2026-09-16 — When you say what makes a lead good, your settings change
 
 - **Telling Claude what you want now changes your Leadbay settings, not just

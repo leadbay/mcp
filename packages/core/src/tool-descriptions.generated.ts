@@ -4962,13 +4962,11 @@ key. It survives a misspelled company name and is what turns "not in your
 list" into an answer. With only a contact email, pass \`email\`: the company
 domain is derived from it, consumer mailboxes ignored.
 
-When the registry cannot pick one company it returns \`{resolution:
-"ambiguous", query, candidates:[…]}\` instead of a card. Ask which one; never
-guess from \`score\`.
-
-\`LEAD_NOT_FOUND\` is not a dead end: its hint names the field that would have
-found it — \`website\` or \`registry_number\`, both params. Ask for it and call
-again. Do not offer an import before asking.
+Both \`resolution\` answers below are successes, not cards. \`"ambiguous"\`
+carries \`candidates[]\`: ask which one, never guess from \`score\`.
+\`"not_found"\` carries \`summary\` + \`next_step\`: nobody has it, so say that and
+do what \`next_step\` says — usually ask for the param \`would_help\` names, then
+call again. Do not offer an import before asking.
 
 ---
 
@@ -5109,7 +5107,7 @@ out?"\`
 
 When \`resolution\` is \`"ambiguous"\`, render no card: use \`ask_user_input_v0\`,
 ONE \`single_select\` question ("Which one?"), one short label per candidate
-combining \`name\` and \`location\`.
+combining \`name\` and \`location\`. \`"not_found"\` renders no card either.
 
 When \`_meta.match_candidates\` is non-empty, prepend one extra NEXT STEPS row:
 
@@ -5923,17 +5921,18 @@ WHEN NOT TO USE: the user wants a lead list (leadbay_pull_leads / leadbay_pull_f
 // region: leadbay_tour_plan
 export const leadbay_tour_plan: string = `## WHEN TO USE
 
-Trigger phrases: "visiting <city> in <N> days", "I'm in <city> next week / Tuesday — who's worth meeting", "I'm going to <city> — who should I see", "who's worth meeting in <city>", "field tour in <city>", "plan a tour in <city>", "who should I meet in <city>", "customers plus prospects in <city>", "tour itinerary".
+Trigger phrases: "visiting <city> in <N> days", "I'm in <city> next week / Tuesday — who's worth meeting", "I'm going to <city> — who should I see", "who's worth meeting in <city>", "field tour in <city>", "plan a tour in <city>", "who should I meet in <city>", "prospects within <N> km of <city>", "<city> and the surrounding area", "customers plus prospects in <city>", "tour itinerary".
 
 Do NOT use for: "follow-ups only, no new prospects" → \`leadbay_followups_map\`; "new leads only" → \`leadbay_pull_leads\`; "research one account" → \`leadbay_research_lead_by_id\`.
 
-Prefer when: user wants known accounts plus new discoveries in one geographic itinerary; NEVER a country name — unlike the Monitor tools, do NOT omit \`city\`; a city-less tour is arbitrary nationwide leads, so ask which city or region
+Prefer when: known accounts plus new discoveries in one itinerary; pass \`radius_km\` when they name a radius; NEVER a country name, and do NOT omit \`city\`: a city-less tour is arbitrary nationwide leads, so ask which city or region
 
 Examples that SHOULD invoke this tool:
 - "I'm flying to Limoges in 4 days — give me 3 customers, 3 qualified prospects, and 3 new high-potential."
 - "I'm in San Francisco next Tuesday. Who's worth meeting?"
 - "Plan my tour next Tuesday in Lyon: known accounts plus discoveries."
 - "Build a mixed itinerary for Berlin — I want both follow-ups and fresh leads."
+- "J'ai un rdv le 19 août à Colmar — trouve-moi les prospects dans un rayon de 10km."
 
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Show me my follow-ups for the SF trip."
@@ -5987,6 +5986,8 @@ visiting and re-call with that. \`status: "country_level_location"\` carries the
 same instruction in its \`hint\`.
 
 **Counts**: \`followups_count\` (default 6 — generous so the agent can split into "customers + qualified" client-side) and \`discover_count\` (default 6 after client-side geo filter). The composite over-pulls Discover (30 raw) because the wishlist endpoint has no server-side geo filter — it then keeps the leads whose own \`location.city\` names the requested city, and falls back to \`location.state\` only when no city matched (which is what a regional ask like "Texas" or "Île-de-France" looks like). \`location.country\` is never consulted. \`discover_filter_note\` reports the ratio and which field carried it, so the agent can be honest about coverage. **When it says no Discover lead is in the city, say that** — return the Monitor half and offer \`leadbay_find_new_leads\` for that city. Never fill the gap with leads from elsewhere.
+
+**The next town over**: a tour is a day of driving, so after the town's own leads are found the composite adds the Discover leads whose own coordinates put them within **\`radius_km\` (default 20)** of it — West Sacramento on a tour of Sacramento, Courbevoie and Ivry-sur-Seine on a tour of Paris. The town's own leads always come first. **Pass the user's own number when they give one** ("dans un rayon de 10km autour de Colmar" → \`radius_km: 10\`; "within 15 miles" → \`radius_km: 24\`), and \`radius_km: 0\` to keep the tour strictly inside the named town. The radius applies to Discover leads only; the Monitor half is scoped server-side and is untouched. When \`discover_filter_note\` splits the stops into "N in '<city>' and M in <other towns>", **repeat that split** — say which town each nearby stop is actually in rather than presenting every stop as being in the city the user named.
 
 **What \`tour_plan\` does NOT do**: it doesn't persist the tour as a campaign artifact. To do that — create a "Limoges Tour – May 24" campaign and attach the selected accounts — chain into \`leadbay_create_campaign({lead_ids: [...selected_ids], name: 'Limoges Tour – <date>'})\` after the user picks. See the \`leadbay_plan_tour_in_city\` prompt for the full end-to-end orchestrator.
 

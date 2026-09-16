@@ -1841,7 +1841,7 @@ Split the returned \`monitor_leads\` into two buckets client-side using their en
 
 \`discover_leads\` are the **New** bucket.
 
-Aim for a 3+3+3 split if possible. If the customers bucket has fewer than 3, fill from qualified. If discover_filter_note indicates a low match ratio for the city, mention it: "Only N/30 fresh leads matched your city" — better honest than padded.
+Aim for a 3+3+3 split if possible. If the customers bucket has fewer than 3, fill from qualified. If discover_filter_note indicates a low match ratio for the city, mention it: "Only N/30 fresh leads matched your city" — better honest than padded. When it splits the stops into the ones in the city and the ones within \`radius_km\` of it, repeat that split and name the town each nearby stop is in — a company in Courbevoie is a stop on a Paris day, but it is not in Paris. If I named a radius ("within 10 km", "rayon de 20km"), pass it as \`radius_km\`.
 
 # PHASE 3 — PRESENT THE ITINERARY + OFFER THE MAP
 
@@ -2432,10 +2432,12 @@ When the response carries \`social_urls\` (the post-fix multi-platform URL block
 
 
 # PHASE 2 — NOT FOUND
-If the resolver returns \`LEAD_NOT_FOUND\`, read its hint: it names the field
-that would have found the company (\`would_help\`, usually \`website\`). **Ask the
-user for that field first** — "what's their website?" — and call the tool again
-with it. Only when they cannot supply it should you say both their leads and
+If the resolver returns \`resolution: "not_found"\`, that call SUCCEEDED — it is
+the answer, not a failure. Do what its \`next_step\` says. Usually that is to ask
+for the field \`would_help\` names (normally \`website\`): **ask the user for it
+first** — "what's their website?" — and call the tool again with it. When
+\`would_help\` is empty the search was scoped to one lens, and \`next_step\` says
+to drop the scope rather than to ask the user for anything. Only when they cannot supply it should you say both their leads and
 the Leadbay registry were searched.
 **Do NOT call \`leadbay_import_and_qualify\` automatically.**
 Offer to import and qualify as a separate, explicit next step; only call it
