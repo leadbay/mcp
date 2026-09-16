@@ -18,13 +18,11 @@ measured:
    - STRONG: "Operator of full-service fitness centers offering strength
      areas, group classes and personal training to members across clubs."
    - WEAK: "A gym in Texas." WRONG: "Supplier of gym flooring." (seller-side)
-4. **NO event language — not in `description`, not in `query`.** A registry
-   entry says what a company IS, never what it is DOING, so "recrute",
-   "hiring", "expanding", "just raised" match nothing and dilute the seed.
-   Strip them; search the stable profile. The trigger is a SETTING: send it to
-   `leadbay_set_qualification_questions` or `leadbay_refine_prompt` and say so.
-   "companies hiring a senior SDR" seeds as "B2B software company operating an
-   in-house outbound sales team serving mid-market clients."
+4. **NO event language — in `description` or `query`.** "recrute", "hiring",
+   "expanding", "just raised" never appear in registry text, so they match
+   nothing. Send the trigger to `leadbay_set_qualification_questions` or
+   `leadbay_refine_prompt` and say so. "companies hiring a senior SDR" seeds as
+   "B2B software company operating an in-house outbound sales team."
 5. **No meta-markers.** Never "(example)", "(fictional)", "(placeholder)".
 6. **Hard constraints go in `filters`, not prose — exact keys:**
    `sectors: string[]`, `locations: string[]`, `employees_min: number`,
