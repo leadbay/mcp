@@ -1,6 +1,6 @@
 import type { LeadbayClient } from "../client.js";
 import { readNotificationById } from "../notifications/read-by-id.js";
-import { inferKind } from "../notifications/revise-hint.js";
+import { anchorIdFor, inferKind } from "../notifications/revise-hint.js";
 import type { BulkProgress, Notification, Tool, ToolContext } from "../types.js";
 import { getContacts } from "../tools/get-contacts.js";
 import { readCreditsRemaining, UNLIMITED } from "./_credits-helpers.js";
@@ -49,6 +49,44 @@ async function pMap<T, R>(
   return out;
 }
 
+// One bulk's lead set, read back from the backend.
+// `GET /leads/bulk_enrichments/{id}/leads` returns exactly the leads whose contacts are
+// in that bulk (LeadsDaoImpl.findAllByBulkId in leadbay/backend), which is the `lead_ids`
+// the launch reported. That is what lets a caller holding only the job id get per-lead
+// progress.
+//
+// Bounded, because a status poll must stay cheap: each recovered lead costs one contacts
+// fetch below. Measured on fr_prod over 180 days — 656 bulks, median 6 leads, p99 107,
+// largest 257 — so three pages of 100 covers every bulk the product has produced. A
+// larger one returns null and the caller falls back to the job-state answer.
+const BULK_LEADS_PAGE_SIZE = 100;
+const BULK_LEADS_MAX_PAGES = 3;
+
+async function readBulkLeadIds(
+  client: LeadbayClient,
+  bulkId: string
+): Promise<string[] | null> {
+  const ids: string[] = [];
+  for (let page = 0; page < BULK_LEADS_MAX_PAGES; page += 1) {
+    let res: { items?: Array<{ id?: string }>; pagination?: { pages?: number } };
+    try {
+      res = await client.request(
+        "GET",
+        `/leads/bulk_enrichments/${encodeURIComponent(bulkId)}/leads` +
+          `?contacts=false&count=${BULK_LEADS_PAGE_SIZE}&page=${page}`
+      );
+    } catch {
+      return null;
+    }
+    for (const item of res?.items ?? []) {
+      if (item?.id) ids.push(item.id);
+    }
+    const pages = res?.pagination?.pages ?? 1;
+    if (page + 1 >= pages) return ids;
+  }
+  return null;
+}
+
 export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
   name: "leadbay_bulk_enrich_status",
   annotations: {
@@ -65,7 +103,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
       notification_id: {
         type: "string",
         description:
-          "The `notification_id` returned by leadbay_enrich_titles. Gives the job-level counters in one call.",
+          "The `notification_id` returned by leadbay_enrich_titles. Answers on its own: the tool reads the job's lead set back from the backend, so an id kept from an earlier conversation still gives per-lead progress.",
       },
       lead_ids: {
         type: "array",
@@ -140,7 +178,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
     ctx?: ToolContext
   ) => {
     const includeContacts = params.include_contacts ?? false;
-    const leadIds = params.lead_ids ?? [];
+    let leadIds = params.lead_ids ?? [];
     const startMs = Date.now();
 
     if (!params.notification_id && leadIds.length === 0) {
@@ -160,6 +198,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
     let bp: BulkProgress | null = null;
     let inProgress: boolean | null = null;
     let launchedAt: string | null = null;
+    let bulkAnchorId: string | null = null;
     if (params.notification_id) {
       const n = await readNotificationById(client, params.notification_id);
       if (n && inferKind(n) !== "bulk_enrich") {
@@ -182,6 +221,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
         bp = n.bulk_progress;
         inProgress = n.in_progress;
         launchedAt = n.created_at;
+        bulkAnchorId = anchorIdFor(n, "bulk_enrich");
       } else if (leadIds.length === 0) {
         return {
           error: true,
@@ -191,6 +231,19 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
             "The lookup scans your recent unarchived notifications; an archived job, or one behind many newer ones, will not be found. Re-call with the `lead_ids` the launch returned — that answers without the notification.",
         };
       }
+    }
+
+    // A contact enrichment's notification carries no counters. The backend's
+    // docs/adr/notifications.md leaves contact enrichment out of the bulk-counter scheme,
+    // and 0 of the 460 enrichment notifications fr_prod minted in 90 days has total_count,
+    // so the id-only poll the launch tells the agent to keep for later conversations used
+    // to raise every single time (product#4143). The notification does name the bulk it
+    // belongs to, so recover that bulk's leads and answer through the per-lead path — the
+    // same answer the agent would get by passing the lead_ids itself.
+    // `!bp`, not `bp === null`: the backend omits null fields on the wire, so a
+    // counter-less notification arrives with `bulk_progress` undefined.
+    if (!bp && leadIds.length === 0 && bulkAnchorId !== null) {
+      leadIds = (await readBulkLeadIds(client, bulkAnchorId)) ?? [];
     }
 
     // Per-lead path. Everything it needs comes from the agent: which leads, and
@@ -338,18 +391,25 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
       };
     }
 
-    // Counters-only path: the caller gave an id but no leads. Enrichment
-    // notifications do not always carry counters (verified on staging
-    // 2026-09-02: `bulk_progress` absent, `in_progress` + title present), so
-    // say what the backend does know and ask for the lead_ids.
+    // Counters-only path: the caller gave an id but no leads, the notification has no
+    // counters, and its bulk's leads could not be recovered above (no anchor, the read
+    // failed, or the bulk is larger than a status poll may fan out over). `in_progress`
+    // is then the whole job state the backend holds — answer with it rather than raising,
+    // so the id-only poll still tells the agent whether the job is over.
     if (!bp) {
+      const isReportRead = inProgress === false;
+      const creditsRemaining = isReportRead ? await readCreditsRemaining(client, true) : null;
       return {
-        error: true,
-        code: "ENRICH_JOB_NO_COUNTERS",
-        message: `This enrichment notification carries no per-contact counters; the backend reports it as ${inProgress ? "still running" : "finished"}`,
-        hint: "Re-call with the `lead_ids` returned by leadbay_enrich_titles (plus titles/email/phone) — that path counts contacts directly and works whether or not the notification has counters.",
-        ...(inProgress !== null ? { in_progress: inProgress } : {}),
+        notification_id: params.notification_id,
         ...(launchedAt ? { launched_at: launchedAt } : {}),
+        status: inProgress ? "launched" : "complete",
+        leads: [],
+        overall_progress: { done: 0, total: 0, done_ratio: 0 },
+        ...(inProgress !== null ? { in_progress: inProgress } : {}),
+        all_done: isReportRead,
+        ...(isReportRead ? { credits_remaining: creditsRemaining } : {}),
+        counts_hint:
+          "This job's notification carries no per-contact counters and its lead set could not be read back, so done/total are 0. Re-call with the `lead_ids` returned by leadbay_enrich_titles (plus titles/email/phone) to count contacts directly.",
       };
     }
     const done = bp.success_count + bp.failure_count + bp.quota_hit_count;

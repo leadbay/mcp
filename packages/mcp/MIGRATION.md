@@ -32,9 +32,9 @@ field. On the `notification_id` path the job is done when `in_progress` is false
 `still_running[]` is empty on that path from the first poll and must not be read
 as "done". On the `lead_ids` path, done means `still_running[]` is empty.
 
-`leadbay_bulk_enrich_status` answers `ENRICH_JOB_NO_COUNTERS` when the enrichment
-notification carries no per-contact counters (the common case) — re-call with the
-`lead_ids` the launch returned.
+`leadbay_bulk_enrich_status` no longer answers `ENRICH_JOB_NO_COUNTERS`. An
+enrichment notification never carries per-contact counters, so the tool reads the
+job's lead set back from the backend and answers through the per-lead path.
 
 ## Errors removed
 
@@ -43,8 +43,8 @@ notification carries no per-contact counters (the common case) — re-call with 
 no longer exist, and neither does `~/.leadbay/bulks.json` or the
 `LEADBAY_BULK_STORE_ALLOW_MEMORY` escape hatch. The replacements are
 `ENRICH_STATUS_INPUT_REQUIRED`, `ENRICH_JOB_NOT_FOUND`, `ENRICH_JOB_WRONG_KIND`,
-`ENRICH_JOB_NO_COUNTERS`, `QUALIFY_STATUS_INPUT_REQUIRED`, `QUALIFY_JOB_NOT_FOUND`
-and `QUALIFY_JOB_WRONG_KIND`. The 0.5.0 sections below describe the old store and
+`QUALIFY_STATUS_INPUT_REQUIRED`, `QUALIFY_JOB_NOT_FOUND` and
+`QUALIFY_JOB_WRONG_KIND`. The 0.5.0 sections below describe the old store and
 are kept as history.
 
 ---

@@ -6,10 +6,10 @@
  *  - A qualification's notification also carries `bulk_progress`; fed to this
  *    tool it was reported as a finished enrichment. Now it is refused and
  *    routed to leadbay_qualify_status.
- *  - An enrichment notification on the live backend carried NO
- *    `bulk_progress` at all (only `in_progress` + a title + the
- *    `bulk_enrichment` link), so the counters-only path said "not a bulk job".
- *    Now it says what the backend knows and asks for `lead_ids`.
+ *
+ * The counter-less enrichment notification is covered by
+ * bulk-enrich-status-notification-only.test.ts (product#4143): it is not a kind
+ * question, and it no longer raises.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -78,22 +78,4 @@ describe("leadbay_bulk_enrich_status — notification kind", () => {
     expect(res.hint).toContain("leadbay_import_status");
   });
 
-  it("an enrichment notification without counters says so and asks for lead_ids", async () => {
-    // The row staging returned for a finished enrich_titles launch.
-    mockHttp([
-      listing({
-        ...base,
-        title: "9 out of 10 contacts have been successfully enriched.",
-        in_progress: false,
-        links: [{ type: "bulk_enrichment", id: "29" }],
-        bulk_progress: null,
-      }),
-    ]);
-    const res: any = await bulkEnrichStatus.execute(newClient(), { notification_id: NOTIF });
-    expect(res.error).toBe(true);
-    expect(res.code).toBe("ENRICH_JOB_NO_COUNTERS");
-    expect(res.in_progress).toBe(false);
-    expect(res.message).toContain("finished");
-    expect(res.hint).toContain("lead_ids");
-  });
 });
