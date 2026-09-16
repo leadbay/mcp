@@ -5,11 +5,17 @@ required_outcomes:
   evidence:
   - before
 - id: outcome-1
-  statement: No call in this journey was refused by Leadbay's input validation because a sector value
-    could not be resolved.
+  statement: No tool call in this journey answered the agent with an error it could not act on. Every
+    call returned either results or a usable next step.
   evidence:
   - tools
+- id: outcome-1b
+  statement: Leadbay refuses an unusable sector value at its own input validation, and that refusal
+    was absorbed before it reached the agent — the agent was handed sector names to choose from, not
+    the refusal.
+  evidence:
   - backend
+  - tools
 - id: outcome-2
   statement: When the wording "services professionnels" had no counterpart in the tenant's taxonomy,
     the product answered with sector names the tenant's taxonomy actually carries, or searched without
