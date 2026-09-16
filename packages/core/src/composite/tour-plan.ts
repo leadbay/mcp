@@ -84,20 +84,19 @@ function cityHintCore(cityHint: string): { name: string; isCity: boolean } {
   // "Washington DC" expands to "Washington", and the state of Washington
   // would otherwise put a Redmond lead on a tour of the capital.
   //
-  // The WHOLE hint is tried before the leading segment, because "Washington,
-  // DC" is how an address spells a city the table already knows. Splitting on
-  // the comma first throws the "DC" away and leaves a bare "Washington", which
-  // also names a state (product#4150). Each form is tried as written and with
-  // the commas turned into spaces: the table holds "washington d.c." with its
-  // dots intact, so stripping all punctuation would lose that key, and it
-  // holds "washington dc", which only a comma stands between.
-  const withoutCommas = (v: string) => v.replace(/,/g, " ").replace(/\s+/g, " ").trim();
-  for (const form of [cityHint, head]) {
-    for (const candidate of [form.trim(), withoutCommas(form)]) {
-      const expanded = expandAlias(candidate);
-      if (expanded !== candidate) {
-        return { name: townName(expanded), isCity: true };
-      }
+  // An address names a place from the most specific part outwards, so the
+  // leading segments are tried longest first: "Washington, DC" and
+  // "Washington, DC, USA" both reach the key "washington dc", while a bare
+  // "Washington" reaches nothing and also names a state (product#4150).
+  // Segments are rejoined with spaces rather than having their punctuation
+  // stripped, because the table holds "washington d.c." with its dots intact
+  // and only a comma stands between it and "washington dc".
+  const segments = cityHint.split(",").map((part) => part.trim()).filter(Boolean);
+  for (let take = segments.length; take > 0; take -= 1) {
+    const candidate = segments.slice(0, take).join(" ");
+    const expanded = expandAlias(candidate);
+    if (expanded !== candidate) {
+      return { name: townName(expanded), isCity: true };
     }
   }
 

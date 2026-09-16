@@ -69,7 +69,11 @@ describe("leadbay_tour_plan — how the city hint is spelled (product#4150)", ()
     ["washington, d.c.", []],
     ["New York, NY", []],
     ["NYC", []],
+    ["Washington, DC, USA", []],
+    ["New York, NY, USA", []],
+    ["  Washington ,  DC  ", []],
     ["Austin, TX", ["Austin Co"]],
+    ["Austin, TX, USA", ["Austin Co"]],
   ])("a tour of '%s' returns %j", async (hint, expected) => {
     mockFanOut(NO_CITY_MATCH);
 
