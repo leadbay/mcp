@@ -175,3 +175,61 @@ describe("leadbay_get_qualification_questions — slot accounting", () => {
     expect(res.hint).toMatch(/3 of 5 slots are still free/);
   });
 });
+
+// Review findings on PR #239.
+describe("leadbay_set_qualification_questions — warnings stay on what this call wrote", () => {
+  const readQuestions = (body: unknown[]) => ({ method: "GET" as const, path: org("ai_agent_questions"), status: 200, body });
+  const writeOrg = { method: "POST" as const, path: new RegExp(`/1\\.6/organizations/${ORG}$`), status: 204, body: null };
+
+  it("does not re-flag an existing bare-form question the call left untouched", async () => {
+    mockHttp([me, readQuestions([{ question: "Does the company run install crews?" }]), writeOrg]);
+
+    const res: any = await setQualificationQuestions.execute(newClient(), {
+      add: ["Is the company likely to operate a cold-storage plant?"],
+    });
+
+    expect(res.changed).toBe(true);
+    expect(res.count).toBe(2);
+    // The carried-over question is bare-form, but this call did not write it.
+    // Nagging the user into rewording it is exactly what the tool tells the
+    // agent NOT to do — a reword re-scores the whole pipeline for no change.
+    expect(res.form_warnings).toBeUndefined();
+  });
+
+  it("still flags the bare-form question when a full replacement writes it", async () => {
+    mockHttp([me, readQuestions([{ question: "Is the company likely to operate a warehouse?" }]), writeOrg]);
+
+    const res: any = await setQualificationQuestions.execute(newClient(), {
+      questions: ["Does the company run install crews?"],
+      confirm: true,
+    });
+
+    expect(res.changed).toBe(true);
+    expect(res.form_warnings).toHaveLength(1);
+    expect(res.form_warnings[0]).toMatch(/install crews/);
+  });
+});
+
+describe("leadbay_get_qualification_questions — a full set never tells a non-admin to write", () => {
+  const read = (n: number, admin: boolean) => [
+    { method: "GET" as const, path: "/1.6/users/me", status: 200, body: { id: "u-1", email: "rep@acme.com", admin, organization: { id: ORG, name: "Acme" } } },
+    { method: "GET" as const, path: org("ai_agent_questions"), status: 200, body: Array.from({ length: n }, (_, i) => ({ question: `Is the company likely to do thing ${i}?`, created_at: "2026-05-30T00:00:00Z", lang: "en" })) },
+    { method: "GET" as const, path: org("ideal_buyer_profile"), status: 200, body: { summary: "", key_characteristics: [], anti_patterns: [] } },
+    { method: "GET" as const, path: org("user_prompt"), status: 204, body: null },
+  ];
+
+  it("a non-admin at the ceiling is told the set is full, not told to call the admin-only write", async () => {
+    mockHttp(read(5, false));
+    const res: any = await getQualificationQuestions.execute(newClient(), {});
+    expect(res.is_admin).toBe(false);
+    expect(res.hint).toMatch(/FULL/);
+    expect(res.hint).toMatch(/org-admin action/);
+    expect(res.hint).not.toMatch(/confirm:true/);
+  });
+
+  it("an admin at the ceiling still gets the swap instruction", async () => {
+    mockHttp(read(5, true));
+    const res: any = await getQualificationQuestions.execute(newClient(), {});
+    expect(res.hint).toMatch(/confirm:true/);
+  });
+});

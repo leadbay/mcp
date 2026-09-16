@@ -242,7 +242,11 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
     // read reflects the change.
     client.invalidateTasteProfile();
 
-    const warnings = formWarnings(next);
+    // Only the text THIS call wrote. Warning about questions it carried over
+    // untouched would nag the user into rewording questions that are working,
+    // which is the opposite of what this tool's own guidance says to do.
+    const written = hasSet ? next : (params.add ?? []).map(norm).filter((q) => next.includes(q));
+    const warnings = formWarnings(written);
 
     return {
         qualification_questions: next.map((q) => ({ question: q })),

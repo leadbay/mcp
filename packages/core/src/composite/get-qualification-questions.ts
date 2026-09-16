@@ -112,10 +112,14 @@ export const getQualificationQuestions: Tool<Record<string, never>> = {
         : null;
 
     let hint: string | undefined;
-    if (questions.length >= MAX_QUESTIONS) {
+    if (questions.length >= MAX_QUESTIONS && isAdmin) {
       // The ceiling has to be stated in the turn the user asks for an addition,
       // not discovered from a rejected write (product#4139).
       hint = `${questions.length} of ${MAX_QUESTIONS} question slots are used — the set is FULL. An addition is a SWAP: tell the user the set is full, list these ${questions.length} and let THEM choose which one goes, then call leadbay_set_qualification_questions with confirm:true. Never pre-pick the one to drop.`;
+    } else if (questions.length >= MAX_QUESTIONS) {
+      // Non-admin: same fact, no write instruction. Modifying the questions is
+      // org-admin-only, so pointing a non-admin at the write tool just earns a 403.
+      hint = `${questions.length} of ${MAX_QUESTIONS} question slots are used — the set is FULL. Changing it means dropping one, and that is an org-admin action. Tell the user which question they would need an admin to swap out.`;
     } else if (questions.length === 0) {
       hint =
         "No qualification questions configured — every lead is scored on firmographics alone. Propose a starter set of exactly 3 questions in ONE leadbay_set_qualification_questions call — one question is too thin to separate anything, each on a DIFFERENT buying dimension, each starting \"Is the company likely to ...\" / \"L'entreprise est-elle susceptible de ...\", and none restating a sector or size the lens already filters on. Get the user's yes first.";
