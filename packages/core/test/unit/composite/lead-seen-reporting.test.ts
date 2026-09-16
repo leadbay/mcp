@@ -35,6 +35,8 @@ import { pullLeads } from "../../../src/composite/pull-leads.js";
 import { researchLeadById } from "../../../src/composite/research-lead-by-id.js";
 import { getLeadCustomFields } from "../../../src/composite/get-lead-custom-fields.js";
 import { getLeadProfile } from "../../../src/tools/get-lead-profile.js";
+import { discoverLeads } from "../../../src/tools/discover-leads.js";
+import { tourPlan } from "../../../src/composite/tour-plan.js";
 
 const BASE = "https://api-us.leadbay.app";
 const LENS = 777;
@@ -161,6 +163,98 @@ describe("pull_leads reports the leads it shows as LEAD_SEEN", () => {
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("not recorded")
     );
+  });
+});
+
+describe("discover_leads reports the same list", () => {
+  it("one LEAD_SEEN per returned lead", async () => {
+    const leadIds = ["lead-a", "lead-b"];
+    mockHttp([SEEN_OK, wishlist(leadIds)]);
+
+    await discoverLeads.execute(newClient(), { lensId: LENS });
+
+    expectWireShape(
+      await postedEvents(),
+      leadIds.map((lead_id) => ({ type: "LEAD_SEEN", lead_id }))
+    );
+  });
+});
+
+describe("tour_plan reports only the leads its itinerary shows", () => {
+  it("30 pulled, 1 in the city — exactly that one is reported", async () => {
+    // tour_plan over-pulls 30 Discover leads and keeps the city matches.
+    // Reporting all 30 would age out leads the user never read.
+    const leadIds = ["lead-austin", "lead-boston", "lead-chicago"];
+    mockHttp([
+      SEEN_OK,
+      // tour_plan delegates to pull_leads without a lensId, so the active lens
+      // resolves through /users/me.
+      {
+        method: "GET",
+        path: "/1.6/users/me",
+        status: 200,
+        body: {
+          id: "u-1",
+          organization: { id: "org-1", name: "Acme" },
+          last_requested_lens: LENS,
+        },
+      },
+      // pull_followups side — one unambiguous city, empty monitor.
+      {
+        method: "GET",
+        path: /\/1\.6\/geo\/search\?q=Austin/,
+        status: 200,
+        body: {
+          results: [
+            { id: "416102", country: "US", level: 8, name: "Austin", parent_ids: [] },
+          ],
+          parents: [],
+        },
+      },
+      { method: "POST", path: "/1.6/monitor/filter", status: 204, body: "" },
+      { method: "GET", path: "/1.6/monitor/filter", status: 200, body: { criteria: [] } },
+      { method: "GET", path: /\/1\.6\/monitor\?/, status: 200, body: { items: [] } },
+      {
+        method: "GET",
+        path: `/1.6/lenses/${LENS}/leads/wishlist?count=30&page=0&contacts=true`,
+        status: 200,
+        body: {
+          items: leadIds.map((id, i) => ({
+            id,
+            name: `Company ${i}`,
+            score: 80 - i,
+            location: [
+              { city: "Austin", state: "Texas", country: "United States", full: "Austin, Texas" },
+              { city: "Boston", state: "Massachusetts", country: "United States", full: "Boston, Massachusetts" },
+              { city: "Chicago", state: "Illinois", country: "United States", full: "Chicago, Illinois" },
+            ][i],
+            tags: [],
+            liked: false,
+            disliked: false,
+            new: true,
+            contacts_count: 0,
+            org_contacts_count: 0,
+          })),
+          pagination: { page: 0, pages: 1, total: 3 },
+          computing_wishlist: false,
+          computing_scores: false,
+        },
+      },
+      ...qualificationReads(leadIds),
+    ]);
+
+    const result: any = await tourPlan.execute(
+      newClient(),
+      { city: "Austin" } as any,
+      {}
+    );
+
+    expect(result.discover_leads.map((l: any) => l.id)).toEqual([
+      "lead-austin",
+    ]);
+    expectWireShape(await postedEvents(), [
+      { type: "LEAD_SEEN", lead_id: "lead-austin" },
+    ]);
   });
 });
 

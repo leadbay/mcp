@@ -2,6 +2,7 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
 import type { WishlistResponse } from "../types.js";
 import { leadbay_discover_leads as DISCOVER_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { reportLeadInteractions } from "../interactions.js";
 
 interface DiscoverLeadsParams {
   lensId?: number;
@@ -45,6 +46,14 @@ export const discoverLeads: Tool<DiscoverLeadsParams> = {
     const res = await client.request<WishlistResponse>(
       "GET",
       `/lenses/${lensId}/leads/wishlist?count=${count}&page=${page}&contacts=true`
+    );
+
+    // Same list, same reporting duty as leadbay_pull_leads.
+    reportLeadInteractions(
+      client,
+      lensId,
+      res.items.map((lead) => lead.id),
+      ["LEAD_SEEN"]
     );
 
     const totalPages = res.pagination?.pages ?? 0;
