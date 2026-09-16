@@ -1051,7 +1051,7 @@ export class LeadbayClient {
 
       return JSON.parse(res.body) as T;
     } catch (e) {
-      throw this.mapTransportError(e, `${method} ${path}`);
+      throw this.mapTransportError(e, `${method} ${path}`, grantedBudget());
     } finally {
       // Only if we still hold one: the 401 path can hand the slot back and then
       // fail to re-acquire on abort, and releasing unconditionally there would
@@ -1249,10 +1249,21 @@ export class LeadbayClient {
    * (auth-http.ts) keeps classifying it as a transient fault and moves to the
    * sibling region instead of declaring a live token expired.
    */
-  private mapTransportError(e: unknown, endpoint: string): unknown {
+  private mapTransportError(
+    e: unknown,
+    endpoint: string,
+    // The bound the CALLER passed in, when there was one. The number riding on
+    // the raw error is what was LEFT of that bound once the queue wait and any
+    // 401 backoff had been spent — the right value to arm the socket timer with
+    // and the wrong one to read back, because the caller can only recognise the
+    // bound it set. `timeoutMs: 15` reported 14ms as soon as a millisecond went
+    // into setup, and a 300ms total that waited 60ms for a slot reported 240ms
+    // (product#4157).
+    grantedMs?: number
+  ): unknown {
     const err = e as { code?: string; timeout_ms?: number } | null;
     if (err?.code !== "TIMEOUT") return e;
-    const ms = err.timeout_ms ?? defaultTimeoutMs();
+    const ms = grantedMs ?? err.timeout_ms ?? defaultTimeoutMs();
     const envelope = this.makeError(
       "TIMEOUT",
       `Leadbay did not respond within ${ms}ms — the request was cancelled`,
