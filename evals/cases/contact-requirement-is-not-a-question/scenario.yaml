@@ -1,0 +1,16 @@
+version: 1
+id: contact-requirement-is-not-a-question
+regions:
+- fr
+languages:
+- fr
+starting_state:
+- The tenant holds two qualification questions about the company's activity and neither mentions contact
+  details. Their exact text is recorded before the run.
+- An active lens holds leads, some with a contact email or phone already known and some without.
+- The org's usage quota and its balance are recorded before the run.
+user_decisions:
+- when: The assistant quotes the cost of revealing contact channels and asks whether to proceed.
+  reply: Oui, vas-y.
+variants: []
+datasets: []

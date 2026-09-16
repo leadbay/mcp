@@ -16,13 +16,15 @@ measured:
    model, what they sell or operate, who they serve, observable scale. Write
    it like the first paragraph of their About-Us page.
    - STRONG: "Operator of full-service fitness centers offering strength
-     areas, group classes and personal training to members across multiple
-     clubs."
-   - WEAK (generic): "A gym in Texas."
-   - WRONG (seller-side): "Supplier of durable modular flooring for gyms."
-4. **No event language.** "hiring", "expanding", "just raised" are not
-   filters — registry descriptions never contain them, so they dilute the
-   profile. Purchase triggers belong in the org's qualification questions.
+     areas, group classes and personal training to members across clubs."
+   - WEAK: "A gym in Texas." WRONG: "Supplier of gym flooring." (seller-side)
+4. **NO event language — not in `description`, not in `query`.** A registry
+   entry says what a company IS, never what it is DOING, so "recrute",
+   "hiring", "expanding", "just raised" match nothing and dilute the seed.
+   Strip them; search the stable profile. The trigger is a SETTING: send it to
+   `leadbay_set_qualification_questions` or `leadbay_refine_prompt` and say so.
+   "companies hiring a senior SDR" seeds as "B2B software company operating an
+   in-house outbound sales team serving mid-market clients."
 5. **No meta-markers.** Never "(example)", "(fictional)", "(placeholder)".
 6. **Hard constraints go in `filters`, not prose — exact keys:**
    `sectors: string[]`, `locations: string[]`, `employees_min: number`,
@@ -32,8 +34,6 @@ measured:
    never a country: this workspace's own is dropped, any other is refused.
 7. **Prefer `example_lead` over `query`.** Query matches topic *vocabulary*:
    "gyms that need durable flooring" surfaced flooring VENDORS, 0 delivered.
-   Use `query` only for signal an example can't express.
 8. **One seed per buyer archetype.** An ask spanning two segments ("gyms and
    warehouses") needs one search each with its own description and
-   `request_id` — a blended seed lands between the clusters and matches
-   neither.
+   `request_id` — a blended seed lands between the clusters, matching neither.

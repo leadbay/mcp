@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased — When you say what makes a lead good, your settings change
+
+- **Telling Claude what you want now changes your Leadbay settings, not just
+  the current list.** Saying "écarte les sociétés liquidées" or "our best
+  customers run their own maintenance crews" used to be applied once and
+  forgotten — nine customers stated a rule like this and none of their
+  qualification questions ever moved. Claude now reads your settings, tells you
+  where the rule belongs, and asks before changing anything.
+- **Claude can no longer tell you a rule is saved when it is not.** "C'est
+  noté, la règle est active" with nothing written to your account was the
+  common case. A rule is in your settings or Claude says it is not.
+- **It decides whether a change is even worth making.** If one of your existing
+  questions already covers the rule, Claude names that question and changes
+  nothing — rewording it would re-score every lead in your pipeline and surface
+  exactly the same companies.
+- **A rule goes where it actually works.** A sector or a headcount goes to your
+  audience filter. A named company gets excluded as a company. "Email and phone
+  required" is handled by enrichment, because a qualification question scores
+  the company and cannot see whether Leadbay holds a phone number.
+- **Claude writes questions Leadbay can actually score.** Estimative, one
+  dimension each, answerable from the company's public pages, and sharp enough
+  to separate companies. A question nearly everyone answers yes to gets pushed
+  back on instead of written.
+- **Reading your qualification questions now shows the whole picture** — your
+  ideal buyer profile and your targeting prompt come back with them, and Claude
+  tells you how many of your five question slots are free.
+
 ## 0.39.1 — 2026-09-15 — Your lead list moves on after you have read it
 
 - **Today's leads are no longer yesterday's leads.** Leadbay replaces part of

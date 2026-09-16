@@ -1,0 +1,17 @@
+version: 1
+id: stated-rule-becomes-a-question
+regions:
+- fr
+languages:
+- fr
+starting_state:
+- The tenant holds exactly three qualification questions, all about wooden joinery work, and none about
+  a company's legal or trading status.
+- The org's ideal buyer profile and its targeting prompt are recorded before the run, along with the
+  question rows and their created_at values.
+- An active lens with sector and location criteria exists and is recorded before the run.
+user_decisions:
+- when: The assistant proposes the exact text of a qualification question and asks whether to apply it.
+  reply: Yes, apply it.
+variants: []
+datasets: []
