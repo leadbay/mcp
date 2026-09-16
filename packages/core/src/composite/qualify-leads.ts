@@ -11,6 +11,7 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 import {
   clampWaitSeconds,
+  MAX_WAIT_SECONDS,
   collectJobSnapshot,
   canonicalSet,
   coerceArrayParams,
@@ -322,7 +323,7 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
       wait_seconds: {
         type: "number",
         description:
-          "How long to poll before returning (default 45, max 180, 0 = submit + one snapshot). Large or research-heavy batches can take minutes — the result then carries still_running:true and the job_id for leadbay_lead_job_status.",
+          "How long to poll before returning (default and maximum 45 — the whole call is bounded by it, so a slow submit shortens the poll; 0 = submit + one snapshot). Large or research-heavy batches can take minutes — the result then carries still_running:true and the job_id for leadbay_lead_job_status.",
       },
     },
     additionalProperties: false,
@@ -332,6 +333,9 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     params: QualifyLeadsParams,
     ctx?: ToolContext
   ) => {
+    // The host's 60s timer starts here, not at the wait — so the wait gets
+    // whatever the quote and the submit leave of the budget (product#4144).
+    const startedAt = Date.now();
     // Unvalidated MCP args can arrive singular (`channels: "email"`,
     // `lead_refs: {website}`); coerce BEFORE the spend gate so a shape slip is
     // never a TypeError in place of a quote.
@@ -467,7 +471,8 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     if (mocked) return mocked;
     const waitSeconds = clampWaitSeconds(
       params.wait_seconds,
-      DEFAULT_WAIT_SECONDS
+      DEFAULT_WAIT_SECONDS,
+      startedAt
     );
     // Every failure past this point must carry submit.job_id: the job exists
     // and may be spending, and this handle is the only way back to it.
@@ -571,7 +576,7 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
               // INCREMENTALLY instead of re-reading (and re-rendering) the
               // rows already delivered in this response.
               since: snapshot.next_since ?? null,
-              suggested_wait_seconds: done ? 0 : 60,
+              suggested_wait_seconds: done ? 0 : MAX_WAIT_SECONDS,
             },
       region: client.region,
     };

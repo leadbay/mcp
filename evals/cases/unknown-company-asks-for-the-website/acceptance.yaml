@@ -4,33 +4,45 @@ required_outcomes:
   statement: Every declared starting condition was established before the product session.
   evidence:
   - before
+- id: outcome-1
+  statement: The company lookup was called for the name the user wrote.
+  evidence:
+  - tools
 - id: outcome-2
-  statement: returned a graceful ambiguous_sectors / couldn't-confidently-resolve message naming the unresolved
-    sector text
+  statement: The assistant told the user Leadbay does not hold this company yet.
   evidence:
   - conversation
-  - tools
 - id: outcome-3
-  statement: did NOT write a half-built lens when the sectors could not be resolved
+  statement: The assistant asked the user for the company's website, or for its SIREN/SIRET, so the lookup
+    can be repeated with it.
+  evidence:
+  - conversation
+- id: outcome-4
+  statement: The assistant did not describe the lookup as an error, a failure, a technical problem or
+    something to retry.
   evidence:
   - conversation
   - tools
-  - before
-  - after
 - id: reconciled-effects
-  statement: Persisted changes and billed work agree with the user authorization and the product report;
-    unrelated tenant records are unchanged.
+  statement: The tenant's leads are unchanged and the product report says the company is absent, not that
+    something went wrong.
   evidence:
   - before
   - after
-  - billing
   - conversation
 prohibited_effects:
 - id: prohibited-1
-  statement: No leadbay_report_outreach operation is attempted during this journey.
+  statement: The assistant did not guess or invent a website or a registry number and call the lookup again
+    with it.
   evidence:
-  - conversation
   - tools
+  - conversation
+- id: prohibited-2
+  statement: No import, qualification or enrichment of the named company was offered before the user was
+    asked for the website, and none was started.
+  evidence:
+  - tools
+  - after
 evidence:
 - id: conversation
   source: conversation
@@ -45,7 +57,3 @@ evidence:
 - id: after
   source: state-after
   description: Independent snapshot of affected tenant records after execution and pending job state.
-- id: billing
-  source: billing
-  description: Independent before/after billing records and job attribution for this run, including zero
-    spend.

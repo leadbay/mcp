@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.39.6 — 2026-09-16 — Asking whether an enrichment finished, with only the job number
+## 0.39.9 — 2026-09-16 — Asking whether an enrichment finished, with only the job number
 
 - **"Is my enrichment done?" now answers when Claude has only the job number.**
   Claude keeps that number so it can answer you the next day or in another
@@ -10,6 +10,56 @@
 - **The error it used to return is gone.** It asked you to hand back a list of
   company ids that Claude had no way to still have. Leadbay knows which
   companies the job covered, so Claude asks Leadbay.
+## 0.39.8 — 2026-09-16 — Narrowing an audience actually narrows it
+
+- **Swapping one sector or one city for another now drops the old one.**
+  "Construction instead of manufacturing" left manufacturing on the audience as
+  well as excluding it, so the narrowing never happened and the same companies
+  kept coming back. "Lyon instead of Paris" did the same thing to the city.
+  Whatever you exclude comes off the included list, and the other way round.
+- **A lead job that takes more than a minute no longer ends in an error.**
+  Asking Claude to qualify even a single company could come back as a failure
+  instead of an answer: the research took longer than Claude gives any tool, so
+  Claude stopped waiting while Leadbay carried on working. The wait now counts
+  the whole call, so the answer comes back inside Claude's limit with the job's
+  ticket and the news that the work is still running.
+- **"Check on it in a minute" no longer asks for exactly the minute Claude
+  allows.** Every still-running answer suggested a follow-up check timed to land
+  on the limit itself, so following the suggestion was a coin toss. It now
+  suggests 45 seconds, and that is also the longest any of these tools will wait
+  in one call.
+
+## 0.39.7 — 2026-09-16 — A tour of a city reaches the next town over
+
+- **A tour of Sacramento now shows the company in West Sacramento, 3 miles
+  away.** Claude matched a prospect to your trip by the name of its town, so
+  the town next door was left out of the itinerary. A tour of Paris missed
+  Gennevilliers, Ivry-sur-Seine and Saint-Ouen-sur-Seine, all inside the ring
+  road's reach.
+- **Say how far you are willing to drive and Claude uses that number.** "Les
+  prospects dans un rayon de 10km autour de Colmar" or "20 km around Lyon" now
+  sets the distance. Without a number, the itinerary reaches 20 km, about one
+  metro area. Say "only in the city itself" to turn it off.
+- **Claude tells you which stops are in the city and which are near it.** A
+  company in Courbevoie is a stop on a Paris day, and Claude now names
+  Courbevoie rather than calling it Paris.
+- **A company is still never presented as being somewhere it is not.** A stop
+  joins the itinerary because its own coordinates put it near a company whose
+  record names your city — never because the two names look alike.
+
+## 0.39.6 — 2026-09-16 — "We don't have them" is an answer, not an error
+
+- **Asking about a company Leadbay has never heard of no longer looks like a
+  breakdown.** "Do we have Menuiserie Vercellone in the pipeline?" used to come
+  back as a red error box, even though the search had run correctly and the
+  answer was simply no. Claude now says the company is not in Leadbay yet and
+  asks for their website, which is usually what finds them.
+- **And it no longer fails twice for one question.** The error told Claude to
+  try again with the website; that second attempt was also an error. One
+  question, two failures, nothing broken. Both are answers now.
+- **A search that really is down still says so.** When the lead search cannot
+  be reached, Claude is told the lookup did not finish and to retry, instead of
+  telling you the company is absent on half an answer.
 
 ## 0.39.5 — 2026-09-16 — When you say what makes a lead good, your settings change
 

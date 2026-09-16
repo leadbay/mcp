@@ -9,8 +9,11 @@
  * Discover leads don't have a server-side geo filter (the wishlist API
  * is lens-wide). We pull a larger page than requested, then filter
  * client-side on the lead's own city, falling back to its state only
- * when no city matched. `discover_filter_note` reports which field
- * carried the match so the prompt can be honest about coverage.
+ * when no city matched. A second pass adds the leads whose own
+ * coordinates put them within `radius_km` of the town, so a tour of
+ * Sacramento reaches West Sacramento. `discover_filter_note` reports
+ * which field carried the match so the prompt can be honest about
+ * coverage.
  */
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
@@ -32,11 +35,24 @@ interface TourPlanParams {
   followups_count?: number;
   /** Default 6 — over-pull to compensate for client-side geo filter. */
   discover_count?: number;
+  /** How far outside the town a stop may be, in km. Default 20. */
+  radius_km?: number;
 }
 
 const DEFAULT_FOLLOWUPS_COUNT = 6;
 const DEFAULT_DISCOVER_COUNT = 6;
 const DISCOVER_OVER_PULL = 30; // pull this many then filter to discover_count
+/**
+ * How far outside the named town a stop may be, in km.
+ *
+ * A tour is a day of driving, and the towns that share a metro area with the
+ * one the user named are part of that day: West Sacramento is 5 km from
+ * Sacramento, Courbevoie 8 km from central Paris, Ivry-sur-Seine 6 km. Two
+ * users on prod named their own number in the same range — "un rayon de 10km
+ * autour de COLMAR" and "zone 20km" — so 20 covers what they asked for
+ * without being asked, and `radius_km` overrides it either way.
+ */
+const DEFAULT_RADIUS_KM = 20;
 
 /**
  * Lowercase, drop accents, and reduce every run of non-alphanumerics to a
@@ -121,35 +137,148 @@ function stateFieldOf(lead: any): string {
   return typeof state === "string" ? normalizeGeo(state) : "";
 }
 
+/** The lead's own `[lat, lng]`, or null when it carries none we can use. */
+function posOf(lead: any): [number, number] | null {
+  const pos = lead?.location?.pos;
+  const valid =
+    Array.isArray(pos) &&
+    pos.length === 2 &&
+    pos.every((n: unknown) => typeof n === "number" && Number.isFinite(n));
+  return valid ? [pos[0] as number, pos[1] as number] : null;
+}
+
+/** Great-circle distance between two `[lat, lng]` points, in km. */
+function distanceKm(a: [number, number], b: [number, number]): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
 /**
- * Keep the Discover leads that are in the requested place.
+ * The leads whose own coordinates put them within `radiusKm` of somewhere we
+ * already know is on the tour.
  *
- * The comparison is equality, not containment. Containment is what broke:
+ * Each anchor is tested on its own rather than averaged into one centre. A
+ * town is not a point, the leads in it sit several km apart, and averaging a
+ * spread-out set lands the centre where nothing is. Distance to the nearest
+ * anchor is the number a driver actually cares about.
+ */
+function withinRadius(
+  leads: any[],
+  anchors: [number, number][],
+  radiusKm: number,
+): any[] {
+  if (anchors.length === 0 || !(radiusKm > 0)) return [];
+  return leads.filter((l) => {
+    const p = posOf(l);
+    return p !== null && anchors.some((a) => distanceKm(a, p) <= radiusKm);
+  });
+}
+
+/**
+ * Keep the Discover leads that are on the tour.
+ *
+ * The name comparison is equality, not containment. Containment is what broke:
  * "austin" contains "us", so every American lead matched a tour of Austin
  * (product#4138). Word-boundary containment still matches "york" against
  * "City of New York" and "angeles" against "Los Angeles", so the town names
  * have to be equal once the administrative prefix is off both sides.
  *
- * Two passes. Cities first, because a city hint is what a tour almost always
- * carries. Only when nothing matched by city do we read the hint as a region
- * and try the state field — which is also how the leads that carry a state
- * and no city get picked up.
+ * A name is also why the next town over used to be dropped: West Sacramento
+ * is 5 km from Sacramento and spelled differently (product#4141). So after the
+ * town's own leads are found, a second pass keeps the ones within `radiusKm`
+ * of them.
+ *
+ * `monitorLeads` widens that second pass to the Monitor follow-ups, which is
+ * what gives a tour a centre when the lens holds no lead in the town itself —
+ * but ONLY the ones whose own record names the town. The server-side scoping
+ * cannot be taken on trust: on FR prod, `GET /monitor?filtered=true` under
+ * `location_ids: ["1468"]` (Colmar) answers with Colmar, Courbevoie,
+ * Lamballe-Armor and Marmande, and anchoring on all four put the Paris cluster
+ * on a tour of Colmar — product#4138 all over again. A lead whose own
+ * `location.city` is the town is the only anchor that can be checked here.
+ *
+ * Order of passes. The town first, because a city hint is what a tour almost
+ * always carries. Then the region, because "Texas" and "Île-de-France" ask for
+ * a whole state and 20 km of one customer is not that. Only when neither
+ * answered does proximity alone decide.
  */
 function filterDiscoverByCity(
   leads: any[],
   cityHint: string | undefined,
-): { leads: any[]; matchedOn: "city" | "state" | null } {
+  monitorLeads: any[],
+  radiusKm: number,
+): {
+  leads: any[];
+  matchedOn: "city" | "state" | null;
+  nearby: any[];
+  /** Whether any lead named the town, so the radius pass had a centre at all. */
+  anchored: boolean;
+} {
   const hint = cityHint ? cityHintCore(cityHint) : { name: "", isCity: false };
-  if (!hint.name) return { leads, matchedOn: null };
+  if (!hint.name) return { leads, matchedOn: null, nearby: [], anchored: false };
 
   const cityOf = (l: any) =>
     typeof l?.location?.city === "string" ? townName(l.location.city) : "";
-  const byCity = leads.filter((l) => cityOf(l) === hint.name);
-  if (byCity.length > 0) return { leads: byCity, matchedOn: "city" };
-  if (hint.isCity) return { leads: [], matchedOn: "city" };
+  const positions = (ls: any[]) =>
+    ls.map(posOf).filter((p): p is [number, number] => p !== null);
 
-  const byState = leads.filter((l) => stateFieldOf(l) === hint.name);
-  return { leads: byState, matchedOn: "state" };
+  const byCity = leads.filter((l) => cityOf(l) === hint.name);
+  const anchors = positions([
+    ...byCity,
+    ...monitorLeads.filter((l) => cityOf(l) === hint.name),
+  ]);
+
+  if (byCity.length > 0) {
+    const inTown = new Set(byCity);
+    const nearby = withinRadius(
+      leads.filter((l) => !inTown.has(l)),
+      anchors,
+      radiusKm,
+    );
+    return { leads: [...byCity, ...nearby], matchedOn: "city", nearby, anchored: true };
+  }
+
+  const anchored = anchors.length > 0;
+  if (!hint.isCity) {
+    const byState = leads.filter((l) => stateFieldOf(l) === hint.name);
+    if (byState.length > 0)
+      return { leads: byState, matchedOn: "state", nearby: [], anchored };
+  }
+
+  const nearby = withinRadius(leads, anchors, radiusKm);
+  if (nearby.length > 0) return { leads: nearby, matchedOn: "city", nearby, anchored };
+
+  return {
+    leads: [],
+    matchedOn: hint.isCity ? "city" : "state",
+    nearby: [],
+    anchored,
+  };
+}
+
+/**
+ * The towns the nearby stops are in, in the order they will be presented. A
+ * wishlist lead can carry coordinates and no town name at all — 6 of the 60
+ * live US leads do — and those get counted rather than dropped, so the
+ * sentence never reads "in ." with nothing after it.
+ */
+function townsOf(leads: any[]): string {
+  const seen: string[] = [];
+  let unnamed = 0;
+  for (const l of leads) {
+    const city =
+      typeof l?.location?.city === "string" ? l.location.city.trim() : "";
+    const name = city.replace(/^(?:City|Town|Village|Borough|Township|Municipality) of /i, "");
+    if (!name) unnamed += 1;
+    else if (!seen.includes(name)) seen.push(name);
+  }
+  const rest = unnamed > 0 ? `${unnamed} whose record names no town` : "";
+  return [seen.join(", "), rest].filter(Boolean).join(", plus ");
 }
 
 type TourMode = "★ Customer" | "★ Qualified" | "✦ New";
@@ -170,12 +299,8 @@ interface MapLocation {
  * agent never has to hand-construct the widget payload (the #3779 fix).
  */
 function toMapLocation(lead: any, mode: TourMode): MapLocation | null {
-  const pos = lead?.location?.pos;
-  const valid =
-    Array.isArray(pos) &&
-    pos.length === 2 &&
-    pos.every((n: unknown) => typeof n === "number");
-  if (!valid) return null;
+  const pos = posOf(lead);
+  if (pos === null) return null;
 
   const loc = lead.location;
   const c = lead.recommended_contact;
@@ -289,6 +414,10 @@ export const tourPlan: Tool<TourPlanParams> = {
         type: "number",
         description: `Top-N Discover leads (active lens wishlist) to return after client-side city filter. Default ${DEFAULT_DISCOVER_COUNT}.`,
       },
+      radius_km: {
+        type: "number",
+        description: `How far outside the named town a Discover stop may be, in km. Default ${DEFAULT_RADIUS_KM}, which is roughly a metro area — it is what puts West Sacramento on a tour of Sacramento and Courbevoie on a tour of Paris. Pass the user's own number when they name one ("dans un rayon de 10km", "zone 20km", "within 15 miles" → 24). Pass 0 to keep the tour inside the town's own name. Leads in the town itself always come first; the radius only adds to them. It applies to Discover leads only — the Monitor half is scoped server-side and is untouched.`,
+      },
     },
     additionalProperties: false,
   },
@@ -306,13 +435,13 @@ export const tourPlan: Tool<TourPlanParams> = {
       discover_leads: {
         type: "array",
         description:
-          "Fresh Discover leads from the active lens, filtered client-side to match the city. Pulls a larger candidate set internally to compensate for the missing server-side geo filter.",
+          "Fresh Discover leads from the active lens, filtered client-side to match the city, then extended with the ones whose own coordinates put them within `radius_km` of it. The town's own leads come first. Pulls a larger candidate set internally to compensate for the missing server-side geo filter.",
         items: { type: "object" },
       },
       discover_filter_note: {
         type: "string",
         description:
-          "Human-readable summary of the client-side geo filter applied to Discover leads (e.g. 'matched 3/30 by city/state').",
+          "Human-readable summary of the client-side geo filter applied to Discover leads. Says how many stops are in the named town, how many are within `radius_km` of it, and which towns those are in — repeat that split to the user rather than presenting every stop as being in the city they named.",
       },
       map_locations: {
         type: "array",
@@ -492,9 +621,16 @@ export const tourPlan: Tool<TourPlanParams> = {
       params.city && !/^\d+$/.test(params.city.trim()) ? params.city : undefined;
     const knownId = params.city_id ?? (cityName ? undefined : params.city);
     const idOnly = Boolean(knownId) && !cityName;
-    const { leads: filtered, matchedOn } = idOnly
-      ? { leads: [] as any[], matchedOn: null as "city" | "state" | null }
-      : filterDiscoverByCity(rawDiscover, cityName);
+
+    const radiusKm = params.radius_km ?? DEFAULT_RADIUS_KM;
+    const { leads: filtered, matchedOn, nearby, anchored } = idOnly
+      ? {
+          leads: [] as any[],
+          matchedOn: null as "city" | "state" | null,
+          nearby: [] as any[],
+          anchored: false,
+        }
+      : filterDiscoverByCity(rawDiscover, cityName, monitorLeads, radiusKm);
     const discoverLeads = filtered.slice(0, discoverCount);
 
     // Report only the leads this itinerary actually shows. pull_leads
@@ -519,6 +655,10 @@ export const tourPlan: Tool<TourPlanParams> = {
     // the honest answer the agent never used to get: the lens holds no
     // prospect in this city, and nearby ones must not be presented as if it
     // did.
+    const nearbySet = new Set(nearby);
+    const nearShown = discoverLeads.filter((l: any) => nearbySet.has(l));
+    const inTownShown = discoverLeads.length - nearShown.length;
+
     let filterNote: string;
     if (idOnly) {
       filterNote = `Discover leads need the NAME of the place, and this call passed an area id (${knownId}) and no name. Re-call with \`city\` set to the name of that area, keeping \`city_id\` so the Monitor half stays on the area you picked. The follow-ups below are already scoped to it.`;
@@ -526,10 +666,16 @@ export const tourPlan: Tool<TourPlanParams> = {
       filterNote = `No city filter applied; returning top ${discoverLeads.length} Discover leads.`;
     } else if (matchedOn === null) {
       filterNote = `No usable city filter in '${params.city}'; returning top ${discoverLeads.length} Discover leads.`;
+    } else if (filtered.length === 0 && anchored && radiusKm > 0) {
+      filterNote = `No Discover lead in the active lens names '${params.city}' as its town, and none is within ${radiusKm} km of the leads that do (checked ${rawDiscover.length} candidates). Say so; do NOT present leads from elsewhere as if they were in '${params.city}'.`;
     } else if (filtered.length === 0) {
       filterNote = `No Discover lead in the active lens is in '${params.city}' (checked ${rawDiscover.length} candidates by city, then by state/region). Say so; do NOT present leads from elsewhere as if they were in '${params.city}'.`;
+    } else if (nearShown.length > 0 && inTownShown === 0) {
+      filterNote = `No Discover lead in the active lens names '${params.city}' as its town; ${nearby.length}/${rawDiscover.length} are within ${radiusKm} km of it. Returning top ${discoverLeads.length}, in ${townsOf(nearShown)}. Name the town each stop is actually in rather than calling them all '${params.city}'.`;
+    } else if (nearShown.length > 0) {
+      filterNote = `Matched ${filtered.length - nearby.length}/${rawDiscover.length} Discover leads to '${params.city}' by city, plus ${nearby.length} within ${radiusKm} km of it. Returning top ${discoverLeads.length}: ${inTownShown} in '${params.city}' and ${nearShown.length} in ${townsOf(nearShown)}. Name the town each nearby stop is in.`;
     } else {
-      filterNote = `Matched ${filtered.length}/${rawDiscover.length} Discover leads to '${params.city}' by ${matchedOn === "city" ? "city" : "state/region"}; returning top ${discoverLeads.length}.`;
+      filterNote = `Matched ${filtered.length - nearby.length}/${rawDiscover.length} Discover leads to '${params.city}' by ${matchedOn === "city" ? "city" : "state/region"}; returning top ${discoverLeads.length}.`;
     }
 
     return {

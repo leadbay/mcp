@@ -228,14 +228,13 @@ describe("research_lead_by_name_fuzzy cross-tab resolution", () => {
       },
     ]);
 
-    await expect(
-      researchLeadByNameFuzzy.execute(newClient(), {
-        companyName: "Definitely Missing",
-      })
-    ).rejects.toMatchObject({
-      code: "LEAD_NOT_FOUND",
-      message: expect.stringContaining("Leadbay company registry"),
-      hint: expect.stringContaining("website"),
+    const res: any = await researchLeadByNameFuzzy.execute(newClient(), {
+      companyName: "Definitely Missing",
+    });
+    expect(res).toMatchObject({
+      resolution: "not_found",
+      summary: expect.stringContaining("Leadbay company registry"),
+      next_step: expect.stringContaining("website"),
     });
     expect(getHttpRequests().map((r) => r.path)).toEqual([
       "/1.6/search/suggest?q=Definitely%20Missing",
