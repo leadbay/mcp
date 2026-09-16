@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { httpsMockFactory, mockHttp, resetHttpMock } from "../../harness.js";
+import { distinctTownPos } from "../../tour-plan-fixtures.js";
 
 vi.mock("node:https", () => httpsMockFactory());
 
@@ -15,7 +16,7 @@ function lead(id: string, name: string, location: Record<string, unknown>) {
   return {
     id,
     name,
-    location: { pos: [40, -80], ...location },
+    location: { pos: distinctTownPos(String(location.city ?? "")), ...location },
     recommended_contact: null,
     split_ai_summary: { next_step: "Worth a visit" },
   };
