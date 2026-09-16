@@ -139,7 +139,7 @@ describe("research_lead_by_name_fuzzy", () => {
     ]);
   });
 
-  it("zero matches in corpus AND registry — throws LEAD_NOT_FOUND", async () => {
+  it("zero matches in corpus AND registry — answers not_found, does not throw", async () => {
     mockHttp([
       { method: "GET", path: "/1.6/search/suggest?q=Acme", status: 200, body: [] },
       {
@@ -150,10 +150,10 @@ describe("research_lead_by_name_fuzzy", () => {
       },
     ]);
 
-    await expect(
-      researchLeadByNameFuzzy.execute(newClient(), { companyName: "Acme" })
-    ).rejects.toMatchObject({
-      code: "LEAD_NOT_FOUND",
+    const res: any = await researchLeadByNameFuzzy.execute(newClient(), {
+      companyName: "Acme",
     });
+    expect(res.resolution).toBe("not_found");
+    expect(res.error).toBeUndefined();
   });
 });

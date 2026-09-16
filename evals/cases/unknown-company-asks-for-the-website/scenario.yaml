@@ -1,0 +1,15 @@
+version: 1
+id: unknown-company-asks-for-the-website
+regions:
+- fr
+languages:
+- fr
+starting_state:
+- The tenant's visible Discover, Monitor and Activate leads hold no company whose name, domain or contact
+  matches the company named in the request. The lead count is recorded before the run.
+- The Leadbay company registry returns no match for that name on its own, without a website or a registry
+  number.
+- The tenant has quota remaining, so nothing in the run is blocked by an empty balance.
+user_decisions: []
+variants: []
+datasets: []

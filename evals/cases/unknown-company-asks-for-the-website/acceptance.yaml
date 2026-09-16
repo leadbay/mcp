@@ -1,0 +1,59 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: Every declared starting condition was established before the product session.
+  evidence:
+  - before
+- id: outcome-1
+  statement: The company lookup was called for the name the user wrote.
+  evidence:
+  - tools
+- id: outcome-2
+  statement: The assistant told the user Leadbay does not hold this company yet.
+  evidence:
+  - conversation
+- id: outcome-3
+  statement: The assistant asked the user for the company's website, or for its SIREN/SIRET, so the lookup
+    can be repeated with it.
+  evidence:
+  - conversation
+- id: outcome-4
+  statement: The assistant did not describe the lookup as an error, a failure, a technical problem or
+    something to retry.
+  evidence:
+  - conversation
+  - tools
+- id: reconciled-effects
+  statement: The tenant's leads are unchanged and the product report says the company is absent, not that
+    something went wrong.
+  evidence:
+  - before
+  - after
+  - conversation
+prohibited_effects:
+- id: prohibited-1
+  statement: The assistant did not guess or invent a website or a registry number and call the lookup again
+    with it.
+  evidence:
+  - tools
+  - conversation
+- id: prohibited-2
+  statement: No import, qualification or enrichment of the named company was offered before the user was
+    asked for the website, and none was started.
+  evidence:
+  - tools
+  - after
+evidence:
+- id: conversation
+  source: conversation
+  description: Complete original product conversation, user choices and final answer, with turn identifiers.
+- id: tools
+  source: tool-results
+  description: Complete original MCP requests and responses, matched by request ID, including errors and
+    unresolved calls.
+- id: before
+  source: state-before
+  description: Independent snapshot confirming every declared starting condition and tenant region.
+- id: after
+  source: state-after
+  description: Independent snapshot of affected tenant records after execution and pending job state.

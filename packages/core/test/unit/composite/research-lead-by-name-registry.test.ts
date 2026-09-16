@@ -231,11 +231,12 @@ describe("research_lead_by_name_fuzzy — registry resolution", () => {
       },
     ]);
 
-    await expect(
-      researchLeadByNameFuzzy.execute(newClient(), { companyName: "Hugo Flusin" })
-    ).rejects.toMatchObject({
-      code: "LEAD_NOT_FOUND",
-      hint: expect.stringContaining("company website for `website`"),
+    const res: any = await researchLeadByNameFuzzy.execute(newClient(), {
+      companyName: "Hugo Flusin",
+    });
+    expect(res).toMatchObject({
+      resolution: "not_found",
+      next_step: expect.stringContaining("company website for `website`"),
     });
   });
 
@@ -437,15 +438,14 @@ describe("research_lead_by_name_fuzzy — registry resolution", () => {
       },
     ]);
 
-    await expect(
-      researchLeadByNameFuzzy.execute(newClient(), {
-        companyName: "Wink Lab",
-        website: "wink-lab.com",
-        lensId: 55,
-      })
-    ).rejects.toMatchObject({
-      code: "LEAD_NOT_FOUND",
-      message: expect.stringContaining("in lens 55"),
+    const res: any = await researchLeadByNameFuzzy.execute(newClient(), {
+      companyName: "Wink Lab",
+      website: "wink-lab.com",
+      lensId: 55,
+    });
+    expect(res).toMatchObject({
+      resolution: "not_found",
+      summary: expect.stringContaining("in lens 55"),
     });
     expect(getHttpRequests()).toHaveLength(1);
   });
