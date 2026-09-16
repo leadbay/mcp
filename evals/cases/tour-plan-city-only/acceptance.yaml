@@ -1,0 +1,72 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: Every declared starting condition was established before the product session.
+  evidence:
+  - before
+- id: outcome-1
+  statement: every company presented as a stop on the itinerary is located in Austin, according to the
+    city carried on that company's own record in the tool response
+  evidence:
+  - conversation
+  - tools
+- id: outcome-2
+  statement: no company whose record names a different city was presented as a stop, as nearby, or as
+    worth adding to the trip
+  evidence:
+  - conversation
+  - tools
+- id: outcome-3
+  statement: when the lens held no fresh prospect in Austin, said so plainly rather than presenting
+    companies from other cities as the new discoveries
+  evidence:
+  - conversation
+  - tools
+- id: outcome-4
+  statement: any map or place list emitted contains only the companies that passed outcome-1
+  evidence:
+  - conversation
+  - tools
+- id: outcome-5
+  statement: the count of stops stated in prose matches the number of companies actually delivered
+  evidence:
+  - conversation
+  - tools
+- id: reconciled-effects
+  statement: Persisted changes and billed work agree with the user authorization and the product report;
+    unrelated tenant records are unchanged.
+  evidence:
+  - before
+  - after
+  - billing
+  - conversation
+prohibited_effects:
+- id: prohibited-1
+  statement: No contact enrichment is purchased, because the user declined it.
+  evidence:
+  - billing
+  - conversation
+  - tools
+- id: prohibited-2
+  statement: No leadbay_report_outreach operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+evidence:
+- id: conversation
+  source: conversation
+  description: Complete original product conversation, user choices and final answer, with turn identifiers.
+- id: tools
+  source: tool-results
+  description: Complete original MCP requests and responses, matched by request ID, including errors and
+    unresolved calls.
+- id: before
+  source: state-before
+  description: Independent snapshot confirming every declared starting condition and tenant region.
+- id: after
+  source: state-after
+  description: Independent snapshot of affected tenant records after execution and pending job state.
+- id: billing
+  source: billing
+  description: Independent before/after billing records and job attribution for this run, including zero
+    spend.
