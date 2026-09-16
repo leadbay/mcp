@@ -105,11 +105,12 @@ describe("research_lead_by_name_fuzzy — a spelling-alike is not the company", 
       registryNone,
     ]);
 
-    await expect(
-      researchLeadByNameFuzzy.execute(newClient(), { companyName: "THEOMA GESTION PRIVEE" })
-    ).rejects.toMatchObject({
-      code: "LEAD_NOT_FOUND",
-      message: expect.stringContaining("in your visible Leadbay leads and in the Leadbay company registry"),
+    const res: any = await researchLeadByNameFuzzy.execute(newClient(), {
+      companyName: "THEOMA GESTION PRIVEE",
+    });
+    expect(res).toMatchObject({
+      resolution: "not_found",
+      summary: expect.stringContaining("in your visible Leadbay leads and in the Leadbay company registry"),
     });
     expect(leadFetched(PILOTE_GESTION)).toBe(false);
   });
@@ -120,9 +121,10 @@ describe("research_lead_by_name_fuzzy — a spelling-alike is not the company", 
       registryNone,
     ]);
 
-    await expect(
-      researchLeadByNameFuzzy.execute(newClient(), { companyName: "SC2L FINANCE (SC2L FINANCE)" })
-    ).rejects.toMatchObject({ code: "LEAD_NOT_FOUND" });
+    const res: any = await researchLeadByNameFuzzy.execute(newClient(), {
+      companyName: "SC2L FINANCE (SC2L FINANCE)",
+    });
+    expect(res.resolution).toBe("not_found");
     expect(leadFetched(VALOIS_FINANCE)).toBe(false);
   });
 

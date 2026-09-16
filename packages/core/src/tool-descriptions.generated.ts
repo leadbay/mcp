@@ -4962,13 +4962,11 @@ key. It survives a misspelled company name and is what turns "not in your
 list" into an answer. With only a contact email, pass \`email\`: the company
 domain is derived from it, consumer mailboxes ignored.
 
-When the registry cannot pick one company it returns \`{resolution:
-"ambiguous", query, candidates:[…]}\` instead of a card. Ask which one; never
-guess from \`score\`.
-
-\`LEAD_NOT_FOUND\` is not a dead end: its hint names the field that would have
-found it — \`website\` or \`registry_number\`, both params. Ask for it and call
-again. Do not offer an import before asking.
+Both \`resolution\` answers below are successes, not cards. \`"ambiguous"\`
+carries \`candidates[]\`: ask which one, never guess from \`score\`.
+\`"not_found"\` carries \`summary\` + \`next_step\`: nobody has it, so say that and
+do what \`next_step\` says — usually ask for the param \`would_help\` names, then
+call again. Do not offer an import before asking.
 
 ---
 
@@ -5109,7 +5107,7 @@ out?"\`
 
 When \`resolution\` is \`"ambiguous"\`, render no card: use \`ask_user_input_v0\`,
 ONE \`single_select\` question ("Which one?"), one short label per candidate
-combining \`name\` and \`location\`.
+combining \`name\` and \`location\`. \`"not_found"\` renders no card either.
 
 When \`_meta.match_candidates\` is non-empty, prepend one extra NEXT STEPS row:
 
