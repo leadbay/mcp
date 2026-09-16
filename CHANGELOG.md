@@ -9,6 +9,9 @@
   one you named, reads a wider ask like "Texas" as the region it is, and
   tells you when it has no new prospect in that city instead of filling the
   list from somewhere else.
+- **"I'm going to NYC" finds the New York companies.** Leadbay files that city
+  under "City of New York", so the short name used to match nothing. NYC, SF,
+  LA and DC now all reach the right town.
 
 ## 0.39.1 — 2026-09-15 — Your lead list moves on after you have read it
 
