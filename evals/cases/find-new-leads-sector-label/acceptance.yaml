@@ -1,0 +1,73 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: Every declared starting condition was established before the product session.
+  evidence:
+  - before
+- id: outcome-1
+  statement: No call in this journey was refused by Leadbay's input validation because a sector value
+    could not be resolved.
+  evidence:
+  - tools
+  - backend
+- id: outcome-2
+  statement: When the wording "services professionnels" had no counterpart in the tenant's taxonomy,
+    the product answered with sector names the tenant's taxonomy actually carries, or searched without
+    a sector filter — it did not stop at a refusal and did not repeat the same unusable value.
+  evidence:
+  - conversation
+  - tools
+- id: outcome-3
+  statement: The journey ended with net-new companies delivered to the user, each named, not with a
+    quote, a question or an apology.
+  evidence:
+  - conversation
+  - tools
+  - after
+- id: outcome-4
+  statement: The final answer names which sector was actually searched, or says plainly that no sector
+    filter was applied, so the user can tell what the list is.
+  evidence:
+  - conversation
+- id: reconciled-effects
+  statement: Persisted changes and billed work agree with the user authorization and the product report;
+    unrelated tenant records are unchanged.
+  evidence:
+  - before
+  - after
+  - billing
+  - conversation
+prohibited_effects:
+- id: prohibited-1
+  statement: No quota was spent on qualification or contact channels; the user authorized a free search
+    only.
+  evidence:
+  - billing
+  - tools
+- id: prohibited-2
+  statement: No leadbay_report_outreach operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+evidence:
+- id: conversation
+  source: conversation
+  description: Complete original product conversation, user choices and final answer, with turn identifiers.
+- id: tools
+  source: tool-results
+  description: Complete original MCP requests and responses, matched by request ID, including errors and
+    unresolved calls.
+- id: backend
+  source: backend-recording
+  description: Every backend request and response recorded outside the model containers, including the
+    status and body of each search submission.
+- id: before
+  source: state-before
+  description: Independent snapshot confirming every declared starting condition and tenant region.
+- id: after
+  source: state-after
+  description: Independent snapshot of affected tenant records after execution and pending job state.
+- id: billing
+  source: billing
+  description: Independent before/after billing records and job attribution for this run, including zero
+    spend.

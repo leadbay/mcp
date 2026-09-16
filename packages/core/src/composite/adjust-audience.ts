@@ -14,6 +14,7 @@ import {
   geoScopeSurvives,
   detectCountryLocationsIn,
 } from "./_country-guard.js";
+import { sectorLabel } from "./_sector-resolver.js";
 import { leadbay_adjust_audience as ADJUST_AUDIENCE_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface AdjustAudienceParams {
   sectors?: string[];           // free text or sector ids
@@ -52,11 +53,15 @@ function bestMatches(
   if (want.size === 0) return [];
   const ranked = taxonomy
     .map((s) => {
-      const have = new Set(tokens(s.name));
+      // The taxonomy names its rows `label`; `name` is never on the wire, so
+      // every row scored 0 and every free-text sector came back as an empty
+      // `matches` list — no lens could be created or narrowed by sector name
+      // (product#4100). sectorLabel() reads whichever field is present.
+      const have = new Set(tokens(sectorLabel(s)));
       let overlap = 0;
       for (const t of want) if (have.has(t)) overlap += 1;
       const score = overlap / Math.max(want.size, 1);
-      return { id: s.id, name: s.name ?? "", score };
+      return { id: s.id, name: sectorLabel(s), score };
     })
     .filter((m) => m.score > 0)
     .sort((a, b) => b.score - a.score);
@@ -83,7 +88,7 @@ export async function resolveSectors(
   // Surface bad backend data without changing behavior: the guard in tokens()
   // already makes null-name entries harmless, but a non-zero count here tells
   // us the taxonomy itself is dirty.
-  const nullNames = taxonomy.filter((s) => !s.name).length;
+  const nullNames = taxonomy.filter((s) => !sectorLabel(s)).length;
   if (nullNames > 0) {
     ctx?.logger?.warn?.(
       `adjust_audience: /sectors/all returned ${nullNames}/${taxonomy.length} sector(s) with a null/missing name`
