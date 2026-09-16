@@ -252,3 +252,64 @@ jobs:
           echo "mcp-publisher still failing after $ATTEMPTS attempts"
           exit 1
 
+  release-outcome:
+    name: Report a release that did not reach every surface
+    needs: [publish-mcp, publish-mcp-registry]
+    # `!cancelled()` rather than `success()` is the whole point. When
+    # `publish-mcp` fails, `publish-mcp-registry` is SKIPPED for needing it, and
+    # a skipped job reports nothing anywhere. mcp-v0.39.6 was tagged, lost its
+    # npm publish to a transient 404, and left no signal: auto-tag dispatches
+    # this workflow as github-actions[bot], so GitHub's run-failure mail went to
+    # a bot and no human heard about it (product#4160). This job files an issue,
+    # which does reach the repo's watchers.
+    if: >-
+      !cancelled() &&
+      startsWith(github.ref, 'refs/tags/') &&
+      github.event.inputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open an issue when a surface is missing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_RESULT: ${{ needs.publish-mcp.result }}
+          REGISTRY_RESULT: ${{ needs.publish-mcp-registry.result }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [ "$NPM_RESULT" = "success" ] && [ "$REGISTRY_RESULT" = "success" ]; then
+            echo "$TAG reached npm, the GitHub Release and the MCP Registry."
+            exit 0
+          fi
+          BODY=$(cat <<EOF
+          $TAG was tagged and its release run did not finish.
+
+          | Surface | Job | Result |
+          |---|---|---|
+          | npm, GitHub Release, .dxt/.mcpb | publish-mcp | $NPM_RESULT |
+          | MCP Registry | publish-mcp-registry | $REGISTRY_RESULT |
+
+          Run: $RUN_URL
+
+          publish-mcp-registry reads skipped whenever publish-mcp did not succeed, so
+          read the npm job first. A registry job that failed on its own after a green
+          npm job is npm read-replica propagation, and re-running the failed jobs
+          publishes it.
+
+          Do not re-publish an older version once a newer one is on npm. This workflow
+          publishes with --tag latest, so an older version would move latest backwards.
+          Carry the fix forward in the next patch instead.
+          EOF
+          )
+          # No pipe into grep: a matching grep closes the pipe, the writer takes
+          # SIGPIPE, and pipefail would fail the step on the success path.
+          OPEN_TITLES=$(gh issue list --state open --limit 100 --json title --jq '.[].title' || true)
+          if grep -Fq "$TAG" <<<"$OPEN_TITLES"; then
+            echo "An open issue already names $TAG — not filing a second one."
+          else
+            gh issue create --title "Release $TAG did not reach every surface" --body "$BODY"
+          fi
+          echo "$TAG is half-shipped: publish-mcp=$NPM_RESULT publish-mcp-registry=$REGISTRY_RESULT"
+          exit 1

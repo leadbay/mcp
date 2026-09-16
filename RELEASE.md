@@ -32,6 +32,7 @@ Actions → `release` → "Run workflow" → `package: mcp`, set `dry_run: true`
 - **`E404 Scope not found`** from `preflight-npm` → `@leadbay` org doesn't exist yet. Create at <https://www.npmjs.com/org/create>. Re-run the workflow from the Actions UI (no re-tag needed).
 - **`E403`** from `publish-mcp` → token lacks publish rights on the scope. Regenerate the automation token with scope-owner rights, update `NPM_TOKEN`, re-run.
 - **"Version drift: tag=X pkg=Y"** → bump `packages/mcp/package.json` in a new PR, tag the new commit.
+- **An issue titled "Release mcp-v… did not reach every surface"** → the `release-outcome` job filed it, because `publish-mcp` or `publish-mcp-registry` ended in anything but success. Both job results and the run URL are in the body. The common case is npm read-replica propagation tripping the registry job, and `gh run rerun <id> --failed` clears it. Never re-publish an older version once a newer one is on npm: this workflow publishes with `--tag latest`, so it would move `latest` backwards. Carry the fix forward in the next patch instead.
 
 ## No automatic version bumping, no changesets
 
