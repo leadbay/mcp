@@ -6,7 +6,7 @@ Pick the 2-3 options that match what actually happened — never all seven:
 
 | Observation | Suggest | Calls |
 |---|---|---|
-| Job still running (`still_running: true`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
+| Job still running (`still_running: true`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 45) |
 | Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — `dry_run` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |

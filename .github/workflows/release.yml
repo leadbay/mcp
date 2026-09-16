@@ -231,18 +231,24 @@ jobs:
         # and 0.34.1 never reached the registry. The error text itself says to
         # wait and retry, so do that rather than losing a release to npm's
         # propagation delay.
+        #
+        # 30s x 5 attempts gave up at ~150s, and npm's read replica takes
+        # longer than that: 246s on 0.39.1, 216s on 0.39.2, 287s on 0.39.4 and
+        # 202s on 0.39.5, all of which then needed `gh run rerun --failed`.
+        # 20 attempts spans ~10 minutes, twice the worst of those.
         run: |
           set -euo pipefail
-          for attempt in 1 2 3 4 5; do
+          ATTEMPTS=20
+          for attempt in $(seq 1 "$ATTEMPTS"); do
             if ./mcp-publisher publish packages/mcp/server.json; then
               echo "Published on attempt $attempt"
               exit 0
             fi
-            if [ "$attempt" -lt 5 ]; then
+            if [ "$attempt" -lt "$ATTEMPTS" ]; then
               echo "Publish attempt $attempt failed; waiting 30s for npm to propagate"
               sleep 30
             fi
           done
-          echo "mcp-publisher still failing after 5 attempts"
+          echo "mcp-publisher still failing after $ATTEMPTS attempts"
           exit 1
 

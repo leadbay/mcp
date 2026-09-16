@@ -8,6 +8,7 @@
 // needs seven fields, so an identity pass answers with one row per company and
 // the counts that tell the user what Leadbay has and what it lacks.
 import {
+  MAX_WAIT_SECONDS,
   TERMINAL_JOB_STATES,
   type McpJobItem,
   type McpJobSnapshot,
@@ -197,7 +198,7 @@ export function identityAnswer(
             job_id: jobId,
             compact: true,
             offset: nextOffset,
-            suggested_wait_seconds: done ? 0 : 60,
+            suggested_wait_seconds: done ? 0 : MAX_WAIT_SECONDS,
           },
   };
 }

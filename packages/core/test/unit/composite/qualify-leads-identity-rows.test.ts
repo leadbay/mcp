@@ -292,7 +292,7 @@ describe("leadbay_qualify_leads — identity pass over a list", () => {
     expect(result.next_poll).toMatchObject({
       compact: true,
       offset: 0,
-      suggested_wait_seconds: 60,
+      suggested_wait_seconds: 45,
     });
   });
 
