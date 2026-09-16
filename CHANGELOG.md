@@ -26,6 +26,15 @@
 - **Reading your qualification questions now shows the whole picture** — your
   ideal buyer profile and your targeting prompt come back with them, and Claude
   tells you how many of your five question slots are free.
+## 0.39.4 — 2026-09-16 — Writing a city the way you write an address works
+
+- **"Washington, DC" is the capital again.** Written with the comma, Claude read
+  only the first word and matched the state of Washington, so a tour of the
+  capital came back with companies in Seattle and Redmond. Written without the
+  comma it was already right. Both forms now mean the same city.
+- **Picking a city from a list of same-named places works too.** When Claude
+  asks which New York you meant and you pick one, it now keeps the companies in
+  that city instead of widening to the whole state.
 
 ## 0.39.3 — 2026-09-16 — Naming a sector in your own words finds the sector
 
