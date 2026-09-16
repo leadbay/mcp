@@ -186,6 +186,82 @@ describe("leadbay_tour_plan — Discover city filter (product#4138)", () => {
     );
   });
 
+  it("a tour of York does not pull in the New York leads", async () => {
+    mockFanOut([
+      lead("d-1", "Manhattan Co", { city: "City of New York", state: "New York", country: "US" }),
+      lead("d-2", "York Co", { city: "York", state: "Pennsylvania", country: "US" }),
+      lead("d-3", "Angeles Co", { city: "Los Angeles", state: "California", country: "US" }),
+    ]);
+
+    const result: any = await tourPlan.execute(newClient(), { city: "York" });
+
+    expect(names(result)).toEqual(["York Co"]);
+  });
+
+  it("a tour of Austin does not pull in Port Austin or Austin Township", async () => {
+    mockFanOut([
+      lead("d-1", "Port Co", { city: "Port Austin", state: "Michigan", country: "US" }),
+      lead("d-2", "Township Co", { city: "Austin Township", state: "Minnesota", country: "US" }),
+    ]);
+
+    const result: any = await tourPlan.execute(newClient(), { city: "Austin" });
+
+    expect(result.discover_leads).toEqual([]);
+  });
+
+  it("strips the administrative prefix the US admin-area index puts on a town", async () => {
+    mockFanOut([
+      lead("d-1", "Islip Co", { city: "Town of Islip", state: "New York", country: "US" }),
+      lead("d-2", "Ramapo Co", { city: "Town of Ramapo", state: "New York", country: "US" }),
+    ]);
+
+    const result: any = await tourPlan.execute(newClient(), { city: "Islip" });
+
+    expect(names(result)).toEqual(["Islip Co"]);
+  });
+
+  it("resolves the abbreviations users actually type, through the Monitor alias table", async () => {
+    const wishlist = [
+      lead("d-1", "Manhattan Co", { city: "City of New York", state: "New York", country: "US" }),
+      lead("d-2", "SF Co", { city: "San Francisco", state: "California", country: "US" }),
+      lead("d-3", "LA Co", { city: "Los Angeles", state: "California", country: "US" }),
+    ];
+
+    mockFanOut(wishlist);
+    expect(names(await tourPlan.execute(newClient(), { city: "NYC" }) as any)).toEqual(["Manhattan Co"]);
+
+    resetHttpMock();
+    mockFanOut(wishlist);
+    expect(names(await tourPlan.execute(newClient(), { city: "SF" }) as any)).toEqual(["SF Co"]);
+
+    resetHttpMock();
+    mockFanOut(wishlist);
+    expect(names(await tourPlan.execute(newClient(), { city: "LA" }) as any)).toEqual(["LA Co"]);
+  });
+
+  it("a bare city_id returns no Discover lead and names the argument that is missing", async () => {
+    mockFanOut([
+      lead("d-1", "Boston Co", { city: "Boston", state: "Massachusetts", country: "US" }),
+      lead("d-2", "Chicago Co", { city: "Chicago", state: "Illinois", country: "US" }),
+    ]);
+
+    const result: any = await tourPlan.execute(newClient(), { city_id: "6027" });
+
+    expect(result.discover_leads).toEqual([]);
+    expect(result.discover_filter_note).toContain("Re-call with `city` set to the name of the area id 6027");
+  });
+
+  it("city_id plus city scopes the follow-ups by id and the Discover leads by name", async () => {
+    mockFanOut([
+      lead("d-1", "Austin Co", { city: "Austin", state: "Texas", country: "US" }),
+      lead("d-2", "Boston Co", { city: "Boston", state: "Massachusetts", country: "US" }),
+    ]);
+
+    const result: any = await tourPlan.execute(newClient(), { city: "Austin", city_id: "6027" });
+
+    expect(names(result)).toEqual(["Austin Co"]);
+  });
+
   it("reports only the leads the itinerary shows as seen", async () => {
     mockFanOut([
       lead("d-1", "Austin Co", { city: "Austin", state: "Texas", country: "US" }),

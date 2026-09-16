@@ -21,6 +21,7 @@ import {
   countryLocationStatus,
   detectCountryLocationsIn,
 } from "./_country-guard.js";
+import { expandAlias } from "./_geo-helpers.js";
 
 import { leadbay_tour_plan as TOUR_PLAN_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -53,31 +54,30 @@ function normalizeGeo(value: string): string {
 }
 
 /**
- * Whole-word containment. "city of new york" holds "new york"; "boston" does
- * NOT hold "us", and "york" does not hold "new york". The naked substring test
- * this replaces made a two-letter country code match any city name containing
- * those letters, so a tour of Austin returned every US lead (product#4138).
+ * The administrative prefix the US admin-area index puts in front of a town's
+ * real name. Live on prod today: "City of New York", "City of Albany", "Town
+ * of Islip", "Town of Ramapo", and the index also holds "Village of New York
+ * Mills" and "Borough of Woodmont". A user says "New York", so the prefix has
+ * to come off before the two names are compared. Only the "<kind> of " form is
+ * stripped: "The Village" and "Austin Township" are real names of real places
+ * that are not Austin.
  */
-function holdsPhrase(haystack: string, phrase: string): boolean {
-  if (!haystack || !phrase) return false;
-  return ` ${haystack} `.includes(` ${phrase} `);
+const ADMIN_PREFIX = /^(?:city|town|village|borough|township|municipality) of /;
+
+/** The town's own name, prefix removed and ready to compare. */
+function townName(value: string): string {
+  return normalizeGeo(value).replace(ADMIN_PREFIX, "");
 }
 
 /**
- * The most specific part of the hint. An agent passes "Austin, TX" or
- * "Paris, France" as often as a bare city name, and the tour is of the first
- * segment; the rest is the state and country the segment already implies.
+ * The place the user named. An agent passes "Austin, TX" or "Paris, France" as
+ * often as a bare city name, and the tour is of the first segment; the rest is
+ * the state and country that segment already implies. "NYC", "SF" and "LA" go
+ * through the same alias table the Monitor half resolves with, because the
+ * backend's admin-area index answers nothing for them.
  */
 function cityHintCore(cityHint: string): string {
-  return normalizeGeo(cityHint.split(",")[0] ?? "");
-}
-
-/** Fields that name the lead's own town. `full` is a street address line. */
-function cityFieldsOf(lead: any): string[] {
-  const loc = lead?.location ?? {};
-  return [loc.city, loc.full]
-    .filter((v: unknown): v is string => typeof v === "string")
-    .map(normalizeGeo);
+  return townName(expandAlias(cityHint.split(",")[0] ?? ""));
 }
 
 /**
@@ -95,6 +95,12 @@ function stateFieldOf(lead: any): string {
 /**
  * Keep the Discover leads that are in the requested place.
  *
+ * The comparison is equality, not containment. Containment is what broke:
+ * "austin" contains "us", so every American lead matched a tour of Austin
+ * (product#4138). Word-boundary containment still matches "york" against
+ * "City of New York" and "angeles" against "Los Angeles", so the town names
+ * have to be equal once the administrative prefix is off both sides.
+ *
  * Two passes. Cities first, because a city hint is what a tour almost always
  * carries. Only when nothing matched by city do we read the hint as a region
  * and try the state field — which is also how the leads that carry a state
@@ -107,12 +113,12 @@ function filterDiscoverByCity(
   const hint = cityHint ? cityHintCore(cityHint) : "";
   if (!hint) return { leads, matchedOn: null };
 
-  const byCity = leads.filter((l) =>
-    cityFieldsOf(l).some((f) => holdsPhrase(f, hint)),
-  );
+  const cityOf = (l: any) =>
+    typeof l?.location?.city === "string" ? townName(l.location.city) : "";
+  const byCity = leads.filter((l) => cityOf(l) === hint);
   if (byCity.length > 0) return { leads: byCity, matchedOn: "city" };
 
-  const byState = leads.filter((l) => holdsPhrase(stateFieldOf(l), hint));
+  const byState = leads.filter((l) => stateFieldOf(l) === hint);
   return { leads: byState, matchedOn: "state" };
 }
 
@@ -243,7 +249,7 @@ export const tourPlan: Tool<TourPlanParams> = {
       city_id: {
         type: "string",
         description:
-          "Pre-resolved admin_area id (numeric string). Bypasses the resolver.",
+          "Pre-resolved admin_area id (numeric string). Bypasses the resolver. Pass `city` alongside it with the NAME of the area you picked: the id scopes the Monitor half, and the name is the only thing that can scope the Discover half, which has no server-side geo filter. With `city_id` alone, `discover_leads` comes back empty.",
       },
       followups_count: {
         type: "number",
@@ -377,7 +383,13 @@ export const tourPlan: Tool<TourPlanParams> = {
       pullFollowups.execute(
         client,
         {
-          city: params.city,
+          // A pre-resolved id bypasses the resolver, which is what its own
+          // schema promises. Forwarding the free text alongside it sends the
+          // name back through /geo/search, and the name is the thing that was
+          // ambiguous — so an agent recovering from `ambiguous_locations` by
+          // picking an id would be handed the same ambiguity again. Here the
+          // free text stays behind and scopes the Discover half instead.
+          city: params.city_id ? undefined : params.city,
           city_id: params.city_id,
           count: followupsCount,
         },
@@ -400,7 +412,7 @@ export const tourPlan: Tool<TourPlanParams> = {
           monitor_leads: [],
           discover_leads: [],
           discover_filter_note:
-            "City was ambiguous; pick an id and re-call to proceed.",
+            "City was ambiguous; re-call with `city_id` set to the id you pick AND `city` set to that candidate's `name`. The id scopes the follow-ups; the name is what scopes the Discover leads.",
           map_locations: [],
           map_summary: {
             total_leads: 0,
@@ -439,10 +451,16 @@ export const tourPlan: Tool<TourPlanParams> = {
 
     // Filter Discover leads by client-side city match. The Monitor side
     // already filtered server-side, so we don't re-filter those.
-    const { leads: filtered, matchedOn } = filterDiscoverByCity(
-      rawDiscover,
-      params.city,
-    );
+    //
+    // A bare `city_id` carries no name, and the backend has no id-to-name
+    // lookup, so there is nothing to compare a lead's city against. The
+    // Monitor half is still correctly scoped server-side; the Discover half
+    // returns empty rather than handing over the whole lens as if it were the
+    // itinerary, which is the shape of product#4138.
+    const idOnly = Boolean(params.city_id) && !params.city;
+    const { leads: filtered, matchedOn } = idOnly
+      ? { leads: [] as any[], matchedOn: null as "city" | "state" | null }
+      : filterDiscoverByCity(rawDiscover, params.city);
     const discoverLeads = filtered.slice(0, discoverCount);
 
     // Report only the leads this itinerary actually shows. pull_leads
@@ -468,7 +486,9 @@ export const tourPlan: Tool<TourPlanParams> = {
     // prospect in this city, and nearby ones must not be presented as if it
     // did.
     let filterNote: string;
-    if (!params.city) {
+    if (idOnly) {
+      filterNote = `Discover leads need the NAME of the place, and this call passed only \`city_id\`. Re-call with \`city\` set to the name of the area id ${params.city_id} (keep \`city_id\` so the Monitor half stays on the area you picked). The follow-ups below are already scoped to it.`;
+    } else if (!params.city) {
       filterNote = `No city filter applied; returning top ${discoverLeads.length} Discover leads.`;
     } else if (matchedOn === null) {
       filterNote = `No usable city filter in '${params.city}'; returning top ${discoverLeads.length} Discover leads.`;

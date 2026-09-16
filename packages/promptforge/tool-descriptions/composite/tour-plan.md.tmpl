@@ -55,7 +55,7 @@ annotations:
 
 Build a single-call mixed-mode itinerary for a field sales tour. Combines `leadbay_pull_followups` (Monitor leads in the city — known accounts) with `leadbay_pull_leads` (Discover wishlist — new prospects, then client-side filtered by city) so the agent can answer the canonical #3630 US1 ask: *"I'm visiting Limoges in 4 days — propose 3 customers + 3 qualified prospects + 3 new high-potential discoveries."*
 
-**Geo resolution** is identical to `leadbay_followups_map`: pass `city` (any level from state down to neighborhood — state, *région*, county, city — the `/geo/search` resolver picks the best match), or a pre-resolved `city_id`. Ambiguous matches surface as `status: "ambiguous_locations"` + `location_ambiguities[]`; pick an id and re-call with `city_id`.
+**Geo resolution** is identical to `leadbay_followups_map`: pass `city` (any level from state down to neighborhood — state, *région*, county, city — the `/geo/search` resolver picks the best match), or a pre-resolved `city_id`. Ambiguous matches surface as `status: "ambiguous_locations"` + `location_ambiguities[]`; re-call with `city_id` set to the id you pick AND `city` set to that candidate's `name`. Both are needed: the id scopes the follow-ups, the name scopes the Discover leads, and with `city_id` alone `discover_leads` comes back empty.
 
 {{include:heuristics/single-country-universe}}
 
