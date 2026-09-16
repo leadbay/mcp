@@ -1,0 +1,22 @@
+version: 1
+id: new-lens-sector-named-in-words
+regions:
+- us
+languages:
+- en
+starting_state:
+- The tenant is a US workspace whose sector taxonomy is the NAICS registry, served in the account's
+  own language.
+- That registry carries one section named Manufacturing and one section named Construction. It also
+  carries narrower trades inside each of them, so a word can land on a whole section or on one trade.
+- The user's wording for both sectors differs from the registry's labels only in capitalisation. Neither
+  word is a sector id.
+- The tenant has no lens named Plant Buyers before the run.
+- The tenant's lenses, the sector criteria on each of them, and its quota balance are recorded before
+  the run.
+user_decisions:
+- when: the product asks which sector to use, or offers several sector names to choose from
+  reply: Take the broad sector, not one specialty inside it, and carry on. Free search only, no paid
+    enrichment.
+variants: []
+datasets: []
