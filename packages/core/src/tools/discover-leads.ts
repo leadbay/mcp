@@ -1,5 +1,5 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool } from "../types.js";
+import type { Tool, ToolContext } from "../types.js";
 import type { WishlistResponse } from "../types.js";
 import { leadbay_discover_leads as DISCOVER_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 import { reportLeadInteractions } from "../interactions.js";
@@ -38,7 +38,11 @@ export const discoverLeads: Tool<DiscoverLeadsParams> = {
     },
     additionalProperties: false,
   },
-  execute: async (client: LeadbayClient, params: DiscoverLeadsParams) => {
+  execute: async (
+    client: LeadbayClient,
+    params: DiscoverLeadsParams,
+    ctx?: ToolContext
+  ) => {
     const lensId = params.lensId ?? (await client.resolveDefaultLens());
     const page = params.page ?? 0;
     const count = Math.min(params.count ?? 20, 50);
@@ -53,7 +57,8 @@ export const discoverLeads: Tool<DiscoverLeadsParams> = {
       client,
       lensId,
       res.items.map((lead) => lead.id),
-      ["LEAD_SEEN"]
+      ["LEAD_SEEN"],
+      ctx?.logger
     );
 
     const totalPages = res.pagination?.pages ?? 0;

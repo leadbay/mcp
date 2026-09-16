@@ -180,6 +180,70 @@ describe("discover_leads reports the same list", () => {
   });
 });
 
+describe("every reporting site logs a rejection", () => {
+  // The 400 was invisible for 145 days because it was swallowed. No call site
+  // may go back to swallowing it, including the two granular tools that had no
+  // ToolContext until this change.
+  const REJECTED = {
+    method: "POST" as const,
+    path: "/1.6/interactions",
+    status: 400,
+    body: { error: { code: "bad_request", message: "unknown key 'leadId'" } },
+  };
+  const LEAD = "lead-x";
+  const leadDetail = {
+    method: "GET" as const,
+    path: new RegExp(`/1\\.6/lenses/${LENS}/leads/${LEAD}$`),
+    status: 200,
+    body: {
+      id: LEAD,
+      name: "Acme",
+      score: 80,
+      tags: [],
+      liked: false,
+      disliked: false,
+      contacts_count: 0,
+      org_contacts_count: 0,
+      custom_fields: [],
+    },
+  };
+  const leadFanout = [
+    { method: "GET" as const, path: new RegExp(`/1\\.6/leads/${LEAD}/ai_agent_responses$`), status: 200, body: [] },
+    { method: "GET" as const, path: new RegExp(`/1\\.6/leads/${LEAD}/contacts`), status: 200, body: [] },
+    { method: "GET" as const, path: new RegExp(`/1\\.6/leads/${LEAD}/enrich/contacts`), status: 200, body: [] },
+    { method: "GET" as const, path: new RegExp(`/1\\.6/leads/${LEAD}/web_fetch$`), status: 200, body: {} },
+    { method: "GET" as const, path: new RegExp(`/1\\.6/leads/${LEAD}/activities`), status: 200, body: { items: [] } },
+  ];
+
+  const cases: Array<[string, (warn: () => void) => Promise<unknown>]> = [
+    ["discover_leads", (warn) => {
+      mockHttp([REJECTED, wishlist(["lead-a"])]);
+      return discoverLeads.execute(newClient(), { lensId: LENS }, { logger: { warn } });
+    }],
+    ["get_lead_profile", (warn) => {
+      mockHttp([REJECTED, leadDetail, ...leadFanout]);
+      return getLeadProfile.execute(newClient(), { leadId: LEAD, lensId: LENS }, { logger: { warn } });
+    }],
+    ["research_lead_by_id", (warn) => {
+      mockHttp([REJECTED, leadDetail, ...leadFanout]);
+      return researchLeadById.execute(newClient(), { leadId: LEAD, lensId: LENS }, { logger: { warn } });
+    }],
+    ["get_lead_custom_fields", (warn) => {
+      mockHttp([REJECTED, leadDetail]);
+      return getLeadCustomFields.execute(newClient(), { leadId: LEAD, lensId: LENS }, { logger: { warn } });
+    }],
+  ];
+
+  for (const [name, run] of cases) {
+    it(`${name} — the read succeeds and the rejection reaches the log`, async () => {
+      const warn = vi.fn();
+      await run(warn as unknown as () => void);
+      await postedEvents();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("not recorded"));
+    });
+  }
+});
+
 describe("tour_plan reports only the leads its itinerary shows", () => {
   it("30 pulled, 1 in the city — exactly that one is reported", async () => {
     // tour_plan over-pulls 30 Discover leads and keeps the city matches.
