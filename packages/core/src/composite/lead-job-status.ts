@@ -9,6 +9,7 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 import {
   clampWaitSeconds,
+  MAX_WAIT_SECONDS,
   collectJobSnapshot,
   splitItems,
   TERMINAL_JOB_STATES,
@@ -56,7 +57,7 @@ export const leadJobStatus: Tool<LeadJobStatusParams, any> = {
       wait_seconds: {
         type: "number",
         description:
-          "0 (default) = instant snapshot. >0 = keep polling up to this many seconds until the job is terminal — use ~60 when the user asked to wait for results.",
+          "0 (default) = instant snapshot. >0 = keep polling up to this many seconds (maximum 45) until the job is terminal — use 45 when the user asked to wait for results.",
       },
       compact: {
         type: "boolean",
@@ -143,7 +144,7 @@ export const leadJobStatus: Tool<LeadJobStatusParams, any> = {
             // Same incremental handoff as the submit tools — following
             // next_poll without the cursor re-reads the rows just returned.
             since: snapshot.next_since ?? null,
-            suggested_wait_seconds: done ? 0 : 60,
+            suggested_wait_seconds: done ? 0 : MAX_WAIT_SECONDS,
           },
       region: client.region,
     };

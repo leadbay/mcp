@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.39.8 — 2026-09-16 — Narrowing an audience actually narrows it
+
+- **Swapping one sector or one city for another now drops the old one.**
+  "Construction instead of manufacturing" left manufacturing on the audience as
+  well as excluding it, so the narrowing never happened and the same companies
+  kept coming back. "Lyon instead of Paris" did the same thing to the city.
+  Whatever you exclude comes off the included list, and the other way round.
+- **A lead job that takes more than a minute no longer ends in an error.**
+  Asking Claude to qualify even a single company could come back as a failure
+  instead of an answer: the research took longer than Claude gives any tool, so
+  Claude stopped waiting while Leadbay carried on working. The wait now counts
+  the whole call, so the answer comes back inside Claude's limit with the job's
+  ticket and the news that the work is still running.
+- **"Check on it in a minute" no longer asks for exactly the minute Claude
+  allows.** Every still-running answer suggested a follow-up check timed to land
+  on the limit itself, so following the suggestion was a coin toss. It now
+  suggests 45 seconds, and that is also the longest any of these tools will wait
+  in one call.
+
 ## 0.39.7 — 2026-09-16 — A tour of a city reaches the next town over
 
 - **A tour of Sacramento now shows the company in West Sacramento, 3 miles

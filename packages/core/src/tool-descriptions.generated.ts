@@ -1627,7 +1627,7 @@ Pick the 2-3 options that match what actually happened — never all seven:
 
 | Observation | Suggest | Calls |
 |---|---|---|
-| Job still running (\`still_running: true\`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
+| Job still running (\`still_running: true\`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 45) |
 | Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
@@ -2695,7 +2695,7 @@ Trigger phrases: "is the lead search done", "any results yet on that job", "chec
 
 Do NOT use for: "is the enrichment done" → \`leadbay_bulk_enrich_status\`; "is my import done" → \`leadbay_import_status\`; "is the top-N qualification done" → \`leadbay_qualify_status\`.
 
-Prefer when: a find_new_leads / qualify_leads result carried next_poll — pass its job_id; use wait_seconds ~60 when the user asked to wait for results.
+Prefer when: a find_new_leads / qualify_leads result carried next_poll — pass its job_id; use wait_seconds 45 when the user asked to wait for results.
 
 Examples that SHOULD invoke this tool:
 - "Any leads yet from that search you started?"
@@ -2722,7 +2722,7 @@ usage counters (never render them), and the \`explain\` block
 (basis, seed strategy, scope notes). Items are immutable once emitted —
 polling never re-reads live data, so numbers only ever grow.
 
-\`wait_seconds: 0\` (default) answers instantly; set ~60 to block-wait for
+\`wait_seconds: 0\` (default) answers instantly; set 45 (the maximum) to block-wait for
 completion when the user asked for results "in this reply". \`since\` (from a
 prior poll's \`next_since\`) pages only the new items. Jobs terminalize
 server-side: past the 30-min wall clock a job reads \`completed_partial\`
@@ -2904,7 +2904,7 @@ is a status tool, keep it terse:
 
 | Observation | Suggest | Calls |
 |---|---|---|
-| Still running | "Keep waiting (~1 min) or leave it — results are kept 30 days" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
+| Still running | "Keep waiting (~1 min) or leave it — results are kept 30 days" | leadbay_lead_job_status(job_id, wait_seconds: 45) |
 | Terminal (completed / partial / failed) | Render the delivery per the RENDERING block, then offer the matching find_new_leads / qualify_leads NEXT STEPS | — |
 | \`expired\` (past the 30-day window) | "Re-read the delivered leads from your delivery ledger" — there is nothing left to render: the job terminalized and its items are no longer listed, so do NOT present an empty delivery as a result | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 `;
@@ -4301,7 +4301,7 @@ Pick the 2-3 options that match what actually happened:
 
 | Observation | Suggest | Calls |
 |---|---|---|
-| Job still running | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
+| Job still running | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 45) |
 | Fit leads with contacts delivered | "Draft outreach for the qualified ones" | leadbay_prepare_outreach |
 | Items skipped \`not_in_universe\` | "Import those companies first, then re-qualify" | leadbay_import_leads → leadbay_qualify_leads |
 | Items skipped \`low_confidence_identity\` | "Pick the right match" (show \`resolution.alternatives\`) | leadbay_qualify_leads with the chosen lead_id |
@@ -6757,7 +6757,7 @@ Pick the 2-3 options that match what actually happened — never all seven:
 
 | Observation | Suggest | Calls |
 |---|---|---|
-| Job still running (\`still_running: true\`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
+| Job still running (\`still_running: true\`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 45) |
 | Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
