@@ -2,11 +2,11 @@
 
 ## 0.39.8 — 2026-09-16 — Narrowing an audience actually narrows it
 
-- **Swapping one sector for another now drops the old one.** "Construction
-  instead of manufacturing" left manufacturing on the audience as well as
-  excluding it, so the narrowing never happened and the same companies kept
-  coming back. A sector you exclude comes off the included list, and the other
-  way round.
+- **Swapping one sector or one city for another now drops the old one.**
+  "Construction instead of manufacturing" left manufacturing on the audience as
+  well as excluding it, so the narrowing never happened and the same companies
+  kept coming back. "Lyon instead of Paris" did the same thing to the city.
+  Whatever you exclude comes off the included list, and the other way round.
 - **A lead job that takes more than a minute no longer ends in an error.**
   Asking Claude to qualify even a single company could come back as a failure
   instead of an answer: the research took longer than Claude gives any tool, so

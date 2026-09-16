@@ -132,20 +132,27 @@ export function mergeFilter(
   const item = items[0] ?? { criteria: [] };
   const criteria: FilterCriterion[] = item.criteria ? [...item.criteria] : [];
 
-  // Include and exclude are contradictory on the same sector, so an id the
-  // caller just put on one side comes off the other (product#4148). Without
-  // this, "construction instead of manufacturing" leaves manufacturing
-  // included AND excluded, and the narrowing never happens.
-  const dropSectors = (fromExcluded: boolean, ids: string[]) => {
+  // Include and exclude are contradictory on the same id, so an id the caller
+  // just put on one side comes off the other (product#4148). Without this,
+  // "construction instead of manufacturing" leaves manufacturing included AND
+  // excluded, and the narrowing never happens. Locations take the same pass:
+  // "Lyon instead of Paris" is the same ask about a different field.
+  const dropIds = (
+    type: "sector_ids" | "location_ids",
+    fromExcluded: boolean,
+    ids: string[]
+  ) => {
     if (ids.length === 0) return;
     const idx = criteria.findIndex(
-      (c) => c.type === "sector_ids" && !!c.is_excluded === fromExcluded
+      (c) => c.type === type && !!c.is_excluded === fromExcluded
     );
     if (idx < 0) return;
-    const cur = criteria[idx] as Extract<FilterCriterion, { type: "sector_ids" }>;
-    const kept = (cur.sectors ?? []).filter((s) => !ids.includes(s));
+    const cur = criteria[idx];
+    const key = type === "sector_ids" ? "sectors" : "locations";
+    const held = ((cur as Record<string, unknown>)[key] as string[]) ?? [];
+    const kept = held.filter((s) => !ids.includes(s));
     if (kept.length === 0) criteria.splice(idx, 1);
-    else criteria[idx] = { ...cur, sectors: kept };
+    else criteria[idx] = { ...cur, [key]: kept } as FilterCriterion;
   };
 
   // sector_ids (include) — merge into existing or add.
@@ -165,7 +172,7 @@ export function mergeFilter(
       });
     }
   }
-  dropSectors(true, toAddSectors);
+  dropIds("sector_ids", true, toAddSectors);
 
   // sector_ids (exclude)
   if (toExcludeSectors.length > 0) {
@@ -184,7 +191,7 @@ export function mergeFilter(
       });
     }
   }
-  dropSectors(false, toExcludeSectors);
+  dropIds("sector_ids", false, toExcludeSectors);
 
   // location_ids (include) — merge into existing or add. Mirrors sector_ids:
   // the backend echoes the resolved areas back in the FilterPayload.locations
@@ -205,6 +212,7 @@ export function mergeFilter(
       });
     }
   }
+  dropIds("location_ids", true, toAddLocations);
 
   // location_ids (exclude)
   if (toExcludeLocations.length > 0) {
@@ -223,6 +231,7 @@ export function mergeFilter(
       });
     }
   }
+  dropIds("location_ids", false, toExcludeLocations);
 
   // size — replace if provided (single canonical size criterion). The backend
   // deserializer requires BOTH min and max on every size bucket; "under N"

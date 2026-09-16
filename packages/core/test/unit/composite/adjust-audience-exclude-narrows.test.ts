@@ -13,7 +13,7 @@ import { mockHttp, resetHttpMock, httpsMockFactory, getHttpRequests } from "../.
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { adjustAudience } from "../../../src/composite/adjust-audience.js";
+import { adjustAudience, mergeFilter } from "../../../src/composite/adjust-audience.js";
 
 const BASE = "https://api-us.leadbay.app";
 const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
@@ -119,5 +119,45 @@ describe("leadbay_adjust_audience — exclude narrows the include list", () => {
     expect(include.sectors).toEqual(["731", "830"]);
     // The exclude criterion held only 830 — emptied, it is dropped entirely.
     expect(exclude).toBeUndefined();
+  });
+});
+
+describe("mergeFilter — locations take the same pass as sectors (product#4148)", () => {
+  const filterWith = (criteria: any[]) => ({
+    lens_filter: { items: [{ criteria }] },
+  }) as any;
+
+  it("a location the caller excludes comes off the include list", () => {
+    const current = filterWith([
+      { type: "location_ids", is_excluded: false, locations: ["paris", "lyon"] },
+    ]);
+
+    const out: any = mergeFilter(current, [], [], undefined, [], ["paris"]);
+    const crit = out.lens_filter.items[0].criteria;
+
+    const included = crit.find(
+      (c: any) => c.type === "location_ids" && !c.is_excluded
+    );
+    const excluded = crit.find(
+      (c: any) => c.type === "location_ids" && c.is_excluded
+    );
+    expect(included.locations).toEqual(["lyon"]);
+    expect(excluded.locations).toEqual(["paris"]);
+  });
+
+  it("a location the caller adds comes off the exclude list", () => {
+    const current = filterWith([
+      { type: "location_ids", is_excluded: true, locations: ["paris"] },
+    ]);
+
+    const out: any = mergeFilter(current, [], [], undefined, ["paris"], []);
+    const crit = out.lens_filter.items[0].criteria;
+
+    expect(
+      crit.find((c: any) => c.type === "location_ids" && !c.is_excluded).locations
+    ).toEqual(["paris"]);
+    expect(
+      crit.find((c: any) => c.type === "location_ids" && c.is_excluded)
+    ).toBeUndefined();
   });
 });
