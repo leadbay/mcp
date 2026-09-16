@@ -19,11 +19,28 @@ beforeEach(() => resetHttpMock());
  * York"), real FR cities arrive hyphenated and accented ("Saint-Nazaire",
  * "Épernay"), and a handful of leads carry a state and no city at all.
  */
+/**
+ * Two towns with different names are different places. Every fixture below
+ * therefore gets its own cell of a 2-degree grid, ~200 km from every other
+ * one, so the radius pass added for product#4141 never reads one of these as
+ * a neighbour of another. A fixture that wants two towns next to each other
+ * passes its own `pos`; those live in tour-plan-nearby-towns.test.ts.
+ */
+const gridCells = new Map<string, [number, number]>();
+function posFor(city: string): [number, number] {
+  const known = gridCells.get(city);
+  if (known) return known;
+  const n = gridCells.size;
+  const cell: [number, number] = [20 + (n % 20) * 2, -120 + Math.floor(n / 20) * 2];
+  gridCells.set(city, cell);
+  return cell;
+}
+
 function lead(id: string, name: string, location: Record<string, unknown>) {
   return {
     id,
     name,
-    location: { pos: [40, -80], ...location },
+    location: { pos: posFor(String(location.city ?? "")), ...location },
     recommended_contact: null,
     split_ai_summary: { next_step: "Worth a visit" },
   };
