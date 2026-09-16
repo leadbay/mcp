@@ -34,6 +34,11 @@ import {
   type McpSubmitResponse,
 } from "./_mcp-job-helpers.js";
 import { detectCountryLocations } from "./_country-guard.js";
+import {
+  fetchSectorTaxonomy,
+  resolveSectorValues,
+  type SectorResolution,
+} from "./_sector-resolver.js";
 import { leadbay_find_new_leads as FIND_NEW_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface FindNewLeadsParams {
@@ -87,6 +92,117 @@ function sortFilterLists(
   return out;
 }
 
+/** The API answers an unknown sector label with a `bad_request` naming the
+ *  field, which the client files as BAD_INPUT. Matching on the field name and
+ *  not on the rest of the sentence keeps the recovery narrow: if the wording
+ *  ever changes, the call falls back to today's 400 rather than to something
+ *  worse. */
+function isSectorRejection(err: unknown): boolean {
+  const e = err as { code?: unknown; message?: unknown } | null;
+  return (
+    !!e &&
+    e.code === "BAD_INPUT" &&
+    typeof e.message === "string" &&
+    e.message.includes("filters.sectors")
+  );
+}
+
+type SearchAttempt<T> =
+  | { ok: true; data: T; rewritten: Array<{ asked: string; used: string }> }
+  | { ok: false; choice: Record<string, unknown> };
+
+/**
+ * POST /mcp/search, and when the only thing wrong with the call is how a sector
+ * was spelled, fix it and send it again.
+ *
+ * The API matches `filters.sectors` as an exact label, so a scheduled agent
+ * writing "Professional Services" burns a failed call at the top of every run
+ * and never learns from the refusal, because it re-reads the tool description
+ * each time (product#4140). A word the taxonomy has no label for is answered
+ * with the labels to choose from, so the caller is never left with a 400 that
+ * tells it not to retry and gives it nothing to retry WITH.
+ */
+async function submitSearch<T>(
+  client: LeadbayClient,
+  body: Record<string, unknown>,
+  opts: { preSendSignal?: AbortSignal } | undefined,
+  ctx: ToolContext | undefined
+): Promise<SearchAttempt<T>> {
+  try {
+    return {
+      ok: true,
+      data: await client.request<T>("POST", "/mcp/search", body, opts),
+      rewritten: [],
+    };
+  } catch (err) {
+    const asked = (body.filters as { sectors?: unknown } | undefined)?.sectors;
+    if (!isSectorRejection(err) || !Array.isArray(asked) || asked.length === 0) {
+      throw err;
+    }
+    // The API names only the FIRST value it could not resolve, so re-read all
+    // of them: fixing one at a time would spend a call per bad sector. If the
+    // taxonomy itself is unreachable the caller keeps the answer about their
+    // sector, not a second error about our recovery.
+    const taxonomy = await fetchSectorTaxonomy(client, ctx).catch(() => {
+      throw err;
+    });
+    const fix = resolveSectorValues(asked as string[], taxonomy);
+    // Nothing here can name a better value — a taxonomy id that does not exist
+    // is the caller's own to correct, and answering it with an empty list of
+    // sectors to choose from would be an answer with nothing in it.
+    if (fix.unresolved.length === 0 && fix.rewritten.length === 0) throw err;
+    if (fix.unresolved.length > 0) return { ok: false, choice: sectorChoice(fix) };
+    // One retry is the whole budget. The labels come from the taxonomy itself,
+    // so a second refusal is not something a third spelling would fix.
+    const retried = { ...body, filters: { ...(body.filters as object), sectors: fix.values } };
+    return {
+      ok: true,
+      data: await client.request<T>("POST", "/mcp/search", retried, opts),
+      rewritten: fix.rewritten,
+    };
+  }
+}
+
+/** A rewritten sector is still a hard fence on the search, so the answer says
+ *  which label actually ran. Its own key, not `note`: the country guard already
+ *  owns `note` and the two can fire on the same call. */
+function sectorNote(
+  rewritten: Array<{ asked: string; used: string }>
+): { sectors_note: string; sectors_used: Array<{ asked: string; used: string }> } | undefined {
+  if (rewritten.length === 0) return undefined;
+  const pairs = rewritten.map((r) => `"${r.asked}" → "${r.used}"`).join(", ");
+  return {
+    sectors_note: `Leadbay's sector taxonomy spells these differently, so the search ran on ${pairs}. Tell the user which sector was searched.`,
+    sectors_used: rewritten,
+  };
+}
+
+/** Nothing was submitted and nothing was spent. The caller gets the exact
+ *  labels the API will accept — the closest ones first, then the registry's
+ *  top-level sections, which is where a word like "Professional Services" that
+ *  is in no label at all still has somewhere correct to land. */
+function sectorChoice(fix: SectorResolution): Record<string, unknown> {
+  const names = fix.unresolved.map((u) => `"${u.asked}"`).join(", ");
+  return {
+    mode: "needs_sector_choice",
+    submitted: false,
+    unresolved_sectors: fix.unresolved.map((u) => ({
+      asked: u.asked,
+      closest: u.closest.map((c) => c.name),
+    })),
+    sector_sections: fix.sections,
+    resolved_sectors: fix.rewritten,
+    hint:
+      `No sector in this workspace's taxonomy is named ${names || "that"}. ` +
+      "Nothing was submitted and nothing was spent. Re-call with a label copied " +
+      "character for character from `closest` or `sector_sections` (a section " +
+      "covers everything under it), or drop `filters.sectors` and put the wording " +
+      "in `query` / `example_lead.description` instead — the search then RANKS on " +
+      "it rather than fencing on it, which is usually what the user meant. " +
+      "`leadbay_list_sectors` returns the full taxonomy if none of these fit.",
+  };
+}
+
 export const findNewLeads: Tool<FindNewLeadsParams, any> = {
   name: "leadbay_find_new_leads",
   annotations: {
@@ -128,7 +244,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       filters: {
         type: "object",
         description:
-          "HARD constraints (the seed only shapes ranking). Sector/location labels resolve at submit; an unresolvable value is a 400 naming it.",
+          "HARD constraints (the seed only shapes ranking). Sector/location labels resolve at submit. `sectors` must be a label from Leadbay's own taxonomy (leadbay_list_sectors) — everyday wording like 'Professional Services' is not one; a spelling/plural slip is corrected for you, but a word with no label comes back as mode:'needs_sector_choice' with the labels to pick from. An unresolvable location is a 400 naming it.",
         properties: {
           sectors: { type: "array", items: { type: "string" } },
           locations: { type: "array", items: { type: "string" } },
@@ -372,26 +488,38 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     // `dry_run: true`. `dryRun` is a real boolean now, so `"false"` takes the
     // submit path with the gate in front of it, exactly like an omitted flag.
     if (dryRun === true) {
-      const forecast = await client.request<McpDryRunResponse>(
-        "POST",
-        "/mcp/search",
-        body
+      const attempt = await submitSearch<McpDryRunResponse>(
+        client,
+        body,
+        undefined,
+        ctx
       );
+      if (!attempt.ok) return { ...attempt.choice, ...countryNote, region: client.region };
       return {
         dry_run: true,
-        ...forecast,
+        ...attempt.data,
+        ...sectorNote(attempt.rewritten),
         ...countryNote,
         region: client.region,
       };
     }
 
     if (isPaid && !consented) {
-      const forecast = vetoed
-        ? null
-        : await client.request<McpDryRunResponse>("POST", "/mcp/search", {
-            ...body,
-            dry_run: true,
-          });
+      let forecast: McpDryRunResponse | null = null;
+      let quoteRewritten: Array<{ asked: string; used: string }> = [];
+      if (!vetoed) {
+        const attempt = await submitSearch<McpDryRunResponse>(
+          client,
+          { ...body, dry_run: true },
+          undefined,
+          ctx
+        );
+        // A quote that cannot name a real sector is not a quote to consent to,
+        // so the choice comes back BEFORE the user is asked to approve spend.
+        if (!attempt.ok) return { ...attempt.choice, ...countryNote, region: client.region };
+        forecast = attempt.data;
+        quoteRewritten = attempt.rewritten;
+      }
       return {
         mode: "needs_confirmation",
         submitted: false,
@@ -408,6 +536,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
         hint: vetoed
           ? "confirm:false vetoed the run — nothing was submitted. Re-call with confirm:true to proceed, or drop qualify/channels for a free search."
           : "Tell the user what will run and that it uses their plan's quota (no amounts, no money), get an explicit go-ahead, then re-call with confirm:true. For a free search instead: omit qualify and channels.",
+        ...sectorNote(quoteRewritten),
         ...countryNote,
         region: client.region,
       };
@@ -419,12 +548,14 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     // the wire it is deliberately left to finish: aborting mid-flight would
     // leave us unable to say whether the backend already committed the job,
     // charged for it, and claimed novelty on the leads.
-    const submit = await client.request<McpSubmitResponse>(
-      "POST",
-      "/mcp/search",
+    const attempt = await submitSearch<McpSubmitResponse>(
+      client,
       body,
-      { preSendSignal: ctx?.signal }
+      { preSendSignal: ctx?.signal },
+      ctx
     );
+    if (!attempt.ok) return { ...attempt.choice, ...countryNote, region: client.region };
+    const submit = attempt.data;
     const mocked = mockedSubmitPreview(
       submit,
       "leadbay_find_new_leads",
@@ -493,6 +624,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
               since: snapshot.next_since ?? null,
               suggested_wait_seconds: done ? 0 : 60,
             },
+      ...sectorNote(attempt.rewritten),
       ...countryNote,
       region: client.region,
     };
