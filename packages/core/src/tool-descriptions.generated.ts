@@ -4964,9 +4964,9 @@ domain is derived from it, consumer mailboxes ignored.
 
 Both \`resolution\` answers below are successes, not cards. \`"ambiguous"\`
 carries \`candidates[]\`: ask which one, never guess from \`score\`.
-\`"not_found"\` carries \`summary\` + \`would_help\`: neither their leads nor the
-registry has it, so say that, ask for the param it names, and call again. Do
-not offer an import before asking.
+\`"not_found"\` carries \`summary\` + \`next_step\`: nobody has it, so say that and
+do what \`next_step\` says — usually ask for the param \`would_help\` names, then
+call again. Do not offer an import before asking.
 
 ---
 
