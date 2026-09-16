@@ -255,7 +255,7 @@ jobs:
 
   release-outcome:
     name: Report a release that did not reach every surface
-    needs: [preflight-npm, publish-mcp, publish-mcp-registry]
+    needs: [publish-mcp, publish-mcp-registry]
     # `!cancelled()` rather than `success()` is the whole point. When
     # `publish-mcp` fails, `publish-mcp-registry` is SKIPPED for needing it, and
     # a skipped job reports nothing anywhere. mcp-v0.39.6 was tagged, lost its
