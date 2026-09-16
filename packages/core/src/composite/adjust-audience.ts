@@ -132,6 +132,22 @@ export function mergeFilter(
   const item = items[0] ?? { criteria: [] };
   const criteria: FilterCriterion[] = item.criteria ? [...item.criteria] : [];
 
+  // Include and exclude are contradictory on the same sector, so an id the
+  // caller just put on one side comes off the other (product#4148). Without
+  // this, "construction instead of manufacturing" leaves manufacturing
+  // included AND excluded, and the narrowing never happens.
+  const dropSectors = (fromExcluded: boolean, ids: string[]) => {
+    if (ids.length === 0) return;
+    const idx = criteria.findIndex(
+      (c) => c.type === "sector_ids" && !!c.is_excluded === fromExcluded
+    );
+    if (idx < 0) return;
+    const cur = criteria[idx] as Extract<FilterCriterion, { type: "sector_ids" }>;
+    const kept = (cur.sectors ?? []).filter((s) => !ids.includes(s));
+    if (kept.length === 0) criteria.splice(idx, 1);
+    else criteria[idx] = { ...cur, sectors: kept };
+  };
+
   // sector_ids (include) — merge into existing or add.
   if (toAddSectors.length > 0) {
     const idx = criteria.findIndex(
@@ -149,6 +165,7 @@ export function mergeFilter(
       });
     }
   }
+  dropSectors(true, toAddSectors);
 
   // sector_ids (exclude)
   if (toExcludeSectors.length > 0) {
@@ -167,6 +184,7 @@ export function mergeFilter(
       });
     }
   }
+  dropSectors(false, toExcludeSectors);
 
   // location_ids (include) — merge into existing or add. Mirrors sector_ids:
   // the backend echoes the resolved areas back in the FilterPayload.locations
