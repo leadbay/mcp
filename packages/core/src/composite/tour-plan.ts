@@ -78,12 +78,36 @@ function townName(value: string): string {
  */
 function cityHintCore(cityHint: string): { name: string; isCity: boolean } {
   const head = cityHint.split(",")[0] ?? "";
-  const expanded = expandAlias(head);
+
   // The alias table exists to say "this string names a city". When it fires,
   // the user named a town, so the regional fallback below must not run:
   // "Washington DC" expands to "Washington", and the state of Washington
   // would otherwise put a Redmond lead on a tour of the capital.
-  return { name: townName(expanded), isCity: expanded !== head };
+  //
+  // The WHOLE hint is tried before the leading segment, because "Washington,
+  // DC" is how an address spells a city the table already knows. Splitting on
+  // the comma first throws the "DC" away and leaves a bare "Washington", which
+  // also names a state (product#4150). Each form is tried as written and with
+  // the commas turned into spaces: the table holds "washington d.c." with its
+  // dots intact, so stripping all punctuation would lose that key, and it
+  // holds "washington dc", which only a comma stands between.
+  const withoutCommas = (v: string) => v.replace(/,/g, " ").replace(/\s+/g, " ").trim();
+  for (const form of [cityHint, head]) {
+    for (const candidate of [form.trim(), withoutCommas(form)]) {
+      const expanded = expandAlias(candidate);
+      if (expanded !== candidate) {
+        return { name: townName(expanded), isCity: true };
+      }
+    }
+  }
+
+  // An administrative prefix is itself the claim that this is a town. The
+  // `ambiguous_locations` recovery asks the agent to send the candidate's
+  // `name`, which is spelled "City of New York" or "Town of Islip", so without
+  // this a tour of New York City would fall back to the state and return
+  // Buffalo.
+  const prefixed = ADMIN_PREFIX.test(normalizeGeo(head));
+  return { name: townName(head), isCity: prefixed };
 }
 
 /**

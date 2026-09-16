@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.39.3 — 2026-09-15 — Writing a city the way you write an address works
+
+- **"Washington, DC" is the capital again.** Written with the comma, Claude read
+  only the first word and matched the state of Washington, so a tour of the
+  capital came back with companies in Seattle and Redmond. Written without the
+  comma it was already right. Both forms now mean the same city.
+- **Picking a city from a list of same-named places works too.** When Claude
+  asks which New York you meant and you pick one, it now keeps the companies in
+  that city instead of widening to the whole state.
+
 ## 0.39.2 — 2026-09-15 — A tour of Austin only shows companies in Austin
 
 - **The tour of a city no longer lists companies in other cities.** When you
