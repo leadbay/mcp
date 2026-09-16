@@ -239,6 +239,34 @@ describe("leadbay_tour_plan — Discover city filter (product#4138)", () => {
     expect(names(await tourPlan.execute(newClient(), { city: "LA" }) as any)).toEqual(["LA Co"]);
   });
 
+  it("a tour of Washington DC does not fall through to the state of Washington", async () => {
+    mockFanOut([
+      lead("d-1", "Redmond Co", { city: "Redmond", state: "Washington", country: "US" }),
+      lead("d-2", "Seattle Co", { city: "Seattle", state: "Washington", country: "US" }),
+    ]);
+
+    const result: any = await tourPlan.execute(newClient(), { city: "Washington DC" });
+
+    expect(result.discover_leads).toEqual([]);
+  });
+
+  // A name that is both a town and a state cannot be told apart from the
+  // corpus or from /geo/search, which returns "Washington" at level 4 and
+  // level 8, "Texas" and "Florida" likewise. The regional fallback wins, and
+  // the note says which field carried the match so the agent can say so too.
+  it("a bare state-or-city name falls back to the state, and the note says so", async () => {
+    mockFanOut([
+      lead("d-1", "Redmond Co", { city: "Redmond", state: "Washington", country: "US" }),
+      lead("d-2", "Seattle Co", { city: "Seattle", state: "Washington", country: "US" }),
+      lead("d-3", "Dallas Co", { city: "Dallas", state: "Texas", country: "US" }),
+    ]);
+
+    const result: any = await tourPlan.execute(newClient(), { city: "Washington" });
+
+    expect(names(result)).toEqual(["Redmond Co", "Seattle Co"]);
+    expect(result.discover_filter_note).toContain("by state/region");
+  });
+
   it("a bare city_id returns no Discover lead and names the argument that is missing", async () => {
     mockFanOut([
       lead("d-1", "Boston Co", { city: "Boston", state: "Massachusetts", country: "US" }),
@@ -248,7 +276,19 @@ describe("leadbay_tour_plan — Discover city filter (product#4138)", () => {
     const result: any = await tourPlan.execute(newClient(), { city_id: "6027" });
 
     expect(result.discover_leads).toEqual([]);
-    expect(result.discover_filter_note).toContain("Re-call with `city` set to the name of the area id 6027");
+    expect(result.discover_filter_note).toContain("passed an area id (6027) and no name");
+  });
+
+  it("an all-digit city is the area id it looks like, not a town called 38112", async () => {
+    mockFanOut([
+      lead("d-1", "Boston Co", { city: "Boston", state: "Massachusetts", country: "US" }),
+      lead("d-2", "Chicago Co", { city: "Chicago", state: "Illinois", country: "US" }),
+    ]);
+
+    const result: any = await tourPlan.execute(newClient(), { city: "38112" });
+
+    expect(result.discover_leads).toEqual([]);
+    expect(result.discover_filter_note).toContain("passed an area id (38112) and no name");
   });
 
   it("city_id plus city scopes the follow-ups by id and the Discover leads by name", async () => {

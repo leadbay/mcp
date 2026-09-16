@@ -76,8 +76,14 @@ function townName(value: string): string {
  * through the same alias table the Monitor half resolves with, because the
  * backend's admin-area index answers nothing for them.
  */
-function cityHintCore(cityHint: string): string {
-  return townName(expandAlias(cityHint.split(",")[0] ?? ""));
+function cityHintCore(cityHint: string): { name: string; isCity: boolean } {
+  const head = cityHint.split(",")[0] ?? "";
+  const expanded = expandAlias(head);
+  // The alias table exists to say "this string names a city". When it fires,
+  // the user named a town, so the regional fallback below must not run:
+  // "Washington DC" expands to "Washington", and the state of Washington
+  // would otherwise put a Redmond lead on a tour of the capital.
+  return { name: townName(expanded), isCity: expanded !== head };
 }
 
 /**
@@ -110,15 +116,16 @@ function filterDiscoverByCity(
   leads: any[],
   cityHint: string | undefined,
 ): { leads: any[]; matchedOn: "city" | "state" | null } {
-  const hint = cityHint ? cityHintCore(cityHint) : "";
-  if (!hint) return { leads, matchedOn: null };
+  const hint = cityHint ? cityHintCore(cityHint) : { name: "", isCity: false };
+  if (!hint.name) return { leads, matchedOn: null };
 
   const cityOf = (l: any) =>
     typeof l?.location?.city === "string" ? townName(l.location.city) : "";
-  const byCity = leads.filter((l) => cityOf(l) === hint);
+  const byCity = leads.filter((l) => cityOf(l) === hint.name);
   if (byCity.length > 0) return { leads: byCity, matchedOn: "city" };
+  if (hint.isCity) return { leads: [], matchedOn: "city" };
 
-  const byState = leads.filter((l) => stateFieldOf(l) === hint);
+  const byState = leads.filter((l) => stateFieldOf(l) === hint.name);
   return { leads: byState, matchedOn: "state" };
 }
 
@@ -452,15 +459,19 @@ export const tourPlan: Tool<TourPlanParams> = {
     // Filter Discover leads by client-side city match. The Monitor side
     // already filtered server-side, so we don't re-filter those.
     //
-    // A bare `city_id` carries no name, and the backend has no id-to-name
-    // lookup, so there is nothing to compare a lead's city against. The
-    // Monitor half is still correctly scoped server-side; the Discover half
-    // returns empty rather than handing over the whole lens as if it were the
-    // itinerary, which is the shape of product#4138.
-    const idOnly = Boolean(params.city_id) && !params.city;
+    // An id carries no name, and the backend has no id-to-name lookup, so
+    // there is nothing to compare a lead's city against. `city` is an id too
+    // when it is all digits — the geo resolver reads it that way, and a real
+    // user sent `38112` on prod. The Monitor half is still correctly scoped
+    // server-side; the Discover half returns empty rather than handing over
+    // the whole lens as if it were the itinerary (product#4138).
+    const cityName =
+      params.city && !/^\d+$/.test(params.city.trim()) ? params.city : undefined;
+    const knownId = params.city_id ?? (cityName ? undefined : params.city);
+    const idOnly = Boolean(knownId) && !cityName;
     const { leads: filtered, matchedOn } = idOnly
       ? { leads: [] as any[], matchedOn: null as "city" | "state" | null }
-      : filterDiscoverByCity(rawDiscover, params.city);
+      : filterDiscoverByCity(rawDiscover, cityName);
     const discoverLeads = filtered.slice(0, discoverCount);
 
     // Report only the leads this itinerary actually shows. pull_leads
@@ -487,8 +498,8 @@ export const tourPlan: Tool<TourPlanParams> = {
     // did.
     let filterNote: string;
     if (idOnly) {
-      filterNote = `Discover leads need the NAME of the place, and this call passed only \`city_id\`. Re-call with \`city\` set to the name of the area id ${params.city_id} (keep \`city_id\` so the Monitor half stays on the area you picked). The follow-ups below are already scoped to it.`;
-    } else if (!params.city) {
+      filterNote = `Discover leads need the NAME of the place, and this call passed an area id (${knownId}) and no name. Re-call with \`city\` set to the name of that area, keeping \`city_id\` so the Monitor half stays on the area you picked. The follow-ups below are already scoped to it.`;
+    } else if (!cityName) {
       filterNote = `No city filter applied; returning top ${discoverLeads.length} Discover leads.`;
     } else if (matchedOn === null) {
       filterNote = `No usable city filter in '${params.city}'; returning top ${discoverLeads.length} Discover leads.`;
