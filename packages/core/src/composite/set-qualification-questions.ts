@@ -3,6 +3,11 @@ import type { Tool, ToolContext, AiAgentQuestionPayload } from "../types.js";
 
 import { leadbay_set_qualification_questions as SET_QUALIFICATION_QUESTIONS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
+// Backend cap (verified live): an org may hold at most this many qualification
+// questions. Exported so the read tool reports free slots off the same number —
+// a backend cap with two sources of truth drifts the first time it moves.
+export const MAX_QUESTIONS = 5;
+
 interface SetQualificationQuestionsParams {
   // Full replacement list. Mutually exclusive with add/remove.
   questions?: string[];
@@ -185,10 +190,6 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
       return true;
     });
 
-    // Backend cap (verified live): an org may hold at most MAX_QUESTIONS
-    // qualification questions. Pre-check so the agent gets an actionable
-    // message instead of a raw 400 from the org POST.
-    const MAX_QUESTIONS = 5;
     if (next.length > MAX_QUESTIONS) {
       throw client.makeError(
         "QUALIFICATION_QUESTIONS_LIMIT",

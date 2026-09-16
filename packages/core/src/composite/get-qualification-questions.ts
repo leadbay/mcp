@@ -8,6 +8,7 @@ import type {
 } from "../types.js";
 
 import { leadbay_get_qualification_questions as GET_QUALIFICATION_QUESTIONS_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { MAX_QUESTIONS } from "./set-qualification-questions.js";
 
 // Org-level "qualification questions" = the AI-agent questions Leadbay scores
 // every lead against. Returns the question catalog plus the two settings the
@@ -110,7 +111,6 @@ export const getQualificationQuestions: Tool<Record<string, never>> = {
         ? promptResult.value?.prompt ?? null
         : null;
 
-    const MAX_QUESTIONS = 5;
     let hint: string | undefined;
     if (questions.length >= MAX_QUESTIONS) {
       // The ceiling has to be stated in the turn the user asks for an addition,
