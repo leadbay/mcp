@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — When you say what makes a lead good, your settings change
+## 0.39.5 — 2026-09-16 — When you say what makes a lead good, your settings change
 
 - **Telling Claude what you want now changes your Leadbay settings, not just
   the current list.** Saying "écarte les sociétés liquidées" or "our best
