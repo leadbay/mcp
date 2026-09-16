@@ -55,11 +55,31 @@ def api(base, path, token=None, body=None, timeout=60):
     return {'at': now(), 'path': path, 'status': status, 'body': value}
 
 
+def active_lens(me, lenses):
+    """The lens leadbay_pull_leads reads, resolved the same way the MCP resolves it."""
+    if isinstance(me, dict) and me.get('last_requested_lens') is not None:
+        return me['last_requested_lens']
+    if isinstance(lenses, list):
+        for key in ['is_last_active', 'is_default', 'default']:
+            chosen = next((l for l in lenses if isinstance(l, dict) and l.get(key)), None)
+            if chosen:
+                return chosen.get('id')
+        if lenses and isinstance(lenses[0], dict):
+            return lenses[0].get('id')
+    return None
+
+
 def snapshot(base, token):
     me = api(base, '/users/me', token)
     org = me['body'].get('organization', {}) if isinstance(me['body'], dict) else {}
     facts = {'/users/me': me}
     for path in ['/lenses', '/monitor?count=20&page=0']:
+        facts[path] = api(base, path, token)
+    # A case that declares Discover leads — their cities, their scores — can only be
+    # proven by reading the active lens's wishlist here, in evidence of kind state-before.
+    lens = active_lens(me['body'], facts['/lenses']['body'])
+    if lens is not None:
+        path = f'/lenses/{lens}/leads/wishlist?count=50&page=0&contacts=true'
         facts[path] = api(base, path, token)
     billing = api(base, f"/organizations/{org.get('id')}/quota_status", token) if org.get('id') else None
     return facts, billing, org
