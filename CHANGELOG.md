@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.39.2 — 2026-09-15 — A tour of Austin only shows companies in Austin
+
+- **The tour of a city no longer lists companies in other cities.** When you
+  said you were visiting Austin, Claude matched the two letters "US" inside
+  "Austin" against every American company and put all of them on your
+  itinerary and your map. It now keeps the companies whose own town is the
+  one you named, reads a wider ask like "Texas" as the region it is, and
+  tells you when it has no new prospect in that city instead of filling the
+  list from somewhere else.
+
 ## 0.39.1 — 2026-09-15 — Your lead list moves on after you have read it
 
 - **Today's leads are no longer yesterday's leads.** Leadbay replaces part of

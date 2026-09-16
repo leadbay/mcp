@@ -8,9 +8,9 @@
  *
  * Discover leads don't have a server-side geo filter (the wishlist API
  * is lens-wide). We pull a larger page than requested, then filter
- * client-side by city/state match. This is a best-effort filter;
- * downstream the prompt should explicitly call out which discover
- * leads came from the requested city vs. nearby.
+ * client-side on the lead's own city, falling back to its state only
+ * when no city matched. `discover_filter_note` reports which field
+ * carried the match so the prompt can be honest about coverage.
  */
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
@@ -37,14 +37,83 @@ const DEFAULT_FOLLOWUPS_COUNT = 6;
 const DEFAULT_DISCOVER_COUNT = 6;
 const DISCOVER_OVER_PULL = 30; // pull this many then filter to discover_count
 
-function cityMatches(lead: any, cityHint: string | undefined): boolean {
-  if (!cityHint) return true;
-  const hint = cityHint.toLowerCase();
+/**
+ * Lowercase, drop accents, and reduce every run of non-alphanumerics to a
+ * single space. "Saint-Étienne", "saint etienne" and "SAINT ETIENNE" all
+ * become "saint etienne", so a hyphen or an accent in either the hint or the
+ * payload no longer decides the match.
+ */
+function normalizeGeo(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Whole-word containment. "city of new york" holds "new york"; "boston" does
+ * NOT hold "us", and "york" does not hold "new york". The naked substring test
+ * this replaces made a two-letter country code match any city name containing
+ * those letters, so a tour of Austin returned every US lead (product#4138).
+ */
+function holdsPhrase(haystack: string, phrase: string): boolean {
+  if (!haystack || !phrase) return false;
+  return ` ${haystack} `.includes(` ${phrase} `);
+}
+
+/**
+ * The most specific part of the hint. An agent passes "Austin, TX" or
+ * "Paris, France" as often as a bare city name, and the tour is of the first
+ * segment; the rest is the state and country the segment already implies.
+ */
+function cityHintCore(cityHint: string): string {
+  return normalizeGeo(cityHint.split(",")[0] ?? "");
+}
+
+/** Fields that name the lead's own town. `full` is a street address line. */
+function cityFieldsOf(lead: any): string[] {
   const loc = lead?.location ?? {};
-  const haystacks = [loc.city, loc.state, loc.country, loc.full]
-    .filter((v) => typeof v === "string")
-    .map((v: string) => v.toLowerCase());
-  return haystacks.some((h) => h.includes(hint) || hint.includes(h));
+  return [loc.city, loc.full]
+    .filter((v: unknown): v is string => typeof v === "string")
+    .map(normalizeGeo);
+}
+
+/**
+ * The lead's region. Kept OFF the city pass on purpose: every lead in the
+ * state of New York carries `state: "New York"`, so matching it against a
+ * city hint puts Buffalo and Albany on a tour of New York City. It is only
+ * consulted when no lead's city matched, which is what a regional hint
+ * ("Texas", "Île-de-France") looks like.
+ */
+function stateFieldOf(lead: any): string {
+  const state = lead?.location?.state;
+  return typeof state === "string" ? normalizeGeo(state) : "";
+}
+
+/**
+ * Keep the Discover leads that are in the requested place.
+ *
+ * Two passes. Cities first, because a city hint is what a tour almost always
+ * carries. Only when nothing matched by city do we read the hint as a region
+ * and try the state field — which is also how the leads that carry a state
+ * and no city get picked up.
+ */
+function filterDiscoverByCity(
+  leads: any[],
+  cityHint: string | undefined,
+): { leads: any[]; matchedOn: "city" | "state" | null } {
+  const hint = cityHint ? cityHintCore(cityHint) : "";
+  if (!hint) return { leads, matchedOn: null };
+
+  const byCity = leads.filter((l) =>
+    cityFieldsOf(l).some((f) => holdsPhrase(f, hint)),
+  );
+  if (byCity.length > 0) return { leads: byCity, matchedOn: "city" };
+
+  const byState = leads.filter((l) => holdsPhrase(stateFieldOf(l), hint));
+  return { leads: byState, matchedOn: "state" };
 }
 
 type TourMode = "★ Customer" | "★ Qualified" | "✦ New";
@@ -370,7 +439,10 @@ export const tourPlan: Tool<TourPlanParams> = {
 
     // Filter Discover leads by client-side city match. The Monitor side
     // already filtered server-side, so we don't re-filter those.
-    const filtered = rawDiscover.filter((l: any) => cityMatches(l, params.city));
+    const { leads: filtered, matchedOn } = filterDiscoverByCity(
+      rawDiscover,
+      params.city,
+    );
     const discoverLeads = filtered.slice(0, discoverCount);
 
     // Report only the leads this itinerary actually shows. pull_leads
@@ -390,9 +462,21 @@ export const tourPlan: Tool<TourPlanParams> = {
       );
     }
 
-    const filterNote = params.city
-      ? `Matched ${filtered.length}/${rawDiscover.length} Discover leads to '${params.city}'; returning top ${discoverLeads.length}.`
-      : `No city filter applied; returning top ${discoverLeads.length} Discover leads.`;
+    // Say which field carried the match, and say plainly when nothing did.
+    // The filter used to accept every lead in the country, so a zero here is
+    // the honest answer the agent never used to get: the lens holds no
+    // prospect in this city, and nearby ones must not be presented as if it
+    // did.
+    let filterNote: string;
+    if (!params.city) {
+      filterNote = `No city filter applied; returning top ${discoverLeads.length} Discover leads.`;
+    } else if (matchedOn === null) {
+      filterNote = `No usable city filter in '${params.city}'; returning top ${discoverLeads.length} Discover leads.`;
+    } else if (filtered.length === 0) {
+      filterNote = `No Discover lead in the active lens is in '${params.city}' (checked ${rawDiscover.length} candidates by city, then by state/region). Say so; do NOT present leads from elsewhere as if they were in '${params.city}'.`;
+    } else {
+      filterNote = `Matched ${filtered.length}/${rawDiscover.length} Discover leads to '${params.city}' by ${matchedOn === "city" ? "city" : "state/region"}; returning top ${discoverLeads.length}.`;
+    }
 
     return {
       city: params.city ?? null,
