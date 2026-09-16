@@ -60,12 +60,12 @@ def active_lens(me, lenses):
     if isinstance(me, dict) and me.get('last_requested_lens') is not None:
         return me['last_requested_lens']
     if isinstance(lenses, list):
-        for key in ['is_last_active', 'is_default', 'default']:
-            chosen = next((l for l in lenses if isinstance(l, dict) and l.get(key)), None)
-            if chosen:
-                return chosen.get('id')
-        if lenses and isinstance(lenses[0], dict):
-            return lenses[0].get('id')
+        rows = [l for l in lenses if isinstance(l, dict)]
+        chosen = (next((l for l in rows if l.get('is_last_active')), None)
+                  or next((l for l in rows if l.get('is_default') or l.get('default')), None)
+                  or (rows[0] if rows else None))
+        if chosen:
+            return chosen.get('id')
     return None
 
 
