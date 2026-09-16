@@ -392,10 +392,10 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
     }
 
     // Counters-only path: the caller gave an id but no leads, the notification has no
-    // counters, and its bulk's leads could not be recovered above (no anchor, the read
-    // failed, or the bulk is larger than a status poll may fan out over). `in_progress`
-    // is then the whole job state the backend holds — answer with it rather than raising,
-    // so the id-only poll still tells the agent whether the job is over.
+    // counters, and its bulk's leads could not be recovered above — the listing failed,
+    // or the bulk is larger than a status poll may fan out over. `in_progress` is then
+    // the whole job state the backend holds, so answer with it rather than raising: the
+    // id-only poll still tells the agent whether the job is over.
     if (!bp) {
       const isReportRead = inProgress === false;
       const creditsRemaining = isReportRead ? await readCreditsRemaining(client, true) : null;
