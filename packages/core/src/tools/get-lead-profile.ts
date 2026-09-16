@@ -1,6 +1,7 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool } from "../types.js";
+import type { Tool, ToolContext } from "../types.js";
 import { leadbay_get_lead_profile as GET_LEAD_PROFILE_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { reportLeadInteractions } from "../interactions.js";
 import type {
   LeadPayload,
   AiAgentResponse,
@@ -75,17 +76,24 @@ export const getLeadProfile: Tool<GetLeadProfileParams> = {
     },
     required: ["lead", "contacts"],
   },
-  execute: async (client: LeadbayClient, params: GetLeadProfileParams) => {
+  execute: async (
+    client: LeadbayClient,
+    params: GetLeadProfileParams,
+    ctx?: ToolContext
+  ) => {
     const lensId = params.lensId ?? (await client.resolveDefaultLens());
 
     // Mark the lead as seen+clicked in the user's lens so it ages out of
     // the 'new' Discover view and the lens refresh pipeline can deliver
     // fresh leads tomorrow. Fire-and-forget: a failure here must NOT
     // break the profile fetch.
-    void client.request<void>("POST", "/interactions", [
-      { type: "LEAD_SEEN",    leadId: params.leadId, lensId: String(lensId) },
-      { type: "LEAD_CLICKED", leadId: params.leadId, lensId: String(lensId) },
-    ]).catch(() => { /* swallow — interaction logging is best-effort */ });
+    reportLeadInteractions(
+      client,
+      lensId,
+      [params.leadId],
+      ["LEAD_SEEN", "LEAD_CLICKED"],
+      ctx?.logger
+    );
 
     const [leadResult, qualResult, contactsResult, paidContactsResult, webFetchResult] =
       await Promise.allSettled([

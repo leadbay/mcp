@@ -16,6 +16,7 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 import { pullFollowups } from "./pull-followups.js";
 import { pullLeads } from "./pull-leads.js";
+import { reportLeadInteractions } from "../interactions.js";
 import {
   countryLocationStatus,
   detectCountryLocationsIn,
@@ -313,7 +314,11 @@ export const tourPlan: Tool<TourPlanParams> = {
         },
         ctx,
       ),
-      pullLeads.execute(client, { count: DISCOVER_OVER_PULL }, ctx),
+      pullLeads.execute(
+        client,
+        { count: DISCOVER_OVER_PULL, _reportSeen: false },
+        ctx,
+      ),
     ]);
 
     // Monitor side: surface ambiguity verbatim if the city was ambiguous.
@@ -367,6 +372,23 @@ export const tourPlan: Tool<TourPlanParams> = {
     // already filtered server-side, so we don't re-filter those.
     const filtered = rawDiscover.filter((l: any) => cityMatches(l, params.city));
     const discoverLeads = filtered.slice(0, discoverCount);
+
+    // Report only the leads this itinerary actually shows. pull_leads
+    // over-pulls 30 and we keep the city matches, so letting it report all 30
+    // would age out leads the user never read.
+    const pulledLensId =
+      leadsResult.status === "fulfilled"
+        ? (leadsResult.value as any)?.lens?.id
+        : null;
+    if (pulledLensId != null) {
+      reportLeadInteractions(
+        client,
+        pulledLensId,
+        discoverLeads.map((l: any) => l.id),
+        ["LEAD_SEEN"],
+        ctx?.logger,
+      );
+    }
 
     const filterNote = params.city
       ? `Matched ${filtered.length}/${rawDiscover.length} Discover leads to '${params.city}'; returning top ${discoverLeads.length}.`

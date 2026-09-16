@@ -10,6 +10,7 @@ import type {
   PaginatedActivities,
 } from "../types.js";
 import { reshapeWebFetchContent } from "./_web-fetch-helpers.js";
+import { reportLeadInteractions } from "../interactions.js";
 
 import { leadbay_research_lead_by_id as RESEARCH_LEAD_BY_ID_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -470,10 +471,13 @@ export const researchLeadById: Tool<ResearchLeadByIdParams> = {
     // Discover "new" view and the lens-refresh pipeline can deliver
     // fresh leads on next pull. Fire-and-forget: failure here must NOT
     // break research_lead_by_id.
-    void client.request<void>("POST", "/interactions", [
-      { type: "LEAD_SEEN",    leadId, lensId: String(lensId) },
-      { type: "LEAD_CLICKED", leadId, lensId: String(lensId) },
-    ]).catch(() => { /* swallow */ });
+    reportLeadInteractions(
+      client,
+      lensId,
+      [leadId],
+      ["LEAD_SEEN", "LEAD_CLICKED"],
+      _ctx?.logger
+    );
 
     // Fan-out the five sub-fetches in parallel. Soft-fail on the additive
     // ones (qualification, contacts, web_fetch, activities).
