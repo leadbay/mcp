@@ -1,5 +1,25 @@
 # Changelog — @leadbay/mcp
 
+## 0.39.0 — 2026-09-15
+
+Two changes merged since 0.38.2 (#231, #232), both product#4131.
+
+- **A list of companies is one `leadbay_qualify_leads` call** (#231). "For each
+  of these companies" routed to `leadbay_research_lead_by_name_fuzzy`, once per
+  company: a first-time FR user sent 4,026 such calls in 84 minutes on
+  2026-09-14 and never came back. A list now goes to `leadbay_qualify_leads`
+  with `qualify: false`, which is free and takes 500 names per call. That free
+  identity pass answers with one row per company, in the user's order, with the
+  website and the company LinkedIn, plus counts of what Leadbay found and what
+  it lacks. The same 82 broker names on FR prod went from 269,542 to 20,846
+  characters. Past 100 rows, `leadbay_lead_job_status(compact: true, offset)`
+  pages the rest. Web research on the companies with no website is the last
+  NEXT STEPS row, behind the existing quote-then-confirm gate.
+- **A local install saves the full list as a CSV** (#232). `bin.ts` passes a
+  `saveFile` capability through `ToolContext`; the hosted server does not pass
+  it, so it writes no file. The CSV lands in `~/Downloads`, or `~` when there
+  is no Downloads folder, and its path comes back in `file`.
+
 ## 0.38.2 — 2026-09-14
 
 Four fixes merged since 0.38.1 (#224, #227, #228, #229).

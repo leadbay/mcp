@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.39.0 — 2026-09-15 — A list of companies gets one answer
+
+- **"For each of these companies, give me the website and the LinkedIn" is now
+  one request.** Claude used to look the companies up one at a time. It now
+  sends the whole list at once, 500 companies per call, and tells you how many
+  of them Leadbay knows, how many have a website and how many have a LinkedIn.
+- **You get the whole list as a spreadsheet** when Leadbay runs on your own
+  computer. The chat shows the first 100 companies. The file in your Downloads
+  folder holds every one of them.
+- **For the companies with no website, Claude can offer to search the web.** It
+  never starts that on its own. It asks first, and shows you what the work
+  needs.
+
 ## 0.38.2 — 2026-09-14 — Claude mentions your quota only when it matters
 
 - **Claude mentions your quota only when it matters.** It shows it when you
