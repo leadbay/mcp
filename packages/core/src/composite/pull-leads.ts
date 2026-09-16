@@ -7,6 +7,7 @@ import type {
   LeadPayload,
 } from "../types.js";
 import { resolveLeadOrder } from "../lead-order.js";
+import { reportLeadInteractions } from "../interactions.js";
 import { diagnoseEmptyLens } from "./_empty-lens-reason.js";
 
 import { leadbay_pull_leads as PULL_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -367,6 +368,18 @@ export const pullLeads: Tool<PullLeadsParams> = {
     const res = await client.request<WishlistResponse>(
       "GET",
       `/lenses/${lensId}/leads/wishlist?count=${count}&page=${page}&contacts=true${orderQs}`
+    );
+
+    // Report the leads we are about to show as seen — the same thing the web
+    // app does when a lead scrolls into view. Without it `stale_days` stays
+    // NULL on every lead in the lens and the daily replacement job has nothing
+    // to rotate, so the user is handed the identical list every day.
+    reportLeadInteractions(
+      client,
+      lensId,
+      res.items.map((lead) => lead.id),
+      ["LEAD_SEEN"],
+      ctx?.logger
     );
 
     // Fan-out qualification reads. Concurrency is capped by the client's

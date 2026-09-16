@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.39.1 — 2026-09-15 — Your lead list moves on after you have read it
+
+- **Today's leads are no longer yesterday's leads.** Leadbay replaces part of
+  your list every day, but only for leads it knows you have already worked
+  through. Claude never told it. One customer read the same 60 companies for
+  76 days in a row. Claude now reports the leads it shows you, so the list
+  refreshes the next morning.
+
 ## 0.39.0 — 2026-09-15 — A list of companies gets one answer
 
 - **"For each of these companies, give me the website and the LinkedIn" is now

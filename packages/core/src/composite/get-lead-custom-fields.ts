@@ -8,6 +8,7 @@ import type {
 } from "../types.js";
 
 import { leadbay_get_lead_custom_fields as GET_LEAD_CUSTOM_FIELDS_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { reportLeadInteractions } from "../interactions.js";
 
 interface GetLeadCustomFieldsParams {
   leadId: string;
@@ -83,14 +84,13 @@ export const getLeadCustomFields: Tool<GetLeadCustomFieldsParams> = {
     // Mark the lead as seen+clicked in the user's lens (parity with
     // get-lead-profile / research-lead-by-id). Fire-and-forget: a failure
     // here must NOT break the field read.
-    void client
-      .request<void>("POST", "/interactions", [
-        { type: "LEAD_SEEN", leadId: params.leadId, lensId: String(lensId) },
-        { type: "LEAD_CLICKED", leadId: params.leadId, lensId: String(lensId) },
-      ])
-      .catch(() => {
-        /* swallow — interaction logging is best-effort */
-      });
+    reportLeadInteractions(
+      client,
+      lensId,
+      [params.leadId],
+      ["LEAD_SEEN", "LEAD_CLICKED"],
+      ctx?.logger
+    );
 
     const lead = await client.request<LeadPayload>(
       "GET",
