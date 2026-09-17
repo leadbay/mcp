@@ -50,14 +50,15 @@ annotations:
 ---
 Pull KNOWN leads from the user's Monitor view — the re-engagement entry point.
 
-Backend: wraps `GET /1.6/monitor?personal=&liked=&filtered=&count=&page=` plus, when `set_filter` is supplied, a preceding `POST /1.6/monitor/filter`. The Monitor filter is a single `FilterItem` per user — refreshing restores it.
+Backend: wraps `GET /1.6/monitor` plus, when `set_filter` is supplied, a preceding `POST /1.6/monitor/filter`. The Monitor filter is a single `FilterItem` per user, server-persisted across sessions.
 
-**Filter mechanism — store-then-apply.** Pass `set_filter: { criteria: FilterCriterion[] }` to overwrite the server-stored filter, then the composite re-fetches with `filtered:true`. `FilterCriterion` is the backend's `anyOf` over 10 typed criteria: `size`, `keywords`, `sector_ids`, `location_ids`, `custom_field`(`_comparison`), `yc`, `liked`, `last_action` (MonitorActionType enum), `last_action_date` (with `last_days`).
+**Filter mechanism — store-then-apply.** Pass `set_filter: { criteria: FilterCriterion[] }` to overwrite the server-stored filter, then the composite re-fetches with `filtered:true`. Every `FilterCriterion` MUST carry a `type` discriminator — `{sector_ids: [...]}` is silently dropped, `{type: "sector_ids", sectors: [...]}` is not. Types: `size`, `keywords`, `sector_ids`, `location_ids`, `custom_field`(`_comparison`), `yc`, `liked`, `last_action`, `last_action_date`.
 
 Practical mapping from user phrasing to criterion:
 
 | User phrase | Criterion |
 |---|---|
+| "supermarket leads" | `{type: "sector_ids", sectors: ["5134"]}` |
 | "leads in Lyon" | `{type: "location_ids", locations: [<admin_area_id>]}` |
 | "healthcare staffing" | `{type: "keywords", keywords: ["healthcare", "staffing"]}` |
 | "leads I haven't touched in 30 days" | `{type: "last_action_date", last_days: 30}` |
@@ -65,7 +66,7 @@ Practical mapping from user phrasing to criterion:
 | "leads 50–200 employees" | `{type: "size", sizes: [{min: 50, max: 200}]}` |
 | "Y Combinator companies" | `{type: "yc"}` |
 
-Geo filtering needs `admin_area_id` resolution — backend rejects free-text in `location_ids`. Pass `city: "<free-text>"` and the composite calls `/geo/search` internally, picks the best match, merges its id into `set_filter`. Ambiguous matches return `status: "ambiguous_locations"` + `location_ambiguities[]` — pick an id and re-call with `city_id`.
+Geo filtering needs `admin_area_id` resolution — `location_ids` rejects free text. Pass `city` and the composite resolves it via `/geo/search`. Ambiguous matches return `status: "ambiguous_locations"` — pick an id and re-call with `city_id`.
 
 In `keywords` a place name is a TEXT-MATCH on company descriptions (≈0 hits), not a filter — never fall back to it, nor to the unfiltered view, when a place is ambiguous.
 

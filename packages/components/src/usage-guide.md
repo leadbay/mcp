@@ -28,6 +28,8 @@ then on every change — render your own DOM from it.
 | Call | Returns | For |
 |---|---|---|
 | `lb.campaigns(ask)` | field | a campaign `<select>`, options from `leadbay_list_campaigns` |
+| `lb.segmentCount({sectorIds, city, ask})` | `Promise<{total, applied, trusted}>` | how many Monitor leads match one sector/location — `count: 1` + `pagination.total`, so a segment costs one cheap call |
+| `lb.portfolioSectors({sample, sectors, ask})` | `Promise<PortfolioSector[]>` | which sectors the user ACTUALLY holds — samples one page of followups, tallies `sector_id`, resolves names against an embedded taxonomy |
 | `lb.outreach({leadId, ask, status?, note?})` | action | log a call → `report_outreach` (verification + `_triggered_by` baked in) |
 | `lb.note({leadId, note})` | action | add a note → `add_note` |
 | `lb.like(leadId)` / `lb.dislike(leadId)` | action | taste signal |
@@ -62,6 +64,23 @@ field the website's status selector writes. A won deal is a LEAD STATUS;
 "she didn't pick up" is an EPILOGUE. Setting one never sets the other, so when
 the user reports both in one breath, fire both actions.
 
+**Rendering helpers** — the only three things the library draws, and only
+because hand-rolling them goes wrong the same way every time: an SVG whose
+points escape the viewBox, a series that draws empty axes when it is empty, a
+leaderboard whose digits do not line up. Each returns a DETACHED element you
+place; none injects itself.
+
+| Call | Returns | For |
+|---|---|---|
+| `lb.sparkline(points, {label, emptyTitle, emptyHint})` | `<svg class="lb-chart">` or an `lb-empty` block | a trend from `[{date, count}]`, themed so it reads in light and dark |
+| `lb.tiles([{label, value}])` | `<div class="lb-tiles">` | headline figures — only the few that ARE the point |
+| `lb.leaderboard({rows, columns, sortKey, sortDir, cell})` | a scroll-wrapped `lb-table` | a sortable table; `aria-sort` + keyboard headers, `num` columns tabular and end-aligned |
+
+`sparkline` returns the empty block INSTEAD of a chart when the series is
+empty — an empty window is a real answer, and empty axes read as broken.
+`leaderboard` does the same for no rows. Sorting there is client-side by
+design: a roll-up arrives whole, unlike a lead list the backend pages.
+
 **Binding sugar** (optional; binds a view-model to YOUR native element, no style):
 `lb.bindSelect(selectEl, field)` (populates options + value), `lb.bindValue(inputEl, field)`,
 `lb.bindAction(buttonEl, action)`. They set `data-lb-state`
@@ -84,9 +103,20 @@ lb.styles();   // idempotent — safe to call per row
 | Class | For |
 |---|---|
 | `lb-card` / `lb-card-head` / `lb-title` / `lb-sub` | a lead card + its header |
+| `lb-sections` / `lb-section` / `lb-sec-title` | the card's section stack (16px between, 8px within) and a section's uppercase title |
+| `lb-card-top` / `lb-lead-title` / `lb-card-foot` | header row (leading control · title · trailing controls), the bold underlined company name, and the footer's leading-action/spacer/trailing-link row |
+| `lb-tags-plain` / `lb-tags-intent` / `lb-tags-empty` | firmographic tags (grey: what the company IS) and intent tags (teal: what the qualifier FOUND), plus the honest empty state for either |
+| `lb-toolbar` / `lb-field` / `lb-field-label` / `lb-field-inline` | the bar above a deck: three groups (tally · narrow · act), and a labelled control whose caption stacks above it — `lb-field-inline` keeps a checkbox beside its words |
+| `lb-tally` / `lb-status` / `lb-status-dot` | the row count (tabular, so it does not jitter as filters change) and a connection indicator whose live/dead states differ in SHAPE, not only colour |
+| `lb-pager` / `lb-pager-range` | the pager below a deck — prev/next plus an honest "21–40 of 60" range; pair it with `data-lb-state="loading"` on the deck so a page flip dims the old rows instead of blanking them |
+| `lb-tiles` / `lb-tile` / `lb-tile-label` / `lb-tile-value` | a row of figures for a dashboard's headline numbers — only for the few that ARE the point |
+| `lb-chart` (+ `lb-chart-line` / `-area` / `-dot` / `-grid`) | an inline-SVG trend that takes its colours from the theme, so it reads in both; no CDN |
+| `lb-empty` / `lb-empty-title` / `lb-empty-hint` | the honest empty state — what it means and the way out, in place of a blank chart or table |
+| `lb-table th[aria-sort]` / `td[data-num]` | a sortable header (arrow + `aria-sort`) and a tabular numeric cell, so counts line up down a column |
 | `lb-row` / `lb-stack` / `lb-spacer` | control row / vertical spacing / flex filler that right-aligns what follows |
 | `lb-link-out` | quiet external link (icon inherits currentColor) — "Open in Leadbay" |
 | `lb-select` / `lb-input` / `lb-btn` | form controls (state-aware, see below) |
+| `lb-btn-submit` / `lb-btn-ai` / `lb-btn-lg` | the app's `primary` / `ai` variants, and its `large` size |
 | `lb-msg` (`data-tone="error\|ok"`) | inline feedback |
 | `lb-chip` (`data-status="WON\|LOST"`) | a status pill |
 | `lb-table` | leads table |
@@ -160,10 +190,11 @@ tell *why* this lead is on screen. Five lines, in this order.
    its own. Style it `lb-link-out`: quiet text plus a plain arrow-up-right,
    never a filled button. It is an escape hatch, not a call to action.
 
-   Group the controls by what they act on. A flat row of five buttons reads as
-   five peers; the rep cannot see that "Set status" commits the select beside it
-   while Like/Dislike are independent toggles. Wrap each axis in an `lb-group`
-   and mark the commit with `lb-btn-submit`.
+   Group the controls by what they act on, so the row does not read as a set of
+   peers: wrap each axis in an `lb-group`. Status is NOT one of those axes — it
+   saves on change and carries no button at all (see "Save on change is the
+   default for status" below). Reserve `lb-btn-submit` for a write that really
+   does need a second step, such as the bulk apply across checked rows.
 
    Taste is the one pair worth reducing to icons: thumbs up/down are unambiguous,
    they repeat on every card, and dropping the words buys the width a narrow chat
@@ -178,7 +209,10 @@ tell *why* this lead is on screen. Five lines, in this order.
 
    Do **not** reduce "Set status" to an icon: no glyph says "commit the value in
    the select beside me". Icons work for a fixed, well-known action; they fail
-   for one whose meaning comes from a neighbouring control.
+   for one whose meaning comes from a neighbouring control. The status select
+   sidesteps the question entirely by carrying no button at all — it saves on
+   change — but the rule stands for any write whose meaning comes from the
+   control beside it.
 
    ```html
    <div class="lb-row">
@@ -361,6 +395,213 @@ reach the host must say so, not sit silent.
    "black parallelogram black parallelogram…" before the company name. Use
    `lb-vh` for any label that should be heard but not seen.
 
+## Recipe: the pull-leads triage board (THE default board)
+
+When the rep accepts an interactive board after ANY tool that returns a batch
+of leads — `leadbay_pull_leads`, `leadbay_find_new_leads`,
+`leadbay_pull_followups`, `leadbay_campaign_call_sheet` — build THIS. It is a
+fixed recipe, not a starting point: the same board every time means a rep who
+learned it once knows it everywhere. Deviate only when the rep asks for
+something specific.
+
+Build it from the data ALREADY IN HAND — never re-call the tool that produced
+the batch just to populate the board.
+
+Two things change with the source, and nothing else does:
+
+- **The deep link's view.** `pull_leads` omits `in_monitor`/`in_discover`, so
+  its leads are the Discover batch by definition; `pull_followups` carries
+  `in_monitor: true` on every row, so a call board links to `monitor`; a
+  campaign sheet needs `?campaign=<id>&lead=<id>`. See the leadUrl helper above.
+- **Which write leads the card.** A discovery batch is triaged (taste + status);
+  a follow-up list is worked (`lb.outreach`, gated on a note). Order the
+  Outreach and Status sections to match, but ship both either way.
+
+**Per card** — a header, then a stack of titled SECTIONS, then the write
+feedback. The skin ships the whole geometry (`lb-sections` = 16px between
+sections, `lb-section` = 8px within), so build the structure and add no
+spacing CSS of your own:
+
+```html
+<article class="lb-card">
+  <div class="lb-card-top">                   <!-- checkbox · title · taste -->
+    <input type="checkbox" aria-label="Select Acme Corp for bulk apply">
+    <div class="lb-lead-title"><a href="https://acme.com">Acme Corp</a></div>
+    <span class="lb-group"><!-- like / dislike, lb-btn-icon --></span>
+  </div>
+  <div class="lb-chips" hidden><!-- data-taste + data-status, see contract --></div>
+
+  <div class="lb-sections">
+    <div class="lb-section">                    <!-- untitled: what it is -->
+      <div class="lb-tags-plain"><span>Honfleur, Normandie</span><span>50–99</span></div>
+      <div class="lb-sub">Why it fits, one sentence.</div>
+    </div>
+    <div class="lb-section"><div class="lb-sec-title">Fit</div>…</div>
+    <div class="lb-section">
+      <div class="lb-sec-title">Intent tags</div>
+      <div class="lb-tags-intent"><span>Vente terrain</span>…</div>
+      <!-- no tags? <div class="lb-tags-empty">None — the qualifier found no
+           buying signal</div>, never an empty row -->
+    </div>
+    <div class="lb-section"><div class="lb-sec-title">Data</div>…</div>
+    <div class="lb-section">
+      <div class="lb-sec-title">Status</div>
+      <select class="lb-select" aria-label="Lead status for Acme Corp"></select>
+    </div>
+    <div class="lb-section">
+      <div class="lb-sec-title">Outreach</div>
+      <div class="lb-stack">                  <!-- one control per line -->
+        <select class="lb-select" aria-label="Outreach result for Acme Corp"></select>
+        <input class="lb-input" aria-label="Outreach note for Acme Corp">
+        <button class="lb-btn lb-btn-submit">Log outreach</button>
+      </div>
+    </div>
+    <details class="lb-section"><!-- lazy full profile, see below --></details>
+    <div class="lb-card-foot">
+      <button class="lb-btn lb-btn-ai">Requalify</button>
+      <span class="lb-spacer"></span>
+      <a class="lb-link-out">Open in Leadbay</a>
+    </div>
+  </div>
+
+  <div class="lb-msg" role="status" aria-live="polite"></div>
+</article>
+```
+
+Wire them with `lb.like` / `lb.dislike`, `lb.leadStatus()` +
+`lb.setStatus({leadId, status, ask})`, and `lb.outreach({leadId, ask, status,
+note})` — the note field gated by a `validate` so an empty note cannot log.
+
+Four rules the structure encodes, each of which a hand-built card gets wrong:
+
+- **One section per titled block.** Two titles in one `lb-section` share its
+  8px gap instead of the 16px between sections, so the second title reads as
+  part of the first block. Fit and Intent tags are the pair this catches.
+- **A section title sits at section level**, as a direct child. Nested inside a
+  row (beside a verdict, say) it stops being a peer of the other titles and the
+  card loses its scan order.
+- **No date input.** Status saves on change and the backend stamps the date as
+  "now"; a picker is only for backdating, which this board does not do.
+- **Controls stack and span their section.** A select sizes to its longest
+  option and a text input to a UA default, so side by side they come out
+  different widths despite identical padding and height.
+
+Only the bulk apply keeps a submit button, because it fans out across checked
+rows and takes a `confirm`.
+
+**Toolbar** — a tally, four filters (CRM status · taste · qualifier verdict ·
+sector), select-all + one `lb.setStatus({leadIds})` bulk write, and
+`lb.sortOrder()` bound to the list's `order`. Filters are CLIENT-side over the
+loaded page; sort is SERVER-side, so changing it must `loadPage(0)` (see the
+sorting rule above). The skin ships its geometry too:
+
+```html
+<div class="lb-toolbar">
+  <span class="lb-tally">5 leads</span>
+
+  <span class="lb-group">                       <!-- narrow: sort + filters -->
+    <label class="lb-field">
+      <span class="lb-field-label">Sort</span>
+      <select class="lb-select" aria-label="Sort order"></select>
+    </label>
+    <label class="lb-field">
+      <span class="lb-field-label">Status</span>
+      <select class="lb-select" aria-label="Filter by CRM status"></select>
+    </label>
+    <!-- taste, verdict … -->
+  </span>
+
+  <span class="lb-spacer"></span>
+
+  <span class="lb-group">                       <!-- act on the selection -->
+    <label class="lb-field lb-field-inline">
+      <input type="checkbox"><span class="lb-field-label">Select all</span>
+    </label>
+    <select class="lb-select" aria-label="Status for selected leads"></select>
+    <button class="lb-btn lb-btn-submit">Apply to selected</button>
+  </span>
+
+  <span class="lb-status" data-live="yes">      <!-- shape, not just colour -->
+    <span class="lb-status-dot"></span>live
+  </span>
+
+  <div class="lb-msg" role="status" aria-live="polite" style="flex:1 0 100%"></div>
+</div>
+```
+
+Three groups, because the bar does three things — report, narrow, act. Flat, the
+bulk commit reads as one more filter. Sort belongs in the narrow group but costs
+a round trip the others do not, so mark that boundary (a divider, or its own
+`lb-group`) rather than letting four selects look interchangeable.
+
+**Pagination** — `lb.leadList` is already a paginated model: `.page`,
+`.pageSize`, `.total`, `.hasMore`, `.next()`, `.prev()`, `.loadPage(n)`. A
+board that renders only page 0 silently hides the rest of the lens, so render
+the pager whenever `total` exceeds one page:
+
+```html
+<div class="lb-pager">
+  <button class="lb-btn" data-k="prev">Previous</button>
+  <button class="lb-btn" data-k="next">Next</button>
+  <span class="lb-spacer"></span>
+  <span class="lb-pager-range">21–40 of 60</span>
+</div>
+```
+
+```js
+const list = lb.leadList({ order: sort, ask: ASK, pageSize: 20 });
+list.subscribe((l) => {
+  deck.setAttribute("data-lb-state", l.loading ? "loading" : "ready");
+  if (l.error) { renderError(l.error); return; }   // .code says what to do
+  if (!l.loading) renderCards(l.items);            // keep old rows while loading
+  const from = l.page * l.pageSize + 1;
+  range.textContent = `${from}–${Math.min(from + l.items.length - 1, l.total)} of ${l.total}`;
+  prev.disabled = l.page === 0 || l.loading;
+  next.disabled = !l.hasMore || l.loading;
+});
+prev.onclick = () => list.prev();
+next.onclick = () => list.next();
+```
+
+Four things this gets right that a hand-rolled pager usually does not:
+
+- **A range, not a page number.** "21–40 of 60" says how much is left; "page 2"
+  does not, and a rep cannot tell a short lens from a long one.
+- **Disable at the ends, and while loading.** `hasMore` is
+  `(page + 1) * pageSize < total`, so it is false on the last page even when
+  that page is full — a Next that fetches nothing reads as a broken button.
+- **Keep the old rows while the next page loads.** Blanking the deck loses the
+  scroll position; `lb-deck[data-lb-state=loading]` dims and locks it instead.
+  `loadPage` already drops a stale response if the rep flips pages quickly.
+- **Selection and page are independent.** A checked lead on page 1 stays in the
+  bulk set after a flip, so either carry the selection across pages or clear it
+  on the flip — silently dropping it means a bulk apply writes fewer leads than
+  the rep ticked. Say which you chose in the UI.
+
+Changing the sort resets to page 0 (`loadPage(0)`), since the backend sorts the
+whole lens and page 2 of the old order is not page 2 of the new one.
+
+**Rich profile data is LAZY.** The card renders from the list payload alone. A
+`lb.leadProfile(leadId, ask)` resource — sector label, `location.full`, real
+`linkedin_page`, the qualification Q&A — loads only when the rep EXPANDS that
+card, one call for one lead they chose to open:
+
+```js
+const profile = lb.leadProfile(lead.id, ASK);     // autoLoad:false
+profile.subscribe((p) => renderDetail(els.detail, p));
+els.expand.onclick = () => profile.load();        // one call, on demand
+```
+
+Never prefetch it for the batch: a 20-lead board would fire 20 requests to fill
+lines the rep may never read. The list payload already carries everything the
+collapsed card shows.
+
+**Requalify** is `leadbay_bulk_qualify_leads` with `leadIds` (camelCase — NOT
+`lead_ids`) and `wait_for_completion: false`, so the button returns as soon as
+the job is queued instead of holding through the poll. Give it
+`class="lb-btn lb-btn-ai"` — purple is the product's AI affordance, and the
+app's own QualifyButton is `variant="ai"`.
+
 ## Recipe: cold-call sheet (one row per lead)
 
 ```js
@@ -387,8 +628,9 @@ function wireRow(lead, els) {
 
 ## Recipe: lead-status dropdown (Wanted / Won / Lost)
 
-The org-wide CRM status, as a `<select>` + Apply button. You write the markup;
-`lb.leadStatus` fills the options and holds the value, `lb.setStatus` does the write.
+The org-wide CRM status, as a `<select>` that writes on change — no Apply
+button. You write the markup; `lb.leadStatus` fills the options and holds the
+value, `lb.setStatus` does the write.
 
 ```html
 <div class="lb-card">
@@ -400,10 +642,9 @@ The org-wide CRM status, as a `<select>` + Apply button. You write the markup;
     </span>
   </div>
   <div class="lb-row">
-    <select id="st" class="lb-select"></select>
-    <button id="go" class="lb-btn">Apply</button>
-    <span id="msg" class="lb-msg"></span>
+    <select id="st" class="lb-select" aria-label="Lead status for Acme Corp"></select>
   </div>
+  <span id="msg" class="lb-msg" role="status" aria-live="polite"></span>
 </div>
 ```
 
@@ -420,10 +661,13 @@ lb.styles();                                          // once per artifact — s
 const status = lb.leadStatus(lead.org_lead_status);   // seed with the CURRENT value
 const save   = lb.setStatus({ leadId: lead.id, status, ask: ASK });
 
-lb.bindSelect(document.getElementById("st"), status); // populates the 4 options
-lb.bindAction(document.getElementById("go"), save);   // click → write
+const sel = document.getElementById("st");
+lb.bindSelect(sel, status);                           // populates the 4 options
+sel.addEventListener("change", () => save.run());     // change → write, no button
 
 save.subscribe((a) => {                               // render your own feedback
+  sel.setAttribute("data-lb-state",                   // the select IS the surface
+    a.loading ? "loading" : a.error ? "error" : a.lastResult ? "success" : "ready");
   msg.textContent = a.loading ? "Saving…"
     : a.error ? a.error.message                       // includes partial failures
     : a.lastResult ? `Set to ${a.lastResult.status}` : "";
@@ -482,19 +726,168 @@ clicking a dropdown means. Don't add a date picker unless the user asks to
 backdate — then pass an optional `date` field holding `YYYY-MM-DD`:
 `lb.setStatus({ leadId, status, date, ask })`.
 
+## Recipe: segment coverage (sector / location)
+
+"How many leads do we have in sector X" is one cheap call: the Monitor filter
+plus `count: 1`, read off `pagination.total`. `lb.segmentCount` wraps it.
+
+### Never hardcode the sector list
+
+A board that offers sectors must offer the ones the user HOLDS. Typing a few
+ids into the markup gets this wrong in both directions — one real portfolio's
+hand-written list offered a sector holding 3 leads while omitting the
+third-largest at 555.
+
+There is no group-by on the Monitor, but every lead carries `sector_id`, so one
+page of followups names the sectors that matter:
+
+```js
+// SECTORS is { id: label }, embedded at BUILD time from leadbay_list_sectors.
+// The visible taxonomy is ~1,346 entries and does not change between runs, so
+// fetching it per page load buys nothing.
+const held = await lb.portfolioSectors({ sectors: SECTORS, ask: ASK });
+for (const s of held) {
+  const opt = document.createElement('option');
+  opt.value = s.id;
+  opt.textContent = s.label;   // falls back to `Sector <id>` when unresolved
+  sel.appendChild(opt);
+}
+```
+
+`sampled` is a SAMPLE count, for ordering the list. It is not the user's total
+— call `lb.segmentCount` for the exact figure once a sector is picked.
+
+**The taxonomy's `number_of_leads` is the WHOLE MARKET, not this user's book.**
+Supermarchés reads 11,460 nationally against 3,656 in one real portfolio, and
+Supérettes 5,710 against 143. Wiring a dropdown to that field ranks sectors the
+user barely holds above ones they live in. Use it as a denominator if you are
+explicitly showing market coverage, and label it as such — never present it as
+the user's number.
+
+```js
+const supermarkets = await lb.segmentCount({ sectorIds: ["5134"], ask: ASK });
+// → { total: 3656, applied: [...], trusted: true }
+```
+
+**Two traps, both observed against the live API — a hand-rolled version hits
+both:**
+
+1. **The filter is server-side and STATEFUL.** `set_filter` overwrites ONE
+   stored FilterItem per user, so consecutive calls are not independent: the
+   next one inherits what the last one stored. Always send the complete
+   criteria set, never a delta, and never assume a fresh call starts clean.
+2. **A rejected criterion fails SILENTLY.** Send a malformed criterion and the
+   call returns **200 with the PREVIOUS filter still applied** — a plausible
+   number answering a different question. `segmentCount` compares the echoed
+   `active_filters` against what it sent and returns `trusted: false` on a
+   mismatch. Never chart an untrusted count; say the segment could not be
+   measured instead.
+
+**What you cannot build this way.** A score histogram needs every lead's
+`ai_agent_lead_score`, and there is no aggregation endpoint — bucketing 3,656
+leads means 732 pages. Sample the tails instead (`order: "SCORE:ASC"` and
+`"SCORE:DESC"`, a few hundred each) and **label the chart as a sample with its
+n**, or do not draw it. The same applies to a density map: coordinates are on
+every lead, but aggregating thousands of points client-side is a batch job, not
+a dashboard. Both want a backend stats endpoint.
+
+**Budget the calls.** A filtered count is normally 1–2 s, but adding a
+`last_action_date` criterion was observed at **54 s** on a 3.6k segment. Fire
+segments in sequence with a visible progress cue, not a parallel burst, and
+never block the first paint on them.
+
 ## Recipe: manager dashboard
+
+`lb.teamActivity` returns `{range, reps, trend}`. A manager reads before they
+act, so the page is three bands in that order: the figures, the trend behind
+them, then the per-rep table.
+
+```html
+<div class="lb-tiles">                          <!-- only figures that ARE the point -->
+  <div class="lb-tile"><span class="lb-tile-label">Activities</span>
+       <span class="lb-tile-value">0</span></div>
+  <!-- meetings / notes / contacts added … -->
+</div>
+
+<svg class="lb-chart" viewBox="0 0 640 160" role="img"
+     aria-label="Weekly activity, 24 Jun to 16 Sep">…</svg>
+
+<table class="lb-table">
+  <thead><tr>
+    <th aria-sort="none">Rep</th>
+    <th data-num aria-sort="descending">Activities</th>
+    <th data-num aria-sort="none">Meetings</th>
+  </tr></thead>
+  <tbody><tr aria-selected="false">…</tr></tbody>
+</table>
+```
 
 ```js
 const team = lb.teamActivity({ weeks: 4, ask: ASK });
 team.subscribe((t) => {
-  if (t.loading) showSpinner();
-  if (t.data) {
-    renderLeaderboard(t.data.reps);   // sorted by total_activities; cols: name, notes, meetings_or_interest, lost…
-    renderTrendChart(t.data.trend);   // [{date,count}] → Chart.js (allowed from CDN)
-  }
+  if (t.error) { renderError(t.error); return; }     // .code says what to do
+  if (!t.data) return;                               // first load
+  const { reps, trend, range } = t.data;
+  const sum = (k) => reps.reduce((a, r) => a + (r[k] || 0), 0);
+
+  stage.replaceChildren(
+    lb.tiles([
+      { label: "Activities", value: sum("total_activities") },
+      { label: "Meetings",   value: sum("meetings_or_interest") },
+      { label: "Notes",      value: sum("notes") },
+    ]),
+    lb.sparkline(trend, {                            // [] → the empty block
+      label: `Activity from ${range.from} to ${range.to}`,
+      emptyTitle: "No activity in this window",
+      emptyHint: `Nothing logged between ${range.from} and ${range.to}. Widen the window.`,
+    }),
+    lb.leaderboard({
+      rows: reps,
+      sortKey: "total_activities",
+      columns: [
+        // reps[] carries email and nothing else — a mailto is the honest
+        // affordance, since no MCP tool messages a rep.
+        { key: "name", label: "Rep", cell: (r) => {
+            const a = document.createElement("a");
+            a.href = `mailto:${r.email}`; a.textContent = r.name || r.email;
+            return a;
+          } },
+        { key: "total_activities",     label: "Activities", num: true },
+        { key: "meetings_or_interest", label: "Meetings",   num: true },
+        { key: "lost",                 label: "Lost",       num: true },
+      ],
+      emptyTitle: "No reps in this window",
+      emptyHint: "The backend scopes non-admins to themselves.",
+    }),
+  );
 });
 refreshBtn.onclick = () => team.refresh();
 ```
+
+Five things this gets right that a hand-built dashboard usually does not:
+
+- **An empty window is a real answer.** A quiet team returns `total_activities:
+  0` for every rep and `trend: []` — the common case on a new account. Draw
+  `lb-empty` with what it means ("no activity logged in this window") and a way
+  out (widen the range), never empty axes, which read as a broken chart.
+- **Chart from the tokens, not a CDN.** `lb-chart` styles an inline SVG from
+  the theme, so it reads in light and dark. A hardcoded stroke disappears in
+  one of the two, and a CDN chart that fails to load shows nothing at all — a
+  sparse weekly series does not earn the dependency.
+- **Sorting is CLIENT-side here**, unlike a lead list: `reps` is the whole team
+  in one response, so re-sorting reorders data you already hold. Reflect it in
+  `aria-sort` on the header, not only with an arrow.
+- **Tabular numerals on every count** (`data-num`), or the columns will not
+  line up and the leaderboard cannot be scanned down.
+- **Name the window.** `range.from`/`range.to` are resolved server-side and may
+  not match what was asked for; printing them is what makes the figures
+  auditable.
+
+**Writing to a rep is not in this payload.** `reps[]` carries `user_id`, `name`
+and `email` — enough to open a mail client with `mailto:`, and nothing more.
+There is no MCP tool that messages a rep, so do not render a "message" button
+that silently does nothing; a `mailto:` link is the honest affordance until
+one exists.
 
 ## Recipe: live enrichment
 
