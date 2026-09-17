@@ -19,11 +19,10 @@ routing:
   anti_triggers:
     - phrase: "show me today's leads / what's new today"
       route_to: leadbay_pull_leads
-    # A BARE "find me new leads", with no profile and no count, is the daily
-    # inbox — that phrasing reached leadbay_pull_leads before this tool existed
-    # and must keep doing so. This tool needs a described target; without one
-    # it runs a minutes-long net-new search outside the user's lens and answers
-    # a question they did not ask.
+    # A BARE "find me new leads", no profile and no count, is the daily inbox —
+    # that phrasing reached leadbay_pull_leads before this tool existed and must
+    # keep doing so. Without a described target this tool runs a minutes-long
+    # net-new search outside the lens, answering a question nobody asked.
     - phrase: "find me new leads (no profile, no count named)"
       route_to: leadbay_pull_leads
     - phrase: "more leads like the ones in my lens"
@@ -38,11 +37,11 @@ routing:
       route_to: leadbay_research_lead_by_name_fuzzy
   prefer_when: >-
     the user describes a target profile or names a count of NEW companies —
-    craft the example_lead per the seed rules below BEFORE calling; never
-    pass the user's raw sentence as query.
+    craft the example_lead per the seed rules below BEFORE calling; never pass
+    the user's raw sentence as query.
   examples:
     positive:
-      - "Find me 10 gyms around Dallas that would buy our flooring, with someone I can call."
+      - "Find me 10 gyms around Dallas that would buy our flooring, with a contact."
       - "Get me 20 new US SaaS companies, 50-2000 employees, with the VP People's email."
       - "We're launching in Lyon — find 15 hotels that fit our ICP."
     negative:
@@ -50,11 +49,10 @@ routing:
       - "Which leads should I follow up with this week?"
       - "Qualify these 40 websites from my spreadsheet."
 rendering_hint: |
-  3-col table of delivered leads in returned order: col 1 = 10-segment fit
-  bar + linked company · location · size; col 2 = why-fits ≤20 words; col 3
-  = contact + found channels. ALWAYS close with the honest funnel line
-  (matched/examined/delivered/stop reason) — especially on 0
-  delivered. Full algorithm below.
+  3-col table of delivered leads in returned order: col 1 = 10-segment fit bar
+  + linked company · location · size; col 2 = why-fits ≤20 words; col 3 =
+  contact + found channels. ALWAYS close with the honest funnel line
+  (matched/examined/delivered/stop reason), especially on 0 delivered.
 next_steps: find-new-leads
 annotations:
   readOnlyHint: false
@@ -67,27 +65,25 @@ company universe, applies hard filters, skips what the org already knows
 (`novelty: org`), optionally qualifies against the org's own intelligence
 (questions, tags, ideal buyer profile — frozen at submit), and optionally reveals
 contact channels. Polls up to `wait_seconds` (default 45); a longer job returns
-`still_running` + `next_poll` — hand off to `leadbay_lead_job_status`. Jobs run
+`still_running` + `next_poll` — hand to `leadbay_lead_job_status`. Jobs run
 ≤30 min, results kept 30 days.
 
 **Free vs usage quota — never use quota silently.** Default (`qualify: false`,
 `channels: []`) is FREE: company profile + fit score + cached research +
 contact identity. `qualify: true` (per candidate EXAMINED, capped by
 `exploration_cap`/`max_cost`) and `channels` (only when a value is found) draw
-on the org's usage quota; nothing is invoiced. Enforced in code: such a call is WITHHELD unless it
-carries `confirm: true` — nothing is submitted and you get
+on the org's usage quota; nothing is invoiced. Enforced in code: such a call is
+WITHHELD unless it carries `confirm: true` — nothing is submitted and you get
 `mode: "needs_confirmation"` with a real quote to show the user. Re-call with
 `confirm: true` on their go-ahead ("go ahead / get their emails" counts).
-`confirm: false` vetoes. Free needs no consent. **Preview free first** —
-reshaping an off-profile seed is free, exploring it with `qualify: true` is
-not.
+`confirm: false` vetoes. **Preview free first** — reshaping an off-profile seed
+is free, exploring it with `qualify: true` is not.
 
 **Ad-hoc exclusions ("no chains") are enforced by NO tier** — `filters` has no
-exclusion key, and `qualify` scores against the org's FROZEN questions and IBP,
-which need not mention chains; the seed's inverse only shifts ranking.
-Violators can survive, use quota and be delivered — post-filter them yourself
-and say the tier didn't enforce it. Durable enforcement →
-`leadbay_refine_prompt`.
+exclusion key, and `qualify` scores against the org's FROZEN questions and IBP.
+Violators survive, use quota and get delivered: post-filter them yourself and
+say the tier didn't enforce it. Durable enforcement →
+`leadbay_set_qualification_questions` / `leadbay_refine_prompt`.
 
 {{include:heuristics/example-lead-craft}}
 
@@ -95,13 +91,13 @@ and say the tier didn't enforce it. Durable enforcement →
 - `request_id` (REQUIRED) is the retry contract: SAME value retrying the same
   ask (same live job, no double launch); NEW for a changed ask. Derive from ask
   + archetype + date: `gyms-dallas-2026-07-28`.
-- Never lower `min_ai_score` together with `channels` — that reveals emails for
-  leads the AI just scored as junk.
-- `count` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After —
-  wait, don't hammer).
+- Never lower `min_ai_score` with `channels` — that reveals emails for leads
+  the AI just scored as junk.
+- `count` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After — wait,
+  don't hammer).
 
 **Read the result honestly** — `funnel` + `explain.scope_notes` tell the story;
-zero delivered gets a cause and a next move (rules in RENDERING).
+zero delivered gets a cause and a next move (RENDERING).
 
 ---
 

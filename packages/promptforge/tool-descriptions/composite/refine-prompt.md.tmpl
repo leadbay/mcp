@@ -16,6 +16,10 @@ routing:
     - "I prefer leads that <behavior/characteristic>"
     - "prioritize companies running their own IT"
     - "deprioritize companies that just raised"
+    - "stop showing me <kind of company>"
+    - "we only sell to the private sector, not the public one"
+    - "harden the exclusion on <business model>, not the keyword"
+    - "competitors / resellers are never prospects for us"
   anti_triggers:
     - phrase: "create a new lens / a lens specialized into <X>"
       route_to: leadbay_new_lens
@@ -25,20 +29,33 @@ routing:
       route_to: leadbay_adjust_audience
     - phrase: "show me / list / switch my lenses"
       route_to: leadbay_my_lenses
-  prefer_when: "ADMIN-ONLY. Qualitative refinement of the active lens that sector/size can't express. Creating/naming/listing/switching/sector-editing a lens routes elsewhere. Non-admin user → do NOT pick this."
+    - phrase: "a company trait one yes/no question could estimate from their website"
+      route_to: leadbay_set_qualification_questions
+    - phrase: "exclude <named company>"
+      route_to: leadbay_dislike_lead
+  prefer_when: "ADMIN-ONLY. A qualitative ORIENTATION too broad for one yes/no — a segment to avoid, a business model to rule out. One estimable company trait goes to set_qualification_questions; a named company to dislike_lead."
   examples:
     positive:
       - "Focus on hospitals that run their own IT in-house."
       - "Prioritize companies that have recently expanded headcount."
+      - "On ne vend qu'au privé — arrête de me remonter des hôpitaux publics."
     negative:
       - "Create a lens specialized in automobile."
       - "Add fintech to my Joinery lens."
       - "Show me my lenses."
+      - "Exclude Groupe Solidum, we had an unpaid invoice with them."
 rendering_hint: |
   On success: confirm the refinement applied to the active lens. If a
   clarification was raised, surface its question (route via ask_user_input_v0).
 ---
 Refine the kind of leads Leadbay surfaces, beyond firmographics. Free-text instruction (e.g. "focus on hospitals running their own IT"). Sets the org's `user_prompt`; if the new prompt produces ambiguous criteria, Leadbay raises a clarification question, which this composite polls for and surfaces. Admin-only on the backend (will return 403 for non-admins).
+
+**Read `leadbay_get_qualification_questions` first.** It returns the current
+targeting prompt alongside the questions and the buyer profile. Setting a
+prompt REPLACES the previous one — write the combined instruction, not just the
+new clause, or you silently drop rules the user set earlier.
+
+{{include:heuristics/rule-to-setting}}
 
 {{include:headers/tool-when-to-use}} when audience filters (leadbay_adjust_audience) aren't enough.
 

@@ -21,7 +21,7 @@ routing:
       route_to: leadbay_qualify_status
   prefer_when: >-
     a find_new_leads / qualify_leads result carried next_poll — pass its
-    job_id; use wait_seconds ~60 when the user asked to wait for results.
+    job_id; use wait_seconds 45 when the user asked to wait for results.
   examples:
     positive:
       - "Any leads yet from that search you started?"
@@ -49,7 +49,7 @@ usage counters (never render them), and the `explain` block
 (basis, seed strategy, scope notes). Items are immutable once emitted —
 polling never re-reads live data, so numbers only ever grow.
 
-`wait_seconds: 0` (default) answers instantly; set ~60 to block-wait for
+`wait_seconds: 0` (default) answers instantly; set 45 (the maximum) to block-wait for
 completion when the user asked for results "in this reply". `since` (from a
 prior poll's `next_since`) pages only the new items. Jobs terminalize
 server-side: past the 30-min wall clock a job reads `completed_partial`
@@ -57,7 +57,12 @@ server-side: past the 30-min wall clock a job reads `completed_partial`
 delivered leads via leadbay_qualify_leads `prior_deliveries`). A 404 means
 unknown job or another org's job.
 
+`compact: true` (pass it whenever `next_poll` carries it) returns the rows of
+a free identity pass, 100 at a time from `offset`, instead of leads.
+
 ---
+
+{{include:rendering/identity-rows}}
 
 {{include:rendering/lead-delivery-table}}
 

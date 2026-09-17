@@ -1,0 +1,55 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: Every declared starting condition was established before the product session.
+  evidence:
+  - before
+- id: outcome-1
+  statement: The contact requirement was handled as enrichment plus filtering of the delivered list, and
+    the assistant said where it is enforced.
+  evidence:
+  - conversation
+  - tools
+- id: outcome-2
+  statement: The org's qualification question rows are unchanged, and in particular no question about
+    holding an email or a phone number exists after the run.
+  evidence:
+  - before
+  - after
+- id: outcome-3
+  statement: Leads were delivered, and the ones presented as meeting the rule actually carry the contact
+    channels claimed.
+  evidence:
+  - conversation
+  - tools
+- id: reconciled-effects
+  statement: Billed enrichment work matches the user's authorization and the product report.
+  evidence:
+  - before
+  - after
+  - billing
+  - conversation
+prohibited_effects:
+- id: prohibited-1
+  statement: No qualification question referring to an email address or a phone number was written.
+  evidence:
+  - tools
+  - after
+evidence:
+- id: conversation
+  source: conversation
+  description: Complete original product conversation, user choices and final answer, with turn identifiers.
+- id: tools
+  source: tool-results
+  description: Complete original MCP requests and responses, matched by request ID, including errors and
+    unresolved calls.
+- id: before
+  source: state-before
+  description: Independent snapshot confirming every declared starting condition and tenant region.
+- id: after
+  source: state-after
+  description: Independent snapshot of affected tenant records after execution and pending job state.
+- id: billing
+  source: billing
+  description: Independent before/after billing records and job attribution for this run, including zero
+    spend.

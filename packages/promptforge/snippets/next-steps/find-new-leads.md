@@ -7,8 +7,8 @@ Pick the 2-3 that match what happened, never the whole table:
 | Observation | Suggest | Calls |
 |---|---|---|
 | ≥ 1 delivered — offer FIRST | "Build an interactive lead triage board" | leadbay_artifact_kit → CANONICAL recipe, data in hand |
-| Job still running (`still_running: true`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 60) |
-| Free run delivered on-profile leads | "Qualify these N (uses quota — `dry_run` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
+| Job still running (`still_running: true`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 45) |
+| Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — `dry_run` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
 | Stopped at the job's usage cap (`stop_reason: max_cost`) | "Raise the job's cap and get the remaining N" — no amount, no currency | leadbay_find_new_leads, NEW request_id (same-id only dedupes onto a LIVE job) + higher max_cost + `count` = the SHORTFALL (`items_requested` − delivered), not the original + `exclude_lead_ids` = the examined-but-REJECTED ids (novelty covers delivered; these are what it misses — without them the rerun re-buys the same losers) |

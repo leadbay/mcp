@@ -6,7 +6,7 @@ billing, records every MCP and backend byte outside the model containers, runs
 the tester and verifier sandboxes from compose.yaml, seals run.yaml and runs
 the same contracts gate CI uses. Exit code 0 means the bundle passed the gate.
 """
-import argparse, datetime, hashlib, json, os, shutil, socket, socketserver, subprocess, sys, threading, time, urllib.error, urllib.request
+import argparse, datetime, hashlib, json, os, re, shutil, socket, socketserver, subprocess, sys, threading, time, urllib.error, urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -55,11 +55,31 @@ def api(base, path, token=None, body=None, timeout=60):
     return {'at': now(), 'path': path, 'status': status, 'body': value}
 
 
+def active_lens(me, lenses):
+    """The lens leadbay_pull_leads reads, resolved the same way the MCP resolves it."""
+    if isinstance(me, dict) and me.get('last_requested_lens') is not None:
+        return me['last_requested_lens']
+    if isinstance(lenses, list):
+        rows = [l for l in lenses if isinstance(l, dict)]
+        chosen = (next((l for l in rows if l.get('is_last_active')), None)
+                  or next((l for l in rows if l.get('is_default') or l.get('default')), None)
+                  or (rows[0] if rows else None))
+        if chosen:
+            return chosen.get('id')
+    return None
+
+
 def snapshot(base, token):
     me = api(base, '/users/me', token)
     org = me['body'].get('organization', {}) if isinstance(me['body'], dict) else {}
     facts = {'/users/me': me}
     for path in ['/lenses', '/monitor?count=20&page=0']:
+        facts[path] = api(base, path, token)
+    # A case that declares Discover leads — their cities, their scores — can only be
+    # proven by reading the active lens's wishlist here, in evidence of kind state-before.
+    lens = active_lens(me['body'], facts['/lenses']['body'])
+    if lens is not None:
+        path = f'/lenses/{lens}/leads/wishlist?count=50&page=0&contacts=true'
         facts[path] = api(base, path, token)
     billing = api(base, f"/organizations/{org.get('id')}/quota_status", token) if org.get('id') else None
     return facts, billing, org
@@ -229,6 +249,13 @@ The operator authenticated the dedicated test tenant, captured its state before 
     time.sleep(3)
     recorder.stop()
     after, billing_after, _ = snapshot(base, token)
+    # What a run delivered is proven by the saved lead jobs, not by the product's
+    # message. Read every job whose id appears in the recorded MCP traffic.
+    mcp_log = run / 'observed/mcp.ndjson'
+    uuid = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+    job_ids = set(re.findall(r'job_id[^0-9a-f]{1,12}(' + uuid + ')', mcp_log.read_text())) if mcp_log.exists() else set()
+    for job_id in sorted(job_ids):
+        after[f'/mcp/jobs/{job_id}'] = api(base, f'/mcp/jobs/{job_id}?limit=100', token)
     (run / 'observed/state-after.json').write_text(json.dumps(after, indent=2))
     (run / 'observed/billing.json').write_text(json.dumps({'before': billing_before, 'after': billing_after, 'tester_started': started, 'tester_finished': now()}, indent=2))
 

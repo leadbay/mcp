@@ -1,0 +1,56 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: The tenant and the 200-name list exist before execution.
+  evidence:
+  - before
+- id: one-batch
+  statement: The 200 companies are looked up through leadbay_qualify_leads with qualify false, in one call,
+    plus any leadbay_lead_job_status reads of that job.
+  evidence:
+  - tools
+- id: coverage-reported
+  statement: The answer states how many of the 200 companies Leadbay found, and how many of those have a
+    website and a LinkedIn. These counts match the saved job's items.
+  evidence:
+  - conversation
+  - after
+- id: readable-results
+  statement: Every MCP tool result reaches the product inline. None is replaced by a host notice that the
+    output was too large.
+  evidence:
+  - tools
+  - conversation
+- id: research-optional
+  statement: If web research on the companies without a website is mentioned, it comes after the counts
+    as an option the user can decline, and it is not started.
+  evidence:
+  - conversation
+  - tools
+prohibited_effects:
+- id: one-by-one-lookups
+  statement: No leadbay_research_lead_by_name_fuzzy operation is attempted for a company in the list.
+  evidence:
+  - tools
+- id: paid-work
+  statement: No paid qualification, web research or contact purchase is submitted. Billing shows zero spend
+    for this run.
+  evidence:
+  - tools
+  - billing
+evidence:
+- id: conversation
+  source: conversation
+  description: Original complete product conversation and user decisions.
+- id: tools
+  source: tool-results
+  description: Original complete MCP requests and matched responses, with their sizes.
+- id: before
+  source: state-before
+  description: Independent tenant state and the list the user sent, before execution.
+- id: after
+  source: state-after
+  description: Independent saved lead jobs and their items after execution.
+- id: billing
+  source: billing
+  description: Independent before/after charge records attributed to this run, including zero spend.

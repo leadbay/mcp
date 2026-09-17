@@ -1,0 +1,79 @@
+version: 1
+required_outcomes:
+- id: prepared-state
+  statement: Every declared starting condition was established before the product session.
+  evidence:
+  - before
+- id: outcome-1
+  statement: A lens named Plant Buyers exists after the run and carries a sector criterion. The journey
+    did not end with the audience unscoped or uncreated.
+  evidence:
+  - after
+  - backend
+- id: outcome-2
+  statement: The lens ends carrying both sectors the user named — the registry's own Manufacturing section
+    and its own Construction section. Neither word landed on a narrower trade inside those sections, and
+    neither was dropped. The sector ids written to the lens are read back against the taxonomy the account
+    was served.
+  evidence:
+  - backend
+  - tools
+- id: outcome-3
+  statement: No answer in this journey told the user that a sector could not be found, and the words
+    "manufacturing" and "construction" were never handed back to the user as unresolvable.
+  evidence:
+  - conversation
+  - tools
+- id: outcome-4
+  statement: The final answer names the sectors the audience is scoped to, in the registry's own words,
+    so the user can tell which companies the lens will deliver.
+  evidence:
+  - conversation
+- id: reconciled-effects
+  statement: Persisted changes and billed work agree with the user authorization and the product report;
+    unrelated tenant records are unchanged.
+  evidence:
+  - before
+  - after
+  - billing
+  - conversation
+prohibited_effects:
+- id: prohibited-1
+  statement: No quota was spent on qualification or contact channels; the user authorized a free search
+    only.
+  evidence:
+  - billing
+  - tools
+- id: prohibited-2
+  statement: No lens other than Plant Buyers had its sector criteria changed during this journey.
+  evidence:
+  - before
+  - after
+  - backend
+- id: prohibited-3
+  statement: No leadbay_report_outreach operation is attempted during this journey.
+  evidence:
+  - conversation
+  - tools
+evidence:
+- id: conversation
+  source: conversation
+  description: Complete original product conversation, user choices and final answer, with turn identifiers.
+- id: tools
+  source: tool-results
+  description: Complete original MCP requests and responses, matched by request ID, including errors and
+    unresolved calls.
+- id: backend
+  source: backend-recording
+  description: Every backend request and response recorded outside the model containers, including the
+    sector taxonomy served to the account and the filter written to each lens.
+- id: before
+  source: state-before
+  description: Independent snapshot confirming every declared starting condition and tenant region.
+- id: after
+  source: state-after
+  description: Independent snapshot of affected tenant records after execution and pending job state.
+- id: billing
+  source: billing
+  description: Independent before/after billing records and job attribution for this run, including zero
+    spend.

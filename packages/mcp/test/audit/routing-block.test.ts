@@ -64,6 +64,7 @@ const TOOLS_WITH_ROUTING = new Set([
   "leadbay_adjust_audience",
   "leadbay_refine_prompt",
   "leadbay_get_qualification_questions",
+  "leadbay_set_qualification_questions",
   "leadbay_get_lead_custom_fields",
   "leadbay_add_contact",
   "leadbay_remove_contact",

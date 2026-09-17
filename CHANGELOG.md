@@ -1,5 +1,155 @@
 # Changelog
 
+## 0.39.9 — 2026-09-16 — Asking whether an enrichment finished, with only the job number
+
+- **"Is my enrichment done?" now answers when Claude has only the job number.**
+  Claude keeps that number so it can answer you the next day or in another
+  conversation, and every single time it used the number on its own it got an
+  error back instead of your job. It now reads the job's companies from Leadbay
+  and tells you how many contacts landed, company by company.
+- **The error it used to return is gone.** It asked you to hand back a list of
+  company ids that Claude had no way to still have. Leadbay knows which
+  companies the job covered, so Claude asks Leadbay.
+## 0.39.8 — 2026-09-16 — Narrowing an audience actually narrows it
+
+- **Swapping one sector or one city for another now drops the old one.**
+  "Construction instead of manufacturing" left manufacturing on the audience as
+  well as excluding it, so the narrowing never happened and the same companies
+  kept coming back. "Lyon instead of Paris" did the same thing to the city.
+  Whatever you exclude comes off the included list, and the other way round.
+- **A lead job that takes more than a minute no longer ends in an error.**
+  Asking Claude to qualify even a single company could come back as a failure
+  instead of an answer: the research took longer than Claude gives any tool, so
+  Claude stopped waiting while Leadbay carried on working. The wait now counts
+  the whole call, so the answer comes back inside Claude's limit with the job's
+  ticket and the news that the work is still running.
+- **"Check on it in a minute" no longer asks for exactly the minute Claude
+  allows.** Every still-running answer suggested a follow-up check timed to land
+  on the limit itself, so following the suggestion was a coin toss. It now
+  suggests 45 seconds, and that is also the longest any of these tools will wait
+  in one call.
+
+## 0.39.7 — 2026-09-16 — A tour of a city reaches the next town over
+
+- **A tour of Sacramento now shows the company in West Sacramento, 3 miles
+  away.** Claude matched a prospect to your trip by the name of its town, so
+  the town next door was left out of the itinerary. A tour of Paris missed
+  Gennevilliers, Ivry-sur-Seine and Saint-Ouen-sur-Seine, all inside the ring
+  road's reach.
+- **Say how far you are willing to drive and Claude uses that number.** "Les
+  prospects dans un rayon de 10km autour de Colmar" or "20 km around Lyon" now
+  sets the distance. Without a number, the itinerary reaches 20 km, about one
+  metro area. Say "only in the city itself" to turn it off.
+- **Claude tells you which stops are in the city and which are near it.** A
+  company in Courbevoie is a stop on a Paris day, and Claude now names
+  Courbevoie rather than calling it Paris.
+- **A company is still never presented as being somewhere it is not.** A stop
+  joins the itinerary because its own coordinates put it near a company whose
+  record names your city — never because the two names look alike.
+
+## 0.39.6 — 2026-09-16 — "We don't have them" is an answer, not an error
+
+- **Asking about a company Leadbay has never heard of no longer looks like a
+  breakdown.** "Do we have Menuiserie Vercellone in the pipeline?" used to come
+  back as a red error box, even though the search had run correctly and the
+  answer was simply no. Claude now says the company is not in Leadbay yet and
+  asks for their website, which is usually what finds them.
+- **And it no longer fails twice for one question.** The error told Claude to
+  try again with the website; that second attempt was also an error. One
+  question, two failures, nothing broken. Both are answers now.
+- **A search that really is down still says so.** When the lead search cannot
+  be reached, Claude is told the lookup did not finish and to retry, instead of
+  telling you the company is absent on half an answer.
+
+## 0.39.5 — 2026-09-16 — When you say what makes a lead good, your settings change
+
+- **Telling Claude what you want now changes your Leadbay settings, not just
+  the current list.** Saying "écarte les sociétés liquidées" or "our best
+  customers run their own maintenance crews" used to be applied once and
+  forgotten — nine customers stated a rule like this and none of their
+  qualification questions ever moved. Claude now reads your settings, tells you
+  where the rule belongs, and asks before changing anything.
+- **Claude can no longer tell you a rule is saved when it is not.** "C'est
+  noté, la règle est active" with nothing written to your account was the
+  common case. A rule is in your settings or Claude says it is not.
+- **It decides whether a change is even worth making.** If one of your existing
+  questions already covers the rule, Claude names that question and changes
+  nothing — rewording it would re-score every lead in your pipeline and surface
+  exactly the same companies.
+- **A rule goes where it actually works.** A sector or a headcount goes to your
+  audience filter. A named company gets excluded as a company. "Email and phone
+  required" is handled by enrichment, because a qualification question scores
+  the company and cannot see whether Leadbay holds a phone number.
+- **Claude writes questions Leadbay can actually score.** Estimative, one
+  dimension each, answerable from the company's public pages, and sharp enough
+  to separate companies. A question nearly everyone answers yes to gets pushed
+  back on instead of written.
+- **Reading your qualification questions now shows the whole picture** — your
+  ideal buyer profile and your targeting prompt come back with them, and Claude
+  tells you how many of your five question slots are free.
+## 0.39.4 — 2026-09-16 — Writing a city the way you write an address works
+
+- **"Washington, DC" is the capital again.** Written with the comma, Claude read
+  only the first word and matched the state of Washington, so a tour of the
+  capital came back with companies in Seattle and Redmond. Written without the
+  comma it was already right. Both forms now mean the same city.
+- **Picking a city from a list of same-named places works too.** When Claude
+  asks which New York you meant and you pick one, it now keeps the companies in
+  that city instead of widening to the whole state.
+
+## 0.39.3 — 2026-09-16 — Naming a sector in your own words finds the sector
+
+- **"Find me professional services firms" no longer comes back empty-handed.**
+  Leadbay files companies under official registry names, and "professional
+  services" is not one of them, so the search was refused outright. Claude now
+  shows you the sector names Leadbay does have, and searches the closest one.
+  On one account a scheduled morning search opened with a failed attempt every
+  weekday.
+- **A small difference in spelling no longer matters.** "construction" for
+  "Construction", or "real estate" for "Real estate activities". Claude finds
+  the sector and tells you which one it searched.
+- **Naming a sector when you build or narrow an audience works again.** Typing
+  "Construction" into an audience matched nothing usable, in both regions. It
+  finds the sector now.
+- **A word that covers several real sectors asks which one you meant.** Ask for
+  "Restaurant" on the French workspace and Leadbay has two: fast-food outlets,
+  about 116,000 companies, and the wider restaurant sector, about 311,000.
+  Claude shows you both and lets you pick, rather than choosing for you.
+
+## 0.39.2 — 2026-09-15 — A tour of Austin only shows companies in Austin
+
+- **The tour of a city no longer lists companies in other cities.** When you
+  said you were visiting Austin, Claude matched the two letters "US" inside
+  "Austin" against every American company and put all of them on your
+  itinerary and your map. It now keeps the companies whose own town is the
+  one you named, reads a wider ask like "Texas" as the region it is, and
+  tells you when it has no new prospect in that city instead of filling the
+  list from somewhere else.
+- **"I'm going to NYC" finds the New York companies.** Leadbay files that city
+  under "City of New York", so the short name used to match nothing. NYC, SF,
+  LA and DC now all reach the right town.
+
+## 0.39.1 — 2026-09-15 — Your lead list moves on after you have read it
+
+- **Today's leads are no longer yesterday's leads.** Leadbay replaces part of
+  your list every day, but only for leads it knows you have already worked
+  through. Claude never told it. One customer read the same 60 companies for
+  76 days in a row. Claude now reports the leads it shows you, so the list
+  refreshes the next morning.
+
+## 0.39.0 — 2026-09-15 — A list of companies gets one answer
+
+- **"For each of these companies, give me the website and the LinkedIn" is now
+  one request.** Claude used to look the companies up one at a time. It now
+  sends the whole list at once, 500 companies per call, and tells you how many
+  of them Leadbay knows, how many have a website and how many have a LinkedIn.
+- **You get the whole list as a spreadsheet** when Leadbay runs on your own
+  computer. The chat shows the first 100 companies. The file in your Downloads
+  folder holds every one of them.
+- **For the companies with no website, Claude can offer to search the web.** It
+  never starts that on its own. It asks first, and shows you what the work
+  needs.
+
 ## 0.38.2 — 2026-09-14 — Claude mentions your quota only when it matters
 
 - **Claude mentions your quota only when it matters.** It shows it when you

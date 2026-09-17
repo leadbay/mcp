@@ -59,7 +59,7 @@ Split the returned `monitor_leads` into two buckets client-side using their enga
 
 `discover_leads` are the **New** bucket.
 
-Aim for a 3+3+3 split if possible. If the customers bucket has fewer than 3, fill from qualified. If discover_filter_note indicates a low match ratio for the city, mention it: "Only N/30 fresh leads matched your city" — better honest than padded.
+Aim for a 3+3+3 split if possible. If the customers bucket has fewer than 3, fill from qualified. If discover_filter_note indicates a low match ratio for the city, mention it: "Only N/30 fresh leads matched your city" — better honest than padded. When it splits the stops into the ones in the city and the ones within `radius_km` of it, repeat that split and name the town each nearby stop is in — a company in Courbevoie is a stop on a Paris day, but it is not in Paris. If I named a radius ("within 10 km", "rayon de 20km"), pass it as `radius_km`.
 
 # PHASE 3 — PRESENT THE ITINERARY + OFFER THE MAP
 

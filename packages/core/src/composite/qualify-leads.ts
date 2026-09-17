@@ -11,6 +11,7 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 import {
   clampWaitSeconds,
+  MAX_WAIT_SECONDS,
   collectJobSnapshot,
   canonicalSet,
   coerceArrayParams,
@@ -32,6 +33,7 @@ import {
   readSpendFlag,
 } from "./_mcp-job-helpers.js";
 import { normalizeDomain } from "./import-leads.js";
+import { identityAnswer, saveIdentityFile } from "./_identity-rows.js";
 import { leadbay_qualify_leads as QUALIFY_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface QualifyLeadsParams {
@@ -321,7 +323,7 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
       wait_seconds: {
         type: "number",
         description:
-          "How long to poll before returning (default 45, max 180, 0 = submit + one snapshot). Large or research-heavy batches can take minutes — the result then carries still_running:true and the job_id for leadbay_lead_job_status.",
+          "How long to poll before returning (default and maximum 45 — the whole call is bounded by it, so a slow submit shortens the poll; 0 = submit + one snapshot). Large or research-heavy batches can take minutes — the result then carries still_running:true and the job_id for leadbay_lead_job_status.",
       },
     },
     additionalProperties: false,
@@ -331,6 +333,9 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     params: QualifyLeadsParams,
     ctx?: ToolContext
   ) => {
+    // The host's 60s timer starts here, not at the wait — so the wait gets
+    // whatever the quote and the submit leave of the budget (product#4144).
+    const startedAt = Date.now();
     // Unvalidated MCP args can arrive singular (`channels: "email"`,
     // `lead_refs: {website}`); coerce BEFORE the spend gate so a shape slip is
     // never a TypeError in place of a quote.
@@ -373,6 +378,14 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     const buysChannels = (params.channels?.length ?? 0) > 0;
     const buysQualification = qualify !== false;
     const isPaid = buysQualification || buysChannels;
+    // Nothing to buy and no person to find: the caller asked who these
+    // companies are, and gets one compact row each (product#4131).
+    // prior_deliveries re-reads leads already delivered, contacts included, so
+    // it keeps the full payload.
+    const identityOnly =
+      !isPaid &&
+      (params.contact_titles?.length ?? 0) === 0 &&
+      params.prior_deliveries == null;
     // An explicit confirm:false is a VETO — decline the spend outright, no
     // quote round-trip. Distinct from confirm being absent (which earns a quote).
     const vetoed = confirm === false;
@@ -458,7 +471,8 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
     if (mocked) return mocked;
     const waitSeconds = clampWaitSeconds(
       params.wait_seconds,
-      DEFAULT_WAIT_SECONDS
+      DEFAULT_WAIT_SECONDS,
+      startedAt
     );
     // Every failure past this point must carry submit.job_id: the job exists
     // and may be spending, and this handle is the only way back to it.
@@ -481,6 +495,28 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
       ? remapInputIndexes(snapshot.items, params.lead_refs)
       : { items: snapshot.items, remapped: true };
     const view = { ...snapshot, items: indexed.items };
+
+    if (identityOnly) {
+      const answer = identityAnswer(submit.job_id, snapshot, view.items, 0);
+      return {
+        job_id: submit.job_id,
+        request_id: requestId ?? null,
+        duplicate_submit: submit.duplicate ?? false,
+        state: snapshot.job.state,
+        done,
+        ...answer,
+        summary: {
+          refs_submitted: params.lead_refs?.length ?? 0,
+          items_requested: submit.items_requested,
+          ...answer.summary,
+        },
+        input_indexes_remapped: (submit.duplicate ?? false)
+          ? indexed.remapped
+          : null,
+        ...(await saveIdentityFile(ctx, submit.job_id, snapshot, view.items)),
+        region: client.region,
+      };
+    }
 
     return {
       job_id: submit.job_id,
@@ -540,7 +576,7 @@ export const qualifyLeads: Tool<QualifyLeadsParams, any> = {
               // INCREMENTALLY instead of re-reading (and re-rendering) the
               // rows already delivered in this response.
               since: snapshot.next_since ?? null,
-              suggested_wait_seconds: done ? 0 : 60,
+              suggested_wait_seconds: done ? 0 : MAX_WAIT_SECONDS,
             },
       region: client.region,
     };

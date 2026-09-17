@@ -37,7 +37,7 @@ function mockTaste(questions: unknown[]) {
 }
 
 describe("leadbay_get_qualification_questions", () => {
-  it("happy path — returns only the questions with created_at + lang, no IBP/tags leak", async () => {
+  it("happy path — questions with created_at + lang, plus the IBP; no tags leak", async () => {
     mockHttp([mockMe(false), ...mockTaste(QUESTIONS)]);
     const res: any = await getQualificationQuestions.execute(newClient(), {});
 
@@ -49,8 +49,14 @@ describe("leadbay_get_qualification_questions", () => {
     });
     expect(res.count).toBe(2);
     expect(res.is_admin).toBe(false);
-    // The broader taste-profile fields must NOT be surfaced by this focused tool.
-    expect(res.ideal_buyer_profile).toBeUndefined();
+    // product#4139: the ideal buyer profile IS surfaced — a caller cannot judge
+    // whether a user's stated rule is already covered without it. Purchase
+    // intent tags still are not: they are scoring output, not a setting.
+    expect(res.ideal_buyer_profile).toEqual({
+      summary: "IBP",
+      key_characteristics: [],
+      anti_patterns: [],
+    });
     expect(res.purchase_intent_tags).toBeUndefined();
     // No admin hint for a non-admin with questions present.
     expect(res.hint).toBeUndefined();

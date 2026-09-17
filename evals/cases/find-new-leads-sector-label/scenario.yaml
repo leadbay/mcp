@@ -1,0 +1,18 @@
+version: 1
+id: find-new-leads-sector-label
+regions:
+- fr
+languages:
+- fr
+starting_state:
+- The tenant is a French workspace whose sector taxonomy is the SIRENE registry. No row in that
+  registry is named "services professionnels" or "Professional Services" in any language.
+- The tenant has quota available, so a refusal in this journey is a refusal about the sector value
+  and not about the account.
+- The tenant's delivered-lead ledger and quota balance are recorded before the run.
+user_decisions:
+- when: the product asks which sector to search, or offers to search without a sector filter
+  reply: Choose whatever is closest to professional services and go ahead — free search only, no paid
+    enrichment.
+variants: []
+datasets: []

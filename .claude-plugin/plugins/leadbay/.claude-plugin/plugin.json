@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "leadbay",
-  "version": "0.38.2",
+  "version": "0.39.9",
   "description": "AI lead discovery, qualification, and outreach prep on your Leadbay account.",
   "author": {
     "name": "Leadbay",
@@ -23,7 +23,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "--package=@leadbay/mcp@0.38",
+        "--package=@leadbay/mcp@0.39",
         "leadbay-mcp"
       ],
       "env": {
