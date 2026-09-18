@@ -15,6 +15,7 @@ routing:
     - "campaign for my <city> trip"
     - "group these leads"
     - "persist these leads"
+    - "prepare <N> campaigns to re-engage my prospects"
   anti_triggers:
     - phrase: "list campaigns"
       route_to: leadbay_list_campaigns
@@ -28,6 +29,7 @@ routing:
       - "Save these 9 leads as a campaign called 'Limoges Tour – May 24'."
       - "Create a campaign for the qualified leads I just picked."
       - "Make a campaign for my SF visit and add those three accounts."
+      - "Prepare 3 email campaigns to re-engage my prospects."
     negative:
       - "What campaigns do I have?"
       - "Add three more leads to my 'Q2 Push' campaign."
@@ -35,9 +37,12 @@ routing:
 rendering_hint: |
   One-line confirmation: ✅ Created **<name>** with N leads · <id-short>.
   If the backend AI-generated the name (no `name` passed), surface that:
-  "AI-suggested name: <name>". Offer a NEXT STEPS chip for "Add more
-  leads" or "Open in web UI". Don't dump the full campaign payload as a
-  table — the user only needs the confirmation + the id for follow-up.
+  "AI-suggested name: <name>". When the user asked for email campaigns,
+  put that campaign's draft email (subject + body) under its line
+  rather than offering to write it. Otherwise offer a NEXT STEPS chip
+  for "Add more leads" or "Open in web UI". Don't dump the full campaign
+  payload as a table — the user only needs the confirmation + the id for
+  follow-up.
 annotations:
   readOnlyHint: false
   destructiveHint: true
@@ -54,6 +59,8 @@ Create a new campaign — a server-persisted grouping of leads the user (or thei
 **Seed leads vs. empty**:
 - Seed with `lead_ids: [...]` when the user already picked the leads (chain after `leadbay_tour_plan`, `leadbay_pull_leads`, `leadbay_research_lead_by_id`).
 - Create empty (`lead_ids: []`, default) and add later via `leadbay_add_leads_to_campaign` — useful when the user named the campaign first and wants to populate it incrementally.
+
+**Campaigns to re-engage the user's prospects** — *"prepare 3 email campaigns to chase my prospects"*, *« préparer 3 campagnes de mails pour relancer mes prospects »*. These prospects are leads the user already works, so read them with `leadbay_pull_followups({filtered:false, order:"LAST_PROSPECTING_ACTION_AT:DESC"})` unless the user named a subset. `leadbay_list_campaigns` only shows what exists; it does not answer this ask. Split the leads into the number of campaigns asked for by where each one stands: `epilogue_status`, then how long ago `last_prospecting_action_at` was, with never-contacted leads as their own group. When nearly every lead shares one state, pick another split that serves an email, such as sector or whether a named contact has an email. Call this tool once per campaign with a descriptive `name` and that group's `lead_ids`. Then, in the same answer, draft the email for each campaign: a subject and a body written for that group's situation, through `message_compose_v1` when the host offers it. The ask is the authorization for all of this: do not stop to ask how to split, which leads to include, or whether to draft. State the split in one line and deliver.
 
 **Scope**: campaigns are created in the caller's organization and `created_by = caller_user_id`. The list endpoint (`leadbay_list_campaigns`) is filtered to the creator — campaigns ARE NOT shared with teammates by default. For #3630 US3 "manager creates a campaign for a rep", today's MCP workaround is to name campaigns descriptively ("North-East – John") and have the rep visit /app to access via the web UI; cross-user assignment would need backend work.
 

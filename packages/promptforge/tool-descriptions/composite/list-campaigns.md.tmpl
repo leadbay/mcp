@@ -20,6 +20,8 @@ routing:
       route_to: leadbay_create_campaign
     - phrase: "drill into one specific campaign's progression"
       route_to: leadbay_campaign_progression
+    - phrase: "prepare campaigns to re-engage my prospects"
+      route_to: leadbay_create_campaign
   prefer_when: "user wants the pulse / overview view across all their campaigns. Use campaign_progression to drill into one"
   examples:
     positive:
@@ -30,6 +32,7 @@ routing:
       - "Create a 'Q2 Push' campaign."
       - "How are leads progressing in my Limoges Tour?"
       - "Today's fresh leads."
+      - "Prepare 3 email campaigns to re-engage my prospects."
 rendering_hint: |
   Render as a compact markdown table sorted by `updated_at` desc:
   | Campaign | Leads | Contacted | Meetings | Declined | Updated |

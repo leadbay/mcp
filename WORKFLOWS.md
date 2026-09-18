@@ -70,6 +70,8 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 56 | **Batch qualify + right contact on known companies** — "here are 60 restaurant websites from my sweep — which fit, and who's the owner?". `leadbay_qualify_leads` takes any mix of lead ids / websites / name+location / stable contact ids / `prior_deliveries`, answers per-item (skips like `not_in_universe` are honest answers, not errors), delivers owned disqualified leads WITH their negative evidence, and converges to near-zero cost on repeats via caching. Backend: `POST /1.6/mcp/qualify` job. A list with an identity-only ask ("for each of these companies, the website and LinkedIn") is one `qualify: false` call per 500 names: free, one compact row per company plus counts of how many Leadbay found and how many have a website and a LinkedIn. `leadbay_lead_job_status` with `compact: true` pages past 100 rows (product#4131). A local install also saves every row of the finished job as a CSV in the user's Downloads folder and returns its path; the hosted server writes no file. | `leadbay_qualify_leads` | "Vet these companies from my spreadsheet against our criteria and get me the right contact at each" |
 | 57 | **Lead-delivery job polling** — a `leadbay_find_new_leads` / `leadbay_qualify_leads` run that outlives its poll window hands back a `job_id`; `leadbay_lead_job_status` re-reads the cumulative snapshot (state, funnel, items) and block-waits with `wait_seconds` when the user asked to wait. | `leadbay_lead_job_status` | "Any results yet from that lead search?" |
 | 58 | **A stated fit rule becomes a setting** — the core of product#4139: when the user says in chat what makes a lead good or bad ("écarte les sociétés liquidées", "je ne veux pas d'associations", "our best customers run their own maintenance crews", "the leads aren't relevant"), the agent must READ the org's settings, decide WHERE the rule belongs, decide whether a change is needed at all, and propose before writing. `leadbay_get_qualification_questions` now returns the ideal buyer profile and the targeting prompt alongside the questions, so coverage is checkable. A sector/size/territory rule goes to `leadbay_adjust_audience`; a qualitative orientation to `leadbay_refine_prompt`; a named company to `leadbay_dislike_lead`, whose `reason` is saved as a note on the lead and whose response says the targeting did not change (product#4170), or to `leadbay_set_lead_status` with the reason written by `leadbay_add_note`, because a status stores none (product#4171); a kind of company the user rejects becomes an ideal-buyer-profile anti-pattern through `leadbay_set_qualification_questions`, unless the lead's `ai_score` is already below 0; CRM state and delivery requirements to neither. A question the scorer cannot act on comes back as `form_warnings`. Answering "c'est noté" with no tool call is the failure this row exists to stop. | `leadbay_get_qualification_questions`, `leadbay_set_qualification_questions`, `leadbay_refine_prompt`, `leadbay_adjust_audience`, `leadbay_dislike_lead`, `leadbay_set_lead_status`, `leadbay_add_note` | "Écarte les sociétés liquidées, à risque manifeste, fabricants concurrents et comptes blacklistés" |
+| 59 | **Re-engagement campaigns from the user's own book** — product#4174: "prépare 3 campagnes de mails pour relancer mes prospects". The prospects are Monitor leads the user already works, read with `leadbay_pull_followups` (`filtered:false`), split into the number of campaigns asked for by where each lead stands in outreach, saved with `leadbay_create_campaign` one per group, and one email drafted per campaign in the same answer. Answering with `leadbay_list_campaigns` alone, or stopping to ask how to split, is the failure this row exists to stop. | `leadbay_pull_followups`, `leadbay_create_campaign` | "Dans mon onglet de démarchage peux-tu préparer 3 campagnes de mails pour relancer mes prospects" |
+| 60 | **Outreach sync from the user's mailbox and calendar** — product#4174: "who was contacted, when, who went quiet" has no answer when nobody logs outreach. When most leads on a `leadbay_pull_followups` page have no outreach logged, the result carries `outreach_sync` and the agent offers, once, a daily task. The task reads the user's mailbox and calendar, matches each address to a Leadbay lead and the person on it, and logs each email and meeting with `leadbay_report_outreach` on that person (`contact_id`), with the Gmail message id or calendar event id as proof. A status is set only on plain evidence. The same id logged twice writes nothing, so the daily run can re-read its window. `leadbay_sync_outreach` runs it once and schedules it. | `leadbay_sync_outreach`, `leadbay_pull_followups`, `leadbay_report_outreach` | "Log my emails and meetings in Leadbay every day" |
 
 ---
 
@@ -1300,6 +1302,49 @@ success_criteria:
 
 ```yaml scenario
 prompt: "Any results yet from that lead search you started earlier? Job id is 281d8b55-b357-43ed-aca9-63e50bce84a6"
+```
+
+```yaml expected
+workflow_name: Re-engagement campaigns from the user's own book
+prompt_name: ~
+required_calls:
+  - leadbay_pull_followups
+  - leadbay_create_campaign
+forbidden_calls:
+  - leadbay_pull_leads
+  - leadbay_report_outreach
+required_order:
+  - leadbay_pull_followups
+  - leadbay_create_campaign
+success_criteria:
+  - "created 3 campaigns, each seeded with Monitor leads that leadbay_pull_followups returned"
+  - "drafted one email, subject and body, per campaign in the same answer"
+  - "did NOT stop to ask how to split the prospects, which ones to include, or whether to create the campaigns"
+  - "did NOT call leadbay_report_outreach and sent nothing"
+```
+
+```yaml scenario
+prompt: "Dans mon onglet de démarchage peux-tu préparer 3 campagnes de mails pour relancer mes prospects"
+```
+
+```yaml expected
+workflow_name: Outreach sync from the user's mailbox and calendar
+prompt_name: leadbay_sync_outreach
+required_calls:
+  - leadbay_report_outreach
+forbidden_calls:
+  - leadbay_import_leads
+  - leadbay_import_and_qualify
+success_criteria:
+  - "logged each email and meeting with a Leadbay lead through leadbay_report_outreach, with the Gmail message id or calendar event id it read as proof"
+  - "passed contact_id when the person is a contact on the lead"
+  - "set a status only on plain evidence, and listed the other replies for the user"
+  - "sent, replied to, archived or labelled nothing in the mailbox"
+  - "created the daily scheduled task, or gave the user its text when the host cannot schedule"
+```
+
+```yaml scenario
+prompt: "Log my emails and meetings in Leadbay every day"
 ```
 
 ## How this stays normative

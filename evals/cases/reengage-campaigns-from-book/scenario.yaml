@@ -1,0 +1,12 @@
+version: 1
+id: reengage-campaigns-from-book
+regions:
+- fr
+languages:
+- fr
+starting_state:
+- The tenant's Monitor holds at least 20 leads, with at least one carrying a recorded prospecting action
+  and at least ten carrying none.
+user_decisions: []
+variants: []
+datasets: []

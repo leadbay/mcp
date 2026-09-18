@@ -1,0 +1,54 @@
+---
+name: leadbay_sync_outreach
+kind: prompt
+short_description: |
+  Keep Leadbay's record of who was contacted current: read my mailbox and
+  calendar, log every email and meeting with a Leadbay lead on the person it
+  involved, then schedule the same sync to run every day. Trigger on "log my
+  emails in Leadbay", "sync my outreach", "keep Leadbay up to date with my
+  emails".
+arguments:
+  - name: lookback_days
+    description: "Optional: how many days back the first run reads (default 14). The daily task always reads the last 2 days."
+    required: false
+expected_calls:
+  - leadbay_research_lead_by_name_fuzzy
+  - leadbay_report_outreach
+failure_modes:
+  - "Sends, replies to, archives or labels an email. The sync only reads the mailbox."
+  - "Logs outreach without a message id or event id read from the mailbox or calendar."
+  - "Imports a company found in the mailbox that is not already a Leadbay lead."
+  - "Logs on the lead when the person is a Leadbay contact, instead of passing that contact's id as contact_id."
+  - "Sets a status from a reply whose meaning is not plain, instead of listing it for the user."
+  - "Stops after the first run without scheduling the daily task, or without giving the user its text when the host cannot schedule."
+  - "Logs a CRM activity or a non-Gmail message with an invented proof."
+---
+
+Leadbay only knows the outreach someone logs in it. Keep that record current from my mailbox and calendar, so Leadbay can say who I contacted, when, and who went quiet.
+
+{{include:iron-laws/verification-required}}
+
+{{include:gates/defer-to-tool-rendering}}
+
+The lead lookups are for matching. Do not render them. The only table this sync shows is the one the block ends with.
+
+# PHASE 0 — WHAT YOU CAN READ
+
+Check which mail, calendar and CRM tools you have in this session. With no mail tool and no calendar tool, tell me to connect Gmail or Google Calendar to this assistant, and stop.
+
+# PHASE 1 — FIRST RUN
+
+Run the block below once, over the last {{arg:lookback_days_or_default}} days instead of 2.
+
+{{include:heuristics/outreach-sync}}
+
+# PHASE 2 — SCHEDULE THE DAILY TASK
+
+Then make the same sync run every morning. Asking for this sync is the go-ahead, so do not ask whether to schedule it.
+
+- If you have a tool that creates scheduled or recurring tasks, create a daily task named "Leadbay outreach sync" whose instruction is the block, word for word.
+- If you do not, show me the block and tell me to paste it into my assistant's scheduled tasks.
+
+# PHASE 3 — REPORT
+
+Show the table the block ends with. Then say in one line whether the daily task is scheduled or waiting for me to paste it.
