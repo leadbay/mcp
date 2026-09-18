@@ -33,6 +33,7 @@ import {
   leadbay_setup_team_prospecting,
   leadbay_top_accounts_to_activate,
   leadbay_work_campaign,
+  leadbay_sync_outreach,
   PROMPT_META,
 } from "./prompts.generated.js";
 
@@ -159,6 +160,20 @@ const CATALOG: CatalogEntry[] = [
         substitutePlaceholders(leadbay_log_outreach, {
           lead_id: args.lead_id ?? "<missing>",
           summary: args.summary ?? "<missing>",
+        }),
+      ),
+    ],
+  },
+  {
+    // The mailbox-to-Leadbay sync (product#4174). leadbay_pull_followups offers
+    // it when most of the page has no outreach logged.
+    name: "leadbay_sync_outreach",
+    description: PROMPT_META.leadbay_sync_outreach.short_description,
+    arguments: promptArguments("leadbay_sync_outreach"),
+    render: (args) => [
+      userMessage(
+        substitutePlaceholders(leadbay_sync_outreach, {
+          lookback_days_or_default: args.lookback_days || "14",
         }),
       ),
     ],

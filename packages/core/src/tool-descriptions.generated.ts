@@ -952,7 +952,7 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // region: leadbay_create_campaign
 export const leadbay_create_campaign: string = `## WHEN TO USE
 
-Trigger phrases: "create a campaign called <name>", "save these leads as a campaign", "campaign for my <city> trip", "group these leads", "persist these leads".
+Trigger phrases: "create a campaign called <name>", "save these leads as a campaign", "campaign for my <city> trip", "group these leads", "persist these leads", "prepare <N> campaigns to re-engage my prospects".
 
 Do NOT use for: "list campaigns" → \`leadbay_list_campaigns\`; "add to existing campaign" → \`leadbay_add_leads_to_campaign\`; "log outreach" → \`leadbay_report_outreach\`.
 
@@ -962,6 +962,7 @@ Examples that SHOULD invoke this tool:
 - "Save these 9 leads as a campaign called 'Limoges Tour – May 24'."
 - "Create a campaign for the qualified leads I just picked."
 - "Make a campaign for my SF visit and add those three accounts."
+- "Prepare 3 email campaigns to re-engage my prospects."
 
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "What campaigns do I have?"
@@ -972,9 +973,12 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 One-line confirmation: ✅ Created **<name>** with N leads · <id-short>.
 If the backend AI-generated the name (no \`name\` passed), surface that:
-"AI-suggested name: <name>". Offer a NEXT STEPS chip for "Add more
-leads" or "Open in web UI". Don't dump the full campaign payload as a
-table — the user only needs the confirmation + the id for follow-up.
+"AI-suggested name: <name>". When the user asked for email campaigns,
+put that campaign's draft email (subject + body) under its line
+rather than offering to write it. Otherwise offer a NEXT STEPS chip
+for "Add more leads" or "Open in web UI". Don't dump the full campaign
+payload as a table — the user only needs the confirmation + the id for
+follow-up.
 
 ---
 
@@ -988,6 +992,8 @@ Create a new campaign — a server-persisted grouping of leads the user (or thei
 **Seed leads vs. empty**:
 - Seed with \`lead_ids: [...]\` when the user already picked the leads (chain after \`leadbay_tour_plan\`, \`leadbay_pull_leads\`, \`leadbay_research_lead_by_id\`).
 - Create empty (\`lead_ids: []\`, default) and add later via \`leadbay_add_leads_to_campaign\` — useful when the user named the campaign first and wants to populate it incrementally.
+
+**Campaigns to re-engage the user's prospects** — *"prepare 3 email campaigns to chase my prospects"*, *« préparer 3 campagnes de mails pour relancer mes prospects »*. These prospects are leads the user already works, so read them with \`leadbay_pull_followups({filtered:false, order:"LAST_PROSPECTING_ACTION_AT:DESC"})\` unless the user named a subset. \`leadbay_list_campaigns\` only shows what exists; it does not answer this ask. Split the leads into the number of campaigns asked for by where each one stands: \`epilogue_status\`, then how long ago \`last_prospecting_action_at\` was, with never-contacted leads as their own group. When nearly every lead shares one state, pick another split that serves an email, such as sector or whether a named contact has an email. Call this tool once per campaign with a descriptive \`name\` and that group's \`lead_ids\`. Then, in the same answer, draft the email for each campaign: a subject and a body written for that group's situation, through \`message_compose_v1\` when the host offers it. The ask is the authorization for all of this: do not stop to ask how to split, which leads to include, or whether to draft. State the split in one line and deliver.
 
 **Scope**: campaigns are created in the caller's organization and \`created_by = caller_user_id\`. The list endpoint (\`leadbay_list_campaigns\`) is filtered to the creator — campaigns ARE NOT shared with teammates by default. For #3630 US3 "manager creates a campaign for a rep", today's MCP workaround is to name campaigns descriptively ("North-East – John") and have the rep visit /app to access via the web UI; cross-user assignment would need backend work.
 
@@ -2968,7 +2974,7 @@ export const leadbay_list_campaigns: string = `## WHEN TO USE
 
 Trigger phrases: "what campaigns do I have", "list my campaigns", "show me my active campaigns", "campaign overview", "what's in flight", "pulse on my campaigns".
 
-Do NOT use for: "create a new campaign" → \`leadbay_create_campaign\`; "drill into one specific campaign's progression" → \`leadbay_campaign_progression\`.
+Do NOT use for: "create a new campaign" → \`leadbay_create_campaign\`; "drill into one specific campaign's progression" → \`leadbay_campaign_progression\`; "prepare campaigns to re-engage my prospects" → \`leadbay_create_campaign\`.
 
 Prefer when: user wants the pulse / overview view across all their campaigns. Use campaign_progression to drill into one
 
@@ -2981,6 +2987,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Create a 'Q2 Push' campaign."
 - "How are leads progressing in my Limoges Tour?"
 - "Today's fresh leads."
+- "Prepare 3 email campaigns to re-engage my prospects."
 
 ## RENDER (quick)
 
@@ -4751,7 +4758,16 @@ WHEN TO USE: AFTER actually emailing/calling/meeting/messaging a contact, OR aft
 
 WHEN NOT TO USE: BEFORE doing the outreach (use \`dry_run:true\` to validate args first); without verification (call will be rejected); from a flow where the user did not consent to having actions logged automatically.
 
+To log on the person the outreach went to, pass their org contact id as \`contact_id\` with a single \`lead_id\`. The note and the status then go on that person, and the lead's Monitor row still shows the action and the status. Logging the same Gmail message id or calendar event id twice writes nothing the second time: the lead or person comes back in \`already_logged\`.
+
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+
+
+### Logging outreach from the user's mailbox and calendar
+
+The \`leadbay_sync_outreach\` prompt runs the block below once, over the last 14 days instead of 2. It then schedules a daily task named "Leadbay outreach sync" whose instruction is the block, word for word. The block is the whole procedure, because a scheduled run sees nothing else.
+
+> Leadbay outreach sync. Read my mailbox and calendar for the last 2 days: the emails I sent, the emails I received, and the meetings with outside guests. Never send, reply to, archive or label anything. Skip newsletters, no-reply senders, my own company's domain, and personal addresses such as gmail.com or orange.fr. For each other person, call leadbay_research_lead_by_name_fuzzy with only their full name as companyName, from the display name or from the address ("marcel.frei@" is Marcel Frei). This finds them on my own leads even when the company's website is another domain. If that finds no lead, or no contact on it with that exact email, call it again with the email's domain as companyName and website and the address as email. If there is still no lead, skip them and never import the company. Log each email and meeting with leadbay_report_outreach: the lead_id, the id of the contact with that email as contact_id, a one-line note ("Email sent: <subject>", "Replied: <what they said>" or "Meeting: <title>, <date>"), and verification {source: gmail_message_id, ref: the message id} or {source: calendar_event_id, ref: the event id}. Without a contact at that email, leave contact_id out. Set epilogue_status only on plain evidence: a meeting is INTEREST_VALIDATED_OR_MEETING_PLANED, a reply that declines is NOT_INTERESTED_LOST, a bounce is COULD_NOT_REACH_STILL_TRYING, and an email sent with no reply yet is STILL_CHASING. Log any other reply with no status and list it for me. A message or meeting already logged comes back in already_logged with nothing written. A CRM activity, or mail from a mailbox other than Gmail, has no id leadbay_report_outreach accepts as proof: list it, do not log it. End with a table of what you logged (lead, person, what, date, status) and what you skipped and why.
 `;
 // endregion: leadbay_report_outreach
 

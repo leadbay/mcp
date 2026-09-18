@@ -17,6 +17,7 @@ interface Verification {
 interface ReportOutreachParams {
   lead_id?: string;
   lead_ids?: string[];
+  contact_id?: string;
   note: string;
   epilogue_status?: string;
   verification: Verification;
@@ -34,6 +35,23 @@ function formatNoteWithVerification(
   v: Verification
 ): string {
   return `${note}\n\n— logged by AI agent (verification: ${v.source}=${v.ref})`;
+}
+
+// A scheduled sync re-reads the same mailbox window every day, so the same
+// Gmail message or calendar event reaches this tool more than once. A note
+// that already ends with its verification line means it is logged: write
+// nothing. A failed read counts as not logged, so a log is never lost.
+async function alreadyLogged(
+  client: LeadbayClient,
+  notesPath: string,
+  v: Verification
+): Promise<boolean> {
+  if (v.source === "user_confirmed") return false;
+  const line = `(verification: ${v.source}=${v.ref})`;
+  const notes = await client.request<NotePayload[]>("GET", notesPath).catch(() => null);
+  return (Array.isArray(notes) ? notes : []).some(
+    (n) => typeof n?.note === "string" && n.note.trimEnd().endsWith(line)
+  );
 }
 
 export const reportOutreach: Tool<ReportOutreachParams> = {
@@ -56,6 +74,11 @@ export const reportOutreach: Tool<ReportOutreachParams> = {
         type: "array",
         items: { type: "string" },
         description: "Bulk: many lead UUIDs (epilogue applies to all; notes fan out)",
+      },
+      contact_id: {
+        type: "string",
+        description:
+          "Optional, with lead_id only: the org contact id of the person the outreach went to. The note and the epilogue status are then written on that person, and still show on the lead's Monitor row.",
       },
       note: {
         type: "string",
@@ -140,6 +163,16 @@ export const reportOutreach: Tool<ReportOutreachParams> = {
           ref: { type: "string" },
         },
       },
+      contact_id: {
+        type: "string",
+        description: "Present when the note and the status were written on this person rather than on the lead.",
+      },
+      already_logged: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Lead ids skipped because a note with this exact gmail_message_id or calendar_event_id is already there. Nothing was written for them.",
+      },
       confirmed_via: {
         type: "string",
         description:
@@ -191,6 +224,14 @@ export const reportOutreach: Tool<ReportOutreachParams> = {
         message: `verification.source must be one of: gmail_message_id, calendar_event_id, user_confirmed (got: ${params.verification.source})`,
         hint:
           "Use 'user_confirmed' with verification.ref set to the user's literal text if you don't have a Gmail/Calendar id",
+      };
+    }
+    if (params.contact_id && (!params.lead_id || params.lead_ids)) {
+      return {
+        error: true,
+        code: "BAD_INPUT",
+        message: "contact_id goes with a single lead_id, not lead_ids",
+        hint: "Call once per person: lead_id plus that person's contact_id.",
       };
     }
     if (!params.lead_id && (!params.lead_ids || params.lead_ids.length === 0)) {
@@ -305,25 +346,45 @@ export const reportOutreach: Tool<ReportOutreachParams> = {
       epilogueWire = w;
     }
 
-    const targetLeads = params.lead_ids ?? [params.lead_id!];
+    const contactId = params.contact_id;
+    // With contact_id the note and the status go on the person
+    // (POST /contacts/{id}/notes, PATCH /contacts/{id}/prospecting-status).
+    // Both still reach the lead: the note moves its last_prospecting_action_at
+    // and the status sets its epilogue_status in Monitor (probed on prod FR
+    // 2026-09-18, product#4174).
+    const notesPath = (leadId: string) =>
+      contactId ? `/contacts/${contactId}/notes` : `/leads/${leadId}/notes`;
 
     if (params.dry_run) {
       return {
         dry_run: true,
-        would_write_notes: targetLeads.map((id) => ({
+        would_write_notes: (params.lead_ids ?? [params.lead_id!]).map((id) => ({
           method: "POST",
-          path: `/leads/${id}/notes`,
+          path: notesPath(id),
           body: { note: noteBody },
         })),
         would_set_epilogue: epilogueWire
-          ? {
-              method: "POST",
-              path: "/leads/epilogue",
-              body: { lead_ids: targetLeads, status: epilogueWire },
-            }
+          ? contactId
+            ? {
+                method: "PATCH",
+                path: `/contacts/${contactId}/prospecting-status`,
+                body: { status: epilogueWire },
+              }
+            : {
+                method: "POST",
+                path: "/leads/epilogue",
+                body: { lead_ids: params.lead_ids ?? [params.lead_id!], status: epilogueWire },
+              }
           : null,
       };
     }
+
+    const requested = params.lead_ids ?? [params.lead_id!];
+    const logged = await Promise.all(
+      requested.map((id) => alreadyLogged(client, notesPath(id), effectiveVerification))
+    );
+    const alreadyLoggedLeads = requested.filter((_, i) => logged[i]);
+    const targetLeads = requested.filter((_, i) => !logged[i]);
 
     // Write notes (parallel fan-out, semaphore-capped). Per-lead success/failure
     // map for auditability.
@@ -332,7 +393,7 @@ export const reportOutreach: Tool<ReportOutreachParams> = {
         try {
           const note = await client.request<NotePayload>(
             "POST",
-            `/leads/${leadId}/notes`,
+            notesPath(leadId),
             { note: noteBody }
           );
           return { lead_id: leadId, ok: true, note_id: note.id };
@@ -347,12 +408,18 @@ export const reportOutreach: Tool<ReportOutreachParams> = {
     );
 
     let epilogueResult: { applied: boolean; error?: string } = { applied: false };
-    if (epilogueWire) {
+    if (epilogueWire && targetLeads.length > 0) {
       try {
-        await client.requestVoid("POST", "/leads/epilogue", {
-          lead_ids: targetLeads,
-          status: epilogueWire,
-        });
+        if (contactId) {
+          await client.requestVoid("PATCH", `/contacts/${contactId}/prospecting-status`, {
+            status: epilogueWire,
+          });
+        } else {
+          await client.requestVoid("POST", "/leads/epilogue", {
+            lead_ids: targetLeads,
+            status: epilogueWire,
+          });
+        }
         epilogueResult = { applied: true };
       } catch (err: any) {
         epilogueResult = {
@@ -376,6 +443,8 @@ export const reportOutreach: Tool<ReportOutreachParams> = {
         status: epilogueWire,
         ...epilogueResult,
       },
+      ...(contactId ? { contact_id: contactId } : {}),
+      ...(alreadyLoggedLeads.length > 0 ? { already_logged: alreadyLoggedLeads } : {}),
       verification: effectiveVerification,
       // iter-22: audit-trail field. Tells the SDR team which path was taken
       // for this call:

@@ -66,6 +66,26 @@ async function lastLoggedEmail(
   return last;
 }
 
+// "Who was contacted, when, who went quiet" is answered from
+// last_prospecting_action_at, which only moves when someone logs outreach. On
+// the FR test org 283 of 284 Monitor leads had none (product#4174). When most
+// of the page is in that state, the result carries the offer of the daily
+// mailbox sync; its steps live in leadbay_report_outreach's description,
+// because the agent cannot open the leadbay_sync_outreach prompt itself.
+function outreachSyncOffer(leads: any[]): string | null {
+  const unlogged = leads.filter((l) => !l?.last_prospecting_action_at).length;
+  if (leads.length === 0 || unlogged * 2 <= leads.length) return null;
+  return (
+    `Leadbay has no outreach logged for ${unlogged} of the ${leads.length} leads on this page, ` +
+    "so it cannot tell who was contacted, when, or who went quiet. After answering, offer once " +
+    "to set up a daily task that reads the user's mailbox and calendar and logs each email and " +
+    "meeting on the person in Leadbay. If they accept, take the instruction under \"Logging outreach " +
+    "from the user's mailbox and calendar\" in the leadbay_report_outreach description: run it now " +
+    "over the last 14 days, then schedule it as a daily task with that instruction word for word. " +
+    "Without a mail or calendar tool, tell them to connect Gmail or Google Calendar first."
+  );
+}
+
 interface PullFollowupsParams {
   filtered?: boolean;
   personal?: boolean;
@@ -338,6 +358,11 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
         type: ["object", "null"],
         description: "page / pages / total — the backend's pagination envelope when present.",
       },
+      outreach_sync: {
+        type: "string",
+        description:
+          "Present when more than half the leads on the page have no outreach logged: the offer of the daily mailbox and calendar sync, and how to run it.",
+      },
       total_excluded_by_pushback: {
         type: "number",
         description:
@@ -605,6 +630,7 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
     const filterCriteria = (activeFilter as MonitorFilterItem | null)?.criteria;
 
     const landed = filterLanded(effectiveSetFilter, activeFilter);
+    const outreachSync = outreachSyncOffer(leads);
 
     return {
       active_filters: activeFilter,
@@ -613,6 +639,7 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
       pagination: pageInfo,
       total_excluded_by_pushback: excluded,
       ...(emails.some(Boolean) ? { reply_check: REPLY_CHECK } : {}),
+      ...(outreachSync ? { outreach_sync: outreachSync } : {}),
       next_steps: buildFollowupNextSteps(
         leads.length,
         moreToCome,

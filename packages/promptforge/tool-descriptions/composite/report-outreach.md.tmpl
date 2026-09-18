@@ -19,4 +19,8 @@ VERIFICATION REQUIRED: every call must include `verification={source: 'gmail_mes
 
 {{include:headers/tool-when-not-to-use}} BEFORE doing the outreach (use `dry_run:true` to validate args first); without verification (call will be rejected); from a flow where the user did not consent to having actions logged automatically.
 
+To log on the person the outreach went to, pass their org contact id as `contact_id` with a single `lead_id`. The note and the status then go on that person, and the lead's Monitor row still shows the action and the status. Logging the same Gmail message id or calendar event id twice writes nothing the second time: the lead or person comes back in `already_logged`.
+
 {{include:headers/verification-required-if-write}}
+
+{{include:heuristics/outreach-sync}}
