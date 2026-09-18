@@ -169,7 +169,6 @@ export const accountStatus: Tool<Record<string, never>> = {
         type: "object",
         properties: {
           region: { type: "string" },
-          agent_memory: { type: "object" },
         },
       },
       // Set by the MCP server wrapper (NOT this composite) on every call.

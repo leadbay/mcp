@@ -1101,7 +1101,7 @@ Trigger phrases: "I don't like this lead", "thumbs down", "not relevant", "wrong
 
 Do NOT use for: "remind me later / snooze / not now" → \`leadbay_set_pushback\`; "thumbs up / save this one" → \`leadbay_like_lead\`.
 
-Prefer when: durable rejection of a specific lead; pass \`lead_id\`. For temporary deferral, route to \`leadbay_set_pushback\`.
+Prefer when: durable rejection of a specific lead; pass \`lead_id\`, and the user's words as \`reason\`. For temporary deferral, route to \`leadbay_set_pushback\`.
 
 Examples that SHOULD invoke this tool:
 - "Thumbs down — wrong industry."
@@ -1116,16 +1116,19 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 ## RENDER (quick)
 
 One short confirmation line after the call returns ("👎 Disliked **{company_name}** —
-negative signal sent."), then continue the current flow (don't dump the full
-lead card again).
+reason saved as a note." when \`reason_saved\`). If the reason names a kind of
+company, add one line proposing the setting change (see \`targeting\`). Then
+continue the current flow (don't dump the full lead card again).
 
 ---
 
-Mark a lead as disliked. This is the same action as clicking the thumbs-down on the Leadbay website. The signal is fed back into the scoring engine: disliked leads teach Leadbay what to filter out, improving the relevance of future batches.
+Mark a lead as disliked. This is the same action as clicking the thumbs-down on the Leadbay website: the lead stops appearing for this user. The dislike itself carries no reason and changes no lens filter, qualification question or targeting prompt. Leadbay only avoids a sector on the lens's next refresh after two of the lens's leads in it are disliked and none liked, and a city after two.
 
-Pass the lead's UUID as \`lead_id\`.
+Pass the lead's UUID as \`lead_id\`, and the user's reason as \`reason\` whenever they gave one. The reason is saved as a note on the lead, so the team and later sessions can read why. Do not also call \`leadbay_add_note\` for it.
 
-Dislike is a **permanent** negative signal — it influences scoring durably. If the user only wants to defer a lead ("not now", "remind me next month", "I'll look at this one later"), call \`leadbay_set_pushback\` instead; that's reversible and time-bounded.
+**A reason about a kind of company is a targeting rule.** "Consulting firm, off ICP", "too small", "subsidiary of a large group", "wrong region" will be true of the next lead too. Disliking does not stop Leadbay proposing the next one. First check whether the org's criteria already reject it: with a \`reason\`, the response carries the lead's \`ai_score\`, and below 0 means qualification already scored the lead against them, so there is nothing to change. Otherwise call \`leadbay_get_qualification_questions\`. If no anti-pattern or question already says it, propose adding the reason as a negative criterion of the ideal buyer profile with \`leadbay_set_qualification_questions({add_anti_patterns})\`, and write it on the user's yes. Whether to propose is your judgement. A reason about this company alone ("unpaid invoice with them", "opposed to prospecting", "already our client") needs only the dislike and its reason.
+
+Dislike is a **permanent** rejection of this lead. If the user only wants to defer a lead ("not now", "remind me next month", "I'll look at this one later"), call \`leadbay_set_pushback\` instead; that's reversible and time-bounded.
 
 WHEN TO USE: the user explicitly rejects a lead ("not relevant", "wrong industry", "too small", "thumbs down", "skip this", "not a fit"). Use proactively after \`leadbay_research_lead\` reveals disqualifying signals.
 
@@ -2054,7 +2057,8 @@ Returns:
   Say so and offer a starter set.
 - **\`ideal_buyer_profile\`** — \`{summary, key_characteristics, anti_patterns}\`
   or null. The questions score against THIS. A rule the user states is often
-  already an \`anti_pattern\` here.
+  already an \`anti_pattern\` here. Add one with
+  \`leadbay_set_qualification_questions({add_anti_patterns})\`.
 - **\`targeting_prompt\`** — the org's free-text instruction to the AI agent, or
   null. Qualitative rules that no single yes/no can express live here; change
   it with \`leadbay_refine_prompt\`.
@@ -2098,15 +2102,16 @@ already covered without seeing them.
 |---|---|
 | A sector, a headcount band, a territory | \`leadbay_adjust_audience\` / \`leadbay_new_lens\` filters — never a question |
 | A company trait a stranger could estimate from that company's own website or registry record — "runs its own maintenance crew", "operates a large vehicle fleet", "is legally active and not in liquidation" | a qualification question |
+| A kind of company that is never the buyer — "consulting firms", "franchise locations of national chains", "subsidiaries of large listed groups" | a negative criterion of the ideal buyer profile, \`leadbay_set_qualification_questions({add_anti_patterns})\`. It uses no question slot, and qualification reads it as a negative signal |
 | A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, \`leadbay_refine_prompt\` |
-| Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` / \`leadbay_set_lead_status\` on those leads. A question must NEVER name a company |
+| Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` with the user's words as \`reason\` / \`leadbay_set_lead_status\` on those leads. A question must NEVER name a company |
 | CRM state — "already contacted", "already in a campaign", "already excluded" | read it: \`leadbay_pull_followups\`, \`leadbay_list_campaigns\`. A question cannot observe your own history |
 | A delivery requirement — "email AND phone mandatory", "only score 54–95" | enrichment plus your own post-filter of the result. A question scores the COMPANY; it cannot see whether Leadbay holds a phone number for a contact |
 | An event or purchase trigger — "currently hiring an SDR", "just opened a site" | a qualification question or the targeting prompt. NEVER an \`example_lead\` description or a \`query\`: those match stable registry text, which never mentions events |
 
 **3 — Decide whether to change anything at all.** Touching a question
 re-scores every lead in the pipeline and draws on the org's quota, so a change
-that surfaces the same companies is a pure loss. Four reasons to write NOTHING
+that surfaces the same companies is a pure loss. Five reasons to write NOTHING
 and say why:
 
 1. **An existing question already covers the rule.** Quote that question back
@@ -2121,6 +2126,11 @@ and say why:
 4. **The question the user asked for is not decisive.** See step 4: say so,
    offer the sharper version, and write only what they then choose. Adding a
    question you know separates nothing is worse than adding none.
+5. **Qualification already rejects the lead the user turned down.** A negative
+   \`ai_score\` on \`leadbay_dislike_lead\`, or a negative \`ai_agent_lead_score\` in
+   \`leadbay_research_lead_by_id\`, means the current questions and anti-patterns
+   already score it against. An existing \`anti_patterns\` entry that says the same
+   thing counts too.
 
 **The ceiling is 5 questions.** Read the count before you answer an "add a
 question" request: at 5 the honest answer is not "sure, I'll add it". Say in
@@ -4439,15 +4449,16 @@ already covered without seeing them.
 |---|---|
 | A sector, a headcount band, a territory | \`leadbay_adjust_audience\` / \`leadbay_new_lens\` filters — never a question |
 | A company trait a stranger could estimate from that company's own website or registry record — "runs its own maintenance crew", "operates a large vehicle fleet", "is legally active and not in liquidation" | a qualification question |
+| A kind of company that is never the buyer — "consulting firms", "franchise locations of national chains", "subsidiaries of large listed groups" | a negative criterion of the ideal buyer profile, \`leadbay_set_qualification_questions({add_anti_patterns})\`. It uses no question slot, and qualification reads it as a negative signal |
 | A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, \`leadbay_refine_prompt\` |
-| Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` / \`leadbay_set_lead_status\` on those leads. A question must NEVER name a company |
+| Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` with the user's words as \`reason\` / \`leadbay_set_lead_status\` on those leads. A question must NEVER name a company |
 | CRM state — "already contacted", "already in a campaign", "already excluded" | read it: \`leadbay_pull_followups\`, \`leadbay_list_campaigns\`. A question cannot observe your own history |
 | A delivery requirement — "email AND phone mandatory", "only score 54–95" | enrichment plus your own post-filter of the result. A question scores the COMPANY; it cannot see whether Leadbay holds a phone number for a contact |
 | An event or purchase trigger — "currently hiring an SDR", "just opened a site" | a qualification question or the targeting prompt. NEVER an \`example_lead\` description or a \`query\`: those match stable registry text, which never mentions events |
 
 **3 — Decide whether to change anything at all.** Touching a question
 re-scores every lead in the pipeline and draws on the org's quota, so a change
-that surfaces the same companies is a pure loss. Four reasons to write NOTHING
+that surfaces the same companies is a pure loss. Five reasons to write NOTHING
 and say why:
 
 1. **An existing question already covers the rule.** Quote that question back
@@ -4462,6 +4473,11 @@ and say why:
 4. **The question the user asked for is not decisive.** See step 4: say so,
    offer the sharper version, and write only what they then choose. Adding a
    question you know separates nothing is worse than adding none.
+5. **Qualification already rejects the lead the user turned down.** A negative
+   \`ai_score\` on \`leadbay_dislike_lead\`, or a negative \`ai_agent_lead_score\` in
+   \`leadbay_research_lead_by_id\`, means the current questions and anti-patterns
+   already score it against. An existing \`anti_patterns\` entry that says the same
+   thing counts too.
 
 **The ceiling is 5 questions.** Read the count before you answer an "add a
 question" request: at 5 the honest answer is not "sure, I'll add it". Say in
@@ -4934,7 +4950,7 @@ out?"\`
 
 | Observation                                            | Suggest                                                  | Calls                                                          |
 |--------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------|
-| Lead is clearly not a fit (wrong industry, too small)  | "Dislike this lead"                                      | leadbay_dislike_lead({ leadId })                               |
+| Lead is clearly not a fit (wrong industry, too small)  | "Dislike this lead"                                      | leadbay_dislike_lead({ lead_id, reason })                      |
 | User is done with this lead                            | "Back to the inbox"                                      | leadbay_pull_leads                                             |
 `;
 // endregion: leadbay_research_lead_by_id
@@ -5108,7 +5124,7 @@ out?"\`
 
 | Observation                                            | Suggest                                                  | Calls                                                          |
 |--------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------|
-| Lead is clearly not a fit (wrong industry, too small)  | "Dislike this lead"                                      | leadbay_dislike_lead({ leadId })                               |
+| Lead is clearly not a fit (wrong industry, too small)  | "Dislike this lead"                                      | leadbay_dislike_lead({ lead_id, reason })                      |
 | User is done with this lead                            | "Back to the inbox"                                      | leadbay_pull_leads                                             |
 
 
@@ -5666,6 +5682,8 @@ Leadbay allows **at most 5** qualification questions. If a change would exceed 5
 
 Returns the resulting \`{qualification_questions, count, previous_count, changed}\`.
 
+**Negative criteria — \`add_anti_patterns\`.** The ideal buyer profile's \`anti_patterns\` list kinds of company that are never the buyer. Qualification reads them as negative signals when it scores a lead, beside the questions. \`add_anti_patterns\` appends to that list and returns it as \`anti_patterns\`. It uses no question slot and cannot be combined with \`questions\`/\`add\`/\`remove\`. It is an org-admin action and draws on the org's AI quota. After it, Leadbay regenerates its targeting in the background: new example buyers, a refresh of every lens, and, when nobody has written the questions by hand, possibly new questions. Leads already scored keep their score until they are next qualified. Leadbay also stops rewriting the profile by itself. Tell the user this when you propose it.
+
 ### A stated fit rule is a SETTING — read, decide, propose, then write
 
 **Never answer a stated rule from memory.** "C'est noté", "already applied",
@@ -5694,15 +5712,16 @@ already covered without seeing them.
 |---|---|
 | A sector, a headcount band, a territory | \`leadbay_adjust_audience\` / \`leadbay_new_lens\` filters — never a question |
 | A company trait a stranger could estimate from that company's own website or registry record — "runs its own maintenance crew", "operates a large vehicle fleet", "is legally active and not in liquidation" | a qualification question |
+| A kind of company that is never the buyer — "consulting firms", "franchise locations of national chains", "subsidiaries of large listed groups" | a negative criterion of the ideal buyer profile, \`leadbay_set_qualification_questions({add_anti_patterns})\`. It uses no question slot, and qualification reads it as a negative signal |
 | A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, \`leadbay_refine_prompt\` |
-| Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` / \`leadbay_set_lead_status\` on those leads. A question must NEVER name a company |
+| Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` with the user's words as \`reason\` / \`leadbay_set_lead_status\` on those leads. A question must NEVER name a company |
 | CRM state — "already contacted", "already in a campaign", "already excluded" | read it: \`leadbay_pull_followups\`, \`leadbay_list_campaigns\`. A question cannot observe your own history |
 | A delivery requirement — "email AND phone mandatory", "only score 54–95" | enrichment plus your own post-filter of the result. A question scores the COMPANY; it cannot see whether Leadbay holds a phone number for a contact |
 | An event or purchase trigger — "currently hiring an SDR", "just opened a site" | a qualification question or the targeting prompt. NEVER an \`example_lead\` description or a \`query\`: those match stable registry text, which never mentions events |
 
 **3 — Decide whether to change anything at all.** Touching a question
 re-scores every lead in the pipeline and draws on the org's quota, so a change
-that surfaces the same companies is a pure loss. Four reasons to write NOTHING
+that surfaces the same companies is a pure loss. Five reasons to write NOTHING
 and say why:
 
 1. **An existing question already covers the rule.** Quote that question back
@@ -5717,6 +5736,11 @@ and say why:
 4. **The question the user asked for is not decisive.** See step 4: say so,
    offer the sharper version, and write only what they then choose. Adding a
    question you know separates nothing is worse than adding none.
+5. **Qualification already rejects the lead the user turned down.** A negative
+   \`ai_score\` on \`leadbay_dislike_lead\`, or a negative \`ai_agent_lead_score\` in
+   \`leadbay_research_lead_by_id\`, means the current questions and anti-patterns
+   already score it against. An existing \`anti_patterns\` entry that says the same
+   thing counts too.
 
 **The ceiling is 5 questions.** Read the count before you answer an "add a
 question" request: at 5 the honest answer is not "sure, I'll add it". Say in
@@ -5803,7 +5827,7 @@ ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We
 
 ### RENDERING
 
-After a change, confirm in one line — e.g. **"Added 1 question — you now score leads against 4 questions."** or **"Removed 'the flooring question' — 3 questions remain."** Then list the resulting questions as a numbered list. When the result is a non-changing preview (a removal awaiting confirmation), surface the \`hint\` (what would be removed) and ask the user to confirm — do NOT auto-confirm.
+After a change, confirm in one line — e.g. **"Added 1 question — you now score leads against 4 questions."** or **"Removed 'the flooring question' — 3 questions remain."** Then list the resulting questions as a numbered list. When the result is a non-changing preview (a removal awaiting confirmation), surface the \`hint\` (what would be removed) and ask the user to confirm — do NOT auto-confirm. After \`add_anti_patterns\`, confirm in one line — e.g. **"Added 1 negative criterion to your buyer profile."** — then list \`anti_patterns\`.
 `;
 // endregion: leadbay_set_qualification_questions
 

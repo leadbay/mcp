@@ -26,15 +26,16 @@ already covered without seeing them.
 |---|---|
 | A sector, a headcount band, a territory | `leadbay_adjust_audience` / `leadbay_new_lens` filters — never a question |
 | A company trait a stranger could estimate from that company's own website or registry record — "runs its own maintenance crew", "operates a large vehicle fleet", "is legally active and not in liquidation" | a qualification question |
+| A kind of company that is never the buyer — "consulting firms", "franchise locations of national chains", "subsidiaries of large listed groups" | a negative criterion of the ideal buyer profile, `leadbay_set_qualification_questions({add_anti_patterns})`. It uses no question slot, and qualification reads it as a negative signal |
 | A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, `leadbay_refine_prompt` |
-| Named companies — "exclude Groupe Solidum, Dentego" | `leadbay_dislike_lead` / `leadbay_set_lead_status` on those leads. A question must NEVER name a company |
+| Named companies — "exclude Groupe Solidum, Dentego" | `leadbay_dislike_lead` with the user's words as `reason` / `leadbay_set_lead_status` on those leads. A question must NEVER name a company |
 | CRM state — "already contacted", "already in a campaign", "already excluded" | read it: `leadbay_pull_followups`, `leadbay_list_campaigns`. A question cannot observe your own history |
 | A delivery requirement — "email AND phone mandatory", "only score 54–95" | enrichment plus your own post-filter of the result. A question scores the COMPANY; it cannot see whether Leadbay holds a phone number for a contact |
 | An event or purchase trigger — "currently hiring an SDR", "just opened a site" | a qualification question or the targeting prompt. NEVER an `example_lead` description or a `query`: those match stable registry text, which never mentions events |
 
 **3 — Decide whether to change anything at all.** Touching a question
 re-scores every lead in the pipeline and draws on the org's quota, so a change
-that surfaces the same companies is a pure loss. Four reasons to write NOTHING
+that surfaces the same companies is a pure loss. Five reasons to write NOTHING
 and say why:
 
 1. **An existing question already covers the rule.** Quote that question back
@@ -49,6 +50,11 @@ and say why:
 4. **The question the user asked for is not decisive.** See step 4: say so,
    offer the sharper version, and write only what they then choose. Adding a
    question you know separates nothing is worse than adding none.
+5. **Qualification already rejects the lead the user turned down.** A negative
+   `ai_score` on `leadbay_dislike_lead`, or a negative `ai_agent_lead_score` in
+   `leadbay_research_lead_by_id`, means the current questions and anti-patterns
+   already score it against. An existing `anti_patterns` entry that says the same
+   thing counts too.
 
 **The ceiling is 5 questions.** Read the count before you answer an "add a
 question" request: at 5 the honest answer is not "sure, I'll add it". Say in

@@ -41,5 +41,5 @@ out?"`
 
 | Observation                                            | Suggest                                                  | Calls                                                          |
 |--------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------|
-| Lead is clearly not a fit (wrong industry, too small)  | "Dislike this lead"                                      | leadbay_dislike_lead({ leadId })                               |
+| Lead is clearly not a fit (wrong industry, too small)  | "Dislike this lead"                                      | leadbay_dislike_lead({ lead_id, reason })                      |
 | User is done with this lead                            | "Back to the inbox"                                      | leadbay_pull_leads                                             |
