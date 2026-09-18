@@ -1,9 +1,62 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool, ToolContext, QuotaStatusPayload, LensPayload } from "../types.js";
+import type {
+  Tool,
+  ToolContext,
+  QuotaStatusPayload,
+  LensPayload,
+  AiAgentQuestionPayload,
+  IdealBuyerProfilePayload,
+  PurchaseIntentTagPayload,
+} from "../types.js";
 import { fetchTerminalNotifications } from "../notifications/catch-up.js";
 import { isUnlimitedAccount } from "./_credits-helpers.js";
 
 import { leadbay_account_status as ACCOUNT_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
+
+// What the account is configured to search for (product#4167). This tool is
+// the first call for half the occasional accounts — "am I connected?" — and
+// without these four org settings the agent could answer "yes" and nothing
+// else. Each read settles on its own: a failed read is null (unknown), never
+// an empty list that would read as "not configured", and never fails the call.
+async function readSearchConfiguration(
+  client: LeadbayClient,
+  orgId: string,
+  ctx?: ToolContext
+) {
+  const org = `/organizations/${orgId}`;
+  const [ibp, prompt, questions, tags] = await Promise.allSettled([
+    client.request<IdealBuyerProfilePayload | null>("GET", `${org}/ideal_buyer_profile`),
+    // The body is `{user_prompt}`, and 204 when unset (api-specs UserPrompt.yml).
+    client.request<{ user_prompt?: string } | null>("GET", `${org}/user_prompt`),
+    client.request<AiAgentQuestionPayload[]>("GET", `${org}/ai_agent_questions`),
+    client.request<PurchaseIntentTagPayload[]>("GET", `${org}/purchase_intent_tags`),
+  ]);
+  const failed = [ibp, prompt, questions, tags].filter((r) => r.status === "rejected").length;
+  if (failed > 0) {
+    ctx?.logger?.warn?.(`account_status: ${failed} of 4 search-configuration read(s) failed`);
+  }
+  const profile = ibp.status === "fulfilled" ? ibp.value : null;
+  return {
+    ideal_buyer_profile: profile?.summary
+      ? {
+          summary: profile.summary,
+          key_characteristics: profile.key_characteristics ?? [],
+          anti_patterns: profile.anti_patterns ?? [],
+        }
+      : null,
+    targeting_prompt:
+      prompt.status === "fulfilled" ? prompt.value?.user_prompt || null : null,
+    qualification_questions:
+      questions.status === "fulfilled"
+        ? (questions.value ?? []).map((q) => q.question)
+        : null,
+    purchase_intent_tags:
+      tags.status === "fulfilled"
+        ? (tags.value ?? []).map((t) => t.display_name)
+        : null,
+  };
+}
+
 export const accountStatus: Tool<Record<string, never>> = {
   name: "leadbay_account_status",
   annotations: {
@@ -58,6 +111,38 @@ export const accountStatus: Tool<Record<string, never>> = {
         type: ["string", "null"],
         description:
           "Human-readable name of the active lens (resolved from /lenses). WITHHELD (null) unless the user explicitly asked about the lens/audience — the composite only resolves it when asked, so on a plain account question there is nothing here to mention. When present (the user asked), answer with THIS name, never the numeric id.",
+      },
+      search_configuration: {
+        type: "object",
+        description:
+          "What this account is configured to search for — the org's targeting settings. A null field is unset OR could not be read: say nothing about it, and never tell the user it is missing. An empty list means none are configured.",
+        properties: {
+          ideal_buyer_profile: {
+            type: ["object", "null"],
+            description: "The org's Ideal Buyer Profile: who Leadbay looks for.",
+            properties: {
+              summary: { type: "string" },
+              key_characteristics: { type: "array", items: { type: "string" } },
+              anti_patterns: { type: "array", items: { type: "string" } },
+            },
+          },
+          targeting_prompt: {
+            type: ["string", "null"],
+            description:
+              "The org's free-text targeting prompt, in the user's own words. Changed with leadbay_refine_prompt.",
+          },
+          qualification_questions: {
+            type: ["array", "null"],
+            items: { type: "string" },
+            description:
+              "The questions Leadbay scores every lead against. Changed with leadbay_set_qualification_questions.",
+          },
+          purchase_intent_tags: {
+            type: ["array", "null"],
+            items: { type: "string" },
+            description: "The buying signals Leadbay watches for, by name.",
+          },
+        },
       },
       quota: {
         type: ["object", "null"],
@@ -119,6 +204,8 @@ export const accountStatus: Tool<Record<string, never>> = {
   },
   execute: async (client: LeadbayClient, _params, ctx?: ToolContext) => {
     const me = await client.resolveMe();
+    // Started now so it runs alongside the quota and notification reads.
+    const searchConfiguration = readSearchConfiguration(client, me.organization.id, ctx);
 
     let quota: QuotaStatusPayload | null = null;
     // Distinct from `quota: null`: when the call FAILS we surface the error so
@@ -237,6 +324,7 @@ export const accountStatus: Tool<Record<string, never>> = {
       // schema and never drifts string-vs-number across accounts.
       last_requested_lens: lensAsked && lensId != null ? String(lensId) : null,
       last_requested_lens_name,
+      search_configuration: await searchConfiguration,
       // Quota goes here verbatim from /quota_status. Legacy freemium.* fields
       // on /me are intentionally NOT surfaced — they're defunct (see
       // SHAPE-DRIFT.md probe round 4).

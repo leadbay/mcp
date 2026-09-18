@@ -171,13 +171,14 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-Report user + org; show quota only when asked (quota / account status) or a
-window is exhausted. NEVER mention the lens unless asked (use
+Report user + org + one line on what the account targets
+(\`search_configuration\`). Show quota only when asked (quota/account status)
+or a window is exhausted. NEVER mention the lens unless asked (use
 \`last_requested_lens_name\`, never the id). SILENT on quota when
 \`quota_error\` set, \`unlimited_credits\` true, or quota null. Else render
-Daily/Weekly/Monthly from \`quota.user\` (fall back to \`quota.org\` if \`user\`
-absent) as \`$used / $cap (N% used) · resets\` (or a resource-count table when
-\`spend[]\` empty). Never say raw "credits".
+Daily/Weekly/Monthly from \`quota.user\` (else \`quota.org\`) as
+\`$used / $cap (N% used) · resets\` (resource-count table if \`spend[]\`
+empty). Never say raw "credits".
 
 ---
 
@@ -188,6 +189,8 @@ Show the user's account state — admin rights, language, last-active lens, quot
 **Offer the top-up link via \`leadbay_create_topup_link\`.** When the user accepts the top-up offer, call \`leadbay_create_topup_link\` and surface the returned Stripe checkout URL as a clickable link. The user completes payment in their browser; nothing is charged just by generating the URL. For ongoing subscription changes (plan upgrade / payment method), use \`leadbay_open_billing_portal\` instead.
 
 **After a user tops up, do NOT keep refusing — RETRY.** If the user signals they topped up / bought credits / added credits, the previous QUOTA_EXCEEDED is invalidated the moment the Stripe webhook lands. RE-CALL \`leadbay_account_status\` to pick up the new state AND retry the originally failed call. The retry itself does not require a successful account_status check first — a topped-up user has cleared the throttle whether or not your cached snapshot reflects it yet. If the retry hits the wall again, only then re-offer top-up / wait. **A stale quota snapshot is never a reason to gate-keep a topped-up user.**
+
+**\`search_configuration\`** is what this account is set up to find: the ideal buyer profile, the targeting prompt, the qualification questions and the buying signals Leadbay watches for. Even when the user only asked whether Leadbay is connected, it is how you tell them what Leadbay is looking for on their behalf. A null field is unset or unreadable: never tell the user it is missing.
 
 **\`mcp_version\`** is the version of the Leadbay MCP server answering the call. When the user asks which Leadbay version they are running, answer with it.
 
@@ -6387,19 +6390,22 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-Report user + org; show quota only when asked (quota / account status) or a
-window is exhausted. NEVER mention the lens unless asked (use
+Report user + org + one line on what the account targets
+(\`search_configuration\`). Show quota only when asked (quota/account status)
+or a window is exhausted. NEVER mention the lens unless asked (use
 \`last_requested_lens_name\`, never the id). SILENT on quota when
 \`quota_error\` set, \`unlimited_credits\` true, or quota null. Else render
-Daily/Weekly/Monthly from \`quota.user\` (fall back to \`quota.org\` if \`user\`
-absent) as \`$used / $cap (N% used) · resets\` (or a resource-count table when
-\`spend[]\` empty). Never say raw "credits".
+Daily/Weekly/Monthly from \`quota.user\` (else \`quota.org\`) as
+\`$used / $cap (N% used) · resets\` (resource-count table if \`spend[]\`
+empty). Never say raw "credits".
 
 ---
 
 Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **When you show quota, show it the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` in dollar_cents (% used = the ratio, $ = \`/100\`); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
 
 **After a user tops up, do NOT keep refusing — RETRY.** If the user signals they topped up / bought credits / added credits, the previous QUOTA_EXCEEDED is invalidated the moment the Stripe webhook lands. RE-CALL \`leadbay_account_status\` to pick up the new state AND retry the originally failed call. The retry itself does not require a successful account_status check first — a topped-up user has cleared the throttle whether or not your cached snapshot reflects it yet. **A stale quota snapshot is never a reason to gate-keep a topped-up user.**
+
+**\`search_configuration\`** is what this account is set up to find: the ideal buyer profile, the targeting prompt, the qualification questions and the buying signals Leadbay watches for. Even when the user only asked whether Leadbay is connected, it is how you tell them what Leadbay is looking for on their behalf. A null field is unset or unreadable: never tell the user it is missing.
 
 **\`mcp_version\`** is the version of the Leadbay MCP server answering the call. When the user asks which Leadbay version they are running, answer with it.
 

@@ -3,9 +3,9 @@ name: leadbay_account_status
 kind: tool-description
 short_description: |
   Show the user's account state — admin rights, language, last-active lens,
-  and quota usage shown like the web app: a percentage-used + dollar-spend
-  gauge for each daily/weekly/monthly window, with a per-resource breakdown,
-  plus regeneration flags.
+  what the account is set up to find, and quota usage shown like the web
+  app: a percentage-used + dollar-spend gauge for each daily/weekly/monthly
+  window, with a per-resource breakdown, plus regeneration flags.
 routing:
   triggers:
     - "what's my account status"
@@ -26,13 +26,14 @@ routing:
       - "Show me today's leads."
       - "What should I follow up on?"
 rendering_hint: |
-  Report user + org; show quota only when asked (quota / account status) or a
-  window is exhausted. NEVER mention the lens unless asked (use
+  Report user + org + one line on what the account targets
+  (`search_configuration`). Show quota only when asked (quota/account status)
+  or a window is exhausted. NEVER mention the lens unless asked (use
   `last_requested_lens_name`, never the id). SILENT on quota when
   `quota_error` set, `unlimited_credits` true, or quota null. Else render
-  Daily/Weekly/Monthly from `quota.user` (fall back to `quota.org` if `user`
-  absent) as `$used / $cap (N% used) · resets` (or a resource-count table when
-  `spend[]` empty). Never say raw "credits".
+  Daily/Weekly/Monthly from `quota.user` (else `quota.org`) as
+  `$used / $cap (N% used) · resets` (resource-count table if `spend[]`
+  empty). Never say raw "credits".
 annotations:
   readOnlyHint: true
   destructiveHint: false
@@ -48,6 +49,8 @@ Show the user's account state — admin rights, language, last-active lens, quot
 {{/commerce}}
 
 **After a user tops up, do NOT keep refusing — RETRY.** If the user signals they topped up / bought credits / added credits, the previous QUOTA_EXCEEDED is invalidated the moment the Stripe webhook lands. RE-CALL `leadbay_account_status` to pick up the new state AND retry the originally failed call. The retry itself does not require a successful account_status check first — a topped-up user has cleared the throttle whether or not your cached snapshot reflects it yet.{{commerce}} If the retry hits the wall again, only then re-offer top-up / wait.{{/commerce}} **A stale quota snapshot is never a reason to gate-keep a topped-up user.**
+
+**`search_configuration`** is what this account is set up to find: the ideal buyer profile, the targeting prompt, the qualification questions and the buying signals Leadbay watches for. Even when the user only asked whether Leadbay is connected, it is how you tell them what Leadbay is looking for on their behalf. A null field is unset or unreadable: never tell the user it is missing.
 
 **`mcp_version`** is the version of the Leadbay MCP server answering the call. When the user asks which Leadbay version they are running, answer with it.
 
