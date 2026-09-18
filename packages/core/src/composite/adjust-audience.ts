@@ -453,7 +453,7 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
         params.lensId !== undefined ? String(params.lensId) : "<the lens being edited>";
       return {
         ...envelope,
-        hint: `${envelope.hint} Before that re-call, read \`lens://${lensRef}/definition\` — location criteria MERGE here rather than replace, so any geography the lens already carries survives the re-call untouched. \`leadbay_pull_leads\` returns only \`lens: {id}\` and \`leadbay_my_lenses\` returns no filter, so neither can tell you what it is. If the lens is already scoped to a place, the edited audience stays scoped to it: say which places it actually covers, or clear those criteria first if whole-workspace is what was meant.`,
+        hint: `${envelope.hint} Before that re-call, read lens ${lensRef}'s \`criteria\` in \`leadbay_my_lenses\` (or the \`lens://${lensRef}/definition\` resource on hosts that expose one) — location criteria MERGE here rather than replace, so any geography the lens already carries survives the re-call untouched. \`leadbay_pull_leads\` returns only \`lens: {id}\` and no filter, so it cannot tell you what that geography is. If the lens is already scoped to a place, the edited audience stays scoped to it: say which places it actually covers, or clear those criteria first if whole-workspace is what was meant.`,
       };
     }
 

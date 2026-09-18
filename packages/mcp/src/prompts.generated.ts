@@ -2774,13 +2774,13 @@ If the \`territory\` I named is a country, which one decides what you do:
   plan is a Paris plan — and "covers all of France" printed above it is exactly the
   confidently wrong deliverable this whole gate exists to stop, this time in my own
   header rather than in a filter.
-  **Read the \`lens://<id>/definition\` resource** — that is the only place a lens's
-  \`location_ids\` are visible. \`leadbay_pull_leads\` returns only \`lens: {id}\`, not the
+  **Read the lens's \`criteria\` in \`leadbay_my_lenses\`** — it names the lens's
+  \`location_ids\`. \`leadbay_pull_leads\` returns only \`lens: {id}\`, not the
   filter, and \`active_filters\` describes the separately-persisted MONITOR filter, not
   the Discover lens; neither can settle this and neither is a substitute (same rule as
   the Monitor-mirroring section below). Then say ONE of: the lens really is
   workspace-wide, or it is scoped to \`<the places its filter names>\` — offering to clear
-  that scope if national is what I meant. If you genuinely cannot read the definition,
+  that scope if national is what I meant. If you genuinely cannot read the criteria,
   say the scope is unverified rather than calling it national. Then offer sector / size
   / sub-country region as the axes that would actually narrow it.
 - **A different country, or a supra-national scope** → do NOT simply drop the scope and build the plan anyway. An unfiltered plan is this workspace's own accounts, which is not an answer to a request about somewhere else — delivering it under my heading would be a confidently wrong plan. Say the ask cannot be filled from this workspace and stop. **This is the one case that overrides DELIVER FIRST above**: shipping the plan anyway is the failure, not the fix.
@@ -2822,7 +2822,7 @@ If the org has none set, or they don't discriminate for this exercise, recommend
 - **A persisted filter you didn't ask for** silently shrinks the known side, so a rep who once filtered Monitor to a city gets a "whole base" plan missing most of it.
 - **Blindly passing \`filtered:false\`** does the opposite: Monitor goes org-wide while Discover stays on a scoped lens, so out-of-scope known accounts land in a plan headed with the lens's name.
 
-⚠ **You cannot mirror a geography you haven't read.** \`leadbay_pull_leads\` returns only \`lens: {id}\` — not the lens's filter — so capturing the id tells you nothing about which locations it covers. Before scoping Monitor to match a lens, read the **\`lens://<id>/definition\` resource** — that is where the filter and its \`location_ids\` actually live. \`leadbay_my_lenses\` returns only id / name / description / active flags, so it cannot tell you a lens's geography and must not be used for this. If you cannot determine the lens's geography, do NOT guess: pull Monitor org-wide with \`filtered:false\` and say in the header that the known side is org-wide while Discover follows lens \`<id>\`, whose scope you could not read. An unstated mismatch is the failure; a stated one is honest.
+⚠ **You cannot mirror a geography you haven't read.** \`leadbay_pull_leads\` returns only \`lens: {id}\` — not the lens's filter — so capturing the id tells you nothing about which locations it covers. Before scoping Monitor to match a lens, read its \`criteria\` in **\`leadbay_my_lenses\`** — every lens there carries its filter's \`location_ids\` by name. If you cannot determine the lens's geography, do NOT guess: pull Monitor org-wide with \`filtered:false\` and say in the header that the known side is org-wide while Discover follows lens \`<id>\`, whose scope you could not read. An unstated mismatch is the failure; a stated one is honest.
 
 So: **read the persisted filter first** (the response reports \`active_filters\`), then make it match the plan's declared scope. If the plan is scoped (a \`territory\`, or an active lens with its own geography), apply that same geography to Monitor. If the plan is genuinely org-wide, pass \`filtered:false\`. Either way, state the known side's scope in the header in the same breath as the Discover side — a plan whose two halves are scoped differently is misleading even when both halves are individually correct.
 

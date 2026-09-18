@@ -194,11 +194,10 @@ export const newLens: Tool<NewLensParams> = {
       // branches forbid one outright and must not read as though one existed.
       const authorizesReCall = /re-call ONCE/.test(envelope.hint);
       if (!authorizesReCall) return envelope;
+      const baseRef = params.base ?? "<active lens id>";
       return {
         ...envelope,
-        hint: `${envelope.hint} Before that re-call, read the geography of the lens being cloned — \`lens://${
-          params.base ?? "<active lens id>"
-        }/definition\`, which is the only place a lens's \`location_ids\` are visible (\`leadbay_pull_leads\` returns only \`lens: {id}\`, and \`leadbay_my_lenses\` returns no filter at all). A clone INHERITS that geography, so if the base carries any, the new lens is scoped to it no matter that no location was passed — and calling the result whole-workspace would be false. If it does carry geography, either clear it on the new lens or say plainly which places it actually covers.`,
+        hint: `${envelope.hint} Before that re-call, read the geography of the lens being cloned — lens ${baseRef}'s \`criteria\` in \`leadbay_my_lenses\` names its \`location_ids\` (so does the \`lens://${baseRef}/definition\` resource on hosts that expose one; \`leadbay_pull_leads\` returns only \`lens: {id}\`, so it cannot). A clone INHERITS that geography, so if the base carries any, the new lens is scoped to it no matter that no location was passed — and calling the result whole-workspace would be false. If it does carry geography, either clear it on the new lens or say plainly which places it actually covers.`,
       };
     }
 

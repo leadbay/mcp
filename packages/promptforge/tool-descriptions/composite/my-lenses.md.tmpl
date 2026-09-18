@@ -5,11 +5,16 @@ short_description: |
   List the user's lenses (audiences), marking the active one. Switch active
   (`switchToLensId`), edit name/description (`editLensId`+`newName`/`newDescription`),
   or delete (`deleteLensId`, confirm-gated). With no args it is a pure read.
+  Every lens comes with its criteria (sectors, locations, sizes by name): use
+  it to say what a lens is searching for.
 routing:
   triggers:
     - "show me my lenses"
     - "list my lenses"
     - "which audiences do I have"
+    - "what is my lens searching for"
+    - "what are the criteria of my <name> lens"
+    - "give me my current criteria"
     - "switch to my <name> lens"
     - "change lens"
     - "rename my <name> lens to <X>"
@@ -25,10 +30,11 @@ routing:
       route_to: leadbay_extend_lens
     - phrase: "show me today's leads"
       route_to: leadbay_pull_leads
-  prefer_when: "user wants to SEE lenses, CHANGE which is active, RENAME one, or DELETE one — not edit a lens's sector/size criteria"
+  prefer_when: "user wants to SEE lenses or a lens's criteria, CHANGE which is active, RENAME one, or DELETE one — not edit a lens's sector/size criteria"
   examples:
     positive:
       - "Show me my lenses."
+      - "What criteria is my Manufacturing lens using? I want to add or remove some."
       - "Rename my Auto lens to Automotive and add a description."
       - "Delete my old Auto lens."
     negative:
@@ -37,7 +43,8 @@ routing:
       - "Show me today's leads."
 rendering_hint: |
   Small markdown table, active lens first: col 1 = ⭐ prefix when active +
-  lens name; col 2 = description (or `—`). After a switch lead with
+  lens name; col 2 = description (or `—`); col 3 = its criteria by name.
+  After a switch lead with
   "Now showing **<name>**."; after a rename lead with the rename confirmation.
   Full algorithm below.
 next_steps: my-lenses
@@ -51,7 +58,10 @@ List the user's lenses (saved audiences) and, when asked, switch which one is ac
 
 **Three modes, one tool:**
 
-- **List (no args)** — pure read. Returns `{status:"listed", lenses:[{id, name, description, is_active}], active_lens_id}`. The active lens is resolved from the user's last-requested lens, so `is_active` is authoritative even if a row's flag is stale.
+- **List (no args)** — pure read. Returns `{status:"listed", lenses:[…], active_lens_id}`. The active lens is resolved from the user's last-requested lens, so `is_active` is authoritative.
+
+**Every lens in every response carries** all its metadata (`id`, `name`, `description`, `is_active`, `is_default`, `user_id`, `multi_product_mode`, `use_hq_only`, and the backend's `not_enough_lead_candidates` / `not_enough_new_leads` / `less_leads_than_targeted` flags) plus **`criteria`**: its own filter as the Leadbay web app shows it, one entry per criterion `{type, is_excluded, …}`. `sector_ids` and `location_ids` come as `[{id, name}]`; `size` as `sizes:[{min,max}]` (employees); any other type verbatim. `criteria: []` means the lens sets no criteria of its own; `null` means it could not be read. This is how to answer "what is this lens searching for", and the read before adding or removing a criterion with `leadbay_adjust_audience`.
+
 - **Switch (`switchToLensId`)** — changes the active lens to that id and returns the REFRESHED list. The id MUST be one of the user's lenses; an unknown id returns `{status:"not_found"}` with the current list — surface it and ask the user to pick, do NOT invent an id. Switching to the already-active lens is a harmless no-op.
 - **Edit (`editLensId` + `newName` and/or `newDescription`)** — rename and/or set the description of a lens in one call, returns the REFRESHED list. Provide either or both; pass `newDescription:""` to clear a description. Same not_found handling. Use the `id` from the list for the lens the user named.
 - **Delete (`deleteLensId`)** — DESTRUCTIVE and confirm-gated. Without `confirm:true` it returns `status:"delete_preview"` with `will_delete` and removes NOTHING — show it, get the user's explicit yes, then re-call with `confirm:true`. The DEFAULT lens cannot be deleted (`status:"cannot_delete_default"`). Deleting the active lens leaves no active lens until the next switch/pull resolves one.
