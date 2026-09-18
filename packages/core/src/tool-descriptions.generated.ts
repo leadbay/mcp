@@ -424,7 +424,7 @@ WHEN NOT TO USE: to create a NEW campaign (use \`leadbay_create_campaign\` with 
 // region: leadbay_add_note
 export const leadbay_add_note: string = `Add a note to a lead. Notes are visible to the whole organization in Leadbay.
 
-WHEN TO USE: low-level — for free-form notes not tied to outreach actions, including meaningful per-lead notes/context preserved from an imported file after the import returns lead IDs.
+WHEN TO USE: low-level — for free-form notes not tied to outreach actions, including meaningful per-lead notes/context preserved from an imported file after the import returns lead IDs. Also to record why a company was set aside when a CRM status change carries no reason, or when the user tells you something about one company that only they know (their own sales agent, already a client) without excluding it. A dislike saves its own reason: do not add a second note for it.
 
 WHEN NOT TO USE: to log an outreach action — use leadbay_report_outreach, which requires verification (gmail/calendar/user_confirmed) to prevent hallucinated outreach poisoning the SDR pipeline.
 
@@ -2104,7 +2104,7 @@ already covered without seeing them.
 | A company trait a stranger could estimate from that company's own website or registry record — "runs its own maintenance crew", "operates a large vehicle fleet", "is legally active and not in liquidation" | a qualification question |
 | A kind of company that is never the buyer — "consulting firms", "franchise locations of national chains", "subsidiaries of large listed groups" | a negative criterion of the ideal buyer profile, \`leadbay_set_qualification_questions({add_anti_patterns})\`. It uses no question slot, and qualification reads it as a negative signal |
 | A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, \`leadbay_refine_prompt\` |
-| Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` with the user's words as \`reason\` / \`leadbay_set_lead_status\` on those leads. A question must NEVER name a company |
+| Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` with the user's words as \`reason\` / \`leadbay_set_lead_status\` on those leads. A status stores no reason, so add the user's reason with \`leadbay_add_note\`. A question must NEVER name a company |
 | CRM state — "already contacted", "already in a campaign", "already excluded" | read it: \`leadbay_pull_followups\`, \`leadbay_list_campaigns\`. A question cannot observe your own history |
 | A delivery requirement — "email AND phone mandatory", "only score 54–95" | enrichment plus your own post-filter of the result. A question scores the COMPANY; it cannot see whether Leadbay holds a phone number for a contact |
 | An event or purchase trigger — "currently hiring an SDR", "just opened a site" | a qualification question or the targeting prompt. NEVER an \`example_lead\` description or a \`query\`: those match stable registry text, which never mentions events |
@@ -4451,7 +4451,7 @@ already covered without seeing them.
 | A company trait a stranger could estimate from that company's own website or registry record — "runs its own maintenance crew", "operates a large vehicle fleet", "is legally active and not in liquidation" | a qualification question |
 | A kind of company that is never the buyer — "consulting firms", "franchise locations of national chains", "subsidiaries of large listed groups" | a negative criterion of the ideal buyer profile, \`leadbay_set_qualification_questions({add_anti_patterns})\`. It uses no question slot, and qualification reads it as a negative signal |
 | A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, \`leadbay_refine_prompt\` |
-| Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` with the user's words as \`reason\` / \`leadbay_set_lead_status\` on those leads. A question must NEVER name a company |
+| Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` with the user's words as \`reason\` / \`leadbay_set_lead_status\` on those leads. A status stores no reason, so add the user's reason with \`leadbay_add_note\`. A question must NEVER name a company |
 | CRM state — "already contacted", "already in a campaign", "already excluded" | read it: \`leadbay_pull_followups\`, \`leadbay_list_campaigns\`. A question cannot observe your own history |
 | A delivery requirement — "email AND phone mandatory", "only score 54–95" | enrichment plus your own post-filter of the result. A question scores the COMPANY; it cannot see whether Leadbay holds a phone number for a contact |
 | An event or purchase trigger — "currently hiring an SDR", "just opened a site" | a qualification question or the targeting prompt. NEVER an \`example_lead\` description or a \`query\`: those match stable registry text, which never mentions events |
@@ -5714,7 +5714,7 @@ already covered without seeing them.
 | A company trait a stranger could estimate from that company's own website or registry record — "runs its own maintenance crew", "operates a large vehicle fleet", "is legally active and not in liquidation" | a qualification question |
 | A kind of company that is never the buyer — "consulting firms", "franchise locations of national chains", "subsidiaries of large listed groups" | a negative criterion of the ideal buyer profile, \`leadbay_set_qualification_questions({add_anti_patterns})\`. It uses no question slot, and qualification reads it as a negative signal |
 | A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, \`leadbay_refine_prompt\` |
-| Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` with the user's words as \`reason\` / \`leadbay_set_lead_status\` on those leads. A question must NEVER name a company |
+| Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` with the user's words as \`reason\` / \`leadbay_set_lead_status\` on those leads. A status stores no reason, so add the user's reason with \`leadbay_add_note\`. A question must NEVER name a company |
 | CRM state — "already contacted", "already in a campaign", "already excluded" | read it: \`leadbay_pull_followups\`, \`leadbay_list_campaigns\`. A question cannot observe your own history |
 | A delivery requirement — "email AND phone mandatory", "only score 54–95" | enrichment plus your own post-filter of the result. A question scores the COMPANY; it cannot see whether Leadbay holds a phone number for a contact |
 | An event or purchase trigger — "currently hiring an SDR", "just opened a site" | a qualification question or the targeting prompt. NEVER an \`example_lead\` description or a \`query\`: those match stable registry text, which never mentions events |

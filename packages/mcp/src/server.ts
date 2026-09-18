@@ -50,6 +50,7 @@ import {
   FRICTION,
   MENTAL_MODEL,
   STATED_RULES,
+  COMPANY_FACTS,
   QUOTA_TOPUP,
   QUOTA_REFRESH,
   TRIGGERED_BY,
@@ -400,6 +401,14 @@ export function buildServerInstructions(exposed: Set<string>): string {
   // on the read tool it names (#3504).
   if (has("leadbay_get_qualification_questions")) {
     parts.push(STATED_RULES);
+  }
+  // product#4171: "we had a €35,000 unpaid invoice with them" is a fact about
+  // one company, not a fit rule. A dislike saves its reason (product#4170); a
+  // status stores none, so that fact only survives as a note. Right after
+  // STATED_RULES, which would otherwise route it to a settings proposal. Gated
+  // on the tool it names (#3504).
+  if (has("leadbay_add_note")) {
+    parts.push(COMPANY_FACTS);
   }
   // The selling paragraph — only where selling is allowed. Keyed off the tool
   // so the instructions never promote a purchase the host forbids, and never
