@@ -105,7 +105,9 @@ export interface TelemetryHandle {
     props: FrictionReportedProps,
     identity?: CaptureIdentity
   ): boolean;
-  captureException(err: unknown, ctx: ExceptionCtx): void;
+  // `identity` is the hosted per-request override: it attaches the caller as
+  // the event's Sentry user and organization tag (product#4175).
+  captureException(err: unknown, ctx: ExceptionCtx, identity?: CaptureIdentity): void;
   // User-authored feedback → Sentry's feedback inbox, the SAME place the
   // web app's feedback form lands (Sentry.captureFeedback). name/email are
   // filled from the identified `/users/me` when available, mirroring the web
@@ -465,10 +467,15 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
     captureVersionUpdated(props) {
       emit(EV_MCP_VERSION_UPDATED, { ...props });
     },
-    captureException(err, ctx) {
+    captureException(err, ctx, identity) {
       if (!sentryReady) return;
       try {
         Sentry.withScope((scope) => {
+          // Hosted never runs identify(), so without this every hosted event
+          // was anonymous: "Users Impacted: 0", no way to find the account.
+          if (identity?.email || identity?.name) {
+            scope.setUser({ email: identity.email, username: identity.name });
+          }
           scope.setTag("tool", ctx.tool);
           if (ctx.code) scope.setTag("error_code", ctx.code);
           if (ctx.endpoint) scope.setTag("endpoint", ctx.endpoint);
@@ -477,9 +484,8 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
             scope.setTag("http_status", String(ctx.http_status));
           }
           if (ctx.source) scope.setTag("source", ctx.source);
-          if (me?.organization?.id) {
-            scope.setTag("organization", me.organization.id);
-          }
+          const organization = identity ? identity.groups?.organization : me?.organization?.id;
+          if (organization) scope.setTag("organization", organization);
           if (ctx.message) scope.setExtra("message", ctx.message);
           if (ctx.hint) scope.setExtra("hint", ctx.hint);
           if (ctx.triggered_by) scope.setExtra("triggered_by", ctx.triggered_by);
