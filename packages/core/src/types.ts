@@ -233,6 +233,8 @@ export interface NotePayload {
   note: string;
   created_at: string;
   user_id?: string;
+  // Author's display name, as the backend returns it on GET /leads/{id}/notes.
+  created_by?: string;
 }
 
 export interface LoginResponse {

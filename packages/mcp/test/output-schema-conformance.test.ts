@@ -940,6 +940,14 @@ const CASES: ConformanceCase[] = [
           status: 404,
           body: {},
         },
+        // history reads (product#4168) — required, so they must be declared
+        { method: "GET", path: "/1.6/leads/lead-1/notes", status: 200, body: [] },
+        {
+          method: "GET",
+          path: "/1.6/leads/lead-1/activities?count=20",
+          status: 200,
+          body: { items: [], pagination: { page: 0, pages: 0, total: 0 } },
+        },
       ]);
     },
   },

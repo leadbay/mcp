@@ -7,12 +7,11 @@ Offer 2–3 follow-ups. Choose based on enrichment state + available channels + 
 | Observation                                     | Suggest                                                       | Calls                                                  |
 |-------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
 | `enrichment.triggered && !enrichment.complete`  | "Refresh now to check enrichment progress"                    | leadbay_prepare_outreach(leadId) — re-call             |
-| Email available                                 | "Draft the outreach email"                                    | (agent self-drafts inline, using split_ai_summary)     |
+| Email available                                 | "Draft the outreach email"                                    | (agent self-drafts inline from signals + history)      |
 | Direct phone available                          | "Draft the 60-second call opener"                             | (agent self-drafts inline)                             |
 | LinkedIn URL available                          | "Draft the LinkedIn DM"                                       | (agent self-drafts inline)                             |
 | Only company line, no direct phone              | "Draft a switchboard script targeting [Contact]"              | (agent self-drafts; flag uncertainty)                  |
 | `additional_contacts_count > 0`                 | "Show me the other N contacts at this company"                | leadbay_get_contacts(leadId)                           |
-| History is empty                                | "Pull the strategic overview before drafting"                 | leadbay_research_lead_by_id(leadId)                    |
 | User reports they reached out                   | "Log this outreach — creates prospecting action + outcome"    | leadbay_report_outreach(leadId, contact_id, ...)       |
 | User adds context for next time                 | "Save a note on the contact or company"                       | leadbay_add_note                                       |
 | After a successful exchange                     | "Update qualification answers based on what you learned"      | leadbay_answer_clarification                           |

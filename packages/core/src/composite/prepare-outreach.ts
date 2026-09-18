@@ -1,8 +1,14 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool, ToolContext } from "../types.js";
+import type {
+  Tool,
+  ToolContext,
+  NotePayload,
+  PaginatedActivities,
+} from "../types.js";
 import { getLeadProfile } from "../tools/get-lead-profile.js";
 import { getContacts } from "../tools/get-contacts.js";
 import { enrichContacts } from "../tools/enrich-contacts.js";
+import { reshapeWebFetchContent } from "./_web-fetch-helpers.js";
 
 import { leadbay_prepare_outreach as PREPARE_OUTREACH_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -21,6 +27,9 @@ function normalizeLinkedinPage(v: unknown): string | null {
   if (!trimmed || trimmed.toLowerCase() === "null") return null;
   return trimmed;
 }
+
+// Matches research_lead_by_id's recent_activities window.
+const HISTORY_ACTIVITY_COUNT = 20;
 
 export const prepareOutreach: Tool<PrepareOutreachParams> = {
   name: "leadbay_prepare_outreach",
@@ -113,6 +122,55 @@ export const prepareOutreach: Tool<PrepareOutreachParams> = {
           hint: { type: ["string", "null"] },
         },
       },
+      qualification: {
+        type: ["array", "null"],
+        description:
+          "The lead's AI qualification answers ({question, score, response, computed_at, outdated_at}). Empty when none were computed; null when they could not be read.",
+        items: { type: "object" },
+      },
+      signals: {
+        type: ["array", "null"],
+        description:
+          "Web-research signals, the same priority-ordered sections leadbay_research_lead_by_id returns ({section_label, section_emoji, entries[]}). Empty when the lead was never researched or its research could not be read; null when the profile could not be read.",
+        items: { type: "object" },
+      },
+      history: {
+        type: "object",
+        description:
+          "What the team already did on this lead and its people.",
+        properties: {
+          notes: {
+            type: "array",
+            description:
+              "Every note on the lead and on each of its org contacts, newest first: {date, author, contact, note}. `contact` names the person a note is about, null for a note on the company.",
+            items: {
+              type: "object",
+              properties: {
+                date: { type: "string" },
+                author: { type: ["string", "null"] },
+                contact: { type: ["string", "null"] },
+                note: { type: "string" },
+              },
+            },
+          },
+          activities: {
+            type: "array",
+            description: `The ${HISTORY_ACTIVITY_COUNT} most recent timeline entries, newest first: {type, date}.`,
+            items: {
+              type: "object",
+              properties: {
+                type: { type: "string" },
+                date: { type: "string" },
+              },
+            },
+          },
+          activities_total: {
+            type: "number",
+            description: "Timeline entries on the server, which can exceed the number returned.",
+          },
+        },
+        required: ["notes", "activities", "activities_total"],
+      },
       _meta: {
         type: "object",
         description: "Operator context: agent memory summary when enabled.",
@@ -123,6 +181,7 @@ export const prepareOutreach: Tool<PrepareOutreachParams> = {
       "additional_contacts_count",
       "total_contacts_count",
       "enrichment",
+      "history",
     ],
   },
   execute: async (
@@ -186,14 +245,48 @@ export const prepareOutreach: Tool<PrepareOutreachParams> = {
 
     // B12 + B15: pull the full lead profile so the brief carries
     // app_url / score / split_ai_summary / location / size etc. — no longer
-    // a two-field stub.
-    let leadBlock: Record<string, unknown> | null = null;
-    try {
-      const profile = await getLeadProfile.execute(
-        client,
-        { leadId: params.leadId },
-        ctx
+    // a two-field stub. product#4168: read the lead's history alongside it,
+    // so the draft knows what was already done: the notes on the lead, the
+    // notes on each of its people (GET /leads/{id}/notes does not return
+    // those) and the prospecting + epilogue timeline. These reads are
+    // required, like the contacts read above. The profile stays best-effort
+    // (see the catch below), so it settles instead of rejecting.
+    const profileP = getLeadProfile
+      .execute(client, { leadId: params.leadId }, ctx)
+      .then(
+        (profile) => ({ ok: true as const, profile }),
+        (error: unknown) => ({ ok: false as const, error })
       );
+    const orgContacts = refreshed.filter((c) => c.source === "org");
+    const [leadNotes, contactNotes, activities] = await Promise.all([
+      client.request<NotePayload[]>("GET", `/leads/${params.leadId}/notes`),
+      Promise.all(
+        orgContacts.map(async (c) => {
+          const notes = await client.request<
+            Array<{ note: string; created_at: string }>
+          >("GET", `/contacts/${c.id}/notes`);
+          const name = [c.first_name, c.last_name].filter(Boolean).join(" ");
+          return notes.map((n) => ({
+            date: n.created_at,
+            author: null,
+            contact: name || null,
+            note: n.note,
+          }));
+        })
+      ),
+      client.request<PaginatedActivities>(
+        "GET",
+        `/leads/${params.leadId}/activities?count=${HISTORY_ACTIVITY_COUNT}`
+      ),
+    ]);
+    const profileR = await profileP;
+
+    let leadBlock: Record<string, unknown> | null = null;
+    let qualification: unknown[] | null = null;
+    let signals: unknown[] | null = null;
+    try {
+      if (!profileR.ok) throw profileR.error;
+      const profile = profileR.profile;
       const p = profile.lead as Record<string, unknown>;
       leadBlock = {
         id: p.id ?? params.leadId,
@@ -211,6 +304,11 @@ export const prepareOutreach: Tool<PrepareOutreachParams> = {
         social_presence: p.social_presence ?? null,
         social_urls: p.social_urls ?? null,
       };
+      // getLeadProfile already returns null for a failed read, [] for none.
+      qualification = profile.qualification ?? null;
+      signals = reshapeWebFetchContent(
+        (profile.web_insights as Record<string, unknown> | null) ?? null
+      );
     } catch {
       // Profile fetch failed — still return the brief with a minimal lead block.
       leadBlock = {
@@ -247,8 +345,28 @@ export const prepareOutreach: Tool<PrepareOutreachParams> = {
         (recommendedContact.email || recommendedContact.phone_number)
     );
 
+    const notes = [
+      ...leadNotes.map((n) => ({
+        date: n.created_at,
+        author: n.created_by ?? null,
+        contact: null as string | null,
+        note: n.note,
+      })),
+      ...contactNotes.flat(),
+    ].sort((a, b) => b.date.localeCompare(a.date));
+
     return {
       lead: leadBlock,
+      qualification,
+      signals,
+      history: {
+        notes,
+        activities: activities.items.map((a) => ({
+          type: a.type,
+          date: a.date,
+        })),
+        activities_total: activities.pagination.total,
+      },
       recommended_contact: recommendedContact,
       additional_contacts_count: additional,
       total_contacts_count: total,

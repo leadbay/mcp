@@ -3490,7 +3490,7 @@ export const leadbay_prepare_outreach: string = `## WHEN TO USE
 
 Trigger phrases: "draft outreach for <Contact>", "write an email to <Contact>", "outreach package for <Company>".
 
-Do NOT use for: "research before drafting" → \`leadbay_research_lead_by_id\`; "log sent outreach" → \`leadbay_report_outreach\`; "bulk enrich contacts" → \`leadbay_enrich_titles\`.
+Do NOT use for: "research a lead, no draft" → \`leadbay_research_lead_by_id\`; "log sent outreach" → \`leadbay_report_outreach\`; "bulk enrich contacts" → \`leadbay_enrich_titles\`.
 
 Prefer when: single picked lead/contact; action-imminent drafting context
 
@@ -3513,11 +3513,11 @@ email. Do NOT paste the email body into chat prose alongside.
 
 ---
 
-Prepare a single-lead outreach brief: the full \`lead\` block (score, \`split_ai_summary\`, \`location\`, \`size\`, \`phone_numbers\`, \`website\`, \`description\`, \`social_urls\`, \`social_presence\`), the \`recommended_contact\` in post-enrichment shape (\`contact_id\`, names, \`job_title\`, \`email\`, \`phone_number\`, \`linkedin_page\`, \`is_org_contact\` — nulls where not yet enriched), \`additional_contacts_count\`, and an \`enrichment\` block describing async state.
+Prepare a single-lead outreach brief: the full \`lead\` block (score, \`split_ai_summary\`, \`location\`, \`size\`, \`phone_numbers\`, \`website\`, \`description\`, \`social_urls\`, \`social_presence\`), the \`recommended_contact\` in post-enrichment shape (\`contact_id\`, names, \`job_title\`, \`email\`, \`phone_number\`, \`linkedin_page\`, \`is_org_contact\` — nulls where not yet enriched), \`additional_contacts_count\`, an \`enrichment\` block describing async state, the lead's \`qualification\` answers and web-research \`signals\`, and its \`history\` (\`notes\` on the lead and on each of its people, plus the \`activities\` timeline).
 
 Optionally trigger contact enrichment in-flight with \`enrich:true\`. Enrichment is async (~60s). **Self-polling pattern (no separate tool needed):** re-call \`leadbay_prepare_outreach(leadId)\` without \`enrich\`; check \`enrichment.complete\`. When \`complete: true\`, the recommended contact now carries \`email\` and/or \`phone_number\`.
 
-The first call on a lead records a \`LEAD_VIEWED\`-style prospecting action server-side (deduped, one per lead per session) so it ages out of the Discover "new" view.
+Each call marks the lead seen so it ages out of the Discover "new" view. That is not a prospecting action and never shows in \`history\`.
 
 IRON LAW — OUTCOME AFTER OUTREACH. The moment the user reports outreach happened ("I sent it", "she didn't pick up", "left a voicemail", "they replied", a forwarded email thread, a calendar invite), you MUST (1) call leadbay_report_outreach with verification (gmail_message_id, calendar_event_id, or the user's literal one-sentence confirmation as user_confirmed.ref) AND (2) ask the user about the outcome and set epilogue_status to one of the 4 canonical values: EPILOGUE_INTEREST_VALIDATED_OR_MEETING_PLANED ("Meeting booked"), EPILOGUE_COULD_NOT_REACH_STILL_TRYING ("Trying to reach"), EPILOGUE_NOT_INTERESTED_LOST ("Not interested"), EPILOGUE_STILL_CHASING ("In progress"). Use the user-facing labels in dialogue ("What's the outcome — meeting booked, trying to reach, not interested, or in progress?"); never say "epilogue" out loud. Skipping this step silently de-ranks every future follow-up suggestion because pull_followups depends on honest, current outcomes.
 
@@ -3581,16 +3581,12 @@ Present as the richest single-record card the MCP emits. The user is seconds-to-
 **H5: 🎯 Angles & approach**
 
 - Render \`lead.split_ai_summary.approach_angle\` as the lead-in.
-- 3–4 bullets distilling \`split_ai_summary.next_step\` and any signals from a prior \`research_lead_by_id\` call into salesperson-voice talking points. Cite \`[source](url)\` inline when known.
+- 3–4 bullets distilling \`split_ai_summary.next_step\`, \`signals\` and \`qualification\` into salesperson-voice talking points. Cite \`[source](url)\` inline when known.
 - Final line: \`Recommended channel: <X> — <rationale>\`. Compute the recommendation from what data is available (email present → email; phone present → call; LinkedIn only → DM).
 
-**H5: 📜 History with [Contact name]**
+**H5: 📜 History with [Company name]**
 
-When prior contact-level actions / notes are surfaced (or when \`prospecting_actions_count > 0\`), render a reverse-chronological timeline: \`<date> · <action_type> · <one-line summary>\`. Quote-block recent notes below. If empty: \`*No prior touchpoints with this contact.*\`
-
-**H5: 🏢 History with [Company name]**
-
-Same shape as the contact history, but only include items NOT duplicated from the contact section. If both empty: \`*No company-level history recorded.*\`
+From \`history\`, newest first: \`<date> · <activity type>\` per \`activities\` entry, then the \`notes\` quote-blocked, each prefixed with its \`contact\` when set. When a note or an \`EPILOGUE_*\` entry records a past contact, the draft follows up on it instead of opening cold. Both lists empty: \`*No prior touchpoints recorded.*\`
 
 **H5: 👥 Other contacts** (only if \`additional_contacts_count > 0\`)
 
@@ -3598,7 +3594,7 @@ One line: \`+N more contacts at this company — [see them all](leadbay_research
 
 **Closing line** (when enrichment is in progress): \`*Enrichment running — I'll refresh once email/phone lands.*\`
 
-**Hide:** \`id\`, \`lead.id\`, raw \`enrichment.hint\` when redundant with channel pills, history items without descriptions, any field whose value is the string \`"null"\`, deprecated \`other_contacts_count\` (use \`additional_contacts_count\`).
+**Hide:** \`id\`, \`lead.id\`, raw \`enrichment.hint\` when redundant with channel pills, any field whose value is the string \`"null"\`, deprecated \`other_contacts_count\` (use \`additional_contacts_count\`).
 
 ## Linking a contact's name
 
@@ -3648,12 +3644,11 @@ Offer 2–3 follow-ups. Choose based on enrichment state + available channels + 
 | Observation                                     | Suggest                                                       | Calls                                                  |
 |-------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
 | \`enrichment.triggered && !enrichment.complete\`  | "Refresh now to check enrichment progress"                    | leadbay_prepare_outreach(leadId) — re-call             |
-| Email available                                 | "Draft the outreach email"                                    | (agent self-drafts inline, using split_ai_summary)     |
+| Email available                                 | "Draft the outreach email"                                    | (agent self-drafts inline from signals + history)      |
 | Direct phone available                          | "Draft the 60-second call opener"                             | (agent self-drafts inline)                             |
 | LinkedIn URL available                          | "Draft the LinkedIn DM"                                       | (agent self-drafts inline)                             |
 | Only company line, no direct phone              | "Draft a switchboard script targeting [Contact]"              | (agent self-drafts; flag uncertainty)                  |
 | \`additional_contacts_count > 0\`                 | "Show me the other N contacts at this company"                | leadbay_get_contacts(leadId)                           |
-| History is empty                                | "Pull the strategic overview before drafting"                 | leadbay_research_lead_by_id(leadId)                    |
 | User reports they reached out                   | "Log this outreach — creates prospecting action + outcome"    | leadbay_report_outreach(leadId, contact_id, ...)       |
 | User adds context for next time                 | "Save a note on the contact or company"                       | leadbay_add_note                                       |
 | After a successful exchange                     | "Update qualification answers based on what you learned"      | leadbay_answer_clarification                           |
