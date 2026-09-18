@@ -79,10 +79,11 @@ function expectWireShape(
   );
 }
 
-function wishlist(leadIds: string[]) {
+// pull_leads also asks Discover to leave out handled leads (product#4173); discover_leads does not.
+function wishlist(leadIds: string[], excludeHandled = "&exclude_handled=true") {
   return {
     method: "GET" as const,
-    path: `/1.6/lenses/${LENS}/leads/wishlist?count=20&page=0&contacts=true`,
+    path: `/1.6/lenses/${LENS}/leads/wishlist?count=20&page=0&contacts=true${excludeHandled}`,
     status: 200,
     body: {
       items: leadIds.map((id, i) => ({
@@ -169,7 +170,7 @@ describe("pull_leads reports the leads it shows as LEAD_SEEN", () => {
 describe("discover_leads reports the same list", () => {
   it("one LEAD_SEEN per returned lead", async () => {
     const leadIds = ["lead-a", "lead-b"];
-    mockHttp([SEEN_OK, wishlist(leadIds)]);
+    mockHttp([SEEN_OK, wishlist(leadIds, "")]);
 
     await discoverLeads.execute(newClient(), { lensId: LENS });
 
@@ -217,7 +218,7 @@ describe("every reporting site logs a rejection", () => {
 
   const cases: Array<[string, (warn: () => void) => Promise<unknown>]> = [
     ["discover_leads", (warn) => {
-      mockHttp([REJECTED, wishlist(["lead-a"])]);
+      mockHttp([REJECTED, wishlist(["lead-a"], "")]);
       return discoverLeads.execute(newClient(), { lensId: LENS }, { logger: { warn } });
     }],
     ["get_lead_profile", (warn) => {
@@ -280,7 +281,7 @@ describe("tour_plan reports only the leads its itinerary shows", () => {
       { method: "GET", path: /\/1\.6\/monitor\?/, status: 200, body: { items: [] } },
       {
         method: "GET",
-        path: `/1.6/lenses/${LENS}/leads/wishlist?count=30&page=0&contacts=true`,
+        path: `/1.6/lenses/${LENS}/leads/wishlist?count=30&page=0&contacts=true&exclude_handled=true`,
         status: 200,
         body: {
           items: leadIds.map((id, i) => ({
