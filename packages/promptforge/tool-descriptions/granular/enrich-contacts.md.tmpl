@@ -48,6 +48,8 @@ Order email and/or phone enrichment for a specific contact. Tries the paid-conta
 
 {{include:heuristics/unguarded-launch}}
 
+{{include:gates/launched-job}}
+
 ## QUOTA, NOT CREDITS
 
 Enrichment is gated by QUOTA (the per-window allowance in `leadbay_account_status`), not a credit balance. **Never pre-refuse because a credit number looks low or zero** — a freemium/fresh account with quota left can enrich even when its credit counter reads 0. The reveal either fits the remaining quota or the backend returns 429 (`quota_exceeded`); only THEN surface the exhausted window + wait-or-top-up choice. The `credits_remaining` field on the result is **advisory internal context only — do NOT display it**. Because it can read `0` on an account that still has quota, printing `_(N credits remaining)_` would falsely tell the user they're out. Do not render a credits balance at all; if the user asks where they stand, call `leadbay_account_status` and show the quota gauge instead.

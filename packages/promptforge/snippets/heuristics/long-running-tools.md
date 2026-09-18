@@ -8,7 +8,7 @@ After your first `leadbay_pull_leads` call, capture `response.lens.id` into your
 
 ## Rule 2 — Prefer async for bulk operations
 
-`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false` and return immediately. They hand back different ids: `bulk_qualify_leads` returns `{status:'running', notification_id, lead_ids, lens_id}` — poll `leadbay_qualify_status` with those. `import_and_qualify` returns `{status:'running', import_ids}` and no `notification_id` at all — poll `leadbay_import_status({importIds, dry_run})` with those. Poll every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
+`leadbay_bulk_qualify_leads` and `leadbay_import_and_qualify` accept `wait_for_completion:false` and return immediately. They hand back different ids: `bulk_qualify_leads` returns `{status:'running', notification_id, lead_ids, lens_id}` — poll `leadbay_qualify_status` with those. `import_and_qualify` returns `{status:'running', import_ids}` and no `notification_id` at all — poll `leadbay_import_status({importIds, dry_run})` with those. Check it until it completes, per A LAUNCHED JOB below. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading `"Request timed out"` even though the server is still working.
 
 ## Rule 3 — Serialize `leadbay_research_lead_by_id` fan-out
 
@@ -25,3 +25,5 @@ If a Leadbay tool returns `"Request timed out"`, `"stream closed"`, or any other
 If `pull_leads` itself fails and you have no prior batch, then yes — retry it, explicitly pass the lensId you captured (if any), and continue.
 
 {{include:heuristics/launched-work-cannot-be-stopped}}
+
+{{include:gates/launched-job}}

@@ -2,8 +2,8 @@
 
 Render delivered leads (`leads[]`, i.e. items with status `delivered` or
 `degraded`) as a markdown table **in the order returned**. Exactly three
-columns. Then ALWAYS close with the funnel line (below) — even, especially,
-when nothing was delivered.
+columns. Then ALWAYS close with the funnel line (below), even when nothing
+was delivered.
 
 **Column 1 — Company**
 
@@ -46,35 +46,30 @@ One short line narrating the delivery honestly, from `funnel` +
 > the Y asked** · stopped: <stop_reason in plain words>.
 
 **No money, anywhere.** `cost.*`, `estimated_cost.max` and quotes are internal
-usage units. Never render them, never convert them to a currency, never call
-them a charge: the user's plan or top-up covers this work, and a price reads as
-a bill. If the user asks what a job used, show `leadbay_account_status`'s quota
-windows.
+usage units: never render them, convert them to a currency or call them a
+charge — a price reads as a bill. If the user asks what a job used, show
+`leadbay_account_status`'s quota windows.
 
-"of the Y asked" needs `summary.items_requested`, which submits carry but a
-later `leadbay_lead_job_status` snapshot does not. Without it write **delivered
-X** and stop — never back-fill Y from `matched`/`examined` (they count
-candidates), never guess it.
+"of the Y asked" needs `summary.items_requested`: a `leadbay_lead_job_status`
+snapshot lacks it, so take it from the launch result. Without it write
+**delivered X** — never back-fill Y from `matched`/`examined`, never guess it.
 
 Plain-word stop reasons: `target_reached` → omit (success), `pool_exhausted` →
 "ran out of matching candidates", `max_cost` → "hit the job's usage cap", `quota` →
 "hit an org quota", `time_budget` → "hit the 30-min time budget".
 
-**When `delivered` is 0**: NEVER say just "no results". Render no table; give
-the funnel line plus the relevant `explain.scope_notes` (the backend's own
-diagnosis), then propose the concrete fix (reshape the seed per the craft
+**When a FINISHED job delivered 0**: NEVER say just "no results". Render no table; give
+the funnel line plus the relevant `explain.scope_notes`, then propose the concrete fix (reshape the seed per the craft
 rules, lower `min_ai_score`, raise `max_cost`, drop a filter) as NEXT STEPS.
 
 **Weak batch**: when the BEST delivered `fit.score` is under 30, don't present
 the table as an answer — open with "weak matches only", show at most the top 3,
-propose reshaping the seed/filters first. The count was filled with
-barely-better-than-random candidates.
+propose reshaping the seed/filters first.
 
 **Sanity-check every row**: (a) geo — `city`/`region` must sit inside any
 requested fence; drop and call out leaks (same-named cities slip through).
 (b) When `explain.seed_strategy` is `text_match_exemplars` (the standard FR
-path), fit is calibrated for lead-to-lead distances, not exemplar centroids —
-treat high scores skeptically and verify each row's `description`.
+path), treat high fit scores skeptically and verify each row's `description`.
 
 **Skipped items** (`skipped[]`, qualify jobs mostly): render a compact second
 table `Ref → Outcome` translating `status_reason` to plain words:
