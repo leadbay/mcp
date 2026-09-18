@@ -5241,11 +5241,9 @@ date are kept (a missing date is not evidence the event is old).
 date + description). Feed the matched \`lead_id\`s straight into
 \`leadbay_add_leads_to_campaign\` / \`leadbay_create_campaign\`.
 
-
 On a 429 mid-scan, partial \`matched\` is returned with \`quota_exceeded: true\` —
 offer the user wait-for-reset OR a top-up link (both unblock; a top-up clears
 the throttle immediately).
-
 
 **SIGNAL HONESTY — never infer signals from freshness.** \`stale_at\`,
 \`web_fetch_in_progress\`, \`fetch_at\` are freshness markers, not signal
@@ -5310,9 +5308,7 @@ A single italic line summarising coverage:
   qualify them and re-scan (see NEXT STEPS).
 - When \`truncated_at\` is set, add: \`_Coverage partial — only the first <truncated_at>
   leads were scanned; narrow the scope or raise max_leads._\`
-
 - When \`quota_exceeded\` is true, add the wait-or-top-up offer.
-
 
 **Hide:** raw \`lead_id\` in prose (use it only for the campaign call), \`_meta\`,
 empty arrays, any freshness field. NEVER present \`not_researched\` leads as
@@ -5351,9 +5347,7 @@ almost always "turn the matched leads into a campaign."
 | Zero matches but leads were researched            | "Widen the query (synonyms) or relax \`since\`"                | leadbay_scan_portfolio_signals(query: "<broader terms>", since: omit-or-earlier)      |
 | \`truncated_at\` set                                | "Scan only covered N — narrow scope or raise the cap"        | leadbay_scan_portfolio_signals({city / set_filter}) or raise \`max_leads\`              |
 | One standout matched lead                          | "Open that lead's full brief"                                | leadbay_research_lead_by_id(leadId)                                                    |
-
 | \`quota_exceeded\`                                  | "Wait for reset OR top up to finish the scan"                | leadbay_create_topup_link                                                              |
-
 
 NEVER report leads in \`not_researched\` as if they had no matching signal — they
 were never read. Distinguish "no signal X found" (researched, no match) from
@@ -6853,7 +6847,6 @@ date are kept (a missing date is not evidence the event is old).
 \`location\`, and the matching \`matched_signals[]\` (section + hot + source +
 date + description). Feed the matched \`lead_id\`s straight into
 \`leadbay_add_leads_to_campaign\` / \`leadbay_create_campaign\`.
-
 
 **SIGNAL HONESTY — never infer signals from freshness.** \`stale_at\`,
 \`web_fetch_in_progress\`, \`fetch_at\` are freshness markers, not signal

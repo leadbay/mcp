@@ -27,11 +27,23 @@ const TAG = "commerce";
 const MARKER = new RegExp(`\\{\\{/?${TAG}\\}\\}`, "g");
 // A marker alone on its line takes the line's newline with it, so the kept
 // block reads exactly as if the markers had never been written.
-const OWN_LINE_MARKER = new RegExp(`\\{\\{/?${TAG}\\}\\}\\n`, "g");
+//
+// `\r?\n`, not `\n`: a CRLF template left the \r behind, so the marker fell
+// through to the inline replace and the stripped line became a BLANK one. The
+// emitted description then carried a doubled blank line that a Linux build does
+// not produce — invisible until .gitattributes stopped the endings themselves
+// from drifting, and enough on its own to fail CI's generated-files check.
+const OWN_LINE_MARKER = new RegExp(`\\{\\{/?${TAG}\\}\\}\\r?\\n`, "g");
 // A deleted block takes its closing newline too.
-const BLOCK = new RegExp(`\\{\\{${TAG}\\}\\}[\\s\\S]*?\\{\\{/${TAG}\\}\\}\\n?`, "g");
+const BLOCK = new RegExp(`\\{\\{${TAG}\\}\\}[\\s\\S]*?\\{\\{/${TAG}\\}\\}\\r?\\n?`, "g");
 
 export function hasCommerceMarkers(body: string): boolean {
+  // `MARKER` is a module-level /g regex, and `.test` advances its `lastIndex`
+  // between calls: a third call on a marked body returns FALSE, and
+  // `renderCommerce` then hands the body straight back with its markers intact.
+  // Reset before testing rather than dropping the /g flag, which `.match` and
+  // `.replace` below still need.
+  MARKER.lastIndex = 0;
   return MARKER.test(body);
 }
 
@@ -76,7 +88,12 @@ function deleteBlocks(body: string): string {
         dropping = false;
         // The block stood alone between blank lines — take one of them, so the
         // paragraphs that survive end up one blank line apart, not two.
-        if (out[out.length - 1] === "" && lines[i + 1] === "") i++;
+        // A "blank" line is "\r" on a CRLF template, so compare trimmed: an
+        // exact "" test silently skips this on Windows and leaves the doubled
+        // blank line the marker removal exists to prevent.
+        const prev = out[out.length - 1];
+        const next = lines[i + 1];
+        if (prev !== undefined && prev.trim() === "" && next !== undefined && next.trim() === "") i++;
       }
       continue;
     }
