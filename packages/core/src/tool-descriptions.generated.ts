@@ -1356,8 +1356,6 @@ Do NOT rely on a bare call (no \`confirm\`, no \`dry_run\`, no channels) as a "s
 
 **AFTER.** Do NOT invent a "credits used" figure for the run (per-run cost can't be scoped reliably — a lead's contacts mix earlier enrichments).
 
-## AFTER LAUNCH
-
 ## A LAUNCHED JOB — its first result is a receipt, not the answer
 
 A result saying the job is still working (\`still_running\`, \`next_poll\`, a
@@ -1376,7 +1374,7 @@ only if the user said not to wait or the check tool says the job stalled. Then
 say it is not ready, show what landed, and that asking again fetches the rest.
 
 
-Here: \`mode:"launched"\` → check \`leadbay_bulk_enrich_status({notification_id, lead_ids, titles, email, phone})\` until it reports done — its description defines done, plateau included — usually 2–5 min. A null \`notification_id\` means check by \`lead_ids\`, and nothing will surface on its own later. Pass \`include_contacts:true\` on the read you report from. It returns each lead's FULL contact list, which can include contacts of OTHER roles enriched in earlier runs, so **filter your report to the \`titles\` you just enriched** (match each contact's \`job_title\`). Report per that tool's COMPLETION REPORT.
+For this tool: \`mode:"launched"\` → check \`leadbay_bulk_enrich_status({notification_id, lead_ids, titles, email, phone})\` until it reports done — its description defines done, plateau included — usually 2–5 min. A null \`notification_id\` means check by \`lead_ids\`, and nothing will surface on its own later. Pass \`include_contacts:true\` on the read you report from. It returns each lead's FULL contact list, which can include contacts of OTHER roles enriched in earlier runs, so **filter your report to the \`titles\` you just enriched** (match each contact's \`job_title\`). Report per that tool's COMPLETION REPORT.
 
 ## GATE — PREFER BUILT-IN HOST WIDGETS
 
