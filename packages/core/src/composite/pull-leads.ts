@@ -347,7 +347,6 @@ export const pullLeads: Tool<PullLeadsParams> = {
         properties: {
           region: { type: "string" },
           latency_ms: { type: ["number", "null"] },
-          agent_memory: { type: "object" },
         },
       },
     },

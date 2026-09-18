@@ -10,7 +10,7 @@ export const leadbay_build_campaign: string = `
 
 You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
 
-What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike with their words as its \`reason\` rather than noting it.
 
 
 Build me a Leadbay campaign from scratch{{arg:campaign_name_paren}} — a cohort of **{{arg:count_or_default}}** fully-actionable leads: each in-ICP, high \`ai_agent_lead_score\`, AND with a reachable buyer contact. {{arg:audience_block}} {{arg:job_titles_block}}
@@ -242,7 +242,7 @@ export const leadbay_daily_check_in: string = `
 
 You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
 
-What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike with their words as its \`reason\` rather than noting it.
 
 
 Run the Leadbay daily check-in for me. Treat this prompt the same way for any equivalent ask focused on NEW leads from the Discover wishlist: "get me leadbay leads", "best NEW leads to prospect today", "what's new today", "show me my batch", "let's prospect", "run my morning check-in", "my daily routine", "I do this every day", "every morning". For follow-up phrasings ("what should I follow up on", "leads I've already worked", "before my trip"), this is the wrong prompt — route to \`leadbay_followup_check_in\` instead. **Recurrence language ("I do this every day", "every morning", "my routine") always means this prompt — it is a daily batch check-in, not a follow-up.** If the user's intent is ambiguous ("what should I work on?"), ASK once before picking an entry point.
@@ -531,7 +531,7 @@ export const leadbay_followup_check_in: string = `
 
 You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
 
-What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike with their words as its \`reason\` rather than noting it.
 
 
 Run the Leadbay follow-up check-in for me. Treat this prompt the same way for any equivalent ask: "leads I should follow up with", "already known leads", "what's overdue", "before my trip to [city]", "leads I haven't contacted", "who should I re-engage today".
@@ -799,7 +799,7 @@ export const leadbay_getting_started: string = `
 
 You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
 
-What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike with their words as its \`reason\` rather than noting it.
 
 
 Walk me through Leadbay. Treat these the same way: "I'm new here", "how do I
@@ -1621,7 +1621,7 @@ export const leadbay_new_leads: string = `
 
 You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
 
-What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike with their words as its \`reason\` rather than noting it.
 
 
 IRON LAW — NO FABRICATION. Every lead id, contact email, custom field id, mapping decision, and tool argument must trace to a value you read from the file the user attached or to an output from a leadbay_* tool call in this session. Do not invent values. Do not "fill in" a missing leadId with a name match. Do not synthesize a CRM id from a guess. If a value is missing, leave the field blank and say so.
@@ -1900,7 +1900,7 @@ export const leadbay_prospecting_overview: string = `
 
 You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
 
-What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike with their words as its \`reason\` rather than noting it.
 
 
 # Leadbay Prospecting — Orientation
@@ -2330,7 +2330,7 @@ export const leadbay_research_a_domain: string = `
 
 You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
 
-What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike with their words as its \`reason\` rather than noting it.
 
 
 IRON LAW — NO FABRICATION. Every lead id, contact email, custom field id, mapping decision, and tool argument must trace to a value you read from the file the user attached or to an output from a leadbay_* tool call in this session. Do not invent values. Do not "fill in" a missing leadId with a name match. Do not synthesize a CRM id from a guess. If a value is missing, leave the field blank and say so.
@@ -2564,7 +2564,7 @@ export const leadbay_top_accounts_to_activate: string = `
 
 You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
 
-What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call \`leadbay_refine_prompt\` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike with their words as its \`reason\` rather than noting it.
 
 
 Build me a **top-{{arg:count_or_default}} account-conquest plan** — the accounts worth activating, ranked, each one carrying a strategic motif, a phone pitch and a three-step checklist. {{arg:territory_block}}

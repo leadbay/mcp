@@ -345,7 +345,6 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
         properties: {
           region: { type: "string" },
           latency_ms: { type: ["number", "null"] },
-          agent_memory: { type: "object" },
         },
       },
     },

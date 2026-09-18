@@ -429,7 +429,6 @@ export const researchLeadById: Tool<ResearchLeadByIdParams> = {
             type: ["array", "null"],
             items: { type: "string" },
           },
-          agent_memory: { type: "object" },
         },
         // _meta is an open envelope: the MCP server layer injects
         // additional keys (latency_ms, notifications, update_available)
