@@ -1193,6 +1193,31 @@ async function segmentCount(opts: SegmentOpts): Promise<SegmentCount> {
   };
 
   const applied = res.active_filters?.criteria ?? [];
+
+  // Every criterion asked for must come back, whatever its type. An earlier
+  // version compared sector ids only, which left the city path unguarded: with
+  // `city` alone both sides of that comparison were the empty string, so a
+  // silently-dropped location criterion read as trusted and the board charted a
+  // count for a segment nobody asked for — the exact failure this flag exists to
+  // catch.
+  //
+  // `city` / `cityId` are sent as top-level params, not criteria: the composite
+  // resolves them through /geo/search into a `location_ids` criterion. So the
+  // type to expect back is one this function never constructed.
+  const wantTypes = new Set<string>();
+  if (opts.sectorIds?.length) wantTypes.add("sector_ids");
+  if (opts.city || opts.cityId) wantTypes.add("location_ids");
+
+  const gotTypes = new Set(
+    applied
+      .map((c) => (typeof c?.type === "string" ? c.type : null))
+      .filter((t): t is string => t != null),
+  );
+
+  // Sector VALUES are checked too, not just the type: a stale sector filter is
+  // still a sector filter, so a type-only check would wave 5122 through when
+  // 5134 was asked for. Locations get no value check — the id is resolved
+  // server-side from free text, so the caller has nothing to compare against.
   const wantSectors = (opts.sectorIds ?? []).slice().sort().join(",");
   const gotSectors = applied
     .filter((c) => c?.type === "sector_ids")
@@ -1201,10 +1226,16 @@ async function segmentCount(opts: SegmentOpts): Promise<SegmentCount> {
     .sort()
     .join(",");
 
+  const everyTypeLanded = [...wantTypes].every((t) => gotTypes.has(t));
+  // Nothing asked for means nothing can have been dropped — an unfiltered count
+  // is the whole book, and a leftover stored criterion would narrow it, so an
+  // echo carrying anything at all is a stale filter still in force.
+  const unfilteredIsClean = wantTypes.size > 0 || gotTypes.size === 0;
+
   return {
     total: finite(res.pagination?.total),
     applied,
-    trusted: wantSectors === gotSectors,
+    trusted: everyTypeLanded && unfilteredIsClean && wantSectors === gotSectors,
   };
 }
 

@@ -783,6 +783,15 @@ both:**
    mismatch. Never chart an untrusted count; say the segment could not be
    measured instead.
 
+   It checks every criterion asked for, not just sectors: a `city` / `cityId`
+   must come back as a `location_ids` criterion (the composite resolves the free
+   text through `/geo/search`, so the type to expect is one you never sent).
+   Sector VALUES are compared too — a stale sector filter is still a sector
+   filter. Locations are checked for presence only, since the server picks the
+   `admin_area_id` and the caller has nothing to compare against. A call asking
+   for NO criteria is untrusted if the echo carries any, because a leftover
+   filter turns "the whole book" into a slice — fatal for a denominator.
+
 **What you cannot build this way.** A score histogram needs every lead's
 `ai_agent_lead_score`, and there is no aggregation endpoint — bucketing 3,656
 leads means 732 pages. Sample the tails instead (`order: "SCORE:ASC"` and
