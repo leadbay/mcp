@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.39.10 — 2026-09-18 — Claude knows what your account looks for and what you already did
+
+- **"Am I connected?" also says what your account is set up to find.** The
+  answer used to stop at "yes". It now adds one line on the companies your
+  account targets and the buying moments it watches for.
+- **Claude can read the criteria of every view.** Asked "what are my
+  criteria?", Claude could not see the sectors, sizes and places set on a view,
+  and said so. Your list of views now carries each view's criteria, with
+  sectors and places by name.
+- **An outreach draft starts from the lead's history.** The draft now gets the
+  notes on the company and on each of its people, the activity timeline, the
+  qualification answers and the web signals. It only writes a follow-up when
+  that history shows you already reached out.
+- **Adding emails to a list of 308 leads works.** Past about 180 leads the
+  request was refused. Leads are now selected in batches.
+- **Enriching contacts that are already enriched now says so.** Claude used to
+  hear that nobody had those job titles and to try other titles. A daily job
+  did that for a month on the same three companies. Claude now hears how many
+  contacts are already enriched, where to read what was found, and that asking
+  again gives the same answer.
+- **A dislike keeps its reason.** Why you rejected a company is saved as a note
+  on the lead that your team sees. Claude says your targeting has not changed.
+  When the reason describes a kind of company your settings do not already
+  reject, Claude offers to add it to your ideal buyer profile.
+- **Why a company was set aside is written on its lead.** A status you set for
+  a reason, or a fact you mention about a company, now goes on the lead as a
+  note.
+- **A reply in your mailbox reaches Leadbay.** Your follow-up list now carries
+  the Gmail id of the last email logged on each lead. Claude opens that thread,
+  and logs any reply from the contact.
+- **"Prepare 3 campaigns to re-engage my prospects" creates them.** Claude
+  splits your own prospects into the campaigns you asked for, creates them, and
+  drafts one email per campaign. When your follow-ups show no outreach logged,
+  Claude offers a daily task that logs your emails and meetings from Gmail and
+  Google Calendar.
+- **A lead you liked, noted or put in a campaign no longer comes back the same
+  day.** Leadbay kept it in your new leads until the next morning. It now
+  leaves them at once and shows in your follow-ups, once Leadbay's servers
+  carry the matching update.
+- **An error on mcp.leadbay.app now says whose account it happened on.** A
+  scheduled job could fail twenty times in a row and nobody could tell whose it
+  was. The error now carries your email and organization.
+- **Looking up a list one company at a time is told to stop.** From the 20th
+  lookup in 10 minutes, Claude is told to send the rest of the list in one free
+  call. Past 1,000 lookups in an hour, the lookup is refused.
+
 ## 0.39.9 — 2026-09-16 — Asking whether an enrichment finished, with only the job number
 
 - **"Is my enrichment done?" now answers when Claude has only the job number.**
