@@ -29,6 +29,13 @@ class BrokenLeadbayClient extends LeadbayClient {
   override async requestRawBinary<T>(): Promise<T> {
     throw this.stubError;
   }
+
+  // Every caller without a working token shares the placeholder above, so it
+  // names nobody. Counting them together would answer the 61st of them with
+  // TOO_MANY_LOOKUPS instead of telling them to sign in.
+  override callerKey(): string | null {
+    return null;
+  }
 }
 
 export function makeBrokenClient(stubError: LeadbayError, region: "us" | "fr"): LeadbayClient {

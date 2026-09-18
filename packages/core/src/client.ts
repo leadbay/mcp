@@ -1,5 +1,6 @@
 import https from "node:https";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type {
@@ -620,6 +621,15 @@ export class LeadbayClient {
 
   get isAuthenticated(): boolean {
     return this.token !== null;
+  }
+
+  // Who is calling, without a request: a digest of the bearer token, or null
+  // without one. Hosted builds a new client for every request, so a count kept
+  // across one caller's calls is keyed on this, never on the client.
+  callerKey(): string | null {
+    return this.token === null
+      ? null
+      : createHash("sha256").update(this.token).digest("hex");
   }
 
   // Test-only getter for concurrency assertions

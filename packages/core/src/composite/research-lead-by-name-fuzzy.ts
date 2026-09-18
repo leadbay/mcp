@@ -617,3 +617,82 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
     };
   },
 };
+
+// ── Pace (product#4177). On FR prod on 2026-09-14 one agent called this tool
+// 4,026 times in 84 minutes, once per company of a pasted list, for a website
+// and a LinkedIn each. Nothing in any answer said the list goes in one call.
+// So from the 20th lookup in 10 minutes each answer says so.
+//
+// Looking companies up one at a time is also normal work. In the 180 days to
+// 2026-09-18, research routines on this tool and leadbay_research_lead_by_id
+// reached 256 lookups in 10 minutes and 470 in an hour; that run reached 3,929
+// in an hour. The refusal is set at about twice the busiest hour on record, so
+// only a loop like that one meets it. It is a count per hour because a loop
+// runs for an hour and a routine runs for minutes.
+//
+// Kept in process memory per caller, like jobs/launch-guard.ts. A restart
+// forgets it, which costs at most one more hour of lookups.
+const NOTICE_WINDOW_MS = 10 * 60 * 1000;
+const NOTICE_FROM = 20;
+const LIMIT_WINDOW_MS = 60 * 60 * 1000;
+const LIMIT = 1000;
+
+interface Lookup {
+  at: number;
+  notFound: boolean;
+}
+
+const lookupsByCaller = new Map<string, Lookup[]>();
+
+function recentLookups(caller: string, now: number): Lookup[] {
+  for (const [key, lookups] of lookupsByCaller) {
+    const kept = lookups.filter((l) => now - l.at < LIMIT_WINDOW_MS);
+    if (kept.length === 0) lookupsByCaller.delete(key);
+    else lookupsByCaller.set(key, kept);
+  }
+  return lookupsByCaller.get(caller) ?? [];
+}
+
+const LIST_IN_ONE_CALL =
+  "one leadbay_qualify_leads call takes the whole list, up to 500 companies, as lead_refs [{name}] with website when known. With qualify:false it is free and returns one row per company with its website and LinkedIn.";
+
+const lookUpByName = researchLeadByNameFuzzy.execute;
+researchLeadByNameFuzzy.execute = async (client, params, ctx) => {
+  const caller = client.callerKey();
+  if (caller === null) return await lookUpByName(client, params, ctx);
+
+  const now = Date.now();
+  const lookups = recentLookups(caller, now);
+  if (lookups.length >= LIMIT) {
+    const notFound = lookups.filter((l) => l.notFound).length;
+    const retryAfter = Math.ceil((lookups[0].at + LIMIT_WINDOW_MS - now) / 1000);
+    throw client.makeError(
+      "TOO_MANY_LOOKUPS",
+      `${lookups.length} companies were looked up by name in the last hour, ${notFound} of them not found. This tool takes another lookup in ${retryAfter} seconds`,
+      `Stop calling this tool once per company, and tell the user how far the list got. For the companies not looked up yet, ${LIST_IN_ONE_CALL} For one company the user asks about by name, call this tool again after ${retryAfter} seconds.`,
+      undefined,
+      retryAfter
+    );
+  }
+
+  const lookup: Lookup = { at: now, notFound: false };
+  lookupsByCaller.set(caller, [...lookups, lookup]);
+  const result: any = await lookUpByName(client, params, ctx);
+  if (result?.resolution === "not_found") lookup.notFound = true;
+
+  const seen = (lookupsByCaller.get(caller) ?? [lookup]).filter(
+    (l) => now - l.at < NOTICE_WINDOW_MS
+  );
+  if (seen.length < NOTICE_FROM || result === null || typeof result !== "object") {
+    return result;
+  }
+  const notice = `Lookup ${seen.length} by name in the last 10 minutes, ${seen.filter((l) => l.notFound).length} not found. If the user wants only whether each company is in Leadbay, its website and its LinkedIn, ${LIST_IN_ONE_CALL} If they need each company's research card, carry on. After ${LIMIT} lookups in an hour, this tool refuses new ones until the oldest is an hour old.`;
+  if (result.__markdown_envelope === true) {
+    return {
+      ...result,
+      markdown: `> ${notice}\n\n${result.markdown}`,
+      structured: { ...result.structured, notice },
+    };
+  }
+  return { ...result, notice };
+};
