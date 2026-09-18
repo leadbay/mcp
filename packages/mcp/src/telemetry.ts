@@ -35,6 +35,7 @@ import {
   EV_MCP_VERSION_UPDATED,
   EV_QUOTA_HIT,
   EV_STARTUP,
+  EV_ARTIFACT_EVENT,
   EV_TOOL_CALL,
   EV_TOOL_TIMEOUT,
   EV_TOPUP_LINK,
@@ -45,6 +46,7 @@ import {
   type FrictionReportedProps,
   type QuotaHitProps,
   type StartupProps,
+  type ArtifactEventProps,
   type ToolCallProps,
   type ToolTimeoutProps,
   type TopupLinkProps,
@@ -95,6 +97,9 @@ export interface TelemetryHandle {
   captureToolTimeout(props: ToolTimeoutProps, identity?: CaptureIdentity): void;
   captureTopupLink(props: TopupLinkProps, identity?: CaptureIdentity): void;
   captureStartup(props: StartupProps, identity?: CaptureIdentity): void;
+  // Artifact-runtime OUTCOME events (product#4081). Exception kinds do not come
+  // through here — they go to captureException with source:"artifact".
+  captureArtifactEvent(props: ArtifactEventProps, identity?: CaptureIdentity): void;
   // Returns whether the report was actually accepted for delivery (sent to
   // PostHog, or buffered pending identity resolution). Returns FALSE when there
   // is no PostHog sink at all — e.g. a Sentry-only handle, a failed PostHog
@@ -132,6 +137,7 @@ export const NOOP_TELEMETRY: TelemetryHandle = {
   captureToolTimeout: (_props?, _identity?) => {},
   captureTopupLink: (_props?, _identity?) => {},
   captureStartup: (_props?, _identity?) => {},
+  captureArtifactEvent: (_props?, _identity?) => {},
   // NOOP delivers nothing — say so, so the tool never claims a false send.
   captureFrictionReported: () => false,
   captureException: () => {},
@@ -442,6 +448,9 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
     captureStartup(props, identity) {
       emit(EV_STARTUP, { ...props }, identity);
     },
+    captureArtifactEvent(props, identity) {
+      emit(EV_ARTIFACT_EVENT, { ...props }, identity);
+    },
     captureFrictionReported(props, identity) {
       // `emit` silently no-ops without a PostHog sink, which for this event
       // would mean telling the user their report was shared when it went
@@ -496,6 +505,15 @@ export function initTelemetry(opts: InitOpts): TelemetryHandle {
           // every LeadbayError into one bucket).
           if (ctx.code && ctx.source === "business") {
             scope.setFingerprint(["mcp", ctx.tool, ctx.code]);
+          }
+          // Artifact failures (product#4081) crossed the bridge as JSON, so the
+          // synthetic Error they are rebuilt from has no meaningful stack —
+          // default fingerprinting would collapse every artifact failure into
+          // one issue at the same throw site. Group by shape instead, and keep
+          // the "artifact" segment so they never merge with an in-process bug
+          // of the same code.
+          if (ctx.source === "artifact") {
+            scope.setFingerprint(["mcp", "artifact", ctx.tool, ctx.code ?? "none"]);
           }
           Sentry.captureException(err);
         });

@@ -566,6 +566,33 @@ function formatErrorForLLM(err: any): string {
 // `required`, the schema-side description is swapped to the stronger variant,
 // and the call is rejected pre-dispatch as LAST_PROMPT_REQUIRED if
 // missing/blank.
+// Which artifact-runtime kinds are EXCEPTIONS (→ Sentry) rather than outcomes
+// (→ PostHog). This is the same line the rest of this file draws for its own
+// failures: something threw, so it belongs in the error tracker; nothing threw
+// and the UI is merely wrong, so it belongs in product analytics. Kept here
+// rather than imported from core so the routing decision lives with the other
+// dispatch-layer telemetry policy (product#4081).
+const ARTIFACT_EXCEPTION_KINDS = new Set([
+  "bridge_unavailable",
+  "call_timeout",
+  "call_failed",
+  "parse_failed",
+]);
+
+// Call provenance (product#4081). Stamped by the @leadbay/components artifact
+// runtime on every call it makes; absent on agent-issued calls, which default
+// to "agent". Emitted as `origin` on the existing `mcp tool called` /
+// `mcp composite call` events, so artifact traffic is separable on EVERY
+// dashboard we already have rather than needing a parallel event family.
+// Stripped from args before execute() sees them, exactly like `_triggered_by`.
+const ORIGIN_FIELD = "_origin";
+const ORIGIN_DESCRIPTION =
+  "OPTIONAL METADATA — set to \"artifact\" ONLY by the Leadbay artifact " +
+  "runtime when a control inside a rendered artifact makes this call. Agents " +
+  "must NOT set this field; an agent-issued call is recorded as \"agent\" by " +
+  "omitting it. Does not affect tool behavior.";
+type CallOrigin = "agent" | "artifact";
+
 const TRIGGERED_BY_FIELD = "_triggered_by";
 const TRIGGERED_BY_DESCRIPTION_OPTIONAL =
   "OPTIONAL METADATA — the verbatim user utterance (or short paraphrase) " +
@@ -613,6 +640,13 @@ function withTriggeredByMeta(
     properties: {
       ...existingProps,
       [TRIGGERED_BY_FIELD]: { type: "string", description },
+      // Always optional, never in `required` — an omitted `_origin` IS the
+      // agent case (product#4081).
+      [ORIGIN_FIELD]: {
+        type: "string",
+        enum: ["agent", "artifact"],
+        description: ORIGIN_DESCRIPTION,
+      },
     },
   };
   if (nextRequired.length > 0) nextSchema.required = nextRequired;
@@ -625,16 +659,36 @@ function withTriggeredByMeta(
 // certainly the agent over-quoting; PostHog property values balloon quickly.
 function extractTriggeredBy(args: Record<string, unknown>): {
   triggered_by: string | undefined;
+  origin: CallOrigin;
   cleaned: Record<string, unknown>;
 } {
-  const raw = args[TRIGGERED_BY_FIELD];
-  if (typeof raw !== "string" || raw.length === 0) {
-    return { triggered_by: undefined, cleaned: args };
+  // `_origin` (product#4081) — who actually made this call. The artifact
+  // runtime stamps "artifact" on every call it makes through lb.call(); an
+  // agent-issued call has no such field and defaults to "agent". Separating
+  // the two streams is the whole reason the field exists: without it, a button
+  // click inside an artifact is indistinguishable from the agent deciding to
+  // call the same tool, on every dashboard we have.
+  //
+  // Deliberately NOT folded into `_triggered_by`: that field is the auditable
+  // record of what the USER said, and overwriting it with a provenance label
+  // would destroy the trace it exists to keep.
+  const rawOrigin = args[ORIGIN_FIELD];
+  const origin: CallOrigin = rawOrigin === "artifact" ? "artifact" : "agent";
+  let rest = args;
+  if (ORIGIN_FIELD in args) {
+    const { [ORIGIN_FIELD]: _dropOrigin, ...withoutOrigin } = args;
+    void _dropOrigin;
+    rest = withoutOrigin;
   }
-  const { [TRIGGERED_BY_FIELD]: _omit, ...cleaned } = args;
+
+  const raw = rest[TRIGGERED_BY_FIELD];
+  if (typeof raw !== "string" || raw.length === 0) {
+    return { triggered_by: undefined, origin, cleaned: rest };
+  }
+  const { [TRIGGERED_BY_FIELD]: _omit, ...cleaned } = rest;
   void _omit;
   const trimmed = raw.length > 500 ? `${raw.slice(0, 500)}…` : raw;
-  return { triggered_by: trimmed, cleaned };
+  return { triggered_by: trimmed, origin, cleaned };
 }
 
 // The SDK does not validate `inputSchema` before dispatch (the mandate comment
@@ -1215,7 +1269,7 @@ export function buildServer(
     }
 
     const rawArgs = (req.params.arguments ?? {}) as Record<string, unknown>;
-    const { triggered_by: rawTriggeredBy, cleaned: args } = extractTriggeredBy(rawArgs);
+    const { triggered_by: rawTriggeredBy, origin, cleaned: args } = extractTriggeredBy(rawArgs);
     // Privacy control (product#3943): `leadbay_report_friction` is the one tool
     // whose entire purpose is sending user words to the team, and the user has
     // approved EXACTLY the `message` argument — nothing else. `_triggered_by` is
@@ -1359,6 +1413,7 @@ export function buildServer(
             bytes: pendingText.length,
             error_code: envelope.code,
             triggered_by,
+            origin,
           });
         }
         if (DEBUG_ON) {
@@ -1392,10 +1447,12 @@ export function buildServer(
           bytes: guardText.length,
           error_code: envelope.code,
           triggered_by,
+          origin,
         });
         telemetry.captureCompositeCall({
           tool: name,
           last_prompt: triggered_by ?? "",
+          origin,
           ok: false,
           duration_ms: guardDur,
           error_code: envelope.code,
@@ -1455,6 +1512,45 @@ export function buildServer(
         // failed init), and the hosted wrapper is a fresh object that never
         // equals NOOP_TELEMETRY. Both cases previously produced a false
         // "shared with the team" confirmation (product#3943).
+        // Artifact-runtime diagnostics (product#4081). Threaded as a transport
+        // like reportFriction, but the routing is the point: this is the one
+        // place that decides Sentry-vs-PostHog for an artifact failure, using
+        // the same split the rest of this file uses for its own failures.
+        // Nothing is returned — an artifact has no user awaiting confirmation,
+        // and a telemetry failure must never become a visible artifact error.
+        reportArtifactEvent: (ev) => {
+          if (ARTIFACT_EXCEPTION_KINDS.has(ev.kind)) {
+            // Exceptions → Sentry. The original error was thrown in the
+            // browser and crossed the bridge as JSON, so there is no stack to
+            // forward; we rebuild a synthetic Error whose message states the
+            // shape, and captureException fingerprints it by
+            // (artifact, tool, code) rather than by that stack.
+            const where = ev.tool ? ` on ${ev.tool}` : "";
+            telemetry.captureException(
+              new Error(`artifact ${ev.kind} (${ev.surface})${where}`),
+              {
+                tool: ev.tool ?? "leadbay_artifact_event",
+                source: "artifact",
+                ...(ev.code ? { code: ev.code } : {}),
+                message: `artifact runtime ${ev.kind} on surface=${ev.surface}${
+                  ev.kit_version ? ` (kit ${ev.kit_version})` : ""
+                }`,
+              }
+            );
+            return;
+          }
+          // Outcomes → PostHog. Nothing threw: a picker loaded empty, a button
+          // was blocked, or a resolved call carried a failure envelope. Sentry
+          // would never see these, and they are the failures a user actually
+          // experiences as "the artifact is broken".
+          telemetry.captureArtifactEvent({
+            kind: ev.kind,
+            surface: ev.surface,
+            ...(ev.kit_version ? { kit_version: ev.kit_version } : {}),
+            ...(ev.tool ? { tool: ev.tool } : {}),
+            ...(ev.code ? { code: ev.code } : {}),
+          });
+        },
         reportFriction: (report) =>
           telemetry.captureFrictionReported({
             category:
@@ -1527,11 +1623,13 @@ export function buildServer(
             bytes: envText.length,
             error_code: envCode,
             triggered_by,
+            origin,
           });
           if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
             telemetry.captureCompositeCall({
               tool: name,
               last_prompt: triggered_by ?? "",
+              origin,
               ok: false,
               duration_ms: envDur,
               error_code: envCode,
@@ -1589,11 +1687,13 @@ export function buildServer(
           format: "markdown",
           bytes: mdBytes,
           triggered_by,
+          origin,
         });
         if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
           telemetry.captureCompositeCall({
             tool: name,
             last_prompt: triggered_by ?? "",
+            origin,
             ok: true,
             duration_ms: mdDur,
           });
@@ -1648,11 +1748,13 @@ export function buildServer(
           format: "json",
           bytes: okBytes,
           triggered_by,
+          origin,
         });
         if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
           telemetry.captureCompositeCall({
             tool: name,
             last_prompt: triggered_by ?? "",
+            origin,
             ok: true,
             duration_ms: okDur,
           });
@@ -1709,11 +1811,13 @@ export function buildServer(
             error_code: code,
             ...(typeof httpStatus === "number" ? { http_status: httpStatus } : {}),
             triggered_by,
+            origin,
           });
           if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
             telemetry.captureCompositeCall({
               tool: name,
               last_prompt: triggered_by ?? "",
+              origin,
               ok: false,
               duration_ms: errDur,
               error_code: code,
@@ -1743,11 +1847,13 @@ export function buildServer(
             bytes: errText.length,
             error_code: code,
             triggered_by,
+            origin,
           });
           if (COMPOSITE_FILE_TOOL_NAMES.has(name)) {
             telemetry.captureCompositeCall({
               tool: name,
               last_prompt: triggered_by ?? "",
+              origin,
               ok: false,
               duration_ms: errDur,
               error_code: code,

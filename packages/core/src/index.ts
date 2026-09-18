@@ -133,6 +133,7 @@ import { reportFriction } from "./composite/report-friction.js";
 import { teamActivity } from "./composite/team-activity.js";
 import { sendFeedback } from "./tools/send-feedback.js";
 import { artifactKit } from "./tools/artifact-kit.js";
+import { artifactEvent } from "./tools/artifact-event.js";
 
 import type { Tool } from "./types.js";
 
@@ -183,7 +184,7 @@ export {
   seedCandidates, extendLens,
   // MCP-first lead delivery
   findNewLeads, qualifyLeads, leadJobStatus,
-  artifactKit,
+  artifactKit, artifactEvent,
 };
 
 // ─── Tool catalogues ─────────────────────────────────────────────────────
@@ -356,6 +357,14 @@ export const compositeReadTools: Tool[] = [
   // buttons call Leadbay writes. No backend call; granular-shaped (lives in
   // tools/) so it carries no _triggered_by mandate for a kit fetch.
   artifactKit,
+  // Artifact runtime diagnostics (product#4081) — ALWAYS exposed, read-only,
+  // and always paired with artifactKit: the runtime that kit ships calls this
+  // when a control fails, and a kit without its sink is a blind artifact. Makes
+  // no backend call; routes the event to Sentry (exceptions) or PostHog
+  // (outcomes) via ctx.reportArtifactEvent. Granular-shaped so an artifact
+  // button click, which has no fresh user utterance, carries no _triggered_by
+  // mandate. Never consent-gated user text — that is reportFriction.
+  artifactEvent,
 ];
 
 /** Every MCP-first delivery tool, regardless of the deployment gate above.

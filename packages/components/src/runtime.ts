@@ -22,7 +22,7 @@
 
 import { STYLES, STYLE_ELEMENT_ID } from "./styles.js";
 
-export const VERSION = "0.5.0";
+export const VERSION = "0.6.0";
 
 // ─── Bridge to the host (window.cowork.callMcpTool) ──────────────────────────
 
@@ -58,6 +58,149 @@ function hostCall(): CallFn | null {
   return null;
 }
 
+// ─── Runtime telemetry (product#4081) ────────────────────────────────────────
+//
+// The artifact runs in a chat-hosted page: its ONLY channel out is
+// window.cowork.callMcpTool, so every failure signal travels as an MCP tool
+// call to `leadbay_artifact_event`. The server routes it the way the rest of
+// the repo already splits telemetry — exceptions to Sentry, outcomes to
+// PostHog — and it inherits the `leadbay_set_telemetry` opt-out through the
+// normal dispatch suppression. It is NEVER leadbay_report_friction: that tool
+// is consent-gated and must not fire unprompted.
+//
+// Three hard rules, because a telemetry path that misbehaves is worse than none:
+//   1. NEVER routed through `call()` — no normalize, no withTimeout. A telemetry
+//      call that timed out would emit a timeout event, which would time out…
+//   2. Fire-and-forget. A rejected emit is swallowed; telemetry never surfaces
+//      in a view-model's `error` and never blocks a user action.
+//   3. Bounded. Deduped on identity and hard-capped per page, so a poll loop
+//      failing every 3s can't emit thousands of events.
+
+/** What went wrong. Split by NATURE, not by call site: `kind` decides which
+ *  sink the server routes to. The four exception kinds carry a thrown error;
+ *  the three outcome kinds are UX facts with nothing thrown. */
+export type LbEventKind =
+  // → Sentry (exceptions)
+  | "bridge_unavailable" // no window.cowork — a degraded host
+  | "call_timeout" // the host never settled within timeoutMs
+  | "call_failed" // the host rejected, or answered isError
+  | "parse_failed" // content[0].text was neither JSON nor absent
+  // → PostHog (outcomes — nothing threw)
+  | "options_empty" // a picker loaded successfully with zero options
+  | "action_blocked" // field validation stopped a run before any call
+  | "result_rejected"; // a RESOLVED call carried an error envelope / failed checkResult
+
+/** Which view-model surfaced it — lets a dashboard tell a dead dropdown from a
+ *  dead poll without a separate event name per class. */
+export type LbEventSurface = "call" | "field" | "action" | "resource" | "list";
+
+export interface LbEvent {
+  kind: LbEventKind;
+  surface: LbEventSurface;
+  /** The Leadbay tool involved, when the failure is attributable to one. */
+  tool?: string;
+  /** Bounded error code (LbError.code / envelope code) — NEVER a message.
+   *  Messages can carry API payload text the user never approved for sending
+   *  (the product#3943 line), so only codes travel. */
+  code?: string;
+}
+
+const TELEMETRY_TOOL = "leadbay_artifact_event";
+// A page that has failed 40 distinct ways is already telling us everything it
+// can; past that we are only adding noise and host round-trips.
+const MAX_EVENTS = 40;
+const seenEvents = new Set<string>();
+let emitted = 0;
+let telemetryOn = true;
+
+/** Disable runtime telemetry for this page (tests, and any artifact that wants
+ *  out). The account-level `leadbay_set_telemetry` opt-out is enforced
+ *  server-side regardless of this flag. */
+export function setTelemetry(enabled: boolean): void {
+  telemetryOn = enabled;
+}
+
+/** Test seam — reset the dedupe/cap state between cases. */
+export function resetTelemetry(): void {
+  seenEvents.clear();
+  emitted = 0;
+  telemetryOn = true;
+  lastTool = undefined;
+  runningSurface = "call";
+}
+
+/** Report a runtime failure to the MCP. Fire-and-forget: returns nothing,
+ *  throws nothing, and is a no-op when there is no host bridge (a local test
+ *  or a degraded host — where `bridge_unavailable` itself has no way home). */
+export function report(ev: LbEvent): void {
+  if (!telemetryOn || emitted >= MAX_EVENTS) return;
+  const key = `${ev.kind}|${ev.surface}|${ev.tool ?? ""}|${ev.code ?? ""}`;
+  if (seenEvents.has(key)) return;
+  seenEvents.add(key);
+  emitted++;
+  // Deliberately the RAW host bridge, not `call()` — see rule 1 above. When the
+  // bridge is absent there is nowhere to report to, which is exactly the
+  // `bridge_unavailable` case; it stays a local-only signal on that host.
+  const host = hostCall();
+  if (!host) return;
+  try {
+    const p = host(TELEMETRY_TOOL, {
+      kind: ev.kind,
+      surface: ev.surface,
+      kit_version: VERSION,
+      ...(ev.tool ? { tool: ev.tool } : {}),
+      ...(ev.code ? { code: ev.code } : {}),
+    });
+    // Swallow rejection AND avoid an unhandled-rejection warning in the page.
+    if (p && typeof (p as Promise<unknown>).catch === "function") {
+      void (p as Promise<unknown>).catch(() => {});
+    }
+  } catch {
+    /* telemetry must never surface to the user */
+  }
+}
+
+// Which view-model's loader is currently on the stack. Set by `withSurface`
+// around each load/run so the chokepoint in `call()` can attribute a transport
+// failure to the control that died, without every view-model re-reporting the
+// same error. JS is single-threaded and the marker is read SYNCHRONOUSLY by
+// `call()` before its first await, so concurrent in-flight loads can't
+// cross-attribute: whoever called `call()` last is whoever is running now.
+let runningSurface: LbEventSurface = "call";
+
+// The last tool `call()` was invoked with. A view-model's loader is an opaque
+// thunk (`() => lb.call("leadbay_list_campaigns", {})`) — the tool name is not
+// on the config, so for outcome events like `options_empty`, where nothing
+// throws and there is no error to read a tool off, this is the only place the
+// name exists. Set synchronously at the top of `call()`.
+let lastTool: string | undefined;
+
+// NOTE on the reset: `fn()` returns its promise SYNCHRONOUSLY, so this restores
+// the marker as soon as the loader has been kicked off — not when it settles.
+// That is deliberate and it is why `call()` snapshots `runningSurface` at entry,
+// before its first await, rather than reading it in its catch. A loader that
+// reaches `call()` through an await (`async () => { await x; return call(…) }`)
+// would otherwise see the marker already restored. Snapshotting at entry also
+// keeps concurrent loads from cross-attributing.
+function withSurface<T>(surface: LbEventSurface, fn: () => Promise<T>): Promise<T> {
+  const prev = runningSurface;
+  runningSurface = surface;
+  try {
+    return fn();
+  } finally {
+    runningSurface = prev;
+  }
+}
+
+/** Report a caught error, mapping its code to the right kind. Used by every
+ *  view-model catch block so the classification lives in ONE place. */
+function reportError(surface: LbEventSurface, tool: string | undefined, e: unknown): void {
+  const code = codeOf(e);
+  const kind: LbEventKind =
+    code === "timeout" ? "call_timeout" : code === "unavailable" ? "bridge_unavailable" : "call_failed";
+  report({ kind, surface, tool, code });
+}
+
 function extractText(res: unknown): string | null {
   if (res && typeof res === "object" && "content" in res) {
     const content = (res as { content?: Array<{ text?: string }> }).content;
@@ -70,7 +213,7 @@ function extractText(res: unknown): string | null {
 
 /** Collapse the MCP tool envelope in ONE place. Prefer structuredContent; fall
  *  back to parsing content[0].text; treat isError as a thrown failure. */
-function normalize(res: unknown): unknown {
+function normalize(res: unknown, tool?: string, surface: LbEventSurface = "call"): unknown {
   if (!res || typeof res !== "object") return res;
   const obj = res as Record<string, unknown>;
   if (obj.isError) throw new LbError(extractText(res) ?? "tool call failed", { raw: res });
@@ -80,6 +223,11 @@ function normalize(res: unknown): unknown {
     try {
       return JSON.parse(text);
     } catch {
+      // The silent one (product#4081). Returning the raw string is the right
+      // FALLBACK — a tool may legitimately answer prose — but when the caller
+      // expected an object this is where the artifact quietly starts rendering
+      // nothing, with no error anywhere. Report it; keep the lenient behavior.
+      report({ kind: "parse_failed", surface, tool });
       return text;
     }
   }
@@ -167,10 +315,36 @@ async function withTimeout<T>(p: Promise<T>, tool: string): Promise<T> {
  *  when no host bridge is present, or LbError(code:"timeout") if the host call
  *  doesn't settle within the configured timeout — callers degrade, never hang. */
 export async function call(tool: string, args: Record<string, unknown> = {}): Promise<unknown> {
-  if (configuredCall) return normalize(await withTimeout(Promise.resolve(configuredCall(tool, args)), tool));
-  const host = hostCall();
-  if (!host) throw new LbError("Leadbay bridge unavailable (window.cowork absent)", { code: "unavailable" });
-  return normalize(await withTimeout(Promise.resolve(host(tool, args)), tool));
+  // Never report on the telemetry tool itself — a failing reporter that reports
+  // its own failure is the one loop this design must not have.
+  const silent = tool === TELEMETRY_TOOL;
+  if (!silent) lastTool = tool;
+  // Snapshot the surface SYNCHRONOUSLY, before the first await — see the note on
+  // withSurface. After an await the marker may already be restored.
+  const surface = runningSurface;
+  const fn = configuredCall ?? hostCall();
+  if (!fn) {
+    if (!silent) report({ kind: "bridge_unavailable", surface, tool, code: "unavailable" });
+    throw new LbError("Leadbay bridge unavailable (window.cowork absent)", { code: "unavailable" });
+  }
+  try {
+    return normalize(
+      await withTimeout(Promise.resolve(fn(tool, args)), tool),
+      silent ? undefined : tool,
+      surface,
+    );
+  } catch (e) {
+    // ONE chokepoint for every transport failure: host rejection, isError
+    // envelope, and the withTimeout race — so nothing escapes unreported even
+    // for a bare `lb.call(...)` an artifact makes directly.
+    //
+    // The view-models do NOT re-report their catches: `surface` is set from
+    // the loader that is currently running (see `runningSurface`), because the
+    // useful question is "which control died", and a view-model catch can only
+    // ever see an error this line already saw. One event, right surface.
+    if (!silent) reportError(surface, tool, e);
+    throw e;
+  }
 }
 
 // ─── Reactive base ───────────────────────────────────────────────────────────
@@ -269,10 +443,17 @@ export class Field extends Store<Field> {
     this.error = null;
     this.emit();
     try {
-      const result = await this.cfg.load();
+      const result = await withSurface("field", () => this.cfg.load!());
       if (my !== this.seq) return; // superseded by a newer load — drop stale result
       this.options = this.cfg.options ? this.cfg.options(result) : coerceOptions(result);
       this.ready = true;
+      // The unpopulated dropdown (product#4081). NOT an exception — the call
+      // succeeded, so nothing throws and `error` stays null; the user just sees
+      // an empty picker and no way to proceed. Reported as an OUTCOME.
+      // `lastTool` — not cfg.kind, which is a UI hint ("select"), never a tool.
+      if (this.options.length === 0) {
+        report({ kind: "options_empty", surface: "field", tool: lastTool });
+      }
       // Default the value to the first option when there's no valid current
       // value (a freshly-loaded picker). Done here in the DATA layer — via this
       // load's emit — so subscribers and dependsOn dependents see the change,
@@ -379,6 +560,12 @@ export class Action extends Store<Action> {
       if (msg != null) {
         this.error = { message: msg, unavailable: false };
         this.emit();
+        // The blocked button (product#4081). No call is made, so no tool-call
+        // event would ever exist — the user clicks and nothing happens, and
+        // today that is invisible. An OUTCOME, not an exception; the validation
+        // MESSAGE is author-written UI copy but can interpolate user input, so
+        // only the fact is reported, never the text.
+        report({ kind: "action_blocked", surface: "action", tool: this.cfg.tool });
         return undefined;
       }
     }
@@ -393,7 +580,7 @@ export class Action extends Store<Action> {
     let result: unknown;
     try {
       const args = typeof this.cfg.args === "function" ? this.cfg.args() : this.cfg.args ?? {};
-      result = await call(this.cfg.tool, args);
+      result = await withSurface("action", () => call(this.cfg.tool, args));
     } catch (e) {
       this.error = errState(e);
       this.loading = false;
@@ -410,6 +597,21 @@ export class Action extends Store<Action> {
       this.error = { message: problem, unavailable: false };
       this.loading = false;
       this.emit();
+      // The call that REPORTED success (HTTP 200, promise resolved) but wasn't
+      // one — a `{error:true}` envelope or a partial write caught by
+      // checkResult (product#4081). An outcome, not an exception: nothing
+      // threw, so Sentry would never see it. Envelope `code` is a bounded
+      // enum and safe to send; `message` is not, and is deliberately omitted.
+      const envCode =
+        result && typeof result === "object"
+          ? (result as { code?: unknown }).code
+          : undefined;
+      report({
+        kind: "result_rejected",
+        surface: "action",
+        tool: this.cfg.tool,
+        ...(typeof envCode === "string" && envCode ? { code: envCode } : {}),
+      });
       this.cfg.onError?.(this.error);
       return undefined;
     }
@@ -478,7 +680,7 @@ export class Resource extends Store<Resource> {
     this.error = null;
     this.emit();
     try {
-      const data = await this.cfg.load();
+      const data = await withSurface("resource", () => this.cfg.load());
       if (my !== this.seq) return; // superseded — drop stale response
       this.data = data;
       this.done = this.cfg.until ? this.cfg.until(data) : true;
@@ -547,7 +749,7 @@ export class ListModel extends Store<ListModel> {
     this.error = null;
     this.emit();
     try {
-      const r = await this.cfg.load({ page, pageSize: this.pageSize });
+      const r = await withSurface("list", () => this.cfg.load({ page, pageSize: this.pageSize }));
       if (my !== this.seq) return; // superseded — drop stale page
       this.items = r.items ?? [];
       this.total = r.total ?? this.items.length;
@@ -1517,6 +1719,12 @@ export const lb = {
   configure,
   styles,
   call,
+  // telemetry (product#4081) — `report` is exposed so an artifact can report a
+  // failure the library cannot see (a render that threw, a control the agent
+  // wired by hand). `setTelemetry(false)` opts this page out; the ACCOUNT-level
+  // opt-out is enforced server-side and needs nothing here.
+  report,
+  setTelemetry,
   // primitives
   field: (cfg?: FieldConfig) => new Field(cfg),
   action: (cfg: ActionConfig) => new Action(cfg),
