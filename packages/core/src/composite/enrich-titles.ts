@@ -306,6 +306,11 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
         type: "number",
         description: "Count of enrichable contacts at preview time.",
       },
+      already_enriched_contacts: {
+        type: "number",
+        description:
+          "preview_only mode: contacts with these titles on the selected leads that your organization already enriched. Above 0 means the work is done, not that nobody has these titles.",
+      },
       credits_remaining: {
         type: ["number", "string", "null"],
         description:
@@ -564,20 +569,24 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
 
           if (preview.enrichable_contacts === 0) {
             // enriched_contacts counts the contacts with these titles that
-            // already have an enrichment for this org, finished or running. A
-            // relaunch reveals nothing. "Try other titles" sent a daily
-            // scheduled run back into this same call for a month (product#4169).
-            const alreadyEnriched = preview.enriched_contacts > 0;
+            // already have an enrichment for this org, finished or running. It
+            // means the work is done, not that nobody has these titles. "Try
+            // other titles" sent a daily scheduled run back into this same call
+            // for a month (product#4169, product#4175).
+            const alreadyEnriched = preview.enriched_contacts;
             outcome = {
               kind: "terminal",
               result: {
                 mode: "preview_only",
                 preview,
                 launched: false,
-                message: alreadyEnriched
-                  ? `All ${preview.enriched_contacts} contacts with these titles on these leads were already enriched for this organization, or are being enriched now. Launching again reveals nothing new.`
-                  : "No enrichable contacts for the chosen titles. Try other titles from available_titles or recommendations.",
-                ...(alreadyEnriched
+                already_enriched_contacts: alreadyEnriched,
+                message:
+                  alreadyEnriched > 0
+                    ? `All ${alreadyEnriched} contacts with these titles on these leads were already enriched for this organization, or are being enriched now. ` +
+                      "Nothing was launched or charged. Calling again with the same titles and leads returns this same answer until new contacts are added to these leads."
+                    : "No enrichable contacts for the chosen titles. Try other titles from available_titles or recommendations.",
+                ...(alreadyEnriched > 0
                   ? {
                       next_action:
                         "Read each lead's contacts with leadbay_research_lead_by_id and report what is there. A finished enrichment that returned no email or phone found none, and repeating it will not change that. Do not call leadbay_enrich_titles again for these leads and titles; pick another title only if the user wants a different person.",
