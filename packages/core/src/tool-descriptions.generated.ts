@@ -1623,17 +1623,18 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 
 
 
-Pick the 2-3 options that match what actually happened — never all seven:
+Pick the 2-3 that match what happened, never the whole table:
 
 | Observation | Suggest | Calls |
 |---|---|---|
+| ≥ 1 delivered — offer FIRST | "Build an interactive lead triage board" | leadbay_artifact_kit → CANONICAL recipe, data in hand |
 | Job still running (\`still_running: true\`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 45) |
 | Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
 | Stopped at the job's usage cap (\`stop_reason: max_cost\`) | "Raise the job's cap and get the remaining N" — no amount, no currency | leadbay_find_new_leads, NEW request_id (same-id only dedupes onto a LIVE job) + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered), not the original + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered; these are what it misses — without them the rerun re-buys the same losers) |
-| Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it cannot clear an org quota and burns a submit slot to stop in the same place | leadbay_account_status |
-| Stopped on org quota and the user does not want to wait | "Top up to finish this run" | leadbay_create_topup_link |
+| Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it cannot clear a quota and burns a submit slot to stop in the same place | leadbay_account_status |
+| Stopped on quota and the user will not wait | "Top up to finish this run" | leadbay_create_topup_link |
 | User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |
 `;
 // endregion: leadbay_find_new_leads
@@ -3674,14 +3675,15 @@ table. Detail + status priority below.
 
 Pull KNOWN leads from the user's Monitor view — the re-engagement entry point.
 
-Backend: wraps \`GET /1.6/monitor?personal=&liked=&filtered=&count=&page=\` plus, when \`set_filter\` is supplied, a preceding \`POST /1.6/monitor/filter\`. The Monitor filter is a single \`FilterItem\` per user — refreshing restores it.
+Backend: wraps \`GET /1.6/monitor\` plus, when \`set_filter\` is supplied, a preceding \`POST /1.6/monitor/filter\`. The Monitor filter is a single \`FilterItem\` per user, server-persisted across sessions.
 
-**Filter mechanism — store-then-apply.** Pass \`set_filter: { criteria: FilterCriterion[] }\` to overwrite the server-stored filter, then the composite re-fetches with \`filtered:true\`. \`FilterCriterion\` is the backend's \`anyOf\` over 10 typed criteria: \`size\`, \`keywords\`, \`sector_ids\`, \`location_ids\`, \`custom_field\`(\`_comparison\`), \`yc\`, \`liked\`, \`last_action\` (MonitorActionType enum), \`last_action_date\` (with \`last_days\`).
+**Filter mechanism — store-then-apply.** Pass \`set_filter: { criteria: FilterCriterion[] }\` to overwrite the server-stored filter, then the composite re-fetches with \`filtered:true\`. Every \`FilterCriterion\` MUST carry a \`type\` discriminator — \`{sector_ids: [...]}\` is silently dropped, \`{type: "sector_ids", sectors: [...]}\` is not. Types: \`size\`, \`keywords\`, \`sector_ids\`, \`location_ids\`, \`custom_field\`(\`_comparison\`), \`yc\`, \`liked\`, \`last_action\`, \`last_action_date\`.
 
 Practical mapping from user phrasing to criterion:
 
 | User phrase | Criterion |
 |---|---|
+| "supermarket leads" | \`{type: "sector_ids", sectors: ["5134"]}\` |
 | "leads in Lyon" | \`{type: "location_ids", locations: [<admin_area_id>]}\` |
 | "healthcare staffing" | \`{type: "keywords", keywords: ["healthcare", "staffing"]}\` |
 | "leads I haven't touched in 30 days" | \`{type: "last_action_date", last_days: 30}\` |
@@ -3689,7 +3691,7 @@ Practical mapping from user phrasing to criterion:
 | "leads 50–200 employees" | \`{type: "size", sizes: [{min: 50, max: 200}]}\` |
 | "Y Combinator companies" | \`{type: "yc"}\` |
 
-Geo filtering needs \`admin_area_id\` resolution — backend rejects free-text in \`location_ids\`. Pass \`city: "<free-text>"\` and the composite calls \`/geo/search\` internally, picks the best match, merges its id into \`set_filter\`. Ambiguous matches return \`status: "ambiguous_locations"\` + \`location_ambiguities[]\` — pick an id and re-call with \`city_id\`.
+Geo filtering needs \`admin_area_id\` resolution — \`location_ids\` rejects free text. Pass \`city\` and the composite resolves it via \`/geo/search\`. Ambiguous matches return \`status: "ambiguous_locations"\` — pick an id and re-call with \`city_id\`.
 
 In \`keywords\` a place name is a TEXT-MATCH on company descriptions (≈0 hits), not a filter — never fall back to it, nor to the unfiltered view, when a place is ambiguous.
 
@@ -3838,6 +3840,8 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 | Observation | Suggest | Calls |
 |---|---|---|
 | Always (top of menu) | "Prep outreach for [top row's contact]" | leadbay_prepare_outreach(leadId) |
+| ≥ 1 lead returned | "Build an interactive call board" | leadbay_artifact_kit → its CANONICAL board recipe, data in hand |
+| "how well do we cover sector X / city Y" | "Build a coverage board" | leadbay_artifact_kit → its COVERAGE recipe (\`lb.portfolioSectors\` + \`lb.segmentCount\`) |
 | User named a city / sector / timeframe | "Refilter by [their phrase]" | leadbay_pull_followups(set_filter: { criteria: [...] }) |
 | \`pagination.has_more == true\` | "Pull the next page" | leadbay_pull_followups(page = current + 1) |
 | ≥3 rows ✨ (never-touched) | "Surface only never-touched leads" | set_filter with \`last_action_date.last_days = 0\` |
@@ -3848,7 +3852,7 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 | User wants to defer a lead | "Snooze [Company] for 3 / 6 / 12 months" | leadbay_set_pushback({ lead_ids:[leadId], status:"3" }) |
 | User completed outreach mid-flow | "Log the outreach + record the outcome" | leadbay_report_outreach |
 | Discovery mode might fit better | "Looking for NEW leads instead? Switch to discovery." | leadbay_pull_leads |
-Always offer at least one of: prep outreach, refilter, pushback. Pushback is the canonical way to honor "not now" / "next quarter" — leads with active pushback are excluded from this view until expiry.
+Always offer at least one of: prep outreach, refilter, pushback. Pushback is the canonical way to honor "not now" / "next quarter".
 `;
 // endregion: leadbay_pull_followups
 
@@ -4005,7 +4009,7 @@ Pick 2–3 items below based on what was actually observed in the response. The 
 
 | Observation                                                | Suggest                                                      | Calls                                                  |
 |------------------------------------------------------------|--------------------------------------------------------------|--------------------------------------------------------|
-| ≥ 5 leads returned (any batch)                             | "Build an interactive lead triage board for this batch"      | emit antArtifact from data in hand (do NOT re-call leadbay_pull_leads) |
+| ≥ 1 lead returned — offer FIRST                            | "Build an interactive lead triage board"                     | leadbay_artifact_kit → its CANONICAL triage-board recipe, data in hand (do NOT re-call pull_leads) |
 | ≥ 1 lead returned (any batch)                              | "Enrich top leads" (reveal decision-maker email/phone on the top leads) | leadbay_enrich_titles({ leadIds: shown leads[].id, lensId }) — scope to the leads JUST shown; OMIT \`titles\` so it runs the no-spend discovery preview. Confirm titles + channels, then re-call with titles + confirm to launch |
 | \`has_more == true\`                                         | "Pull the next page (page N+1 of M)"                         | leadbay_pull_leads(page = current + 1, lensId = pinned)|
 | ≥ 3 rows have \`qualification_summary.answered == 0\`        | "Deepen AI qualification on the rows without ❖ caps"         | leadbay_bulk_qualify_leads(leadIds=[…])                |
@@ -6753,16 +6757,17 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 
 
 
-Pick the 2-3 options that match what actually happened — never all seven:
+Pick the 2-3 that match what happened, never the whole table:
 
 | Observation | Suggest | Calls |
 |---|---|---|
+| ≥ 1 delivered — offer FIRST | "Build an interactive lead triage board" | leadbay_artifact_kit → CANONICAL recipe, data in hand |
 | Job still running (\`still_running: true\`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 45) |
 | Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
 | Stopped at the job's usage cap (\`stop_reason: max_cost\`) | "Raise the job's cap and get the remaining N" — no amount, no currency | leadbay_find_new_leads, NEW request_id (same-id only dedupes onto a LIVE job) + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered), not the original + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered; these are what it misses — without them the rerun re-buys the same losers) |
-| Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it cannot clear an org quota and burns a submit slot to stop in the same place | leadbay_account_status |
+| Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it cannot clear a quota and burns a submit slot to stop in the same place | leadbay_account_status |
 | User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |
 `,
   leadbay_scan_portfolio_signals: `## WHEN TO USE

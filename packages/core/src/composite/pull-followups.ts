@@ -10,6 +10,7 @@ import {
   detectCountryLocationsIn,
   detectCountryLocationsInSetFilter,
 } from "./_country-guard.js";
+import type { NextStepOption, NextSteps } from "./pull-leads.js";
 
 // B6/B7: coerce the legacy literal `"null"` LinkedIn string back to JSON null
 // across every contact-shaped object the response emits.
@@ -94,6 +95,118 @@ interface MonitorResponse {
   [k: string]: unknown;
 }
 
+/**
+ * Deterministic NEXT STEPS for a Monitor page.
+ *
+ * Built in code, not left to the description's snippet table, for the reason
+ * `pull_leads` already documents: a table row is a suggestion the model may or
+ * may not pick from a dozen, whereas `next_steps` is mapped into the host
+ * widget verbatim and in order, so the offer fires every time. The artifact
+ * option sits at position 0 for the same reason it does there — a multi-item
+ * batch is the canonical "scan / sort / return-to" result.
+ *
+ * This is a CALL board, not a triage board: a Monitor lead has already been
+ * seen and worked, so the lead action is logging outreach, not deciding taste.
+ * `pull_followups` is also the only tool that can filter by sector / location,
+ * which is why the segment offer lives here rather than on `pull_leads`.
+ */
+function buildFollowupNextSteps(
+  leadCount: number,
+  hasMore: boolean,
+  nextPage: number | null,
+  hasActiveFilter: boolean,
+): NextSteps | null {
+  if (leadCount === 0) return null; // nothing to work — an offer would be noise
+
+  const options: NextStepOption[] = [];
+
+  options.push({
+    label: "Call board",
+    description: "Build an interactive call board to work these leads and log outreach.",
+    kind: "build_artifact",
+  });
+
+  options.push({
+    label: "Prep outreach",
+    description: "Prepare a call opener and email for the top lead.",
+    kind: "enrich_top_leads",
+  });
+
+  // A SECOND artifact, not a variant of the first: the call board is one card
+  // per lead, this one is tiles + bars + a table measuring the whole book. It
+  // is `build_artifact` for that reason — `refine_audience` would send the
+  // agent to adjust the lens instead of building anything.
+  //
+  // This was once gated on `!hasActiveFilter`, on the reasoning that measuring
+  // "how much sits in sector X" while looking at sector X is circular. That
+  // suppressed the offer far more often than intended: the Monitor filter is
+  // server-stored and survives sessions, so an account that filtered once never
+  // saw the board again. A filter is a reason to FRAME the offer differently,
+  // not to withhold it — "this slice against your whole book" is exactly the
+  // question a filtered view provokes.
+  options.push({
+    label: "Coverage board",
+    description: hasActiveFilter
+      ? "Build a coverage board measuring this filtered slice against the whole book — the filter is server-stored, so measure unfiltered for the denominator."
+      : "Build a coverage board measuring how much of the portfolio sits in each sector or city.",
+    kind: "build_artifact",
+  });
+
+  if (hasMore && nextPage != null) {
+    options.push({
+      label: "Next page",
+      description: `Pull page ${nextPage + 1} of the Monitor.`,
+      kind: "pull_next_page",
+    });
+  }
+
+  // The widget caps at 2–4; keep the first four, artifact offer included.
+  return { question: "What do you want to do next?", options: options.slice(0, 4) };
+}
+
+/**
+ * Did the filter we POSTed actually land?
+ *
+ * `POST /monitor/filter` answers 200 even when it stores nothing — a criterion
+ * missing its `type` discriminator (`{sector_ids:[...]}` instead of
+ * `{type:"sector_ids",sectors:[...]}`) is dropped silently and the PREVIOUS
+ * filter stays in force. The caller then reads counts for a segment it never
+ * asked about and has no way to tell. Compare what came back against what we
+ * sent and say so.
+ *
+ * Compares the SET of criterion types, not the full objects: the backend
+ * normalises a stored criterion (adding `is_excluded`, reordering keys), so a
+ * deep equality check would report a false mismatch on every successful call.
+ * A sent type absent from the echo is the signal that matters.
+ */
+export function filterLanded(
+  sent: MonitorFilterItem | undefined,
+  echoed: MonitorFilterItem | null,
+): boolean | null {
+  if (!sent) return null; // nothing was asked for, so nothing can have failed
+  const sentCriteria = Array.isArray(sent.criteria) ? sent.criteria : [];
+  if (sentCriteria.length === 0) return null;
+  const typeOf = (c: unknown): string | null => {
+    if (!c || typeof c !== "object") return null;
+    const t = (c as { type?: unknown }).type;
+    return typeof t === "string" && t ? t : null;
+  };
+  const echoedCriteria = Array.isArray(echoed?.criteria) ? echoed.criteria : [];
+  const got = new Set(echoedCriteria.map(typeOf).filter((t): t is string => t != null));
+  for (const c of sentCriteria) {
+    if (c == null || typeof c !== "object") continue;
+    const t = typeOf(c);
+    // A criterion with no `type` CANNOT have been stored — that is precisely
+    // the silent-drop shape. Inferring a type from its lone key would make the
+    // echo appear to match (`{sector_ids:[…]}` "matching" a stored
+    // `type:"sector_ids"`) and report success on the one case this exists to
+    // catch.
+    if (t == null) return false;
+    if (!got.has(t)) return false;
+  }
+  return true;
+}
+
 export const pullFollowups: Tool<PullFollowupsParams> = {
   name: "leadbay_pull_followups",
   annotations: {
@@ -169,6 +282,11 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
         description:
           "The FilterItem currently stored server-side for this user (via GET /monitor/filter). null when no filter is set or when filtered:false was passed.",
       },
+      filter_applied: {
+        type: ["boolean", "null"],
+        description:
+          "Whether the `set_filter` just sent actually landed. null when no set_filter was passed. FALSE means the backend answered 200 but stored nothing — every count and row below belongs to the PREVIOUS filter, echoed in `active_filters`, NOT to what was requested. Do not report those figures as the requested segment; re-send with a `type` discriminator on each criterion.",
+      },
       leads: {
         type: "array",
         description:
@@ -200,6 +318,26 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
         description:
           "Per offending value: {value, param, kind, country, axis, kept}. Only present when `status === 'country_level_location'`. The recovery BRANCHES on `country_locations[].axis` and `[].kind`; `hint` states the one for THIS call — follow it verbatim. Dropping the argument is NOT the general answer: on an `exclude` axis it returns the very companies the user asked to remove, and for a `foreign_country` an unfiltered result is this workspace's own leads, which answer a different question. Never retry with another spelling or a nearby city.",
         items: { type: "object" },
+      },
+      next_steps: {
+        type: ["object", "null"],
+        description:
+          "Deterministic follow-on offers, artifact option FIRST. Map `options[]` into the host's next-step widget VERBATIM and in order — do not reword, reorder or drop them. null when the page is empty. Each option: {label (≤5 words), description (the full sentence), kind}.",
+        properties: {
+          question: { type: "string" },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: { type: "string" },
+                description: { type: "string" },
+                kind: { type: "string" },
+              },
+              required: ["label", "description", "kind"],
+            },
+          },
+        },
       },
       _meta: {
         type: "object",
@@ -410,11 +548,26 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
           : lead.org_contacts ?? null,
       }));
 
+    const pageInfo = monitor.pagination ?? null;
+    const currentPage = typeof pageInfo?.page === "number" ? pageInfo.page : 0;
+    const totalPages = typeof pageInfo?.pages === "number" ? pageInfo.pages : 0;
+    const moreToCome = totalPages > currentPage + 1;
+    const filterCriteria = (activeFilter as MonitorFilterItem | null)?.criteria;
+
+    const landed = filterLanded(effectiveSetFilter, activeFilter);
+
     return {
       active_filters: activeFilter,
+      filter_applied: landed,
       leads,
-      pagination: monitor.pagination ?? null,
+      pagination: pageInfo,
       total_excluded_by_pushback: excluded,
+      next_steps: buildFollowupNextSteps(
+        leads.length,
+        moreToCome,
+        moreToCome ? currentPage + 1 : null,
+        Array.isArray(filterCriteria) && filterCriteria.length > 0,
+      ),
       _meta: {
         region: client.region,
         latency_ms: client.lastMeta?.latency_ms ?? null,

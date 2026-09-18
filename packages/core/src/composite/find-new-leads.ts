@@ -41,6 +41,7 @@ import {
   type SectorResolution,
 } from "./_sector-resolver.js";
 import { leadbay_find_new_leads as FIND_NEW_LEADS_DESCRIPTION } from "../tool-descriptions.generated.js";
+import type { NextStepOption, NextSteps } from "./pull-leads.js";
 
 interface FindNewLeadsParams {
   query?: string;
@@ -202,6 +203,101 @@ function sectorChoice(fix: SectorResolution): Record<string, unknown> {
       "it rather than fencing on it, which is usually what the user meant. " +
       "`leadbay_list_sectors` returns the full taxonomy if none of these fit.",
   };
+}
+
+/**
+ * Deterministic NEXT STEPS for a delivery.
+ *
+ * Built in code rather than left to the description's snippet table for the
+ * reason `pull_leads` documents: a table row is one of eight the model may or
+ * may not pick, whereas `next_steps` is mapped into the host widget verbatim
+ * and in order. This tool's table is the busiest in the repo — job status,
+ * cost caps, quota stops — so the board row competed with rows that are
+ * genuinely more urgent and could legitimately lose.
+ *
+ * The branching is why prose could not express this correctly. A board is only
+ * the right offer when rows actually LANDED: while the job is still running
+ * there is nothing to put on it, and when it stopped on a cap or a quota the
+ * honest next move is resolving that, not decorating a partial batch.
+ */
+export function buildFindNewLeadsNextSteps(
+  delivered: number,
+  stillRunning: boolean,
+  stopReason: string | null,
+  truncated: boolean,
+  jobId: string | null,
+): NextSteps | null {
+  const options: NextStepOption[] = [];
+
+  // Still working: the only useful move is to check back. An artifact offer
+  // here would put a half-empty board in front of the user.
+  if (stillRunning) {
+    options.push({
+      label: "Check progress",
+      description: "Check on the job in about a minute.",
+      kind: "pull_next_page",
+    });
+    if (delivered > 0) {
+      options.push({
+        label: "Triage what landed",
+        description: "Build an interactive lead triage board from the leads delivered so far.",
+        kind: "build_artifact",
+      });
+    }
+    return options.length
+      ? { question: "What do you want to do next?", options: options.slice(0, 4) }
+      : null;
+  }
+
+  if (delivered === 0) {
+    // Nothing to show. Reshaping the ask is the move; a board would be empty.
+    options.push({
+      label: "Reshape and retry",
+      description: "Adjust the example profile and run the search again.",
+      kind: "refine_audience",
+    });
+    return { question: "What do you want to do next?", options };
+  }
+
+  // Rows landed — the board is the canonical next move, so it leads.
+  options.push({
+    label: "Triage board",
+    description: "Build an interactive lead triage board to sort and filter this batch.",
+    kind: "build_artifact",
+  });
+
+  // A stop reason outranks everything below it: the user paid for a partial
+  // run and needs to know why it ended before working the rows.
+  if (stopReason === "max_cost") {
+    options.push({
+      label: "Raise the cap",
+      description: "Raise the job's cost cap and fetch the leads it did not reach.",
+      kind: "refine_audience",
+    });
+  } else if (stopReason === "quota") {
+    options.push({
+      label: "Check quota",
+      description: "See which quota window is exhausted and when it resets.",
+      kind: "refine_audience",
+    });
+  }
+
+  // Paid-for rows the drain stopped short of. A page fetch, not a wait.
+  if (truncated && jobId) {
+    options.push({
+      label: "Fetch the rest",
+      description: "Fetch the remaining delivered rows for this job.",
+      kind: "pull_next_page",
+    });
+  }
+
+  options.push({
+    label: "Qualify these",
+    description: "Score these leads against your qualification criteria.",
+    kind: "qualify_deeper",
+  });
+
+  return { question: "What do you want to do next?", options: options.slice(0, 4) };
 }
 
 export const findNewLeads: Tool<FindNewLeadsParams, any> = {
@@ -614,6 +710,13 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       estimated_cost: submit.estimated_cost,
       explain: snapshot.explain,
       still_running: !done,
+      next_steps: buildFindNewLeadsNextSteps(
+        snapshot.funnel.delivered ?? 0,
+        !done,
+        snapshot.funnel.stop_reason ?? null,
+        snapshot.items_truncated ?? false,
+        submit.job_id ?? null,
+      ),
       // A finished job can still owe rows: truncation means the drain stopped
       // early, so there is a follow-up action even when done is true. It is a
       // page fetch, not a wait, hence suggested_wait_seconds 0.

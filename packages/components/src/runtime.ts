@@ -86,11 +86,35 @@ function normalize(res: unknown): unknown {
   return res;
 }
 
+// A rejection is not always an Error. The `mcp` capability's `callTool`
+// rejects with a PLAIN OBJECT ({code, message, server, retryable}), so
+// `String(e)` on it yields the literal "[object Object]" and the code — the
+// one field that says whether to reconnect, add the connector or just wait —
+// is lost before it reaches the UI. Read both off any object that carries
+// them, whatever its prototype.
 function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object") {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === "string" && m) return m;
+    try {
+      return JSON.stringify(e);
+    } catch {
+      /* circular — fall through to String() */
+    }
+  }
+  return String(e);
+}
+function codeOf(e: unknown): string | undefined {
+  if (e instanceof LbError) return e.code;
+  if (e && typeof e === "object") {
+    const c = (e as { code?: unknown }).code;
+    if (typeof c === "string" && c) return c;
+  }
+  return undefined;
 }
 function errState(e: unknown): LbErrorState {
-  const code = e instanceof LbError ? e.code : undefined;
+  const code = codeOf(e);
   return { message: messageOf(e), unavailable: code === "unavailable", code };
 }
 
@@ -1028,11 +1052,462 @@ function callList(opts: CallListOpts): ListModel {
   });
 }
 
+export interface SegmentOpts {
+  /** Sector ids from `leadbay_list_sectors` — never a label. */
+  sectorIds?: string[];
+  /** Free text; the composite resolves it to an admin_area id via /geo/search. */
+  city?: string;
+  /** Pre-resolved admin_area id, when the caller already picked one. */
+  cityId?: string;
+  /** Whose book to count. `leadbay_pull_followups` defaults `personal` to
+   *  FALSE — i.e. the whole ORGANISATION. On an admin's account that is a
+   *  wildly different number from their own followups (one real account:
+   *  7,232 org-wide vs 115 personal), and a board that says "your leads"
+   *  while showing the org's is simply wrong. Pass it explicitly. */
+  personal?: boolean;
+  ask: string;
+}
+
+export interface SegmentCount {
+  total: number;
+  /** The filter the SERVER says is active. Compare it against what you sent —
+   *  see the warning below. */
+  applied: unknown;
+  /** True when the server echoed back a filter that does not match the request,
+   *  which means the write was rejected and this count answers a DIFFERENT
+   *  question. Never chart a count whose `trusted` is false. */
+  trusted: boolean;
+}
+
+export interface PortfolioSector {
+  /** The sector id as it appears on a lead's `sector_id`. */
+  id: string;
+  /** Display name, resolved via `sectors`. Falls back to `Sector <id>` when
+   *  the id is not in the taxonomy — invisible sectors are reachable only
+   *  with includeInvisible, so an unresolved id is expected, not an error. */
+  label: string;
+  /** How many leads in the SAMPLE carried this sector. A sample count, not a
+   *  portfolio total — call `segmentCount` for the exact figure. */
+  sampled: number;
+  /** Whether `label` came from the taxonomy or is a synthesised fallback. */
+  resolved: boolean;
+}
+
+export interface PortfolioSectorsOpts {
+  /** Leads to sample. One page is enough to surface the sectors that matter:
+   *  in a 7,232-lead portfolio a 200-lead sample carried 91% of the leads in
+   *  its top two sectors. Higher costs latency for little gain. */
+  sample?: number;
+  /** id → label, from `leadbay_list_sectors`. Embed it at build time: the
+   *  visible taxonomy is ~1,346 entries and does not change between runs, so
+   *  fetching it per page load buys nothing. */
+  sectors?: Record<string, string>;
+  /** Whose book to count. `leadbay_pull_followups` defaults `personal` to
+   *  FALSE — i.e. the whole ORGANISATION. On an admin's account that is a
+   *  wildly different number from their own followups (one real account:
+   *  7,232 org-wide vs 115 personal), and a board that says "your leads"
+   *  while showing the org's is simply wrong. Pass it explicitly. */
+  personal?: boolean;
+  ask: string;
+}
+
+/**
+ * Which sectors does this user actually hold?
+ *
+ * There is no group-by on the Monitor, so the honest cheap answer is to read
+ * `sector_id` off a page of real followups and tally it. Every lead carries
+ * one, so a single call names the sectors worth offering — ordered by how much
+ * of the user's own book sits in each, not by how big the sector is nationally.
+ *
+ * The alternative — paging all 7,232 leads at count:200 — is 37 calls to refine
+ * an ordering the first page already gets right.
+ *
+ * NOTE the taxonomy's own `number_of_leads` is the WHOLE MARKET, not this
+ * user's book (Supermarchés: 11,460 nationally vs 3,656 in one real portfolio).
+ * Never show it as the user's number. This helper returns sample counts drawn
+ * from the user's followups only.
+ */
+async function portfolioSectors(
+  opts: PortfolioSectorsOpts,
+): Promise<PortfolioSector[]> {
+  const res = (await call("leadbay_pull_followups", {
+    count: opts.sample ?? 200,
+    filtered: false,
+    ...(opts.personal === undefined ? {} : { personal: opts.personal }),
+    _triggered_by: opts.ask,
+  })) as { leads?: Array<{ sector_id?: unknown }> };
+
+  const tally = new Map<string, number>();
+  for (const lead of res.leads ?? []) {
+    const raw = lead?.sector_id;
+    if (raw == null || raw === "") continue;
+    const id = String(raw);
+    tally.set(id, (tally.get(id) ?? 0) + 1);
+  }
+
+  const names = opts.sectors ?? {};
+  return [...tally.entries()]
+    .map(([id, sampled]) => {
+      const hit = names[id];
+      return {
+        id,
+        label: hit ?? `Sector ${id}`,
+        sampled,
+        resolved: hit != null,
+      };
+    })
+    .sort((a, b) => b.sampled - a.sampled || a.id.localeCompare(b.id));
+}
+
+/**
+ * Count the leads in one segment, cheaply: the Monitor filter plus `count: 1`,
+ * so the answer is `pagination.total` and one throwaway row rather than a page.
+ *
+ * TWO TRAPS, both observed against the live API:
+ *
+ * 1. **The filter is server-side and STATEFUL.** `set_filter` overwrites one
+ *    stored FilterItem per user, so consecutive calls are not independent —
+ *    a later call inherits whatever the previous one stored. Always send the
+ *    complete criteria set, never a delta.
+ * 2. **A rejected criterion fails SILENTLY.** A malformed criterion leaves the
+ *    previous filter in place and the call returns 200 with a count for the
+ *    OLD question. That is why this returns `trusted`: it compares the echoed
+ *    `active_filters` against what was sent, and a mismatch means the number
+ *    is about something else.
+ */
+async function segmentCount(opts: SegmentOpts): Promise<SegmentCount> {
+  const criteria: Array<Record<string, unknown>> = [];
+  if (opts.sectorIds?.length) {
+    criteria.push({ type: "sector_ids", sectors: opts.sectorIds, is_excluded: false });
+  }
+  const res = (await call("leadbay_pull_followups", {
+    count: 1,
+    set_filter: { criteria },
+    ...(opts.city ? { city: opts.city } : {}),
+    ...(opts.cityId ? { city_id: opts.cityId } : {}),
+    ...(opts.personal === undefined ? {} : { personal: opts.personal }),
+    _triggered_by: opts.ask,
+  })) as {
+    pagination?: { total?: number };
+    active_filters?: { criteria?: Array<Record<string, unknown>> };
+  };
+
+  const applied = res.active_filters?.criteria ?? [];
+
+  // Every criterion asked for must come back, whatever its type. An earlier
+  // version compared sector ids only, which left the city path unguarded: with
+  // `city` alone both sides of that comparison were the empty string, so a
+  // silently-dropped location criterion read as trusted and the board charted a
+  // count for a segment nobody asked for — the exact failure this flag exists to
+  // catch.
+  //
+  // `city` / `cityId` are sent as top-level params, not criteria: the composite
+  // resolves them through /geo/search into a `location_ids` criterion. So the
+  // type to expect back is one this function never constructed.
+  const wantTypes = new Set<string>();
+  if (opts.sectorIds?.length) wantTypes.add("sector_ids");
+  if (opts.city || opts.cityId) wantTypes.add("location_ids");
+
+  const gotTypes = new Set(
+    applied
+      .map((c) => (typeof c?.type === "string" ? c.type : null))
+      .filter((t): t is string => t != null),
+  );
+
+  // Sector VALUES are checked too, not just the type: a stale sector filter is
+  // still a sector filter, so a type-only check would wave 5122 through when
+  // 5134 was asked for. Locations get no value check — the id is resolved
+  // server-side from free text, so the caller has nothing to compare against.
+  const wantSectors = (opts.sectorIds ?? []).slice().sort().join(",");
+  const gotSectors = applied
+    .filter((c) => c?.type === "sector_ids")
+    .flatMap((c) => (Array.isArray(c.sectors) ? (c.sectors as string[]) : []))
+    .slice()
+    .sort()
+    .join(",");
+
+  // The echo must match what was asked for in BOTH directions. Checking only
+  // that everything wanted arrived is a subset test, and the stored filter is
+  // cumulative: narrowing sector+city to sector-only leaves the location
+  // criterion in force, so the count is still fenced to a city nobody asked
+  // about while every requested type is present. An unrequested criterion
+  // narrows the result exactly as a dropped one widens it.
+  //
+  // This also covers the unfiltered case on its own terms: with nothing wanted,
+  // "nothing extra" IS "the echo is empty", which is what makes a whole-book
+  // denominator trustworthy.
+  const everyTypeLanded = [...wantTypes].every((t) => gotTypes.has(t));
+  const nothingExtraApplied = [...gotTypes].every((t) => wantTypes.has(t));
+
+  return {
+    total: finite(res.pagination?.total),
+    applied,
+    trusted: everyTypeLanded && nothingExtraApplied && wantSectors === gotSectors,
+  };
+}
+
 /** Manager team-activity (per-rep leaderboard + activity trend) for a window. */
 function teamActivity(opts: { weeks?: number; ask: string }): Resource {
   return new Resource({
     load: () => call("leadbay_team_activity", { weeks: opts.weeks ?? 4, _triggered_by: opts.ask }),
   });
+}
+
+// ─── Rendering helpers ───────────────────────────────────────────────────────
+//
+// The library renders nothing by default — the artifact owns its markup. These
+// three are the exception, and only because hand-rolling them goes wrong the
+// same way every time: an SVG whose points escape the viewBox, a series that
+// draws empty axes when it is empty, a leaderboard whose digits do not line up.
+// Each returns a detached element the caller places; none injects itself.
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const svgNode = (tag: string, attrs: Record<string, string | number>): SVGElement => {
+  const n = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
+  return n;
+};
+// Declared as a function, not a const arrow: segmentCount above uses it, and a
+// const would be in the temporal dead zone at that point.
+function finite(v: unknown): number {
+  return typeof v === "number" && isFinite(v) ? v : 0;
+}
+
+export interface TrendPoint {
+  date?: string;
+  count?: number;
+  [k: string]: unknown;
+}
+
+export interface SparklineOpts {
+  /** Accessible summary. Without one the chart is invisible to a screen reader. */
+  label?: string;
+  width?: number;
+  height?: number;
+  /** Shown in place of the chart when the series is empty — an empty window is
+   *  a real answer, and empty axes read as a broken chart. */
+  emptyTitle?: string;
+  emptyHint?: string;
+}
+
+/**
+ * A trend line as inline SVG, styled by the `lb-chart` classes so it takes its
+ * colours from the theme and reads in light and dark alike. Returns an
+ * `lb-empty` block instead when the series is empty.
+ *
+ * Inline rather than a charting library: a sparse series does not earn the
+ * dependency, and a CDN chart that fails to load shows nothing at all.
+ */
+function sparkline(points: TrendPoint[] | null | undefined, opts: SparklineOpts = {}): HTMLElement | SVGElement {
+  const data = Array.isArray(points) ? points : [];
+  if (data.length === 0) {
+    const box = document.createElement("div");
+    box.className = "lb-empty";
+    const t = document.createElement("div");
+    t.className = "lb-empty-title";
+    t.textContent = opts.emptyTitle ?? "Nothing in this window";
+    box.appendChild(t);
+    if (opts.emptyHint) {
+      const h = document.createElement("div");
+      h.className = "lb-empty-hint";
+      h.textContent = opts.emptyHint;
+      box.appendChild(h);
+    }
+    return box;
+  }
+
+  const W = opts.width ?? 640;
+  const H = opts.height ?? 160;
+  // Room for the y labels and the date row, so no drawn element or text can
+  // escape the viewBox — the classic hand-rolled-chart bug.
+  const L = 40, R = 8, T = 12, B = 26;
+  const innerW = W - L - R;
+  const innerH = H - T - B;
+  const max = Math.max(1, ...data.map((p) => finite(p.count)));
+  const x = (i: number) => (data.length === 1 ? L + innerW / 2 : L + (i / (data.length - 1)) * innerW);
+  const y = (v: unknown) => T + innerH - (finite(v) / max) * innerH;
+
+  const svg = svgNode("svg", {
+    class: "lb-chart",
+    viewBox: `0 0 ${W} ${H}`,
+    preserveAspectRatio: "none",
+    role: "img",
+    "aria-label": opts.label ?? `Trend across ${data.length} points, peak ${max}`,
+  });
+
+  // Baseline and peak only: a full grid competes with the series it frames.
+  for (const v of [0, max]) {
+    svg.appendChild(svgNode("line", { class: "lb-chart-grid", x1: L, x2: W - R, y1: y(v), y2: y(v) }));
+    const label = svgNode("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" });
+    label.textContent = String(v);
+    svg.appendChild(label);
+  }
+
+  const pts = data.map((p, i) => `${x(i)},${y(p.count)}`);
+  svg.appendChild(
+    svgNode("path", {
+      class: "lb-chart-area",
+      d: `M${x(0)},${y(0)} L${pts.join(" L")} L${x(data.length - 1)},${y(0)} Z`,
+    }),
+  );
+  svg.appendChild(svgNode("path", { class: "lb-chart-line", d: `M${pts.join(" L")}` }));
+  data.forEach((p, i) => {
+    svg.appendChild(svgNode("circle", { class: "lb-chart-dot", cx: x(i), cy: y(p.count), r: 3 }));
+  });
+
+  // First and last only — every bucket labelled is unreadable at this width.
+  const ends: Array<[number, string]> = data.length === 1 ? [[0, "middle"]] : [[0, "start"], [data.length - 1, "end"]];
+  for (const [i, anchor] of ends) {
+    const t = svgNode("text", { x: x(i), y: H - 8, "text-anchor": anchor });
+    t.textContent = String(data[i].date ?? "").slice(0, 10);
+    svg.appendChild(t);
+  }
+  return svg;
+}
+
+export interface TileSpec {
+  label: string;
+  value: string | number;
+}
+
+/** A row of headline figures. Only for the few numbers that ARE the point — a
+ *  tile per field turns a dashboard into a wall. */
+function tiles(specs: TileSpec[]): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "lb-tiles";
+  for (const s of specs) {
+    const tile = document.createElement("div");
+    tile.className = "lb-tile";
+    const l = document.createElement("span");
+    l.className = "lb-tile-label";
+    l.textContent = s.label;
+    const v = document.createElement("span");
+    v.className = "lb-tile-value";
+    v.textContent = String(s.value);
+    tile.append(l, v);
+    wrap.appendChild(tile);
+  }
+  return wrap;
+}
+
+export interface LeaderboardColumn<T> {
+  key: string;
+  label: string;
+  /** Numeric columns are end-aligned and tabular, so a column can be scanned. */
+  num?: boolean;
+  /** Render a cell yourself — e.g. a mailto link on the name. */
+  cell?: (row: T) => Node | string;
+}
+
+export interface LeaderboardOpts<T> {
+  rows: T[];
+  columns: LeaderboardColumn<T>[];
+  /** Initial sort. Client-side: the rows are already in hand. */
+  sortKey?: string;
+  sortDir?: "ascending" | "descending";
+  /** Re-rendered on every header click, so the caller can swap the node. */
+  onSort?: (key: string, dir: "ascending" | "descending") => void;
+  emptyTitle?: string;
+  emptyHint?: string;
+}
+
+/**
+ * A sortable leaderboard. Sorting is CLIENT-side by design: a team roll-up
+ * arrives whole, so re-sorting reorders data already held — unlike a lead
+ * list, where the backend sorts the full set and returns one page of it.
+ *
+ * Header direction is carried in `aria-sort`, not by an arrow alone, and each
+ * header is keyboard-operable.
+ */
+function leaderboard<T extends Record<string, unknown>>(opts: LeaderboardOpts<T>): HTMLElement {
+  const { rows, columns } = opts;
+  if (!rows || rows.length === 0) {
+    const box = document.createElement("div");
+    box.className = "lb-empty";
+    const t = document.createElement("div");
+    t.className = "lb-empty-title";
+    t.textContent = opts.emptyTitle ?? "Nothing to show";
+    box.appendChild(t);
+    if (opts.emptyHint) {
+      const h = document.createElement("div");
+      h.className = "lb-empty-hint";
+      h.textContent = opts.emptyHint;
+      box.appendChild(h);
+    }
+    return box;
+  }
+
+  let key = opts.sortKey ?? columns[0].key;
+  let dir: "ascending" | "descending" = opts.sortDir ?? "descending";
+
+  const table = document.createElement("table");
+  table.className = "lb-table";
+
+  const draw = () => {
+    table.textContent = "";
+    const thead = document.createElement("thead");
+    const htr = document.createElement("tr");
+    for (const c of columns) {
+      const th = document.createElement("th");
+      th.textContent = c.label;
+      if (c.num) th.setAttribute("data-num", "");
+      th.setAttribute("aria-sort", c.key === key ? dir : "none");
+      th.setAttribute("tabindex", "0");
+      th.setAttribute("role", "button");
+      const act = () => {
+        if (key === c.key) dir = dir === "ascending" ? "descending" : "ascending";
+        else {
+          key = c.key;
+          dir = c.num ? "descending" : "ascending";
+        }
+        draw();
+        opts.onSort?.(key, dir);
+      };
+      th.addEventListener("click", act);
+      th.addEventListener("keydown", (e) => {
+        if ((e as KeyboardEvent).key === "Enter" || (e as KeyboardEvent).key === " ") {
+          e.preventDefault();
+          act();
+        }
+      });
+      htr.appendChild(th);
+    }
+    thead.appendChild(htr);
+    table.appendChild(thead);
+
+    const sorted = rows.slice().sort((a, b) => {
+      const A = a[key], B = b[key];
+      if (typeof A === "string" || typeof B === "string") {
+        const r = String(A ?? "").localeCompare(String(B ?? ""));
+        return dir === "ascending" ? r : -r;
+      }
+      return dir === "ascending" ? finite(A) - finite(B) : finite(B) - finite(A);
+    });
+
+    const tbody = document.createElement("tbody");
+    for (const row of sorted) {
+      const tr = document.createElement("tr");
+      tr.setAttribute("aria-selected", "false");
+      for (const c of columns) {
+        const td = document.createElement("td");
+        if (c.num) td.setAttribute("data-num", "");
+        const custom = c.cell?.(row);
+        if (custom == null) td.textContent = c.num ? String(finite(row[c.key])) : String(row[c.key] ?? "—");
+        else if (typeof custom === "string") td.textContent = custom;
+        else td.appendChild(custom);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+  };
+  draw();
+
+  // A wide table must scroll in its own container, never the page body.
+  const wrap = document.createElement("div");
+  wrap.style.overflowX = "auto";
+  wrap.appendChild(table);
+  return wrap;
 }
 
 // ─── Public surface ──────────────────────────────────────────────────────────
@@ -1051,8 +1526,15 @@ export const lb = {
   bindSelect,
   bindValue,
   bindAction,
+  // rendering helpers — the only three things the library draws, because
+  // hand-rolling them goes wrong the same way every time
+  sparkline,
+  tiles,
+  leaderboard,
   // domain components
   campaigns,
+  segmentCount,
+  portfolioSectors,
   outreach,
   note: noteAction,
   like,

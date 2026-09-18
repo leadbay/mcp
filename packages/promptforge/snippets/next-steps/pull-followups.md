@@ -5,6 +5,8 @@
 | Observation | Suggest | Calls |
 |---|---|---|
 | Always (top of menu) | "Prep outreach for [top row's contact]" | leadbay_prepare_outreach(leadId) |
+| ≥ 1 lead returned | "Build an interactive call board" | leadbay_artifact_kit → its CANONICAL board recipe, data in hand |
+| "how well do we cover sector X / city Y" | "Build a coverage board" | leadbay_artifact_kit → its COVERAGE recipe (`lb.portfolioSectors` + `lb.segmentCount`) |
 | User named a city / sector / timeframe | "Refilter by [their phrase]" | leadbay_pull_followups(set_filter: { criteria: [...] }) |
 | `pagination.has_more == true` | "Pull the next page" | leadbay_pull_followups(page = current + 1) |
 | ≥3 rows ✨ (never-touched) | "Surface only never-touched leads" | set_filter with `last_action_date.last_days = 0` |
@@ -15,4 +17,4 @@
 | User wants to defer a lead | "Snooze [Company] for 3 / 6 / 12 months" | leadbay_set_pushback({ lead_ids:[leadId], status:"3" }) |
 | User completed outreach mid-flow | "Log the outreach + record the outcome" | leadbay_report_outreach |
 | Discovery mode might fit better | "Looking for NEW leads instead? Switch to discovery." | leadbay_pull_leads |
-Always offer at least one of: prep outreach, refilter, pushback. Pushback is the canonical way to honor "not now" / "next quarter" — leads with active pushback are excluded from this view until expiry.
+Always offer at least one of: prep outreach, refilter, pushback. Pushback is the canonical way to honor "not now" / "next quarter".
