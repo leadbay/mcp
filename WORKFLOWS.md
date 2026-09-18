@@ -13,7 +13,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | # | User story | Prompt | Scenario |
 |---|---|---|---|
 | 1 | **Daily lead discovery** — "show me today's leads / fresh prospects / what's in my inbox" | `leadbay_daily_check_in` | "Show me today's leads" |
-| 2 | **Follow-up check-in (incl. travel/geo)** — "leads I should follow up with", "before my trip to Berlin", "who should I re-engage" | `leadbay_followup_check_in` | "What leads should I follow up with?" |
+| 2 | **Follow-up check-in (incl. travel/geo)** — "leads I should follow up with", "before my trip to Berlin", "who should I re-engage". A lead whose email was logged with a Gmail id comes back with that id, and `reply_check` has the agent open the thread in the user's mailbox and log any reply with `leadbay_report_outreach` before rendering | `leadbay_followup_check_in` | "What leads should I follow up with?" |
 | 3 | **Single-company/domain deep research** — "tell me about Acme / acme.com" — resolves the company from the user's visible Discover, Monitor, and Activate corpus, then from the Leadbay company registry so a company they do not own yet is still findable | `leadbay_research_a_domain` | "Tell me about jaxpartycompany.com" |
 | 4 | **CSV import + AI qualification** — "I have 400 attendees, rank the most promising" | `leadbay_import_file` | "I have some leads to import" |
 | 5 | **AI qualification on top-N** — "qualify the top 10 of this batch" | `leadbay_qualify_top_n` | "Qualify the top 10 leads in my batch" |
@@ -112,7 +112,7 @@ forbidden_calls:
 success_criteria:
   - "called leadbay_pull_followups at least once (Monitor view)"
   - "did NOT call leadbay_pull_leads (wrong entry point for follow-up queries)"
-  - "did NOT call leadbay_report_outreach"
+  - "did NOT call leadbay_report_outreach (the one exception, logging a reply found in the mailbox, needs a mail tool this scenario does not have)"
 ```
 
 ```yaml scenario

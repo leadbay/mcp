@@ -1,5 +1,5 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool, ToolContext, MonitorFilterItem } from "../types.js";
+import type { Tool, ToolContext, MonitorFilterItem, NotePayload } from "../types.js";
 import { resolveLeadOrder } from "../lead-order.js";
 
 import { leadbay_pull_followups as PULL_FOLLOWUPS_DESCRIPTION } from "../tool-descriptions.generated.js";
@@ -28,6 +28,42 @@ function augmentContact(c: any): any {
     ...c,
     linkedin_page: normalizeLinkedinPage(c.linkedin_page ?? null),
   };
+}
+
+// leadbay_report_outreach ends every note it writes with this line. For an
+// email it holds the Gmail message id, the only link Leadbay keeps between a
+// lead and the user's mailbox. The MCP cannot open a mailbox; the agent can.
+// So the follow-up read hands the id back per lead and `reply_check` tells the
+// agent to look for a reply in that thread (product#4172).
+const LOGGED_GMAIL_ID =
+  /— logged by AI agent \(verification: gmail_message_id=([^\s)]+)\)\s*$/;
+
+const REPLY_CHECK =
+  "`last_logged_email` on a lead is the Gmail message id logged when that email was sent. " +
+  "Before rendering, open each message by that id with your mail tool, then read the thread it belongs to: an email sent " +
+  "inside an earlier thread has a message id that is not a thread id. A message from the contact dated after " +
+  "`logged_at` is a reply Leadbay has not seen: log it with leadbay_report_outreach({lead_id, " +
+  "note: 'Replied: <one line of what they said>', verification: {source: 'gmail_message_id', ref: <the reply's message id>}}) " +
+  "without epilogue_status, and show that row as replied. The outcome is the user's to state: ask them, as after any " +
+  "outreach, and set it only from their answer. Once logged, the reply is older than the next " +
+  "`logged_at`, so it is never reported twice. A message your mail tool cannot find was sent from another mailbox: skip it. " +
+  "With no mail tool, tell the user replies were not checked.";
+
+async function lastLoggedEmail(
+  client: LeadbayClient,
+  leadId: string
+): Promise<{ gmail_message_id: string; logged_at: string } | null> {
+  const notes = await client
+    .request<NotePayload[]>("GET", `/leads/${leadId}/notes`)
+    .catch(() => null);
+  let last: { gmail_message_id: string; logged_at: string } | null = null;
+  for (const n of Array.isArray(notes) ? notes : []) {
+    const m = typeof n?.note === "string" ? LOGGED_GMAIL_ID.exec(n.note) : null;
+    if (m && (!last || Date.parse(n.created_at) > Date.parse(last.logged_at))) {
+      last = { gmail_message_id: m[1], logged_at: n.created_at };
+    }
+  }
+  return last;
 }
 
 interface PullFollowupsParams {
@@ -290,8 +326,13 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
       leads: {
         type: "array",
         description:
-          "The page of monitored leads. Each lead carries the FullLead shape augmented with normalized linkedin_page on contacts and `recommended_contact`.",
+          "The page of monitored leads. Each lead carries the FullLead shape augmented with normalized linkedin_page on contacts and `recommended_contact`. A lead whose latest email was logged with a Gmail message id also carries `last_logged_email: {gmail_message_id, logged_at}`.",
         items: { type: "object" },
+      },
+      reply_check: {
+        type: "string",
+        description:
+          "Present when at least one lead carries `last_logged_email`: how to look for replies in the user's mailbox and log them before rendering.",
       },
       pagination: {
         type: ["object", "null"],
@@ -547,6 +588,16 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
           : lead.org_contacts ?? null,
       }));
 
+    // Only a lead with notes can hold a logged email, so the rest cost nothing.
+    const emails = await Promise.all(
+      leads.map((lead) =>
+        lead.notes_count > 0 ? lastLoggedEmail(client, lead.id) : null
+      )
+    );
+    emails.forEach((email, i) => {
+      if (email) leads[i].last_logged_email = email;
+    });
+
     const pageInfo = monitor.pagination ?? null;
     const currentPage = typeof pageInfo?.page === "number" ? pageInfo.page : 0;
     const totalPages = typeof pageInfo?.pages === "number" ? pageInfo.pages : 0;
@@ -561,6 +612,7 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
       leads,
       pagination: pageInfo,
       total_excluded_by_pushback: excluded,
+      ...(emails.some(Boolean) ? { reply_check: REPLY_CHECK } : {}),
       next_steps: buildFollowupNextSteps(
         leads.length,
         moreToCome,
