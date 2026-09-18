@@ -1226,16 +1226,23 @@ async function segmentCount(opts: SegmentOpts): Promise<SegmentCount> {
     .sort()
     .join(",");
 
+  // The echo must match what was asked for in BOTH directions. Checking only
+  // that everything wanted arrived is a subset test, and the stored filter is
+  // cumulative: narrowing sector+city to sector-only leaves the location
+  // criterion in force, so the count is still fenced to a city nobody asked
+  // about while every requested type is present. An unrequested criterion
+  // narrows the result exactly as a dropped one widens it.
+  //
+  // This also covers the unfiltered case on its own terms: with nothing wanted,
+  // "nothing extra" IS "the echo is empty", which is what makes a whole-book
+  // denominator trustworthy.
   const everyTypeLanded = [...wantTypes].every((t) => gotTypes.has(t));
-  // Nothing asked for means nothing can have been dropped — an unfiltered count
-  // is the whole book, and a leftover stored criterion would narrow it, so an
-  // echo carrying anything at all is a stale filter still in force.
-  const unfilteredIsClean = wantTypes.size > 0 || gotTypes.size === 0;
+  const nothingExtraApplied = [...gotTypes].every((t) => wantTypes.has(t));
 
   return {
     total: finite(res.pagination?.total),
     applied,
-    trusted: everyTypeLanded && unfilteredIsClean && wantSectors === gotSectors,
+    trusted: everyTypeLanded && nothingExtraApplied && wantSectors === gotSectors,
   };
 }
 

@@ -783,14 +783,21 @@ both:**
    mismatch. Never chart an untrusted count; say the segment could not be
    measured instead.
 
-   It checks every criterion asked for, not just sectors: a `city` / `cityId`
-   must come back as a `location_ids` criterion (the composite resolves the free
-   text through `/geo/search`, so the type to expect is one you never sent).
-   Sector VALUES are compared too — a stale sector filter is still a sector
-   filter. Locations are checked for presence only, since the server picks the
-   `admin_area_id` and the caller has nothing to compare against. A call asking
-   for NO criteria is untrusted if the echo carries any, because a leftover
-   filter turns "the whole book" into a slice — fatal for a denominator.
+   The echo must match the request in BOTH directions. Every criterion asked
+   for has to come back — a `city` / `cityId` as a `location_ids` criterion,
+   since the composite resolves the free text through `/geo/search` into a type
+   you never sent — and **nothing may come back that was not asked for**. The
+   stored filter is cumulative, so narrowing a segment (sector+city → sector
+   alone) leaves the dropped criterion in force: the count stays fenced to a
+   city nobody asked about while every requested type is dutifully present. An
+   unrequested criterion narrows a count exactly as a dropped one widens it.
+   That rule also covers the unfiltered call on its own terms — with nothing
+   wanted, "nothing extra" is "the echo is empty", which is what makes a
+   whole-book denominator trustworthy.
+
+   Sector VALUES are compared too, since a stale sector filter is still a sector
+   filter. Locations are checked for presence only: the server picks the
+   `admin_area_id` from free text, so the caller has nothing to compare against.
 
 **What you cannot build this way.** A score histogram needs every lead's
 `ai_agent_lead_score`, and there is no aggregation endpoint — bucketing 3,656
