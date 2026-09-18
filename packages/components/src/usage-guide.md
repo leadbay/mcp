@@ -940,3 +940,27 @@ never stuck loading forever — always render the `.error` branch so the user ca
 Auto-poll (`pollEvery`) depends on the cowork host serving FRESH reads; `.refresh()`
 is the guaranteed manual path — always wire a Refresh control for polling resources.
 
+
+## Runtime diagnostics (automatic — you do not wire this)
+
+The runtime reports its own failures to the Leadbay team so a broken artifact
+does not stay invisible: a picker that loads zero options, a button blocked by
+validation, a call that timed out, failed, came back as an error envelope, or
+answered with unparseable text. It sends these itself, over the same bridge,
+deduped and capped — **you do not need to add anything**, and you should not
+call `leadbay_artifact_event` yourself.
+
+Only bounded values travel: the failure kind, which view-model surfaced it, the
+tool name, an error code, and the kit version. Never a message, never user text,
+never anything the user typed. A user who has turned telemetry off with
+`leadbay_set_telemetry` sends nothing at all.
+
+Two knobs, both optional. `lb.setTelemetry(false)` opts a page out entirely.
+`lb.report({kind, surface, tool?, code?})` reports a failure the library cannot
+see — a render that threw, or a control you wired by hand rather than through a
+view-model. Everything else is automatic.
+
+This is NOT the way to report a problem the USER raised. If the rep tells you
+the artifact is wrong and asks you to pass it on, that is
+`leadbay_report_friction`, which carries their own words and needs their
+consent.
