@@ -27,6 +27,35 @@ interface EnrichTitlesParams {
 
 const DEFAULT_CANDIDATE_COUNT = 25;
 
+// /leads/selection/select reads leadIds from the query string, and the API
+// rejects a request line over 8192 bytes ("Line exceeds limit of 8192 bytes").
+// Each id adds 45 characters, so a single call fails from about 180 leads. A
+// 308-lead list failed this way on 2026-09-04 (product#4169). The selection
+// accumulates across calls, so send it in batches.
+const SELECT_BATCH_SIZE = 100;
+
+async function selectLeads(client: LeadbayClient, leadIds: string[]) {
+  let unknownBatch: unknown = null;
+  let anySelected = false;
+  for (let i = 0; i < leadIds.length; i += SELECT_BATCH_SIZE) {
+    const qs = leadIds
+      .slice(i, i + SELECT_BATCH_SIZE)
+      .map((id) => `leadIds=${encodeURIComponent(id)}`)
+      .join("&");
+    try {
+      await client.requestVoid("POST", `/leads/selection/select?${qs}`);
+      anySelected = true;
+    } catch (err: any) {
+      // One call succeeds when ANY of its ids is a known lead. Keep that
+      // behaviour across batches: a batch of only unknown ids fails the call
+      // only when no other batch selected anything.
+      if (!/no known leads/.test(String(err?.message))) throw err;
+      unknownBatch = err;
+    }
+  }
+  if (!anySelected && unknownBatch) throw unknownBatch;
+}
+
 interface LaunchArgs {
   leadIds: string[];
   titles: string[];
@@ -170,11 +199,9 @@ async function launchEnrichment(
 ) {
   await client.acquireSelectionLock();
   try {
-    const qs = args.leadIds
-      .map((id) => `leadIds=${encodeURIComponent(id)}`)
-      .join("&");
-    await client.requestVoid("POST", `/leads/selection/select?${qs}`);
     try {
+      // Inside the clear: a later batch can fail after an earlier one landed.
+      await selectLeads(client, args.leadIds);
       return await launchOnSelection(client, args, ctx);
     } finally {
       try {
@@ -458,12 +485,9 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
     let outcome: PreviewOutcome;
     await client.acquireSelectionLock();
     try {
-      const qs = leadIds
-        .map((id) => `leadIds=${encodeURIComponent(id)}`)
-        .join("&");
-      await client.requestVoid("POST", `/leads/selection/select?${qs}`);
-
       try {
+        // Inside the clear: a later batch can fail after an earlier one landed.
+        await selectLeads(client, leadIds);
         // Phase 2/2 of preview: title discovery + counts.
         ctx?.progress?.({
           progress: 2,
@@ -539,14 +563,26 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
           }
 
           if (preview.enrichable_contacts === 0) {
+            // enriched_contacts counts the contacts with these titles that
+            // already have an enrichment for this org, finished or running. A
+            // relaunch reveals nothing. "Try other titles" sent a daily
+            // scheduled run back into this same call for a month (product#4169).
+            const alreadyEnriched = preview.enriched_contacts > 0;
             outcome = {
               kind: "terminal",
               result: {
                 mode: "preview_only",
                 preview,
                 launched: false,
-                message:
-                  "No enrichable contacts for the chosen titles. Try other titles from available_titles or recommendations.",
+                message: alreadyEnriched
+                  ? `All ${preview.enriched_contacts} contacts with these titles on these leads were already enriched for this organization, or are being enriched now. Launching again reveals nothing new.`
+                  : "No enrichable contacts for the chosen titles. Try other titles from available_titles or recommendations.",
+                ...(alreadyEnriched
+                  ? {
+                      next_action:
+                        "Read each lead's contacts with leadbay_research_lead_by_id and report what is there. A finished enrichment that returned no email or phone found none, and repeating it will not change that. Do not call leadbay_enrich_titles again for these leads and titles; pick another title only if the user wants a different person.",
+                    }
+                  : {}),
                 available_titles: availableTitles,
                 credits_remaining: await readCreditsRemaining(client),
               },
