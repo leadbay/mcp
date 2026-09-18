@@ -243,6 +243,7 @@ Common shared blocks live in `packages/promptforge/snippets/`:
 | `linking/company-socials.md` | Company social-URL pills |
 | `next-steps/*.md` | Per-tool NEXT STEPS tables — every one includes the `ask_user_input_v0` routing at the top |
 | `gates/builtin-widgets.md` | The three-host-widget table |
+| `gates/launched-job.md` | A launched job's first result is a receipt: tell the user how long, check it in the same turn, answer from the finished result. Every tool that starts or checks background work includes it (product#4178) |
 | `gates/defer-to-tool-rendering.md` | Reminder that prompts defer layout to tool RENDERING blocks |
 | `heuristics/single-country-universe.md` | The single-country rule — a country name is never a location filter (product#3951) |
 | `heuristics/*.md` | Judgement aids (address matching, consumer email domains, long-running tools, …) |

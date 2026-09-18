@@ -21,7 +21,7 @@ routing:
       route_to: leadbay_qualify_status
   prefer_when: >-
     a find_new_leads / qualify_leads result carried next_poll — pass its
-    job_id; use wait_seconds 45 when the user asked to wait for results.
+    job_id, and wait_seconds 45 while the user waits on the result.
   examples:
     positive:
       - "Any leads yet from that search you started?"
@@ -32,7 +32,7 @@ routing:
 rendering_hint: |
   Terminal job -> render the full delivery per the lead-delivery table +
   honest funnel line. Still running -> one progress line (examined /
-  delivered so far) and offer to check again in ~1 min. Never
+  delivered so far), then check again in this turn. Never
   render UUIDs or cursors.
 next_steps: lead-job-status
 annotations:
@@ -49,8 +49,8 @@ usage counters (never render them), and the `explain` block
 (basis, seed strategy, scope notes). Items are immutable once emitted —
 polling never re-reads live data, so numbers only ever grow.
 
-`wait_seconds: 0` (default) answers instantly; set 45 (the maximum) to block-wait for
-completion when the user asked for results "in this reply". `since` (from a
+`wait_seconds: 0` (default) answers instantly; 45 (the maximum) waits for
+completion — use it while the user waits on the result. `since` (from a
 prior poll's `next_since`) pages only the new items. Jobs terminalize
 server-side: past the 30-min wall clock a job reads `completed_partial`
 (time budget), past 30 days `expired` (items no longer listed — re-read
@@ -59,6 +59,8 @@ unknown job or another org's job.
 
 `compact: true` (pass it whenever `next_poll` carries it) returns the rows of
 a free identity pass, 100 at a time from `offset`, instead of leads.
+
+{{include:gates/launched-job}}
 
 ---
 
