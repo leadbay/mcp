@@ -72,6 +72,10 @@ intended to send.
 
 4. Pushback / next-step / outcome language about each lead goes in the prose. The carousel's "Notes from Claude" surfaces what you write here, so make the one sentence count.
 
+# PHASE 1b — CHECK FOR REPLIES
+
+When the response carries `reply_check`, do what it says before rendering: open each `last_logged_email` message and its thread in my mailbox and log any reply from the contact with `leadbay_report_outreach`. Tell me which leads replied. If you have no mail tool, say that replies were not checked.
+
 # PHASE 2 — RENDER THE CANONICAL TABLE
 
 {{include:gates/defer-to-tool-rendering}}
@@ -107,6 +111,6 @@ Below the table, offer the cross-mode pivot in one short line so the user can re
 
 # GATE — STOP
 
-IRON LAW — DO NOT TAKE OUTBOUND ACTION. Do not call `leadbay_report_outreach`. Do not draft an outreach message into a tool argument. Outreach is the user's call after they've reviewed the follow-up list.
+IRON LAW — DO NOT TAKE OUTBOUND ACTION. Do not call `leadbay_report_outreach`, except to log a reply found in Phase 1b. Do not draft an outreach message into a tool argument. Outreach is the user's call after they've reviewed the follow-up list.
 
 {{include:gates/stop-and-wait}}
