@@ -489,7 +489,7 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
 
-**Widening to the whole workspace is NOT "pass no locations".** Location criteria MERGE here rather than replace, so any geography the lens already carries survives an edit that simply omits \`locations\`. "Make this healthcare nationwide" on a lens scoped to Paris returns Paris healthcare — and calling that nationwide is the same confidently-wrong answer as the country fence itself, just in the header instead of the filter. Read \`lens://<lensId>/definition\` FIRST: it is the only place a lens's \`location_ids\` are visible (\`leadbay_pull_leads\` returns only \`lens: {id}\`, and \`leadbay_my_lenses\` returns no filter at all). Then either clear those criteria explicitly, or state which places the audience actually covers. If you cannot read the definition, say the scope is unverified rather than calling it workspace-wide.
+**Widening to the whole workspace is NOT "pass no locations".** Location criteria MERGE here rather than replace, so any geography the lens already carries survives an edit that simply omits \`locations\`. "Make this healthcare nationwide" on a lens scoped to Paris returns Paris healthcare — and calling that nationwide is the same confidently-wrong answer as the country fence itself, just in the header instead of the filter. Read the lens's \`criteria\` in \`leadbay_my_lenses\` FIRST, which names its \`location_ids\` (so does the \`lens://<lensId>/definition\` resource on hosts that expose one; \`leadbay_pull_leads\` returns only \`lens: {id}\`). Then either clear those criteria explicitly, or state which places the audience actually covers. If you cannot read the criteria, say the scope is unverified rather than calling it workspace-wide.
 
 WHEN TO USE: when the user wants to see different kinds of leads (sector / size / geography / etc.).
 
@@ -3121,14 +3121,15 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // region: leadbay_my_lenses
 export const leadbay_my_lenses: string = `## WHEN TO USE
 
-Trigger phrases: "show me my lenses", "list my lenses", "which audiences do I have", "switch to my <name> lens", "change lens", "rename my <name> lens to <X>", "set the description of my <name> lens", "delete my <name> lens", "remove this lens".
+Trigger phrases: "show me my lenses", "list my lenses", "which audiences do I have", "what is my lens searching for", "what are the criteria of my <name> lens", "give me my current criteria", "switch to my <name> lens", "change lens", "rename my <name> lens to <X>", "set the description of my <name> lens", "delete my <name> lens", "remove this lens".
 
 Do NOT use for: "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me <sector>" → \`leadbay_refine_prompt\`; "more leads on this lens" → \`leadbay_extend_lens\`; "show me today's leads" → \`leadbay_pull_leads\`.
 
-Prefer when: user wants to SEE lenses, CHANGE which is active, RENAME one, or DELETE one — not edit a lens's sector/size criteria
+Prefer when: user wants to SEE lenses or a lens's criteria, CHANGE which is active, RENAME one, or DELETE one — not edit a lens's sector/size criteria
 
 Examples that SHOULD invoke this tool:
 - "Show me my lenses."
+- "What criteria is my Manufacturing lens using? I want to add or remove some."
 - "Rename my Auto lens to Automotive and add a description."
 - "Delete my old Auto lens."
 
@@ -3140,7 +3141,8 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 ## RENDER (quick)
 
 Small markdown table, active lens first: col 1 = ⭐ prefix when active +
-lens name; col 2 = description (or \`—\`). After a switch lead with
+lens name; col 2 = description (or \`—\`); col 3 = its criteria by name.
+After a switch lead with
 "Now showing **<name>**."; after a rename lead with the rename confirmation.
 Full algorithm below.
 
@@ -3150,7 +3152,10 @@ List the user's lenses (saved audiences) and, when asked, switch which one is ac
 
 **Three modes, one tool:**
 
-- **List (no args)** — pure read. Returns \`{status:"listed", lenses:[{id, name, description, is_active}], active_lens_id}\`. The active lens is resolved from the user's last-requested lens, so \`is_active\` is authoritative even if a row's flag is stale.
+- **List (no args)** — pure read. Returns \`{status:"listed", lenses:[…], active_lens_id}\`. The active lens is resolved from the user's last-requested lens, so \`is_active\` is authoritative.
+
+**Every lens in every response carries** all its metadata (\`id\`, \`name\`, \`description\`, \`is_active\`, \`is_default\`, \`user_id\`, \`multi_product_mode\`, \`use_hq_only\`, and the backend's \`not_enough_lead_candidates\` / \`not_enough_new_leads\` / \`less_leads_than_targeted\` flags) plus **\`criteria\`**: its own filter as the Leadbay web app shows it, one entry per criterion \`{type, is_excluded, …}\`. \`sector_ids\` and \`location_ids\` come as \`[{id, name}]\`; \`size\` as \`sizes:[{min,max}]\` (employees); any other type verbatim. \`criteria: []\` means the lens sets no criteria of its own; \`null\` means it could not be read. This is how to answer "what is this lens searching for", and the read before adding or removing a criterion with \`leadbay_adjust_audience\`.
+
 - **Switch (\`switchToLensId\`)** — changes the active lens to that id and returns the REFRESHED list. The id MUST be one of the user's lenses; an unknown id returns \`{status:"not_found"}\` with the current list — surface it and ask the user to pick, do NOT invent an id. Switching to the already-active lens is a harmless no-op.
 - **Edit (\`editLensId\` + \`newName\` and/or \`newDescription\`)** — rename and/or set the description of a lens in one call, returns the REFRESHED list. Provide either or both; pass \`newDescription:""\` to clear a description. Same not_found handling. Use the \`id\` from the list for the lens the user named.
 - **Delete (\`deleteLensId\`)** — DESTRUCTIVE and confirm-gated. Without \`confirm:true\` it returns \`status:"delete_preview"\` with \`will_delete\` and removes NOTHING — show it, get the user's explicit yes, then re-call with \`confirm:true\`. The DEFAULT lens cannot be deleted (\`status:"cannot_delete_default"\`). Deleting the active lens leaves no active lens until the next switch/pull resolves one.
@@ -3191,7 +3196,7 @@ ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We
 
 ## RENDERING — lenses table, active-first
 
-Markdown table with TWO columns. Sort **active lens first**, then by \`name\`
+Markdown table with THREE columns. Sort **active lens first**, then by \`name\`
 ascending. **No score bar** — the \`▰❖▱\` glyph identity belongs to lead
 discovery, not lenses.
 
@@ -3203,9 +3208,20 @@ discovery, not lenses.
 - \`description\` verbatim, clipped to ≤ 18 words.
 - When null/empty: render \`—\`.
 
+**Column 3 — Searches for**
+- \`criteria\` by name, compact: sectors, then locations, then size
+  (\`20–500 employees\`). Prefix \`not \` when \`is_excluded\`. Past 3 sectors, add
+  \`+N more\`. \`[]\` → \`no criteria of its own\`; \`null\` → \`—\`.
+
 **After a \`switched: true\` response**, open with a single confirmation line
 ABOVE the table: \`Now showing **<name>**.\` For \`status: "not_found"\`, lead with
 the \`message\` (the bad id) and render the list so the user can pick a real one.
+
+**When the user asks what a lens searches for**: under the table, a
+\`**<lens name>** searches for:\` line, then one bullet per criterion —
+\`Sectors:\`, \`Locations:\` (every name, joined by commas; \`name\` null → the id),
+\`Company size: 20–500 employees\`. Prefix \`Excluding\` when \`is_excluded\`. Other
+types verbatim. Never show raw ids when a name exists.
 
 **Empty list** (\`lenses: []\`): render \`*You don't have any lenses yet.*\` — do not
 render an empty table.
@@ -3239,6 +3255,7 @@ quick-select options (each option = a lens name → \`leadbay_my_lenses(switchTo
 
 | Observation                          | Suggest                                  | Calls                                                |
 |--------------------------------------|------------------------------------------|------------------------------------------------------|
+| User wants to add / remove a criterion| "Change <lens name>'s criteria"         | \`leadbay_adjust_audience(lensId=<id>, …)\`            |
 | User wants a different lens          | "Switch to <lens name>"                  | \`leadbay_my_lenses(switchToLensId=<id>)\`             |
 | User wants to rename / describe a lens| "Rename or describe <lens>"             | \`leadbay_my_lenses(editLensId=<id>, newName?=<X>, newDescription?=<Y>)\` |
 | User wants to delete a lens          | "Delete <lens>"                          | \`leadbay_my_lenses(deleteLensId=<id>)\` → confirm → \`confirm=true\` |
@@ -3312,7 +3329,7 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
 
 
-**A new lens is a CLONE, and inherits the base lens's geography.** \`base\` defaults to the ACTIVE lens, so this applies even when no base was named. A criteria-less clone inherits the base audience wholesale, and adding sectors does not clear the base's location criteria either — so "nationwide healthcare" built on a Paris-scoped active lens creates a Paris healthcare lens under a nationwide name. Omitting \`locations\` is therefore not the same as having no geography. Read \`lens://<base>/definition\` before describing a new lens as workspace-wide, and say the scope is unverified if you cannot.
+**A new lens is a CLONE, and inherits the base lens's geography.** \`base\` defaults to the ACTIVE lens, so this applies even when no base was named. A criteria-less clone inherits the base audience wholesale, and adding sectors does not clear the base's location criteria either — so "nationwide healthcare" built on a Paris-scoped active lens creates a Paris healthcare lens under a nationwide name. Omitting \`locations\` is therefore not the same as having no geography. Read the base's \`criteria\` in \`leadbay_my_lenses\` (or the \`lens://<base>/definition\` resource on hosts that expose one) before describing a new lens as workspace-wide, and say the scope is unverified if you cannot.
 
 **Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer \`leadbay_my_lenses(switchToLensId=<new id>)\` as a next step if they want to start pulling from it.
 
