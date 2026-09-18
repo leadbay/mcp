@@ -1,0 +1,20 @@
+# promptforge writes its artifacts verbatim — emit.ts calls writeFileSync with
+# no line-ending conversion — so a build inherits the platform's endings: CRLF
+# on a Windows checkout, LF on Linux. CI rebuilds on ubuntu and fails the
+# "Generated files match the committed ones" step on any drift, so a generated
+# file committed from Windows can never match what the runner produces. A
+# contributor who converts the files by hand then watches the next local build
+# put the CRLF straight back, before they can stage it.
+#
+# Normalising at the git layer ends that loop and is the only fix the emitter
+# does not undo: the working tree keeps whatever the local build wrote, and the
+# index always stores LF — which is what the runner produces and compares
+# against. Forcing LF inside the emitter would be wrong instead, since the
+# generated files would then disagree with the CRLF source templates already
+# committed, breaking skills.test.ts for every Windows developer.
+#
+# Scoped to the emitted artifacts and their sources rather than declared
+# repo-wide, so this cannot reformat anything it was not aimed at.
+*.md text eol=lf
+*.md.tmpl text eol=lf
+*.generated.ts text eol=lf
