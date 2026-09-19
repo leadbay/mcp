@@ -7,8 +7,8 @@ practices, so each entry says who does it, what evidence exists, and how settled
 Method. Four research passes over primary sources (the MCP specification, SEPs and
 blog; Anthropic, OpenAI, Microsoft, Google and Cursor documentation; builders' own
 repositories and posts; papers), about 280 sourced items in total. Host limits in
-section 1 were then re-checked against the primary page, and for Claude Code against
-the shipped 2.1.247 binary.
+section 1 were then re-checked against the primary page. For Claude Code, facts read in
+the shipped 2.1.247 binary are cited to the binary, not to the docs.
 
 Labels used below:
 
@@ -31,10 +31,10 @@ Dates are publication dates. Pages without a date are marked "read 2026-09-18".
 
 | Host | Fact | Label | Source |
 |---|---|---|---|
-| Claude Code | Each MCP tool description and the server `instructions` are cut at 2,048 characters, followed by `… [truncated]`. | Host | [code.claude.com/docs/en/mcp](https://code.claude.com/docs/en/mcp) (read 2026-09-18); changelog v2.1.84, 2026-03-25 |
-| Claude Code | MCP tools are deferred behind tool search by default. At session start the model sees tool names and the first 2,048 characters of instructions. Auto-deferral triggers when tool definitions exceed 10% of the context window. | Host | same page; v2.1.7, 2026-01-13 |
+| Claude Code | Each MCP tool description and the server `instructions` are truncated at 2KB. The binary cuts at exactly 2,048 characters and appends `… [truncated]`. | Host | Docs: "Claude Code truncates tool descriptions and server instructions at 2KB each" ([code.claude.com/docs/en/mcp](https://code.claude.com/docs/en/mcp), read 2026-09-18). Exact length and marker: 2.1.247 binary, `q.length>j_?tn(q,j_)+"… [truncated]"` with `j_=2048`. Changelog v2.1.84, 2026-03-25 |
+| Claude Code | MCP tools are deferred behind tool search by default: "Only tool names and server instructions load at session start". In `auto` mode, tools load upfront while their definitions total less than 10% of the context window and are all deferred once they reach 10%. | Host | same docs page (tool search section); changelog v2.1.7, 2026-01-13 |
 | Claude Code | Tool output warns at 10,000 tokens and is capped at 25,000 (`MAX_MCP_OUTPUT_TOKENS`). A tool can raise its own limit with `_meta["anthropic/maxResultSizeChars"]`, up to 500,000 characters; larger results go to a file. | Host | same page; v2.1.91, 2026-04-02 |
-| Claude Code | Per-tool `_meta` keys it reads: `anthropic/searchHint`, `anthropic/alwaysLoad`, `anthropic/maxResultSizeChars`, `anthropic/requiresUserInteraction`. | Host | same page; binary 2.1.247 |
+| Claude Code | Per-tool `_meta` keys a server can set. Documented: `anthropic/maxResultSizeChars`, `anthropic/requiresUserInteraction` (a permission prompt on every call). Read in the binary but not documented: `anthropic/searchHint`, `anthropic/alwaysLoad` (the documented `alwaysLoad` is a user-side server config field). | Host; undocumented keys Unverified | same docs page; 2.1.247 binary |
 | Claude Code | Calls still running after 2 minutes move to a background task. Idle timeout is 5 minutes for HTTP servers, reset by progress notifications. | Host | same page; v2.1.212, 2026-07-16 |
 | claude.ai, Desktop | Tool results are capped at about 150,000 characters. Tool calls time out after 240 seconds. Resource subscriptions and sampling are not supported. | Host | [claude.com/docs/connectors/building](https://claude.com/docs/connectors/building/index.md) (read 2026-09-18) |
 | claude.ai, Desktop | How long descriptions and instructions are handled is not documented. | Unverified | none |
