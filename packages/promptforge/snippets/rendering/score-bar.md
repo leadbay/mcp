@@ -20,4 +20,4 @@ bar = "▰" × normal_filled
     + "▱" × (10 − total_filled)
 ```
 
-If `qualification_summary.answered == 0` or `avg_qualification_boost` is null, set `ai_segments = 0` (no ❖). Always wrap the bar in backticks. Print the legend `` `▰` firmographic · `❖` AI booster cap · `▱` unfilled `` once below the table.
+If `qualification_summary` is null, `answered == 0`, or `avg_qualification_boost` is null, set `ai_segments = 0` (no ❖); null means unavailable, not passed. Always wrap the bar in backticks. Print the legend `` `▰` firmographic · `❖` AI booster cap · `▱` unfilled `` once below the table.

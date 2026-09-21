@@ -15,10 +15,10 @@ Present the response as a markdown table **in the exact order the tool returned 
 
 **Column 2 — Why it fits**
 
-- One sentence, ≤ 20 words.
-- Synthesize from (in priority order, whichever is present) the lead's `short_description`, top 2 `tags[].display_name`, and the gist of `qualification_summary.best_response_excerpt`. The trim payload does NOT carry the longer `description` field — for that, agent must call `leadbay_research_lead_by_id` or `leadbay_research_lead_by_name_fuzzy`.
+- First line: one positive sentence, ≤ 20 words. Synthesize from (in priority order, whichever is present) the lead's `short_description`, top 2 `tags[].display_name`, and, only when `qualification_summary` is non-null, the gist of `best_response_excerpt`. The trim payload does NOT carry the longer `description` field — for that, agent must call `leadbay_research_lead_by_id` or `leadbay_research_lead_by_name_fuzzy`.
+- When `qualification_summary` is non-null, add `<br>⚠ ` for EACH `negative_answers[]`, preserving its question and score even if its explanation is null or truncated. Keep it visible even with a positive average. An explicit customer veto excludes; otherwise keep it unresolved—neither auto-exclude nor approve it. `negative_answers:[]` means no returned answer was negative, not complete or approved. A null summary is unavailable, not passed. Do not re-research these verdicts.
 - Do NOT append `(boost N)` — the ❖ cap in column 1 already carries that signal.
-- No bullet lists, no line breaks inside the cell.
+- No bullet lists; use only the specified `<br>` between positive and negative evidence.
 
 **Column 3 — Contact**
 

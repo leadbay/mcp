@@ -351,6 +351,17 @@ tell *why* this lead is on screen. Five lines, in this order.
    Never leave this line blank: a silent gap reads as a rendering bug, whereas
    the fallback tells the rep the data is missing and what fixes it.
 
+   If `qualification_summary` is non-null and `negative_answers` is non-empty, keep the positive
+   why-it-fits line and add a visible `⚠` line for every negative answer, using
+   its question and bounded explanation. Do not hide a negative behind the
+   average or `best_response_excerpt`. A negative is not automatically a
+   rejection: exclude it only when the user's stated criteria make that
+   question a veto; otherwise leave it unresolved rather than implying approval.
+   A null
+   `qualification_summary` means qualification could not be read, not that the
+   lead passed. An empty `negative_answers` array means no returned answer was
+   negative; it does not prove qualification is complete or the lead approved.
+
    **The two list payloads are complementary, so the chain must span both.**
    `pull_leads` returns `short_description` on every lead but no `sector_id`;
    `pull_followups` returns `sector_id` but no `short_description` at all. A

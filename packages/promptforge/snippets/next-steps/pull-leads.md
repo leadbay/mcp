@@ -9,7 +9,7 @@ Pick 2–3 items below based on what was actually observed in the response. The 
 | ≥ 1 lead returned — offer FIRST                            | "Build an interactive lead triage board"                     | leadbay_artifact_kit → its CANONICAL triage-board recipe, data in hand (do NOT re-call pull_leads) |
 | ≥ 1 lead returned (any batch)                              | "Enrich top leads" (reveal decision-maker email/phone on the top leads) | leadbay_enrich_titles({ leadIds: shown leads[].id, lensId }) — scope to the leads JUST shown; OMIT `titles` so it runs the no-spend discovery preview. Confirm titles + channels, then re-call with titles + confirm to launch |
 | `has_more == true`                                         | "Pull the next page (page N+1 of M)"                         | leadbay_pull_leads(page = current + 1, lensId = pinned)|
-| ≥ 3 rows have `qualification_summary.answered == 0`        | "Deepen AI qualification on the rows without ❖ caps"         | leadbay_bulk_qualify_leads(leadIds=[…])                |
+| ≥ 3 rows have non-null `qualification_summary` with `answered == 0` | "Deepen AI qualification on the rows without ❖ caps" | leadbay_bulk_qualify_leads(leadIds=[…]) |
 | User points at a single row                                | "Research [Company] in depth"                                | leadbay_research_lead_by_id(leadId)                    |
 | User only has a name (no leadId in context)                | "Look up [Company] by name"                                  | leadbay_research_lead_by_name_fuzzy(companyName)       |
 | Top row has phone AND email                                | "Prepare an outreach for [Contact] — call + email"           | leadbay_prepare_outreach(leadId)                       |
