@@ -125,7 +125,7 @@ export function resetTelemetry(): void {
   seenEvents.clear();
   emitted = 0;
   telemetryOn = true;
-  lastTool = undefined;
+  activeSlot = null;
   runningSurface = "call";
 }
 
@@ -168,12 +168,27 @@ export function report(ev: LbEvent): void {
 // cross-attribute: whoever called `call()` last is whoever is running now.
 let runningSurface: LbEventSurface = "call";
 
-// The last tool `call()` was invoked with. A view-model's loader is an opaque
-// thunk (`() => lb.call("leadbay_list_campaigns", {})`) — the tool name is not
-// on the config, so for outcome events like `options_empty`, where nothing
-// throws and there is no error to read a tool off, this is the only place the
-// name exists. Set synchronously at the top of `call()`.
-let lastTool: string | undefined;
+// Where a load records the tool it called, so an OUTCOME event fired after the
+// load resolves can name it. A view-model's loader is an opaque thunk
+// (`() => lb.call("leadbay_list_campaigns", {})`) — the tool name is on neither
+// the config nor (for an outcome) an error, so `call()` is the only place it
+// exists.
+//
+// This is a PER-LOAD slot, deliberately not a shared `lastTool` global. A
+// global would be written by whichever call started most recently and read
+// after an await, so two pickers mounting together — an ordinary artifact
+// layout — would cross-attribute: picker A resolving empty would report
+// picker B's tool. That is the same race `runningSurface` avoids by
+// snapshotting at `call()` entry, and it has to be avoided here too.
+//
+// Only the first `call()` a loader makes synchronously is captured: after the
+// loader's first await, `withSurface` has already restored `activeSlot`. A
+// multi-call loader therefore reports its first tool or none — never another
+// control's. `tool` is optional on LbEvent precisely because it can be absent.
+interface LoadSlot {
+  tool?: string;
+}
+let activeSlot: LoadSlot | null = null;
 
 // NOTE on the reset: `fn()` returns its promise SYNCHRONOUSLY, so this restores
 // the marker as soon as the loader has been kicked off — not when it settles.
@@ -182,13 +197,20 @@ let lastTool: string | undefined;
 // reaches `call()` through an await (`async () => { await x; return call(…) }`)
 // would otherwise see the marker already restored. Snapshotting at entry also
 // keeps concurrent loads from cross-attributing.
-function withSurface<T>(surface: LbEventSurface, fn: () => Promise<T>): Promise<T> {
-  const prev = runningSurface;
+function withSurface<T>(
+  surface: LbEventSurface,
+  fn: () => Promise<T>,
+  slot?: LoadSlot,
+): Promise<T> {
+  const prevSurface = runningSurface;
+  const prevSlot = activeSlot;
   runningSurface = surface;
+  activeSlot = slot ?? null;
   try {
     return fn();
   } finally {
-    runningSurface = prev;
+    runningSurface = prevSurface;
+    activeSlot = prevSlot;
   }
 }
 
@@ -318,10 +340,14 @@ export async function call(tool: string, args: Record<string, unknown> = {}): Pr
   // Never report on the telemetry tool itself — a failing reporter that reports
   // its own failure is the one loop this design must not have.
   const silent = tool === TELEMETRY_TOOL;
-  if (!silent) lastTool = tool;
-  // Snapshot the surface SYNCHRONOUSLY, before the first await — see the note on
-  // withSurface. After an await the marker may already be restored.
+  // Snapshot the surface, and record the tool into the running load's slot,
+  // SYNCHRONOUSLY — before the first await, while this call's loader is still
+  // on the stack. See the notes on withSurface and LoadSlot. Reading either
+  // after an await would attribute to whichever load started most recently.
   const surface = runningSurface;
+  if (!silent && activeSlot && activeSlot.tool === undefined) {
+    activeSlot.tool = tool;
+  }
   const fn = configuredCall ?? hostCall();
   if (!fn) {
     if (!silent) report({ kind: "bridge_unavailable", surface, tool, code: "unavailable" });
@@ -443,16 +469,20 @@ export class Field extends Store<Field> {
     this.error = null;
     this.emit();
     try {
-      const result = await withSurface("field", () => this.cfg.load!());
+      const slot: LoadSlot = {};
+      const result = await withSurface("field", () => this.cfg.load!(), slot);
       if (my !== this.seq) return; // superseded by a newer load — drop stale result
       this.options = this.cfg.options ? this.cfg.options(result) : coerceOptions(result);
       this.ready = true;
       // The unpopulated dropdown (product#4081). NOT an exception — the call
       // succeeded, so nothing throws and `error` stays null; the user just sees
       // an empty picker and no way to proceed. Reported as an OUTCOME.
-      // `lastTool` — not cfg.kind, which is a UI hint ("select"), never a tool.
+      //
+      // The tool comes from THIS load's slot, not a shared global and not
+      // cfg.kind (a UI hint, "select", never a tool name). Two pickers mounting
+      // together would cross-attribute through a global — see LoadSlot.
       if (this.options.length === 0) {
-        report({ kind: "options_empty", surface: "field", tool: lastTool });
+        report({ kind: "options_empty", surface: "field", tool: slot.tool });
       }
       // Default the value to the first option when there's no valid current
       // value (a freshly-loaded picker). Done here in the DATA layer — via this
