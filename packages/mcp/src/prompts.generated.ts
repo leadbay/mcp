@@ -32,7 +32,7 @@ After your first \`leadbay_pull_leads\` call, capture \`response.lens.id\` into 
 
 ## Rule 2 — Prefer async for bulk operations
 
-\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\` and return immediately. They hand back different ids: \`bulk_qualify_leads\` returns \`{status:'running', notification_id, lead_ids, lens_id}\` — poll \`leadbay_qualify_status\` with those. \`import_and_qualify\` returns \`{status:'running', import_ids}\` and no \`notification_id\` at all — poll \`leadbay_import_status({importIds, dry_run})\` with those. Poll every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
+\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\` and return immediately. They hand back different ids: \`bulk_qualify_leads\` returns \`{status:'running', notification_id, lead_ids, lens_id}\` — poll \`leadbay_qualify_status\` with those. \`import_and_qualify\` returns \`{status:'running', import_ids}\` and no \`notification_id\` at all — poll \`leadbay_import_status({importIds, dry_run})\` with those. Check it until it completes, per A LAUNCHED JOB below. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
 
 ## Rule 3 — Serialize \`leadbay_research_lead_by_id\` fan-out
 
@@ -76,6 +76,24 @@ work stopped. What to do next depends on what you are holding:
   back the job already launched rather than starting a second one, but that guard
   is in-memory, five minutes, and per process, so it is best-effort — say what you
   are about to re-run before you use the user's quota on it.
+
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
 
 
 
@@ -257,7 +275,7 @@ After your first \`leadbay_pull_leads\` call, capture \`response.lens.id\` into 
 
 ## Rule 2 — Prefer async for bulk operations
 
-\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\` and return immediately. They hand back different ids: \`bulk_qualify_leads\` returns \`{status:'running', notification_id, lead_ids, lens_id}\` — poll \`leadbay_qualify_status\` with those. \`import_and_qualify\` returns \`{status:'running', import_ids}\` and no \`notification_id\` at all — poll \`leadbay_import_status({importIds, dry_run})\` with those. Poll every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
+\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\` and return immediately. They hand back different ids: \`bulk_qualify_leads\` returns \`{status:'running', notification_id, lead_ids, lens_id}\` — poll \`leadbay_qualify_status\` with those. \`import_and_qualify\` returns \`{status:'running', import_ids}\` and no \`notification_id\` at all — poll \`leadbay_import_status({importIds, dry_run})\` with those. Check it until it completes, per A LAUNCHED JOB below. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
 
 ## Rule 3 — Serialize \`leadbay_research_lead_by_id\` fan-out
 
@@ -301,6 +319,24 @@ work stopped. What to do next depends on what you are holding:
   back the job already launched rather than starting a second one, but that guard
   is in-memory, five minutes, and per process, so it is best-effort — say what you
   are about to re-run before you use the user's quota on it.
+
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
 
 
 
@@ -546,7 +582,7 @@ After your first \`leadbay_pull_leads\` call, capture \`response.lens.id\` into 
 
 ## Rule 2 — Prefer async for bulk operations
 
-\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\` and return immediately. They hand back different ids: \`bulk_qualify_leads\` returns \`{status:'running', notification_id, lead_ids, lens_id}\` — poll \`leadbay_qualify_status\` with those. \`import_and_qualify\` returns \`{status:'running', import_ids}\` and no \`notification_id\` at all — poll \`leadbay_import_status({importIds, dry_run})\` with those. Poll every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
+\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\` and return immediately. They hand back different ids: \`bulk_qualify_leads\` returns \`{status:'running', notification_id, lead_ids, lens_id}\` — poll \`leadbay_qualify_status\` with those. \`import_and_qualify\` returns \`{status:'running', import_ids}\` and no \`notification_id\` at all — poll \`leadbay_import_status({importIds, dry_run})\` with those. Check it until it completes, per A LAUNCHED JOB below. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
 
 ## Rule 3 — Serialize \`leadbay_research_lead_by_id\` fan-out
 
@@ -590,6 +626,24 @@ work stopped. What to do next depends on what you are holding:
   back the job already launched rather than starting a second one, but that guard
   is in-memory, five minutes, and per process, so it is best-effort — say what you
   are about to re-run before you use the user's quota on it.
+
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
 
 
 
@@ -841,7 +895,7 @@ After your first \`leadbay_pull_leads\` call, capture \`response.lens.id\` into 
 
 ## Rule 2 — Prefer async for bulk operations
 
-\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\` and return immediately. They hand back different ids: \`bulk_qualify_leads\` returns \`{status:'running', notification_id, lead_ids, lens_id}\` — poll \`leadbay_qualify_status\` with those. \`import_and_qualify\` returns \`{status:'running', import_ids}\` and no \`notification_id\` at all — poll \`leadbay_import_status({importIds, dry_run})\` with those. Poll every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
+\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\` and return immediately. They hand back different ids: \`bulk_qualify_leads\` returns \`{status:'running', notification_id, lead_ids, lens_id}\` — poll \`leadbay_qualify_status\` with those. \`import_and_qualify\` returns \`{status:'running', import_ids}\` and no \`notification_id\` at all — poll \`leadbay_import_status({importIds, dry_run})\` with those. Check it until it completes, per A LAUNCHED JOB below. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
 
 ## Rule 3 — Serialize \`leadbay_research_lead_by_id\` fan-out
 
@@ -885,6 +939,24 @@ work stopped. What to do next depends on what you are holding:
   back the job already launched rather than starting a second one, but that guard
   is in-memory, five minutes, and per process, so it is best-effort — say what you
   are about to re-run before you use the user's quota on it.
+
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
 
 
 
@@ -1921,7 +1993,7 @@ After your first \`leadbay_pull_leads\` call, capture \`response.lens.id\` into 
 
 ## Rule 2 — Prefer async for bulk operations
 
-\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\` and return immediately. They hand back different ids: \`bulk_qualify_leads\` returns \`{status:'running', notification_id, lead_ids, lens_id}\` — poll \`leadbay_qualify_status\` with those. \`import_and_qualify\` returns \`{status:'running', import_ids}\` and no \`notification_id\` at all — poll \`leadbay_import_status({importIds, dry_run})\` with those. Poll every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
+\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\` and return immediately. They hand back different ids: \`bulk_qualify_leads\` returns \`{status:'running', notification_id, lead_ids, lens_id}\` — poll \`leadbay_qualify_status\` with those. \`import_and_qualify\` returns \`{status:'running', import_ids}\` and no \`notification_id\` at all — poll \`leadbay_import_status({importIds, dry_run})\` with those. Check it until it completes, per A LAUNCHED JOB below. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
 
 ## Rule 3 — Serialize \`leadbay_research_lead_by_id\` fan-out
 
@@ -1965,6 +2037,24 @@ work stopped. What to do next depends on what you are holding:
   back the job already launched rather than starting a second one, but that guard
   is in-memory, five minutes, and per process, so it is best-effort — say what you
   are about to re-run before you use the user's quota on it.
+
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
 
 
 
@@ -2141,12 +2231,12 @@ The response is a status confirmation or scalar — render exactly one sentence 
 
 Template patterns to follow:
 
-- Job kicked off → \`"✓ <Verb> N <noun(s)> — typically ~M minutes. I'll refresh when it's done."\`
+- Job kicked off → \`"⏳ <Verb> N <noun(s)> — usually ~M minutes."\`, then check it in this turn
 - No work needed → \`"All N <noun(s)> already <state> — no work to do."\`
-- Long-running → \`"⏳ <Verb> still running — N% complete; check back in ~M minutes."\`
+- Still running at a check → \`"⏳ <Verb> still running — N% complete."\`, then check again
 - Failure → \`"⚠ <Verb> failed: <error>. <recovery hint>"\`
 
-After the status line, propose the obvious refresh / progress-check / recovery action in the NEXT STEPS block. Never expand the status into a card.
+After a failure, propose the recovery action in the NEXT STEPS block. Never expand the status into a card.
 
 
 # PHASE 3 — SUMMARIZE
@@ -2693,7 +2783,7 @@ After your first \`leadbay_pull_leads\` call, capture \`response.lens.id\` into 
 
 ## Rule 2 — Prefer async for bulk operations
 
-\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\` and return immediately. They hand back different ids: \`bulk_qualify_leads\` returns \`{status:'running', notification_id, lead_ids, lens_id}\` — poll \`leadbay_qualify_status\` with those. \`import_and_qualify\` returns \`{status:'running', import_ids}\` and no \`notification_id\` at all — poll \`leadbay_import_status({importIds, dry_run})\` with those. Poll every ~10s until the job completes. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
+\`leadbay_bulk_qualify_leads\` and \`leadbay_import_and_qualify\` accept \`wait_for_completion:false\` and return immediately. They hand back different ids: \`bulk_qualify_leads\` returns \`{status:'running', notification_id, lead_ids, lens_id}\` — poll \`leadbay_qualify_status\` with those. \`import_and_qualify\` returns \`{status:'running', import_ids}\` and no \`notification_id\` at all — poll \`leadbay_import_status({importIds, dry_run})\` with those. Check it until it completes, per A LAUNCHED JOB below. **Use the async pattern by default** — the blocking default can exceed the MCP client's per-call timeout on large batches and produce a misleading \`"Request timed out"\` even though the server is still working.
 
 ## Rule 3 — Serialize \`leadbay_research_lead_by_id\` fan-out
 
@@ -2737,6 +2827,24 @@ work stopped. What to do next depends on what you are holding:
   back the job already launched rather than starting a second one, but that guard
   is in-memory, five minutes, and per process, so it is best-effort — say what you
   are about to re-run before you use the user's quota on it.
+
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
 
 
 

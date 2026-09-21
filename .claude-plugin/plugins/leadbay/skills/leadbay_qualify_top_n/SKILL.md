@@ -25,12 +25,12 @@ The response is a status confirmation or scalar — render exactly one sentence 
 
 Template patterns to follow:
 
-- Job kicked off → `"✓ <Verb> N <noun(s)> — typically ~M minutes. I'll refresh when it's done."`
+- Job kicked off → `"⏳ <Verb> N <noun(s)> — usually ~M minutes."`, then check it in this turn
 - No work needed → `"All N <noun(s)> already <state> — no work to do."`
-- Long-running → `"⏳ <Verb> still running — N% complete; check back in ~M minutes."`
+- Still running at a check → `"⏳ <Verb> still running — N% complete."`, then check again
 - Failure → `"⚠ <Verb> failed: <error>. <recovery hint>"`
 
-After the status line, propose the obvious refresh / progress-check / recovery action in the NEXT STEPS block. Never expand the status into a card.
+After a failure, propose the recovery action in the NEXT STEPS block. Never expand the status into a card.
 
 
 # PHASE 3 — SUMMARIZE

@@ -2,7 +2,7 @@
 
 Present as the richest single-record card the MCP emits. The user is seconds-to-minutes away from contacting someone — every section earns its place by either (a) telling them HOW to outreach, (b) showing what they've done before, or (c) surfacing what's missing and how to get it.
 
-**Async enrichment.** When `enrichment.triggered && !enrichment.complete`, do NOT block the user. Render the brief with `⏳` on un-enriched channels and IMMEDIATELY draft a first version of the outreach using whatever data IS available (`split_ai_summary.approach_angle`, company-line phone, LinkedIn-search fallback). Tell the user: *"I'll refresh once enriched data lands."* On their next message (or after a clear pause), re-call `leadbay_prepare_outreach(leadId)` without `enrich`; if `enrichment.complete: true`, surface the now-resolved channels and offer to revise the draft.
+**Async enrichment.** When `enrichment.triggered && !enrichment.complete`, draft from what IS available (`split_ai_summary.approach_angle`, company-line phone, LinkedIn-search fallback) with `⏳` on the un-enriched channels, then fill them in once your check shows them.
 
 ### Structure
 
@@ -32,8 +32,6 @@ From `history`, newest first: `<date> · <activity type>` per `activities` entry
 **H5: 👥 Other contacts** (only if `additional_contacts_count > 0`)
 
 One line: `+N more contacts at this company — [see them all](leadbay_research_lead_by_id)`.
-
-**Closing line** (when enrichment is in progress): `*Enrichment running — I'll refresh once email/phone lands.*`
 
 **Hide:** `id`, `lead.id`, raw `enrichment.hint` when redundant with channel pills, any field whose value is the string `"null"`, deprecated `other_contacts_count` (use `additional_contacts_count`).
 

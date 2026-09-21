@@ -47,7 +47,8 @@ rendering_hint: |
   coverage line. Otherwise a 3-col table for delivered items (fit bar + company / why-fits ≤20 words /
   contact + channels) in returned order, then a compact Ref → Outcome table
   for skipped refs (not_in_universe, low_confidence_identity, ... in plain
-  words), then the honest funnel line. Full algorithm below.
+  words), then the honest funnel line. `still_running`: no verdicts yet, check
+  first. Full algorithm below.
 next_steps: qualify-leads
 annotations:
   readOnlyHint: false
@@ -60,8 +61,10 @@ the Leadbay universe): each ref is resolved to a known company, freshly
 researched + AI-qualified against the org's questions / tags / ideal buyer
 profile (frozen at submit), matched to the requested contact titles, and —
 when asked — enriched with verified channels. Answers arrive per-item from a
-job; this tool polls up to `wait_seconds` (default 45) and hands off to
-`leadbay_lead_job_status` when the batch needs longer.
+job; this tool polls up to `wait_seconds` (default 45). A longer batch returns
+a receipt: check `leadbay_lead_job_status` until `done: true`, usually 2–15 min.
+
+{{include:gates/launched-job}}
 
 **A list of companies is ONE call, never a loop** of
 `leadbay_research_lead_by_name_fuzzy`: "for each of these companies give me
@@ -77,30 +80,22 @@ prior result (enrichment then targets exactly that person, never a re-match).
 `prior_deliveries` expands past MCP deliveries into refs — delivered leads stay
 re-readable this way even after the 30-day result window. Duplicates collapse.
 A ref that can't be served comes back `skipped` with an honest
-`status_reason` (`not_in_universe`, `low_confidence_identity` with the
-`resolution.alternatives` to choose from, `no_matching_contact`, ...) — that
-is an ANSWER about the ref, not an error, and it uses no quota.
-
-**Disqualified ≠ dropped.** Companies the org owns that fail qualification
-are DELIVERED with their negative evidence (question verdicts, tag misses,
-IBP reasoning) — "here's why to skip this account" is a deliverable.
+`status_reason` (table below) — an ANSWER about the ref, not an error, and it
+uses no quota.
 
 **Usage quota — never use it silently.** Resolution and identity are free.
-`qualify: true` (the default) draws on the org's usage quota for each lead
-needing FRESH research+scoring — but repeat calls reuse every fresh cached stage
-(`from_cache` flags on the items) and converge to near-zero. `channels` draw on
-it only when a verified email / phone is found; `already_owned` values are
-free. Nothing is invoiced.
+`qualify: true` (the default) uses quota for each lead needing FRESH
+research + scoring; repeat calls reuse fresh cached stages (`from_cache`) and
+converge to near-zero. `channels` use it only when a verified email / phone is
+found; `already_owned` values are free. Nothing is invoiced.
 
-The gate is enforced in code, not just here: a call that uses quota (`qualify` left at
-its default or set true, and/or any `channels`) is WITHHELD unless it carries
-`confirm: true`. Without it the tool submits nothing and returns
-`mode: "needs_confirmation"` with a real backend quote — show that quote to
-the user, get the go-ahead (an explicit "go ahead / get their emails" in their
-message counts), then re-call with `confirm: true`. `confirm: false` is a
-veto: nothing is submitted and no quote round-trip is made. A fully FREE
-call (`qualify: false`, no `channels`) needs no `confirm` and passes straight
-through. Set `request_id` and reuse it on retries of the same batch.
+Enforced in code: a call that uses quota (`qualify` not false, or any
+`channels`) is WITHHELD unless it carries `confirm: true` — it submits nothing and
+returns `mode: "needs_confirmation"` with a real quote. Show the quote, get the
+go-ahead (an explicit "go ahead / get their emails" counts), then re-call with
+`confirm: true`. `confirm: false` vetoes, with no quote round-trip. A FREE call
+(`qualify: false`, no `channels`) needs no `confirm`. Reuse `request_id` on
+retries of the same batch.
 
 **Limits**: 500 refs/job, 3 active jobs/org, 10 submits/hour (429 +
 Retry-After beyond — wait, don't hammer), 30-min job wall clock.

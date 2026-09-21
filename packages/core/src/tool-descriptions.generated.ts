@@ -218,15 +218,25 @@ Some Leadbay tool responses include a \`_meta.notifications\` array listing **ba
 
 **Do NOT** interpret these entries as "things waiting for the user." The user expects you to handle them silently. They are signals to YOU — agent — that prior outputs need a refresh.
 
-**Poll a job you launched THIS turn; don't poll one from a PREVIOUS turn.** The rule splits by *when* the work was kicked off:
+**A job from a PREVIOUS turn** (or before an MCP restart) that the user has not asked about: don't check it in the background. Its completion appears in \`_meta.notifications\` on your next tool call (the three kinds above). If the user asks about it or asks you to wait for it, check it now. **A job you launched THIS turn** follows the rule below.
 
-- **Previous turn / before an MCP restart, and the user has NOT asked about it** — don't poll for it in the background. Simply continue the conversation; the next time you call any tool, the completed-work entry appears in \`_meta.notifications\` (also on \`leadbay_account_status.notifications\`). This is the ambient push path — leave it to do its job. **But if the user explicitly asks for status or to "wait for it to finish"** (e.g. a multi-turn flow where a job was launched in a prior turn and this turn says "wait for enrichment to finish, then …"), DO poll its status tool now until done, exactly as for a this-turn job below — the ambient push only surfaces *completed* work, so it can't answer a live "is it done / wait for it" request while the job is still running.
-- **This turn (you just launched it)** — the DEFAULT is: do NOT end your turn on the "launched" ack; stay active and poll the job's status tool in a loop until it reports done, then report the finished result yourself, rather than spinning forever or deferring the result to a later turn. (Two exceptions, detailed below: the user explicitly asked NOT to wait / to run it in the background; or it's a large qualification/import that's async by design — in those cases hand back the handle instead of looping.) Each status tool has its OWN terminal signal — poll until:
-  - \`leadbay_bulk_enrich_status\` → \`all_done:true\` — OR \`overall_progress.done\` holds steady across several SPACED polls (~15–30s apart) over at least ~90s–2 min of elapsed time (a reservation the provider never answers stays \`done:false\`, so \`all_done\` can stay false forever). Don't call a plateau from the first few back-to-back reads — early on \`done\` sits flat while the backend spins up. Once the plateau is real, report what resolved and name what didn't.
-  - \`leadbay_qualify_status\` → \`still_running\` is empty: every launched lead has finished or failed. (\`in_progress\` also reads \`false\` on the fast path, but it can be \`null\` on the legacy/fallback read — so treat an empty \`still_running\` as terminal on its own; only require \`in_progress:false\` when that field is actually present.) LIKE imports, large qualification runs are async by design: \`leadbay_bulk_qualify_leads\` defaults to \`wait_for_completion:false\` for \`count > 5\` or chained workflows because blocking can time out, and \`leadbay_qualify_status\` may take minutes/hours. So don't force a long polling loop on a big run — return the handle/progress and let completion arrive via \`_meta.notifications\` — UNLESS the user explicitly asked to wait, or it's a small run that finishes quickly. A small \`wait_for_completion:true\` run you can poll to \`still_running\` empty inline.
-  - \`leadbay_import_status\` → \`status:"complete"\` (or \`"failed"\`). BUT imports are the exception to the stay-active loop: a large \`leadbay_import_leads({wait_for_completion:false})\` is meant to return a handle and resolve over minutes, and the tool does ONE refresh pass per call. Don't block the conversation looping on it — surface the returned progress/handle and let the completion arrive via \`_meta.notifications\` — UNLESS the user explicitly asked you to wait for the import, or it's a small import that finishes quickly.
+## A LAUNCHED JOB — its first result is a receipt, not the answer
 
-  Enrichment polls to completion in-turn BY DEFAULT — the exception is when the user explicitly said to start it in the background / not wait ("kick it off, I'll check later"), in which case hand back the notification_id and let completion arrive via \`_meta.notifications\` (only when a notification id exists; if none was returned, tell the user to ask again / that you'll poll later, since nothing will auto-surface). For qualification and imports, poll inline only for small/quick runs or when the user explicitly asked you to wait; otherwise return the handle and let \`_meta.notifications\` deliver it. Either way, the user should never have to ask "is it done yet?" for work you kicked off in the same turn — you either report it or hand back a clear in-progress handle.
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
 
 Also surfaced as a top-level \`notifications\` array on \`leadbay_account_status\` — same shape, same handling.
 
@@ -507,6 +517,26 @@ WHEN TO USE: after leadbay_refine_prompt returns \`status='clarification_pending
 WHEN NOT TO USE: to set a brand-new prompt — use leadbay_refine_prompt.
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+
+
+The regeneration is a job: before pulling leads that should reflect it, check \`leadbay_account_status\` until \`computing_intelligence\` reads false (a few minutes).
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
 `;
 // endregion: leadbay_answer_clarification
 
@@ -596,7 +626,7 @@ WHEN NOT TO USE: the user wants a plain data answer (route to leadbay_pull_leads
 // region: leadbay_bulk_enrich_status
 export const leadbay_bulk_enrich_status: string = `Check status + per-lead contacts for a bulk enrichment you previously launched via leadbay_enrich_titles. Pass the \`notification_id\`, and/or the \`lead_ids\` + \`titles\` + \`email\` / \`phone\` the launch returned. Either one alone is a valid call: with \`notification_id\` the tool reads the job's lead set back from the backend, so an id kept from an earlier conversation still answers with per-lead progress. Pass \`lead_ids\` as well whenever you still have them — the job lookup is a scan of your recent notifications, so an archived job may not be found, but the leads always answer. \`titles\` / \`email\` / \`phone\` scope the count to the roles and channel THIS run asked for. When \`include_contacts=true\` (opt-in), includes each contact's email/phone_number/job_title/enrichment.done.
 
-WHEN TO USE: poll this REPEATEDLY after leadbay_enrich_titles returns a \`notification_id\`, staying active until the job is done — don't stop after one check, and don't hand the turn back to the user while progress is still climbing. "Done" = \`all_done:true\`, OR \`overall_progress.done\` has held steady across several SPACED polls (~15–30s apart) over at least ~90s–2 min of elapsed time (a reservation the provider never answers stays \`done:false\`, so \`all_done\` can stay false forever — don't spin indefinitely; a contact with nothing found does flip, to \`done:true\` with \`credits_used:0\`). Do NOT declare a plateau from the first few back-to-back reads: right after launch, \`overall_progress.done\` can sit flat while the backend is still spinning the job up, so space your polls out and give it real elapsed time before treating a flat count as terminal. Also do NOT declare a plateau while the result carries \`partial_failures\` — a flat \`done\` there means a transient per-lead fetch error (e.g. a 429), NOT an unresolvable contact; keep polling (respecting any \`retry_after\`) or surface it as a temporary status failure, rather than reporting those leads as permanently unresolved. Default \`include_contacts=false\` for the cheap interim polls; set \`include_contacts=true\` on the read you report from to pull each lead's enriched contacts for the completion report.
+WHEN TO USE: after leadbay_enrich_titles returns a \`notification_id\`, checking until the job is done. "Done" = \`all_done:true\`, OR \`overall_progress.done\` has held steady across several SPACED polls (~15–30s apart) over at least ~90s–2 min of elapsed time (a reservation the provider never answers stays \`done:false\`, so \`all_done\` can stay false forever — don't spin indefinitely; a contact with nothing found does flip, to \`done:true\` with \`credits_used:0\`). Do NOT declare a plateau from the first few back-to-back reads: right after launch, \`overall_progress.done\` can sit flat while the backend is still spinning the job up, so space your polls out and give it real elapsed time before treating a flat count as terminal. Also do NOT declare a plateau while the result carries \`partial_failures\` — a flat \`done\` there means a transient per-lead fetch error (e.g. a 429), NOT an unresolvable contact; keep polling (respecting any \`retry_after\`) or surface it as a temporary status failure, rather than reporting those leads as permanently unresolved. Default \`include_contacts=false\` for the cheap interim polls; set \`include_contacts=true\` on the read you report from to pull each lead's enriched contacts for the completion report.
 
 WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id — that already includes enriched contacts for a single lead.
 
@@ -634,20 +664,38 @@ a launcher only for a subset that never started, never for the whole batch:
   rather than guess.
 
 
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
+
 ## QUOTA, NOT CREDITS
 
 Enrichment consumes QUOTA (the per-window allowance), not a separate credit wall. The result's \`credits_remaining\` field is **advisory internal context only — do NOT display it**: it comes from \`billing.ai_credits\` (a consumed counter, not remaining), so printing \`_(N credits remaining)_\` can show a fresh/quota-backed account a false "0 remaining." Never render a credits balance; the \`leadbay_account_status\` quota gauge is the only place the user's standing is shown. Do NOT report a "credits used" figure for this run either: the per-contact cost can't be scoped to this specific enrichment (a lead's contact list mixes in earlier runs), so any "X used" number would be misleading.
 
 ## COMPLETION REPORT — what to tell the user when the job is done
 
-The result always carries \`overall_progress:{done,total,done_ratio}\` and, with \`include_contacts:true\`, \`leads[]\` each with contacts' \`email\` / \`phone_number\` / \`job_title\` / \`enrichment.done\`. \`bulk_progress:{total_count,success_count,failure_count,quota_hit_count}\` is present only when you passed a \`notification_id\` AND the job was found; derive counts from \`overall_progress\` rather than assuming \`bulk_progress\` is there. With \`lead_ids\`, each entry carries \`enrichment_progress:{done,total}\` — \`total\` counts the reservations this run made (scoped to the \`titles\` it enriched, and to reservations whose \`enrichment.email_requested\` / \`phone_requested\` match the \`email\` / \`phone\` you pass, so a lead's pre-existing CFO email cannot inflate a CEO run) and \`done\` counts those that have settled (\`enrichment.done:true\`, found or not). The \`enrichment\` record sits on the \`source:"paid"\` entry and never carries \`email\` / \`phone_number\`: the revealed values land on the same person's \`source:"org"\` entry (match on name and \`job_title\`). Read what landed from the org entries — an org entry with \`email\` = email found, with \`phone_number\` = phone found — and a settled paid entry with \`credits_used:0\` = nothing found for that person. \`include_contacts\` returns each lead's FULL contact list (it fans out through \`leadbay_get_contacts\`), so it can include contacts of other roles that were enriched in earlier runs — filter your report to the \`titles\` this bulk enriched (match each contact's \`job_title\`), don't attribute a pre-existing email of an unrelated role to this run. Report it yourself in the SAME turn, without a reprompt and without deferring to a scheduled re-check: name which of the just-enriched contacts now have emails / phones, the done/total counts, and — if \`bulk_progress\` is present — any \`quota_hit_count\` (if non-zero, say some contacts were skipped because the quota window was exhausted, and point to \`leadbay_account_status\` for the wait-or-top-up choice). If you stopped on a plateau (not \`all_done\`), say so plainly — report the resolved contacts and name the ones that didn't resolve, keyed to the requested channel and the returned fields (no \`email\` → "no email found"; no \`phone_number\` → "no phone number found") — rather than implying the job fully finished. Do NOT print a credits-remaining line.
+The result always carries \`overall_progress:{done,total,done_ratio}\` and, with \`include_contacts:true\`, \`leads[]\` each with contacts' \`email\` / \`phone_number\` / \`job_title\` / \`enrichment.done\`. \`bulk_progress:{total_count,success_count,failure_count,quota_hit_count}\` is present only when you passed a \`notification_id\` AND the job was found; derive counts from \`overall_progress\` rather than assuming \`bulk_progress\` is there. With \`lead_ids\`, each entry carries \`enrichment_progress:{done,total}\` — \`total\` counts the reservations this run made (scoped to the \`titles\` it enriched, and to reservations whose \`enrichment.email_requested\` / \`phone_requested\` match the \`email\` / \`phone\` you pass, so a lead's pre-existing CFO email cannot inflate a CEO run) and \`done\` counts those that have settled (\`enrichment.done:true\`, found or not). The \`enrichment\` record sits on the \`source:"paid"\` entry and never carries \`email\` / \`phone_number\`: the revealed values land on the same person's \`source:"org"\` entry (match on name and \`job_title\`). Read what landed from the org entries — an org entry with \`email\` = email found, with \`phone_number\` = phone found — and a settled paid entry with \`credits_used:0\` = nothing found for that person. \`include_contacts\` returns each lead's FULL contact list (it fans out through \`leadbay_get_contacts\`), so it can include contacts of other roles that were enriched in earlier runs — filter your report to the \`titles\` this bulk enriched (match each contact's \`job_title\`), don't attribute a pre-existing email of an unrelated role to this run. Report it in the same turn: name which of the just-enriched contacts now have emails / phones, the done/total counts, and — if \`bulk_progress\` is present — any \`quota_hit_count\` (if non-zero, say some contacts were skipped because the quota window was exhausted, and point to \`leadbay_account_status\` for the wait-or-top-up choice). If you stopped on a plateau (not \`all_done\`), say so plainly — report the resolved contacts and name the ones that didn't resolve, keyed to the requested channel and the returned fields (no \`email\` → "no email found"; no \`phone_number\` → "no phone number found") — rather than implying the job fully finished. Do NOT print a credits-remaining line.
 `;
 // endregion: leadbay_bulk_enrich_status
 
 // region: leadbay_bulk_qualify_leads
 export const leadbay_bulk_qualify_leads: string = `Pick the next N unqualified leads in the active lens and qualify them (run AI rescore + web fetch). Pass \`wait_for_completion:false\` to return quickly with \`{status:'running', notification_id}\`; poll leadbay_qualify_status with that id. With \`wait_for_completion\` omitted/true, the legacy behavior polls until the answers are populated or a budget is exhausted. Already-qualified leads (those with a non-null \`ai_agent_lead_score\`) are silently no-ops on the backend, so this composite paginates past them to find fresh candidates. On 429 mid-fanout, stops launching but keeps polling already-launched leads.
 
-**Default to \`wait_for_completion:false\`** for any \`count > 5\` or when chained inside a multi-phase workflow — the blocking default can hit the MCP per-call timeout and surface as \`"Request timed out"\` even when the server is still working fine. The async pattern (capture \`notification_id\`, poll \`leadbay_qualify_status\` every ~10s) is timeout-proof. Reserve the blocking form for tiny single-digit counts in interactive use.
+**Default to \`wait_for_completion:false\`** for any \`count > 5\` or when chained inside a multi-phase workflow — the blocking default can hit the MCP per-call timeout and surface as \`"Request timed out"\` even when the server is still working fine. The async pattern (capture \`notification_id\`, check \`leadbay_qualify_status\` until \`in_progress: false\`, usually 2–10 min) is timeout-proof. Reserve the blocking form for tiny single-digit counts in interactive use.
 
 Context: Leadbay auto-qualifies roughly the top 10 of each daily batch. Leads below the top ~10 are NOT worse — the system is saving resources. This tool is how the agent spends more resources to go deeper on promising-looking leads the user hasn't had time to surface yet.
 
@@ -685,6 +733,24 @@ work stopped. What to do next depends on what you are holding:
   are about to re-run before you use the user's quota on it.
 
 
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
+
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
 
@@ -696,17 +762,17 @@ The response is a status confirmation or scalar — render exactly one sentence 
 
 Template patterns to follow:
 
-- Job kicked off → \`"✓ <Verb> N <noun(s)> — typically ~M minutes. I'll refresh when it's done."\`
+- Job kicked off → \`"⏳ <Verb> N <noun(s)> — usually ~M minutes."\`, then check it in this turn
 - No work needed → \`"All N <noun(s)> already <state> — no work to do."\`
-- Long-running → \`"⏳ <Verb> still running — N% complete; check back in ~M minutes."\`
+- Still running at a check → \`"⏳ <Verb> still running — N% complete."\`, then check again
 - Failure → \`"⚠ <Verb> failed: <error>. <recovery hint>"\`
 
-After the status line, propose the obvious refresh / progress-check / recovery action in the NEXT STEPS block. Never expand the status into a card.
+After a failure, propose the recovery action in the NEXT STEPS block. Never expand the status into a card.
 
 
 Specifically for bulk qualify:
 
-- Kicked off async → \`"✓ Qualifying N lead(s) (notification_id <id>) — typically ~M minutes. I'll refresh your leads view when it's done."\`
+- Kicked off async → \`"⏳ Qualifying N lead(s) — usually a few minutes."\`, then check it as above.
 - Blocking call returned with answers → \`"✓ Qualified N lead(s). Refresh your leads to see the new ❖ caps."\`
 - Already-qualified short-circuit → \`"All N leads are already qualified — no work to do."\`
 - 429 mid-fanout → \`"⚠ Rate-limited after launching M of N — already-launched leads will complete; re-call later for the rest."\`
@@ -1240,6 +1306,24 @@ see whether the launch already landed, and tell the user what you are about to
 run before running it again.
 
 
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
+
 ## QUOTA, NOT CREDITS
 
 Enrichment is gated by QUOTA (the per-window allowance in \`leadbay_account_status\`), not a credit balance. **Never pre-refuse because a credit number looks low or zero** — a freemium/fresh account with quota left can enrich even when its credit counter reads 0. The reveal either fits the remaining quota or the backend returns 429 (\`quota_exceeded\`); only THEN surface the exhausted window + wait-or-top-up choice. The \`credits_remaining\` field on the result is **advisory internal context only — do NOT display it**. Because it can read \`0\` on an account that still has quota, printing \`_(N credits remaining)_\` would falsely tell the user they're out. Do not render a credits balance at all; if the user asks where they stand, call \`leadbay_account_status\` and show the quota gauge instead.
@@ -1307,13 +1391,25 @@ Do NOT rely on a bare call (no \`confirm\`, no \`dry_run\`, no channels) as a "s
 
 **AFTER.** Do NOT invent a "credits used" figure for the run (per-run cost can't be scoped reliably — a lead's contacts mix earlier enrichments).
 
-## AFTER LAUNCH — STAY ACTIVE UNTIL DONE
+## A LAUNCHED JOB — its first result is a receipt, not the answer
 
-When a launch returns \`mode:"launched"\` with a \`notification_id\`, the enrichment runs ASYNC on the backend — the tool returns immediately, before any email/phone is attached. **Unless the user explicitly said to start it in the background / not to wait** (e.g. "kick it off, I'll check later", "don't wait for it"), stay active and report in-turn — do NOT end your turn on the ack, and do NOT say "I'll let you know when it's done." (If the user DID ask you not to wait, honor that: hand back the \`notification_id\` and a one-line "running — you can ask any time". Only promise that completion will auto-surface via \`_meta.notifications\` when the launch returned a non-null \`notification_id\`; if \`notification_id\` is null (the nullable-backend path), say instead that you'll re-check when asked / they should ask again later — nothing surfaces automatically without a notification id. Don't force a poll loop against explicit intent.) In the default (stay-active) case: call \`leadbay_bulk_enrich_status({notification_id})\` in a loop, re-polling until the job is done (small batches typically finish in under ~2 min). Pass \`include_contacts:true\` on the read you intend to report from, so you get each lead's enriched contacts back. Note that \`include_contacts\` returns each lead's FULL contact list (it fans out through \`leadbay_get_contacts\`), which can include contacts of OTHER roles that were already enriched in earlier runs — so **filter your report to the \`titles\` you just enriched** (match each contact's \`job_title\` to the requested titles). Don't present a pre-existing CFO/Sales email as part of this CEO/Owner/Manager run. Then — on your own, without waiting for the user to reprompt — report the enrichment: which of the just-enriched contacts now have emails / phones, and the counts from \`overall_progress\` (\`done\`/\`total\`). \`leadbay_bulk_enrich_status\` also returns \`bulk_progress.success_count\` / \`failure_count\` / \`quota_hit_count\` on the notification fast path — use those when present, but the per-lead path returns \`overall_progress\` only, so don't assume \`bulk_progress\` exists (see the status tool's COMPLETION REPORT).
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
 
-**"Done" = \`all_done:true\` OR the resolvable work has plateaued.** Keep polling while \`overall_progress.done\` is still climbing. But a reservation the provider never answers stays \`done:false\` — so a job can sit below 100% with \`all_done:false\` forever (a contact with no findable email does flip, to \`done:true\` with \`credits_used:0\`). A plateau is only real once the job has had time to run: do NOT declare it from the first few back-to-back reads (early on \`done\` can sit at its initial value while the backend is still spinning the job up). Give it at least ~90s–2 min of actual elapsed polling — space your polls out (~15–30s apart) rather than firing them back-to-back — and only treat the set as complete when \`overall_progress.done\` has held steady across several spaced polls over that window. Then stop polling and report what resolved, naming the ones that didn't. Key the "didn't resolve" wording off the channels the user actually requested and the returned contact fields (contacts carry \`email\` and \`phone_number\`) — a contact enriched for phone that came back with no \`phone_number\` is "no phone number found", one with no \`email\` is "no email found", email+phone that got neither is "no contact details found"; if \`quota_hit_count\` is non-zero say those were skipped because the quota window was exhausted. Do NOT hard-label every non-success as "no email found" when phone was requested. Do NOT spin indefinitely waiting for \`all_done\` on contacts the engine won't resolve, and do NOT \`ScheduleWakeup\` / defer the finished list to a later turn — deliver the resolved results in THIS reply.
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
 
-The \`_meta.notifications\` push is the FALLBACK for a job launched in an EARLIER turn or across an MCP restart — it is NOT a reason to stop early on a job you just launched this turn.
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
+
+For this tool: \`mode:"launched"\` → check \`leadbay_bulk_enrich_status({notification_id, lead_ids, titles, email, phone})\` until it reports done — its description defines done, plateau included — usually 2–5 min. A null \`notification_id\` means check by \`lead_ids\`, and nothing will surface on its own later. Pass \`include_contacts:true\` on the read you report from. It returns each lead's FULL contact list, which can include contacts of OTHER roles enriched in earlier runs, so **filter your report to the \`titles\` you just enriched** (match each contact's \`job_title\`). Report per that tool's COMPLETION REPORT.
 
 ## GATE — PREFER BUILT-IN HOST WIDGETS
 
@@ -1397,6 +1493,24 @@ WHEN NOT TO USE: for daily inbox pulls (\`leadbay_pull_leads\`). Not for audienc
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
 
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
+
 ---
 
 ## NEXT STEPS — after \`leadbay_extend_lens\`
@@ -1459,8 +1573,8 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 3-col table of delivered leads in returned order: col 1 = 10-segment fit bar
 + linked company · location · size; col 2 = why-fits ≤20 words; col 3 =
-contact + found channels. ALWAYS close with the honest funnel line
-(matched/examined/delivered/stop reason), especially on 0 delivered.
+contact + found channels. ALWAYS close with the honest funnel line, even at 0
+delivered.
 
 ---
 
@@ -1469,24 +1583,39 @@ company universe, applies hard filters, skips what the org already knows
 (\`novelty: org\`), optionally qualifies against the org's own intelligence
 (questions, tags, ideal buyer profile — frozen at submit), and optionally reveals
 contact channels. Polls up to \`wait_seconds\` (default 45); a longer job returns
-\`still_running\` + \`next_poll\` — hand to \`leadbay_lead_job_status\`. Jobs run
-≤30 min, results kept 30 days.
+a receipt — check it with \`leadbay_lead_job_status\`, usually 5–20 min. Results kept 30 days.
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
 
 **Free vs usage quota — never use quota silently.** Default (\`qualify: false\`,
 \`channels: []\`) is FREE: company profile + fit score + cached research +
 contact identity. \`qualify: true\` (per candidate EXAMINED, capped by
 \`exploration_cap\`/\`max_cost\`) and \`channels\` (only when a value is found) draw
-on the org's usage quota; nothing is invoiced. Enforced in code: such a call is
-WITHHELD unless it carries \`confirm: true\` — nothing is submitted and you get
-\`mode: "needs_confirmation"\` with a real quote to show the user. Re-call with
-\`confirm: true\` on their go-ahead ("go ahead / get their emails" counts).
-\`confirm: false\` vetoes. **Preview free first** — reshaping an off-profile seed
+on the org's usage quota; nothing is invoiced. Such a call is WITHHELD unless it
+carries \`confirm: true\`: nothing is submitted, and \`mode: "needs_confirmation"\` carries
+a real quote to show the user. Re-call with \`confirm: true\` on their go-ahead
+("go ahead / get their emails" counts); \`confirm: false\` vetoes. **Preview free first** — reshaping an off-profile seed
 is free, exploring it with \`qualify: true\` is not.
 
 **Ad-hoc exclusions ("no chains") are enforced by NO tier** — \`filters\` has no
 exclusion key, and \`qualify\` scores against the org's FROZEN questions and IBP.
-Violators survive, use quota and get delivered: post-filter them yourself and
-say the tier didn't enforce it. Durable enforcement →
+Violators get delivered and use quota: post-filter them yourself and say so. Durable enforcement →
 \`leadbay_set_qualification_questions\` / \`leadbay_refine_prompt\`.
 
 ### Crafting the \`example_lead\` seed — the input that decides result quality
@@ -1534,11 +1663,7 @@ measured:
   + archetype + date: \`gyms-dallas-2026-07-28\`.
 - Never lower \`min_ai_score\` with \`channels\` — that reveals emails for leads
   the AI just scored as junk.
-- \`count\` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After — wait,
-  don't hammer).
-
-**Read the result honestly** — \`funnel\` + \`explain.scope_notes\` tell the story;
-zero delivered gets a cause and a next move (RENDERING).
+- \`count\` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After: wait).
 
 ---
 
@@ -1546,8 +1671,8 @@ zero delivered gets a cause and a next move (RENDERING).
 
 Render delivered leads (\`leads[]\`, i.e. items with status \`delivered\` or
 \`degraded\`) as a markdown table **in the order returned**. Exactly three
-columns. Then ALWAYS close with the funnel line (below) — even, especially,
-when nothing was delivered.
+columns. Then ALWAYS close with the funnel line (below), even when nothing
+was delivered.
 
 **Column 1 — Company**
 
@@ -1590,35 +1715,30 @@ One short line narrating the delivery honestly, from \`funnel\` +
 > the Y asked** · stopped: <stop_reason in plain words>.
 
 **No money, anywhere.** \`cost.*\`, \`estimated_cost.max\` and quotes are internal
-usage units. Never render them, never convert them to a currency, never call
-them a charge: the user's plan or top-up covers this work, and a price reads as
-a bill. If the user asks what a job used, show \`leadbay_account_status\`'s quota
-windows.
+usage units: never render them, convert them to a currency or call them a
+charge — a price reads as a bill. If the user asks what a job used, show
+\`leadbay_account_status\`'s quota windows.
 
-"of the Y asked" needs \`summary.items_requested\`, which submits carry but a
-later \`leadbay_lead_job_status\` snapshot does not. Without it write **delivered
-X** and stop — never back-fill Y from \`matched\`/\`examined\` (they count
-candidates), never guess it.
+"of the Y asked" needs \`summary.items_requested\`: a \`leadbay_lead_job_status\`
+snapshot lacks it, so take it from the launch result. Without it write
+**delivered X** — never back-fill Y from \`matched\`/\`examined\`, never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the job's usage cap", \`quota\` →
 "hit an org quota", \`time_budget\` → "hit the 30-min time budget".
 
-**When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
-the funnel line plus the relevant \`explain.scope_notes\` (the backend's own
-diagnosis), then propose the concrete fix (reshape the seed per the craft
+**When a FINISHED job delivered 0**: NEVER say just "no results". Render no table; give
+the funnel line plus the relevant \`explain.scope_notes\`, then propose the concrete fix (reshape the seed per the craft
 rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a filter) as NEXT STEPS.
 
 **Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
 the table as an answer — open with "weak matches only", show at most the top 3,
-propose reshaping the seed/filters first. The count was filled with
-barely-better-than-random candidates.
+propose reshaping the seed/filters first.
 
 **Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
 requested fence; drop and call out leaks (same-named cities slip through).
 (b) When \`explain.seed_strategy\` is \`text_match_exemplars\` (the standard FR
-path), fit is calibrated for lead-to-lead distances, not exemplar centroids —
-treat high scores skeptically and verify each row's \`description\`.
+path), treat high fit scores skeptically and verify each row's \`description\`.
 
 **Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
 table \`Ref → Outcome\` translating \`status_reason\` to plain words:
@@ -1675,12 +1795,11 @@ Pick the 2-3 that match what happened, never the whole table:
 | Observation | Suggest | Calls |
 |---|---|---|
 | ≥ 1 delivered — offer FIRST | "Build an interactive lead triage board" | leadbay_artifact_kit → CANONICAL recipe, data in hand |
-| Job still running (\`still_running: true\`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 45) |
 | Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
-| Stopped at the job's usage cap (\`stop_reason: max_cost\`) | "Raise the job's cap and get the remaining N" — no amount, no currency | leadbay_find_new_leads, NEW request_id (same-id only dedupes onto a LIVE job) + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered), not the original + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered; these are what it misses — without them the rerun re-buys the same losers) |
-| Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it cannot clear a quota and burns a submit slot to stop in the same place | leadbay_account_status |
+| Stopped at the job's usage cap (\`stop_reason: max_cost\`) | "Raise the job's cap and get the remaining N" — no amount, no currency | leadbay_find_new_leads, NEW request_id + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered) + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered ones; without these the rerun re-buys the rejected) |
+| Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it stops in the same place | leadbay_account_status |
 | Stopped on quota and the user will not wait | "Top up to finish this run" | leadbay_create_topup_link |
 | User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |
 `;
@@ -2429,9 +2548,26 @@ work stopped. What to do next depends on what you are holding:
   are about to re-run before you use the user's quota on it.
 
 
-Budgets: \`total_budget_ms\` caps wall-clock; \`per_lead_budget_ms\` caps each lead's poll. For short transport timeouts, pass \`wait_for_completion:false\` and poll \`leadbay_import_status\`. Outputs \`qualified[]\`, \`still_running[]\`, \`not_imported[]\`, plus the ids that resume it: \`lead_ids\` + \`lens_id\` for leadbay_qualify_status, \`import_ids\` for leadbay_import_status. There is no qualification \`notification_id\` — the qualify phase runs per-lead, so no job notification exists; \`notification_ids[]\` are the file-import ones. Idempotent within a 5-min window. \`dry_run:'preview'\` returns mapping hints + custom-field candidates without importing.
+## A LAUNCHED JOB — its first result is a receipt, not the answer
 
-\`not_imported\` rows with \`reason:"uncrawled"\` are **pending a background crawl**, NOT failures: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously (the label doesn't verify the URL resolves — don't call the site bad, but don't certify it valid either). Surface them as pending; the leads populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — \`leadbay_import_status\` returns status/progress only, and \`leadbay_pull_leads\` reads the active lens's wishlist so an imported lead outside that lens may not appear). To pull those specific companies back through the MCP, re-run the import later. A large \`uncrawled\` share on a fresh list is normal.
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
+
+Budgets: \`total_budget_ms\` caps wall-clock; \`per_lead_budget_ms\` caps each lead's poll. For short transport timeouts, pass \`wait_for_completion:false\` and check \`leadbay_import_status\` (usually 1–5 min). Outputs \`qualified[]\`, \`still_running[]\`, \`not_imported[]\`, plus the ids that resume it: \`lead_ids\` + \`lens_id\` for leadbay_qualify_status, \`import_ids\` for leadbay_import_status. There is no qualification \`notification_id\` — the qualify phase runs per-lead, so no job notification exists; \`notification_ids[]\` are the file-import ones. Idempotent within a 5-min window. \`dry_run:'preview'\` returns mapping hints + custom-field candidates without importing.
+
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
@@ -2456,9 +2592,9 @@ Otherwise, partition \`not_imported\` by \`reason\` into these buckets before yo
 **Header — single line, choose by status:**
 
 - Completed: \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` (drop any segment whose count is 0)
-- Running: \`"⏳ Import running — importIds <ids>; poll leadbay_import_status"\`
-- Running with \`timed_out:true\` (the blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. \`"⏳ Import still running (the backend is slow today) — I'll check back."\` Then call \`leadbay_import_status({importIds})\`, do NOT re-run leadbay_import_leads. If \`rows_pending_upload\` is present, add \`"⚠ K rows weren't submitted — re-import just those."\`
-- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — I'll pick it up with leadbay_qualify_status"\` (its resume ids are \`lead_ids\` + \`lens_id\`; there is no qualification notification_id to quote)
+- Running: \`"⏳ Import running — usually a few minutes."\`, then check \`leadbay_import_status({importIds})\`.
+- Running with \`timed_out:true\` (the blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. \`"⏳ Import still running (the backend is slow today)."\` Then check \`leadbay_import_status({importIds})\`; do NOT re-run leadbay_import_leads. If \`rows_pending_upload\` is present, add \`"⚠ K rows weren't submitted — re-import just those."\`
+- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them."\`, then check \`leadbay_qualify_status\` with \`lead_ids\` + \`lens_id\` (there is no qualification notification_id)
 
 Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
 
@@ -2521,11 +2657,28 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 // region: leadbay_import_leads
 export const leadbay_import_leads: string = `Import leads into Leadbay's CRM via the file-import wizard. Returns stable Leadbay leadIds for downstream chaining into leadbay_bulk_qualify_leads / leadbay_research_lead_by_id. For MCP clients with short transport timeouts, pass \`wait_for_completion:false\` to return quickly with \`{status:'running', importIds}\`; poll leadbay_import_status with that handle. For end-to-end import+qualify in one call, prefer leadbay_import_and_qualify. For messy files, prefer the \`leadbay_import_file\` prompt which walks an agent through scan → resolve → preserve → commit phases.
 
-SLOW BACKEND ⇒ \`{status:'running', timed_out:true, importIds}\`. The wizard is sometimes slow; when the poll budget runs out this tool returns that SUCCESS result, not an error. The import is still running server-side. **Do NOT call leadbay_import_leads again** — that re-uploads the file and leaves a duplicate CRM-imports row. Leadbay has no cancel, so a Cancel or timeout is no reason to call it either. Sole exception: a \`wait_for_completion:false\` call that returned NOTHING — and even that can re-upload, so check CRM-imports. Call \`leadbay_import_status({importIds})\` after ~30s — and pass \`dry_run:true\` too if the result carried it; on \`complete\` it returns \`result.leads\` with the leadIds, while \`phase:"committing"\` just means keep polling. Tell the user it's running and you'll check back — it is not a problem to report. Exception: \`rows_pending_upload\` rows never reached the backend and DO need a fresh call for that subset only. In records mode the result also carries \`row_ids\` — the synthetic id of each input row, in your \`records[]\` order — because \`leadbay_import_status\` reports recovered leads by that id; keep it to map them back to your source rows.
+SLOW BACKEND ⇒ \`{status:'running', timed_out:true, importIds}\`. The wizard is sometimes slow; when the poll budget runs out this tool returns that SUCCESS result, not an error. The import is still running server-side. **Do NOT call leadbay_import_leads again** — that re-uploads the file and leaves a duplicate CRM-imports row. Leadbay has no cancel, so a Cancel or timeout is no reason to call it either. Sole exception: a \`wait_for_completion:false\` call that returned NOTHING — and even that can re-upload, so check CRM-imports. Check \`leadbay_import_status({importIds})\` — plus \`dry_run:true\` if the result carried it — until \`complete\` (usually 1–5 min), which returns \`result.leads\` with the leadIds; \`phase:"committing"\` means keep checking. Exception: \`rows_pending_upload\` rows never reached the backend and DO need a fresh call for that subset only. In records mode the result also carries \`row_ids\` — the synthetic id of each input row, in your \`records[]\` order — because \`leadbay_import_status\` reports recovered leads by that id; keep it to map them back to your source rows.
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
 
 TWO MODES: (A) Domain-list shortcut — pass \`domains: [{domain, name?}]\`. The tool builds a 2-column CSV (LEAD_NAME, LEAD_WEBSITE) and imports with the default mapping. (B) Custom records + mapping — pass \`records: [{Col1, Col2, ...}]\` plus \`mappings.fields: {Col1: 'LEAD_NAME', ...}\`. \`mappings.fields\` must include LEADBAY_ID, CRM_ID, SIREN, LEAD_NAME, or LEAD_WEBSITE (resolver needs at least one identity key). Pass exactly one of \`domains\` / \`records\`. Reserved column \`MCP_ROW_ID\` cannot appear in records/mappings — the tool injects it for stable reconciliation.
 
-\`not_imported\` rows with \`reason:"uncrawled"\` are **pending a background crawl**, NOT failures: Leadbay just hasn't matched/crawled that domain yet and will add the lead asynchronously (the label doesn't verify the URL resolves — don't call the site bad, but don't certify it valid either). Surface them as pending; the leads populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — \`leadbay_import_status\` reports the rows the wizard has already placed, not leads a later crawl adds, and \`leadbay_pull_leads\` reads the active lens's wishlist so an imported lead outside that lens may not appear). To pull those specific companies back through the MCP, re-run the import later. A large \`uncrawled\` share on a fresh list is normal.
 
 MUTATES USER STATE: each call creates a row in the user's CRM-imports list (visible in the web UI) and touches onboarding state. Suitable for occasional automation, NOT for high-cadence (>5 calls/day). Imported leads are NOT auto-promoted to the user's Monitor view; lens-scoring threshold decides. For messy files call leadbay_resolve_import_rows first, then pass \`records_for_import\`/\`mappings_for_import\` here. Agents should inspect every column, build a preservation plan, and pass an explicit final mapping. For each meaningful column decide standard field, CONTACT_* field, Leadbay note, custom field, derived helper, or skip with a reason. For contact-only exports, derive a company-domain column from CONTACT_EMAIL only when it's a real business domain. Multiple rows can share the same LEADBAY_ID and import as separate contacts on that lead. Custom fields use \`CUSTOM.<id>\` in \`mappings.fields\` or the \`mappings.custom_fields\` shorthand. For source-system deep links create a custom field via leadbay_create_custom_field first (prefer EXTERNAL_ID + url_template). Preserve meaningful per-lead notes by calling leadbay_add_note after import returns lead IDs.
 
@@ -2556,9 +2709,9 @@ Otherwise, partition \`not_imported\` by \`reason\` into these buckets before yo
 **Header — single line, choose by status:**
 
 - Completed: \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` (drop any segment whose count is 0)
-- Running: \`"⏳ Import running — importIds <ids>; poll leadbay_import_status"\`
-- Running with \`timed_out:true\` (the blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. \`"⏳ Import still running (the backend is slow today) — I'll check back."\` Then call \`leadbay_import_status({importIds})\`, do NOT re-run leadbay_import_leads. If \`rows_pending_upload\` is present, add \`"⚠ K rows weren't submitted — re-import just those."\`
-- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them — I'll pick it up with leadbay_qualify_status"\` (its resume ids are \`lead_ids\` + \`lens_id\`; there is no qualification notification_id to quote)
+- Running: \`"⏳ Import running — usually a few minutes."\`, then check \`leadbay_import_status({importIds})\`.
+- Running with \`timed_out:true\` (the blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. \`"⏳ Import still running (the backend is slow today)."\` Then check \`leadbay_import_status({importIds})\`; do NOT re-run leadbay_import_leads. If \`rows_pending_upload\` is present, add \`"⚠ K rows weren't submitted — re-import just those."\`
+- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them."\`, then check \`leadbay_qualify_status\` with \`lead_ids\` + \`lens_id\` (there is no qualification notification_id)
 
 Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
 
@@ -2621,7 +2774,7 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 // region: leadbay_import_status
 export const leadbay_import_status: string = `Retrieve the current **status/progress** of a lead import, and its leadIds once it finishes. Pass the \`importIds\` the launch returned — \`leadbay_import_leads\` returns \`importIds\`, \`leadbay_import_and_qualify\` returns \`import_ids\`. These are the backend's own import ids, so they resolve from a later message, a later conversation, or the next day; nothing is stored on the MCP side. Also pass the \`dry_run\` the import was launched with, so completion is judged against the right phase (a dry run finishes at preprocess, a real import at processing). This status call performs a single refresh pass and never polls in a loop.
 
-WHEN TO USE: after an async import returns its ids — \`leadbay_import_leads\` as \`{status:'running', importIds}\`, \`leadbay_import_and_qualify\` as \`import_ids\` — poll with those; OR to check whether a finished import is still processing. This tool does NOT surface the leads Leadbay adds later for pending-crawl (\`uncrawled\`) rows — those populate in the user's Leadbay account as the crawl completes; no tool here fetches them on demand (re-run the import to pull them back through the MCP).
+WHEN TO USE: after an async import returns its ids — \`leadbay_import_leads\` as \`{status:'running', importIds}\`, \`leadbay_import_and_qualify\` as \`import_ids\` — check with those until \`complete\`; OR to check whether a finished import is still processing. This tool does NOT surface the leads Leadbay adds later for pending-crawl (\`uncrawled\`) rows — those populate in the user's Leadbay account as the crawl completes; no tool here fetches them on demand (re-run the import to pull them back through the MCP).
 
 WHEN NOT TO USE: for the qualification half — use leadbay_qualify_status, with the \`lead_ids\` + \`lens_id\` an \`leadbay_import_and_qualify\` launch returned (it has no qualification \`notification_id\`; its \`notification_ids[]\` are these same file imports); or when you still want the legacy blocking behavior from leadbay_import_leads with \`wait_for_completion=true\`.
 
@@ -2659,6 +2812,24 @@ a launcher only for a subset that never started, never for the whole batch:
   rather than guess.
 
 
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
+
 ---
 
 ## Status / scalar — single-sentence shape
@@ -2667,12 +2838,12 @@ The response is a status confirmation or scalar — render exactly one sentence 
 
 Template patterns to follow:
 
-- Job kicked off → \`"✓ <Verb> N <noun(s)> — typically ~M minutes. I'll refresh when it's done."\`
+- Job kicked off → \`"⏳ <Verb> N <noun(s)> — usually ~M minutes."\`, then check it in this turn
 - No work needed → \`"All N <noun(s)> already <state> — no work to do."\`
-- Long-running → \`"⏳ <Verb> still running — N% complete; check back in ~M minutes."\`
+- Still running at a check → \`"⏳ <Verb> still running — N% complete."\`, then check again
 - Failure → \`"⚠ <Verb> failed: <error>. <recovery hint>"\`
 
-After the status line, propose the obvious refresh / progress-check / recovery action in the NEXT STEPS block. Never expand the status into a card.
+After a failure, propose the recovery action in the NEXT STEPS block. Never expand the status into a card.
 
 
 Specifically for import status:
@@ -2681,7 +2852,7 @@ This tool returns \`status\`, \`importIds\`, and \`progress\` ({phase, records_p
 
 Caveat on \`progress\`: \`records_processed\` counts only the rows that MATCHED an existing lead (backend \`imported_records\`), not every row that finished processing — so for a complete import whose rows are mostly/all \`uncrawled\` (pending crawl), \`records_processed\` is legitimately low or 0. Never read a low \`records_processed\` on a \`complete\` import as "stuck" or "failed": once \`status:"complete"\`, processing is done; the pending-crawl rows just matched no existing lead yet.
 
-- Running → \`"⏳ Import still running — phase <phase>; check back in ~M minutes."\` (use the phase; don't turn the matched-count into an "X/Y processed" progress bar). \`phase:"committing"\` means the mappings are still being committed — say it's still being committed, never that it failed or finished empty.
+- Running → \`"⏳ Import still running — phase <phase>."\`, then check again (use the phase; don't turn the matched-count into an "X/Y processed" progress bar). \`phase:"committing"\` means the mappings are still being committed — say it's still being committed, never that it failed or finished empty.
 - Complete, **no \`result\`** → \`"✓ Import complete."\` Do NOT append a \`records_processed/records_total\` fraction (it undercounts pending-crawl rows and looks stuck) and do NOT report pending-crawl / need-attention bucket counts — the row-level \`not_imported\` breakdown isn't in this response.
 - Complete with \`result.still_settling > 0\` → say \`"✓ Import complete — N imported, S rows still being placed."\` Never count \`still_settling\` rows as failures.
 - Complete, **\`result\` present AND it was a dry run** (\`result.dry_run:true\`, or every \`result.not_imported\` row has \`reason:"dry_run"\`) → this resolved handle was a VALIDATION pass, nothing committed. Render \`"🔎 Dry run complete — V rows validated, nothing imported. Re-run without dry_run to commit."\` — do NOT render it as a real import completion or use the pending/attention buckets.
@@ -2710,7 +2881,6 @@ How the OTHER reasons map to the "Need attention" bucket (see the render block a
 | Status: complete, \`result.leads\` present | "Qualify the imported leads"                     | leadbay_bulk_qualify_leads(result.leads[].leadId) |
 | Status: complete                     | "See the imported (matched) leads"                   | leadbay_pull_leads             |
 | Pending-crawl (\`uncrawled\`) rows     | "Re-run the import for those domains later, once Leadbay has crawled them" | leadbay_import_leads (re-run with just the uncrawled domains, later — they re-reconcile once crawled). The added leads otherwise populate in the user's Leadbay account as the crawl completes; no live-fetch here |
-| Status: running (incl. \`committing\`) | "Check again in N minutes"                           | leadbay_import_status — re-call (pass \`dry_run:true\` if the ids came from a dry run) |
 | Status: error / failed (true error)  | "Diagnose the failure"                               | leadbay_resolve_import_rows    |
 `;
 // endregion: leadbay_import_status
@@ -2750,7 +2920,7 @@ Trigger phrases: "is the lead search done", "any results yet on that job", "chec
 
 Do NOT use for: "is the enrichment done" → \`leadbay_bulk_enrich_status\`; "is my import done" → \`leadbay_import_status\`; "is the top-N qualification done" → \`leadbay_qualify_status\`.
 
-Prefer when: a find_new_leads / qualify_leads result carried next_poll — pass its job_id; use wait_seconds 45 when the user asked to wait for results.
+Prefer when: a find_new_leads / qualify_leads result carried next_poll — pass its job_id, and wait_seconds 45 while the user waits on the result.
 
 Examples that SHOULD invoke this tool:
 - "Any leads yet from that search you started?"
@@ -2764,7 +2934,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 Terminal job -> render the full delivery per the lead-delivery table +
 honest funnel line. Still running -> one progress line (examined /
-delivered so far) and offer to check again in ~1 min. Never
+delivered so far), then check again in this turn. Never
 render UUIDs or cursors.
 
 ---
@@ -2777,8 +2947,8 @@ usage counters (never render them), and the \`explain\` block
 (basis, seed strategy, scope notes). Items are immutable once emitted —
 polling never re-reads live data, so numbers only ever grow.
 
-\`wait_seconds: 0\` (default) answers instantly; set 45 (the maximum) to block-wait for
-completion when the user asked for results "in this reply". \`since\` (from a
+\`wait_seconds: 0\` (default) answers instantly; 45 (the maximum) waits for
+completion — use it while the user waits on the result. \`since\` (from a
 prior poll's \`next_since\`) pages only the new items. Jobs terminalize
 server-side: past the 30-min wall clock a job reads \`completed_partial\`
 (time budget), past 30 days \`expired\` (items no longer listed — re-read
@@ -2787,6 +2957,24 @@ unknown job or another org's job.
 
 \`compact: true\` (pass it whenever \`next_poll\` carries it) returns the rows of
 a free identity pass, 100 at a time from \`offset\`, instead of leads.
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
 
 ---
 
@@ -2814,8 +3002,8 @@ user that path.
 
 Render delivered leads (\`leads[]\`, i.e. items with status \`delivered\` or
 \`degraded\`) as a markdown table **in the order returned**. Exactly three
-columns. Then ALWAYS close with the funnel line (below) — even, especially,
-when nothing was delivered.
+columns. Then ALWAYS close with the funnel line (below), even when nothing
+was delivered.
 
 **Column 1 — Company**
 
@@ -2858,35 +3046,30 @@ One short line narrating the delivery honestly, from \`funnel\` +
 > the Y asked** · stopped: <stop_reason in plain words>.
 
 **No money, anywhere.** \`cost.*\`, \`estimated_cost.max\` and quotes are internal
-usage units. Never render them, never convert them to a currency, never call
-them a charge: the user's plan or top-up covers this work, and a price reads as
-a bill. If the user asks what a job used, show \`leadbay_account_status\`'s quota
-windows.
+usage units: never render them, convert them to a currency or call them a
+charge — a price reads as a bill. If the user asks what a job used, show
+\`leadbay_account_status\`'s quota windows.
 
-"of the Y asked" needs \`summary.items_requested\`, which submits carry but a
-later \`leadbay_lead_job_status\` snapshot does not. Without it write **delivered
-X** and stop — never back-fill Y from \`matched\`/\`examined\` (they count
-candidates), never guess it.
+"of the Y asked" needs \`summary.items_requested\`: a \`leadbay_lead_job_status\`
+snapshot lacks it, so take it from the launch result. Without it write
+**delivered X** — never back-fill Y from \`matched\`/\`examined\`, never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the job's usage cap", \`quota\` →
 "hit an org quota", \`time_budget\` → "hit the 30-min time budget".
 
-**When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
-the funnel line plus the relevant \`explain.scope_notes\` (the backend's own
-diagnosis), then propose the concrete fix (reshape the seed per the craft
+**When a FINISHED job delivered 0**: NEVER say just "no results". Render no table; give
+the funnel line plus the relevant \`explain.scope_notes\`, then propose the concrete fix (reshape the seed per the craft
 rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a filter) as NEXT STEPS.
 
 **Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
 the table as an answer — open with "weak matches only", show at most the top 3,
-propose reshaping the seed/filters first. The count was filled with
-barely-better-than-random candidates.
+propose reshaping the seed/filters first.
 
 **Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
 requested fence; drop and call out leaks (same-named cities slip through).
 (b) When \`explain.seed_strategy\` is \`text_match_exemplars\` (the standard FR
-path), fit is calibrated for lead-to-lead distances, not exemplar centroids —
-treat high scores skeptically and verify each row's \`description\`.
+path), treat high fit scores skeptically and verify each row's \`description\`.
 
 **Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
 table \`Ref → Outcome\` translating \`status_reason\` to plain words:
@@ -2959,7 +3142,6 @@ is a status tool, keep it terse:
 
 | Observation | Suggest | Calls |
 |---|---|---|
-| Still running | "Keep waiting (~1 min) or leave it — results are kept 30 days" | leadbay_lead_job_status(job_id, wait_seconds: 45) |
 | Terminal (completed / partial / failed) | Render the delivery per the RENDERING block, then offer the matching find_new_leads / qualify_leads NEXT STEPS | — |
 | \`expired\` (past the 30-day window) | "Re-read the delivered leads from your delivery ledger" — there is nothing left to render: the job terminalized and its items are no longer listed, so do NOT present an empty delivery as a result | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 `;
@@ -3368,13 +3550,31 @@ Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text 
 
 **Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer \`leadbay_my_lenses(switchToLensId=<new id>)\` as a next step if they want to start pulling from it.
 
-**Leads compute asynchronously.** When the lens has criteria, applying the filter kicks off a backend wishlist rebuild — the \`created\` result carries \`computing_wishlist:true\`. An immediate \`leadbay_pull_leads\` may read empty for a few seconds while it computes; that lens is *warming up*, not empty. Wait ~30s before the first pull (or offer the user a re-pull). A criteria-less clone inherits the base lens's leads right away (\`computing_wishlist:false\`).
+**Leads compute asynchronously.** When the lens has criteria, applying the filter kicks off a backend wishlist rebuild — the \`created\` result carries \`computing_wishlist:true\`. An immediate \`leadbay_pull_leads\` may read empty for a few seconds while it computes; that lens is *warming up*, not empty. Check with \`leadbay_pull_leads\` from ~30s on until leads are listed. A criteria-less clone inherits the base lens's leads right away (\`computing_wishlist:false\`).
 
 WHEN TO USE: when the user wants a NEW lens. Canonical phrasings: "create a lens called X", "make a new audience for Y", "set up a lens for <sector>".
 
 WHEN NOT TO USE: to EDIT an existing lens — use \`leadbay_adjust_audience\` (pass \`lensName\` to target one by name). Not for listing/switching (\`leadbay_my_lenses\`) or topping up (\`leadbay_extend_lens\`).
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
 
 
 ## GATE — PREFER BUILT-IN HOST WIDGETS
@@ -3550,7 +3750,25 @@ email. Do NOT paste the email body into chat prose alongside.
 
 Prepare a single-lead outreach brief: the full \`lead\` block (score, \`split_ai_summary\`, \`location\`, \`size\`, \`phone_numbers\`, \`website\`, \`description\`, \`social_urls\`, \`social_presence\`), the \`recommended_contact\` in post-enrichment shape (\`contact_id\`, names, \`job_title\`, \`email\`, \`phone_number\`, \`linkedin_page\`, \`is_org_contact\` — nulls where not yet enriched), \`additional_contacts_count\`, an \`enrichment\` block describing async state, the lead's \`qualification\` answers and web-research \`signals\`, and its \`history\` (\`notes\` on the lead and on each of its people, plus the \`activities\` timeline).
 
-Optionally trigger contact enrichment in-flight with \`enrich:true\`. Enrichment is async (~60s). **Self-polling pattern (no separate tool needed):** re-call \`leadbay_prepare_outreach(leadId)\` without \`enrich\`; check \`enrichment.complete\`. When \`complete: true\`, the recommended contact now carries \`email\` and/or \`phone_number\`.
+Optionally trigger contact enrichment with \`enrich:true\` (async, ~1 min). Check it by re-calling \`leadbay_prepare_outreach(leadId)\` without \`enrich\` until \`enrichment.complete: true\`; the recommended contact then carries \`email\` and/or \`phone_number\`.
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
 
 Each call marks the lead seen so it ages out of the Discover "new" view. That is not a prospecting action and never shows in \`history\`.
 
@@ -3567,7 +3785,7 @@ WHEN NOT TO USE: across many leads — use leadbay_enrich_titles for bulk; for g
 
 Route every draft through \`message_compose_v1\` (Claude's email composer). Above it, emit ONE short markdown context paragraph: score callout + sector fit + linked contact name + bare phone/email pills. Do NOT paste the email body into chat prose alongside — the composer IS the visual.
 
-Variant shape: 1–3 entries. Labels describe **strategy** ("Push for alignment", "Reference the M&A signal"), not tone. \`kind: "email"\` requires \`subject\`; phone/call openers use \`kind: "other"\` with the opener in \`body\`.
+Variant shape: 1–3 entries, labels per the widget table below. \`kind: "email"\` requires \`subject\`; phone/call openers use \`kind: "other"\` with the opener in \`body\`.
 
 ## GATE — PREFER BUILT-IN HOST WIDGETS
 
@@ -3596,7 +3814,7 @@ ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We
 
 Present as the richest single-record card the MCP emits. The user is seconds-to-minutes away from contacting someone — every section earns its place by either (a) telling them HOW to outreach, (b) showing what they've done before, or (c) surfacing what's missing and how to get it.
 
-**Async enrichment.** When \`enrichment.triggered && !enrichment.complete\`, do NOT block the user. Render the brief with \`⏳\` on un-enriched channels and IMMEDIATELY draft a first version of the outreach using whatever data IS available (\`split_ai_summary.approach_angle\`, company-line phone, LinkedIn-search fallback). Tell the user: *"I'll refresh once enriched data lands."* On their next message (or after a clear pause), re-call \`leadbay_prepare_outreach(leadId)\` without \`enrich\`; if \`enrichment.complete: true\`, surface the now-resolved channels and offer to revise the draft.
+**Async enrichment.** When \`enrichment.triggered && !enrichment.complete\`, draft from what IS available (\`split_ai_summary.approach_angle\`, company-line phone, LinkedIn-search fallback) with \`⏳\` on the un-enriched channels, then fill them in once your check shows them.
 
 ### Structure
 
@@ -3626,8 +3844,6 @@ From \`history\`, newest first: \`<date> · <activity type>\` per \`activities\`
 **H5: 👥 Other contacts** (only if \`additional_contacts_count > 0\`)
 
 One line: \`+N more contacts at this company — [see them all](leadbay_research_lead_by_id)\`.
-
-**Closing line** (when enrichment is in progress): \`*Enrichment running — I'll refresh once email/phone lands.*\`
 
 **Hide:** \`id\`, \`lead.id\`, raw \`enrichment.hint\` when redundant with channel pills, any field whose value is the string \`"null"\`, deprecated \`other_contacts_count\` (use \`additional_contacts_count\`).
 
@@ -4148,7 +4364,8 @@ Identity pass (\`rows[]\`): one table Company / Website / LinkedIn, then the
 coverage line. Otherwise a 3-col table for delivered items (fit bar + company / why-fits ≤20 words /
 contact + channels) in returned order, then a compact Ref → Outcome table
 for skipped refs (not_in_universe, low_confidence_identity, ... in plain
-words), then the honest funnel line. Full algorithm below.
+words), then the honest funnel line. \`still_running\`: no verdicts yet, check
+first. Full algorithm below.
 
 ---
 
@@ -4157,8 +4374,26 @@ the Leadbay universe): each ref is resolved to a known company, freshly
 researched + AI-qualified against the org's questions / tags / ideal buyer
 profile (frozen at submit), matched to the requested contact titles, and —
 when asked — enriched with verified channels. Answers arrive per-item from a
-job; this tool polls up to \`wait_seconds\` (default 45) and hands off to
-\`leadbay_lead_job_status\` when the batch needs longer.
+job; this tool polls up to \`wait_seconds\` (default 45). A longer batch returns
+a receipt: check \`leadbay_lead_job_status\` until \`done: true\`, usually 2–15 min.
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
 
 **A list of companies is ONE call, never a loop** of
 \`leadbay_research_lead_by_name_fuzzy\`: "for each of these companies give me
@@ -4174,30 +4409,22 @@ prior result (enrichment then targets exactly that person, never a re-match).
 \`prior_deliveries\` expands past MCP deliveries into refs — delivered leads stay
 re-readable this way even after the 30-day result window. Duplicates collapse.
 A ref that can't be served comes back \`skipped\` with an honest
-\`status_reason\` (\`not_in_universe\`, \`low_confidence_identity\` with the
-\`resolution.alternatives\` to choose from, \`no_matching_contact\`, ...) — that
-is an ANSWER about the ref, not an error, and it uses no quota.
-
-**Disqualified ≠ dropped.** Companies the org owns that fail qualification
-are DELIVERED with their negative evidence (question verdicts, tag misses,
-IBP reasoning) — "here's why to skip this account" is a deliverable.
+\`status_reason\` (table below) — an ANSWER about the ref, not an error, and it
+uses no quota.
 
 **Usage quota — never use it silently.** Resolution and identity are free.
-\`qualify: true\` (the default) draws on the org's usage quota for each lead
-needing FRESH research+scoring — but repeat calls reuse every fresh cached stage
-(\`from_cache\` flags on the items) and converge to near-zero. \`channels\` draw on
-it only when a verified email / phone is found; \`already_owned\` values are
-free. Nothing is invoiced.
+\`qualify: true\` (the default) uses quota for each lead needing FRESH
+research + scoring; repeat calls reuse fresh cached stages (\`from_cache\`) and
+converge to near-zero. \`channels\` use it only when a verified email / phone is
+found; \`already_owned\` values are free. Nothing is invoiced.
 
-The gate is enforced in code, not just here: a call that uses quota (\`qualify\` left at
-its default or set true, and/or any \`channels\`) is WITHHELD unless it carries
-\`confirm: true\`. Without it the tool submits nothing and returns
-\`mode: "needs_confirmation"\` with a real backend quote — show that quote to
-the user, get the go-ahead (an explicit "go ahead / get their emails" in their
-message counts), then re-call with \`confirm: true\`. \`confirm: false\` is a
-veto: nothing is submitted and no quote round-trip is made. A fully FREE
-call (\`qualify: false\`, no \`channels\`) needs no \`confirm\` and passes straight
-through. Set \`request_id\` and reuse it on retries of the same batch.
+Enforced in code: a call that uses quota (\`qualify\` not false, or any
+\`channels\`) is WITHHELD unless it carries \`confirm: true\` — it submits nothing and
+returns \`mode: "needs_confirmation"\` with a real quote. Show the quote, get the
+go-ahead (an explicit "go ahead / get their emails" counts), then re-call with
+\`confirm: true\`. \`confirm: false\` vetoes, with no quote round-trip. A FREE call
+(\`qualify: false\`, no \`channels\`) needs no \`confirm\`. Reuse \`request_id\` on
+retries of the same batch.
 
 **Limits**: 500 refs/job, 3 active jobs/org, 10 submits/hour (429 +
 Retry-After beyond — wait, don't hammer), 30-min job wall clock.
@@ -4228,8 +4455,8 @@ user that path.
 
 Render delivered leads (\`leads[]\`, i.e. items with status \`delivered\` or
 \`degraded\`) as a markdown table **in the order returned**. Exactly three
-columns. Then ALWAYS close with the funnel line (below) — even, especially,
-when nothing was delivered.
+columns. Then ALWAYS close with the funnel line (below), even when nothing
+was delivered.
 
 **Column 1 — Company**
 
@@ -4272,35 +4499,30 @@ One short line narrating the delivery honestly, from \`funnel\` +
 > the Y asked** · stopped: <stop_reason in plain words>.
 
 **No money, anywhere.** \`cost.*\`, \`estimated_cost.max\` and quotes are internal
-usage units. Never render them, never convert them to a currency, never call
-them a charge: the user's plan or top-up covers this work, and a price reads as
-a bill. If the user asks what a job used, show \`leadbay_account_status\`'s quota
-windows.
+usage units: never render them, convert them to a currency or call them a
+charge — a price reads as a bill. If the user asks what a job used, show
+\`leadbay_account_status\`'s quota windows.
 
-"of the Y asked" needs \`summary.items_requested\`, which submits carry but a
-later \`leadbay_lead_job_status\` snapshot does not. Without it write **delivered
-X** and stop — never back-fill Y from \`matched\`/\`examined\` (they count
-candidates), never guess it.
+"of the Y asked" needs \`summary.items_requested\`: a \`leadbay_lead_job_status\`
+snapshot lacks it, so take it from the launch result. Without it write
+**delivered X** — never back-fill Y from \`matched\`/\`examined\`, never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the job's usage cap", \`quota\` →
 "hit an org quota", \`time_budget\` → "hit the 30-min time budget".
 
-**When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
-the funnel line plus the relevant \`explain.scope_notes\` (the backend's own
-diagnosis), then propose the concrete fix (reshape the seed per the craft
+**When a FINISHED job delivered 0**: NEVER say just "no results". Render no table; give
+the funnel line plus the relevant \`explain.scope_notes\`, then propose the concrete fix (reshape the seed per the craft
 rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a filter) as NEXT STEPS.
 
 **Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
 the table as an answer — open with "weak matches only", show at most the top 3,
-propose reshaping the seed/filters first. The count was filled with
-barely-better-than-random candidates.
+propose reshaping the seed/filters first.
 
 **Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
 requested fence; drop and call out leaks (same-named cities slip through).
 (b) When \`explain.seed_strategy\` is \`text_match_exemplars\` (the standard FR
-path), fit is calibrated for lead-to-lead distances, not exemplar centroids —
-treat high scores skeptically and verify each row's \`description\`.
+path), treat high fit scores skeptically and verify each row's \`description\`.
 
 **Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
 table \`Ref → Outcome\` translating \`status_reason\` to plain words:
@@ -4372,7 +4594,6 @@ Pick the 2-3 options that match what actually happened:
 
 | Observation | Suggest | Calls |
 |---|---|---|
-| Job still running | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 45) |
 | Fit leads with contacts delivered | "Draft outreach for the qualified ones" | leadbay_prepare_outreach |
 | Items skipped \`not_in_universe\` | "Import those companies first, then re-qualify" | leadbay_import_leads → leadbay_qualify_leads |
 | Items skipped \`low_confidence_identity\` | "Pick the right match" (show \`resolution.alternatives\`) | leadbay_qualify_leads with the chosen lead_id |
@@ -4393,7 +4614,7 @@ export const leadbay_qualify_status: string = `Retrieve the current state of a b
 
 Everything comes straight out of the launch response — nothing is stored on the MCP side. A backend job is scoped to the user who launched it, so a \`notification_id\` resolves from a later message, a later conversation, or the next day.
 
-WHEN TO USE: after leadbay_bulk_qualify_leads or leadbay_import_and_qualify came back with a non-empty \`still_running[]\`, call this tool a few minutes later (or hours) with those ids to retrieve the now-completed qualifications without re-running the import or re-spending qualify quota.
+WHEN TO USE: after leadbay_bulk_qualify_leads or leadbay_import_and_qualify came back with a non-empty \`still_running[]\` or \`status:'running'\`: call it with those ids until finished, in the same turn or a later one, to read the qualifications without re-running the import or re-spending qualify quota.
 
 WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id — that's a deeper per-lead profile and includes contacts. This tool is purely the qualification answers + signals_count.
 
@@ -4429,6 +4650,24 @@ a launcher only for a subset that never started, never for the whole batch:
   that is merely slow looks identical to one that never launched over a few
   polls, and re-launching it uses the user's quota twice — when unsure, tell the user
   rather than guess.
+
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
 `;
 // endregion: leadbay_qualify_status
 
@@ -4596,6 +4835,26 @@ WHEN TO USE: when audience filters (leadbay_adjust_audience) aren't enough.
 WHEN NOT TO USE: to answer a pending clarification — that's leadbay_answer_clarification.
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+
+
+\`computing_intelligence: true\` → Leadbay is re-scoring against the new prompt. Before pulling leads that should reflect it, check \`leadbay_account_status\` until it reads false (a few minutes).
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
 `;
 // endregion: leadbay_refine_prompt
 
@@ -6521,15 +6780,25 @@ Some Leadbay tool responses include a \`_meta.notifications\` array listing **ba
 
 **Do NOT** interpret these entries as "things waiting for the user." The user expects you to handle them silently. They are signals to YOU — agent — that prior outputs need a refresh.
 
-**Poll a job you launched THIS turn; don't poll one from a PREVIOUS turn.** The rule splits by *when* the work was kicked off:
+**A job from a PREVIOUS turn** (or before an MCP restart) that the user has not asked about: don't check it in the background. Its completion appears in \`_meta.notifications\` on your next tool call (the three kinds above). If the user asks about it or asks you to wait for it, check it now. **A job you launched THIS turn** follows the rule below.
 
-- **Previous turn / before an MCP restart, and the user has NOT asked about it** — don't poll for it in the background. Simply continue the conversation; the next time you call any tool, the completed-work entry appears in \`_meta.notifications\` (also on \`leadbay_account_status.notifications\`). This is the ambient push path — leave it to do its job. **But if the user explicitly asks for status or to "wait for it to finish"** (e.g. a multi-turn flow where a job was launched in a prior turn and this turn says "wait for enrichment to finish, then …"), DO poll its status tool now until done, exactly as for a this-turn job below — the ambient push only surfaces *completed* work, so it can't answer a live "is it done / wait for it" request while the job is still running.
-- **This turn (you just launched it)** — the DEFAULT is: do NOT end your turn on the "launched" ack; stay active and poll the job's status tool in a loop until it reports done, then report the finished result yourself, rather than spinning forever or deferring the result to a later turn. (Two exceptions, detailed below: the user explicitly asked NOT to wait / to run it in the background; or it's a large qualification/import that's async by design — in those cases hand back the handle instead of looping.) Each status tool has its OWN terminal signal — poll until:
-  - \`leadbay_bulk_enrich_status\` → \`all_done:true\` — OR \`overall_progress.done\` holds steady across several SPACED polls (~15–30s apart) over at least ~90s–2 min of elapsed time (a reservation the provider never answers stays \`done:false\`, so \`all_done\` can stay false forever). Don't call a plateau from the first few back-to-back reads — early on \`done\` sits flat while the backend spins up. Once the plateau is real, report what resolved and name what didn't.
-  - \`leadbay_qualify_status\` → \`still_running\` is empty: every launched lead has finished or failed. (\`in_progress\` also reads \`false\` on the fast path, but it can be \`null\` on the legacy/fallback read — so treat an empty \`still_running\` as terminal on its own; only require \`in_progress:false\` when that field is actually present.) LIKE imports, large qualification runs are async by design: \`leadbay_bulk_qualify_leads\` defaults to \`wait_for_completion:false\` for \`count > 5\` or chained workflows because blocking can time out, and \`leadbay_qualify_status\` may take minutes/hours. So don't force a long polling loop on a big run — return the handle/progress and let completion arrive via \`_meta.notifications\` — UNLESS the user explicitly asked to wait, or it's a small run that finishes quickly. A small \`wait_for_completion:true\` run you can poll to \`still_running\` empty inline.
-  - \`leadbay_import_status\` → \`status:"complete"\` (or \`"failed"\`). BUT imports are the exception to the stay-active loop: a large \`leadbay_import_leads({wait_for_completion:false})\` is meant to return a handle and resolve over minutes, and the tool does ONE refresh pass per call. Don't block the conversation looping on it — surface the returned progress/handle and let the completion arrive via \`_meta.notifications\` — UNLESS the user explicitly asked you to wait for the import, or it's a small import that finishes quickly.
+## A LAUNCHED JOB — its first result is a receipt, not the answer
 
-  Enrichment polls to completion in-turn BY DEFAULT — the exception is when the user explicitly said to start it in the background / not wait ("kick it off, I'll check later"), in which case hand back the notification_id and let completion arrive via \`_meta.notifications\` (only when a notification id exists; if none was returned, tell the user to ask again / that you'll poll later, since nothing will auto-surface). For qualification and imports, poll inline only for small/quick runs or when the user explicitly asked you to wait; otherwise return the handle and let \`_meta.notifications\` deliver it. Either way, the user should never have to ask "is it done yet?" for work you kicked off in the same turn — you either report it or hand back a clear in-progress handle.
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
 
 Also surfaced as a top-level \`notifications\` array on \`leadbay_account_status\` — same shape, same handling.
 
@@ -6640,8 +6909,8 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 3-col table of delivered leads in returned order: col 1 = 10-segment fit bar
 + linked company · location · size; col 2 = why-fits ≤20 words; col 3 =
-contact + found channels. ALWAYS close with the honest funnel line
-(matched/examined/delivered/stop reason), especially on 0 delivered.
+contact + found channels. ALWAYS close with the honest funnel line, even at 0
+delivered.
 
 ---
 
@@ -6650,24 +6919,39 @@ company universe, applies hard filters, skips what the org already knows
 (\`novelty: org\`), optionally qualifies against the org's own intelligence
 (questions, tags, ideal buyer profile — frozen at submit), and optionally reveals
 contact channels. Polls up to \`wait_seconds\` (default 45); a longer job returns
-\`still_running\` + \`next_poll\` — hand to \`leadbay_lead_job_status\`. Jobs run
-≤30 min, results kept 30 days.
+a receipt — check it with \`leadbay_lead_job_status\`, usually 5–20 min. Results kept 30 days.
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
 
 **Free vs usage quota — never use quota silently.** Default (\`qualify: false\`,
 \`channels: []\`) is FREE: company profile + fit score + cached research +
 contact identity. \`qualify: true\` (per candidate EXAMINED, capped by
 \`exploration_cap\`/\`max_cost\`) and \`channels\` (only when a value is found) draw
-on the org's usage quota; nothing is invoiced. Enforced in code: such a call is
-WITHHELD unless it carries \`confirm: true\` — nothing is submitted and you get
-\`mode: "needs_confirmation"\` with a real quote to show the user. Re-call with
-\`confirm: true\` on their go-ahead ("go ahead / get their emails" counts).
-\`confirm: false\` vetoes. **Preview free first** — reshaping an off-profile seed
+on the org's usage quota; nothing is invoiced. Such a call is WITHHELD unless it
+carries \`confirm: true\`: nothing is submitted, and \`mode: "needs_confirmation"\` carries
+a real quote to show the user. Re-call with \`confirm: true\` on their go-ahead
+("go ahead / get their emails" counts); \`confirm: false\` vetoes. **Preview free first** — reshaping an off-profile seed
 is free, exploring it with \`qualify: true\` is not.
 
 **Ad-hoc exclusions ("no chains") are enforced by NO tier** — \`filters\` has no
 exclusion key, and \`qualify\` scores against the org's FROZEN questions and IBP.
-Violators survive, use quota and get delivered: post-filter them yourself and
-say the tier didn't enforce it. Durable enforcement →
+Violators get delivered and use quota: post-filter them yourself and say so. Durable enforcement →
 \`leadbay_set_qualification_questions\` / \`leadbay_refine_prompt\`.
 
 ### Crafting the \`example_lead\` seed — the input that decides result quality
@@ -6715,11 +6999,7 @@ measured:
   + archetype + date: \`gyms-dallas-2026-07-28\`.
 - Never lower \`min_ai_score\` with \`channels\` — that reveals emails for leads
   the AI just scored as junk.
-- \`count\` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After — wait,
-  don't hammer).
-
-**Read the result honestly** — \`funnel\` + \`explain.scope_notes\` tell the story;
-zero delivered gets a cause and a next move (RENDERING).
+- \`count\` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After: wait).
 
 ---
 
@@ -6727,8 +7007,8 @@ zero delivered gets a cause and a next move (RENDERING).
 
 Render delivered leads (\`leads[]\`, i.e. items with status \`delivered\` or
 \`degraded\`) as a markdown table **in the order returned**. Exactly three
-columns. Then ALWAYS close with the funnel line (below) — even, especially,
-when nothing was delivered.
+columns. Then ALWAYS close with the funnel line (below), even when nothing
+was delivered.
 
 **Column 1 — Company**
 
@@ -6771,35 +7051,30 @@ One short line narrating the delivery honestly, from \`funnel\` +
 > the Y asked** · stopped: <stop_reason in plain words>.
 
 **No money, anywhere.** \`cost.*\`, \`estimated_cost.max\` and quotes are internal
-usage units. Never render them, never convert them to a currency, never call
-them a charge: the user's plan or top-up covers this work, and a price reads as
-a bill. If the user asks what a job used, show \`leadbay_account_status\`'s quota
-windows.
+usage units: never render them, convert them to a currency or call them a
+charge — a price reads as a bill. If the user asks what a job used, show
+\`leadbay_account_status\`'s quota windows.
 
-"of the Y asked" needs \`summary.items_requested\`, which submits carry but a
-later \`leadbay_lead_job_status\` snapshot does not. Without it write **delivered
-X** and stop — never back-fill Y from \`matched\`/\`examined\` (they count
-candidates), never guess it.
+"of the Y asked" needs \`summary.items_requested\`: a \`leadbay_lead_job_status\`
+snapshot lacks it, so take it from the launch result. Without it write
+**delivered X** — never back-fill Y from \`matched\`/\`examined\`, never guess it.
 
 Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
 "ran out of matching candidates", \`max_cost\` → "hit the job's usage cap", \`quota\` →
 "hit an org quota", \`time_budget\` → "hit the 30-min time budget".
 
-**When \`delivered\` is 0**: NEVER say just "no results". Render no table; give
-the funnel line plus the relevant \`explain.scope_notes\` (the backend's own
-diagnosis), then propose the concrete fix (reshape the seed per the craft
+**When a FINISHED job delivered 0**: NEVER say just "no results". Render no table; give
+the funnel line plus the relevant \`explain.scope_notes\`, then propose the concrete fix (reshape the seed per the craft
 rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a filter) as NEXT STEPS.
 
 **Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
 the table as an answer — open with "weak matches only", show at most the top 3,
-propose reshaping the seed/filters first. The count was filled with
-barely-better-than-random candidates.
+propose reshaping the seed/filters first.
 
 **Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
 requested fence; drop and call out leaks (same-named cities slip through).
 (b) When \`explain.seed_strategy\` is \`text_match_exemplars\` (the standard FR
-path), fit is calibrated for lead-to-lead distances, not exemplar centroids —
-treat high scores skeptically and verify each row's \`description\`.
+path), treat high fit scores skeptically and verify each row's \`description\`.
 
 **Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
 table \`Ref → Outcome\` translating \`status_reason\` to plain words:
@@ -6856,12 +7131,11 @@ Pick the 2-3 that match what happened, never the whole table:
 | Observation | Suggest | Calls |
 |---|---|---|
 | ≥ 1 delivered — offer FIRST | "Build an interactive lead triage board" | leadbay_artifact_kit → CANONICAL recipe, data in hand |
-| Job still running (\`still_running: true\`) | "Check on it in ~1 min" | leadbay_lead_job_status(job_id, wait_seconds: 45) |
 | Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
-| Stopped at the job's usage cap (\`stop_reason: max_cost\`) | "Raise the job's cap and get the remaining N" — no amount, no currency | leadbay_find_new_leads, NEW request_id (same-id only dedupes onto a LIVE job) + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered), not the original + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered; these are what it misses — without them the rerun re-buys the same losers) |
-| Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it cannot clear a quota and burns a submit slot to stop in the same place | leadbay_account_status |
+| Stopped at the job's usage cap (\`stop_reason: max_cost\`) | "Raise the job's cap and get the remaining N" — no amount, no currency | leadbay_find_new_leads, NEW request_id + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered) + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered ones; without these the rerun re-buys the rejected) |
+| Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it stops in the same place | leadbay_account_status |
 | User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |
 `,
   leadbay_scan_portfolio_signals: `## WHEN TO USE

@@ -70,13 +70,15 @@ Create a brand-new lens (saved audience) and apply its sector/size criteria. Clo
 
 **Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer `leadbay_my_lenses(switchToLensId=<new id>)` as a next step if they want to start pulling from it.
 
-**Leads compute asynchronously.** When the lens has criteria, applying the filter kicks off a backend wishlist rebuild — the `created` result carries `computing_wishlist:true`. An immediate `leadbay_pull_leads` may read empty for a few seconds while it computes; that lens is *warming up*, not empty. Wait ~30s before the first pull (or offer the user a re-pull). A criteria-less clone inherits the base lens's leads right away (`computing_wishlist:false`).
+**Leads compute asynchronously.** When the lens has criteria, applying the filter kicks off a backend wishlist rebuild — the `created` result carries `computing_wishlist:true`. An immediate `leadbay_pull_leads` may read empty for a few seconds while it computes; that lens is *warming up*, not empty. Check with `leadbay_pull_leads` from ~30s on until leads are listed. A criteria-less clone inherits the base lens's leads right away (`computing_wishlist:false`).
 
 {{include:headers/tool-when-to-use}} when the user wants a NEW lens. Canonical phrasings: "create a lens called X", "make a new audience for Y", "set up a lens for <sector>".
 
 {{include:headers/tool-when-not-to-use}} to EDIT an existing lens — use `leadbay_adjust_audience` (pass `lensName` to target one by name). Not for listing/switching (`leadbay_my_lenses`) or topping up (`leadbay_extend_lens`).
 
 {{include:headers/verification-required-if-write}}
+
+{{include:gates/launched-job}}
 
 {{include:gates/builtin-widgets}}
 
