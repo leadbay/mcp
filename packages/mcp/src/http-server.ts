@@ -243,6 +243,16 @@ export function bindTelemetryIdentity(
     captureQuotaHit: on((p) => base.captureQuotaHit(p, identity)),
     captureTopupLink: on((p) => base.captureTopupLink(p, identity)),
     captureStartup: on((p) => base.captureStartup(p, identity)),
+    // Artifact-runtime OUTCOME events (product#4081). Gated like every other
+    // passive analytics capture: these are automatic diagnostics the user never
+    // asked to send, so an opted-out user must emit nothing. They are NOT in
+    // the consent-gated exception below — that carve-out exists for
+    // user-initiated "deliver my words to the team" actions
+    // (report_friction / send_feedback), which this is the opposite of.
+    // Without this line the method fell through the `...base` spread ungated
+    // AND unidentified, so hosted artifact events both ignored the opt-out and
+    // landed on the wrong distinctId.
+    captureArtifactEvent: on((p) => base.captureArtifactEvent(p, identity)),
     // captureFrictionReported is NOT gated by isSuppressed, for the same reason
     // as captureFeedback below: since product#3943 `leadbay_report_friction` is
     // a consent-gated, user-initiated "deliver my problem report to the team"

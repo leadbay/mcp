@@ -890,6 +890,25 @@ export interface ToolContext {
     tool_called?: string;
     severity?: string;
   }) => boolean;
+  // Deliver a runtime failure reported by the @leadbay/components artifact
+  // runtime (leadbay_artifact_event — product#4081). Wired by the MCP server,
+  // which routes it the way the rest of the repo splits telemetry: the four
+  // exception kinds to Sentry via captureException, the three outcome kinds to
+  // PostHog. NOT leadbay_report_friction — that tool is consent-gated and must
+  // never fire unprompted; this one is automatic diagnostics carrying only
+  // bounded codes, and it rides the normal dispatch suppression so the
+  // leadbay_set_telemetry opt-out is honored without extra plumbing.
+  //
+  // Unlike reportFriction the return is ignored by the tool: an artifact has no
+  // user to confirm delivery to, and a telemetry failure must never become a
+  // visible artifact error.
+  reportArtifactEvent?: (event: {
+    kind: string;
+    surface: string;
+    kit_version?: string;
+    tool?: string;
+    code?: string;
+  }) => void;
   // The verbatim user-message slice this call is acting upon (the value the
   // agent passed as `_triggered_by`, stripped out at the server layer). Lets a
   // composite gate optional output on what the user actually asked — e.g.
