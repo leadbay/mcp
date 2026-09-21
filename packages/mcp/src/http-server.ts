@@ -223,8 +223,8 @@ export async function telemetryHandleForRequest(client: LeadbayClient): Promise<
 //
 // captureException is gated by isSuppressed TOO: server.ts fires it on tool
 // errors (Sentry), so an opted-out user would otherwise still leak Sentry error
-// telemetry (Codex P1). When NOT suppressed it passes through to base unchanged
-// (its ctx already carries region/org). captureFeedback is the ONE method left
+// telemetry (Codex P1). When NOT suppressed it forwards identity like the rest,
+// so the Sentry event names the caller (product#4175). captureFeedback is the ONE method left
 // live even when suppressed — see below.
 export function bindTelemetryIdentity(
   base: TelemetryHandle,
@@ -253,7 +253,7 @@ export function bindTelemetryIdentity(
     captureFrictionReported: (p) => base.captureFrictionReported(p, identity),
     // ^ returns the base handle's real delivery result, so a Sentry-only or
     //   PostHog-less process reports reported:false rather than a false confirm.
-    captureException: on((err, ctx) => base.captureException(err, ctx)),
+    captureException: on((err, ctx) => base.captureException(err, ctx, identity)),
     // captureFeedback is NOT gated by isSuppressed (Codex P2): leadbay_send_feedback
     // is an explicit user-initiated "deliver my message to the team" action, not
     // passive telemetry. Opting out of analytics must not silently drop the user's

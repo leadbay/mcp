@@ -13,7 +13,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | # | User story | Prompt | Scenario |
 |---|---|---|---|
 | 1 | **Daily lead discovery** — "show me today's leads / fresh prospects / what's in my inbox" | `leadbay_daily_check_in` | "Show me today's leads" |
-| 2 | **Follow-up check-in (incl. travel/geo)** — "leads I should follow up with", "before my trip to Berlin", "who should I re-engage" | `leadbay_followup_check_in` | "What leads should I follow up with?" |
+| 2 | **Follow-up check-in (incl. travel/geo)** — "leads I should follow up with", "before my trip to Berlin", "who should I re-engage". A lead whose email was logged with a Gmail id comes back with that id, and `reply_check` has the agent open the thread in the user's mailbox and log any reply with `leadbay_report_outreach` before rendering | `leadbay_followup_check_in` | "What leads should I follow up with?" |
 | 3 | **Single-company/domain deep research** — "tell me about Acme / acme.com" — resolves the company from the user's visible Discover, Monitor, and Activate corpus, then from the Leadbay company registry so a company they do not own yet is still findable | `leadbay_research_a_domain` | "Tell me about jaxpartycompany.com" |
 | 4 | **CSV import + AI qualification** — "I have 400 attendees, rank the most promising" | `leadbay_import_file` | "I have some leads to import" |
 | 5 | **AI qualification on top-N** — "qualify the top 10 of this batch" | `leadbay_qualify_top_n` | "Qualify the top 10 leads in my batch" |
@@ -24,7 +24,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 10 | **Field sales tour planning** — "I'm visiting Limoges in 4 days — give me 3 customers + 3 qualified + 3 new on one map". The itinerary reaches the next town over: `leadbay_tour_plan` adds the Discover leads within `radius_km` (default 20) of the named town, so West Sacramento is on a tour of Sacramento, and a user who names their own radius ("dans un rayon de 10km autour de Colmar") gets that one. | `leadbay_plan_tour_in_city`, `leadbay_tour_plan` | "I'm visiting Jacksonville in 3 days — plan my visits" |
 | 11 | **Manager-led prospecting via lens-driven campaigns** — manager creates a lens, validates candidates, persists as named campaigns | `leadbay_setup_team_prospecting` | "Set up a prospecting campaign for my team" |
 | 12 | **Lens extension — on-demand fill for bigger appetite** — "I want more leads on this lens / I need a bigger batch today" | `leadbay_extend_my_lens` | "I want more leads on this lens — bigger batch today" |
-| 13 | **Lens management — list / switch audiences** — "show me my lenses", "which audiences do I have", "switch to my Joinery lens" | `leadbay_my_lenses` | "Show me my lenses and switch to the Joinery one" |
+| 13 | **Lens management — list / switch audiences, read a lens's criteria** — "show me my lenses", "which audiences do I have", "switch to my Joinery lens", "what is my lens searching for" (every lens carries its criteria: sectors, locations and sizes by name — product#4176) | `leadbay_my_lenses` | "Show me my lenses and switch to the Joinery one" |
 | 14 | **Lens creation — make a named audience** — "create a lens called X for sector Y", "set up a new audience" | `leadbay_new_lens` | "Create a lens called Joinery for the fintech sector" |
 | 15 | **Add a contact to a known company** — "this company has no contacts — add Jane Doe, here's her LinkedIn", "add this person I found to that lead" | `leadbay_add_contact` (direct `POST /leads/{id}/contacts`; pass `lead_id` + name + optional linkedin/title/email/phone) | "Acme has no contacts — add Jane Doe, VP Eng, here's her LinkedIn" |
 | 16 | **Remove a contact from a company** — "remove this contact", "delete that person, wrong one", "undo the contact I just added" | `leadbay_remove_contact` (archives by the contact's own `contact_id`) | "Remove Jane Doe from that company — I added her by mistake" |
@@ -41,7 +41,7 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 27 | **Prior-context carry-over** — across turns the agent must reuse the lead_id it surfaced earlier rather than re-running discovery | `leadbay_daily_check_in` | *(multi-turn — see `turns:` contract)* |
 | 28 | **Send feedback to the team** — "send feedback", "report a bug", "tell Leadbay…", or accepting an offer to report an error — delivers a user-authored message to the Leadbay team's Sentry feedback inbox (same destination as the web app's feedback form) | `leadbay_send_feedback` | "Send feedback to the team: lead scores feel off this week" |
 | 29 | **Audience build from dirty taxonomy (no-crash)** — "create a group for menuisiers, pergolas, vérandas" — `leadbay_adjust_audience` must tolerate a null-name sector-taxonomy row and ambiguous matches, returning a graceful ambiguous-sectors message rather than a TypeError (regression lock for the v0.17.3 sector-creation crash) | `leadbay_adjust_audience` | "Create a group for menuisiers, pergolas, vérandas" |
-| 30 | **Account status — silent on unreadable quota** — on an org whose `quota_status` 401s (no billing plan, `plan: null`), `leadbay_account_status` must answer user + org WITHOUT mentioning quota, an error, a 401, or telling the user to reconnect / re-authenticate (the token is valid — the same response read the user fine). Regression lock for the product#3761 401-hallucination | `leadbay_account_status` | "What account am I connected to?" |
+| 30 | **Account status — silent on unreadable quota** — on an org whose `quota_status` 401s (no billing plan, `plan: null`), `leadbay_account_status` must answer user + org WITHOUT mentioning quota, an error, a 401, or telling the user to reconnect / re-authenticate (the token is valid — the same response read the user fine). Regression lock for the product#3761 401-hallucination. Since product#4167 the answer also says in one line what the account is set up to find, from `search_configuration` (buyer profile, targeting prompt, qualification questions, buying signals) | `leadbay_account_status` | "What account am I connected to?" |
 | 31 | **Account status — never volunteers the lens, name not id** — `leadbay_account_status` must NOT mention the active lens unprompted; and if asked which lens is active, must answer with the lens NAME, never the raw numeric id (e.g. `40005`). Regression lock for the product#3761 lens-hygiene fix | `leadbay_account_status` | "What account am I connected to, and which lens is active?" |
 | 32 | **Build an interactive artifact** — "build me a call sheet / interactive lead board with a campaign dropdown, notes, statuses, likes per lead" — the agent fetches headless view-models + usage guide via `leadbay_artifact_kit`, then assembles a single-file HTML artifact whose `lb.field`/`lb.action` view-models POPULATE a dropdown from `leadbay_list_campaigns` and submit `leadbay_report_outreach` / `leadbay_add_leads_to_campaign` / `leadbay_like_lead` (carrying `verification` + `_triggered_by` where required); the artifact owns all rendering | `leadbay_artifact_kit` *(no dedicated prompt)* | "Build me an interactive call sheet for these leads." |
 | 33 | **Manager team-activity view** — "how is my team doing", "top performers this month", "activity by rep" — `leadbay_team_activity` returns a per-rep leaderboard (`reps`, sorted by `total_activities`) + an activity time-series (`trend`) for a look-back window, the data behind the web Dashboard-Manager screen. Feeds a manager artifact (`lb.teamActivity` → table + Chart.js); quota/remaining stays on `leadbay_account_status` | `leadbay_team_activity` *(no dedicated prompt)* | "How is my team doing this month?" |
@@ -69,8 +69,10 @@ The table is the human-readable index. The `yaml expected` + `yaml scenario` blo
 | 55 | **Net-new lead delivery (one ask → qualified, contactable leads)** — "find me 10 gyms around Dallas that would buy our flooring, with someone I can call". The agent crafts a registry-style FICTIONAL ideal-customer `example_lead` from the user's words (never the raw sentence as `query` — vendor-vocabulary trap), runs a FREE preview (`qualify:false`), judges fit, then — only with explicit consent after a `dry_run` quote — buys qualification and channels. Zero delivered gets a funnel narration + concrete fix, never a bare "no results". A sector named in the user's own words is not a dead end: Leadbay matches `filters.sectors` as an exact registry label, so a spelling difference ("construction", "real estate") is corrected and the answer names the label that ran, while a word the taxonomy has no label for at all ("Professional Services") returns `mode: "needs_sector_choice"` with the closest labels and the registry's top-level sections, having submitted nothing and spent nothing (product#4140). Backend: `POST /1.6/mcp/search` job. | `leadbay_new_leads` | "Find me 10 gyms around Dallas that would buy our modular flooring, with someone I can call" |
 | 56 | **Batch qualify + right contact on known companies** — "here are 60 restaurant websites from my sweep — which fit, and who's the owner?". `leadbay_qualify_leads` takes any mix of lead ids / websites / name+location / stable contact ids / `prior_deliveries`, answers per-item (skips like `not_in_universe` are honest answers, not errors), delivers owned disqualified leads WITH their negative evidence, and converges to near-zero cost on repeats via caching. Backend: `POST /1.6/mcp/qualify` job. A list with an identity-only ask ("for each of these companies, the website and LinkedIn") is one `qualify: false` call per 500 names: free, one compact row per company plus counts of how many Leadbay found and how many have a website and a LinkedIn. `leadbay_lead_job_status` with `compact: true` pages past 100 rows (product#4131). A local install also saves every row of the finished job as a CSV in the user's Downloads folder and returns its path; the hosted server writes no file. | `leadbay_qualify_leads` | "Vet these companies from my spreadsheet against our criteria and get me the right contact at each" |
 | 57 | **Lead-delivery job polling** — a `leadbay_find_new_leads` / `leadbay_qualify_leads` run that outlives its poll window hands back a `job_id`; `leadbay_lead_job_status` re-reads the cumulative snapshot (state, funnel, items) and block-waits with `wait_seconds` when the user asked to wait. | `leadbay_lead_job_status` | "Any results yet from that lead search?" |
-| 58 | **A stated fit rule becomes a setting** — the core of product#4139: when the user says in chat what makes a lead good or bad ("écarte les sociétés liquidées", "je ne veux pas d'associations", "our best customers run their own maintenance crews", "the leads aren't relevant"), the agent must READ the org's settings, decide WHERE the rule belongs, decide whether a change is needed at all, and propose before writing. `leadbay_get_qualification_questions` now returns the ideal buyer profile and the targeting prompt alongside the questions, so coverage is checkable. A sector/size/territory rule goes to `leadbay_adjust_audience`; a qualitative orientation to `leadbay_refine_prompt`; a named company to `leadbay_dislike_lead`; CRM state and delivery requirements to neither. A question the scorer cannot act on comes back as `form_warnings`. Answering "c'est noté" with no tool call is the failure this row exists to stop. | `leadbay_get_qualification_questions`, `leadbay_set_qualification_questions`, `leadbay_refine_prompt`, `leadbay_adjust_audience`, `leadbay_dislike_lead` | "Écarte les sociétés liquidées, à risque manifeste, fabricants concurrents et comptes blacklistés" |
-| 59 | **A broken artifact stops being invisible** — product#4081: an artifact built from `leadbay_artifact_kit` runs in a chat-hosted page whose only channel out is the host bridge, so until now every runtime failure died there. The `@leadbay/components` runtime now reports six failure points itself, automatically, deduped and capped, through `leadbay_artifact_event`: a picker that loaded zero options, a button blocked by validation before any call, a call that timed out, failed, came back as an `{error:true}` envelope or a partial write, and text that would not parse. The MCP splits them the way it splits its own failures — the four exception kinds to Sentry under `source:"artifact"`, the three outcome kinds (where nothing threw, so Sentry would never see them) to the `mcp artifact event` PostHog stream. Every artifact-issued tool call also carries `_origin:"artifact"`, so artifact traffic is separable from agent traffic on the tool-call events that already exist. Only bounded enums and error codes travel — never a message, never user text. This is NOT `leadbay_report_friction`, which is consent-gated, carries the user's own words, and must never fire unprompted; a user who has opted out via `leadbay_set_telemetry` sends nothing at all. | `leadbay_artifact_event`, `leadbay_artifact_kit` *(no dedicated prompt — the runtime calls it)* | "Build me an interactive call sheet for these leads." *(the campaign dropdown then loads empty)* |
+| 58 | **A stated fit rule becomes a setting** — the core of product#4139: when the user says in chat what makes a lead good or bad ("écarte les sociétés liquidées", "je ne veux pas d'associations", "our best customers run their own maintenance crews", "the leads aren't relevant"), the agent must READ the org's settings, decide WHERE the rule belongs, decide whether a change is needed at all, and propose before writing. `leadbay_get_qualification_questions` now returns the ideal buyer profile and the targeting prompt alongside the questions, so coverage is checkable. A sector/size/territory rule goes to `leadbay_adjust_audience`; a qualitative orientation to `leadbay_refine_prompt`; a named company to `leadbay_dislike_lead`, whose `reason` is saved as a note on the lead and whose response says the targeting did not change (product#4170), or to `leadbay_set_lead_status` with the reason written by `leadbay_add_note`, because a status stores none (product#4171); a kind of company the user rejects becomes an ideal-buyer-profile anti-pattern through `leadbay_set_qualification_questions`, unless the lead's `ai_score` is already below 0; CRM state and delivery requirements to neither. A question the scorer cannot act on comes back as `form_warnings`. Answering "c'est noté" with no tool call is the failure this row exists to stop. | `leadbay_get_qualification_questions`, `leadbay_set_qualification_questions`, `leadbay_refine_prompt`, `leadbay_adjust_audience`, `leadbay_dislike_lead`, `leadbay_set_lead_status`, `leadbay_add_note` | "Écarte les sociétés liquidées, à risque manifeste, fabricants concurrents et comptes blacklistés" |
+| 59 | **Re-engagement campaigns from the user's own book** — product#4174: "prépare 3 campagnes de mails pour relancer mes prospects". The prospects are Monitor leads the user already works, read with `leadbay_pull_followups` (`filtered:false`), split into the number of campaigns asked for by where each lead stands in outreach, saved with `leadbay_create_campaign` one per group, and one email drafted per campaign in the same answer. Answering with `leadbay_list_campaigns` alone, or stopping to ask how to split, is the failure this row exists to stop. | `leadbay_pull_followups`, `leadbay_create_campaign` | "Dans mon onglet de démarchage peux-tu préparer 3 campagnes de mails pour relancer mes prospects" |
+| 60 | **Outreach sync from the user's mailbox and calendar** — product#4174: "who was contacted, when, who went quiet" has no answer when nobody logs outreach. When most leads on a `leadbay_pull_followups` page have no outreach logged, the result carries `outreach_sync` and the agent offers, once, a daily task. The task reads the user's mailbox and calendar, matches each address to a Leadbay lead and the person on it, and logs each email and meeting with `leadbay_report_outreach` on that person (`contact_id`), with the Gmail message id or calendar event id as proof. A status is set only on plain evidence. The same id logged twice writes nothing, so the daily run can re-read its window. `leadbay_sync_outreach` runs it once and schedules it. | `leadbay_sync_outreach`, `leadbay_pull_followups`, `leadbay_report_outreach` | "Log my emails and meetings in Leadbay every day" |
+| 61 | **A broken artifact stops being invisible** — product#4081: an artifact built from `leadbay_artifact_kit` runs in a chat-hosted page whose only channel out is the host bridge, so until now every runtime failure died there. The `@leadbay/components` runtime now reports six failure points itself, automatically, deduped and capped, through `leadbay_artifact_event`: a picker that loaded zero options, a button blocked by validation before any call, a call that timed out, failed, came back as an `{error:true}` envelope or a partial write, and text that would not parse. The MCP splits them the way it splits its own failures — the four exception kinds to Sentry under `source:"artifact"`, the three outcome kinds (where nothing threw, so Sentry would never see them) to the `mcp artifact event` PostHog stream. Every artifact-issued tool call also carries `_origin:"artifact"`, so artifact traffic is separable from agent traffic on the tool-call events that already exist. Only bounded enums and error codes travel — never a message, never user text. This is NOT `leadbay_report_friction`, which is consent-gated, carries the user's own words, and must never fire unprompted; a user who has opted out via `leadbay_set_telemetry` sends nothing at all. | `leadbay_artifact_event`, `leadbay_artifact_kit` *(no dedicated prompt — the runtime calls it)* | "Build me an interactive call sheet for these leads." *(the campaign dropdown then loads empty)* |
 
 ---
 
@@ -113,7 +115,7 @@ forbidden_calls:
 success_criteria:
   - "called leadbay_pull_followups at least once (Monitor view)"
   - "did NOT call leadbay_pull_leads (wrong entry point for follow-up queries)"
-  - "did NOT call leadbay_report_outreach"
+  - "did NOT call leadbay_report_outreach (the one exception, logging a reply found in the mailbox, needs a mail tool this scenario does not have)"
 ```
 
 ```yaml scenario
@@ -647,6 +649,7 @@ render_checks:
 success_criteria:
   - "called leadbay_account_status"
   - "reported the user and organization (e.g. account name / org)"
+  - "said in one line what Leadbay is set up to find for this account, drawn from search_configuration — not a list of settings (product#4167)"
   - "stayed completely SILENT about quota: did not mention quota, usage, an error, a 401, or any auth problem — the quota_status 401 is an internal diagnostic on a plan-less org and the user must never see it (enforced in code: account_status withholds a 401/403 quota_error from the payload entirely)"
   - "did NOT tell the user to reconnect or re-authenticate (the same token read the user/org fine, so the login is valid)"
   - "did NOT volunteer the active lens (enforced in code: the lens is withheld from the payload unless the trigger text asks about it)"
@@ -1300,6 +1303,49 @@ success_criteria:
 
 ```yaml scenario
 prompt: "Any results yet from that lead search you started earlier? Job id is 281d8b55-b357-43ed-aca9-63e50bce84a6"
+```
+
+```yaml expected
+workflow_name: Re-engagement campaigns from the user's own book
+prompt_name: ~
+required_calls:
+  - leadbay_pull_followups
+  - leadbay_create_campaign
+forbidden_calls:
+  - leadbay_pull_leads
+  - leadbay_report_outreach
+required_order:
+  - leadbay_pull_followups
+  - leadbay_create_campaign
+success_criteria:
+  - "created 3 campaigns, each seeded with Monitor leads that leadbay_pull_followups returned"
+  - "drafted one email, subject and body, per campaign in the same answer"
+  - "did NOT stop to ask how to split the prospects, which ones to include, or whether to create the campaigns"
+  - "did NOT call leadbay_report_outreach and sent nothing"
+```
+
+```yaml scenario
+prompt: "Dans mon onglet de démarchage peux-tu préparer 3 campagnes de mails pour relancer mes prospects"
+```
+
+```yaml expected
+workflow_name: Outreach sync from the user's mailbox and calendar
+prompt_name: leadbay_sync_outreach
+required_calls:
+  - leadbay_report_outreach
+forbidden_calls:
+  - leadbay_import_leads
+  - leadbay_import_and_qualify
+success_criteria:
+  - "logged each email and meeting with a Leadbay lead through leadbay_report_outreach, with the Gmail message id or calendar event id it read as proof"
+  - "passed contact_id when the person is a contact on the lead"
+  - "set a status only on plain evidence, and listed the other replies for the user"
+  - "sent, replied to, archived or labelled nothing in the mailbox"
+  - "created the daily scheduled task, or gave the user its text when the host cannot schedule"
+```
+
+```yaml scenario
+prompt: "Log my emails and meetings in Leadbay every day"
 ```
 
 ## How this stays normative

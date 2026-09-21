@@ -9,6 +9,12 @@
  *   return the REFRESHED list with the new active marked.
  * - renameLensId + newName → POST /lenses/{id} {name}, return the refreshed list.
  *
+ * Every returned list carries each lens's full metadata and its own criteria,
+ * sectors and places by name: GET /lenses/{id}/filter per lens. The only
+ * default-surface read of a lens's criteria — get_lens_filter is
+ * advanced-gated and lens://{id}/definition is a resource most hosts never let
+ * the model read (product#4176).
+ *
  * IMPORTANT: lens ids are STRINGS server-side (e.g. "40005"). We compare and
  * carry them as strings here — comparing a string id against a numeric param
  * silently fails (`"40005" === 40005` is false), which previously made switch
@@ -19,7 +25,9 @@
  * default-surface tool with routing + rendering.
  */
 import type { LeadbayClient } from "../client.js";
-import type { Tool, LensPayload } from "../types.js";
+import type { Tool, ToolContext, LensPayload, FilterPayload } from "../types.js";
+import { criteriaOf } from "./_empty-lens-reason.js";
+import { fetchSectorTaxonomy, sectorLabel } from "./_sector-resolver.js";
 
 import { leadbay_my_lenses as MY_LENSES_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -38,6 +46,9 @@ interface LensListEntry {
   description?: string | null;
   is_active: boolean;
   is_default: boolean;
+  // null when this lens's filter could not be read.
+  criteria: Array<Record<string, unknown>> | null;
+  [k: string]: unknown;
 }
 
 // Normalize any id (string or number) to the string form the backend uses.
@@ -45,7 +56,11 @@ const sid = (v: string | number | null | undefined): string | null =>
   v == null ? null : String(v);
 
 async function listWithActive(
-  client: LeadbayClient
+  client: LeadbayClient,
+  ctx?: ToolContext,
+  // A list read earlier in this call. Switch, edit and delete never change a
+  // filter, so its criteria are reused rather than read a second time.
+  earlier?: LensListEntry[]
 ): Promise<{ lenses: LensListEntry[]; active_lens_id: string | null }> {
   const lenses = await client.request<LensPayload[]>("GET", "/lenses");
   // Prefer /me.last_requested_lens for active state; fall back to the per-row
@@ -55,16 +70,79 @@ async function listWithActive(
   const active_lens_id =
     activeFromMe ?? sid(lenses.find((l) => l.is_last_active)?.id) ?? null;
 
+  const known = new Map(earlier?.map((l) => [l.id, l.criteria]));
+  const unread = lenses.map((l) => sid(l.id) as string).filter((id) => !known.has(id));
+  const read = await readLensCriteria(client, unread, ctx);
+
   return {
     active_lens_id,
-    lenses: lenses.map((l) => ({
-      id: sid(l.id) as string,
-      name: l.name,
-      description: l.description ?? null,
-      is_active: sid(l.id) === active_lens_id,
-      is_default: l.is_default === true || (l as { default?: boolean }).default === true,
-    })),
+    // Every field GET /lenses returns, except the two this replaces:
+    // is_last_active (can be stale; is_active is resolved from /me) and
+    // default (folded into is_default).
+    lenses: lenses.map(({ is_last_active: _stale, default: _default, ...l }) => {
+      const id = sid(l.id) as string;
+      return {
+        ...l,
+        id,
+        description: l.description ?? null,
+        is_active: id === active_lens_id,
+        is_default: l.is_default === true || _default === true,
+        criteria: known.get(id) ?? read.get(id) ?? null,
+      };
+    }),
   };
+}
+
+/**
+ * Each lens's own criteria as the web app shows them (`lens_filter`), each
+ * criterion passed through whole with its sector and location ids named.
+ * `implicit_filter` is left out: the web app never shows it and the user
+ * cannot edit it. One filter read per lens, throttled by the client's
+ * concurrency limit. Sector names come from one taxonomy read in the user's
+ * language, made only when some lens has a sector criterion; locations are
+ * named from each filter's own `locations.results`. An id with no match keeps
+ * `name: null`. A lens whose filter cannot be read is left out of the map, so
+ * one failing read never costs the user their list.
+ */
+async function readLensCriteria(
+  client: LeadbayClient,
+  lensIds: string[],
+  ctx?: ToolContext
+): Promise<Map<string, Array<Record<string, unknown>>>> {
+  const filters = await Promise.all(
+    lensIds.map((id) =>
+      client.request<FilterPayload>("GET", `/lenses/${id}/filter`).catch(() => null)
+    )
+  );
+
+  const sectorNames = new Map<string, string>();
+  if (filters.some((f) => f && criteriaOf(f).some((c) => c.type === "sector_ids"))) {
+    const taxonomy = await fetchSectorTaxonomy(client, ctx).catch(() => []);
+    for (const row of taxonomy) {
+      const label = sectorLabel(row);
+      if (label) sectorNames.set(String(row.id), label);
+    }
+  }
+
+  const named = (ids: unknown, names: Map<string, string>) =>
+    ((ids as string[] | undefined) ?? []).map((id) => ({ id, name: names.get(String(id)) ?? null }));
+  const out = new Map<string, Array<Record<string, unknown>>>();
+  filters.forEach((filter, i) => {
+    if (!filter) return;
+    const locationNames = new Map<string, string>();
+    for (const r of (filter.locations?.results ?? []) as Array<{ id?: unknown; name?: unknown }>) {
+      if (typeof r.id === "string" && typeof r.name === "string") locationNames.set(r.id, r.name);
+    }
+    out.set(
+      lensIds[i],
+      criteriaOf(filter).map((c) => {
+        if (c.type === "sector_ids") return { ...c, sectors: named(c.sectors, sectorNames) };
+        if (c.type === "location_ids") return { ...c, locations: named(c.locations, locationNames) };
+        return c;
+      })
+    );
+  });
+  return out;
 }
 
 export const myLenses: Tool<MyLensesParams> = {
@@ -135,19 +213,20 @@ export const myLenses: Tool<MyLensesParams> = {
       active_lens_id: { type: ["string", "null"] },
       lenses: {
         type: "array",
-        description: "The user's lenses. Each: {id, name, description, is_active}.",
+        description:
+          "The user's lenses, each with every field GET /lenses returns plus is_active, is_default and `criteria` (its sectors, locations and sizes by name; null if unreadable).",
         items: { type: "object" },
       },
       message: { type: "string" },
     },
     required: ["status", "lenses", "active_lens_id"],
   },
-  execute: async (client: LeadbayClient, params: MyLensesParams) => {
+  execute: async (client: LeadbayClient, params: MyLensesParams, ctx?: ToolContext) => {
     // Delete path — destructive, so confirm-gated. Validate target, refuse the
     // default lens up front (backend rejects it anyway), preview unless confirmed.
     if (params.deleteLensId != null) {
       const targetId = sid(params.deleteLensId)!;
-      const before = await listWithActive(client);
+      const before = await listWithActive(client, ctx);
       const target = before.lenses.find((l) => l.id === targetId);
       if (!target) {
         return {
@@ -189,7 +268,7 @@ export const myLenses: Tool<MyLensesParams> = {
       client.invalidateMe();
       client.invalidateDefaultLens();
 
-      const after = await listWithActive(client);
+      const after = await listWithActive(client, ctx, before.lenses);
       return {
         status: "deleted",
         switched: false,
@@ -205,7 +284,7 @@ export const myLenses: Tool<MyLensesParams> = {
     // POST /lenses/:id; set newName, newDescription, or both in one call.
     if (params.editLensId != null) {
       const targetId = sid(params.editLensId)!;
-      const before = await listWithActive(client);
+      const before = await listWithActive(client, ctx);
       const target = before.lenses.find((l) => l.id === targetId);
       if (!target) {
         return {
@@ -245,7 +324,7 @@ export const myLenses: Tool<MyLensesParams> = {
         .filter(Boolean)
         .join(", ");
 
-      const after = await listWithActive(client);
+      const after = await listWithActive(client, ctx, before.lenses);
       return {
         status: "edited",
         switched: false,
@@ -259,7 +338,7 @@ export const myLenses: Tool<MyLensesParams> = {
     // Switch path — validate the target is a real lens before POSTing.
     if (params.switchToLensId != null) {
       const targetId = sid(params.switchToLensId)!;
-      const before = await listWithActive(client);
+      const before = await listWithActive(client, ctx);
       const target = before.lenses.find((l) => l.id === targetId);
       if (!target) {
         return {
@@ -290,7 +369,7 @@ export const myLenses: Tool<MyLensesParams> = {
       client.invalidateMe();
       client.invalidateDefaultLens();
 
-      const after = await listWithActive(client);
+      const after = await listWithActive(client, ctx, before.lenses);
       return {
         status: "switched",
         switched: true,
@@ -302,7 +381,7 @@ export const myLenses: Tool<MyLensesParams> = {
     }
 
     // List path (pure read).
-    const { lenses, active_lens_id } = await listWithActive(client);
+    const { lenses, active_lens_id } = await listWithActive(client, ctx);
     return { status: "listed", switched: false, edited: false, active_lens_id, lenses };
   },
 };

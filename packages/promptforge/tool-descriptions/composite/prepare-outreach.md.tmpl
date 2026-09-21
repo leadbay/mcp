@@ -11,7 +11,7 @@ routing:
     - "write an email to <Contact>"
     - "outreach package for <Company>"
   anti_triggers:
-    - phrase: "research before drafting"
+    - phrase: "research a lead, no draft"
       route_to: leadbay_research_lead_by_id
     - phrase: "log sent outreach"
       route_to: leadbay_report_outreach
@@ -39,11 +39,11 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Prepare a single-lead outreach brief: the full `lead` block (score, `split_ai_summary`, `location`, `size`, `phone_numbers`, `website`, `description`, `social_urls`, `social_presence`), the `recommended_contact` in post-enrichment shape (`contact_id`, names, `job_title`, `email`, `phone_number`, `linkedin_page`, `is_org_contact` — nulls where not yet enriched), `additional_contacts_count`, and an `enrichment` block describing async state.
+Prepare a single-lead outreach brief: the full `lead` block (score, `split_ai_summary`, `location`, `size`, `phone_numbers`, `website`, `description`, `social_urls`, `social_presence`), the `recommended_contact` in post-enrichment shape (`contact_id`, names, `job_title`, `email`, `phone_number`, `linkedin_page`, `is_org_contact` — nulls where not yet enriched), `additional_contacts_count`, an `enrichment` block describing async state, the lead's `qualification` answers and web-research `signals`, and its `history` (`notes` on the lead and on each of its people, plus the `activities` timeline).
 
 Optionally trigger contact enrichment in-flight with `enrich:true`. Enrichment is async (~60s). **Self-polling pattern (no separate tool needed):** re-call `leadbay_prepare_outreach(leadId)` without `enrich`; check `enrichment.complete`. When `complete: true`, the recommended contact now carries `email` and/or `phone_number`.
 
-The first call on a lead records a `LEAD_VIEWED`-style prospecting action server-side (deduped, one per lead per session) so it ages out of the Discover "new" view.
+Each call marks the lead seen so it ages out of the Discover "new" view. That is not a prospecting action and never shows in `history`.
 
 {{include:iron-laws/outcome-after-outreach}}
 

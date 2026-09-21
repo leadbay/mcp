@@ -13,10 +13,14 @@ annotations:
 ---
 Log an outreach action (email, call, message, meeting) on a lead so the human team using Leadbay sees the progress in their UI. Writes a NOTE on the lead and (optionally) sets an EPILOGUE status (still chasing, meeting booked, etc.). Bulk variant: pass `lead_ids=[uuid,...]` instead of `lead_id` (epilogue is bulk-native; notes fan out per-lead).
 
-VERIFICATION REQUIRED: every call must include `verification={source: 'gmail_message_id'|'calendar_event_id'|'user_confirmed', ref: '<id-or-confirmation>'}` to prevent hallucinated outreach poisoning the pipeline. The verification is appended to the note body. Skipping or fabricating verification poisons the human team's pipeline.
+VERIFICATION REQUIRED: every call must include `verification={source: 'gmail_message_id'|'calendar_event_id'|'user_confirmed', ref: '<id-or-confirmation>'}` to prevent hallucinated outreach poisoning the pipeline. The verification is appended to the note body. Skipping or fabricating verification poisons the human team's pipeline. For an email, pass the Gmail message id of the sent message whenever you have it: `leadbay_pull_followups` hands it back so the contact's reply can be found in that thread.
 
 {{include:headers/tool-when-to-use}} AFTER actually emailing/calling/meeting/messaging a contact, OR after a substantive decision the user wants logged (skip, save, hand off).
 
 {{include:headers/tool-when-not-to-use}} BEFORE doing the outreach (use `dry_run:true` to validate args first); without verification (call will be rejected); from a flow where the user did not consent to having actions logged automatically.
 
+To log on the person the outreach went to, pass their org contact id as `contact_id` with a single `lead_id`. The note and the status then go on that person, and the lead's Monitor row still shows the action and the status. Logging the same Gmail message id or calendar event id twice writes nothing the second time: the lead or person comes back in `already_logged`.
+
 {{include:headers/verification-required-if-write}}
+
+{{include:heuristics/outreach-sync}}

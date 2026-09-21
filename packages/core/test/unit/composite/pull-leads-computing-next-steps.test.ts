@@ -100,7 +100,7 @@ describe("pullLeads.execute — empty wishlist while computing (#3833)", () => {
     mockHttp([
       {
         method: "GET",
-        path: "/1.6/lenses/777/leads/wishlist?count=20&page=0&contacts=true",
+        path: "/1.6/lenses/777/leads/wishlist?count=20&page=0&contacts=true&exclude_handled=true",
         status: 200,
         body: {
           items: [],
@@ -130,7 +130,7 @@ describe("pullLeads.execute — empty wishlist while computing (#3833)", () => {
     mockHttp([
       {
         method: "GET",
-        path: "/1.6/lenses/778/leads/wishlist?count=20&page=0&contacts=true",
+        path: "/1.6/lenses/778/leads/wishlist?count=20&page=0&contacts=true&exclude_handled=true",
         status: 200,
         body: {
           items: [],

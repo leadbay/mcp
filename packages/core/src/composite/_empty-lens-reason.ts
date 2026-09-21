@@ -75,7 +75,7 @@ interface LensDiagnosticRow {
   less_leads_than_targeted?: boolean;
 }
 
-function criteriaOf(filter: FilterPayload | null): FilterCriterion[] {
+export function criteriaOf(filter: FilterPayload | null): FilterCriterion[] {
   return filter?.lens_filter?.items?.flatMap((i) => i.criteria ?? []) ?? [];
 }
 

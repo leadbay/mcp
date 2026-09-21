@@ -3,8 +3,9 @@ name: leadbay_set_qualification_questions
 kind: tool-description
 short_description: |
   Modify the org's qualification questions — the AI-agent questions every lead
-  is scored against. Use when the user states what makes a lead good or bad
-  and no existing question covers it. Don't use it for a sector/size/territory
+  is scored against — or add negative criteria to its ideal buyer profile. Use
+  when the user states what makes a lead good or bad and no existing question
+  or anti-pattern covers it. Don't use it for a sector/size/territory
   rule (leadbay_adjust_audience), a named company, or a delivery requirement
   like "email and phone required".
 annotations:
@@ -61,6 +62,8 @@ Leadbay allows **at most 5** qualification questions. If a change would exceed 5
 
 Returns the resulting `{qualification_questions, count, previous_count, changed}`.
 
+**Negative criteria — `add_anti_patterns`.** The ideal buyer profile's `anti_patterns` list kinds of company that are never the buyer. Qualification reads them as negative signals when it scores a lead, beside the questions. `add_anti_patterns` appends to that list and returns it as `anti_patterns`. It uses no question slot and cannot be combined with `questions`/`add`/`remove`. It is an org-admin action and draws on the org's AI quota. After it, Leadbay regenerates its targeting in the background: new example buyers, a refresh of every lens, and, when nobody has written the questions by hand, possibly new questions. Leads already scored keep their score until they are next qualified. Leadbay also stops rewriting the profile by itself. Tell the user this when you propose it.
+
 {{include:heuristics/rule-to-setting}}
 
 {{include:headers/tool-when-to-use}} the user stated a durable company trait no existing question covers, and they have agreed to the exact text you proposed.
@@ -71,4 +74,4 @@ Returns the resulting `{qualification_questions, count, previous_count, changed}
 
 ### RENDERING
 
-After a change, confirm in one line — e.g. **"Added 1 question — you now score leads against 4 questions."** or **"Removed 'the flooring question' — 3 questions remain."** Then list the resulting questions as a numbered list. When the result is a non-changing preview (a removal awaiting confirmation), surface the `hint` (what would be removed) and ask the user to confirm — do NOT auto-confirm.
+After a change, confirm in one line — e.g. **"Added 1 question — you now score leads against 4 questions."** or **"Removed 'the flooring question' — 3 questions remain."** Then list the resulting questions as a numbered list. When the result is a non-changing preview (a removal awaiting confirmation), surface the `hint` (what would be removed) and ask the user to confirm — do NOT auto-confirm. After `add_anti_patterns`, confirm in one line — e.g. **"Added 1 negative criterion to your buyer profile."** — then list `anti_patterns`.

@@ -26,3 +26,6 @@ __pycache__/
 # Agent skill packs + their lockfile — installed locally, not repo content.
 .agents/
 skills-lock.json
+
+# macOS Finder metadata.
+.DS_Store

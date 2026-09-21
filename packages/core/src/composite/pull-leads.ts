@@ -347,7 +347,6 @@ export const pullLeads: Tool<PullLeadsParams> = {
         properties: {
           region: { type: "string" },
           latency_ms: { type: ["number", "null"] },
-          agent_memory: { type: "object" },
         },
       },
     },
@@ -369,9 +368,13 @@ export const pullLeads: Tool<PullLeadsParams> = {
       ? `&order=${encodeURIComponent(resolvedOrder.order)}`
       : "";
 
+    // exclude_handled: without it, a lead the user liked, noted or put in a
+    // campaign stays in Discover until the next day's replacement job, and
+    // every pull that day hands it back as new (product#4173). Disliked and
+    // status-set leads already leave Discover at once.
     const res = await client.request<WishlistResponse>(
       "GET",
-      `/lenses/${lensId}/leads/wishlist?count=${count}&page=${page}&contacts=true${orderQs}`
+      `/lenses/${lensId}/leads/wishlist?count=${count}&page=${page}&contacts=true&exclude_handled=true${orderQs}`
     );
 
     // Report the leads we are about to show as seen — the same thing the web

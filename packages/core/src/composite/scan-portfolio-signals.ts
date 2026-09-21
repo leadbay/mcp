@@ -260,7 +260,6 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
         type: "object",
         properties: {
           region: { type: "string" },
-          agent_memory: { type: "object" },
         },
       },
     },

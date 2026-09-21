@@ -8,7 +8,7 @@ description: "Follow-up check-in: surface KNOWN leads from the Monitor view need
 
 You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
 
-What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call `leadbay_refine_prompt` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike rather than noting it.
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call `leadbay_refine_prompt` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike with their words as its `reason` rather than noting it.
 
 
 Run the Leadbay follow-up check-in for me. Treat this prompt the same way for any equivalent ask: "leads I should follow up with", "already known leads", "what's overdue", "before my trip to [city]", "leads I haven't contacted", "who should I re-engage today".
@@ -134,6 +134,10 @@ intended to send.
 
 4. Pushback / next-step / outcome language about each lead goes in the prose. The carousel's "Notes from Claude" surfaces what you write here, so make the one sentence count.
 
+# PHASE 1b — CHECK FOR REPLIES
+
+When the response carries `reply_check`, do what it says before rendering: open each `last_logged_email` message and its thread in my mailbox and log any reply from the contact with `leadbay_report_outreach`. Tell me which leads replied. If you have no mail tool, say that replies were not checked.
+
 # PHASE 2 — RENDER THE CANONICAL TABLE
 
 GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
@@ -258,7 +262,7 @@ Below the table, offer the cross-mode pivot in one short line so the user can re
 
 # GATE — STOP
 
-IRON LAW — DO NOT TAKE OUTBOUND ACTION. Do not call `leadbay_report_outreach`. Do not draft an outreach message into a tool argument. Outreach is the user's call after they've reviewed the follow-up list.
+IRON LAW — DO NOT TAKE OUTBOUND ACTION. Do not call `leadbay_report_outreach`, except to log a reply found in Phase 1b. Do not draft an outreach message into a tool argument. Outreach is the user's call after they've reviewed the follow-up list.
 
 Render this acknowledgment VERBATIM as the last line of your message:
 

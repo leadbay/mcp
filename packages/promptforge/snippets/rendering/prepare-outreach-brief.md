@@ -22,16 +22,12 @@ Present as the richest single-record card the MCP emits. The user is seconds-to-
 **H5: 🎯 Angles & approach**
 
 - Render `lead.split_ai_summary.approach_angle` as the lead-in.
-- 3–4 bullets distilling `split_ai_summary.next_step` and any signals from a prior `research_lead_by_id` call into salesperson-voice talking points. Cite `[source](url)` inline when known.
+- 3–4 bullets distilling `split_ai_summary.next_step`, `signals` and `qualification` into salesperson-voice talking points. Cite `[source](url)` inline when known.
 - Final line: `Recommended channel: <X> — <rationale>`. Compute the recommendation from what data is available (email present → email; phone present → call; LinkedIn only → DM).
 
-**H5: 📜 History with [Contact name]**
+**H5: 📜 History with [Company name]**
 
-When prior contact-level actions / notes are surfaced (or when `prospecting_actions_count > 0`), render a reverse-chronological timeline: `<date> · <action_type> · <one-line summary>`. Quote-block recent notes below. If empty: `*No prior touchpoints with this contact.*`
-
-**H5: 🏢 History with [Company name]**
-
-Same shape as the contact history, but only include items NOT duplicated from the contact section. If both empty: `*No company-level history recorded.*`
+From `history`, newest first: `<date> · <activity type>` per `activities` entry, then the `notes` quote-blocked, each prefixed with its `contact` when set. When a note or an `EPILOGUE_*` entry records a past contact, the draft follows up on it instead of opening cold. Both lists empty: `*No prior touchpoints recorded.*`
 
 **H5: 👥 Other contacts** (only if `additional_contacts_count > 0`)
 
@@ -39,7 +35,7 @@ One line: `+N more contacts at this company — [see them all](leadbay_research_
 
 **Closing line** (when enrichment is in progress): `*Enrichment running — I'll refresh once email/phone lands.*`
 
-**Hide:** `id`, `lead.id`, raw `enrichment.hint` when redundant with channel pills, history items without descriptions, any field whose value is the string `"null"`, deprecated `other_contacts_count` (use `additional_contacts_count`).
+**Hide:** `id`, `lead.id`, raw `enrichment.hint` when redundant with channel pills, any field whose value is the string `"null"`, deprecated `other_contacts_count` (use `additional_contacts_count`).
 
 {{include:linking/contact-linkedin}}
 {{include:linking/company-socials}}

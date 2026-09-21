@@ -2,10 +2,11 @@
 name: leadbay_dislike_lead
 kind: tool-description
 short_description: |
-  Mark a lead as disliked — permanent negative signal to the Leadbay
-  scoring engine. Use when the user rejects a lead ("not relevant",
-  "thumbs down", "wrong industry"). Distinct from `leadbay_set_pushback`,
-  which is a temporary deferral the user expects to revisit.
+  Mark a lead as disliked, hiding it from this user, and save the user's
+  reason as a note on the lead. Use when the user rejects a lead ("not
+  relevant", "thumbs down", "wrong industry"). Distinct from
+  `leadbay_set_pushback`, which is a temporary deferral the user expects to
+  revisit.
 routing:
   triggers:
     - "I don't like this lead"
@@ -21,7 +22,7 @@ routing:
       route_to: leadbay_set_pushback
     - phrase: "thumbs up / save this one"
       route_to: leadbay_like_lead
-  prefer_when: "durable rejection of a specific lead; pass `lead_id`. For temporary deferral, route to `leadbay_set_pushback`."
+  prefer_when: "durable rejection of a specific lead; pass `lead_id`, and the user's words as `reason`. For temporary deferral, route to `leadbay_set_pushback`."
   examples:
     positive:
       - "Thumbs down — wrong industry."
@@ -33,19 +34,22 @@ routing:
       - "I like this lead — save it."
 rendering_hint: |
   One short confirmation line after the call returns ("👎 Disliked **{company_name}** —
-  negative signal sent."), then continue the current flow (don't dump the full
-  lead card again).
+  reason saved as a note." when `reason_saved`). If the reason names a kind of
+  company, add one line proposing the setting change (see `targeting`). Then
+  continue the current flow (don't dump the full lead card again).
 annotations:
   readOnlyHint: false
   destructiveHint: true
   idempotentHint: true
   openWorldHint: true
 ---
-Mark a lead as disliked. This is the same action as clicking the thumbs-down on the Leadbay website. The signal is fed back into the scoring engine: disliked leads teach Leadbay what to filter out, improving the relevance of future batches.
+Mark a lead as disliked. This is the same action as clicking the thumbs-down on the Leadbay website: the lead stops appearing for this user. The dislike itself carries no reason and changes no lens filter, qualification question or targeting prompt. Leadbay only avoids a sector on the lens's next refresh after two of the lens's leads in it are disliked and none liked, and a city after two.
 
-Pass the lead's UUID as `lead_id`.
+Pass the lead's UUID as `lead_id`, and the user's reason as `reason` whenever they gave one. The reason is saved as a note on the lead, so the team and later sessions can read why. Do not also call `leadbay_add_note` for it.
 
-Dislike is a **permanent** negative signal — it influences scoring durably. If the user only wants to defer a lead ("not now", "remind me next month", "I'll look at this one later"), call `leadbay_set_pushback` instead; that's reversible and time-bounded.
+**A reason about a kind of company is a targeting rule.** "Consulting firm, off ICP", "too small", "subsidiary of a large group", "wrong region" will be true of the next lead too. Disliking does not stop Leadbay proposing the next one. First check whether the org's criteria already reject it: with a `reason`, the response carries the lead's `ai_score`, and below 0 means qualification already scored the lead against them, so there is nothing to change. Otherwise call `leadbay_get_qualification_questions`. If no anti-pattern or question already says it, propose adding the reason as a negative criterion of the ideal buyer profile with `leadbay_set_qualification_questions({add_anti_patterns})`, and write it on the user's yes. Whether to propose is your judgement. A reason about this company alone ("unpaid invoice with them", "opposed to prospecting", "already our client") needs only the dislike and its reason.
+
+Dislike is a **permanent** rejection of this lead. If the user only wants to defer a lead ("not now", "remind me next month", "I'll look at this one later"), call `leadbay_set_pushback` instead; that's reversible and time-bounded.
 
 {{include:headers/tool-when-to-use}} the user explicitly rejects a lead ("not relevant", "wrong industry", "too small", "thumbs down", "skip this", "not a fit"). Use proactively after `leadbay_research_lead` reveals disqualifying signals.
 

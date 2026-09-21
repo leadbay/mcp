@@ -1,5 +1,5 @@
 import type { LeadbayClient } from "../client.js";
-import type { Tool, ToolContext, AiAgentQuestionPayload } from "../types.js";
+import type { Tool, ToolContext, AiAgentQuestionPayload, IdealBuyerProfilePayload } from "../types.js";
 
 import { leadbay_set_qualification_questions as SET_QUALIFICATION_QUESTIONS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -18,6 +18,9 @@ interface SetQualificationQuestionsParams {
   // Required when the resulting list is SHORTER than the current one
   // (a removal / shrinking replace drops questions the AI scores against).
   confirm?: boolean;
+  // Negative criteria to append to the org's ideal buyer profile. Its own
+  // write: exclusive with questions/add/remove.
+  add_anti_patterns?: string[];
 }
 
 // A question Leadbay's scorer can act on is ESTIMATIVE: the scorer reads public
@@ -47,6 +50,73 @@ function formWarnings(questions: string[]): string[] {
     }
   }
   return out;
+}
+
+// The rescore prompt lists the ideal buyer profile's anti_patterns as "negative
+// signals" and asks for an ibp score in [-20, 20] that feeds ai_agent_lead_score
+// (backend AiRescoreLeads.buildRescorePrompt, RescoreCore). The endpoint is
+// admin-only and a full replace, so this reads the profile and posts it back
+// with the new entries appended. The backend then queues an intelligence
+// regeneration and stops regenerating the profile itself (created_by is set).
+async function addAntiPatterns(client: LeadbayClient, toAdd: string[]) {
+  const me = await client.resolveMe();
+  if (me.admin !== true) {
+    return {
+      error: true,
+      code: "FORBIDDEN",
+      message: "Changing the ideal buyer profile requires admin rights on the org",
+      hint: "Nothing was saved. Tell the user an org admin has to add it, and show the current criteria with leadbay_get_qualification_questions.",
+    };
+  }
+  const orgId = me.organization.id;
+  const [questions, ibp] = await Promise.all([
+    client.request<AiAgentQuestionPayload[]>("GET", `/organizations/${orgId}/ai_agent_questions`),
+    client.request<IdealBuyerProfilePayload | null>("GET", `/organizations/${orgId}/ideal_buyer_profile`),
+  ]);
+  const qs = (questions ?? []).map((q) => ({ question: q.question }));
+  const base = { qualification_questions: qs, count: qs.length, previous_count: qs.length, region: client.region };
+
+  if (!ibp?.summary) {
+    return {
+      ...base,
+      changed: false,
+      hint: "This org has no ideal buyer profile yet, so there is nowhere to add a negative criterion. Use a qualification question or leadbay_refine_prompt for this rule instead.",
+    };
+  }
+
+  const key = (s: string) => s.trim().toLowerCase();
+  const current = ibp.anti_patterns ?? [];
+  const seen = new Set(current.map(key));
+  const added: string[] = [];
+  for (const a of toAdd.map((s) => s.trim())) {
+    if (a.length > 0 && !seen.has(key(a))) {
+      added.push(a);
+      seen.add(key(a));
+    }
+  }
+  if (added.length === 0) {
+    return {
+      ...base,
+      anti_patterns: current,
+      changed: false,
+      hint: "No change: the ideal buyer profile already lists every criterion passed. leadbay_get_qualification_questions shows them.",
+    };
+  }
+
+  const next = [...current, ...added];
+  await client.requestVoid("POST", `/organizations/${orgId}/ideal_buyer_profile`, {
+    summary: ibp.summary,
+    key_characteristics: ibp.key_characteristics ?? [],
+    anti_patterns: next,
+  });
+  client.invalidateTasteProfile();
+  return {
+    ...base,
+    anti_patterns: next,
+    anti_patterns_added: added,
+    changed: true,
+    hint: "Saved. Leads already scored keep their score until they are next qualified. Leadbay is regenerating its targeting from the profile in the background, and it no longer rewrites this profile by itself. leadbay_get_qualification_questions shows the updated profile.",
+  };
 }
 
 // Modify the org's qualification questions (the AI-agent questions every lead is
@@ -88,6 +158,12 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
         description:
           "Exact question strings to remove from the current list. Mutually exclusive with `questions`. A removal requires confirm:true.",
       },
+      add_anti_patterns: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Negative criteria to append to the org's ideal buyer profile: kinds of company that are never the buyer (\"Consulting firms and IT services companies\", \"Franchise locations of national chains\"). Qualification reads them as negative signals when it scores a lead. Uses no question slot. Its own write: do not combine with questions/add/remove. Admin only. Read leadbay_get_qualification_questions first and skip anything an existing anti-pattern or question already says. In the user's language.",
+      },
       confirm: {
         type: "boolean",
         description:
@@ -111,6 +187,16 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
         description: "True when the list was actually written; false on a no-op or an unconfirmed shrink.",
       },
       region: { type: "string" },
+      anti_patterns: {
+        type: "array",
+        items: { type: "string" },
+        description: "The ideal buyer profile's negative criteria after an add_anti_patterns call.",
+      },
+      anti_patterns_added: {
+        type: "array",
+        items: { type: "string" },
+        description: "The criteria this call wrote.",
+      },
       form_warnings: {
         type: "array",
         items: { type: "string" },
@@ -133,6 +219,19 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
     const hasSet = Array.isArray(params.questions);
     const hasAdd = Array.isArray(params.add) && params.add.length > 0;
     const hasRemove = Array.isArray(params.remove) && params.remove.length > 0;
+    const hasAntiPatterns = Array.isArray(params.add_anti_patterns) && params.add_anti_patterns.length > 0;
+
+    if (hasAntiPatterns) {
+      if (hasSet || hasAdd || hasRemove) {
+        throw client.makeError(
+          "QUALIFICATION_QUESTIONS_BAD_ARGS",
+          "`add_anti_patterns` is its own write and cannot be combined with questions/add/remove",
+          "Call once for the questions and once for the buyer profile.",
+          "POST /organizations/{orgId}/ideal_buyer_profile"
+        );
+      }
+      return addAntiPatterns(client, params.add_anti_patterns!);
+    }
 
     if (hasSet && (hasAdd || hasRemove)) {
       throw client.makeError(
@@ -145,8 +244,8 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
     if (!hasSet && !hasAdd && !hasRemove) {
       throw client.makeError(
         "QUALIFICATION_QUESTIONS_NO_CHANGE",
-        "nothing to change — pass `questions`, `add`, or `remove`",
-        "Provide a full `questions` list, or `add`/`remove` entries.",
+        "nothing to change — pass `questions`, `add`, `remove` or `add_anti_patterns`",
+        "Provide a full `questions` list, `add`/`remove` entries, or `add_anti_patterns`.",
         "POST /organizations/{orgId}"
       );
     }

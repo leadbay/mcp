@@ -59,7 +59,8 @@ Returns:
   Say so and offer a starter set.
 - **`ideal_buyer_profile`** — `{summary, key_characteristics, anti_patterns}`
   or null. The questions score against THIS. A rule the user states is often
-  already an `anti_pattern` here.
+  already an `anti_pattern` here. Add one with
+  `leadbay_set_qualification_questions({add_anti_patterns})`.
 - **`targeting_prompt`** — the org's free-text instruction to the AI agent, or
   null. Qualitative rules that no single yes/no can express live here; change
   it with `leadbay_refine_prompt`.
