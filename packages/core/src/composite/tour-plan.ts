@@ -435,7 +435,7 @@ export const tourPlan: Tool<TourPlanParams> = {
       discover_leads: {
         type: "array",
         description:
-          "Fresh Discover leads from the active lens, filtered client-side to match the city, then extended with the ones whose own coordinates put them within `radius_km` of it. The town's own leads come first. Pulls a larger candidate set internally to compensate for the missing server-side geo filter.",
+          "Fresh Discover leads from the active lens, filtered client-side to match the city, then extended with the ones whose own coordinates put them within `radius_km` of it. The town's own leads come first. Each lead forwards pull_leads qualification_summary unchanged, including null when unavailable and negative_answers when present.",
         items: { type: "object" },
       },
       discover_filter_note: {

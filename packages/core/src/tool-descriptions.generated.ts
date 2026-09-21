@@ -4163,23 +4163,20 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-3-col markdown table in the order the tool returns them (the Discover-tab
-order — do NOT re-sort by score) — DO NOT print the numeric
-score. Col 1 = inline-code 10-segment bar (\`▰\` firmographic, \`❖\` AI
-booster cap at the right end of the filled run, \`▱\` empty;
-filled=round(score/10), ai=round(avg_boost/3.3)) + \`<br>\` + linked
-company · location · size. Col 2 = why-fits ≤20 words. Col 3 = linked
-contact + title. Full algorithm + linking rules below.
+3-col markdown table in tool order; never re-sort or print numeric score.
+Col 1 = inline-code \`▰❖▱\` bar + linked company/location/size. Col 2 =
+why-fits ≤20 words plus every \`negative_answers\` concern; only explicit
+customer vetoes exclude. Col 3 = linked contact + title. Full recipe below.
 
 ---
 
 Pull up new leads from the user's last-active lens — the canonical "show me today's prospects" tool.
 
-Leadbay works like an inbox: each time the user logs back in, a fresh batch is delivered, paced by how many leads they've actually acted on recently. Pulling more won't produce more; user outreach/skips/saves does. Leads liked, disliked, noted, with a status or in a campaign are left out. Each returned lead carries a one-line \`qualification_summary\` built from leadbay_ai_agent_responses, plus the rich tags / scores / engagement counters / in-flight flags from the lead summary.
+\`qualification_summary.negative_answers[]\` carries every returned negative \`{question, boost_score, explanation}\`, even with a positive average. \`[]\` means none returned negative—not complete or approved; \`null\` means unavailable, never a pass. Show negatives beside positives. A stated customer veto excludes; otherwise flag the unresolved concern without inferring approval or re-researching it.
 
-Roughly the top 10 of the batch come pre-qualified (populated qualification_summary + ai_agent_lead_score); leads below the top ~10 carry only the basic firmographic \`score\` — not worse, just resource-saved by the system. Call leadbay_bulk_qualify_leads to deepen any of them on demand — a healthy daily rhythm is to bulk-qualify the rows without ❖ caps so tomorrow's top-10 list is richer.
+Roughly the top 10 arrive pre-qualified (\`qualification_summary\` + \`ai_agent_lead_score\`). Lower rows carry only firmographic \`score\`; they are not necessarily worse. Use leadbay_bulk_qualify_leads to deepen rows without ❖ caps.
 
-Every lead carries \`recommended_contact\` (with \`linkedin_page\` when the backend has it), \`phone_numbers\` (when available), \`split_ai_summary.{worth_pursuing, approach_angle, next_step}\` (when AI-qualified), and \`social_urls\` per-platform (linkedin, instagram, tiktok, facebook, twitter, crunchbase). Use them — they're already in the response, you don't need a second call.
+Results also include \`recommended_contact\`, available phones, \`split_ai_summary\`, and per-platform \`social_urls\`; use them without another call.
 
 WHEN TO USE: as the agent's default opening move when the user wants to see leads, or as a daily check-in for what's new today.
 
@@ -4220,7 +4217,7 @@ bar = "▰" × normal_filled
     + "▱" × (10 − total_filled)
 \`\`\`
 
-If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is null, set \`ai_segments = 0\` (no ❖). Always wrap the bar in backticks. Print the legend \`\` \`▰\` firmographic · \`❖\` AI booster cap · \`▱\` unfilled \`\` once below the table.
+If \`qualification_summary\` is null, \`answered == 0\`, or \`avg_qualification_boost\` is null, set \`ai_segments = 0\` (no ❖); null means unavailable, not passed. Always wrap the bar in backticks. Print the legend \`\` \`▰\` firmographic · \`❖\` AI booster cap · \`▱\` unfilled \`\` once below the table.
 
 
 **Column 1 — Company**
@@ -4234,10 +4231,10 @@ If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is nul
 
 **Column 2 — Why it fits**
 
-- One sentence, ≤ 20 words.
-- Synthesize from (in priority order, whichever is present) the lead's \`short_description\`, top 2 \`tags[].display_name\`, and the gist of \`qualification_summary.best_response_excerpt\`. The trim payload does NOT carry the longer \`description\` field — for that, agent must call \`leadbay_research_lead_by_id\` or \`leadbay_research_lead_by_name_fuzzy\`.
+- First line: one positive sentence, ≤ 20 words. Synthesize from (in priority order, whichever is present) the lead's \`short_description\`, top 2 \`tags[].display_name\`, and, only when \`qualification_summary\` is non-null, the gist of \`best_response_excerpt\`. The trim payload does NOT carry the longer \`description\` field — for that, agent must call \`leadbay_research_lead_by_id\` or \`leadbay_research_lead_by_name_fuzzy\`.
+- When \`qualification_summary\` is non-null, add \`<br>⚠ \` for EACH \`negative_answers[]\`, preserving its question and score even if its explanation is null or truncated. Keep it visible even with a positive average. An explicit customer veto excludes; otherwise keep it unresolved—neither auto-exclude nor approve it. \`negative_answers:[]\` means no returned answer was negative, not complete or approved. A null summary is unavailable, not passed. Do not re-research these verdicts.
 - Do NOT append \`(boost N)\` — the ❖ cap in column 1 already carries that signal.
-- No bullet lists, no line breaks inside the cell.
+- No bullet lists; use only the specified \`<br>\` between positive and negative evidence.
 
 **Column 3 — Contact**
 
@@ -4295,7 +4292,7 @@ Pick 2–3 items below based on what was actually observed in the response. The 
 | ≥ 1 lead returned — offer FIRST                            | "Build an interactive lead triage board"                     | leadbay_artifact_kit → its CANONICAL triage-board recipe, data in hand (do NOT re-call pull_leads) |
 | ≥ 1 lead returned (any batch)                              | "Enrich top leads" (reveal decision-maker email/phone on the top leads) | leadbay_enrich_titles({ leadIds: shown leads[].id, lensId }) — scope to the leads JUST shown; OMIT \`titles\` so it runs the no-spend discovery preview. Confirm titles + channels, then re-call with titles + confirm to launch |
 | \`has_more == true\`                                         | "Pull the next page (page N+1 of M)"                         | leadbay_pull_leads(page = current + 1, lensId = pinned)|
-| ≥ 3 rows have \`qualification_summary.answered == 0\`        | "Deepen AI qualification on the rows without ❖ caps"         | leadbay_bulk_qualify_leads(leadIds=[…])                |
+| ≥ 3 rows have non-null \`qualification_summary\` with \`answered == 0\` | "Deepen AI qualification on the rows without ❖ caps" | leadbay_bulk_qualify_leads(leadIds=[…]) |
 | User points at a single row                                | "Research [Company] in depth"                                | leadbay_research_lead_by_id(leadId)                    |
 | User only has a name (no leadId in context)                | "Look up [Company] by name"                                  | leadbay_research_lead_by_name_fuzzy(companyName)       |
 | Top row has phone AND email                                | "Prepare an outreach for [Contact] — call + email"           | leadbay_prepare_outreach(leadId)                       |
@@ -6294,13 +6291,10 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-Present the leads grouped by mode (★ Customer / ★ Qualified / ✦ New),
-then ALWAYS offer to plot them on a map ("Want me to put these on a
-map?"). On yes (or if the user asked for a map up front), render it:
-pass \`map_locations\` verbatim into \`places_map_display_v0\`, or on a
-host without the widget emit one \`### Company · City, State\` place-card
-block per lead so the host's address carousel renders. Never a flat
-prose paragraph. Full recipe below.
+Group by mode (★ Customer / ★ Qualified / ✦ New); show every Discover
+\`negative_answers\` concern and apply only explicit vetoes. ALWAYS offer a
+map. On yes, pass \`map_locations\` to \`places_map_display_v0\`; without it,
+emit one \`### Company · City, State\` place card per lead. Never flat prose.
 
 ---
 
@@ -6348,7 +6342,7 @@ same instruction in its \`hint\`.
 
 ## RENDER — present the leads, then OFFER the map (render on yes)
 
-First present the leads grouped by mode as a tight per-lead list (badge + company + city + best contact). Then **ALWAYS offer the map** as the next step — "Want me to put these on a map?" — and render it only when the user accepts (or asked for a map in their original message). The map is mandatory to *offer* on every tour; it is *rendered* on acceptance.
+First present the leads grouped by mode as a tight per-lead list (badge + company + city + best contact). For Discover leads with a non-null \`qualification_summary\`, show every \`negative_answers[]\` verdict beside the positive case; \`[]\` means no returned answer was negative, not complete or approved. Exclude a stop only when the user's stated criteria make that question a veto; otherwise leave the concern unresolved rather than treating the stop as approved. A null summary means qualification was unavailable, not that the lead passed. Then **ALWAYS offer the map** as the next step — "Want me to put these on a map?" — and render it only when the user accepts (or asked for a map in their original message). The map is mandatory to *offer* on every tour; it is *rendered* on acceptance.
 
 When rendering, use the **two-step host flow** — this is what produces a real interactive street map instead of a schematic neighborhood scatter:
 

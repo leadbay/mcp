@@ -41,13 +41,10 @@ routing:
       - "What's new in today's batch?"
       - "Tell me about Acme Corp."
 rendering_hint: |
-  Present the leads grouped by mode (★ Customer / ★ Qualified / ✦ New),
-  then ALWAYS offer to plot them on a map ("Want me to put these on a
-  map?"). On yes (or if the user asked for a map up front), render it:
-  pass `map_locations` verbatim into `places_map_display_v0`, or on a
-  host without the widget emit one `### Company · City, State` place-card
-  block per lead so the host's address carousel renders. Never a flat
-  prose paragraph. Full recipe below.
+  Group by mode (★ Customer / ★ Qualified / ✦ New); show every Discover
+  `negative_answers` concern and apply only explicit vetoes. ALWAYS offer a
+  map. On yes, pass `map_locations` to `places_map_display_v0`; without it,
+  emit one `### Company · City, State` place card per lead. Never flat prose.
 annotations:
   readOnlyHint: true
   destructiveHint: false
@@ -80,7 +77,7 @@ same instruction in its `hint`.
 
 ## RENDER — present the leads, then OFFER the map (render on yes)
 
-First present the leads grouped by mode as a tight per-lead list (badge + company + city + best contact). Then **ALWAYS offer the map** as the next step — "Want me to put these on a map?" — and render it only when the user accepts (or asked for a map in their original message). The map is mandatory to *offer* on every tour; it is *rendered* on acceptance.
+First present the leads grouped by mode as a tight per-lead list (badge + company + city + best contact). For Discover leads with a non-null `qualification_summary`, show every `negative_answers[]` verdict beside the positive case; `[]` means no returned answer was negative, not complete or approved. Exclude a stop only when the user's stated criteria make that question a veto; otherwise leave the concern unresolved rather than treating the stop as approved. A null summary means qualification was unavailable, not that the lead passed. Then **ALWAYS offer the map** as the next step — "Want me to put these on a map?" — and render it only when the user accepts (or asked for a map in their original message). The map is mandatory to *offer* on every tour; it is *rendered* on acceptance.
 
 When rendering, use the **two-step host flow** — this is what produces a real interactive street map instead of a schematic neighborhood scatter:
 

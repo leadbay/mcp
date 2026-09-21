@@ -7,7 +7,8 @@ short_description: |
   Render as a 3-col markdown table in the order the tool returns them (the
   Discover-tab order — do NOT re-sort by score); col 1 is the inline-code
   10-segment `▰❖▱` bar + linked company + location + size; col 2 is
-  why-fits ≤20 words; col 3 is linked contact + title.
+  why-fits ≤20 words plus every negative qualification answer; col 3 is
+  linked contact + title.
 routing:
   triggers:
     - "show me leads"
@@ -61,13 +62,10 @@ routing:
       - "Who should I get back to today?"
       - "Leads I should contact today."
 rendering_hint: |
-  3-col markdown table in the order the tool returns them (the Discover-tab
-  order — do NOT re-sort by score) — DO NOT print the numeric
-  score. Col 1 = inline-code 10-segment bar (`▰` firmographic, `❖` AI
-  booster cap at the right end of the filled run, `▱` empty;
-  filled=round(score/10), ai=round(avg_boost/3.3)) + `<br>` + linked
-  company · location · size. Col 2 = why-fits ≤20 words. Col 3 = linked
-  contact + title. Full algorithm + linking rules below.
+  3-col markdown table in tool order; never re-sort or print numeric score.
+  Col 1 = inline-code `▰❖▱` bar + linked company/location/size. Col 2 =
+  why-fits ≤20 words plus every `negative_answers` concern; only explicit
+  customer vetoes exclude. Col 3 = linked contact + title. Full recipe below.
 next_steps: pull-leads
 annotations:
   readOnlyHint: true
@@ -77,11 +75,11 @@ annotations:
 ---
 Pull up new leads from the user's last-active lens — the canonical "show me today's prospects" tool.
 
-Leadbay works like an inbox: each time the user logs back in, a fresh batch is delivered, paced by how many leads they've actually acted on recently. Pulling more won't produce more; user outreach/skips/saves does. Leads liked, disliked, noted, with a status or in a campaign are left out. Each returned lead carries a one-line `qualification_summary` built from leadbay_ai_agent_responses, plus the rich tags / scores / engagement counters / in-flight flags from the lead summary.
+`qualification_summary.negative_answers[]` carries every returned negative `{question, boost_score, explanation}`, even with a positive average. `[]` means none returned negative—not complete or approved; `null` means unavailable, never a pass. Show negatives beside positives. A stated customer veto excludes; otherwise flag the unresolved concern without inferring approval or re-researching it.
 
-Roughly the top 10 of the batch come pre-qualified (populated qualification_summary + ai_agent_lead_score); leads below the top ~10 carry only the basic firmographic `score` — not worse, just resource-saved by the system. Call leadbay_bulk_qualify_leads to deepen any of them on demand — a healthy daily rhythm is to bulk-qualify the rows without ❖ caps so tomorrow's top-10 list is richer.
+Roughly the top 10 arrive pre-qualified (`qualification_summary` + `ai_agent_lead_score`). Lower rows carry only firmographic `score`; they are not necessarily worse. Use leadbay_bulk_qualify_leads to deepen rows without ❖ caps.
 
-Every lead carries `recommended_contact` (with `linkedin_page` when the backend has it), `phone_numbers` (when available), `split_ai_summary.{worth_pursuing, approach_angle, next_step}` (when AI-qualified), and `social_urls` per-platform (linkedin, instagram, tiktok, facebook, twitter, crunchbase). Use them — they're already in the response, you don't need a second call.
+Results also include `recommended_contact`, available phones, `split_ai_summary`, and per-platform `social_urls`; use them without another call.
 
 {{include:headers/tool-when-to-use}} as the agent's default opening move when the user wants to see leads, or as a daily check-in for what's new today.
 

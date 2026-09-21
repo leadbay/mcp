@@ -47,6 +47,25 @@ interface QualificationSummary {
    */
   avg_qualification_boost: number | null;
   best_response_excerpt: string | null;
+  /**
+   * Every returned negative per-question verdict. An empty array means the
+   * read succeeded and none of the returned answers were negative; it does not
+   * prove qualification is complete or that the lead is approved. A null
+   * qualification_summary means the answers could not be read.
+   */
+  negative_answers: Array<{
+    question: string;
+    boost_score: number;
+    explanation: string | null;
+  }>;
+}
+
+const QUALIFICATION_EXCERPT_MAX_CHARS = 200;
+
+function boundedExplanation(value: string | null | undefined): string | null {
+  if (typeof value !== "string" || value.length === 0) return null;
+  if (value.length <= QUALIFICATION_EXCERPT_MAX_CHARS) return value;
+  return value.slice(0, QUALIFICATION_EXCERPT_MAX_CHARS - 3) + "...";
 }
 
 function summarise(responses: AiAgentResponse[]): QualificationSummary {
@@ -67,12 +86,22 @@ function summarise(responses: AiAgentResponse[]): QualificationSummary {
     .filter((r) => r.response && r.score != null)
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
 
-  let excerpt = best?.response ?? null;
-  if (excerpt && excerpt.length > 200) {
-    excerpt = excerpt.slice(0, 197) + "...";
-  }
+  const excerpt = boundedExplanation(best?.response ?? null);
+  const negativeAnswers = responses
+    .filter((r) => r.score != null && r.score < 0)
+    .map((r) => ({
+      question: r.question,
+      boost_score: r.score as number,
+      explanation: boundedExplanation(r.response),
+    }));
 
-  return { answered, total, avg_qualification_boost: avg, best_response_excerpt: excerpt };
+  return {
+    answered,
+    total,
+    avg_qualification_boost: avg,
+    best_response_excerpt: excerpt,
+    negative_answers: negativeAnswers,
+  };
 }
 
 /**
@@ -262,7 +291,46 @@ export const pullLeads: Tool<PullLeadsParams> = {
         type: "array",
         description:
           "The page of leads. In default mode (verbose:false) each lead is the trimmed agent-friendly shape; in verbose:true the full LeadPayload.",
-        items: { type: "object" },
+        items: {
+          type: "object",
+          properties: {
+            qualification_summary: {
+              type: ["object", "null"],
+              description:
+                "Qualification digest. null means the answers could not be read. negative_answers:[] means no returned answer had a negative boost; it does not prove qualification is complete or the lead is approved.",
+              properties: {
+                answered: { type: "number" },
+                total: { type: "number" },
+                avg_qualification_boost: { type: ["number", "null"] },
+                best_response_excerpt: { type: ["string", "null"] },
+                negative_answers: {
+                  type: "array",
+                  description:
+                    "Every returned answer with a negative boost, in backend order. Each preserves {question, boost_score}; explanation is null when missing and otherwise capped at 200 characters.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      question: { type: "string" },
+                      boost_score: { type: "number" },
+                      explanation: { type: ["string", "null"] },
+                    },
+                    required: ["question", "boost_score", "explanation"],
+                    additionalProperties: false,
+                  },
+                },
+              },
+              required: [
+                "answered",
+                "total",
+                "avg_qualification_boost",
+                "best_response_excerpt",
+                "negative_answers",
+              ],
+              additionalProperties: false,
+            },
+          },
+          additionalProperties: true,
+        },
       },
       pagination: {
         type: "object",
@@ -406,15 +474,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
           ctx?.logger?.warn?.(
             `pull_leads: ai_agent_responses failed for lead ${lead.id}: ${err?.message ?? err?.code ?? err}`
           );
-          return {
-            leadId: lead.id,
-            summary: {
-              answered: 0,
-              total: 0,
-              avg_qualification_boost: null,
-              best_response_excerpt: null,
-            },
-          };
+          return { leadId: lead.id, summary: null };
         }
       })
     );

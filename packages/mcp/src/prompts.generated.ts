@@ -136,7 +136,7 @@ bar = "▰" × normal_filled
     + "▱" × (10 − total_filled)
 \`\`\`
 
-If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is null, set \`ai_segments = 0\` (no ❖). Always wrap the bar in backticks. Print the legend \`\` \`▰\` firmographic · \`❖\` AI booster cap · \`▱\` unfilled \`\` once below the table.
+If \`qualification_summary\` is null, \`answered == 0\`, or \`avg_qualification_boost\` is null, set \`ai_segments = 0\` (no ❖); null means unavailable, not passed. Always wrap the bar in backticks. Print the legend \`\` \`▰\` firmographic · \`❖\` AI booster cap · \`▱\` unfilled \`\` once below the table.
 
 
 **Column 1 — Company**
@@ -150,10 +150,10 @@ If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is nul
 
 **Column 2 — Why it fits**
 
-- One sentence, ≤ 20 words.
-- Synthesize from (in priority order, whichever is present) the lead's \`short_description\`, top 2 \`tags[].display_name\`, and the gist of \`qualification_summary.best_response_excerpt\`. The trim payload does NOT carry the longer \`description\` field — for that, agent must call \`leadbay_research_lead_by_id\` or \`leadbay_research_lead_by_name_fuzzy\`.
+- First line: one positive sentence, ≤ 20 words. Synthesize from (in priority order, whichever is present) the lead's \`short_description\`, top 2 \`tags[].display_name\`, and, only when \`qualification_summary\` is non-null, the gist of \`best_response_excerpt\`. The trim payload does NOT carry the longer \`description\` field — for that, agent must call \`leadbay_research_lead_by_id\` or \`leadbay_research_lead_by_name_fuzzy\`.
+- When \`qualification_summary\` is non-null, add \`<br>⚠ \` for EACH \`negative_answers[]\`, preserving its question and score even if its explanation is null or truncated. Keep it visible even with a positive average. An explicit customer veto excludes; otherwise keep it unresolved—neither auto-exclude nor approve it. \`negative_answers:[]\` means no returned answer was negative, not complete or approved. A null summary is unavailable, not passed. Do not re-research these verdicts.
 - Do NOT append \`(boost N)\` — the ❖ cap in column 1 already carries that signal.
-- No bullet lists, no line breaks inside the cell.
+- No bullet lists; use only the specified \`<br>\` between positive and negative evidence.
 
 **Column 3 — Contact**
 
@@ -186,7 +186,7 @@ The target is **{{arg:count_or_default}}** buyer-ready in-ICP leads, so keep the
 
 # PHASE 2 — PICK AN ICP CANDIDATE POOL
 
-A campaign is only as good as the leads in it — AND only as good as whether each lead has a reachable BUYER (see Phase 3). So build a **generous candidate pool**, not the final cohort: aim for ~1.5× the target ({{arg:count_or_default}}) of in-ICP leads (highest \`ai_agent_lead_score\`), so Phase 3 can drop any lead that turns out to have no buyer contact and still reach the target. If the pool is short, top up via \`leadbay_bulk_qualify_leads\` / \`leadbay_extend_lens\` and loop back — keep going until the pool is deep enough to yield the target after coverage filtering.
+A campaign is only as good as the leads in it — AND only as good as whether each lead has a reachable BUYER (see Phase 3). So build a **generous candidate pool**, not the final cohort: aim for ~1.5× the target ({{arg:count_or_default}}) of in-ICP leads (highest \`ai_agent_lead_score\`), so Phase 3 can drop any lead that turns out to have no buyer contact and still reach the target. When a candidate's \`qualification_summary\` is non-null, inspect every \`negative_answers[]\`: when one answers a criterion the user explicitly made a veto, exclude that lead without a second research call and keep filling; otherwise do not auto-exclude or approve it—carry the unresolved concern visibly and judge it with the remaining evidence. \`[]\` means no returned answer was negative, not complete or approved; null is unavailable qualification, not a pass. If the pool is short, top up via \`leadbay_bulk_qualify_leads\` / \`leadbay_extend_lens\` and loop back — keep going until the pool is deep enough to yield the target after coverage filtering.
 
 If I named specific leads, seed with those (still apply the Phase 3 buyer-coverage check). Otherwise pick the top-scoring in-ICP leads yourself — do NOT ask me to choose. Capture the candidate \`leadIds\`. Do NOT create the campaign yet — the final cohort is locked after Phase 3's coverage check.
 
@@ -385,7 +385,7 @@ bar = "▰" × normal_filled
     + "▱" × (10 − total_filled)
 \`\`\`
 
-If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is null, set \`ai_segments = 0\` (no ❖). Always wrap the bar in backticks. Print the legend \`\` \`▰\` firmographic · \`❖\` AI booster cap · \`▱\` unfilled \`\` once below the table.
+If \`qualification_summary\` is null, \`answered == 0\`, or \`avg_qualification_boost\` is null, set \`ai_segments = 0\` (no ❖); null means unavailable, not passed. Always wrap the bar in backticks. Print the legend \`\` \`▰\` firmographic · \`❖\` AI booster cap · \`▱\` unfilled \`\` once below the table.
 
 
 **Column 1 — Company**
@@ -399,10 +399,10 @@ If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is nul
 
 **Column 2 — Why it fits**
 
-- One sentence, ≤ 20 words.
-- Synthesize from (in priority order, whichever is present) the lead's \`short_description\`, top 2 \`tags[].display_name\`, and the gist of \`qualification_summary.best_response_excerpt\`. The trim payload does NOT carry the longer \`description\` field — for that, agent must call \`leadbay_research_lead_by_id\` or \`leadbay_research_lead_by_name_fuzzy\`.
+- First line: one positive sentence, ≤ 20 words. Synthesize from (in priority order, whichever is present) the lead's \`short_description\`, top 2 \`tags[].display_name\`, and, only when \`qualification_summary\` is non-null, the gist of \`best_response_excerpt\`. The trim payload does NOT carry the longer \`description\` field — for that, agent must call \`leadbay_research_lead_by_id\` or \`leadbay_research_lead_by_name_fuzzy\`.
+- When \`qualification_summary\` is non-null, add \`<br>⚠ \` for EACH \`negative_answers[]\`, preserving its question and score even if its explanation is null or truncated. Keep it visible even with a positive average. An explicit customer veto excludes; otherwise keep it unresolved—neither auto-exclude nor approve it. \`negative_answers:[]\` means no returned answer was negative, not complete or approved. A null summary is unavailable, not passed. Do not re-research these verdicts.
 - Do NOT append \`(boost N)\` — the ❖ cap in column 1 already carries that signal.
-- No bullet lists, no line breaks inside the cell.
+- No bullet lists; use only the specified \`<br>\` between positive and negative evidence.
 
 **Column 3 — Contact**
 
@@ -431,7 +431,7 @@ When the response carries \`social_urls\` (the post-fix multi-platform URL block
 
 
 
-ABOVE the table, add a 2–4 sentence "Today's nudges" paragraph for the 3 most-promising rows. The nudges speak to urgency / opportunity / freshness — what makes acting on these RIGHT NOW the right call. Do NOT repeat the "why it fits" column from the table; the nudges should add fresh framing the table doesn't carry (e.g., recent news from the \`qualification_summary\` excerpt, a window closing, a competitor activity the user mentioned earlier in the session). One sentence per nudge, salesperson voice, not coachspeak.
+ABOVE the table, add a 2–4 sentence "Today's nudges" paragraph for the 3 most-promising rows. The nudges speak to urgency / opportunity / freshness — what makes acting on these RIGHT NOW the right call. Do NOT repeat the "why it fits" column from the table; the nudges should add fresh framing the table doesn't carry (e.g., recent news from a non-null \`qualification_summary\`, a window closing, a competitor activity the user mentioned earlier in the session). Never turn a \`negative_answers\` entry into a positive nudge. If the user's stated criteria make that question a veto, leave the lead out of the shortlist and name why; otherwise do not auto-exclude or approve it—show the unresolved concern and rank it using the remaining evidence. A null summary is unavailable, not a pass. One sentence per nudge, salesperson voice, not coachspeak.
 
 If the batch returns fewer than 10 qualified leads, top it up: call \`leadbay_bulk_qualify_leads\` with \`lensId:<captured>\`, \`count:<1.5x deficit, capped at 25>\`, and **\`wait_for_completion:false\`**. Capture \`notification_id\` from the response and poll \`leadbay_qualify_status\` every ~10s until \`status:'done'\`. Then re-pull with the same \`lensId\` to pick up the newly qualified leads. **Never re-pull without \`lensId\` — you will lose your batch to a lens shift.** (The \`leadbay_qualify_top_n\` slash-prompt wraps this same tool with a friendlier surface for users; agents should call the underlying tool directly here.)
 
@@ -484,7 +484,7 @@ Pick 2–3 items below based on what was actually observed in the response. The 
 | ≥ 1 lead returned — offer FIRST                            | "Build an interactive lead triage board"                     | leadbay_artifact_kit → its CANONICAL triage-board recipe, data in hand (do NOT re-call pull_leads) |
 | ≥ 1 lead returned (any batch)                              | "Enrich top leads" (reveal decision-maker email/phone on the top leads) | leadbay_enrich_titles({ leadIds: shown leads[].id, lensId }) — scope to the leads JUST shown; OMIT \`titles\` so it runs the no-spend discovery preview. Confirm titles + channels, then re-call with titles + confirm to launch |
 | \`has_more == true\`                                         | "Pull the next page (page N+1 of M)"                         | leadbay_pull_leads(page = current + 1, lensId = pinned)|
-| ≥ 3 rows have \`qualification_summary.answered == 0\`        | "Deepen AI qualification on the rows without ❖ caps"         | leadbay_bulk_qualify_leads(leadIds=[…])                |
+| ≥ 3 rows have non-null \`qualification_summary\` with \`answered == 0\` | "Deepen AI qualification on the rows without ❖ caps" | leadbay_bulk_qualify_leads(leadIds=[…]) |
 | User points at a single row                                | "Research [Company] in depth"                                | leadbay_research_lead_by_id(leadId)                    |
 | User only has a name (no leadId in context)                | "Look up [Company] by name"                                  | leadbay_research_lead_by_name_fuzzy(companyName)       |
 | Top row has phone AND email                                | "Prepare an outreach for [Contact] — call + email"           | leadbay_prepare_outreach(leadId)                       |
@@ -1231,7 +1231,7 @@ bar = "▰" × normal_filled
     + "▱" × (10 − total_filled)
 \`\`\`
 
-If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is null, set \`ai_segments = 0\` (no ❖). Always wrap the bar in backticks. Print the legend \`\` \`▰\` firmographic · \`❖\` AI booster cap · \`▱\` unfilled \`\` once below the table.
+If \`qualification_summary\` is null, \`answered == 0\`, or \`avg_qualification_boost\` is null, set \`ai_segments = 0\` (no ❖); null means unavailable, not passed. Always wrap the bar in backticks. Print the legend \`\` \`▰\` firmographic · \`❖\` AI booster cap · \`▱\` unfilled \`\` once below the table.
 
 
 **Column 1 — Company**
@@ -1245,10 +1245,10 @@ If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is nul
 
 **Column 2 — Why it fits**
 
-- One sentence, ≤ 20 words.
-- Synthesize from (in priority order, whichever is present) the lead's \`short_description\`, top 2 \`tags[].display_name\`, and the gist of \`qualification_summary.best_response_excerpt\`. The trim payload does NOT carry the longer \`description\` field — for that, agent must call \`leadbay_research_lead_by_id\` or \`leadbay_research_lead_by_name_fuzzy\`.
+- First line: one positive sentence, ≤ 20 words. Synthesize from (in priority order, whichever is present) the lead's \`short_description\`, top 2 \`tags[].display_name\`, and, only when \`qualification_summary\` is non-null, the gist of \`best_response_excerpt\`. The trim payload does NOT carry the longer \`description\` field — for that, agent must call \`leadbay_research_lead_by_id\` or \`leadbay_research_lead_by_name_fuzzy\`.
+- When \`qualification_summary\` is non-null, add \`<br>⚠ \` for EACH \`negative_answers[]\`, preserving its question and score even if its explanation is null or truncated. Keep it visible even with a positive average. An explicit customer veto excludes; otherwise keep it unresolved—neither auto-exclude nor approve it. \`negative_answers:[]\` means no returned answer was negative, not complete or approved. A null summary is unavailable, not passed. Do not re-research these verdicts.
 - Do NOT append \`(boost N)\` — the ❖ cap in column 1 already carries that signal.
-- No bullet lists, no line breaks inside the cell.
+- No bullet lists; use only the specified \`<br>\` between positive and negative evidence.
 
 **Column 3 — Contact**
 
@@ -2149,7 +2149,7 @@ When the user mentions a CSV / list / their CRM, use the **\`leadbay_import_file
 
 ## AI scoring on the daily batch
 
-Roughly the **top 10** of every \`leadbay_pull_leads\` response carry full AI qualification (\`qualification_summary.answered > 0\`, \`ai_agent_lead_score\`, ❖ caps in the rendered bar). Leads below the top ~10 are NOT worse — the system is saving resources. A healthy daily rhythm: bulk-qualify the rows WITHOUT ❖ caps so tomorrow's top-10 is richer. Use \`leadbay_bulk_qualify_leads([leadIds])\` for this; default to \`wait_for_completion:false\` for any count > 5.
+Roughly the **top 10** of every \`leadbay_pull_leads\` response are candidates for AI qualification. Treat them as qualified only when \`qualification_summary\` is non-null with \`answered > 0\`; null means the read was unavailable, not a pass. Leads below the top ~10 are NOT worse — the system is saving resources. A healthy daily rhythm: bulk-qualify rows with a non-null zero-answer summary and no ❖ caps so tomorrow's top-10 is richer. Use \`leadbay_bulk_qualify_leads([leadIds])\` for this; default to \`wait_for_completion:false\` for any count > 5.
 
 ## Lens pinning
 
@@ -2277,7 +2277,7 @@ bar = "▰" × normal_filled
     + "▱" × (10 − total_filled)
 \`\`\`
 
-If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is null, set \`ai_segments = 0\` (no ❖). Always wrap the bar in backticks. Print the legend \`\` \`▰\` firmographic · \`❖\` AI booster cap · \`▱\` unfilled \`\` once below the table.
+If \`qualification_summary\` is null, \`answered == 0\`, or \`avg_qualification_boost\` is null, set \`ai_segments = 0\` (no ❖); null means unavailable, not passed. Always wrap the bar in backticks. Print the legend \`\` \`▰\` firmographic · \`❖\` AI booster cap · \`▱\` unfilled \`\` once below the table.
 
 
 **Column 1 — Company**
@@ -2291,10 +2291,10 @@ If \`qualification_summary.answered == 0\` or \`avg_qualification_boost\` is nul
 
 **Column 2 — Why it fits**
 
-- One sentence, ≤ 20 words.
-- Synthesize from (in priority order, whichever is present) the lead's \`short_description\`, top 2 \`tags[].display_name\`, and the gist of \`qualification_summary.best_response_excerpt\`. The trim payload does NOT carry the longer \`description\` field — for that, agent must call \`leadbay_research_lead_by_id\` or \`leadbay_research_lead_by_name_fuzzy\`.
+- First line: one positive sentence, ≤ 20 words. Synthesize from (in priority order, whichever is present) the lead's \`short_description\`, top 2 \`tags[].display_name\`, and, only when \`qualification_summary\` is non-null, the gist of \`best_response_excerpt\`. The trim payload does NOT carry the longer \`description\` field — for that, agent must call \`leadbay_research_lead_by_id\` or \`leadbay_research_lead_by_name_fuzzy\`.
+- When \`qualification_summary\` is non-null, add \`<br>⚠ \` for EACH \`negative_answers[]\`, preserving its question and score even if its explanation is null or truncated. Keep it visible even with a positive average. An explicit customer veto excludes; otherwise keep it unresolved—neither auto-exclude nor approve it. \`negative_answers:[]\` means no returned answer was negative, not complete or approved. A null summary is unavailable, not passed. Do not re-research these verdicts.
 - Do NOT append \`(boost N)\` — the ❖ cap in column 1 already carries that signal.
-- No bullet lists, no line breaks inside the cell.
+- No bullet lists; use only the specified \`<br>\` between positive and negative evidence.
 
 **Column 3 — Contact**
 

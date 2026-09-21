@@ -181,7 +181,7 @@ When the user mentions a CSV / list / their CRM, use the **`leadbay_import_file`
 
 ## AI scoring on the daily batch
 
-Roughly the **top 10** of every `leadbay_pull_leads` response carry full AI qualification (`qualification_summary.answered > 0`, `ai_agent_lead_score`, ❖ caps in the rendered bar). Leads below the top ~10 are NOT worse — the system is saving resources. A healthy daily rhythm: bulk-qualify the rows WITHOUT ❖ caps so tomorrow's top-10 is richer. Use `leadbay_bulk_qualify_leads([leadIds])` for this; default to `wait_for_completion:false` for any count > 5.
+Roughly the **top 10** of every `leadbay_pull_leads` response are candidates for AI qualification. Treat them as qualified only when `qualification_summary` is non-null with `answered > 0`; null means the read was unavailable, not a pass. Leads below the top ~10 are NOT worse — the system is saving resources. A healthy daily rhythm: bulk-qualify rows with a non-null zero-answer summary and no ❖ caps so tomorrow's top-10 is richer. Use `leadbay_bulk_qualify_leads([leadIds])` for this; default to `wait_for_completion:false` for any count > 5.
 
 ## Lens pinning
 
