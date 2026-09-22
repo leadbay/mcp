@@ -166,7 +166,7 @@ interface MonitorResponse {
  * `pull_followups` is also the only tool that can filter by sector / location,
  * which is why the segment offer lives here rather than on `pull_leads`.
  */
-function buildFollowupNextSteps(
+export function buildFollowupNextSteps(
   leadCount: number,
   hasMore: boolean,
   nextPage: number | null,
@@ -206,11 +206,25 @@ function buildFollowupNextSteps(
   // saw the board again. A filter is a reason to FRAME the offer differently,
   // not to withhold it — "this slice against your whole book" is exactly the
   // question a filtered view provokes.
+  // Names the tool and the helpers for the same reason the call board does.
+  // This one needs it MORE: there is no falling back to a sensible hand-built
+  // version. `lb.portfolioSectors` derives the sector list from the leads the
+  // user actually holds; a hand-written list gets it wrong in both directions
+  // (one real portfolio offered a sector holding 3 leads and omitted the
+  // third-largest at 555). `lb.segmentCount` carries the trusted-echo check
+  // that catches the stateful Monitor filter returning 200 with the PREVIOUS
+  // filter still applied — a plausible number answering a different question.
+  const coverageRecipe =
+    " Call leadbay_artifact_kit and follow its segment-coverage recipe — " +
+    "`lb.portfolioSectors` for the sector list (never hardcode one) and " +
+    "`lb.segmentCount` for each figure (it verifies the echoed filter).";
   options.push({
     label: "Coverage board",
-    description: hasActiveFilter
-      ? "Build a coverage board measuring this filtered slice against the whole book — the filter is server-stored, so measure unfiltered for the denominator."
-      : "Build a coverage board measuring how much of the portfolio sits in each sector or city.",
+    description:
+      (hasActiveFilter
+        ? "Build a coverage board measuring this filtered slice against the whole book — the filter is server-stored, so measure unfiltered for the denominator."
+        : "Build a coverage board measuring how much of the portfolio sits in each sector or city.") +
+      coverageRecipe,
     kind: "build_artifact",
   });
 
