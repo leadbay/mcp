@@ -1114,6 +1114,122 @@ function dislike(leadId: string): Action {
   return new Action({ tool: "leadbay_dislike_lead", args: { lead_id: leadId } });
 }
 
+export interface QualifyOpts {
+  /** One lead, or `leadIds` for the bulk apply across checked rows. A thunk is
+   *  evaluated at run() time, so a live checkbox selection works. */
+  leadId?: string;
+  leadIds?: string[] | (() => string[]);
+  /** The user request this artifact serves — recorded as `_triggered_by`. */
+  ask?: string;
+  /** Whether this lead already carries an AI score. It changes only the WORD
+   *  (`.label`): a scored lead is re-run, an unscored one is run for the first
+   *  time. Pass a thunk when the card repaints after a launch. */
+  scored?: boolean | (() => boolean);
+  confirm?: string;
+}
+
+/** The label a Qualify/Requalify control must carry. "Requalify" is only
+ *  honest once a verdict exists to replace — on an unscored lead it implies a
+ *  previous run that never happened, and the rep reads the empty tag row as a
+ *  failure of THIS button. A lead is scored when the qualifier has produced a
+ *  verdict for it: `ai_agent_lead_score` on a list payload, or a
+ *  `qualification_summary` with `answered > 0`. */
+export function qualifyLabel(lead: unknown): "Qualify" | "Requalify" {
+  const l = (lead ?? {}) as Record<string, any>;
+  const score = l.ai_agent_lead_score;
+  if (typeof score === "number" && score > 0) return "Requalify";
+  const answered = l.qualification_summary?.answered;
+  return typeof answered === "number" && answered > 0 ? "Requalify" : "Qualify";
+}
+
+/** bulk_qualify_leads action — the Qualify / Requalify button every lead card
+ *  carries. Three things it owns so a hand-rolled version cannot get them
+ *  wrong:
+ *
+ *  1. `leadIds` is camelCase. `lead_ids` is silently dropped by the schema,
+ *     and with no ids the tool falls back to the LENS's unqualified wishlist —
+ *     so the button appears to work while qualifying leads the rep never
+ *     selected.
+ *  2. `wait_for_completion: false`, so the click returns on QUEUE rather than
+ *     holding through the poll. `.lastResult` therefore means "launched", not
+ *     "verdict ready" — the card must say so and leave the old tags in place.
+ *     `lb.qualifyStatus` is how you watch it finish.
+ *  3. The launch fans out per lead and resolves 200 with a non-empty `failed[]`
+ *     when some never started, exactly as `set_lead_status` does. Without the
+ *     check the rep gets a green button over leads that were never queued.
+ *     `quota_exceeded` is the same lie at the batch level: already-launched
+ *     leads keep going, further launches stopped. */
+function qualify(opts: QualifyOpts): Action {
+  const ids = (): string[] => {
+    const v = typeof opts.leadIds === "function" ? opts.leadIds() : opts.leadIds;
+    if (Array.isArray(v)) return v;
+    return opts.leadId ? [opts.leadId] : [];
+  };
+  const act = new Action({
+    tool: "leadbay_bulk_qualify_leads",
+    confirm: opts.confirm,
+    args: () => ({
+      leadIds: ids(),
+      wait_for_completion: false,
+      ...(opts.ask ? { _triggered_by: opts.ask } : {}),
+    }),
+    checkResult: (r) => {
+      const res = (r ?? {}) as {
+        failed?: Array<{ lead_id?: string; error?: string }>;
+        quota_exceeded?: boolean;
+        launched_count?: number;
+      };
+      const failed = Array.isArray(res.failed) ? res.failed : [];
+      const total = ids().length;
+      if (failed.length > 0) {
+        // `failed[]` entries carry `error`, not `message` — set_lead_status
+        // uses the other key, and reading the wrong one prints "undefined".
+        const first = failed[0]?.error ?? "launch rejected";
+        return failed.length >= total
+          ? `Qualification did not start: ${first}`
+          : `${failed.length} of ${total} leads did not start: ${first}`;
+      }
+      if (res.quota_exceeded) {
+        const ok = res.launched_count ?? 0;
+        return ok > 0
+          ? `Quota reached — ${ok} of ${total} launched, the rest were not started.`
+          : "Quota reached — no leads were queued.";
+      }
+      return null;
+    },
+  });
+  // The label is a property of the control, not of the write, so it rides here
+  // rather than forcing every card to re-derive it.
+  (act as Action & { label: string }).label =
+    (typeof opts.scored === "function" ? opts.scored() : opts.scored) ? "Requalify" : "Qualify";
+  return act;
+}
+
+/** Watches a launch returned by `lb.qualify`. Feed it the launch result; it
+ *  polls `leadbay_qualify_status` until every lead settles. Without this the
+ *  card can only ever say "queued" — the verdict lands minutes later. */
+function qualifyStatus(
+  launch: { notification_id?: string | null; lead_ids?: string[]; lens_id?: number },
+  ask?: string,
+  pollEvery = 15000,
+): Resource {
+  return new Resource({
+    pollEvery,
+    load: () =>
+      call("leadbay_qualify_status", {
+        ...(launch?.notification_id ? { notification_id: launch.notification_id } : {}),
+        ...(launch?.lead_ids?.length ? { lead_ids: launch.lead_ids } : {}),
+        ...(typeof launch?.lens_id === "number" ? { lens_id: launch.lens_id } : {}),
+        ...(ask ? { _triggered_by: ask } : {}),
+      }),
+    until: (d) => {
+      const r = (d ?? {}) as { still_running?: unknown[]; status?: string };
+      if (Array.isArray(r.still_running)) return r.still_running.length === 0;
+      return r.status != null && r.status !== "running";
+    },
+  });
+}
+
 /** Lazy lead history (notes + activities + engagement) via account_history. */
 function leadHistory(leadId: string, ask: string): Resource {
   return new Resource({
@@ -1777,6 +1893,12 @@ export const lb = {
   note: noteAction,
   like,
   dislike,
+  // Qualify / Requalify — mandatory on every lead card. `qualifyLabel` picks
+  // the word from the lead's own data so a card never offers to "re-run" a
+  // qualification that never ran.
+  qualify,
+  qualifyLabel,
+  qualifyStatus,
   leadStatus,
   setStatus,
   sortOrder,

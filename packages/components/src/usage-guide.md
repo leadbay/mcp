@@ -33,6 +33,9 @@ then on every change — render your own DOM from it.
 | `lb.outreach({leadId, ask, status?, note?})` | action | log a call → `report_outreach` (verification + `_triggered_by` baked in) |
 | `lb.note({leadId, note})` | action | add a note → `add_note` |
 | `lb.like(leadId)` / `lb.dislike(leadId)` | action | taste signal |
+| `lb.qualify({leadId or leadIds, ask, scored?})` | action | the MANDATORY Qualify/Requalify button → `bulk_qualify_leads` (camelCase `leadIds`, queue-not-wait, `failed[]` + quota checked) |
+| `lb.qualifyLabel(lead)` | `"Qualify"` \| `"Requalify"` | which word the button takes, from the lead's own score |
+| `lb.qualifyStatus(launch, ask?)` | resource (polling) | watches a launch to its verdict → `leadbay_qualify_status` |
 | `lb.leadStatus(current?)` | field | a status `<select>` (Wanted/Won/Lost/Unwanted) |
 | `lb.setStatus({leadId or leadIds, status, date?, ask})` | action | write the org CRM status → `set_lead_status` |
 | `lb.leadHistory(leadId, ask)` | resource (lazy) | notes + activities + engagement → `account_history` |
@@ -475,7 +478,9 @@ spacing CSS of your own:
     </div>
     <details class="lb-section"><!-- lazy full profile, see below --></details>
     <div class="lb-card-foot">
-      <button class="lb-btn lb-btn-ai">Requalify</button>
+      <button class="lb-btn lb-btn-ai" data-k="qualify">Requalify</button>
+      <!-- MANDATORY. Text from lb.qualifyLabel(lead): "Qualify" when the lead
+           has no AI score yet, "Requalify" when it has one to replace. -->
       <span class="lb-spacer"></span>
       <a class="lb-link-out">Open in Leadbay</a>
     </div>
@@ -488,7 +493,8 @@ spacing CSS of your own:
 Wire them with `lb.like` / `lb.dislike`, `lb.leadStatus()` +
 `lb.setStatus({leadId, status, ask})`, and `lb.outreach({leadId, ask, status,
 note})` — the note field gated by a `validate` so an empty note cannot log —
-plus the **Requalify** button in `lb-card-foot`, which every card carries.
+plus `lb.qualify` in `lb-card-foot` — the Qualify/Requalify button every card
+MUST carry, labelled by `lb.qualifyLabel(lead)`.
 
 Five rules the structure encodes, each of which a hand-built card gets wrong:
 
@@ -503,13 +509,14 @@ Five rules the structure encodes, each of which a hand-built card gets wrong:
 - **Controls stack and span their section.** A select sizes to its longest
   option and a text input to a UA default, so side by side they come out
   different widths despite identical padding and height.
-- **Every card ships Requalify.** It is not conditional on the lead looking
-  under-qualified: the rep reads "why it fits" and the intent tags, decides the
-  qualifier got this one wrong, and re-runs it — a card that omits the button
-  makes the verdict look final. It is also the one control that ACTS on the
-  line the rep is doubting, which is why it sits in `lb-card-foot` next to
-  Open in Leadbay rather than among the taste and status writes. See the
-  Requalify note below for its arg shape.
+- **Every card ships Qualify/Requalify.** Mandatory, and not conditional on
+  the lead looking under-qualified: the rep reads "why it fits" and the intent
+  tags, decides the qualifier got this one wrong, and re-runs it — a card that
+  omits the button makes the verdict look final. It is also the one control
+  that ACTS on the line the rep is doubting, which is why it sits in
+  `lb-card-foot` next to Open in Leadbay rather than among the taste and
+  status writes. Wire it with `lb.qualify` and label it with
+  `lb.qualifyLabel(lead)`; both are below.
 
 Only the bulk apply keeps a submit button, because it fans out across checked
 rows and takes a `confirm`.
@@ -621,35 +628,51 @@ Never prefetch it for the batch: a 20-lead board would fire 20 requests to fill
 lines the rep may never read. The list payload already carries everything the
 collapsed card shows.
 
-**Requalify** is `leadbay_bulk_qualify_leads` with `leadIds` (camelCase — NOT
-`lead_ids`) and `wait_for_completion: false`, so the button returns as soon as
-the job is queued instead of holding through the poll. Give it
-`class="lb-btn lb-btn-ai"` — purple is the product's AI affordance, and the
-app's own QualifyButton is `variant="ai"`.
-
-Every card carries it, on the batch board and the call sheet alike:
+**Use `lb.qualify` — never hand-roll this action.** It is MANDATORY on every
+lead card, on every board, in every recipe. A card that renders a lead and no
+qualify control is incomplete: the rep can read the qualifier's verdict but
+cannot contest it without leaving the artifact.
 
 ```js
-const requalify = lb.action({
-  tool: "leadbay_bulk_qualify_leads",
-  args: { leadIds: [lead.id], wait_for_completion: false },
-  ask: ASK,
-});
-lb.bindAction(els.requalify, requalify);
-requalify.subscribe((a) => {
-  // The job is QUEUED, not finished — say so, or the rep re-clicks waiting for
-  // a verdict that arrives minutes later in the product.
+const q = lb.qualify({ leadId: lead.id, ask: ASK, scored: lb.qualifyLabel(lead) === "Requalify" });
+els.qualify.textContent = lb.qualifyLabel(lead);     // "Qualify" or "Requalify"
+lb.bindAction(els.qualify, q);
+q.subscribe((a) => {
+  // QUEUED, not finished. Say so and leave the old tags alone — a card that
+  // repaints as though a verdict arrived is lying about work that has not run.
   els.msg.textContent = a.loading ? "Queueing…"
     : a.error ? a.error.message
-    : a.lastResult ? "Requalifying — the new verdict lands in Leadbay shortly." : "";
+    : a.lastResult ? "Qualifying — the verdict lands shortly." : "";
   els.msg.dataset.tone = a.error ? "error" : a.lastResult ? "ok" : "";
+  if (a.lastResult) watch(a.lastResult);             // optional, see below
 });
 ```
 
-Because `wait_for_completion: false` returns on queue, the card must NOT then
-show the old verdict as though it were refreshed. Say the job is running and
-leave the existing tags in place; re-reading them is `lb.leadProfile` on the
-next expand.
+**Which word the button takes is not a style choice.** `lb.qualifyLabel(lead)`
+reads the lead's own data: a lead with an `ai_agent_lead_score`, or a
+`qualification_summary.answered > 0`, has a verdict to replace and gets
+**Requalify**; one without has never been run and gets **Qualify**. Labelling
+an unscored lead "Requalify" implies a previous run that never happened, and
+the rep reads the empty tag row as a failure of the button they just pressed.
+
+**To show the verdict actually landing**, hand the launch result to
+`lb.qualifyStatus` — otherwise the card can only ever say "queued":
+
+```js
+function watch(launch) {
+  const job = lb.qualifyStatus(launch, ASK);          // polls every 15s
+  job.subscribe((j) => {
+    if (j.error) { els.msg.textContent = j.error.message; return; }
+    if (j.done) profile.load();                       // re-read the new tags
+  });
+}
+```
+
+Declare BOTH tools in the artifact's `mcp_tools`:
+`leadbay_bulk_qualify_leads` and `leadbay_qualify_status`.
+
+Give the button `class="lb-btn lb-btn-ai"` — purple is the product's AI
+affordance, and the app's own QualifyButton is `variant="ai"`.
 
 ## Recipe: cold-call sheet (one row per lead)
 
@@ -669,13 +692,10 @@ function wireRow(lead, els) {
   lb.bindAction(els.log,  lb.outreach({ leadId: lead.id, ask: ASK, status, note }));
   lb.bindAction(els.like, lb.like(lead.id));
 
-  // Requalify rides every row here too — a rep on the phone is exactly who
-  // discovers the qualifier was wrong. Same arg shape as the board's.
-  lb.bindAction(els.requalify, lb.action({
-    tool: "leadbay_bulk_qualify_leads",
-    args: { leadIds: [lead.id], wait_for_completion: false },
-    ask: ASK,
-  }));
+  // MANDATORY here too — a rep on the phone is exactly who discovers the
+  // qualifier was wrong. The label comes from the lead, never hardcoded.
+  els.qualify.textContent = lb.qualifyLabel(lead);
+  lb.bindAction(els.qualify, lb.qualify({ leadId: lead.id, ask: ASK }));
 
   const history = lb.leadHistory(lead.id, ASK);          // lazy
   history.subscribe((h) => renderHistory(els.history, h));
