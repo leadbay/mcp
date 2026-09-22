@@ -407,6 +407,23 @@ something specific.
 Build it from the data ALREADY IN HAND — never re-call the tool that produced
 the batch just to populate the board.
 
+**The board pins the light theme.** Set it before `lb.styles()`, as the first
+thing the artifact does:
+
+```js
+document.documentElement.setAttribute("data-lb-theme", "light");
+lb.styles();
+```
+
+Every dark rule in the skin is guarded by `:not([data-lb-theme=light])`, so the
+one attribute disables all of them — no token overrides, no specificity fight,
+and `lb.styles()` still declares `color-scheme:light` so native select popups
+follow. A rep works a board beside the product's own light UI and reads the
+cards as the same surface; a board that flips with the HOST's theme puts a dark
+card next to a light app for the same lead. This is the board's default, not
+the skin's: `lb.styles()` keeps honouring `prefers-color-scheme` everywhere
+else, and an artifact that WANTS the host theme simply omits the attribute.
+
 Two things change with the source, and nothing else does:
 
 - **The deep link's view.** `pull_leads` omits `in_monitor`/`in_discover`, so
@@ -470,9 +487,10 @@ spacing CSS of your own:
 
 Wire them with `lb.like` / `lb.dislike`, `lb.leadStatus()` +
 `lb.setStatus({leadId, status, ask})`, and `lb.outreach({leadId, ask, status,
-note})` — the note field gated by a `validate` so an empty note cannot log.
+note})` — the note field gated by a `validate` so an empty note cannot log —
+plus the **Requalify** button in `lb-card-foot`, which every card carries.
 
-Four rules the structure encodes, each of which a hand-built card gets wrong:
+Five rules the structure encodes, each of which a hand-built card gets wrong:
 
 - **One section per titled block.** Two titles in one `lb-section` share its
   8px gap instead of the 16px between sections, so the second title reads as
@@ -485,6 +503,13 @@ Four rules the structure encodes, each of which a hand-built card gets wrong:
 - **Controls stack and span their section.** A select sizes to its longest
   option and a text input to a UA default, so side by side they come out
   different widths despite identical padding and height.
+- **Every card ships Requalify.** It is not conditional on the lead looking
+  under-qualified: the rep reads "why it fits" and the intent tags, decides the
+  qualifier got this one wrong, and re-runs it — a card that omits the button
+  makes the verdict look final. It is also the one control that ACTS on the
+  line the rep is doubting, which is why it sits in `lb-card-foot` next to
+  Open in Leadbay rather than among the taste and status writes. See the
+  Requalify note below for its arg shape.
 
 Only the bulk apply keeps a submit button, because it fans out across checked
 rows and takes a `confirm`.
@@ -602,6 +627,30 @@ the job is queued instead of holding through the poll. Give it
 `class="lb-btn lb-btn-ai"` — purple is the product's AI affordance, and the
 app's own QualifyButton is `variant="ai"`.
 
+Every card carries it, on the batch board and the call sheet alike:
+
+```js
+const requalify = lb.action({
+  tool: "leadbay_bulk_qualify_leads",
+  args: { leadIds: [lead.id], wait_for_completion: false },
+  ask: ASK,
+});
+lb.bindAction(els.requalify, requalify);
+requalify.subscribe((a) => {
+  // The job is QUEUED, not finished — say so, or the rep re-clicks waiting for
+  // a verdict that arrives minutes later in the product.
+  els.msg.textContent = a.loading ? "Queueing…"
+    : a.error ? a.error.message
+    : a.lastResult ? "Requalifying — the new verdict lands in Leadbay shortly." : "";
+  els.msg.dataset.tone = a.error ? "error" : a.lastResult ? "ok" : "";
+});
+```
+
+Because `wait_for_completion: false` returns on queue, the card must NOT then
+show the old verdict as though it were refreshed. Say the job is running and
+leave the existing tags in place; re-reading them is `lb.leadProfile` on the
+next expand.
+
 ## Recipe: cold-call sheet (one row per lead)
 
 ```js
@@ -619,6 +668,14 @@ function wireRow(lead, els) {
   lb.bindValue(els.note, note);
   lb.bindAction(els.log,  lb.outreach({ leadId: lead.id, ask: ASK, status, note }));
   lb.bindAction(els.like, lb.like(lead.id));
+
+  // Requalify rides every row here too — a rep on the phone is exactly who
+  // discovers the qualifier was wrong. Same arg shape as the board's.
+  lb.bindAction(els.requalify, lb.action({
+    tool: "leadbay_bulk_qualify_leads",
+    args: { leadIds: [lead.id], wait_for_completion: false },
+    ask: ASK,
+  }));
 
   const history = lb.leadHistory(lead.id, ASK);          // lazy
   history.subscribe((h) => renderHistory(els.history, h));

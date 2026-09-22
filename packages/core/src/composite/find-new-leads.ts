@@ -240,7 +240,9 @@ export function buildFindNewLeadsNextSteps(
     if (delivered > 0) {
       options.push({
         label: "Triage what landed",
-        description: "Build an interactive lead triage board from the leads delivered so far.",
+        description:
+          "Build an interactive lead triage board from the leads delivered so far — " +
+          "call leadbay_artifact_kit and follow its canonical triage-board recipe.",
         kind: "build_artifact",
       });
     }
@@ -259,10 +261,16 @@ export function buildFindNewLeadsNextSteps(
     return { question: "What do you want to do next?", options };
   }
 
-  // Rows landed — the board is the canonical next move, so it leads.
+  // Rows landed — the board is the canonical next move, so it leads. The
+  // description names the tool: "build an artifact" reads as an instruction to
+  // hand-write a page, and a hand-written board misses the skin and wires its
+  // buttons to nothing. See the same note in pull-leads.ts.
   options.push({
     label: "Triage board",
-    description: "Build an interactive lead triage board to sort and filter this batch.",
+    description:
+      "Build an interactive lead triage board to sort and filter this batch — " +
+      "call leadbay_artifact_kit and follow its canonical triage-board recipe, " +
+      "building from the leads in hand (do NOT re-run the search).",
     kind: "build_artifact",
   });
 
