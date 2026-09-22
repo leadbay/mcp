@@ -176,9 +176,15 @@ function buildFollowupNextSteps(
 
   const options: NextStepOption[] = [];
 
+  // Names the tool for the same reason pull-leads.ts does: an agent told only
+  // to "build an artifact" hand-writes one, and a hand-written board logs no
+  // outreach to Leadbay at all.
   options.push({
     label: "Call board",
-    description: "Build an interactive call board to work these leads and log outreach.",
+    description:
+      "Build an interactive call board to work these leads and log outreach — " +
+      "call leadbay_artifact_kit and follow its cold-call-sheet recipe, " +
+      "building from the leads in hand (do NOT re-call pull_followups).",
     kind: "build_artifact",
   });
 

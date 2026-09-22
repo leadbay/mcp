@@ -36,6 +36,7 @@ describe("canonical pull-leads triage board recipe", () => {
       "lb.leadStatus()",
       "lb.sortOrder()",
       "Open in Leadbay",
+      "Requalify",
     ]) {
       expect(GUIDE).toContain(control);
     }
