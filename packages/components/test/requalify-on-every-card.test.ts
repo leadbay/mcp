@@ -20,7 +20,8 @@ const flat = GUIDE.replace(/\s+/g, " ");
 
 describe("Requalify is a default on every card, not an option", () => {
   it("is stated as carried by every card", () => {
-    expect(flat).toMatch(/Every card ships Requalify/i);
+    expect(flat).toMatch(/Every card ships Qualify\/Requalify/i);
+    expect(flat).toMatch(/MANDATORY on every\s*lead card/i);
   });
 
   it("is explicitly NOT conditional on the lead looking under-qualified", () => {
@@ -31,7 +32,14 @@ describe("Requalify is a default on every card, not an option", () => {
 
   it("is named in the recipe's wiring sentence, beside the other writes", () => {
     // Living only in the HTML skeleton is what made it droppable.
-    expect(flat).toMatch(/plus the \*\*Requalify\*\* button in `lb-card-foot`/i);
+    expect(flat).toMatch(/plus `lb\.qualify` in `lb-card-foot`/i);
+  });
+
+  it("routes through the component, never a hand-rolled lb.action", () => {
+    // The hand-rolled version is what this guide used to teach, and it gets
+    // the camelCase arg, the failed[] check and quota_exceeded wrong.
+    expect(flat).toMatch(/Use `lb\.qualify` — never hand-roll this action/i);
+    expect(GUIDE).not.toContain('tool: "leadbay_bulk_qualify_leads"');
   });
 
   it("sits in the card footer, not among the taste and status writes", () => {
@@ -40,16 +48,29 @@ describe("Requalify is a default on every card, not an option", () => {
   });
 
   it("ships a wiring example, so the button is copyable and not just described", () => {
-    expect(GUIDE).toContain('tool: "leadbay_bulk_qualify_leads"');
-    expect(GUIDE).toContain("wait_for_completion: false");
-    expect(GUIDE).toContain("lb.bindAction(els.requalify, requalify)");
+    expect(GUIDE).toContain("lb.qualify({ leadId: lead.id");
+    expect(GUIDE).toContain("lb.bindAction(els.qualify, q)");
+    expect(GUIDE).toContain("lb.qualifyLabel(lead)");
+  });
+
+  it("makes the label a function of the lead, not a hardcoded word", () => {
+    // "Requalify" on an unscored lead implies a run that never happened.
+    expect(flat).toMatch(/Which word the button takes is not a style choice/i);
+    expect(flat).toMatch(/has never been run and gets \*\*Qualify\*\*/i);
+  });
+
+  it("names both tools the artifact must declare", () => {
+    expect(flat).toMatch(/Declare BOTH tools in the artifact's `mcp_tools`/i);
+    expect(GUIDE).toContain("leadbay_qualify_status");
   });
 
   it("tells the card to report a QUEUED job, not a fresh verdict", () => {
     // wait_for_completion:false returns on queue. A card that repaints as
     // though the verdict refreshed lies about work that has not run yet.
-    expect(flat).toMatch(/The job is QUEUED, not finished/i);
-    expect(flat).toMatch(/must NOT then\s*show the old verdict as though it were refreshed/i);
+    expect(flat).toMatch(/QUEUED, not finished/i);
+    expect(flat).toMatch(/leave the old tags alone/i);
+    // and the way to actually show it landing
+    expect(GUIDE).toContain("lb.qualifyStatus");
   });
 
   it("rides the cold-call sheet's rows too, not just the batch board", () => {
@@ -58,8 +79,8 @@ describe("Requalify is a default on every card, not an option", () => {
       GUIDE.indexOf("## Recipe: cold-call sheet"),
       GUIDE.indexOf("## Recipe: lead-status dropdown"),
     );
-    expect(sheet).toContain("els.requalify");
-    expect(sheet).toContain("leadbay_bulk_qualify_leads");
+    expect(sheet).toContain("lb.qualify(");
+    expect(sheet).toContain("lb.qualifyLabel(lead)");
   });
 
   it("carries the product's AI affordance, matching the app's QualifyButton", () => {
