@@ -30,6 +30,11 @@ then on every change — render your own DOM from it.
 | `lb.campaigns(ask)` | field | a campaign `<select>`, options from `leadbay_list_campaigns` |
 | `lb.segmentCount({sectorIds, city, ask})` | `Promise<{total, applied, trusted}>` | how many Monitor leads match one sector/location — `count: 1` + `pagination.total`, so a segment costs one cheap call |
 | `lb.portfolioSectors({sample, sectors, ask})` | `Promise<PortfolioSector[]>` | which sectors the user ACTUALLY holds — samples one page of followups, tallies `sector_id`, resolves names against an embedded taxonomy |
+| `lb.coverage({buckets, ask, onProgress?})` | `Promise<CoverageRow[]>` | sweep a WHOLE dimension (sector, size, recency, liked, custom field) — sequential, complete criteria per call, `trusted` per bucket |
+| `lb.coverageBuckets({field, labels?, criterion?, limit?, ask})` | `Promise<CoverageBucket[]>` | derive a dimension's values from the book by tallying a lead field — never hardcode the list |
+| `lb.coverageTotal({ask, personal?})` | `Promise<CoverageRow>` | the unfiltered whole-book denominator |
+| `lb.reachCoverage({sample?, personal?, ask})` | `Promise<ReachCoverage>` | callable / contacts-only / empty — the segment that says what to ENRICH. Sampled (not a filter), so rows are an estimate against `bookTotal` |
+| `lb.leadReach(lead)` | `"reachable"` \| `"contacts_only"` \| `"empty"` | one lead's reachability — `contacts_count > 0` is NOT a channel |
 | `lb.outreach({leadId, ask, status?, note?})` | action | log a call → `report_outreach` (verification + `_triggered_by` baked in) |
 | `lb.note({leadId, note})` | action | add a note → `add_note` |
 | `lb.like(leadId)` / `lb.dislike(leadId)` | action | taste signal |
@@ -803,10 +808,105 @@ clicking a dropdown means. Don't add a date picker unless the user asks to
 backdate — then pass an optional `date` field holding `YYYY-MM-DD`:
 `lb.setStatus({ leadId, status, date, ask })`.
 
-## Recipe: segment coverage (sector / location)
+## Recipe: segment coverage (any dimension)
 
 "How many leads do we have in sector X" is one cheap call: the Monitor filter
-plus `count: 1`, read off `pagination.total`. `lb.segmentCount` wraps it.
+plus `count: 1`, read off `pagination.total`. `lb.segmentCount` wraps a single
+sector/city count; **`lb.coverage` sweeps a whole dimension**.
+
+### One skeleton, many dimensions
+
+Sector is not special. Every `FilterCriterion` type the Monitor accepts is a
+coverage dimension, and one board renders any of them — the bars, the
+denominator and the trusted check are all dimension-agnostic:
+
+| Dimension | Criterion | Answers |
+|---|---|---|
+| sector | `{type:"sector_ids", sectors:[id]}` | where the book concentrates |
+| size | `{type:"size", min, max}` | am I an SMB or an enterprise shop |
+| recency | `{type:"last_action_date", …}` | how much has gone cold |
+| liked | `{type:"liked"}` | what the team actually wants |
+| custom field | `{type:"custom_field", key, value}` | the org's own taxonomy |
+
+```js
+const buckets = await lb.coverageBuckets({          // derive, never hardcode
+  field: "sector_id",
+  labels: SECTORS,                                   // id → name, embedded
+  criterion: (id) => ({ type: "sector_ids", sectors: [id], is_excluded: false }),
+  limit: 12,
+  ask: ASK,
+});
+
+const book = await lb.coverageTotal({ ask: ASK });   // unfiltered denominator
+const rows = await lb.coverage({
+  buckets,
+  ask: ASK,
+  onProgress: (done, total) => (tally.textContent = `measuring ${done}/${total}…`),
+});
+
+for (const r of rows) {
+  if (!r.trusted) renderUnmeasured(r);               // never chart it
+  else renderBar(r.label, r.total, r.total / book.total);
+}
+```
+
+Three things `lb.coverage` owns, each of which a hand-rolled sweep gets wrong:
+
+- **Sequential, not a parallel burst.** A filtered count is 1–2s, but a
+  `last_action_date` criterion was observed at **54s** on a 3.6k segment.
+  Twelve of those at once is a hung page; `onProgress` is there so the sweep
+  is visible instead.
+- **The complete criteria set per call.** The stored filter is ONE
+  server-side slot and cumulative, so a delta leaves the previous bucket's
+  criterion in force and every bar becomes a subset of the one before it.
+- **Per-bucket verification.** One rejected criterion must not poison a
+  neighbour's number, and a bucket that throws becomes an unmeasured row
+  rather than aborting the other eleven.
+
+### Reachability — the segment that says what to BUY
+
+Every dimension above slices a book the rep may not be able to call. This one
+says whether they can call it at all, and it is usually the first board worth
+building on an imported book:
+
+```js
+const r = await lb.reachCoverage({ ask: ASK });     // one call
+renderBars(r.rows);
+note.textContent = `sampled ${r.sampled} of ${r.bookTotal}`;
+```
+
+Three buckets, and the middle one is the answer:
+
+| Bucket | Means | Next move |
+|---|---|---|
+| Callable now | a company phone or email exists | work it |
+| **Contacts, no channel** | people known, nothing dialable | **enrich — this is the spend** |
+| No contacts | neither | discovery first |
+
+**`contacts_count > 0` is NOT reachability**, and `lb.leadReach` exists so no
+board gets this wrong. It counts known PEOPLE, not people you can dial — a
+lead can show 2,518 contacts and zero channels. Charting `contacts_count`
+tells a rep they have a pipeline when they have a phone book with no numbers.
+A `linkedin_page` is not reachability either. And the API returns the literal
+string `"null"` in `phone_numbers` and `email`, which counts as a channel
+unless guarded — the one error that would make this board actively harmful,
+by overstating the callable book.
+
+**This one is SAMPLED, unlike every other dimension.** Reachability is not a
+`FilterCriterion`, so there is no cheap `pagination.total` for it: the counts
+come from classifying real leads on one page. `bookTotal` is the real
+denominator (it rides along on the same call, so this costs ONE request), and
+`sampled` says over how many. Label it as an estimate — "≈62% of 7,078,
+sampled over 200" — never as an exact count.
+
+### What you cannot count this way
+
+A dimension is countable only if the Monitor can FILTER by it. Anything
+needing per-lead values — a score histogram, a density map — has no
+aggregation endpoint and means paging the whole book (732 pages for 3,656
+leads). Sample the tails instead (`order: "SCORE:ASC"` / `"SCORE:DESC"`, a few
+hundred each) and **label the chart as a sample with its n**, or do not draw
+it.
 
 ### Never hardcode the sector list
 

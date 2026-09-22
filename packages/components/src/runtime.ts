@@ -50,12 +50,61 @@ export interface LbErrorState {
 let configuredCall: CallFn | null = null;
 let timeoutMs = 30_000;
 
+/** The connector name the claude.ai `mcp` capability knows us by. A published
+ *  artifact resolves connectors by their DISPLAY name, which is what the
+ *  manifest's `servers[].server` carries. Override with
+ *  `lb.configure({ server })` when the viewer's connector is named something
+ *  else. */
+let mcpServerName = "Leadbay";
+
+/**
+ * Bridge to the host. TWO transports, because the kit runs on two surfaces:
+ *
+ * - **cowork** injects `window.cowork.callMcpTool` — synchronous to obtain,
+ *   and the only transport this kit had until now.
+ * - **A published claude.ai artifact** has no `window.cowork`. It reaches the
+ *   viewer's connectors through `window.claude.use("mcp")`, granted by the
+ *   `capabilities.mcp` manifest declared at publish. Without this arm every
+ *   kit artifact published to claude.ai threw `unavailable` on its first call
+ *   and showed an empty board — the page looked built and reached no data.
+ *
+ * `use("mcp")` is ASYNC (and resolves `null` when the view cannot run it),
+ * so this returns a CallFn that resolves the namespace on first use and
+ * memoizes it. `call()` already awaits the result, so the async hop is free.
+ */
 function hostCall(): CallFn | null {
   const cw = (globalThis as { cowork?: { callMcpTool?: CallFn } }).cowork;
   if (cw && typeof cw.callMcpTool === "function") {
     return (tool, args) => cw.callMcpTool!(tool, args);
   }
+
+  const claude = (globalThis as { claude?: { use?: (n: string) => Promise<unknown> } }).claude;
+  if (claude && typeof claude.use === "function") {
+    return async (tool, args) => {
+      const mcp = (await mcpNamespace(claude.use!)) as {
+        callTool?: (s: string, t: string, i?: unknown) => Promise<{ payload?: unknown }>;
+      } | null;
+      if (!mcp || typeof mcp.callTool !== "function") {
+        throw new LbError(
+          "Leadbay is not reachable from this page — the artifact must declare the " +
+            "Leadbay connector in its capabilities, and the viewer must have it enabled.",
+          { code: "unavailable" },
+        );
+      }
+      const res = await mcp.callTool(mcpServerName, tool, args);
+      // `payload` is the documented home of the JSON most connectors return;
+      // fall back to the whole envelope, which `normalize()` also understands.
+      return res && "payload" in res && res.payload !== undefined ? res.payload : res;
+    };
+  }
+
   return null;
+}
+
+let mcpPromise: Promise<unknown> | null = null;
+function mcpNamespace(use: (n: string) => Promise<unknown>): Promise<unknown> {
+  if (!mcpPromise) mcpPromise = Promise.resolve(use("mcp")).catch(() => null);
+  return mcpPromise;
 }
 
 // ─── Runtime telemetry (product#4081) ────────────────────────────────────────
@@ -291,9 +340,15 @@ function errState(e: unknown): LbErrorState {
 /** Override the bridge + per-call timeout (tests / non-cowork hosts). Optional —
  *  `call` resolves the host bridge lazily when not configured; `timeoutMs`
  *  defaults to 30s (pass 0 to disable). */
-export function configure(opts: { call?: CallFn; timeoutMs?: number } = {}): void {
+export function configure(
+  opts: { call?: CallFn; timeoutMs?: number; server?: string } = {},
+): void {
   configuredCall = opts.call ?? null;
   timeoutMs = opts.timeoutMs ?? 30_000;
+  // The connector's DISPLAY name, for the claude.ai `mcp` transport. Only
+  // needed when the viewer's Leadbay connector is named something else.
+  if (opts.server) mcpServerName = opts.server;
+  mcpPromise = null;
 }
 
 /** Inject the optional `lb-*` stylesheet (see styles.ts). OPT-IN: the library
@@ -351,7 +406,10 @@ export async function call(tool: string, args: Record<string, unknown> = {}): Pr
   const fn = configuredCall ?? hostCall();
   if (!fn) {
     if (!silent) report({ kind: "bridge_unavailable", surface, tool, code: "unavailable" });
-    throw new LbError("Leadbay bridge unavailable (window.cowork absent)", { code: "unavailable" });
+    throw new LbError(
+      "Leadbay bridge unavailable — no window.cowork and no window.claude.use(\"mcp\")",
+      { code: "unavailable" },
+    );
   }
   try {
     return normalize(
@@ -1523,14 +1581,26 @@ async function portfolioSectors(
  *    `active_filters` against what was sent, and a mismatch means the number
  *    is about something else.
  */
-async function segmentCount(opts: SegmentOpts): Promise<SegmentCount> {
-  const criteria: Array<Record<string, unknown>> = [];
-  if (opts.sectorIds?.length) {
-    criteria.push({ type: "sector_ids", sectors: opts.sectorIds, is_excluded: false });
-  }
+/**
+ * The counting primitive both `segmentCount` and `coverage` sit on: one
+ * filtered `pagination.total`, with the echo of the stored filter verified
+ * against what was sent.
+ *
+ * Kept generic over criteria so a dimension this file has never heard of —
+ * a size band, a custom field — gets the same guarantee as a sector. The
+ * comparison is by TYPE in both directions, plus values for the types where
+ * the caller has something to compare against (see `valueKey`).
+ */
+async function segmentCountRaw(opts: {
+  criteria: Array<Record<string, unknown>>;
+  personal?: boolean;
+  ask: string;
+  city?: string;
+  cityId?: string;
+}): Promise<SegmentCount> {
   const res = (await call("leadbay_pull_followups", {
     count: 1,
-    set_filter: { criteria },
+    set_filter: { criteria: opts.criteria },
     ...(opts.city ? { city: opts.city } : {}),
     ...(opts.cityId ? { city_id: opts.cityId } : {}),
     ...(opts.personal === undefined ? {} : { personal: opts.personal }),
@@ -1541,56 +1611,339 @@ async function segmentCount(opts: SegmentOpts): Promise<SegmentCount> {
   };
 
   const applied = res.active_filters?.criteria ?? [];
+  const typeOf = (c: Record<string, unknown>) =>
+    typeof c?.type === "string" ? (c.type as string) : null;
 
-  // Every criterion asked for must come back, whatever its type. An earlier
-  // version compared sector ids only, which left the city path unguarded: with
-  // `city` alone both sides of that comparison were the empty string, so a
-  // silently-dropped location criterion read as trusted and the board charted a
-  // count for a segment nobody asked for — the exact failure this flag exists to
-  // catch.
-  //
-  // `city` / `cityId` are sent as top-level params, not criteria: the composite
-  // resolves them through /geo/search into a `location_ids` criterion. So the
-  // type to expect back is one this function never constructed.
   const wantTypes = new Set<string>();
-  if (opts.sectorIds?.length) wantTypes.add("sector_ids");
+  for (const c of opts.criteria) {
+    const t = typeOf(c);
+    if (t) wantTypes.add(t);
+  }
+  // city/cityId are top-level params the composite resolves via /geo/search
+  // into a location_ids criterion — a type this function never constructed.
   if (opts.city || opts.cityId) wantTypes.add("location_ids");
 
   const gotTypes = new Set(
-    applied
-      .map((c) => (typeof c?.type === "string" ? c.type : null))
-      .filter((t): t is string => t != null),
+    applied.map(typeOf).filter((t): t is string => t != null),
   );
 
-  // Sector VALUES are checked too, not just the type: a stale sector filter is
-  // still a sector filter, so a type-only check would wave 5122 through when
-  // 5134 was asked for. Locations get no value check — the id is resolved
-  // server-side from free text, so the caller has nothing to compare against.
-  const wantSectors = (opts.sectorIds ?? []).slice().sort().join(",");
-  const gotSectors = applied
-    .filter((c) => c?.type === "sector_ids")
-    .flatMap((c) => (Array.isArray(c.sectors) ? (c.sectors as string[]) : []))
-    .slice()
-    .sort()
-    .join(",");
-
-  // The echo must match what was asked for in BOTH directions. Checking only
-  // that everything wanted arrived is a subset test, and the stored filter is
-  // cumulative: narrowing sector+city to sector-only leaves the location
-  // criterion in force, so the count is still fenced to a city nobody asked
-  // about while every requested type is present. An unrequested criterion
-  // narrows the result exactly as a dropped one widens it.
-  //
-  // This also covers the unfiltered case on its own terms: with nothing wanted,
-  // "nothing extra" IS "the echo is empty", which is what makes a whole-book
-  // denominator trustworthy.
+  // Both directions. "Everything I asked for arrived" is only a subset test,
+  // and the stored filter is cumulative: an unrequested criterion left over
+  // from the previous call narrows the count exactly as a dropped one widens
+  // it. With nothing wanted, "nothing extra" IS "the echo is empty", which is
+  // what makes the whole-book denominator trustworthy.
   const everyTypeLanded = [...wantTypes].every((t) => gotTypes.has(t));
-  const nothingExtraApplied = [...gotTypes].every((t) => wantTypes.has(t));
+  const nothingExtra = [...gotTypes].every((t) => wantTypes.has(t));
+
+  // VALUES, not just types. A stale filter of the right type is still the
+  // wrong question: sector 5122 echoed when 5134 was asked for, a size band
+  // 1–10 echoed when 20–49 was asked for. A type-only check waves both
+  // through, which is how a size sweep can return the same number twelve
+  // times and look plausible.
+  //
+  // Compared structurally so a dimension this file has never seen is covered
+  // by default — the alternative is an allowlist of value keys, and a
+  // criterion type missing from it silently loses its value check. Opting a
+  // type IN by accident costs a false `trusted:false`; leaving one OUT costs
+  // a charted wrong number, so the default must be to check.
+  //
+  // `location_ids` is the one deliberate exemption: the caller sends free
+  // text (`city`) and the server resolves it to an admin_area id through
+  // /geo/search, so the echo legitimately differs from anything sent and
+  // there is nothing to compare against. Presence is still required above.
+  const UNCOMPARABLE = new Set(["location_ids"]);
+  const canon = (list: Array<Record<string, unknown>>, type: string): string =>
+    list
+      .filter((c) => typeOf(c) === type)
+      .map((c) =>
+        JSON.stringify(
+          Object.keys(c)
+            .filter((k) => k !== "type")
+            .sort()
+            .map((k) => [k, c[k]]),
+        ),
+      )
+      .sort()
+      .join("|");
+  const valuesMatch = [...wantTypes].every(
+    (t) => UNCOMPARABLE.has(t) || canon(opts.criteria, t) === canon(applied, t),
+  );
 
   return {
     total: finite(res.pagination?.total),
     applied,
-    trusted: everyTypeLanded && nothingExtraApplied && wantSectors === gotSectors,
+    trusted: everyTypeLanded && nothingExtra && valuesMatch,
+  };
+}
+
+async function segmentCount(opts: SegmentOpts): Promise<SegmentCount> {
+  const criteria: Array<Record<string, unknown>> = [];
+  if (opts.sectorIds?.length) {
+    criteria.push({ type: "sector_ids", sectors: opts.sectorIds, is_excluded: false });
+  }
+  return segmentCountRaw({
+    criteria,
+    personal: opts.personal,
+    ask: opts.ask,
+    city: opts.city,
+    cityId: opts.cityId,
+  });
+}
+
+
+/** One value of a coverage dimension: the thing a bar measures. */
+export interface CoverageBucket {
+  /** Stable key — a sector id, a size band name, a custom-field value. */
+  id: string;
+  /** What the bar is labelled. */
+  label: string;
+  /** The FilterCriterion this bucket narrows by. Omit for a whole-book row.
+   *  It must be complete on its own: the stored filter is cumulative and this
+   *  runner always sends the full set, never a delta. */
+  criterion?: Record<string, unknown>;
+  /** Optional ordering hint from a sample (see `coverageBuckets`). Never
+   *  presented as the portfolio figure — `segmentCount` gives that. */
+  sampled?: number;
+}
+
+/** One measured bucket. `trusted:false` means the server echoed a filter that
+ *  did not match what was sent, so the number answers a different question and
+ *  MUST be shown as unmeasured rather than charted. */
+export interface CoverageRow extends CoverageBucket {
+  total: number;
+  trusted: boolean;
+  error?: string;
+}
+
+export interface CoverageOpts {
+  /** The buckets to measure, in render order. */
+  buckets: CoverageBucket[];
+  ask: string;
+  /** Whose book. `pull_followups` defaults to the whole ORGANISATION; on an
+   *  admin account that is a different number from their own followups. */
+  personal?: boolean;
+  /** Called after each bucket settles, for a progress cue. Measuring is
+   *  SEQUENTIAL by design — see below. */
+  onProgress?: (done: number, total: number, row: CoverageRow) => void;
+}
+
+/**
+ * Measure any dimension of the Monitor portfolio — sector, size, recency,
+ * liked, a custom field — as a list of counted buckets.
+ *
+ * This is `segmentCount` generalised. It owns the three things that make a
+ * hand-rolled multi-segment board wrong:
+ *
+ * 1. **Sequential, never a parallel burst.** A filtered count is normally
+ *    1–2s, but a `last_action_date` criterion was observed at 54s on a 3.6k
+ *    segment. Twelve of those in parallel is a hung page and a hammered
+ *    backend. `onProgress` exists so the UI can show the sweep advancing
+ *    instead of freezing.
+ * 2. **The complete criteria set on every call.** The stored Monitor filter is
+ *    a single server-side slot and CUMULATIVE: send bucket B as a delta after
+ *    bucket A and B inherits A's criterion, so every bar after the first is
+ *    fenced by the one before it. Each call here sends exactly its own
+ *    bucket's criterion and nothing else.
+ * 3. **Per-bucket echo verification.** A rejected criterion returns 200 with
+ *    the PREVIOUS filter still applied — a plausible number answering the
+ *    previous question. Each row carries its own `trusted`.
+ *
+ * A bucket that throws becomes a row with `trusted:false` and an `error`
+ * rather than aborting the sweep: one unmeasurable segment should not cost
+ * the other eleven.
+ */
+async function coverage(opts: CoverageOpts): Promise<CoverageRow[]> {
+  const rows: CoverageRow[] = [];
+  const total = opts.buckets.length;
+
+  for (const bucket of opts.buckets) {
+    let row: CoverageRow;
+    try {
+      const measured = await segmentCountRaw({
+        criteria: bucket.criterion ? [bucket.criterion] : [],
+        personal: opts.personal,
+        ask: opts.ask,
+      });
+      row = { ...bucket, total: measured.total, trusted: measured.trusted };
+    } catch (e) {
+      row = { ...bucket, total: 0, trusted: false, error: messageOf(e) };
+    }
+    rows.push(row);
+    opts.onProgress?.(rows.length, total, row);
+  }
+
+  return rows;
+}
+
+/** The whole-book denominator: one unfiltered count, at the same scope as the
+ *  buckets. Taken UNFILTERED on purpose, so it ignores whatever filter the
+ *  user's Monitor tab happens to have applied — a denominator that moves with
+ *  the UI makes every share meaningless. */
+async function coverageTotal(opts: { ask: string; personal?: boolean }): Promise<CoverageRow> {
+  try {
+    const m = await segmentCountRaw({ criteria: [], personal: opts.personal, ask: opts.ask });
+    return { id: "__all__", label: "Whole book", total: m.total, trusted: m.trusted };
+  } catch (e) {
+    return { id: "__all__", label: "Whole book", total: 0, trusted: false, error: messageOf(e) };
+  }
+}
+
+/**
+ * Derive a dimension's buckets from the leads the user ACTUALLY holds, by
+ * sampling one page and tallying a field.
+ *
+ * `portfolioSectors` generalised. Never hardcode a bucket list: the guide
+ * records what that did to one real portfolio — a hand-written list offered a
+ * sector holding 3 leads while omitting the third-largest at 555. The same
+ * applies to size bands and custom-field values, where the plausible-looking
+ * list is even easier to invent.
+ *
+ * `sampled` orders the list; it is NOT the portfolio figure. Pass the buckets
+ * to `coverage` for real counts.
+ */
+async function coverageBuckets(opts: {
+  /** Lead field to tally (`sector_id`, or a custom field's key). */
+  field: string;
+  /** id → display label. Unresolved ids fall back to `<field> <id>`. */
+  labels?: Record<string, string>;
+  /** Build the FilterCriterion for a tallied value. */
+  criterion?: (id: string) => Record<string, unknown>;
+  sample?: number;
+  personal?: boolean;
+  ask: string;
+  /** Keep at most N buckets, highest sample first. A sweep is sequential, so
+   *  an unbounded list is an unbounded wait. */
+  limit?: number;
+}): Promise<CoverageBucket[]> {
+  const res = (await call("leadbay_pull_followups", {
+    count: opts.sample ?? 200,
+    filtered: false,
+    ...(opts.personal === undefined ? {} : { personal: opts.personal }),
+    _triggered_by: opts.ask,
+  })) as { leads?: Array<Record<string, unknown>> };
+
+  const tally = new Map<string, number>();
+  for (const lead of res.leads ?? []) {
+    const raw = lead?.[opts.field];
+    if (raw == null || raw === "" || raw === "null") continue;
+    const id = String(raw);
+    tally.set(id, (tally.get(id) ?? 0) + 1);
+  }
+
+  const labels = opts.labels ?? {};
+  const out = [...tally.entries()]
+    .map(([id, sampled]) => ({
+      id,
+      label: labels[id] ?? `${opts.field} ${id}`,
+      sampled,
+      ...(opts.criterion ? { criterion: opts.criterion(id) } : {}),
+    }))
+    .sort((a, b) => b.sampled - a.sampled || a.id.localeCompare(b.id));
+
+  return opts.limit != null ? out.slice(0, opts.limit) : out;
+}
+
+/** The reachability of one lead, as a list payload can report it. */
+export type Reach = "reachable" | "contacts_only" | "empty";
+
+/** Classify one lead's reachability from a list payload.
+ *
+ * The distinction this exists to make: **`contacts_count > 0` is NOT
+ * reachability.** It counts known PEOPLE — a name and a job title — not
+ * people you can dial. A lead can show 2,518 contacts and zero channels, and
+ * a board that charts `contacts_count` tells a rep they have a pipeline when
+ * they have a phone book with no numbers. Nor is a `linkedin_page`: the rep
+ * cannot message a URL without leaving the artifact.
+ *
+ * So three states, not two:
+ *   - `reachable`      a company phone or email exists — callable today
+ *   - `contacts_only`  people are known, no channel — ENRICHMENT BUYS THIS
+ *   - `empty`          neither — needs discovery before enrichment
+ *
+ * The middle bucket is the point. It is the only one where spending money
+ * converts a dead row into a callable one, so it is the board's whole answer
+ * to "what should I buy?".
+ *
+ * `has_phone` is the ready-made boolean on `pull_followups`; `pull_leads`
+ * omits it, so `phone_numbers` is the fallback. The API returns the literal
+ * STRING "null" for a missing value in `phone_numbers` AND in `email`, so
+ * both are guarded — without it a lead with `phone_numbers:["null"]` counts
+ * as reachable and the board overstates the callable book. */
+export function leadReach(lead: unknown): Reach {
+  const l = (lead ?? {}) as Record<string, any>;
+  const real = (v: unknown) => (typeof v === "string" && v && v !== "null" ? v : null);
+
+  const phones = Array.isArray(l.phone_numbers) ? l.phone_numbers : [];
+  const hasPhone = l.has_phone === true || phones.some((p: unknown) => real(p) != null);
+  const hasEmail = real(l.email) != null;
+  if (hasPhone || hasEmail) return "reachable";
+
+  const known = finite(l.contacts_count) + finite(l.org_contacts_count);
+  return known > 0 ? "contacts_only" : "empty";
+}
+
+export interface ReachCoverage {
+  rows: CoverageRow[];
+  /** How many leads were classified. This is a SAMPLE, never the book. */
+  sampled: number;
+  /** The book's real size, from an unfiltered count — the denominator to
+   *  extrapolate against, and the number that makes the sample honest. */
+  bookTotal: number;
+}
+
+/**
+ * Reachability coverage: how much of the book is callable, how much is one
+ * enrichment away, how much is neither.
+ *
+ * WHY THIS ONE IS SAMPLED, unlike every other coverage dimension: reachability
+ * is not a `FilterCriterion`. The Monitor cannot filter on "has a phone", so
+ * there is no cheap `pagination.total` for it and the counts have to come from
+ * classifying real leads. That makes this an ESTIMATE — `sampled` says over
+ * how many, and `bookTotal` gives the real denominator, so a caller can
+ * extrapolate and label it honestly. Never present these as exact counts; the
+ * board must say "≈ 62% of 7,078, sampled over 200".
+ *
+ * One page, one call. The sample is taken UNFILTERED so the shape is the
+ * book's, not whatever the user's Monitor tab currently has applied.
+ */
+async function reachCoverage(opts: {
+  sample?: number;
+  personal?: boolean;
+  ask: string;
+}): Promise<ReachCoverage> {
+  const sample = opts.sample ?? 200;
+  const res = (await call("leadbay_pull_followups", {
+    count: sample,
+    filtered: false,
+    ...(opts.personal === undefined ? {} : { personal: opts.personal }),
+    _triggered_by: opts.ask,
+  })) as { leads?: unknown[]; pagination?: { total?: number } };
+
+  const leads = Array.isArray(res.leads) ? res.leads : [];
+  const tally: Record<Reach, number> = { reachable: 0, contacts_only: 0, empty: 0 };
+  for (const lead of leads) tally[leadReach(lead)]++;
+
+  const LABELS: Array<[Reach, string]> = [
+    ["reachable", "Callable now"],
+    ["contacts_only", "Contacts, no channel"],
+    ["empty", "No contacts"],
+  ];
+
+  return {
+    sampled: leads.length,
+    // The page's own pagination.total IS the unfiltered book, so this costs
+    // no extra call — the denominator rides along with the sample.
+    bookTotal: finite(res.pagination?.total),
+    rows: LABELS.map(([id, label]) => ({
+      id,
+      label,
+      total: tally[id],
+      // A classified sample is as trustworthy as the read that produced it:
+      // there is no stored filter to echo, so nothing can silently answer a
+      // different question the way segmentCountRaw guards against.
+      trusted: true,
+      sampled: tally[id],
+    })),
   };
 }
 
@@ -1889,6 +2242,17 @@ export const lb = {
   campaigns,
   segmentCount,
   portfolioSectors,
+  // Coverage: any dimension the Monitor filter can narrow by, not just sector.
+  // `coverageBuckets` derives the values from the book (never hardcode them),
+  // `coverage` sweeps them sequentially with a per-bucket trusted check, and
+  // `coverageTotal` is the unfiltered denominator.
+  coverage,
+  coverageBuckets,
+  coverageTotal,
+  // Reachability — the one coverage dimension the Monitor cannot filter on,
+  // so it is SAMPLED and its rows are an estimate against `bookTotal`.
+  reachCoverage,
+  leadReach,
   outreach,
   note: noteAction,
   like,
