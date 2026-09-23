@@ -1985,7 +1985,7 @@ Get the headless runtime + usage guide to BUILD an interactive HTML artifact who
 
 ## WHEN TO USE
 
-Trigger phrases: "build me a dashboard", "build a call sheet", "interactive artifact", "make a page with buttons", "build an artifact to work my leads", "interactive lead triage board", "a page with buttons that log my calls".
+Trigger phrases: "build me a dashboard", "build a call sheet", "interactive artifact", "make a page with buttons", "build an artifact to work my leads", "interactive lead triage board", "a page with buttons that log my calls", "relance board", "campagne de relance", "board de relance", "follow-up table", "a table with emails and phone numbers to call my leads", "a table where I can set status and log what happened".
 
 Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "log that I emailed" → \`leadbay_report_outreach\`.
 
@@ -1995,6 +1995,7 @@ Examples that SHOULD invoke this tool:
 - "Build me an interactive call sheet for these leads."
 - "Make an artifact with buttons to log call outcomes per lead."
 - "I want a clickable lead-triage board I can work down."
+- "Build me a relance table with each lead's email and phone, where I can set the status and log what happened."
 
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Show me today's leads."
@@ -4270,7 +4271,7 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 | Observation | Suggest | Calls |
 |---|---|---|
 | Always (top of menu) | "Prep outreach for [top row's contact]" | leadbay_prepare_outreach(leadId) |
-| ≥ 1 lead returned | "Build an interactive call board" | leadbay_get_artifact_runtime → its CANONICAL board recipe, data in hand |
+| ≥ 1 lead returned | "Build an interactive lead desk" | leadbay_get_artifact_runtime → its LEAD DESK recipe, data in hand |
 | "how well do we cover sector X / city Y" | "Build a coverage board" | leadbay_get_artifact_runtime → its COVERAGE recipe (\`lb.portfolioSectors\` + \`lb.segmentCount\`) |
 | User named a city / sector / timeframe | "Refilter by [their phrase]" | leadbay_pull_followups(set_filter: { criteria: [...] }) |
 | \`pagination.has_more == true\` | "Pull the next page" | leadbay_pull_followups(page = current + 1) |

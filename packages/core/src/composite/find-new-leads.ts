@@ -242,7 +242,7 @@ export function buildFindNewLeadsNextSteps(
         label: "Triage what landed",
         description:
           "Build an interactive lead triage board from the leads delivered so far — " +
-          "call leadbay_artifact_kit and follow its canonical triage-board recipe.",
+          "call leadbay_get_artifact_runtime and follow its canonical triage-board recipe.",
         kind: "build_artifact",
       });
     }
@@ -269,7 +269,7 @@ export function buildFindNewLeadsNextSteps(
     label: "Triage board",
     description:
       "Build an interactive lead triage board to sort and filter this batch — " +
-      "call leadbay_artifact_kit and follow its canonical triage-board recipe, " +
+      "call leadbay_get_artifact_runtime and follow its canonical triage-board recipe, " +
       "building from the leads in hand (do NOT re-run the search).",
     kind: "build_artifact",
   });

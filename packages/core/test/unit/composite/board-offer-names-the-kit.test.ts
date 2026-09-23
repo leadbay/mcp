@@ -18,7 +18,7 @@ import { buildPullLeadsNextSteps } from "../../../src/composite/pull-leads.js";
 //
 // So the offer must name the tool in the text the model reads.
 
-describe("the triage-board offer names leadbay_artifact_kit", () => {
+describe("the triage-board offer names leadbay_get_artifact_runtime", () => {
   const ns = buildPullLeadsNextSteps({
     leadCount: 5,
     hasMore: true,
@@ -31,7 +31,7 @@ describe("the triage-board offer names leadbay_artifact_kit", () => {
   });
 
   it("names the tool, so the agent routes instead of hand-rolling", () => {
-    expect(ns!.options[0].description).toContain("leadbay_artifact_kit");
+    expect(ns!.options[0].description).toContain("leadbay_get_artifact_runtime");
   });
 
   it("points at the canonical recipe rather than leaving the layout open", () => {
@@ -58,7 +58,7 @@ describe("the triage-board offer names leadbay_artifact_kit", () => {
       nextPage: null,
       computingWishlist: true,
     });
-    expect(warming!.options.some((o) => o.description.includes("leadbay_artifact_kit"))).toBe(
+    expect(warming!.options.some((o) => o.description.includes("leadbay_get_artifact_runtime"))).toBe(
       false,
     );
   });

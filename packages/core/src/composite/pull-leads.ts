@@ -176,7 +176,7 @@ export function buildPullLeadsNextSteps(args: {
     label: "Triage board",
     description:
       "Build an interactive lead triage board to sort and filter this batch — " +
-      "call leadbay_artifact_kit and follow its canonical triage-board recipe, " +
+      "call leadbay_get_artifact_runtime and follow its canonical triage-board recipe, " +
       "building from the leads in hand (do NOT re-call pull_leads).",
     kind: "build_artifact",
   });

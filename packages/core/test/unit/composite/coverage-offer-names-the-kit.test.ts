@@ -43,7 +43,7 @@ describe("the coverage-board offer names the kit and its helpers", () => {
       });
 
       it("names the tool", () => {
-        expect(opt!.description).toContain("leadbay_artifact_kit");
+        expect(opt!.description).toContain("leadbay_get_artifact_runtime");
       });
 
       it("points at the segment-coverage recipe, not the triage-board one", () => {

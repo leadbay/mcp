@@ -179,12 +179,22 @@ export function buildFollowupNextSteps(
   // Names the tool for the same reason pull-leads.ts does: an agent told only
   // to "build an artifact" hand-writes one, and a hand-written board logs no
   // outreach to Leadbay at all.
+  //
+  // This SUPERSEDES the old "call board" offer rather than sitting beside it.
+  // The lead desk does the same job — work these rows, log what happened —
+  // with the rest of the per-lead surface in the same row (contacts and the
+  // enrich that buys them, CRM status, taste, qualify). Two offers for one
+  // job would cost the coverage board its slot in a widget that caps at four,
+  // and would leave the agent choosing between a board and a strictly better
+  // version of it.
   options.push({
-    label: "Call board",
+    label: "Lead desk",
     description:
-      "Build an interactive call board to work these leads and log outreach — " +
-      "call leadbay_artifact_kit and follow its cold-call-sheet recipe, " +
-      "building from the leads in hand (do NOT re-call pull_followups).",
+      "Build an interactive lead desk to work these leads: contacts with their " +
+      "email and phone, the enrich that buys a missing one, CRM status, " +
+      "outreach logging, taste and requalify — one row per lead. " +
+      "Call leadbay_get_artifact_runtime and follow its LEAD DESK recipe, building " +
+      "from the leads in hand (do NOT re-call pull_followups).",
     kind: "build_artifact",
   });
 
@@ -215,7 +225,7 @@ export function buildFollowupNextSteps(
   // that catches the stateful Monitor filter returning 200 with the PREVIOUS
   // filter still applied — a plausible number answering a different question.
   const coverageRecipe =
-    " Call leadbay_artifact_kit and follow its segment-coverage recipe — " +
+    " Call leadbay_get_artifact_runtime and follow its segment-coverage recipe — " +
     "`lb.portfolioSectors` for the sector list (never hardcode one) and " +
     "`lb.segmentCount` for each figure (it verifies the echoed filter).";
   options.push({
