@@ -606,7 +606,10 @@ every list but the visible one and load it on selection:
 const lists = lenses.map((l) =>
   lb.leadList({ lensId: l.id, ask: ASK, autoLoad: l.id === activeLensId }),
 );
-tab.onclick = () => lists[i].loadPage(0);        // one read, when he opens it
+function openTab(i) {
+  if (!lists[i].items.length) lists[i].loadPage(0);   // one read, the first time
+  showTab(i);                                         // your own render
+}
 ```
 
 `lb.callList` takes `autoLoad` too. This is not a micro-optimisation: one real
