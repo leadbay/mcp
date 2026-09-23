@@ -7,6 +7,11 @@ import {
   renderCommerce,
   validateCommerceMarkers,
 } from "./commerce.js";
+import {
+  hasRenderRegion,
+  splitRenderRegion,
+  validateRenderMarkers,
+} from "./render-region.js";
 
 /**
  * Generate the `## WHEN TO USE` block from a tool's routing
@@ -114,6 +119,17 @@ export interface AssembledArtifact {
    * reworded — see src/commerce.ts.
    */
   noCommerceBody?: string;
+  /**
+   * The `{{render}}` region, cut out of `body` and emitted into
+   * render-blocks.generated.ts instead. Set only when the template marks one.
+   * It reaches the agent with the RESULT (the one-line `rendering_hint`) and
+   * through `leadbay_render_guide` (this full text), because a host that
+   * truncates the description at 2,048 chars never reads it here.
+   * See src/render-region.ts.
+   */
+  renderBlock?: string;
+  /** The same block with the `{{commerce}}` parts deleted. */
+  noCommerceRenderBlock?: string;
 }
 
 export interface AssembleResult {
@@ -286,12 +302,35 @@ export function assemble(opts: AssembleOptions): AssembleResult {
     const markerError = validateCommerceMarkers(finalBody);
     if (markerError) throw new AssemblyError(markerError, path);
 
+    // Cut the `{{render}}` region out of the description before the commerce
+    // pass, then run that pass over both halves: a `{{commerce}}` block inside
+    // a render region must disappear from the ChatGPT surface exactly as it
+    // does from a description (five rendering / next-steps snippets carry one).
+    const renderMarkerError = validateRenderMarkers(finalBody);
+    if (renderMarkerError) throw new AssemblyError(renderMarkerError, path);
+    if (expectedKind === "prompt" && hasRenderRegion(finalBody)) {
+      throw new AssemblyError(
+        `{{render}} belongs to a tool-description; a prompt has no tool result to ride on`,
+        path,
+      );
+    }
+    const split = splitRenderRegion(finalBody);
+    const describedBody = split.description;
+
     const artifact: AssembledArtifact = {
       frontmatter: parsed.frontmatter,
-      body: renderCommerce(finalBody, "with").trimEnd() + "\n",
+      body: renderCommerce(describedBody, "with").trimEnd() + "\n",
       sourcePath: path,
-      ...(hasCommerceMarkers(finalBody) && expectedKind === "tool-description"
-        ? { noCommerceBody: renderCommerce(finalBody, "without").trimEnd() + "\n" }
+      ...(hasCommerceMarkers(describedBody) && expectedKind === "tool-description"
+        ? { noCommerceBody: renderCommerce(describedBody, "without").trimEnd() + "\n" }
+        : {}),
+      ...(split.renderBlock
+        ? {
+            renderBlock: renderCommerce(split.renderBlock, "with").trim(),
+            ...(hasCommerceMarkers(split.renderBlock)
+              ? { noCommerceRenderBlock: renderCommerce(split.renderBlock, "without").trim() }
+              : {}),
+          }
         : {}),
     };
 

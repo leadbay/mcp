@@ -3,7 +3,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { assemble, type AssembleResult } from "./assembler.js";
-import { emit, emitServerInstructions, diff, writeIfDifferent } from "./emit.js";
+import { emit, emitRenderBlocks, emitServerInstructions, diff, writeIfDifferent } from "./emit.js";
 import { buildSkillFiles, type SkillFile } from "./skills.js";
 import { discoverRegisteredTools } from "./registry.js";
 
@@ -16,6 +16,7 @@ const REPO_ROOT = resolve(PKG_ROOT, "..", "..");
 const CORE_SRC = join(REPO_ROOT, "packages", "core", "src");
 const PROMPTS_OUT = join(REPO_ROOT, "packages", "mcp", "src", "prompts.generated.ts");
 const TOOL_DESC_OUT = join(REPO_ROOT, "packages", "core", "src", "tool-descriptions.generated.ts");
+const RENDER_BLOCKS_OUT = join(REPO_ROOT, "packages", "core", "src", "render-blocks.generated.ts");
 const SERVER_INSTRUCTIONS_OUT = join(
   REPO_ROOT,
   "packages",
@@ -50,6 +51,7 @@ function parseArgs(argv: string[]): { mode: Mode; positional: string[] } {
 interface AssembleAndEmitOutput {
   promptsModule: string;
   toolDescriptionsModule: string;
+  renderBlocksModule: string;
   skillFiles: SkillFile[];
   // Prompts marked release_gated emit NO SKILL.md. Their paths are returned so
   // the build can DELETE a previously-emitted skill: writeIfDifferent only
@@ -63,23 +65,33 @@ function runAssemble(): AssembleAndEmitOutput {
   const registered = discoverRegisteredTools(CORE_SRC);
   const result = assemble({ root: PKG_ROOT, registeredToolNames: registered });
   const { promptsModule, toolDescriptionsModule } = emit(result);
+  const renderBlocksModule = emitRenderBlocks(result);
   const skillFiles = buildSkillFiles(result.prompts);
   const gatedSkillPaths = result.prompts
     .filter((p) => p.frontmatter.release_gated === true)
     .map((p) => join(SKILLS_OUT_DIR, p.frontmatter.name, "SKILL.md"));
-  return { promptsModule, toolDescriptionsModule, skillFiles, gatedSkillPaths, result };
+  return {
+    promptsModule,
+    toolDescriptionsModule,
+    renderBlocksModule,
+    skillFiles,
+    gatedSkillPaths,
+    result,
+  };
 }
 
 function cmdBuild(): void {
-  const { promptsModule, toolDescriptionsModule, skillFiles, gatedSkillPaths } =
+  const { promptsModule, toolDescriptionsModule, renderBlocksModule, skillFiles, gatedSkillPaths } =
     runAssemble();
   const serverInstructionsModule = emitServerInstructions(SERVER_INSTRUCTIONS_SNIPPETS);
   const r1 = writeIfDifferent(PROMPTS_OUT, promptsModule);
   const r2 = writeIfDifferent(TOOL_DESC_OUT, toolDescriptionsModule);
   const r3 = writeIfDifferent(SERVER_INSTRUCTIONS_OUT, serverInstructionsModule);
+  const r4 = writeIfDifferent(RENDER_BLOCKS_OUT, renderBlocksModule);
   console.log(`[forge] ${PROMPTS_OUT.replace(REPO_ROOT + "/", "")}: ${r1.changed ? "wrote" : "unchanged"}`);
   console.log(`[forge] ${TOOL_DESC_OUT.replace(REPO_ROOT + "/", "")}: ${r2.changed ? "wrote" : "unchanged"}`);
   console.log(`[forge] ${SERVER_INSTRUCTIONS_OUT.replace(REPO_ROOT + "/", "")}: ${r3.changed ? "wrote" : "unchanged"}`);
+  console.log(`[forge] ${RENDER_BLOCKS_OUT.replace(REPO_ROOT + "/", "")}: ${r4.changed ? "wrote" : "unchanged"}`);
   for (const skill of skillFiles) {
     const fullPath = join(SKILLS_OUT_DIR, skill.relativePath);
     const r = writeIfDifferent(fullPath, skill.content);
@@ -101,12 +113,13 @@ function cmdBuild(): void {
 }
 
 function cmdCheck(): void {
-  const { promptsModule, toolDescriptionsModule, skillFiles, gatedSkillPaths } =
+  const { promptsModule, toolDescriptionsModule, renderBlocksModule, skillFiles, gatedSkillPaths } =
     runAssemble();
   const serverInstructionsModule = emitServerInstructions(SERVER_INSTRUCTIONS_SNIPPETS);
   const d1 = diff(PROMPTS_OUT, promptsModule);
   const d2 = diff(TOOL_DESC_OUT, toolDescriptionsModule);
   const d3 = diff(SERVER_INSTRUCTIONS_OUT, serverInstructionsModule);
+  const d4 = diff(RENDER_BLOCKS_OUT, renderBlocksModule);
   const staleSkills: string[] = [];
   for (const skill of skillFiles) {
     const fullPath = join(SKILLS_OUT_DIR, skill.relativePath);
@@ -119,12 +132,14 @@ function cmdCheck(): void {
     !d1.matches ||
     !d2.matches ||
     !d3.matches ||
+    !d4.matches ||
     staleSkills.length > 0 ||
     orphanedGated.length > 0
   ) {
     if (!d1.matches) console.error(`[forge] ${PROMPTS_OUT} is stale. Run pnpm prompts:build.`);
     if (!d2.matches) console.error(`[forge] ${TOOL_DESC_OUT} is stale. Run pnpm prompts:build.`);
     if (!d3.matches) console.error(`[forge] ${SERVER_INSTRUCTIONS_OUT} is stale. Run pnpm prompts:build.`);
+    if (!d4.matches) console.error(`[forge] ${RENDER_BLOCKS_OUT} is stale. Run pnpm prompts:build.`);
     for (const path of staleSkills) {
       console.error(`[forge] ${path} is stale. Run pnpm prompts:build.`);
     }

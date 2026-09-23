@@ -179,6 +179,58 @@ export function emit(result: AssembleResult): EmitOutput {
 }
 
 /**
+ * Emit `render-blocks.generated.ts` for @leadbay/core.
+ *
+ * Holds what `{{render}}` cut out of each description: the full presentation
+ * algorithm, keyed by tool name, plus the one-line recipe from the template's
+ * `rendering_hint`. The MCP server puts the recipe on every result of that
+ * tool, and `leadbay_render_guide` returns the full block when the agent wants
+ * the detail. Neither channel is truncated at 2,048 characters the way a tool
+ * description is in Claude Code.
+ *
+ * `NO_COMMERCE_RENDER_BLOCKS` is the same text with the `{{commerce}}` parts
+ * deleted, for the ChatGPT surface — the render block travels the same
+ * commerce path as the description it came from.
+ */
+export function emitRenderBlocks(result: AssembleResult): string {
+  const parts: string[] = [HEADER];
+  parts.push(
+    "// Presentation blocks lifted out of tool descriptions by the {{render}}\n" +
+      "// marker. Keyed by tool name. Served with the RESULT, never inside the\n" +
+      "// description, because hosts truncate descriptions.\n",
+  );
+  parts.push("export const RENDER_BLOCKS: Record<string, string> = {\n");
+  for (const t of result.toolDescriptions) {
+    if (!t.renderBlock) continue;
+    parts.push(`  ${t.frontmatter.name}: \`${escapeBacktick(t.renderBlock)}\`,\n`);
+  }
+  parts.push("};\n\n");
+  parts.push(
+    "// The same blocks with the {{commerce}} parts deleted. Nothing is reworded.\n",
+  );
+  parts.push("export const NO_COMMERCE_RENDER_BLOCKS: Record<string, string> = {\n");
+  for (const t of result.toolDescriptions) {
+    if (!t.noCommerceRenderBlock) continue;
+    parts.push(`  ${t.frontmatter.name}: \`${escapeBacktick(t.noCommerceRenderBlock)}\`,\n`);
+  }
+  parts.push("};\n\n");
+  parts.push(
+    "// One-line recipe per tool, from the template's `rendering_hint`. Rides on\n" +
+      "// every result so the agent can render without fetching the full block.\n",
+  );
+  parts.push("export const RENDER_RECIPES: Record<string, string> = {\n");
+  for (const t of result.toolDescriptions) {
+    const hint = t.frontmatter.rendering_hint;
+    if (!t.renderBlock || !hint) continue;
+    parts.push(
+      `  ${t.frontmatter.name}: \`${escapeBacktick(hint.replace(/\s+/g, " ").trim())}\`,\n`,
+    );
+  }
+  parts.push("};\n");
+  return parts.join("");
+}
+
+/**
  * Emit a TS module exporting one string constant per `.md` file in the given
  * directory. Used for ambient MCP server-instruction paragraphs — content
  * that the `initialize` handler concatenates into the `instructions` payload

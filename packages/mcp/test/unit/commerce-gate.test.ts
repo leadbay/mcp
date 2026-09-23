@@ -24,7 +24,7 @@ import { mockHttp, resetHttpMock, httpsMockFactory } from "../harness.js";
 
 vi.mock("node:https", () => httpsMockFactory());
 
-import { LeadbayClient } from "@leadbay/core";
+import { LeadbayClient, RENDER_BLOCKS, NO_COMMERCE_RENDER_BLOCKS } from "@leadbay/core";
 import { buildServer } from "../../src/server.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -62,6 +62,25 @@ async function connect(includeCommerce?: boolean) {
 
 const instructionsOf = (server: unknown) => (server as any)._instructions as string;
 
+/**
+ * Every channel that carries prose to the agent on a surface.
+ *
+ * Since promptforge's `{{render}}` marker moved the layout blocks out of the
+ * descriptions and onto the result (leadbay_render_guide serves them), a
+ * selling phrase can live in a render block. The commerce gate has to cover
+ * that channel too, or a top-up offer reaches ChatGPT through the guide.
+ */
+const proseOf = async (
+  server: unknown,
+  mcpClient: { listTools: () => Promise<{ tools: Array<{ name: string; description?: string }> }> },
+  commerce: boolean,
+) =>
+  [
+    instructionsOf(server),
+    ...(await mcpClient.listTools()).tools.map((t) => `${t.name}\n${t.description ?? ""}`),
+    ...Object.values(commerce ? RENDER_BLOCKS : NO_COMMERCE_RENDER_BLOCKS),
+  ].join("\n");
+
 // The QUOTA_EXCEEDED envelope the client hands the agent, built the real way
 // (through mapErrorResponse with a genuine 429 + Retry-After).
 const quotaError = (client: LeadbayClient): any =>
@@ -96,10 +115,7 @@ describe("commerce gate — the Claude surface still sells, unchanged", () => {
   it("keeps every selling phrase in the instructions and descriptions", async () => {
     mockHttp([]);
     const { server, mcpClient } = await connect();
-    const corpus = [
-      instructionsOf(server),
-      ...(await mcpClient.listTools()).tools.map((t) => t.description ?? ""),
-    ].join("\n");
+    const corpus = await proseOf(server, mcpClient, true);
     for (const phrase of SELLING_PHRASES) {
       expect(corpus, `Claude must keep: ${phrase}`).toContain(phrase);
     }
@@ -143,10 +159,7 @@ describe("commerce gate — includeCommerce:false", () => {
   it("no selling phrase survives anywhere the agent reads", async () => {
     mockHttp([]);
     const { server, mcpClient } = await connect(false);
-    const corpus = [
-      instructionsOf(server),
-      ...(await mcpClient.listTools()).tools.map((t) => `${t.name}\n${t.description ?? ""}`),
-    ].join("\n");
+    const corpus = await proseOf(server, mcpClient, false);
     for (const phrase of SELLING_PHRASES) {
       expect(corpus, `must not reach ChatGPT: ${phrase}`).not.toContain(phrase);
     }

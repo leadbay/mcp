@@ -253,6 +253,19 @@ export const pullLeads: Tool<PullLeadsParams> = {
   outputSchema: {
     type: "object",
     properties: {
+      // How to lay the batch out. The full algorithm used to sit in this
+      // tool's description, where Claude Code truncated it at 2,048 chars;
+      // promptforge's {{render}} marker moved it to render-blocks.generated.ts
+      // and the MCP server puts this pointer on every result instead.
+      render: {
+        type: "object",
+        description:
+          "Layout for this result. `recipe` is the one-line version to follow; `guide` is the tool name to pass to leadbay_render_guide for the full algorithm (score bar, columns, link rules).",
+        properties: {
+          recipe: { type: "string" },
+          guide: { type: "string" },
+        },
+      },
       lens: {
         type: "object",
         description: "Lens metadata (id of the lens that was queried).",

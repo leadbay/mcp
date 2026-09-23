@@ -1,0 +1,24 @@
+---
+name: leadbay_render_guide
+kind: tool-description
+short_description: |
+  Returns the layout guide for a Leadbay tool's result: the table shape, the
+  score-bar computation, the link rules and the fallbacks. Use when a result
+  carries `render.guide` and you want the full recipe. Don't use it to fetch
+  lead data, and don't call it when the one-line `render.recipe` on the result
+  is enough.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: false
+---
+Every Leadbay result that needs a specific layout carries two fields: `render.recipe`, one line that is usually enough, and `render.guide`, the name of the tool whose full layout guide lives here. This tool returns that guide.
+
+Call it with `tool` set to the value of `render.guide`. Omit `tool` to list the tools that have a guide.
+
+The guide holds the parts that do not fit in a sentence: column definitions, the 10-segment score-bar computation, which fields must never be shown to the user, how a contact name is linked, and what to emit on a host that has no map or choice widget.
+
+It reads from the server's own copy of the layout, so it stays in step with the tool that produced the result. It makes no backend call, spends no quota, and returns the same text every time. Fetch it once per layout and reuse it for the rest of the conversation.
+
+If a tool has no guide, the response says so and tells you to render ordinary markdown. That is not an error.
