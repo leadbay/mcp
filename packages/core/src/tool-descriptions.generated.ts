@@ -1429,14 +1429,14 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-\`queued\` → ✅ "Queued <N> extra leads on lens <id>. Pull in ~30s." Do NOT
-list \`accepted_seeds\`; they're internal.
+\`queued\` → ✅ "Queued <N> extra leads on lens <id>. Pull in ~30s."
+\`accepted_seeds\` is internal; never list it.
 \`no_candidates\` → ⛔ surface \`reason.message\`, name the criteria, offer
-\`leadbay_adjust_audience\`. Never re-call on that lens.
-\`quota_exceeded\` → options via the host's choice widget
+\`leadbay_adjust_audience\`. Never re-call it.
+\`quota_exceeded\` → three options via the host's choice widget
 (smaller count / wait for reset / upgrade).
-\`refresh_in_progress\` → "lens is filling, retry in a minute".
-\`no_valid_seeds\` → silently re-fetch seeds and retry once.
+\`refresh_in_progress\` → "filling; retry in a minute".
+\`no_valid_seeds\` → re-fetch seeds, retry once.
 
 ---
 
@@ -1446,12 +1446,12 @@ Queue an additive extra-refill on a lens — more leads on the same criteria, wi
 
 **Seeds are optional at the wire level** — omit or empty array → backend falls back to default centroid strategies (same behaviour as a normal fill). The response's \`accepted_seeds\` echoes the subset that passed validation. Prefer the seeded path because it gives the recommender a signal beyond the lens centroid (which it already biases on).
 
-**Quota gate.** Each call is charged against the per-org daily \`LENS_EXTRA_REFILL\` quota at pre-flight time. The **full requested batch** must fit — there is no partial fulfillment. **Pre-check via \`leadbay_account_status\`**: look for the \`LENS_EXTRA_REFILL\` entry in \`quota.org.resources[]\` first, and fall back to \`quota.user.resources[]\` when \`quota.org\` is absent (non-admin callers only get the \`user\` group). Match the resource type case-insensitively (\`LENS_EXTRA_REFILL\` / \`lens_extra_refill\`). Read \`count\` (used today) and \`resets_at\`.
+**Quota gate.** Each call is charged against the per-org daily \`LENS_EXTRA_REFILL\` quota at pre-flight time (FREEMIUM=0 / TIER1=150 / TIER2=1000). The **full requested batch** must fit — there is no partial fulfillment. **Pre-check via \`leadbay_account_status\`**: look for the \`LENS_EXTRA_REFILL\` entry in \`quota.org.resources[]\` first, and fall back to \`quota.user.resources[]\` when \`quota.org\` is absent (non-admin callers only get the \`user\` group). Match the resource type case-insensitively (\`LENS_EXTRA_REFILL\` / \`lens_extra_refill\`). Read \`count\` (used today) and \`resets_at\`.
 
 **Status envelope (translated from raw API errors so the agent routes on \`status\`).**
 
 - \`status: "queued"\` — fill is queued. \`accepted_seeds\` lists IDs that passed validation. NEXT STEP: call \`leadbay_pull_leads\` in ~30s.
-- \`status: "quota_exceeded"\` — daily LENS_EXTRA_REFILL hit. Response carries \`quota: {used_today, resets_at}\` + a \`message\` to surface. **Render the options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`)**: (1) smaller \`extra_count\`, (2) wait until \`resets_at\`, (3) upgrade plan. Do NOT silently retry.
+- \`status: "quota_exceeded"\` — daily LENS_EXTRA_REFILL hit. Response carries \`quota: {used_today, resets_at}\` + a \`message\` to surface. **Render three options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`)**: (1) smaller \`extra_count\`, (2) wait until \`resets_at\`, (3) upgrade plan (TIER1=150, TIER2=1000). Do NOT silently retry.
 - \`status: "refresh_in_progress"\` — a refresh or extra-refill is already running. Tell the user to wait and call \`leadbay_pull_leads\` in ~30s.
 - \`status: "no_valid_seeds"\` — seeds went stale. Silently re-call \`leadbay_list_lens_seed_candidates\` and retry once; only surface to the user if the second attempt also fails.
 - \`status: "no_candidates"\` — **the refill was NOT queued.** The lens's candidate pool is empty, so a refill would report success, consume no quota and deliver nothing. \`reason\` carries the same \`{code, message, retryable, criteria?, narrow_locations?}\` shape \`leadbay_pull_leads\` returns in \`empty_reason\`, with \`retryable: false\`. **Stop. Do not re-call this tool on this lens** — the outcome cannot change until the audience changes. Surface \`reason.message\`, name the criteria in play, and offer \`leadbay_adjust_audience\` (or \`leadbay_pull_followups\` when \`reason.code\` is \`no_new_leads\` and the lens already holds leads).
@@ -7353,14 +7353,14 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-\`queued\` → ✅ "Queued <N> extra leads on lens <id>. Pull in ~30s." Do NOT
-list \`accepted_seeds\`; they're internal.
+\`queued\` → ✅ "Queued <N> extra leads on lens <id>. Pull in ~30s."
+\`accepted_seeds\` is internal; never list it.
 \`no_candidates\` → ⛔ surface \`reason.message\`, name the criteria, offer
-\`leadbay_adjust_audience\`. Never re-call on that lens.
+\`leadbay_adjust_audience\`. Never re-call it.
 \`quota_exceeded\` → options via the host's choice widget
 (smaller count / wait for reset).
-\`refresh_in_progress\` → "lens is filling, retry in a minute".
-\`no_valid_seeds\` → silently re-fetch seeds and retry once.
+\`refresh_in_progress\` → "filling; retry in a minute".
+\`no_valid_seeds\` → re-fetch seeds, retry once.
 
 ---
 
@@ -7375,7 +7375,7 @@ Queue an additive extra-refill on a lens — more leads on the same criteria, wi
 **Status envelope (translated from raw API errors so the agent routes on \`status\`).**
 
 - \`status: "queued"\` — fill is queued. \`accepted_seeds\` lists IDs that passed validation. NEXT STEP: call \`leadbay_pull_leads\` in ~30s.
-- \`status: "quota_exceeded"\` — daily LENS_EXTRA_REFILL hit. Response carries \`quota: {used_today, resets_at}\` + a \`message\` to surface. **Render the options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`)**: (1) smaller \`extra_count\`, (2) wait until \`resets_at\`. Do NOT silently retry.
+- \`status: "quota_exceeded"\` — daily LENS_EXTRA_REFILL hit. Response carries \`quota: {used_today, resets_at}\` + a \`message\` to surface. **Render options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`)**: (1) smaller \`extra_count\`, (2) wait until \`resets_at\`. Do NOT silently retry.
 - \`status: "refresh_in_progress"\` — a refresh or extra-refill is already running. Tell the user to wait and call \`leadbay_pull_leads\` in ~30s.
 - \`status: "no_valid_seeds"\` — seeds went stale. Silently re-call \`leadbay_list_lens_seed_candidates\` and retry once; only surface to the user if the second attempt also fails.
 - \`status: "no_candidates"\` — **the refill was NOT queued.** The lens's candidate pool is empty, so a refill would report success, consume no quota and deliver nothing. \`reason\` carries the same \`{code, message, retryable, criteria?, narrow_locations?}\` shape \`leadbay_pull_leads\` returns in \`empty_reason\`, with \`retryable: false\`. **Stop. Do not re-call this tool on this lens** — the outcome cannot change until the audience changes. Surface \`reason.message\`, name the criteria in play, and offer \`leadbay_adjust_audience\` (or \`leadbay_pull_followups\` when \`reason.code\` is \`no_new_leads\` and the lens already holds leads).

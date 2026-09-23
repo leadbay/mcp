@@ -75,13 +75,32 @@ describe("audit: no purchase offer on the commerce-free surface", () => {
   });
 
   it("the default surface still sells exactly as hard as before", () => {
-    // The gate deletes; it never softens. So every phrase banned above must
-    // still be reachable somewhere on the Claude surface.
+    // The gate DELETES on the commerce-free build; it must never remove text
+    // from the default one. The first pass at this got it wrong: gating
+    // extend_lens's upgrade option deleted "(FREEMIUM=0 / TIER1=150 /
+    // TIER2=1000)" and the word "three" from BOTH surfaces, because the edit
+    // rewrote the sentence instead of wrapping the part that sells. Every
+    // phrase below is one the Claude surface is supposed to keep.
     const all = [...compositeReadTools, ...compositeWriteTools]
       .map((t) => t.description)
       .join("\n");
-    for (const phrase of ["wait-or-top-up", "upgrade plan", "leadbay_create_topup_link"]) {
-      expect(all, `${phrase} vanished from the default surface too`).toContain(phrase);
-    }
+    const KEPT = [
+      "wait-or-top-up",
+      "upgrade plan",
+      "leadbay_create_topup_link",
+      "leadbay_open_billing_portal",
+      "Top-up: $",
+      "top-up link",
+      "FREEMIUM=0",
+      "TIER1=150",
+      "TIER2=1000",
+      // the option count, deleted only where the third option is
+      "three options",
+    ];
+    const missing = KEPT.filter((phrase) => !all.includes(phrase));
+    expect(
+      missing,
+      "Wrap what sells in {{commerce}}. Do not reword the sentence around it — that deletes it for Claude too.",
+    ).toEqual([]);
   });
 });
