@@ -8,7 +8,7 @@ description: "Build a ranked account-conquest plan from Leadbay data — the acc
 
 You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
 
-What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call `leadbay_refine_prompt` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike with their words as its `reason` rather than noting it.
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call `leadbay_refine_lead_targeting` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike with their words as its `reason` rather than noting it.
 
 
 Build me a **top-<the user-supplied value if any; otherwise a sensible default. Source: Optional: how many accounts the plan should hold (default 50).> account-conquest plan** — the accounts worth activating, ranked, each one carrying a strategic motif, a phone pitch and a three-step checklist. <if the user supplied this argument, render the short block derived from it; otherwise empty. Source: Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire', 'Région Ouest'). Sets geography on the Discover lens. A country is not a territory — this workspace already covers exactly one country.>
@@ -190,7 +190,7 @@ If the `territory` I named is a country, which one decides what you do:
   plan is a Paris plan — and "covers all of France" printed above it is exactly the
   confidently wrong deliverable this whole gate exists to stop, this time in my own
   header rather than in a filter.
-  **Read the lens's `criteria` in `leadbay_my_lenses`** — it names the lens's
+  **Read the lens's `criteria` in `leadbay_manage_lenses`** — it names the lens's
   `location_ids`. `leadbay_pull_leads` returns only `lens: {id}`, not the
   filter, and `active_filters` describes the separately-persisted MONITOR filter, not
   the Discover lens; neither can settle this and neither is a substitute (same rule as
@@ -218,7 +218,7 @@ On a lens-WRITING tool (`new_lens`, `adjust_audience`, `update_lens_filter`) wri
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read `_meta.region` on any tool result — it outranks any recalled memory; on `custom`, claim nothing.
 
-Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.
+Place names never go in `keywords`, `sectors` or `leadbay_refine_lead_targeting` — text matches, not geo filters.
 
 
 # PHASE 1 — THE FIVE QUALIFICATION QUESTIONS
@@ -238,7 +238,7 @@ If the org has none set, or they don't discriminate for this exercise, recommend
 - **A persisted filter you didn't ask for** silently shrinks the known side, so a rep who once filtered Monitor to a city gets a "whole base" plan missing most of it.
 - **Blindly passing `filtered:false`** does the opposite: Monitor goes org-wide while Discover stays on a scoped lens, so out-of-scope known accounts land in a plan headed with the lens's name.
 
-⚠ **You cannot mirror a geography you haven't read.** `leadbay_pull_leads` returns only `lens: {id}` — not the lens's filter — so capturing the id tells you nothing about which locations it covers. Before scoping Monitor to match a lens, read its `criteria` in **`leadbay_my_lenses`** — every lens there carries its filter's `location_ids` by name. If you cannot determine the lens's geography, do NOT guess: pull Monitor org-wide with `filtered:false` and say in the header that the known side is org-wide while Discover follows lens `<id>`, whose scope you could not read. An unstated mismatch is the failure; a stated one is honest.
+⚠ **You cannot mirror a geography you haven't read.** `leadbay_pull_leads` returns only `lens: {id}` — not the lens's filter — so capturing the id tells you nothing about which locations it covers. Before scoping Monitor to match a lens, read its `criteria` in **`leadbay_manage_lenses`** — every lens there carries its filter's `location_ids` by name. If you cannot determine the lens's geography, do NOT guess: pull Monitor org-wide with `filtered:false` and say in the header that the known side is org-wide while Discover follows lens `<id>`, whose scope you could not read. An unstated mismatch is the failure; a stated one is honest.
 
 So: **read the persisted filter first** (the response reports `active_filters`), then make it match the plan's declared scope. If the plan is scoped (a `territory`, or an active lens with its own geography), apply that same geography to Monitor. If the plan is genuinely org-wide, pass `filtered:false`. Either way, state the known side's scope in the header in the same breath as the Discover side — a plan whose two halves are scoped differently is misleading even when both halves are individually correct.
 
@@ -527,7 +527,7 @@ ChatGPT exposes the same routing pattern via `_meta.openai/outputTemplate`. We d
 
 ⚠ **The deck's contact layer depends on what actually happened in Phase 5.** Bind a `leadbay_bulk_enrich_status` resource ONLY if a reveal was launched and you hold a `notification_id`. If the user accepted the deck but not the reveal, render the contacts already on record and carry the reveal offer inside the deck — never wire a status resource with no handle (it renders permanently empty) and never launch enrichment from the deck to manufacture one.
 
-On acceptance, call `leadbay_artifact_kit`, read its `usage_guide` before writing any code, and build a single-file deck. Wire the live layer from the handles you kept: a poll-until-done resource per `notification_id` for the qualification pills, and one over `leadbay_bulk_enrich_status` for the contacts. ⚠ **If enrichment already ran this session, bind the existing `notification_id` — re-launching enrichment from the deck uses my quota twice.** Per-card notes and outcomes go through the pre-wired note/outreach view-models (they carry the required verification and `_triggered_by` fields; hand-rolling those is where it breaks). Keep the checklists in local storage, and always wire a Refresh — auto-poll is host-dependent. List every tool the deck calls in its `mcp_tools`, and render the bridge-unavailable branch, or the pills silently show empty.
+On acceptance, call `leadbay_get_artifact_runtime`, read its `usage_guide` before writing any code, and build a single-file deck. Wire the live layer from the handles you kept: a poll-until-done resource per `notification_id` for the qualification pills, and one over `leadbay_bulk_enrich_status` for the contacts. ⚠ **If enrichment already ran this session, bind the existing `notification_id` — re-launching enrichment from the deck uses my quota twice.** Per-card notes and outcomes go through the pre-wired note/outreach view-models (they carry the required verification and `_triggered_by` fields; hand-rolling those is where it breaks). Keep the checklists in local storage, and always wire a Refresh — auto-poll is host-dependent. List every tool the deck calls in its `mcp_tools`, and render the bridge-unavailable branch, or the pills silently show empty.
 
 # Iron laws
 

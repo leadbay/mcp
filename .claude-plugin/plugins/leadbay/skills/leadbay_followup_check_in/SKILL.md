@@ -8,7 +8,7 @@ description: "Follow-up check-in: surface KNOWN leads from the Monitor view need
 
 You keep your own memory of how this user likes to work — tone, naming, formatting, what they ask you to skip. Leadbay does not store that and does not need to.
 
-What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call `leadbay_refine_prompt` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike with their words as its `reason` rather than noting it.
+What Leadbay does need is anything that changes **who it should find**. When the user states targeting criteria in conversation ("I target fleets over 100 vehicles", "carriers are a bad fit unless they do last-mile delivery", "climate engineering is also my market"), call `leadbay_refine_lead_targeting` so it changes what Leadbay surfaces for the whole org and on every future refresh — not just this conversation. When they say a specific lead is wrong for them, record the dislike with their words as its `reason` rather than noting it.
 
 
 Run the Leadbay follow-up check-in for me. Treat this prompt the same way for any equivalent ask: "leads I should follow up with", "already known leads", "what's overdue", "before my trip to [city]", "leads I haven't contacted", "who should I re-engage today".
@@ -117,7 +117,7 @@ On a lens-WRITING tool (`new_lens`, `adjust_audience`, `update_lens_filter`) wri
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read `_meta.region` on any tool result — it outranks any recalled memory; on `custom`, claim nothing.
 
-Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.
+Place names never go in `keywords`, `sectors` or `leadbay_refine_lead_targeting` — text matches, not geo filters.
 
 
 ⚠ **On this prompt, omitting the geo argument is only HALF of a whole-workspace read.**

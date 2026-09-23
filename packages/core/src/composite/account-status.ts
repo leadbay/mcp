@@ -64,7 +64,7 @@ export const accountStatus: Tool<Record<string, never>> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: ACCOUNT_STATUS_DESCRIPTION,
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -92,7 +92,7 @@ export const accountStatus: Tool<Record<string, never>> = {
           computing_intelligence: {
             type: "boolean",
             description:
-              "True if Leadbay is mid-regenerating intelligence after a refine_prompt; new leads will reflect it shortly.",
+              "True if Leadbay is mid-regenerating intelligence after a targeting refinement; new leads will reflect it shortly.",
           },
           plan: { type: ["string", "null"] },
           unlimited_credits: {
@@ -129,7 +129,7 @@ export const accountStatus: Tool<Record<string, never>> = {
           targeting_prompt: {
             type: ["string", "null"],
             description:
-              "The org's free-text targeting prompt, in the user's own words. Changed with leadbay_refine_prompt.",
+              "The org's free-text targeting prompt, in the user's own words. Changed with leadbay_refine_lead_targeting.",
           },
           qualification_questions: {
             type: ["array", "null"],

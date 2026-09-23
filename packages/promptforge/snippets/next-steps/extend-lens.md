@@ -9,9 +9,11 @@ Pick the row matching the response `status`. Seed-picking is internal; do NOT ad
 | `queued`                | "Pull leads in ~30s to see the new ones"                      | `leadbay_pull_leads()` (after a short wait)            |
 | `quota_exceeded`        | "Try with a smaller `extra_count`"                            | `leadbay_extend_lens(extra_count=<smaller>)`           |
 | `quota_exceeded`        | "Wait until the daily quota resets at `<resets_at>`"          | (no call — surface the reset time to the user)         |
+{{commerce}}
 | `quota_exceeded`        | "Upgrade plan for a higher daily limit"                       | (no call — direct user to contact account manager / sales) |
+{{/commerce}}
 | `refresh_in_progress`   | "Lens is already filling — pull leads in a minute"            | `leadbay_pull_leads()` (after a short wait)            |
-| `no_valid_seeds`        | (silent retry — re-call `leadbay_seed_candidates` then `leadbay_extend_lens`) | internal — only surface if the second attempt also fails |
+| `no_valid_seeds`        | (silent retry — re-call `leadbay_list_lens_seed_candidates` then `leadbay_extend_lens`) | internal — only surface if the second attempt also fails |
 | `no_candidates`         | "Widen the audience — this lens has nothing left to add"       | `leadbay_adjust_audience()` — never `leadbay_extend_lens` again |
 | `no_candidates` (`reason.code: no_new_leads`) | "Work the leads already in the lens"        | `leadbay_pull_followups()`                             |
 

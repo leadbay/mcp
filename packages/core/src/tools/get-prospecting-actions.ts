@@ -15,7 +15,7 @@ export const getProspectingActions: Tool<GetProspectingActionsParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_PROSPECTING_ACTIONS_DESCRIPTION,
   inputSchema: {

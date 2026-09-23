@@ -5,9 +5,9 @@ short_description: |
   Mark a lens as last-used so all composite tools default to it.
 annotations:
   readOnlyHint: false
-  destructiveHint: true
+  destructiveHint: false
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 ---
 Mark a lens as last-used. Subsequent `/me` reads return it as `last_requested_lens`, so all composite tools default to it.
 

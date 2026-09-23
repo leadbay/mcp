@@ -20,7 +20,7 @@ routing:
     - phrase: "show me today's leads"
       route_to: leadbay_pull_leads
     - phrase: "which audiences do I have"
-      route_to: leadbay_my_lenses
+      route_to: leadbay_manage_lenses
     - phrase: "where am I / what's my plan and quota"
       route_to: leadbay_account_status
   prefer_when: "the user has never used Leadbay, or asks to be SHOWN rather than told — the walkthrough runs real calls on their own account"
@@ -90,7 +90,7 @@ The manifest also carries **`keep_going`**: the closing cheat-sheet of *what you
 
 **Step 3 drafts, and uses no quota.** Call `leadbay_prepare_outreach` with `leadId` alone — **never `enrich: true`**, which launches a contact reveal off the back of a *draft* click. `recommended_contact` returns with `email`/`phone` null; that is expected, and it is the hook for step 4. Render through `message_compose_v1` (2–3 strategy-labelled variants), address it to the job TITLE — no name exists yet, and inventing one is fabrication — and never send it or offer to.
 
-**Step 4 runs in two beats — free first, the reveal only on consent.** Scoped to the ONE lead step 3 drafted for. Beat 1 omits `titles` and returns `mode:"discover"`, the free list of job titles at that company; say plainly that nothing has run yet. Beat 2 names the title the draft is addressed to, says BEFORE they decide that revealing one contact uses a little of their plan's quota (no amount, no price), and only on confirmation calls again with `titles` + `confirm:true` + `email:true` — polled via `leadbay_bulk_enrich_status` until done, reporting only what actually resolved. The gate click bought the free look, not the reveal: never launch without an explicit confirm.
+**Step 4 runs in two passes — free first, the reveal only on consent.** Scoped to the ONE lead step 3 drafted for. Pass 1 omits `titles` and returns `mode:"discover"`, the free list of job titles at that company; say plainly that nothing has run yet. Pass 2 names the title the draft is addressed to, says BEFORE they decide that revealing one contact uses a little of their plan's quota (no amount, no price), and only on confirmation calls again with `titles` + `confirm:true` + `email:true` — polled via `leadbay_bulk_enrich_status` until done, reporting only what actually resolved. The gate click bought the free look, not the reveal: never launch without an explicit confirm.
 
 ## Empty first batch is normal, not an error
 

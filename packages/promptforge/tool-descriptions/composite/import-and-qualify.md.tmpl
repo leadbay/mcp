@@ -7,8 +7,8 @@ short_description: |
   both the import outcome and the per-lead qualification answers — in one call.
 annotations:
   readOnlyHint: false
-  destructiveHint: true
-  idempotentHint: true
+  destructiveHint: false
+  idempotentHint: false
   openWorldHint: true
 ---
 Import + qualify leads in one call. Pass either `domains: [{domain, name?}]` (Mode A) OR `records[]` with `mappings` (Mode B). At least one mapped field must be LEADBAY_ID, CRM_ID, SIREN, LEAD_NAME, or LEAD_WEBSITE. Discover the org's mappable surface via `leadbay_list_mappable_fields`. For messy files, prefer the `leadbay_import_file` prompt which walks an agent through scan → resolve → preserve → commit phases.

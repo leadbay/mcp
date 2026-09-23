@@ -7,9 +7,9 @@ import {
   artifactEvent,
   ARTIFACT_EVENT_KINDS,
   ARTIFACT_EVENT_SURFACES,
-} from "../../../src/tools/artifact-event.js";
+} from "../../../src/tools/report-artifact-error.js";
 
-// leadbay_artifact_event (product#4081) is the ingest endpoint for the
+// leadbay_report_artifact_error (product#4081) is the ingest endpoint for the
 // @leadbay/components artifact runtime. It makes NO backend call: it validates
 // the event and hands it to the MCP telemetry layer via ctx.reportArtifactEvent,
 // which decides Sentry (exceptions) vs PostHog (outcomes).
@@ -24,7 +24,7 @@ function ctxWithSink() {
 
 beforeEach(() => resetHttpMock());
 
-describe("leadbay_artifact_event", () => {
+describe("leadbay_report_artifact_error", () => {
   it("happy path — forwards the event and makes no API call", async () => {
     mockHttp([]);
     const { seen, ctx } = ctxWithSink();
@@ -100,7 +100,7 @@ describe("leadbay_artifact_event", () => {
     // An agent reading this must learn not to call it, and where user-raised
     // problems actually go.
     expect(r.hint).toContain("leadbay_report_friction");
-    expect(r.hint).toContain("leadbay_artifact_kit");
+    expect(r.hint).toContain("leadbay_get_artifact_runtime");
   });
 
   it("bounds tool/code so a leaked message can't become an unbounded property", async () => {
@@ -139,10 +139,14 @@ describe("leadbay_artifact_event", () => {
     expect(r.recorded).toBe(true);
   });
 
-  it("is read-only and carries no _triggered_by mandate", () => {
+  it("carries no _triggered_by mandate and is labelled as leaving the boundary", () => {
     // An artifact button click has no fresh user utterance to quote, so this
     // tool must stay OUT of the composite mandate.
     expect(artifactEvent.write).toBe(false);
-    expect(artifactEvent.annotations?.readOnlyHint).toBe(true);
+    // It makes no backend call, but it does hand a bounded enum + error code to
+    // Leadbay's own error tracker — data leaving the conversation. OpenAI's
+    // plugin guidelines require that to be labelled a write, not a read.
+    expect(artifactEvent.annotations?.readOnlyHint).toBe(false);
+    expect(artifactEvent.annotations?.openWorldHint).toBe(true);
   });
 });

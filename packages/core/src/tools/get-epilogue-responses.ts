@@ -15,7 +15,7 @@ export const getEpilogueResponses: Tool<GetEpilogueResponsesParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_EPILOGUE_RESPONSES_DESCRIPTION,
   inputSchema: {

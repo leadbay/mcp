@@ -6,9 +6,9 @@ short_description: |
   the follow-up queue immediately.
 annotations:
   readOnlyHint: false
-  destructiveHint: true
+  destructiveHint: false
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 ---
 Clear an active pushback on one or more leads. They re-enter `leadbay_pull_followups` immediately. Use when the user changes their mind ("actually let's reach out now"), or when external context shifts (the company announces hiring / funding / a new product that makes them ripe sooner than the deferral window expected).
 

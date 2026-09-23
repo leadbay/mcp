@@ -34,7 +34,7 @@ Step 3 handles it.
 **Step 3 — classify what REMAINS**, and act on every part of it:
 
 - **Nothing remains** (the country was the entire instruction) → **STOP HERE. Call
-  NOTHING.** Do not continue to PHASE 1: `leadbay_refine_prompt` would overwrite my
+  NOTHING.** Do not continue to PHASE 1: `leadbay_refine_lead_targeting` would overwrite my
   qualitative audience prompt and kick off an intelligence recompute to express a scope
   this workspace already has. Tell me there is nothing to set because the workspace
   already covers exactly that, offer the axes that do narrow an audience (sector, size,
@@ -71,11 +71,11 @@ On a lens-WRITING tool (`new_lens`, `adjust_audience`, `update_lens_filter`) wri
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read `_meta.region` on any tool result — it outranks any recalled memory; on `custom`, claim nothing.
 
-Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.
+Place names never go in `keywords`, `sectors` or `leadbay_refine_lead_targeting` — text matches, not geo filters.
 
 
 # PHASE 1 — REFINE (only when PHASE 0 classified the instruction as qualitative)
-Call `leadbay_refine_prompt` with `prompt=<the STRIPPED instruction from PHASE 0, Step 1>` — the text with any country phrase removed, never the raw instruction.
+Call `leadbay_refine_lead_targeting` with `prompt=<the STRIPPED instruction from PHASE 0, Step 1>` — the text with any country phrase removed, never the raw instruction.
 
 # PHASE 2 — CLARIFICATION ROUND-TRIP (if needed)
 

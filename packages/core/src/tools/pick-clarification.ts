@@ -14,7 +14,7 @@ export const pickClarification: Tool<PickClarificationParams> = {
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: PICK_CLARIFICATION_DESCRIPTION,
   optional: true,

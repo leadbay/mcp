@@ -44,7 +44,7 @@ export const setTelemetry: Tool<SetTelemetryParams> = {
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: SET_TELEMETRY_DESCRIPTION,
   optional: true,

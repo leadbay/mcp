@@ -96,13 +96,28 @@ generated description, which is the chunk every host loads even when
 truncating tool descriptions for context.
 
 ```
-[1] ## WHEN TO USE        ← auto-emitted from frontmatter.routing
-[2] ## RENDER (quick)     ← auto-emitted from frontmatter.rendering_hint
+[1] ## WHAT IT DOES       ← auto-emitted from frontmatter.short_description
+[2] ## WHEN TO USE        ← auto-emitted from frontmatter.routing
+[3] ## RENDER (quick)     ← auto-emitted from frontmatter.rendering_hint
 ---
-[3] <free-form body>      ← what the tool does, params, edge cases
-[4] {{include:rendering/…}}   ← detailed RENDERING block
-[5] {{include:next-steps/…}}  ← (optional) NEXT STEPS table
+[4] <free-form body>      ← params, edge cases, error envelopes
+[5] {{include:rendering/…}}   ← detailed RENDERING block
+[6] {{include:next-steps/…}}  ← (optional) NEXT STEPS table
 ```
+
+`## WHAT IT DOES` comes first because OpenAI's plugin guidelines require each
+tool description to "explain its purpose explicitly and accurately". A
+description that opened with a trigger-phrase list did not, and that was one of
+the two reasons the app was rejected on 2026-09-20. Keep `short_description`
+to one or two sentences: it is the first thing both the model and a reviewer
+read, and its length pushes the routing block down inside the head window the
+audits enforce (1,100 chars, widened from 600 when this block landed).
+
+### Section 0 — `short_description` (what it does)
+
+One or two sentences, third person, describing what the tool does. Promptforge
+wraps it in `## WHAT IT DOES` at the very head of the description. No rendering
+recipe and no trigger phrases belong here — those have their own blocks.
 
 ### Section 1 — `routing` (when to use)
 
@@ -278,6 +293,23 @@ Promptforge emits the tool's normal const plus an entry in
 Include them via `{{include:rendering/score-bar}}` etc. Don't duplicate
 content across templates — extract a snippet if you find yourself
 copy-pasting.
+
+## Tool annotations
+
+Every tool sets `readOnlyHint`, `destructiveHint` and `openWorldHint`
+explicitly — the type in `packages/core/src/types.ts` makes all three required,
+and `packages/mcp/test/audit/annotation-accuracy.test.ts` checks they match
+behaviour. The definitions are OpenAI's, because that directory rejects on
+them:
+
+| Hint | True when |
+|---|---|
+| `readOnlyHint` | the call only reads. A read that also posts a receipt the backend acts on later — `LEAD_SEEN`, which drives lead rotation — is NOT read-only. |
+| `destructiveHint` | the call can remove or irreversibly replace records the user created, or an identical repeat spends the org's enrichment quota again with no guard in front of it (product#4039). Status flags, per-user hide flags and the transient server-side selection stay `false`. |
+| `openWorldHint` | the call reaches beyond the user's own workspace: the public web, a third-party contact-data provider, Stripe, or a telemetry sink. **Talking to `api-us.leadbay.app` is not open-world** — a bounded private workspace stays bounded even though it is externally hosted. |
+
+The open-world set is pinned by name in the audit with the call that earns it.
+Adding a tool that reaches outside means adding it there too.
 
 ## Tool description budget
 

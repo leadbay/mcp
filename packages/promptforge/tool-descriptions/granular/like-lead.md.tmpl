@@ -44,7 +44,7 @@ Mark a lead as liked. This is the same action as clicking the thumbs-up on the L
 
 Pass the lead's UUID as `lead_id`.
 
-{{include:headers/tool-when-to-use}} the user explicitly approves of a lead ("this one looks good", "I like this", "thumbs up", "save this one", "this is a good fit"). Also use after `leadbay_research_lead` reveals strong signals.
+{{include:headers/tool-when-to-use}} the user explicitly approves of a lead ("this one looks good", "I like this", "thumbs up", "save this one", "this is a good fit"). Also use after `leadbay_research_lead_by_id` reveals strong signals.
 
 {{include:headers/tool-when-not-to-use}} the user is just reading or researching a lead without expressing approval. Use `leadbay_dislike_lead` for negative signals; use `leadbay_set_pushback` for "remind me later" / temporary snooze (like is durable; pushback is reversible).
 

@@ -224,7 +224,7 @@ export const resolveImportRows: Tool<ResolveImportRowsParams, ResolveImportRowsR
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: RESOLVE_IMPORT_ROWS_DESCRIPTION,
   write: false,

@@ -229,7 +229,7 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: IMPORT_STATUS_DESCRIPTION,
   inputSchema: {

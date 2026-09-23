@@ -50,13 +50,13 @@ describe("tools/list — default (composite reads + writes since 0.3.0)", () => 
     expect(names).toContain("leadbay_pull_leads");
     expect(names).toContain("leadbay_research_lead_by_id");
     expect(names).toContain("leadbay_account_status");
-    expect(names).toContain("leadbay_recall_ordered_titles");
+    expect(names).toContain("leadbay_list_previously_enriched_titles");
     // Existing composites (kept for back-compat)
     expect(names).toContain("leadbay_research_lead_by_name_fuzzy");
     expect(names).toContain("leadbay_prepare_outreach");
     // Composite writes — exposed under the new default.
     expect(names).toContain("leadbay_report_outreach");
-    expect(names).toContain("leadbay_refine_prompt");
+    expect(names).toContain("leadbay_refine_lead_targeting");
     expect(names).toContain("leadbay_adjust_audience");
     expect(names).toContain("leadbay_bulk_qualify_leads");
     expect(names).toContain("leadbay_enrich_titles");
@@ -99,7 +99,7 @@ describe("tools/list — read-only mode (LEADBAY_MCP_WRITE=0 / includeWrite=fals
     expect(names).toContain("leadbay_account_status");
     // Writes hidden.
     expect(names).not.toContain("leadbay_report_outreach");
-    expect(names).not.toContain("leadbay_refine_prompt");
+    expect(names).not.toContain("leadbay_refine_lead_targeting");
     expect(names).not.toContain("leadbay_answer_clarification");
     expect(names).not.toContain("leadbay_adjust_audience");
     expect(names).not.toContain("leadbay_bulk_qualify_leads");
@@ -275,11 +275,11 @@ describe("buildServerInstructions — dynamic LLM guidance", () => {
     "leadbay_account_status",
     "leadbay_pull_leads",
     "leadbay_research_lead_by_id",
-    "leadbay_recall_ordered_titles",
+    "leadbay_list_previously_enriched_titles",
     "leadbay_bulk_qualify_leads",
     "leadbay_enrich_titles",
     "leadbay_adjust_audience",
-    "leadbay_refine_prompt",
+    "leadbay_refine_lead_targeting",
     "leadbay_answer_clarification",
     "leadbay_report_outreach",
   ]);
@@ -288,7 +288,7 @@ describe("buildServerInstructions — dynamic LLM guidance", () => {
     "leadbay_account_status",
     "leadbay_pull_leads",
     "leadbay_research_lead_by_id",
-    "leadbay_recall_ordered_titles",
+    "leadbay_list_previously_enriched_titles",
   ]);
 
   it("default (writes exposed) leads with the report_outreach mandate", async () => {
@@ -334,7 +334,7 @@ describe("buildServerInstructions — dynamic LLM guidance", () => {
     expect(out).not.toMatch(/leadbay_bulk_qualify_leads/);
     expect(out).not.toMatch(/leadbay_enrich_titles/);
     expect(out).not.toMatch(/leadbay_adjust_audience/);
-    expect(out).not.toMatch(/leadbay_refine_prompt/);
+    expect(out).not.toMatch(/leadbay_refine_lead_targeting/);
     expect(out).not.toMatch(/leadbay_answer_clarification/);
     expect(out).not.toMatch(/leadbay_report_outreach/);
     // Mental-model framing IS still present.
@@ -357,7 +357,7 @@ describe("buildServerInstructions — dynamic LLM guidance", () => {
     const instructions = (server as any)._instructions;
     expect(typeof instructions).toBe("string");
     expect(instructions.slice(0, 200)).not.toMatch(/report_outreach/i);
-    expect(instructions).not.toMatch(/leadbay_refine_prompt/);
+    expect(instructions).not.toMatch(/leadbay_refine_lead_targeting/);
     expect(instructions).toMatch(/inbox/i);
     expect(instructions).toMatch(/those actions require write tools/i);
   });

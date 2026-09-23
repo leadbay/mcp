@@ -35,9 +35,12 @@ export const prepareOutreach: Tool<PrepareOutreachParams> = {
   name: "leadbay_prepare_outreach",
   annotations: {
     title: "Prepare outreach package for a lead",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
-    idempotentHint: true,
+    // Not idempotent: with `enrich: true` a repeat orders the contact's
+    // details again and spends the org's enrichment quota a second time.
+    // Annotations are static and describe the worst case, not the default.
+    idempotentHint: false,
     openWorldHint: true,
   },
   description: PREPARE_OUTREACH_DESCRIPTION,

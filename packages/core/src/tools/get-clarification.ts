@@ -9,7 +9,7 @@ export const getClarification: Tool<Record<string, never>> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_CLARIFICATION_DESCRIPTION,
   inputSchema: { type: "object", properties: {}, additionalProperties: false },

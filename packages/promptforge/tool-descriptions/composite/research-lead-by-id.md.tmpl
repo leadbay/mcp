@@ -2,12 +2,10 @@
 name: leadbay_research_lead_by_id
 kind: tool-description
 short_description: |
-  Tell me everything decision-relevant about a single lead BY ID — qualification
-  answers, web-research signals, firmographics, enriched contacts, unified
-  recent activity, and contact-reachability hint in one bundled call. Use when
-  the user has already picked a lead from a list and you have its UUID. Don't
-  use it when the user names a company in prose without an id — that's
-  leadbay_research_lead_by_name_fuzzy.
+  Return everything decision-relevant about one lead identified by its Leadbay
+  UUID: qualification answers, web-research signals, firmographics, contacts
+  and recent activity in one call. Use leadbay_research_lead_by_name_fuzzy
+  when only the company name is known.
 routing:
   triggers:
     - "tell me about this lead"
@@ -29,17 +27,19 @@ routing:
       - "Look up Acme Corp for me."
       - "Show me today's leads."
 annotations:
-  readOnlyHint: true
+  readOnlyHint: false
   destructiveHint: false
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 ---
-Tell me everything decision-relevant about a single lead, identified by its
-Leadbay UUID. Bundles the lens-scoped profile, AI qualification answers,
-structured web-research signals (hot flags + sources), the two-tier contact set
-(`enriched` + `org`), the unified `recent_activities` timeline, engagement
-counts, and a `_meta.has_reachable_contact` hint that drives NEXT STEPS. Order
-is deliberate: qualification, signals, firmographics, contacts, recent activity.
+
+Payload order is deliberate: qualification, signals, firmographics, contacts,
+recent activity. Contacts arrive in two tiers (`enriched` + `org`), web-research
+signals carry hot flags + sources, and `_meta.has_reachable_contact` drives
+NEXT STEPS.
+
+{{include:gates/lead-seen-side-effect}}
+
 
 Scoring has two layers: the basic `score` (firmographic, always present) and
 the AI qualification layer (`ai_agent_lead_score` + per-question answers +
@@ -47,9 +47,8 @@ web_fetch signals). The AI layer is pre-populated for roughly the top 10 of
 each daily batch, and on-demand (via leadbay_bulk_qualify_leads) below that.
 Combine both when judging a lead.
 
-The companion **leadbay_research_lead_by_name_fuzzy** wraps this one when the
-user names a company without a UUID: it fuzzy-resolves against the active
-lens's wishlist, then delegates here. Same shape, plus `_meta.resolved_from` /
+**leadbay_research_lead_by_name_fuzzy** wraps this tool when the user names a
+company without a UUID: same shape, plus `_meta.resolved_from` /
 `_meta.match_candidates`.
 
 {{include:headers/tool-when-to-use}} when picking up a single lead from
@@ -58,8 +57,7 @@ act on it.
 
 {{include:headers/tool-when-not-to-use}} across many leads at once — that's
 leadbay_pull_leads' job (portfolio-wide signal questions go to
-leadbay_scan_portfolio_signals; see below). This composite supersedes the
-lower-level leadbay_get_lead_profile.
+leadbay_scan_portfolio_signals; see below).
 
 {{include:gates/signal-honesty}}
 

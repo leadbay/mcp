@@ -34,15 +34,19 @@ rendering_hint: |
   (chronological) + the activity timeline. Close with a one-line "why revisit
   now" synthesis and a suggested outreach angle tied to the freshest signal.
 annotations:
-  readOnlyHint: true
+  readOnlyHint: false
   destructiveHint: false
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 ---
+
 Give me one account's full back-story in a single call. This is the tool for
 the **reprioritize-a-neglected-account** workflow: the user has an account
 that was contacted or quoted long ago and wants to know, in one shot, whether
 a fresh signal makes it worth another visit.
+
+{{include:gates/lead-seen-side-effect}}
+
 
 It bundles three reads on one `leadId`:
 

@@ -28,7 +28,7 @@ export const unpinContact: Tool<UnpinContactParams, UnpinContactResult> = {
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   inputSchema: {
     type: "object",

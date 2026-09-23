@@ -40,7 +40,7 @@ describe("leadbay_set_telemetry exposure vs LEADBAY_MCP_WRITE", () => {
   it("read-only mode still hides OTHER write composites (the exception is telemetry-only)", async () => {
     const names = await toolNames(false);
     // A representative write composite that should stay gated off in read-only.
-    expect(names).not.toContain("leadbay_refine_prompt");
+    expect(names).not.toContain("leadbay_refine_lead_targeting");
   });
 
   it("write mode (includeWrite:true) exposes leadbay_set_telemetry exactly once (no dup)", async () => {

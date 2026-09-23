@@ -28,25 +28,23 @@ routing:
       - "Draft outreach to Acme's CTO."
       - "Websites and LinkedIn for these 200 companies."
 annotations:
-  readOnlyHint: true
+  readOnlyHint: false
   destructiveHint: false
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 ---
-Resolves across the user's visible Discover/Monitor/Activate leads AND the
-**Leadbay company registry** — so a company they do not own yet is still
-findable — then delegates to **leadbay_research_lead_by_id**.
 
-**Pass `website` whenever the user mentioned a domain** — the strongest match
-key. It survives a misspelled company name and is what turns "not in your
-list" into an answer. With only a contact email, pass `email`: the company
-domain is derived from it, consumer mailboxes ignored.
+{{include:gates/lead-seen-side-effect}}
 
-Both `resolution` answers below are successes, not cards. `"ambiguous"`
-carries `candidates[]`: ask which one, never guess from `score`.
-`"not_found"` carries `summary` + `next_step`: nobody has it, so say that and
-do what `next_step` says — usually ask for the param `would_help` names, then
-call again. Do not offer an import before asking.
+
+**Pass `website` whenever the user mentioned a domain.** It survives a
+misspelled name and turns "not in your list" into an answer. With only a
+contact email, pass `email`: the domain is derived from it, consumer mailboxes
+ignored.
+
+Both `resolution` answers below are successes, not cards. `"ambiguous"` carries
+`candidates[]`: ask which one, never guess from `score`. `"not_found"` carries
+`summary` + `next_step`: say nobody has it, then do what `next_step` says.
 
 ---
 
@@ -56,8 +54,8 @@ call again. Do not offer an import before asking.
 
 {{include:next-steps/research-lead-by-id}}
 
-When `resolution` is `"ambiguous"`, render no card: use `ask_user_input_v0`,
-ONE `single_select` question ("Which one?"), one short label per candidate
+When `resolution` is `"ambiguous"`, render no card: use `ask_user_input_v0`
+with ONE `single_select` ("Which one?") and one short label per candidate
 combining `name` and `location`. `"not_found"` renders no card either.
 
 When `_meta.match_candidates` is non-empty, prepend one extra NEXT STEPS row:

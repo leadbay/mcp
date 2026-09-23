@@ -1,5 +1,5 @@
 /**
- * leadbay_my_lenses — list the user's lenses, switch the active one, or rename one.
+ * leadbay_manage_lenses — list the user's lenses, switch the active one, or rename one.
  *
  * Default-surface composite. With no args it is a pure read: GET /lenses,
  * merged with the active lens from /users/me.last_requested_lens (more
@@ -29,7 +29,7 @@ import type { Tool, ToolContext, LensPayload, FilterPayload } from "../types.js"
 import { criteriaOf } from "./_empty-lens-reason.js";
 import { fetchSectorTaxonomy, sectorLabel } from "./_sector-resolver.js";
 
-import { leadbay_my_lenses as MY_LENSES_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { leadbay_manage_lenses as MY_LENSES_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface MyLensesParams {
   switchToLensId?: string | number;
@@ -146,7 +146,7 @@ async function readLensCriteria(
 }
 
 export const myLenses: Tool<MyLensesParams> = {
-  name: "leadbay_my_lenses",
+  name: "leadbay_manage_lenses",
   annotations: {
     title: "List, switch, edit, or delete your lenses",
     // No args → pure read. The delete mode issues DELETE /lenses/:id (an
@@ -157,7 +157,7 @@ export const myLenses: Tool<MyLensesParams> = {
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: MY_LENSES_DESCRIPTION,
   inputSchema: {

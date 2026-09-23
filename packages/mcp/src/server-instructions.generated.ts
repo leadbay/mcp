@@ -42,6 +42,6 @@ export const TRIGGERED_BY: string = `Trigger provenance (MANDATORY): every Leadb
 // endregion: TRIGGERED_BY
 
 // region: VERIFICATION (source: snippets/server-instructions/verification.md)
-export const VERIFICATION: string = `After every email, call, message, or meeting with a lead's contact, you MUST call leadbay_report_outreach with verification={source, ref} (gmail_message_id from the Gmail send, calendar_event_id from a booking, or user_confirmed='<the user's literal confirmation>'). Skipping or fabricating verification poisons the human team's pipeline.`;
+export const VERIFICATION: string = `When the user tells you an email, call, message or meeting with a lead's contact happened, you MUST call leadbay_report_outreach with verification={source, ref} (gmail_message_id from the Gmail send, calendar_event_id from a booking, or user_confirmed='<the user's literal confirmation>'). Skipping or fabricating verification poisons the human team's pipeline.`;
 // endregion: VERIFICATION
 

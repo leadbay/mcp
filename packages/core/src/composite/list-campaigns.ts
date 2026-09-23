@@ -46,7 +46,7 @@ export const listCampaigns: Tool<ListCampaignsParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: LIST_CAMPAIGNS_DESCRIPTION,
   inputSchema: {

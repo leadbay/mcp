@@ -207,7 +207,7 @@ export const extendLens: Tool<ExtendLensParams> = {
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: EXTEND_LENS_DESCRIPTION,
   optional: true, // gated behind LEADBAY_MCP_WRITE=1 in MCP
@@ -222,7 +222,7 @@ export const extendLens: Tool<ExtendLensParams> = {
       seed_lead_ids: {
         type: "array",
         description:
-          "Optional list of lead UUIDs from leadbay_seed_candidates to bias the recommender. Omit or empty array → default-strategy fallback (same behaviour as a normal fill).",
+          "Optional list of lead UUIDs from leadbay_list_lens_seed_candidates to bias the recommender. Omit or empty array → default-strategy fallback (same behaviour as a normal fill).",
         items: { type: "string" },
       },
       extra_count: {
@@ -375,7 +375,7 @@ export const extendLens: Tool<ExtendLensParams> = {
           status: "no_valid_seeds" as const,
           lens: { id: lensId },
           message:
-            "Every submitted seed failed validation (likely stale — the lens shape may have changed). Refetch via leadbay_seed_candidates and retry.",
+            "Every submitted seed failed validation (likely stale — the lens shape may have changed). Refetch via leadbay_list_lens_seed_candidates and retry.",
         };
       }
 

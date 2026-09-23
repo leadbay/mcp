@@ -20,7 +20,7 @@ export const acknowledgeNotification: Tool<AcknowledgeNotificationParams> = {
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: ACKNOWLEDGE_NOTIFICATION_DESCRIPTION,
   write: true,

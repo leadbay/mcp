@@ -13,9 +13,9 @@ export const login: Tool<LoginParams> = {
   annotations: {
     title: "Mint a Leadbay bearer token",
     readOnlyHint: false,
-    destructiveHint: true,
-    idempotentHint: false,
-    openWorldHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
   },
   description: LOGIN_DESCRIPTION,
   inputSchema: {

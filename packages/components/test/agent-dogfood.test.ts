@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 // END-TO-END DOGFOOD — "can a user agent actually leverage the kit?"
 //
 // The fixture is HTML an INDEPENDENT agent produced from nothing but the
-// leadbay_artifact_kit usage guide (the view-model API). Here we run that exact
+// leadbay_get_artifact_runtime usage guide (the view-model API). Here we run that exact
 // artifact: inject the REAL shipped runtime where the agent placed its marker,
 // stub the cowork bridge, and assert the data lifecycle the kit is FOR:
 //   1. the campaign <select> POPULATES its options from leadbay_list_campaigns

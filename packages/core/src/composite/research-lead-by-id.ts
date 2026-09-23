@@ -199,10 +199,10 @@ export const researchLeadById: Tool<ResearchLeadByIdParams> = {
   name: "leadbay_research_lead_by_id",
   annotations: {
     title: "Research a Leadbay lead in depth (by UUID)",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: RESEARCH_LEAD_BY_ID_DESCRIPTION,
   inputSchema: {

@@ -34,7 +34,7 @@ export const leadJobStatus: Tool<LeadJobStatusParams, any> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: LEAD_JOB_STATUS_DESCRIPTION,
   inputSchema: {

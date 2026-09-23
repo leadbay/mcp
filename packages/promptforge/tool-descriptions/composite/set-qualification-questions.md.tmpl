@@ -12,7 +12,7 @@ annotations:
   readOnlyHint: false
   destructiveHint: true
   idempotentHint: false
-  openWorldHint: true
+  openWorldHint: false
 routing:
   triggers:
     - "add / remove / replace a qualification question"
@@ -26,7 +26,7 @@ routing:
     - phrase: "narrow to <sector> / <headcount> / <territory>"
       route_to: leadbay_adjust_audience
     - phrase: "a qualitative orientation one yes/no can't express"
-      route_to: leadbay_refine_prompt
+      route_to: leadbay_refine_lead_targeting
     - phrase: "exclude <named company>"
       route_to: leadbay_dislike_lead
     - phrase: "only leads that already have an email and a phone"

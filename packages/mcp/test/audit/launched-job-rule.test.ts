@@ -54,7 +54,7 @@ const LAUNCHERS: Record<string, string> = {
   leadbay_prepare_outreach: "leadbay_prepare_outreach",
   leadbay_new_lens: "leadbay_pull_leads",
   leadbay_extend_lens: "leadbay_pull_leads",
-  leadbay_refine_prompt: "leadbay_account_status",
+  leadbay_refine_lead_targeting: "leadbay_account_status",
   leadbay_answer_clarification: "leadbay_account_status",
 };
 

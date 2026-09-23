@@ -23,7 +23,7 @@ export const createCustomField: Tool<CreateCustomFieldParams> = {
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: CREATE_CUSTOM_FIELD_DESCRIPTION,
   write: true,

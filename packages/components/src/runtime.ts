@@ -62,7 +62,7 @@ function hostCall(): CallFn | null {
 //
 // The artifact runs in a chat-hosted page: its ONLY channel out is
 // window.cowork.callMcpTool, so every failure signal travels as an MCP tool
-// call to `leadbay_artifact_event`. The server routes it the way the rest of
+// call to `leadbay_report_artifact_error`. The server routes it the way the rest of
 // the repo already splits telemetry — exceptions to Sentry, outcomes to
 // PostHog — and it inherits the `leadbay_set_telemetry` opt-out through the
 // normal dispatch suppression. It is NEVER leadbay_report_friction: that tool
@@ -105,7 +105,7 @@ export interface LbEvent {
   code?: string;
 }
 
-const TELEMETRY_TOOL = "leadbay_artifact_event";
+const TELEMETRY_TOOL = "leadbay_report_artifact_error";
 // A page that has failed 40 distinct ways is already telling us everything it
 // can; past that we are only adding noise and host round-trips.
 const MAX_EVENTS = 40;

@@ -30,9 +30,9 @@ export const setPushback: Tool<SetPushbackParams> = {
   annotations: {
     title: "Pushback (snooze) leads for 3 / 6 / 12 months",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: SET_PUSHBACK_DESCRIPTION,
   optional: true,

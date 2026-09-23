@@ -2,9 +2,9 @@
 name: leadbay_prepare_outreach
 kind: tool-description
 short_description: |
-  Prepare an outreach brief for a single lead — full lead block,
-  recommended contact (post-enrichment shape), channel readiness, and
-  AI angles in one call. Self-polling enrichment.
+  Prepare an outreach brief for one lead: lead block, recommended contact,
+  channel readiness and AI angles in one call. `enrich: true` also orders the
+  contact's details.
 routing:
   triggers:
     - "draft outreach for <Contact>"
@@ -34,32 +34,32 @@ rendering_hint: |
   email. Do NOT paste the email body into chat prose alongside.
 next_steps: prepare-outreach
 annotations:
-  readOnlyHint: true
+  readOnlyHint: false
   destructiveHint: false
-  idempotentHint: true
+  idempotentHint: false
   openWorldHint: true
 ---
-Prepare a single-lead outreach brief: the full `lead` block (score, `split_ai_summary`, `location`, `size`, `phone_numbers`, `website`, `description`, `social_urls`, `social_presence`), the `recommended_contact` in post-enrichment shape (`contact_id`, names, `job_title`, `email`, `phone_number`, `linkedin_page`, `is_org_contact` — nulls where not yet enriched), `additional_contacts_count`, an `enrichment` block describing async state, the lead's `qualification` answers and web-research `signals`, and its `history` (`notes` on the lead and on each of its people, plus the `activities` timeline).
+Payload: the full `lead` block (score, `split_ai_summary`, `location`, `size`, `phone_numbers`, `website`, `description`, `social_urls`, `social_presence`); `recommended_contact` in post-enrichment shape (`contact_id`, names, `job_title`, `email`, `phone_number`, `linkedin_page`, `is_org_contact`, null where not enriched); `additional_contacts_count`; an `enrichment` block; the lead's `qualification` answers and web-research `signals`; and its `history` (`notes` on the lead and on each of its people, plus the `activities` timeline).
 
-Optionally trigger contact enrichment with `enrich:true` (async, ~1 min). Check it by re-calling `leadbay_prepare_outreach(leadId)` without `enrich` until `enrichment.complete: true`; the recommended contact then carries `email` and/or `phone_number`.
+`enrich:true` orders contact details (async, ~1 min). Re-call without `enrich` until `enrichment.complete: true`; the recommended contact then carries `email` and/or `phone_number`.
 
 {{include:gates/launched-job}}
 
-Each call marks the lead seen so it ages out of the Discover "new" view. That is not a prospecting action and never shows in `history`.
+Each call marks the lead seen so it ages out of the Discover "new" view. That is not a prospecting action and never shows in `history`. With `enrich:true` it also orders contact details from Leadbay's data providers.
 
 {{include:iron-laws/outcome-after-outreach}}
 
 {{include:headers/tool-when-to-use}} when the agent is about to draft outreach for ONE specific lead and needs everything to compose — channels + angles + history context.
 
-{{include:headers/tool-when-not-to-use}} across many leads — use leadbay_enrich_titles for bulk; for general lead detail use leadbay_research_lead_by_id (richer signals); to actually log the outreach action use leadbay_report_outreach (requires verification).
+{{include:headers/tool-when-not-to-use}} across many leads — use leadbay_enrich_titles for bulk, leadbay_research_lead_by_id for general lead detail, and leadbay_report_outreach to log the action.
 
 ---
 
 ## RENDER — host-native message composer is the PRIMARY surface
 
-Route every draft through `message_compose_v1` (Claude's email composer). Above it, emit ONE short markdown context paragraph: score callout + sector fit + linked contact name + bare phone/email pills. Do NOT paste the email body into chat prose alongside — the composer IS the visual.
+Route every draft through `message_compose_v1` (Claude's email composer). Above it, emit ONE short markdown context paragraph: score callout, sector fit, linked contact name, bare phone/email pills. Do NOT also paste the email body into chat prose — the composer IS the visual.
 
-Variant shape: 1–3 entries, labels per the widget table below. `kind: "email"` requires `subject`; phone/call openers use `kind: "other"` with the opener in `body`.
+Variant shape: 1–3 entries, labels per the widget table below. `kind: "email"` needs `subject`; call openers use `kind: "other"` with the opener in `body`.
 
 {{include:gates/builtin-widgets}}
 

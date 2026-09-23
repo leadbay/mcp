@@ -221,10 +221,10 @@ export const pullLeads: Tool<PullLeadsParams> = {
   name: "leadbay_pull_leads",
   annotations: {
     title: "Pull fresh Leadbay leads",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: PULL_LEADS_DESCRIPTION,
   inputSchema: {

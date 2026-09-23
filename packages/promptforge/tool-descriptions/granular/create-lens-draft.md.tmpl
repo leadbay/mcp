@@ -6,9 +6,9 @@ short_description: |
   — same caller gets the same draft.
 annotations:
   readOnlyHint: false
-  destructiveHint: true
+  destructiveHint: false
   idempotentHint: false
-  openWorldHint: true
+  openWorldHint: false
 ---
 Create (or fetch existing) draft of an org-level lens. Idempotent — same user calling twice returns the same draft. The returned lens has `draft_of` set to the original lens id.
 

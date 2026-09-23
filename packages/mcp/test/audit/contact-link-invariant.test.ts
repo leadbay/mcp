@@ -44,7 +44,7 @@ const SNIPPET_PATH = resolve(
 // new tool skip the always-link rule.
 //
 // Intentionally excluded:
-//   - leadbay_recall_ordered_titles — returns job-title strings only,
+//   - leadbay_list_previously_enriched_titles — returns job-title strings only,
 //     no contact identities, so the always-link rule doesn't apply.
 const TOOLS_THAT_RENDER_CONTACTS = [
   "leadbay_pull_leads",

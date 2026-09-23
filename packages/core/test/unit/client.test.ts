@@ -478,7 +478,7 @@ describe("user_prompt POST body shape (contract pin — #3508)", () => {
   });
 
   it("refinePrompt sends { user_prompt }, not { prompt }", async () => {
-    const { refinePrompt } = await import("../../src/composite/refine-prompt.js");
+    const { refinePrompt } = await import("../../src/composite/refine-lead-targeting.js");
     const { requests } = mockHttp([
       {
         method: "GET",
@@ -508,7 +508,7 @@ describe("user_prompt POST body shape (contract pin — #3508)", () => {
   });
 
   it("refinePrompt dry_run preview uses user_prompt key", async () => {
-    const { refinePrompt } = await import("../../src/composite/refine-prompt.js");
+    const { refinePrompt } = await import("../../src/composite/refine-lead-targeting.js");
     mockHttp([
       {
         method: "GET",

@@ -133,7 +133,7 @@ export const campaignCallSheet: Tool<CallSheetParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: CALL_SHEET_DESCRIPTION,
   inputSchema: {

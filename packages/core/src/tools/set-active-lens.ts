@@ -11,9 +11,9 @@ export const setActiveLens: Tool<SetActiveLensParams> = {
   annotations: {
     title: "Set active lens",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: SET_ACTIVE_LENS_DESCRIPTION,
   optional: true,

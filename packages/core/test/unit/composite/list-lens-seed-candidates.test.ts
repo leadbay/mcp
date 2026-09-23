@@ -1,5 +1,5 @@
 /**
- * Unit tests for leadbay_seed_candidates.
+ * Unit tests for leadbay_list_lens_seed_candidates.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -13,7 +13,7 @@ import {
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { seedCandidates } from "../../../src/composite/seed-candidates.js";
+import { seedCandidates } from "../../../src/composite/list-lens-seed-candidates.js";
 
 const BASE = "https://api-us.leadbay.app";
 const newClient = () => new LeadbayClient(BASE, "u.tok", "us");
@@ -50,7 +50,7 @@ beforeEach(() => {
   resetHttpMock();
 });
 
-describe("leadbay_seed_candidates", () => {
+describe("leadbay_list_lens_seed_candidates", () => {
   it("happy path — explicit lensId + limit returns candidates shape", async () => {
     mockHttp([
       {

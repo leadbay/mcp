@@ -1,9 +1,9 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 
-import { leadbay_artifact_event as ARTIFACT_EVENT_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { leadbay_report_artifact_error as ARTIFACT_EVENT_DESCRIPTION } from "../tool-descriptions.generated.js";
 
-// leadbay_artifact_event is the ingest endpoint for the @leadbay/components
+// leadbay_report_artifact_error is the ingest endpoint for the @leadbay/components
 // artifact runtime (product#4081). An artifact runs in a chat-hosted page whose
 // ONLY channel out is window.cowork.callMcpTool, so a runtime failure can only
 // reach us as a tool call — this is that call.
@@ -29,7 +29,7 @@ import { leadbay_artifact_event as ARTIFACT_EVENT_DESCRIPTION } from "../tool-de
 // Lives in tools/ (granular-shaped: static relay, no orchestration) so it stays
 // OUT of COMPOSITE_FILE_TOOL_NAMES and carries no `_triggered_by` mandate — an
 // artifact button click has no fresh user utterance to quote. Registered in
-// compositeReadTools so it is always exposed, alongside leadbay_artifact_kit.
+// compositeReadTools so it is always exposed, alongside leadbay_get_artifact_runtime.
 
 /** Exception kinds — routed to Sentry. Something threw. */
 const EXCEPTION_KINDS = [
@@ -81,13 +81,13 @@ function bounded(v: unknown): string | undefined {
 }
 
 export const artifactEvent: Tool<ArtifactEventParams> = {
-  name: "leadbay_artifact_event",
+  name: "leadbay_report_artifact_error",
   annotations: {
     title: "Report an artifact runtime failure",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
   },
   description: ARTIFACT_EVENT_DESCRIPTION,
   write: false,
@@ -144,8 +144,8 @@ export const artifactEvent: Tool<ArtifactEventParams> = {
         code: "BAD_INPUT",
         message: `Unknown artifact event (kind="${kind}", surface="${surface}").`,
         hint:
-          "Do not call leadbay_artifact_event yourself — the artifact runtime " +
-          "from leadbay_artifact_kit calls it automatically. To report a " +
+          "Do not call leadbay_report_artifact_error yourself — the artifact runtime " +
+          "from leadbay_get_artifact_runtime calls it automatically. To report a " +
           "problem the user raised, call leadbay_report_friction instead. If " +
           "you are that runtime, re-call with kind set to one of " +
           `${ARTIFACT_EVENT_KINDS.join(", ")} and surface set to one of ` +

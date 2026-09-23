@@ -2,12 +2,9 @@
 name: leadbay_find_new_leads
 kind: tool-description
 short_description: |
-  One ask -> n NET-NEW companies matching an ICP the user describes, scored
-  for fit, optionally AI-qualified with evidence, optionally with the right
-  contact + verified email/phone. Use when the user describes WHO they want
-  ("find me 10 gyms around Dallas that would buy X"). Don't use it for
-  today's lens batch (leadbay_pull_leads) or for vetting companies the user
-  already has (leadbay_qualify_leads).
+  Search for NET-NEW companies matching an ideal-customer profile the user
+  describes, scored for fit and optionally AI-qualified with contacts. Use it
+  when the user describes who they want.
 routing:
   triggers:
     - "find me N companies that <profile>"
@@ -57,39 +54,37 @@ next_steps: find-new-leads
 annotations:
   readOnlyHint: false
   destructiveHint: false
-  idempotentHint: true
+  idempotentHint: false
   openWorldHint: true
 ---
-Submit a net-new lead search: the backend matches an ICP seed against the full
-company universe, applies hard filters, skips what the org already knows
-(`novelty: org`), optionally qualifies against the org's own intelligence
-(questions, tags, ideal buyer profile — frozen at submit), and optionally reveals
-contact channels. Polls up to `wait_seconds` (default 45); a longer job returns
-a receipt — check it with `leadbay_lead_job_status`, usually 5–20 min. Results kept 30 days.
+The backend matches the ICP seed against the full company universe, applies
+hard filters, skips what the org already knows (`novelty: org`), and freezes the
+org's intelligence (questions, tags, ideal buyer profile) at submit. Polls up to
+`wait_seconds` (default 45); a longer job returns a receipt — check it with
+`leadbay_lead_job_status`, usually 5–20 min. Results kept 30 days.
 
 {{include:gates/launched-job}}
 
-**Free vs usage quota — never use quota silently.** Default (`qualify: false`,
-`channels: []`) is FREE: company profile + fit score + cached research +
-contact identity. `qualify: true` (per candidate EXAMINED, capped by
-`exploration_cap`/`max_cost`) and `channels` (only when a value is found) draw
-on the org's usage quota; nothing is invoiced. Such a call is WITHHELD unless it
-carries `confirm: true`: nothing is submitted, and `mode: "needs_confirmation"` carries
-a real quote to show the user. Re-call with `confirm: true` on their go-ahead
-("go ahead / get their emails" counts); `confirm: false` vetoes. **Preview free first** — reshaping an off-profile seed
-is free, exploring it with `qualify: true` is not.
+**Never use quota silently.** Default (`qualify: false`, `channels: []`) is
+free: company profile, fit score, cached research, contact identity.
+`qualify: true` (per candidate EXAMINED, capped by `exploration_cap`/`max_cost`)
+and `channels` (only when a value is found) draw on the org's usage quota;
+nothing is invoiced. Such a call is WITHHELD unless it carries `confirm: true`:
+nothing is submitted and `mode: "needs_confirmation"` carries a real quote for
+the user. Re-call with `confirm: true` on their go-ahead ("go ahead / get their
+emails" counts); `confirm: false` vetoes. Preview free first.
 
 **Ad-hoc exclusions ("no chains") are enforced by NO tier** — `filters` has no
-exclusion key, and `qualify` scores against the org's FROZEN questions and IBP.
-Violators get delivered and use quota: post-filter them yourself and say so. Durable enforcement →
-`leadbay_set_qualification_questions` / `leadbay_refine_prompt`.
+exclusion key and `qualify` scores against the org's FROZEN questions and IBP.
+Violators get delivered and use quota: post-filter them and say so. Durable
+enforcement → `leadbay_set_qualification_questions`.
 
 {{include:heuristics/example-lead-craft}}
 
 **Parameter notes**
-- `request_id` (REQUIRED) is the retry contract: SAME value retrying the same
-  ask (same live job, no double launch); NEW for a changed ask. Derive from ask
-  + archetype + date: `gyms-dallas-2026-07-28`.
+- `request_id` (REQUIRED) is the retry contract: SAME value retries the same
+  ask (same job, no double launch), NEW for a changed ask. Derive it from ask +
+  archetype + date: `gyms-dallas-2026-07-28`.
 - Never lower `min_ai_score` with `channels` — that reveals emails for leads
   the AI just scored as junk.
 - `count` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After: wait).

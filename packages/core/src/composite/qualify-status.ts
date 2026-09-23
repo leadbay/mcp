@@ -72,7 +72,7 @@ export const qualifyStatus: Tool<
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: QUALIFY_STATUS_DESCRIPTION,
   inputSchema: {

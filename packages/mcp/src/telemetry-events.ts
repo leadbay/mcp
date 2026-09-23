@@ -152,7 +152,7 @@ export interface FrictionReportedProps {
 }
 
 // Artifact-runtime diagnostics (product#4081). Fired by the
-// `leadbay_artifact_event` ingest tool for the OUTCOME kinds only — the ones
+// `leadbay_report_artifact_error` ingest tool for the OUTCOME kinds only — the ones
 // where nothing threw, so Sentry would never see them: a picker that loaded
 // zero options, a button blocked by validation before any call, and a resolved
 // call that carried a failure envelope. The EXCEPTION kinds go to Sentry via

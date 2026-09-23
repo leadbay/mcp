@@ -6,10 +6,10 @@ short_description: |
   import_and_qualify. Returns standard_fields enum + org's custom_fields
   with their `CUSTOM.<id>` wire-format mapping_value.
 annotations:
-  readOnlyHint: true
+  readOnlyHint: false
   destructiveHint: false
-  idempotentHint: true
-  openWorldHint: true
+  idempotentHint: false
+  openWorldHint: false
 ---
 List every CRM field the agent can target when calling leadbay_import_leads or leadbay_import_and_qualify. Returns two arrays: `standard_fields` (Leadbay's built-in StandardCrmFieldType enum — LEAD_NAME, LEAD_WEBSITE, LEAD_STATUS, contact + location + sector fields) and `custom_fields` (this org's user-defined fields — id, name, type, and the literal `mapping_value` you pass in `mappings.fields`). For custom fields, `mapping_value` is the wire-format string `CUSTOM.<id>` — pass it verbatim.
 

@@ -31,7 +31,7 @@ naming and habits, and it survives across conversations without us.
 What Leadbay stores is what changes **who it finds for you**. When you tell the
 agent something about your market ("I target fleets over 100 vehicles",
 "carriers are a bad fit unless they do last-mile"), it calls
-`leadbay_refine_prompt`, and that reshapes your recommendations for your whole
+`leadbay_refine_lead_targeting`, and that reshapes your recommendations for your whole
 organization — in the web app too, on every refresh. A lead you reject is
 recorded as a dislike, which feeds the recommender the same way.
 
@@ -553,7 +553,7 @@ snap back to prod.
 
 ### Exposing the granular tools and disabling write tools
 
-By default the server exposes the **composite workflow tools** — both reads (`leadbay_pull_leads`, `leadbay_research_lead_by_id`, `leadbay_account_status`, `leadbay_recall_ordered_titles`, `leadbay_research_lead_by_name_fuzzy`, `leadbay_prepare_outreach`, `leadbay_qualify_status`, `leadbay_list_mappable_fields`) and writes (`leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, `leadbay_refine_prompt`, `leadbay_report_outreach`, `leadbay_adjust_audience`, `leadbay_answer_clarification`, `leadbay_import_leads`, `leadbay_import_and_qualify`). These work well with most prompts.
+By default the server exposes the **composite workflow tools** — both reads (`leadbay_pull_leads`, `leadbay_research_lead_by_id`, `leadbay_account_status`, `leadbay_list_previously_enriched_titles`, `leadbay_research_lead_by_name_fuzzy`, `leadbay_prepare_outreach`, `leadbay_qualify_status`, `leadbay_list_mappable_fields`) and writes (`leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, `leadbay_refine_lead_targeting`, `leadbay_report_outreach`, `leadbay_adjust_audience`, `leadbay_answer_clarification`, `leadbay_import_leads`, `leadbay_import_and_qualify`). These work well with most prompts.
 
 To **disable the write tools** (run a strictly read-only agent), set `LEADBAY_MCP_WRITE=0`. The server's system prompt will adapt to omit references to those tools.
 

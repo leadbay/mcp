@@ -35,12 +35,12 @@ rendering_hint: |
   — chat hosts auto-detect into place-card carousel. Detail below.
 next_steps: pull-followups
 annotations:
-  readOnlyHint: true
+  readOnlyHint: false
   destructiveHint: false
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 ---
-Plot the user's follow-up leads on an interactive map — the canonical surface for travel / in-person / "I'm going to <city>" intent. Wraps `leadbay_pull_followups` (same params, response, store-then-apply geo filter); named separately so the agent has an explicit entry-point for travel intent and can route to `places_map_display_v0` (when the host exposes it) or emit place-card prose blocks (which most chat hosts auto-detect into Google Place cards).
+Plot the user's follow-up leads on an interactive map for travel / in-person / "I'm going to <city>" intent. Wraps `leadbay_pull_followups` (same params, response, store-then-apply geo filter); named separately so the agent has an explicit entry-point for travel intent and can route to `places_map_display_v0` (when the host exposes it) or emit place-card prose blocks (which most chat hosts auto-detect into Google Place cards).
 
 **Common city aliases resolve automatically** — `NYC` / `New York` → City of New York, `SF` / `S.F.` → San Francisco, `LA` / `L.A.` → Los Angeles, `DC` / `Washington D.C.` → Washington, `Philly` → Philadelphia, `Vegas` → Las Vegas, `NOLA` → New Orleans. Pass either an abbreviation, a city name, or a pre-resolved `city_id`. Ambiguous matches surface as `status: "ambiguous_locations"` + `location_ambiguities[]` — pick an id and re-call with `city_id`.
 
@@ -50,11 +50,11 @@ Plot the user's follow-up leads on an interactive map — the canonical surface 
 
 ---
 
-## RENDER — host-native map widget (REQUIRED, preferred)
+## RENDER — host-native map widget (REQUIRED)
 
-When the host exposes Claude's `places_map_display_v0`, route the leads there. It owns the visual surface (markers, place-card carousel, "Notes from Claude") and beats inline prose by miles.
+When the host exposes Claude's `places_map_display_v0`, route the leads there. It owns the visual surface: markers, place-card carousel, "Notes from Claude".
 
-**Call shape — pass the most precise data you have. The richer the address + coordinates, the more likely Google resolves a real business listing and shows structured property pills (phone, website, Directions button, rating) on each card. Cheap city-level data => basic pin + your notes string only.**
+**Call shape — pass the most precise data you have. A full address plus coordinates lets Google resolve a real business listing and show property pills (phone, website, Directions button, rating) on each card. City-level data gives a basic pin and your notes string only.**
 
 ```
 places_map_display_v0({

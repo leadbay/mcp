@@ -132,10 +132,10 @@ export const listMappableFields: Tool<
   name: "leadbay_list_mappable_fields",
   annotations: {
     title: "List CRM-import mappable fields",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
   },
   description: LIST_MAPPABLE_FIELDS_DESCRIPTION,
   inputSchema: {

@@ -11,9 +11,9 @@ export const createLensDraft: Tool<CreateLensDraftParams> = {
   annotations: {
     title: "Create a lens draft",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: CREATE_LENS_DRAFT_DESCRIPTION,
   optional: true,

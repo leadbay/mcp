@@ -26,8 +26,15 @@
 import { describe, it, expect } from "vitest";
 import { mcpFirstDeliveryAllTools, type Tool } from "@leadbay/core";
 
-const ROUTING_HEAD_WINDOW = 600;
-const EXAMPLE_WINDOW = 1500;
+// Widened from 600 on 2026-09-22. `## WHAT IT DOES` now precedes
+// `## WHEN TO USE` — OpenAI's plugin guidelines require a tool's description to
+// state its purpose explicitly, and a description that opened with a
+// trigger-phrase list did not. The longest short_description is ~490 chars, so
+// the routing block starts at most ~510 chars later than it used to. Claude
+// Code, the tightest host measured, truncates each description at 2,048 chars,
+// so the pair still lands inside what every host loads.
+const ROUTING_HEAD_WINDOW = 1100;
+const EXAMPLE_WINDOW = 2000;
 const POS_BLOCK_RE =
   /Examples that SHOULD invoke this tool:\n([\s\S]+?)(?:\n\n|$)/;
 const NEG_BLOCK_RE =
@@ -51,7 +58,7 @@ describe("audit: routing block on the MCP-first delivery tools", () => {
     ]);
   });
 
-  it("each has WHEN TO USE in the first 600 chars", () => {
+  it("each has WHEN TO USE in the first 1100 chars", () => {
     const violations = DELIVERY_TOOLS.filter(
       (t) => !t.description.slice(0, ROUTING_HEAD_WINDOW).includes("## WHEN TO USE"),
     ).map(

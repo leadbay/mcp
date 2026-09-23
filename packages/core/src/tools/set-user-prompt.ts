@@ -14,7 +14,7 @@ export const setUserPrompt: Tool<SetUserPromptParams> = {
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: SET_USER_PROMPT_DESCRIPTION,
   optional: true,

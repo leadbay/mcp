@@ -1,12 +1,11 @@
 /**
  * Audit: every tool that declared `routing` in its promptforge
- * frontmatter has the auto-emitted `## WHEN TO USE` block within the
- * first 600 chars of the generated tool description.
+ * frontmatter has the auto-emitted `## WHEN TO USE` block in the head of the
+ * generated tool description, right behind `## WHAT IT DOES`.
  *
- * 600 chars is the chunk every chat host loads even when truncating
- * tool descriptions. If routing falls below that bar, the agent
- * misroutes on small-context hosts. See /CLAUDE.md "Tool-description
- * structure".
+ * The head is the chunk every chat host loads even when truncating tool
+ * descriptions. If routing falls below that bar, the agent misroutes on
+ * small-context hosts. See /CLAUDE.md "Tool-description structure".
  *
  * The audit also cross-checks that every `anti_triggers[].route_to`
  * names a real registered tool — catches typos and renames.
@@ -21,7 +20,14 @@ import {
   type Tool,
 } from "@leadbay/core";
 
-const ROUTING_HEAD_WINDOW = 600;
+// Widened from 600 on 2026-09-22. `## WHAT IT DOES` now precedes
+// `## WHEN TO USE` — OpenAI's plugin guidelines require a tool's description to
+// state its purpose explicitly, and a description that opened with a
+// trigger-phrase list did not. The longest short_description is ~490 chars, so
+// the routing block starts at most ~510 chars later than it used to. Claude
+// Code, the tightest host measured, truncates each description at 2,048 chars,
+// so the pair still lands inside what every host loads.
+const ROUTING_HEAD_WINDOW = 1100;
 
 // User-facing tools we deliberately backfilled with routing frontmatter.
 // The audit ensures none of them regresses. Other tools MAY add routing
@@ -54,15 +60,15 @@ const TOOLS_WITH_ROUTING = new Set([
   "leadbay_research_lead_by_name_fuzzy",
   "leadbay_scan_portfolio_signals",
   "leadbay_tour_plan",
-  // leadbay_seed_candidates is INTERNAL scaffolding for leadbay_extend_lens —
+  // leadbay_list_lens_seed_candidates is INTERNAL scaffolding for leadbay_extend_lens —
   // users never invoke it directly. Routing frontmatter still exists to help
   // the agent know when NOT to call it, but the ≥2-positive-example audit
   // doesn't apply because there is no user-facing trigger phrase.
   "leadbay_extend_lens",
-  "leadbay_my_lenses",
+  "leadbay_manage_lenses",
   "leadbay_new_lens",
   "leadbay_adjust_audience",
-  "leadbay_refine_prompt",
+  "leadbay_refine_lead_targeting",
   "leadbay_get_qualification_questions",
   "leadbay_set_qualification_questions",
   "leadbay_get_lead_custom_fields",
@@ -72,7 +78,7 @@ const TOOLS_WITH_ROUTING = new Set([
   "leadbay_unpin_contact",
   "leadbay_update_contact",
   "leadbay_account_history",
-  "leadbay_artifact_kit",
+  "leadbay_get_artifact_runtime",
   "leadbay_getting_started",
   "leadbay_team_activity",
   "leadbay_set_telemetry",
@@ -88,8 +94,8 @@ const ALL_TOOLS: Tool[] = [
 
 const ALL_TOOL_NAMES = new Set(ALL_TOOLS.map((t) => t.name));
 
-describe("audit: routing block in first 600 chars", () => {
-  it("every tool with declared routing has WHEN TO USE in the first 600 chars", () => {
+describe("audit: routing block in the description head", () => {
+  it("every tool with declared routing has WHEN TO USE in the description head", () => {
     const violations: string[] = [];
     for (const t of ALL_TOOLS) {
       if (!TOOLS_WITH_ROUTING.has(t.name)) continue;
@@ -129,7 +135,7 @@ describe("audit: routing block in first 600 chars", () => {
     // Examples may live just past the 600-char header window
     // (positives + negatives compound length); widen to 1500 so we
     // catch them without being noisy.
-    const EXAMPLE_WINDOW = 1500;
+    const EXAMPLE_WINDOW = 2000;
     const POS_BLOCK_RE = /Examples that SHOULD invoke this tool:\n([\s\S]+?)(?:\n\n|$)/;
     const NEG_BLOCK_RE = /Examples that should NOT invoke this tool[^:]*:\n([\s\S]+?)(?:\n\n|$)/;
     for (const t of ALL_TOOLS) {
