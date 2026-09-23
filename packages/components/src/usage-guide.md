@@ -606,11 +606,16 @@ every list but the visible one and load it on selection:
 const lists = lenses.map((l) =>
   lb.leadList({ lensId: l.id, ask: ASK, autoLoad: l.id === activeLensId }),
 );
+const read = new Set([lenses.findIndex((l) => l.id === activeLensId)]);
 function openTab(i) {
-  if (!lists[i].items.length) lists[i].loadPage(0);   // one read, the first time
-  showTab(i);                                         // your own render
+  if (!read.has(i)) { read.add(i); lists[i].loadPage(0); }   // one read per tab
+  showTab(i);                                                // your own render
 }
 ```
+
+Track what you have read in your own `Set`. `items.length` is not that signal: a
+lens that legitimately holds no leads stays empty, so an empty tab would re-read
+on every visit.
 
 `lb.callList` takes `autoLoad` too. This is not a micro-optimisation: one real
 board opened 21 lenses eagerly and spent 42 `pull_leads`, 2 MB and 32 seconds on
