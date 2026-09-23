@@ -13,9 +13,15 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  leadbay_find_new_leads,
-  leadbay_lead_job_status,
+  leadbay_find_new_leads as findNewLeadsDescription,
+  leadbay_lead_job_status as leadJobStatusDescription,
 } from "@leadbay/core/dist/tool-descriptions.generated.js";
+import { agentText } from "./_agent-text.js";
+
+// The NEXT STEPS tables this audit reads moved onto the result with
+// `{{render}}`; what the agent reads is the description plus that block.
+const leadbay_find_new_leads = agentText("leadbay_find_new_leads", findNewLeadsDescription);
+const leadbay_lead_job_status = agentText("leadbay_lead_job_status", leadJobStatusDescription);
 
 describe("audit: find_new_leads NEXT STEPS", () => {
   it("separates the cost-cap stop from the org-quota stop", () => {

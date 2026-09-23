@@ -78,7 +78,7 @@ The `leadbay_followup_check_in` prompt orchestrates a full re-engagement pass.
 **Anti-confusion guardrail.** Iterating `pull_leads` pages for `prospecting_actions_count > 0` or `notes_count > 0` is the wrong entry point: the two read different tables. Leads with follow-up history live here.
 
 {{include:gates/signal-honesty}}
-
+{{render}}
 ---
 
 {{include:rendering/pull-followups-table}}
@@ -86,3 +86,4 @@ The `leadbay_followup_check_in` prompt orchestrates a full re-engagement pass.
 ---
 
 {{include:next-steps/pull-followups}}
+{{/render}}

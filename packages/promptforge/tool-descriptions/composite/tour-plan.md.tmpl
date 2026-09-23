@@ -79,9 +79,7 @@ same instruction in its `hint`.
 **The next town over**: a tour is a day of driving, so after the town's own leads are found the composite adds the Discover leads whose own coordinates put them within **`radius_km` (default 20)** of it — West Sacramento on a tour of Sacramento, Courbevoie and Ivry-sur-Seine on a tour of Paris. The town's own leads always come first. **Pass the user's own number when they give one** ("dans un rayon de 10km autour de Colmar" → `radius_km: 10`; "within 15 miles" → `radius_km: 24`), and `radius_km: 0` to keep the tour strictly inside the named town. The radius applies to Discover leads only; the Monitor half is scoped server-side and is untouched. When `discover_filter_note` splits the stops into "N in '<city>' and M in <other towns>", **repeat that split** — say which town each nearby stop is actually in rather than presenting every stop as being in the city the user named.
 
 **What `tour_plan` does NOT do**: it doesn't persist the tour as a campaign artifact. To do that — create a "Limoges Tour – May 24" campaign and attach the selected accounts — chain into `leadbay_create_campaign({lead_ids: [...selected_ids], name: 'Limoges Tour – <date>'})` after the user picks. See the `leadbay_plan_tour_in_city` prompt for the full end-to-end orchestrator.
-
----
-
+{{render}}
 ## RENDER — present the leads, then OFFER the map (render on yes)
 
 First present the leads grouped by mode as a tight per-lead list (badge + company + city + best contact). Then **ALWAYS offer the map** as the next step — "Want me to put these on a map?" — and render it only when the user accepts (or asked for a map in their original message). The map is mandatory to *offer* on every tour; it is *rendered* on acceptance.
@@ -126,6 +124,7 @@ When the widget isn't in your tool set (e.g. Claude Desktop), you MUST still pro
 Group the blocks by mode (Customers → Qualified → New). A flat narrative paragraph ("Brooklyn Brewery — Broadway, 10018 (Midtown). Contact: …") does NOT auto-detect into cards and is WRONG — the per-lead heading with the city is mandatory.
 
 {{include:gates/builtin-widgets}}
+{{/render}}
 
 ---
 

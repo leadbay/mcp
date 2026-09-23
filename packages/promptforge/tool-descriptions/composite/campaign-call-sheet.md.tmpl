@@ -66,9 +66,7 @@ Build a cold-calling cheat sheet for one campaign. The composite joins two backe
 **Map mode**: the response also carries `map_locations[]` — already-shaped entries for `places_map_display_v0` (`{name, address, latitude, longitude, notes}`). When the user wants a route ("plot my call list on a map"), pass `map_locations` directly into the widget without reshaping.
 
 **Cross-campaign overlap warning**: when a contact's lead shows `affiliation.other_users_campaign_count > 0`, surface that ("⚠ 2 teammates also have this lead in their own campaigns") so the rep can coordinate before calling.
-
----
-
+{{render}}
 ## RENDER — call-sheet markdown (PRIMARY)
 
 This is a cold-calling surface. The user wants to scan → pick → tap-to-call → dictate outcome → next. Render one CARD per lead, sorted by AI score:
@@ -137,11 +135,14 @@ After the user reports a call ("Called Bree, she wants pricing"), route to `lead
 - `NOT_INTERESTED_LOST` — declined / not a fit.
 
 The `verification` field is REQUIRED — pass `{source: "user_confirmed", ref: <user's exact words>}` since calls don't have message-ids.
+{{/render}}
 
 {{include:headers/tool-when-to-use}} the user wants to actually WORK a campaign — calling session, dictation loop, follow-up sequence. Pair with the `leadbay_work_campaign` prompt for the end-to-end orchestrator (pick campaign → render → call → record loop).
 
 {{include:headers/tool-when-not-to-use}} for cross-campaign pulse (use `leadbay_list_campaigns`); for the slim progression view without contacts (`leadbay_campaign_progression` — same per-lead progress but no phone/LinkedIn fan-out); to log outreach AFTER a call (chain into `leadbay_report_outreach`).
 
 **Response envelope**: `{campaign_id, leads[], map_locations[], summary, pagination, _meta}`.
+{{render}}
 
 {{include:linking/contact-linkedin}}
+{{/render}}

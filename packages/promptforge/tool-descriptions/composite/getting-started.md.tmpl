@@ -95,5 +95,7 @@ The manifest also carries **`keep_going`**: the closing cheat-sheet of *what you
 ## Empty first batch is normal, not an error
 
 A brand-new lens reads empty for the first minute while the backend computes its wishlist. When `leadbay_pull_leads` returns no leads but `computing_wishlist` / `computing_scores` is true, the lens is warming up: render that tool's own two-option warm-up payload verbatim and pause. **Never report "no leads found"** in that state.
+{{render}}
 
 {{include:gates/builtin-widgets}}
+{{/render}}

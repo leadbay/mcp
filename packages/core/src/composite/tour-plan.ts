@@ -424,6 +424,17 @@ export const tourPlan: Tool<TourPlanParams> = {
   outputSchema: {
     type: "object",
     properties: {
+      // Layout pointer, attached by the MCP server. The full block moved to
+      // render-blocks.generated.ts via promptforge's {{render}} marker.
+      render: {
+        type: "object",
+        description:
+          "Layout for this result. `recipe` is the one-line version; `guide` is the tool name to pass to leadbay_render_guide for the full algorithm.",
+        properties: {
+          recipe: { type: "string" },
+          guide: { type: "string" },
+        },
+      },
       city: { type: ["string", "null"] },
       city_id: { type: ["string", "null"] },
       monitor_leads: {

@@ -47,9 +47,7 @@ Plot the user's follow-up leads on an interactive map for travel / in-person / "
 **`city` is the universal SUB-country geo arg.** Despite the name, pass any place name BELOW country level: states (`"Texas"`, `"California"`), regions (`"New England"`, `"Bay Area"`), counties, neighborhoods (`"Brooklyn"`, `"SoHo"`), or cities — the `/geo/search` resolver indexes every level it returns and the composite picks the best match. A COUNTRY name is the one thing it must never receive (rule below). And `keywords: ["Texas"]` returns ≈0 hits even when the user has dozens of Texas leads — that's a text-match against company descriptions, not a geo filter. If `keywords: ["<PlaceName>"]` returned empty, the correct next call is `city: "<PlaceName>"`, NOT the unfiltered Monitor view.
 
 {{include:heuristics/single-country-universe}}
-
----
-
+{{render}}
 ## RENDER — host-native map widget (REQUIRED)
 
 When the host exposes Claude's `places_map_display_v0`, route the leads there. It owns the visual surface: markers, place-card carousel, "Notes from Claude".
@@ -149,6 +147,7 @@ Same one-channel-per-line discipline — newlines between channels so the carous
 The response payload carries everything you need: `lead.company_name` (or `name`), `lead.location.city / country / full / pos`, `lead.score`, `lead.ai_agent_lead_score`, `lead.recommended_contact.{first_name, last_name, job_title, linkedin_page, email, phone_number}`, `lead.phone_numbers[]`, `lead.website`, `lead.short_description`, `lead.last_monitor_action` + `last_monitor_action_at`. Score callout uses `ai_agent_lead_score` when present, else `score`.
 
 {{include:gates/builtin-widgets}}
+{{/render}}
 
 ---
 

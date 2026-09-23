@@ -6,6 +6,1442 @@
 // marker. Keyed by tool name. Served with the RESULT, never inside the
 // description, because hosts truncate descriptions.
 export const RENDER_BLOCKS: Record<string, string> = {
+  leadbay_account_history: `## RENDERING — single-record research card, mode-adaptive
+
+Present as a single-record card, not a table. This tool gets invoked in two distinct user contexts — detect which and adapt the body density accordingly.
+
+**MODE A — Discovery.** The user is evaluating whether to pursue this company as a target. Signals: "tell me about", "what do they do", "is this a fit", "research [company]", arrival via a click-through from \`leadbay_pull_leads\`, no prior outreach context in the conversation. Next step is usually qualify, deep-dive via \`leadbay_research_lead_by_id\`, or decide whether to start outreach.
+
+**MODE B — Contact preparation.** The user is about to call or email someone at this company and needs the talking points. Signals: "I'm calling them", "draft an email", "before my call", "outreach prep", "what should I say", or the conversation has already touched on a specific contact. Next step is usually \`leadbay_prepare_outreach\`.
+
+Default to MODE A when uncertain. Always offer the cross-mode pivot at the end so the user can redirect if you guessed wrong.
+
+### Common structure (both modes)
+
+- **Header** (H4 or H5): \`<10-segment score bar>\` \`[Company name](website)\`. Use the score-bar algorithm; the bar lives in a single inline-code span. Prefix \`https://\` to website if it's a bare hostname.
+- **Pill row** (immediately below the header): short location · compact size · social pill chips iterated over \`social_urls\` (each non-null platform becomes \`[<platform-label>](<url>)\`) · \`[website-domain](website)\` · \`☎ phone\` when \`phone_numbers[]\` is non-empty (use the first number). All \` · \`-separated.
+- **Blurb**: render \`description\` (preferred) or \`short_description\` as a single blockquoted paragraph.
+- **Staleness line**: italic, \`"Researched <relative time>"\` from \`web_insights_fetched_at\`. Use \`"today"\` / \`"yesterday"\` / \`"N days ago"\` up to 30 days, then absolute date. Prefix with \`⚠\` if older than 30 days.
+- **Contacts table** (always at the bottom):
+  \`\`\`
+  |   | Name | Title | LinkedIn |
+  \`\`\`
+  Markers in column 1:
+  - \`★\` — \`recommended_contact\` match.
+  - \`💎\` — name fuzzy-matches a \`hot: true\` entry in \`web_insights\` key_people. (Use \`💎\`, not \`🔥\`, to avoid glyph collision with the follow-up status badge.)
+  Sort \`★\` first, then \`💎\`-only rows, then API order. Link the name via \`linkedin_page\` first; fall back to LinkedIn people-search with \`<First>+<Last>+<Company>\`. Append \`°\` only when the fallback is in use AND \`social_presence.linkedin == false\`. Cap to 6 rows; if \`contacts_count > shown\`, end with \`"+N more — ask to see the full list"\`.
+
+### MODE A body (Discovery, fuller, scannable)
+
+Render each non-empty \`web_insights\` section as H5 with the emoji + label intact. Section order: \`🏢 company profile\` → \`📈 business signals\` → \`💡 prospecting clues\` → \`🧩 strategic positioning\` → \`🔎 technologies & innovation\`. Inside each, bullet 3–5 items. Sort \`hot: true\` items first. **Bold** the description text of hot items; leave cold items plain. Render \`source\` as \`[source](url)\` at the end; include \`date\` when present. Omit empty sections. Skip \`🔗 social links\` (already in the pill row) and \`👤 key people\` (already in the contacts table).
+
+### MODE B body (Contact preparation, tighter)
+
+Render exactly two H5 sections:
+
+##### 🎯 Conversation hooks
+
+Distill the 3 most recent / most hot signals from \`📈 business signals\` and \`💡 prospecting clues\` into one-sentence talking points in salesperson voice. Strip the academic framing. Cite the source inline.
+
+##### 👤 About the person *(only when recommended_contact is non-empty)*
+
+2-line summary: their title + any context from \`web_insights\` key_people. If they appear in a hot signal ("X appointed CEO"), surface that prominently.
+
+Skip 🏢 profile, 🧩 strategic positioning, 🔎 technologies in MODE B — context the user doesn't need for the next 30 seconds.
+
+If \`qualification[]\` is non-empty, append one collapsed line: \`"Qualification: N questions answered, avg boost X"\` and offer to expand in NEXT STEPS.
+
+**Hide:** \`id\`, \`lead.id\`, \`contact.id\`, \`lead.location.pos\`, \`web_fetch_in_progress\`, \`enrichment_in_progress\`, \`recommended_contact_title\` (duplicates \`recommended_contact.job_title\`), empty arrays, fields whose value is the string \`"null"\`, \`contact.source\` (internal), insights whose \`source\` is empty.
+
+**Legend (print once below the card):** \`\` \`▰\` firmographic · \`❖\` AI booster · \`▱\` unfilled · ★ recommended · 💎 hot in web_insights · ° = no company LinkedIn (fallback link only) \`\`
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
+
+When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
+
+\`social_presence\` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+### RENDERING — the history layer (on top of the card above)
+
+After the research card, add a **History** section so the user sees why this
+account resurfaced:
+
+- **##### 🗒 Notes** — render \`notes\` chronologically (oldest → newest). Each
+  as a bullet: \`**<relative date from created_at>** — <note body>\`. Cap at 8;
+  if \`_meta.notes_count > shown\`, end with \`"+N more notes"\`. Omit the section
+  entirely when \`notes\` is empty.
+- **##### 🕓 Timeline** — render \`activities.activities\` newest-first as a
+  compact bullet list: \`<relative date> · <type>\`. Cap at 10; if
+  \`activities.total > shown\`, end with \`"+N earlier"\`. Omit when empty.
+- **##### ↻ Why revisit now** — one or two sentences synthesizing the freshest
+  HOT signal from \`signals\` against the gap in \`activities\` (e.g. "Won a public
+  tender last month; no logged contact since the 2024 quote — strong re-open
+  angle"). Then one suggested outreach angle tied to that signal. This
+  synthesis is the payload of the whole tool — always include it when there is
+  at least one hot signal.`,
+  leadbay_account_status: `---
+
+## RENDERING — quota windows (percentage + $, like the frontend)
+
+Mirror the Leadbay web quota widget: three windows side by side — **Daily**,
+**Weekly**, **Monthly** — each headlined by a **% used** gauge and a **$ spend /
+$ cap** figure, with a per-resource usage breakdown underneath. **Never speak in
+raw "credits"** for quota — the unit is a percentage and a dollar spend.
+
+**Show the quota only when it matters** — when the user asks about their quota,
+usage or account status, or when a window is exhausted and blocks what they
+asked for. A plain "what account am I connected to?" is answered with user +
+org alone. Even then, the silence gate below comes first.
+
+**Silence gate (check FIRST).** Render NOTHING about quota when any of these
+holds — do not mention quota at all, do not say "unreadable", never tell the user
+to reconnect:
+- \`quota\` is null, OR \`quota_error\` is set (a 401/403 backend quirk for plan-less
+  orgs — the same token read user/org fine), OR
+- \`organization.unlimited_credits\` is true (internal/unlimited account — stay
+  silent on quota; never announce "unlimited").
+
+**Pick the group (for DISPLAY only).** Prefer \`quota.user\` (present for every
+caller). Use \`quota.org\` only when \`quota.user\` is absent (admins receive both —
+still show the caller's own \`user\` view). Call the chosen group \`<group>\` below.
+
+**Exception — lens-refill pre-checks read the refill row, ORG-first.** This
+user-preference is for the display gauge ONLY. When you pre-check the
+\`LENS_EXTRA_REFILL\` resource before \`leadbay_extend_lens\`, look for the row in
+**\`quota.org.resources[]\` first** (admins get the org group, and the refill
+quota is org-scoped there); when \`quota.org\` is absent — non-admin callers only
+receive the \`user\` group — fall back to **\`quota.user.resources[]\`**. Match the
+resource type case-insensitively (\`LENS_EXTRA_REFILL\` / \`lens_extra_refill\`).
+Skipping the \`user\` fallback for non-admins would make the row invisible even
+when the quota data exists, so the agent burns the write and hits the very 429
+this pre-check exists to avoid.
+
+**Per window (fixed order: daily → weekly → monthly).** Match entries by
+\`window_type\` (\`"daily"\` / \`"weekly"\` / \`"monthly"\`).
+
+**Headline — when \`<group>.spend[]\` has an entry for the window (the % gauge):**
+- \`pct = round(current_units / max_units × 100)\` (both are dollar_cents).
+- \`$used = (current_units / 100).toFixed(2)\`, \`$cap = (max_units / 100).toFixed(2)\`.
+- 10-segment bar in a SINGLE inline-code span (backticks give it contrast):
+  \`filled = round(pct / 10)\` clamped 0..10; \`bar = "▰"×filled + "▱"×(10 − filled)\`.
+  Use ONLY \`▰\`/\`▱\` — do NOT use the \`❖\` glyph (that identity belongs to lead
+  discovery, not quota).
+- Line: **\`<Window>\`** \`\` \`▰▰▱▱▱▱▱▱▱▱\` \`\` \`<pct>% used · $<used> / $<cap> · resets <resets_at, relative>\`.
+  e.g. \`**Daily** \` + \`\` \`▰▱▱▱▱▱▱▱▱▱\` \`\` + \` 7% used · $0.84 / $12.00 · resets in ~7 h\`.
+
+**Fallback — when \`<group>.spend[]\` is empty** (internal / free orgs have no
+OVERALL_SPEND quota): no gauge. Render the per-window resource breakdown as a
+compact table instead — one row per resource in \`<group>.resources[]\` for that
+window: the friendly label + \`count\` (append \`/ <max_units>\` only when
+\`max_units\` is a number). This is the pre-existing behavior, preserved.
+
+**Resource labels (look up case-insensitively — lower-case \`resource_type\`
+first).** Localize to \`user.language\` (FR canonical shown; English in parens):
+- \`llm_completion\` → **Générations par IA** (AI generations)
+- \`ai_rescore\` → **Leads qualifiés** (qualified leads)
+- \`web_fetch\` → **Informations web** (web insights)
+- \`contact_enrichment_phone\` → **Téléphones enrichis** (phones enriched)
+- \`contact_enrichment_email\` → **E-mails enrichis** (emails enriched)
+
+Skip any resource type not in this map silently — never dump the raw
+\`resource_type\` string at the user.
+
+**\`resets_at\`.** Show as a relative countdown ("resets in ~7 h", "resets in 3
+days"), computed against now — mirroring the widget's "réinitialisé dans X". The
+raw value is an ISO-8601 timestamp.
+
+**Top-up (optional, subordinate).** When \`quota.topup\` is present, you MAY add one
+small line below the windows: \`Top-up: $<(remaining_cents / 100).toFixed(2)> of $<(total_credit_cents / 100).toFixed(2)> left\`.
+Keep it secondary — the three window gauges are the headline. Omit when null.
+
+**Legend** (once, below): \`\` \`▰\` used · \`▱\` remaining \`\`.`,
+  leadbay_bulk_qualify_leads: `---
+
+## Status / scalar — single-sentence shape
+
+The response is a status confirmation or scalar — render exactly one sentence inline. Do NOT emit a card or a table. Do NOT enumerate the affected records (that's the next tool's job).
+
+Template patterns to follow:
+
+- Job kicked off → \`"⏳ <Verb> N <noun(s)> — usually ~M minutes."\`, then check it in this turn
+- No work needed → \`"All N <noun(s)> already <state> — no work to do."\`
+- Still running at a check → \`"⏳ <Verb> still running — N% complete."\`, then check again
+- Failure → \`"⚠ <Verb> failed: <error>. <recovery hint>"\`
+
+After a failure, propose the recovery action in the NEXT STEPS block. Never expand the status into a card.
+
+---
+
+## NEXT STEPS — after kicking off bulk qualification
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Exactly two offers — keep it terse, this is a status tool:
+
+| Observation                          | Suggest                                       | Calls                          |
+|--------------------------------------|-----------------------------------------------|--------------------------------|
+| Qualification kicked off (async)     | "Check progress in ~30s"                      | leadbay_qualify_status         |
+| Job is done / blocking call returned | "Refresh leads view — the new qualifications should be on the top"  | leadbay_pull_leads(lensId = pinned) |`,
+  leadbay_campaign_call_sheet: `## RENDER — call-sheet markdown (PRIMARY)
+
+This is a cold-calling surface. The user wants to scan → pick → tap-to-call → dictate outcome → next. Render one CARD per lead, sorted by AI score:
+
+\`\`\`
+### ⚡ **<Company Name>** — <City>, <State>
+
+**Score <ai_agent_lead_score or score>** · ★ Next step: <next_step>
+
+| Contact | Phone | Role | Recent |
+|---|---|---|---|
+| **[<First Last>](<linkedin_url>)**<br>✉ [<email>](<mailto_url>) | [<phone bare>](<phone_tel_url>) | <job_title> | 📝 "<last_note truncated>" (<rel_date>)<br>📞 <last_action_headline> |
+| **[<First Last>](<linkedin_url>)** | [<phone bare>](<phone_tel_url>) | <job_title> | _(no notes)_ |
+
+<short callout — "📞 0 prior touches" / "⚠ Also in 2 teammates' campaigns" if applicable>
+
+---
+\`\`\`
+
+**Cell 1 — Contact (stacked content)**:
+- Line 1: \`**[<First Last>](<linkedin_url>)**\` — MUST always be a markdown link. Use \`contact.linkedin_url\` from the response (the composite already falls back to a \`linkedin.com/search/results/people/?keywords=…\` URL when \`linkedin_page\` is missing — never render a bare name). When \`linkedin_url_source === "constructed"\`, append a trailing \` °\` to the contact name to mark the fallback path.
+- Line 2 (if email present): \`✉ [<email>](<mailto_url>)\` — \`mailto:\` link, auto-linkifies and opens the user's default mail app. Omit the line entirely if \`email === null\` rather than rendering "_no email_".
+
+**Cell 2 — Phone (load-bearing for one-tap calling on mobile)**:
+- Always render as a markdown link \`[bare](tel:URL)\`. The bare text auto-linkifies on most hosts; the explicit \`tel:\` link guarantees one-tap dialing on macOS / iOS / Android.
+- Use the \`phone_tel_url\` from the response (already canonicalized to \`tel:+<digits>\`); do NOT reconstruct.
+- When \`phone_number\` is null but the lead has \`company_phone_numbers[]\`, fall back to the company switchboard with a "(company line)" suffix.
+- When neither contact phone nor company phone is present, render \`_no phone_\` — the rep will know this contact needs enrichment.
+
+**Cell 3 — Role**: \`contact.job_title\`. Render \`—\` when null.
+
+**Cell 4 — Recent (stacked content, history surface)**:
+- Line 1 (if \`contact.recent_notes[0]\` present): \`📝 "<note text, truncated to ~60 chars>" (<relative date>)\`. The relative date uses the note's \`created_at\` ISO timestamp — render as \`3d ago\`, \`2w ago\`, etc. Omit the line entirely if no notes.
+- Line 2 (if \`last_action_headline\` on the lead-level block present): \`📞 <headline>\` — e.g. \`📞 CONTACTED\`, \`📞 MEETING_BOOKED\`. This is the LEAD's most recent interaction headline, not the contact's. Helpful for context but the per-contact note above is more specific.
+- When both are absent, omit the cell content entirely — don't render \`_(no activity)_\` for every cold contact; it's noise.
+
+**Sort + filter**:
+- Top of the page: ONE-line summary chip from \`summary\` — \`📋 12 leads · 23 contacts · 9 with a phone · 7 with an email · 3 already touched\`.
+- Lead cards sorted by AI score desc; contacts within each card sorted AI-pinned > recommended > has-phone.
+- If \`last_action_headline\` is present OR \`progress.in_progress > 0\` OR \`progress.declined > 0\`, render the card with a 📞 prefix instead of ⚡ — at-a-glance "already touched" vs "still cold". Do not use \`progress.total_contacts\`; that is contact coverage, not outreach history.
+
+## RENDER — map widget (SECONDARY, when user asks for a route)
+
+When the user says "plot my call list on a map" / "where are these leads" / "route my calling tour", route to \`places_map_display_v0\` using the \`map_locations\` array verbatim:
+
+\`\`\`
+places_map_display_v0({
+  locations: response.map_locations,
+  travel_mode: "driving"
+})
+\`\`\`
+
+The composite has already built the notes string per place card (one sentence with the top contact's phone inline). After the widget, emit the standard call-sheet card list below it for the rich detail — the carousel renders bare phones as \`tel:\` but strips markdown.
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+
+
+---
+
+## NEXT STEPS — wire the dictation+epilogue loop
+
+After the user reports a call ("Called Bree, she wants pricing"), route to \`leadbay_report_outreach\` with BOTH \`note\` (the call summary) AND \`epilogue_status\` in one call. The four epilogue values:
+
+- \`STILL_CHASING\` — still pursuing, no decision yet.
+- \`COULD_NOT_REACH_STILL_TRYING\` — voicemail / no answer.
+- \`INTEREST_VALIDATED_OR_MEETING_PLANED\` — qualified / meeting booked.
+- \`NOT_INTERESTED_LOST\` — declined / not a fit.
+
+The \`verification\` field is REQUIRED — pass \`{source: "user_confirmed", ref: <user's exact words>}\` since calls don't have message-ids.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.`,
+  leadbay_delete_custom_field: `### RENDERING
+
+Before deleting (no confirm), render the \`hint\` and ask the user to confirm — do NOT auto-confirm on the user's behalf. After a confirmed delete, acknowledge in one line: **"Deleted custom field #12 'Legacy Source'."**`,
+  leadbay_enrich_titles: `## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.`,
+  leadbay_extend_lens: `---
+
+## NEXT STEPS — after \`leadbay_extend_lens\`
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Pick the row matching the response \`status\`. Seed-picking is internal; do NOT add chips that imply the user reviewed candidates.
+
+| \`status\`                | Suggest                                                       | Calls                                                  |
+|-------------------------|---------------------------------------------------------------|--------------------------------------------------------|
+| \`queued\`                | "Pull leads in ~30s to see the new ones"                      | \`leadbay_pull_leads()\` (after a short wait)            |
+| \`quota_exceeded\`        | "Try with a smaller \`extra_count\`"                            | \`leadbay_extend_lens(extra_count=<smaller>)\`           |
+| \`quota_exceeded\`        | "Wait until the daily quota resets at \`<resets_at>\`"          | (no call — surface the reset time to the user)         |
+| \`quota_exceeded\`        | "Upgrade plan for a higher daily limit"                       | (no call — direct user to contact account manager / sales) |
+| \`refresh_in_progress\`   | "Lens is already filling — pull leads in a minute"            | \`leadbay_pull_leads()\` (after a short wait)            |
+| \`no_valid_seeds\`        | (silent retry — re-call \`leadbay_list_lens_seed_candidates\` then \`leadbay_extend_lens\`) | internal — only surface if the second attempt also fails |
+| \`no_candidates\`         | "Widen the audience — this lens has nothing left to add"       | \`leadbay_adjust_audience()\` — never \`leadbay_extend_lens\` again |
+| \`no_candidates\` (\`reason.code: no_new_leads\`) | "Work the leads already in the lens"        | \`leadbay_pull_followups()\`                             |
+
+If nothing matches cleanly, default to "pull leads now to see what's queued" — never invent a tool that doesn't exist.`,
+  leadbay_find_new_leads: `---
+
+## RENDERING — delivery table + honest funnel line
+
+Render delivered leads (\`leads[]\`, i.e. items with status \`delivered\` or
+\`degraded\`) as a markdown table **in the order returned**. Exactly three
+columns. Then ALWAYS close with the funnel line (below), even when nothing
+was delivered.
+
+**Column 1 — Company**
+
+- Line 1: 10-segment fit bar in inline-code backticks from \`lead.fit.score\`
+  (0-100): \`filled = round(score/10)\`, glyphs \`▰\` filled / \`▱\` empty. When
+  \`lead.fit.components.qualification.available\` is true AND \`ai_score > 0\`,
+  replace the LAST filled segment with \`❖\` (AI-confirmed cap). When
+  \`fit.available\` is false, render \`▱▱▱▱▱▱▱▱▱▱\` and say "unscored" in col 2.
+  Never print the numeric score.
+- Insert \`<br>\`, then: linked company name (target \`company.website\`, bare
+  hostnames get \`https://\`; unlinked plain text when absent) + \` · \` + short
+  location (City, ST / City, Country) + \` · \` + employees as \`min–max\` (omit
+  when \`employees.known\` is false).
+
+**Column 2 — Why it fits**
+
+- One sentence ≤ 20 words. Priority: \`fit.reasoning\` → gist of
+  \`company.description\` → top \`fit.components.qualification.matched_tags\`.
+- If the item status is \`degraded\` or a requested channel failed, append the
+  honest flag in italics, e.g. *(email could not be sourced)*.
+
+**Column 3 — Contact**
+
+- \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
+  exists; plain name otherwise). Below it, the FOUND channels only:
+  \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
+- Channel statuses: \`delivered\` → show value; \`already_owned\` → value +
+  *(already yours)*; \`masked\` → "on file — reveal via channels";
+  \`not_requested\` → omit; \`failed_*\` → *(no verified email/phone)*.
+- No contact on the item (\`contact\` null): render \`—\` (title_gate \`prefer\`
+  delivers such rows flagged; say so in col 2 only when contact_titles were
+  requested).
+
+**The funnel line (mandatory, after the table):**
+
+One short line narrating the delivery honestly, from \`funnel\` +
+\`explain.scope_notes\`:
+
+> Matched N · examined E · qualified Q · disqualified D → **delivered X of
+> the Y asked** · stopped: <stop_reason in plain words>.
+
+**No money, anywhere.** \`cost.*\`, \`estimated_cost.max\` and quotes are internal
+usage units: never render them, convert them to a currency or call them a
+charge — a price reads as a bill. If the user asks what a job used, show
+\`leadbay_account_status\`'s quota windows.
+
+"of the Y asked" needs \`summary.items_requested\`: a \`leadbay_lead_job_status\`
+snapshot lacks it, so take it from the launch result. Without it write
+**delivered X** — never back-fill Y from \`matched\`/\`examined\`, never guess it.
+
+Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
+"ran out of matching candidates", \`max_cost\` → "hit the job's usage cap", \`quota\` →
+"hit an org quota", \`time_budget\` → "hit the 30-min time budget".
+
+**When a FINISHED job delivered 0**: NEVER say just "no results". Render no table; give
+the funnel line plus the relevant \`explain.scope_notes\`, then propose the concrete fix (reshape the seed per the craft
+rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a filter) as NEXT STEPS.
+
+**Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
+the table as an answer — open with "weak matches only", show at most the top 3,
+propose reshaping the seed/filters first.
+
+**Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
+requested fence; drop and call out leaks (same-named cities slip through).
+(b) When \`explain.seed_strategy\` is \`text_match_exemplars\` (the standard FR
+path), treat high fit scores skeptically and verify each row's \`description\`.
+
+**Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
+table \`Ref → Outcome\` translating \`status_reason\` to plain words:
+\`not_in_universe\` → "not in the Leadbay universe (import it first)",
+\`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
+\`no_matching_contact\` → "no contact with the requested title",
+\`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
+\`enrichment_failed\` → "channel could not be sourced (no quota used)".
+
+**\`items_truncated\`**: rows are a PREFIX, not the batch. Say so, and offer
+\`leadbay_lead_job_status(job_id, since: next_since)\` for the rest.
+
+**Hide from the user:** UUIDs (keep for tool calls, never render), cursors,
+\`explain.model\`/\`intelligence_snapshot\`, raw \`distance\`/\`calibration\`,
+\`seq\`/\`from_cache\`, empty arrays.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+
+
+---
+
+## NEXT STEPS — after a find_new_leads delivery
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Pick the 2-3 that match what happened, never the whole table:
+
+| Observation | Suggest | Calls |
+|---|---|---|
+| ≥ 1 delivered — offer FIRST | "Build an interactive lead triage board" | leadbay_get_artifact_runtime → CANONICAL recipe, data in hand |
+| Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
+| Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
+| Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
+| Stopped at the job's usage cap (\`stop_reason: max_cost\`) | "Raise the job's cap and get the remaining N" — no amount, no currency | leadbay_find_new_leads, NEW request_id + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered) + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered ones; without these the rerun re-buys the rejected) |
+| Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it stops in the same place | leadbay_account_status |
+| Stopped on quota and the user will not wait | "Top up to finish this run" | leadbay_create_topup_link |
+| User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |`,
+  leadbay_followups_map: `## RENDER — host-native map widget (REQUIRED)
+
+When the host exposes Claude's \`places_map_display_v0\`, route the leads there. It owns the visual surface: markers, place-card carousel, "Notes from Claude".
+
+**Call shape — pass the most precise data you have. A full address plus coordinates lets Google resolve a real business listing and show property pills (phone, website, Directions button, rating) on each card. City-level data gives a basic pin and your notes string only.**
+
+\`\`\`
+places_map_display_v0({
+  locations: leads.map(l => ({
+    name: l.company_name ?? l.name,
+    // ★ REQUIRED — pos is [lat, lng] in our payload. Pass them split.
+    latitude:  l.location.pos[0],
+    longitude: l.location.pos[1],
+    // ★ Pass the FULL detailed address from l.location.full
+    //   ("1140, 6th Avenue, 10036, City of New York, New York, United States"),
+    //   NOT a city-level fallback. Google's place lookup needs the street
+    //   + ZIP to resolve a business listing → that's what unlocks the
+    //   structured phone/website/rating pills on the card.
+    address: l.location.full ?? [l.location.city, l.location.state, l.location.country].filter(Boolean).join(", "),
+    notes: <one-sentence pitch — see notes recipe below>,
+    // place_id omitted — Leadbay's backend doesn't store Google Place
+    // IDs. Google resolves implicitly from name + lat/lng + address.
+    // If it doesn't find a listing (small B2B, no Google business page),
+    // the card falls back to your notes string only — that's why the
+    // notes string MUST be self-sufficient (phone + email inline).
+  })),
+  // travel_mode: "driving" if the user mentioned driving / trip, etc.
+})
+\`\`\`
+
+Skip any lead whose \`location.pos\` is null — without lat/lng the widget can't pin it. (Surface them as a "+ N leads without coordinates" footer below the widget instead.)
+
+**Notes recipe for each lead** — "Notes from Claude" on the place card.
+
+CRITICAL REALITY OF THE CAROUSEL: it renders the notes string as **a single wrapped paragraph of plain text**. The carousel renderer:
+- STRIPS markdown — \`[Name](url)\` shows as literal "Name (url)" with the URL visible mid-text;
+- COLLAPSES newlines — vertical stacking does NOT work;
+- TRUNCATES long URLs mid-string visibly;
+- DOES auto-linkify bare phone numbers (\`+1 212-555-0100\` → tappable \`tel:\`) and bare email addresses (\`name@company.com\` → tappable \`mailto:\`) — those become the only "properties" the user can act on inside the card.
+
+So the notes string MUST be short prose with bare-text channels only. Use exactly this shape (one sentence, ≤ ~30 words):
+
+\`\`\`
+★ <One-sentence sector/fit + why-now>. Reach <Contact First Last>, <role>: <bare phone>, <bare email>.
+\`\`\`
+
+Examples:
+- \`★ Strongest fit — active thread, 'trying to reach' from last Friday. Reach Troy Schirk, Principal & CIO: +1 312-550-2382, tschirk@atlasholdingsllc.com.\`
+- \`★ Mid-size HR/staffing match, multi-branch pattern. Reach Irving Enciso, Regional Ops Manager: 952-835-1288, info@employersolutionsgroup.com.\`
+
+Rules:
+- ONE sentence. No newlines. No emoji prefixes (\`👤📞✉️🌐\` add clutter but do NOT create sections — the carousel ignores layout).
+- NO markdown links anywhere in \`notes\`. Especially no LinkedIn URLs — they're long, they mid-truncate visibly, and the carousel renders them as raw text. Save LinkedIn for the chat prose below the widget.
+- Phone + email inline as bare text. They auto-linkify; that's the user's tap target inside the card.
+- Score callout (\`★ Strongest fit\`, \`Score 83\`, etc.) uses \`ai_agent_lead_score\` when present, else \`score\`.
+- Omit channels that aren't enriched yet — don't write "<no phone>".
+
+## Chat prose AFTER the widget (where markdown DOES render)
+
+The carousel is the spatial visual. The user still wants the rich contact detail somewhere — but the right surface for that is the **chat message after invoking the widget**, not the notes inside it. Chat renders markdown links, lists, emoji properly.
+
+Below the widget invocation, emit a short structured summary like:
+
+\`\`\`
+**Atlas Holdings — Far Rockaway.** ★ Strongest fit. Active thread, "trying to reach" status from last Friday; AI angle is fresh (recent strategic investment signal).
+Contact: **[Troy Schirk](<linkedin_page or constructed search URL>)**, Principal & CIO · ☎ +1 312-550-2382 · ✉ tschirk@atlasholdingsllc.com
+
+**Employer Solutions Services — Midtown.** ★ Mid-size HR/staffing match. Same address as the staffing-group sibling — single visit covers both.
+Contact: **[Irving Enciso](<linkedin URL>)**, Regional Operations Manager · ☎ 952-835-1288 · ✉ info@employersolutionsgroup.com
+\`\`\`
+
+Keep it short — 1 lead per ~3 lines, top 3–5 most relevant. The LinkedIn-linked contact name lives here (chat markdown works), the channels are listed as \` · \`-separated pills. **Do NOT enumerate the same leads as a markdown table** — this list-form summary is the chat-side detail surface.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+
+Open with **one short intro sentence** in chat ("Five lead visits across NYC for your trip next week — three in Midtown, plus Long Island and one in NJ.") and then invoke the widget, then the chat-side list above. **No markdown table.**
+
+**After the widget renders, end the turn with the NEXT STEPS surface** — not with a prose question. See "GATE — PREFER BUILT-IN HOST WIDGETS" below: surface 2–4 mutually-exclusive moves via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`) if the host exposes it, else as a short bulleted list. "Want me to plot these on a map or jump to outreach for Atlas?" is exactly the prose pattern to AVOID — it's a \`single_select\` with two options.
+
+## RENDER — fallback for hosts without \`places_map_display_v0\`
+
+If the host doesn't expose the native map, emit per-lead markdown blocks in this **exact** format — modern chat hosts (Claude.ai web, cowork) auto-detect addresses + company names and render them as a Google-Place-card carousel anyway:
+
+\`\`\`
+### **<Company Name>** · <City>, <State or Country>
+
+★ <Score callout>. <One-sentence sector fit + why-now>.
+
+👤 [<Contact First Last>](<LinkedIn URL>) — <role>
+📞 <bare phone>
+✉️ <bare email>
+🌐 <company website>
+\`\`\`
+
+Same one-channel-per-line discipline — newlines between channels so the carousel renders them as scannable properties (vs a wall of prose). Same auto-linkify rules: bare phone, bare email, markdown-wrapped contact name.
+
+The response payload carries everything you need: \`lead.company_name\` (or \`name\`), \`lead.location.city / country / full / pos\`, \`lead.score\`, \`lead.ai_agent_lead_score\`, \`lead.recommended_contact.{first_name, last_name, job_title, linkedin_page, email, phone_number}\`, \`lead.phone_numbers[]\`, \`lead.website\`, \`lead.short_description\`, \`lead.last_monitor_action\` + \`last_monitor_action_at\`. Score callout uses \`ai_agent_lead_score\` when present, else \`score\`.
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.`,
+  leadbay_get_lead_custom_fields: `### RENDERING
+
+Render \`custom_fields\` as a 3-column markdown table: **Field** (\`name\`, or the
+\`id\` when name is null) · **Type** (\`type\`) · **Value** (\`value\`, or "—" when
+null/empty). One row per entry, in the order returned. When \`custom_fields\` is
+empty, render the \`hint\` sentence instead of an empty table. Don't fabricate
+fields or values — render verbatim.`,
+  leadbay_get_qualification_questions: `### RENDERING
+
+Render \`qualification_questions\` as a numbered list — one question per line, in
+the order returned. Lead with a short heading like **"Qualification questions
+(N)"**. Then, when present, the \`ideal_buyer_profile\` summary with its
+\`anti_patterns\` as a short bulleted list, and the \`targeting_prompt\` as a
+blockquote. When \`qualification_questions\` is empty, say **"You have no
+qualification questions — leads are scored on firmographics alone"** and render
+the \`hint\`. When \`is_admin\` is true and there are questions, append the \`hint\`
+as a one-line footnote. Do not invent questions or reword them — render
+verbatim.`,
+  leadbay_getting_started: `## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.`,
+  leadbay_import_and_qualify: `---
+
+## RENDERING — import result summary (single-record, terse)
+
+The response carries either a completed result or an async handle. Render a brief summary; do NOT enumerate every imported lead.
+
+**Dry run first:** if the result has \`dry_run:true\` (or ANY \`not_imported\` row has \`reason: "dry_run"\`), this was a VALIDATION pass — nothing was committed. Render \`"🔎 Dry run — V rows validated OK, nothing imported yet. Re-run without dry_run to commit."\` where V = the count of \`dry_run\` rows. If malformed rows are ALSO present (\`reason: "malformed"\`), list those separately as \`"⚠ M rows can't be imported as-is: <row · malformed>"\` so the validation count is never swallowed. Do NOT use the pending-crawl/need-attention bucket header below for a dry run (those buckets are for a real committed import).
+
+Otherwise, partition \`not_imported\` by \`reason\` into these buckets before you write the header:
+
+- **Pending crawl** — \`reason: "uncrawled"\` **AND the row has a \`domain\`**: Leadbay just hasn't crawled that domain yet and will add the lead asynchronously. These are NOT failures. (The label doesn't verify the URL resolves — don't claim the site is bad, but don't certify it's valid either. See the note below.)
+- **Need attention** — everything else that didn't import:
+  - \`reason: "uncrawled"\` but the row has **no \`domain\`** (name/CRM-id-only row): there is nothing for Leadbay to crawl, so it will NOT self-resolve — count these under need-attention, not pending crawl, and tell the user to supply a company website/identity and re-import.
+  - \`reason\` ∈ \`malformed\` / \`internal_error\` / \`no_match\` / \`ambiguous\`: genuinely un-actionable or needs a follow-up call.
+
+**Header — single line, choose by status:**
+
+- Completed: \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` (drop any segment whose count is 0)
+- Running: \`"⏳ Import running — usually a few minutes."\`, then check \`leadbay_import_status({importIds})\`.
+- Running with \`timed_out:true\` (the blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. \`"⏳ Import still running (the backend is slow today)."\` Then check \`leadbay_import_status({importIds})\`; do NOT re-run leadbay_import_leads. If \`rows_pending_upload\` is present, add \`"⚠ K rows weren't submitted — re-import just those."\`
+- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them."\`, then check \`leadbay_qualify_status\` with \`lead_ids\` + \`lens_id\` (there is no qualification notification_id)
+
+Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
+
+**When the "need attention" or pending-crawl rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): \`<row identifier or domain> · <reason>\`. Label each row by its real reason — "pending crawl" for \`uncrawled\`, and the specific reason otherwise. Frame pending rows reassuringly (Leadbay is crawling them; the leads it adds will populate in the user's Leadbay account as the crawl completes — see the semantics note below for where they show up), not as errors. The full \`not_imported\` breakdown is already in THIS response — list from it directly; then \`"*+N more (see the full not_imported list in the response)*"\`.
+
+**When the user's request implied a downstream use** ("import then prep outreach for them"), emit \`Imported leadIds: <up to 5 ids, then '+N more'>\` — just the ids. Let the next composite render the leads.
+
+Defer the full list of imported leads to \`leadbay_pull_leads\` or \`leadbay_research_lead_by_id\` in NEXT STEPS.
+
+**\`uncrawled\` is NOT a failed import — it means "pending a crawl".** A row lands \`uncrawled\` when Leadbay hasn't matched or crawled that domain **yet** — the row simply didn't match an existing lead at import time and isn't a public-mailbox domain. It does NOT mean the import failed, and it is NOT a verdict that the website is broken (the tool doesn't check whether the URL resolves — so don't claim the site is bad, but don't guarantee it's valid either).
+
+**One caveat — \`uncrawled\` only means "pending" when the row actually had a website.** A row imported by name / CRM id / registry number only (no \`LEAD_WEBSITE\` mapped) that finds no existing match ALSO lands \`uncrawled\`, but there's no domain for Leadbay to crawl — so it will NOT self-resolve via a late crawl. For those name-only rows, don't give the "Leadbay is crawling it" reassurance; tell the user to supply a company website (or another resolvable identity) and re-import. So: \`uncrawled\` + a website → genuinely pending a background crawl; \`uncrawled\` + no website → the user needs to add an identity, it won't crawl on its own. The import itself completed successfully; Leadbay then crawls the domain in the background and adds the lead asynchronously (a *late import*), so most of these rows resolve on their own within minutes to hours. Where do those late-added leads show up? **In the user's Leadbay account as the crawl completes.** \`leadbay_import_status\` does NOT return them — it only refreshes status/progress. There's no bulk "list the leads this import just added" call: \`leadbay_pull_leads\` reads the active lens's wishlist, so an imported lead not admitted to that lens won't appear there. For **one specific company by name**, \`leadbay_research_lead_by_name_fuzzy\` searches across the visible Leadbay corpus (not lens-scoped) and can surface it once crawled — a reasonable check for a named company. Otherwise tell the user the leads will populate in Leadbay over the next minutes–hours; to pull those specific companies back through the MCP in bulk, **re-run the same import later** (the now-crawled domains match). Do NOT promise \`leadbay_pull_leads\` or \`import_status\` will list the late additions.
+
+So when reporting an import: count \`uncrawled\` rows as **pending**, never as failures. Do NOT tell the user these rows "failed", were "rejected", had "bad/unreachable websites", or point to a backend problem — that is wrong and needlessly erodes trust in the whole lead set. A high \`uncrawled\` share on a fresh list is normal and expected, not a red flag.
+
+How the OTHER reasons map to the "Need attention" bucket (see the render block above) — none of these should be lumped in with \`uncrawled\`/pending, but each is still surfaced to the user, not suppressed:
+
+- \`malformed\` (row couldn't be parsed) and \`internal_error\` (a real backend error) are genuine failures — flag them plainly.
+- \`no_match\` on a public-mailbox domain (gmail.com, outlook.com, …) means no company domain was resolvable from that row — surface it so the user can supply a real company domain. Not a crawler failure.
+- \`ambiguous\` rows matched several candidates — surface them as needing disambiguation via \`leadbay_resolve_import_rows\`. Not a failure, but the user still needs to act.
+
+
+
+---
+
+## NEXT STEPS — after an import
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+| Observation                                    | Suggest                                                       | Calls                                                  |
+|------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
+| Status: running                                | "Check progress"                                              | leadbay_import_status(importIds)                       |
+| Status: running with \`timed_out:true\`          | "Check progress" — NOT "retry the import"                     | leadbay_import_status(importIds, dry_run if the result carried it) after ~30s; \`result.leads\` carries the leadIds once complete |
+| \`rows_pending_upload\` present                  | "Import the rows that never got submitted"                    | leadbay_import_leads (that subset only)                |
+| Status: complete, imports succeeded            | "Run AI qualification on the imported leads"                  | leadbay_bulk_qualify_leads([leadIds]) — or use leadbay_import_and_qualify next time |
+| Pending-crawl (\`uncrawled\`) rows present       | "Re-run the import for those domains later, once Leadbay has crawled them" | leadbay_import_leads (re-run with just the uncrawled domains, later — they re-reconcile once crawled). NOTE: not a live-fetch of the added leads; those populate in the user's Leadbay account as the crawl completes |
+| Ambiguous / unresolved rows present            | "Resolve the ambiguous rows"                                  | leadbay_resolve_import_rows(records, identity_mappings)|
+| \`malformed\` / bad-mapping rows present         | "Check the org's mappable fields and remap the bad rows"      | leadbay_list_mappable_fields                           |
+| User wants to see the imported leads           | "See the imported leads in your view"                         | leadbay_pull_leads                                     |
+| User had follow-up intent for the imports      | "Prep outreach for [a specific imported lead]"                | leadbay_prepare_outreach(leadId)                       |`,
+  leadbay_import_leads: `---
+
+## RENDERING — import result summary (single-record, terse)
+
+The response carries either a completed result or an async handle. Render a brief summary; do NOT enumerate every imported lead.
+
+**Dry run first:** if the result has \`dry_run:true\` (or ANY \`not_imported\` row has \`reason: "dry_run"\`), this was a VALIDATION pass — nothing was committed. Render \`"🔎 Dry run — V rows validated OK, nothing imported yet. Re-run without dry_run to commit."\` where V = the count of \`dry_run\` rows. If malformed rows are ALSO present (\`reason: "malformed"\`), list those separately as \`"⚠ M rows can't be imported as-is: <row · malformed>"\` so the validation count is never swallowed. Do NOT use the pending-crawl/need-attention bucket header below for a dry run (those buckets are for a real committed import).
+
+Otherwise, partition \`not_imported\` by \`reason\` into these buckets before you write the header:
+
+- **Pending crawl** — \`reason: "uncrawled"\` **AND the row has a \`domain\`**: Leadbay just hasn't crawled that domain yet and will add the lead asynchronously. These are NOT failures. (The label doesn't verify the URL resolves — don't claim the site is bad, but don't certify it's valid either. See the note below.)
+- **Need attention** — everything else that didn't import:
+  - \`reason: "uncrawled"\` but the row has **no \`domain\`** (name/CRM-id-only row): there is nothing for Leadbay to crawl, so it will NOT self-resolve — count these under need-attention, not pending crawl, and tell the user to supply a company website/identity and re-import.
+  - \`reason\` ∈ \`malformed\` / \`internal_error\` / \`no_match\` / \`ambiguous\`: genuinely un-actionable or needs a follow-up call.
+
+**Header — single line, choose by status:**
+
+- Completed: \`"✓ Import complete — N imported · P pending crawl · Q need attention"\` (drop any segment whose count is 0)
+- Running: \`"⏳ Import running — usually a few minutes."\`, then check \`leadbay_import_status({importIds})\`.
+- Running with \`timed_out:true\` (the blocking call ran out of poll budget): the import is FINE and still running server-side — never render this as an error or a failure. \`"⏳ Import still running (the backend is slow today)."\` Then check \`leadbay_import_status({importIds})\`; do NOT re-run leadbay_import_leads. If \`rows_pending_upload\` is present, add \`"⚠ K rows weren't submitted — re-import just those."\`
+- Pending qualification (\`leadbay_import_and_qualify\`): \`"✓ Imported N leads · qualifying M of them."\`, then check \`leadbay_qualify_status\` with \`lead_ids\` + \`lens_id\` (there is no qualification notification_id)
+
+Count \`uncrawled\` rows as **pending**, never as failures — never say "M failed" when the M is mostly/entirely uncrawled rows.
+
+**When the "need attention" or pending-crawl rows are non-empty**, follow the header with a small bulleted list (≤ 5 items): \`<row identifier or domain> · <reason>\`. Label each row by its real reason — "pending crawl" for \`uncrawled\`, and the specific reason otherwise. Frame pending rows reassuringly (Leadbay is crawling them; the leads it adds will populate in the user's Leadbay account as the crawl completes — see the semantics note below for where they show up), not as errors. The full \`not_imported\` breakdown is already in THIS response — list from it directly; then \`"*+N more (see the full not_imported list in the response)*"\`.
+
+**When the user's request implied a downstream use** ("import then prep outreach for them"), emit \`Imported leadIds: <up to 5 ids, then '+N more'>\` — just the ids. Let the next composite render the leads.
+
+Defer the full list of imported leads to \`leadbay_pull_leads\` or \`leadbay_research_lead_by_id\` in NEXT STEPS.
+
+**\`uncrawled\` is NOT a failed import — it means "pending a crawl".** A row lands \`uncrawled\` when Leadbay hasn't matched or crawled that domain **yet** — the row simply didn't match an existing lead at import time and isn't a public-mailbox domain. It does NOT mean the import failed, and it is NOT a verdict that the website is broken (the tool doesn't check whether the URL resolves — so don't claim the site is bad, but don't guarantee it's valid either).
+
+**One caveat — \`uncrawled\` only means "pending" when the row actually had a website.** A row imported by name / CRM id / registry number only (no \`LEAD_WEBSITE\` mapped) that finds no existing match ALSO lands \`uncrawled\`, but there's no domain for Leadbay to crawl — so it will NOT self-resolve via a late crawl. For those name-only rows, don't give the "Leadbay is crawling it" reassurance; tell the user to supply a company website (or another resolvable identity) and re-import. So: \`uncrawled\` + a website → genuinely pending a background crawl; \`uncrawled\` + no website → the user needs to add an identity, it won't crawl on its own. The import itself completed successfully; Leadbay then crawls the domain in the background and adds the lead asynchronously (a *late import*), so most of these rows resolve on their own within minutes to hours. Where do those late-added leads show up? **In the user's Leadbay account as the crawl completes.** \`leadbay_import_status\` does NOT return them — it only refreshes status/progress. There's no bulk "list the leads this import just added" call: \`leadbay_pull_leads\` reads the active lens's wishlist, so an imported lead not admitted to that lens won't appear there. For **one specific company by name**, \`leadbay_research_lead_by_name_fuzzy\` searches across the visible Leadbay corpus (not lens-scoped) and can surface it once crawled — a reasonable check for a named company. Otherwise tell the user the leads will populate in Leadbay over the next minutes–hours; to pull those specific companies back through the MCP in bulk, **re-run the same import later** (the now-crawled domains match). Do NOT promise \`leadbay_pull_leads\` or \`import_status\` will list the late additions.
+
+So when reporting an import: count \`uncrawled\` rows as **pending**, never as failures. Do NOT tell the user these rows "failed", were "rejected", had "bad/unreachable websites", or point to a backend problem — that is wrong and needlessly erodes trust in the whole lead set. A high \`uncrawled\` share on a fresh list is normal and expected, not a red flag.
+
+How the OTHER reasons map to the "Need attention" bucket (see the render block above) — none of these should be lumped in with \`uncrawled\`/pending, but each is still surfaced to the user, not suppressed:
+
+- \`malformed\` (row couldn't be parsed) and \`internal_error\` (a real backend error) are genuine failures — flag them plainly.
+- \`no_match\` on a public-mailbox domain (gmail.com, outlook.com, …) means no company domain was resolvable from that row — surface it so the user can supply a real company domain. Not a crawler failure.
+- \`ambiguous\` rows matched several candidates — surface them as needing disambiguation via \`leadbay_resolve_import_rows\`. Not a failure, but the user still needs to act.
+
+
+
+---
+
+## NEXT STEPS — after an import
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+| Observation                                    | Suggest                                                       | Calls                                                  |
+|------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
+| Status: running                                | "Check progress"                                              | leadbay_import_status(importIds)                       |
+| Status: running with \`timed_out:true\`          | "Check progress" — NOT "retry the import"                     | leadbay_import_status(importIds, dry_run if the result carried it) after ~30s; \`result.leads\` carries the leadIds once complete |
+| \`rows_pending_upload\` present                  | "Import the rows that never got submitted"                    | leadbay_import_leads (that subset only)                |
+| Status: complete, imports succeeded            | "Run AI qualification on the imported leads"                  | leadbay_bulk_qualify_leads([leadIds]) — or use leadbay_import_and_qualify next time |
+| Pending-crawl (\`uncrawled\`) rows present       | "Re-run the import for those domains later, once Leadbay has crawled them" | leadbay_import_leads (re-run with just the uncrawled domains, later — they re-reconcile once crawled). NOTE: not a live-fetch of the added leads; those populate in the user's Leadbay account as the crawl completes |
+| Ambiguous / unresolved rows present            | "Resolve the ambiguous rows"                                  | leadbay_resolve_import_rows(records, identity_mappings)|
+| \`malformed\` / bad-mapping rows present         | "Check the org's mappable fields and remap the bad rows"      | leadbay_list_mappable_fields                           |
+| User wants to see the imported leads           | "See the imported leads in your view"                         | leadbay_pull_leads                                     |
+| User had follow-up intent for the imports      | "Prep outreach for [a specific imported lead]"                | leadbay_prepare_outreach(leadId)                       |`,
+  leadbay_import_status: `---
+
+## Status / scalar — single-sentence shape
+
+The response is a status confirmation or scalar — render exactly one sentence inline. Do NOT emit a card or a table. Do NOT enumerate the affected records (that's the next tool's job).
+
+Template patterns to follow:
+
+- Job kicked off → \`"⏳ <Verb> N <noun(s)> — usually ~M minutes."\`, then check it in this turn
+- No work needed → \`"All N <noun(s)> already <state> — no work to do."\`
+- Still running at a check → \`"⏳ <Verb> still running — N% complete."\`, then check again
+- Failure → \`"⚠ <Verb> failed: <error>. <recovery hint>"\`
+
+After a failure, propose the recovery action in the NEXT STEPS block. Never expand the status into a card.
+
+**\`uncrawled\` is NOT a failed import — it means "pending a crawl".** A row lands \`uncrawled\` when Leadbay hasn't matched or crawled that domain **yet** — the row simply didn't match an existing lead at import time and isn't a public-mailbox domain. It does NOT mean the import failed, and it is NOT a verdict that the website is broken (the tool doesn't check whether the URL resolves — so don't claim the site is bad, but don't guarantee it's valid either).
+
+**One caveat — \`uncrawled\` only means "pending" when the row actually had a website.** A row imported by name / CRM id / registry number only (no \`LEAD_WEBSITE\` mapped) that finds no existing match ALSO lands \`uncrawled\`, but there's no domain for Leadbay to crawl — so it will NOT self-resolve via a late crawl. For those name-only rows, don't give the "Leadbay is crawling it" reassurance; tell the user to supply a company website (or another resolvable identity) and re-import. So: \`uncrawled\` + a website → genuinely pending a background crawl; \`uncrawled\` + no website → the user needs to add an identity, it won't crawl on its own. The import itself completed successfully; Leadbay then crawls the domain in the background and adds the lead asynchronously (a *late import*), so most of these rows resolve on their own within minutes to hours. Where do those late-added leads show up? **In the user's Leadbay account as the crawl completes.** \`leadbay_import_status\` does NOT return them — it only refreshes status/progress. There's no bulk "list the leads this import just added" call: \`leadbay_pull_leads\` reads the active lens's wishlist, so an imported lead not admitted to that lens won't appear there. For **one specific company by name**, \`leadbay_research_lead_by_name_fuzzy\` searches across the visible Leadbay corpus (not lens-scoped) and can surface it once crawled — a reasonable check for a named company. Otherwise tell the user the leads will populate in Leadbay over the next minutes–hours; to pull those specific companies back through the MCP in bulk, **re-run the same import later** (the now-crawled domains match). Do NOT promise \`leadbay_pull_leads\` or \`import_status\` will list the late additions.
+
+So when reporting an import: count \`uncrawled\` rows as **pending**, never as failures. Do NOT tell the user these rows "failed", were "rejected", had "bad/unreachable websites", or point to a backend problem — that is wrong and needlessly erodes trust in the whole lead set. A high \`uncrawled\` share on a fresh list is normal and expected, not a red flag.
+
+How the OTHER reasons map to the "Need attention" bucket (see the render block above) — none of these should be lumped in with \`uncrawled\`/pending, but each is still surfaced to the user, not suppressed:
+
+- \`malformed\` (row couldn't be parsed) and \`internal_error\` (a real backend error) are genuine failures — flag them plainly.
+- \`no_match\` on a public-mailbox domain (gmail.com, outlook.com, …) means no company domain was resolvable from that row — surface it so the user can supply a real company domain. Not a crawler failure.
+- \`ambiguous\` rows matched several candidates — surface them as needing disambiguation via \`leadbay_resolve_import_rows\`. Not a failure, but the user still needs to act.`,
+  leadbay_lead_job_status: `---
+
+## RENDERING — identity pass (\`rows[]\`)
+
+\`rows[]\` replaces \`leads[]\`: one row per company, in the user's order. One
+table: **Company** (\`input\`, plus \`name\` when it differs) · **Website** ·
+**LinkedIn**. Skipped rows stay in it: \`not_in_universe\` → "not in Leadbay",
+\`low_confidence_identity\` → "several matches — add a city or website".
+
+Then ONE coverage line from \`summary\`: found \`resolved\` of \`rows_total\` ·
+\`with_website\` with a website · \`with_linkedin\` with a LinkedIn ·
+\`ambiguous\` unclear · \`not_found\` not found. When most rows lack what the
+user asked for, that line is the answer: say so, and do not look the
+missing ones up one by one.
+
+Done job with \`next_poll.offset\`: say "showing N of \`rows_total\`" and offer
+the rest via \`leadbay_lead_job_status(job_id, compact: true, offset)\`.
+
+\`file\` set (local install only): every row is saved there as a CSV. Give the
+user that path.
+
+
+## RENDERING — delivery table + honest funnel line
+
+Render delivered leads (\`leads[]\`, i.e. items with status \`delivered\` or
+\`degraded\`) as a markdown table **in the order returned**. Exactly three
+columns. Then ALWAYS close with the funnel line (below), even when nothing
+was delivered.
+
+**Column 1 — Company**
+
+- Line 1: 10-segment fit bar in inline-code backticks from \`lead.fit.score\`
+  (0-100): \`filled = round(score/10)\`, glyphs \`▰\` filled / \`▱\` empty. When
+  \`lead.fit.components.qualification.available\` is true AND \`ai_score > 0\`,
+  replace the LAST filled segment with \`❖\` (AI-confirmed cap). When
+  \`fit.available\` is false, render \`▱▱▱▱▱▱▱▱▱▱\` and say "unscored" in col 2.
+  Never print the numeric score.
+- Insert \`<br>\`, then: linked company name (target \`company.website\`, bare
+  hostnames get \`https://\`; unlinked plain text when absent) + \` · \` + short
+  location (City, ST / City, Country) + \` · \` + employees as \`min–max\` (omit
+  when \`employees.known\` is false).
+
+**Column 2 — Why it fits**
+
+- One sentence ≤ 20 words. Priority: \`fit.reasoning\` → gist of
+  \`company.description\` → top \`fit.components.qualification.matched_tags\`.
+- If the item status is \`degraded\` or a requested channel failed, append the
+  honest flag in italics, e.g. *(email could not be sourced)*.
+
+**Column 3 — Contact**
+
+- \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
+  exists; plain name otherwise). Below it, the FOUND channels only:
+  \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
+- Channel statuses: \`delivered\` → show value; \`already_owned\` → value +
+  *(already yours)*; \`masked\` → "on file — reveal via channels";
+  \`not_requested\` → omit; \`failed_*\` → *(no verified email/phone)*.
+- No contact on the item (\`contact\` null): render \`—\` (title_gate \`prefer\`
+  delivers such rows flagged; say so in col 2 only when contact_titles were
+  requested).
+
+**The funnel line (mandatory, after the table):**
+
+One short line narrating the delivery honestly, from \`funnel\` +
+\`explain.scope_notes\`:
+
+> Matched N · examined E · qualified Q · disqualified D → **delivered X of
+> the Y asked** · stopped: <stop_reason in plain words>.
+
+**No money, anywhere.** \`cost.*\`, \`estimated_cost.max\` and quotes are internal
+usage units: never render them, convert them to a currency or call them a
+charge — a price reads as a bill. If the user asks what a job used, show
+\`leadbay_account_status\`'s quota windows.
+
+"of the Y asked" needs \`summary.items_requested\`: a \`leadbay_lead_job_status\`
+snapshot lacks it, so take it from the launch result. Without it write
+**delivered X** — never back-fill Y from \`matched\`/\`examined\`, never guess it.
+
+Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
+"ran out of matching candidates", \`max_cost\` → "hit the job's usage cap", \`quota\` →
+"hit an org quota", \`time_budget\` → "hit the 30-min time budget".
+
+**When a FINISHED job delivered 0**: NEVER say just "no results". Render no table; give
+the funnel line plus the relevant \`explain.scope_notes\`, then propose the concrete fix (reshape the seed per the craft
+rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a filter) as NEXT STEPS.
+
+**Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
+the table as an answer — open with "weak matches only", show at most the top 3,
+propose reshaping the seed/filters first.
+
+**Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
+requested fence; drop and call out leaks (same-named cities slip through).
+(b) When \`explain.seed_strategy\` is \`text_match_exemplars\` (the standard FR
+path), treat high fit scores skeptically and verify each row's \`description\`.
+
+**Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
+table \`Ref → Outcome\` translating \`status_reason\` to plain words:
+\`not_in_universe\` → "not in the Leadbay universe (import it first)",
+\`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
+\`no_matching_contact\` → "no contact with the requested title",
+\`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
+\`enrichment_failed\` → "channel could not be sourced (no quota used)".
+
+**\`items_truncated\`**: rows are a PREFIX, not the batch. Say so, and offer
+\`leadbay_lead_job_status(job_id, since: next_since)\` for the rest.
+
+**Hide from the user:** UUIDs (keep for tool calls, never render), cursors,
+\`explain.model\`/\`intelligence_snapshot\`, raw \`distance\`/\`calibration\`,
+\`seq\`/\`from_cache\`, empty arrays.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+
+
+**Delivered ≠ endorsed.** This tool DELIVERS org-owned companies that FAILED
+qualification, carrying their negative evidence — so a delivered item is not
+automatically a prospect. An item whose \`status_reason\` is \`disqualified\`, or
+whose \`fit.components.qualification\` is available with a negative \`ai_score\`,
+must NOT go in the fit table: its firmographic score can still be high, and a
+full bar beside "why it fits" reads as a recommendation to call an account the
+evaluation just rejected.
+
+Give those their own short section after the fit table, titled
+**Evaluated — does not fit**: linked company, then the verdict in plain
+words from the
+qualification evidence (failed question verdicts, missed tags, IBP reasoning).
+That is the deliverable — "here's why to skip this account" — not a defect to
+hide.
+
+
+---
+
+## NEXT STEPS — after a job status poll
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Pick the ONE row matching the job's state and offer at most two options — this
+is a status tool, keep it terse:
+
+| Observation | Suggest | Calls |
+|---|---|---|
+| Terminal (completed / partial / failed) | Render the delivery per the RENDERING block, then offer the matching find_new_leads / qualify_leads NEXT STEPS | — |
+| \`expired\` (past the 30-day window) | "Re-read the delivered leads from your delivery ledger" — there is nothing left to render: the job terminalized and its items are no longer listed, so do NOT present an empty delivery as a result | leadbay_qualify_leads(prior_deliveries: {job_id}) |`,
+  leadbay_list_mappable_fields: `## RENDERING
+
+When called mid-import (internal use), do NOT render — return the data only.
+
+When the user asks to inspect the org's fields directly, render two sectioned bulleted lists:
+
+##### Standard fields
+
+Bullet each, grouped by domain (lead identity → location → sector → contact → status). Keep field names verbatim.
+
+##### Custom fields (N defined)
+
+Bullet each as \`<name> · <type> · \` \`\` \`<mapping_value>\` \`\` (mapping_value in backticks — agents need it verbatim for import calls).
+
+When called with \`for_records\`, append a final section **"Mapping hints for your file"** with the per-column suggestions; flag low-confidence mappings explicitly.
+
+---
+
+## NEXT STEPS
+
+| Observation                                | Suggest                                                     | Calls                                                  |
+|--------------------------------------------|-------------------------------------------------------------|--------------------------------------------------------|
+| User is preparing an import                | "Map a file"                                                | leadbay_resolve_import_rows / leadbay_import_leads     |
+| User needs a custom field that doesn't exist | "Create a new custom field"                               | leadbay_create_custom_field                            |
+| for_records was passed; hints look good    | "Run the import with these mappings"                        | leadbay_import_leads(records, mappings)                |`,
+  leadbay_manage_lenses: `## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+
+
+---
+
+## RENDERING — lenses table, active-first
+
+Markdown table with THREE columns. Sort **active lens first**, then by \`name\`
+ascending. **No score bar** — the \`▰❖▱\` glyph identity belongs to lead
+discovery, not lenses.
+
+**Column 1 — Lens**
+- Prefix \`⭐ \` when \`is_active\` is true; otherwise no prefix.
+- The lens name in **bold**. (Lenses have no public URL — do not fabricate a link.)
+
+**Column 2 — Description**
+- \`description\` verbatim, clipped to ≤ 18 words.
+- When null/empty: render \`—\`.
+
+**Column 3 — Searches for**
+- \`criteria\` by name, compact: sectors, then locations, then size
+  (\`20–500 employees\`). Prefix \`not \` when \`is_excluded\`. Past 3 sectors, add
+  \`+N more\`. \`[]\` → \`no criteria of its own\`; \`null\` → \`—\`.
+
+**After a \`switched: true\` response**, open with a single confirmation line
+ABOVE the table: \`Now showing **<name>**.\` For \`status: "not_found"\`, lead with
+the \`message\` (the bad id) and render the list so the user can pick a real one.
+
+**When the user asks what a lens searches for**: under the table, a
+\`**<lens name>** searches for:\` line, then one bullet per criterion —
+\`Sectors:\`, \`Locations:\` (every name, joined by commas; \`name\` null → the id),
+\`Company size: 20–500 employees\`. Prefix \`Excluding\` when \`is_excluded\`. Other
+types verbatim. Never show raw ids when a name exists.
+
+**Empty list** (\`lenses: []\`): render \`*You don't have any lenses yet.*\` — do not
+render an empty table.
+
+**Legend:** ⭐ active lens.
+
+
+## NEXT STEPS — after \`leadbay_manage_lenses\`
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Pick the 2–3 rows that fit what the user is likely to want next. When the user
+named no target but wants to switch, offer the lenses themselves as the
+quick-select options (each option = a lens name → \`leadbay_manage_lenses(switchToLensId=<id>)\`).
+
+| Observation                          | Suggest                                  | Calls                                                |
+|--------------------------------------|------------------------------------------|------------------------------------------------------|
+| User wants to add / remove a criterion| "Change <lens name>'s criteria"         | \`leadbay_adjust_audience(lensId=<id>, …)\`            |
+| User wants a different lens          | "Switch to <lens name>"                  | \`leadbay_manage_lenses(switchToLensId=<id>)\`             |
+| User wants to rename / describe a lens| "Rename or describe <lens>"             | \`leadbay_manage_lenses(editLensId=<id>, newName?=<X>, newDescription?=<Y>)\` |
+| User wants to delete a lens          | "Delete <lens>"                          | \`leadbay_manage_lenses(deleteLensId=<id>)\` → confirm → \`confirm=true\` |
+| \`delete_preview\` (not yet deleted)   | "Yes, delete it"                         | \`leadbay_manage_lenses(deleteLensId=<id>, confirm=true)\` |
+| User wants leads on the active lens  | "Pull today's leads"                     | \`leadbay_pull_leads()\`                               |
+| User wants to change the audience    | "Adjust this lens's audience"            | \`leadbay_adjust_audience(...)\`                       |
+| User wants more of the same          | "Get a bigger batch on this lens"        | \`leadbay_extend_lens(...)\`                           |
+
+If nothing fits, default to "pull today's leads on the active lens" — never
+invent a tool that doesn't exist.`,
+  leadbay_new_lens: `## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+
+
+---
+
+## NEXT STEPS — after \`leadbay_new_lens\`
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Pick the rows that fit. On \`created\`, the switch + pull rows are the natural
+follow-ups. On \`ambiguous_sectors\`, the only move is to pick a sector and re-call.
+
+**\`created\` with \`computing_wishlist: true\`** — the new lens's leads are being
+(re)computed asynchronously. Do NOT fire an immediate \`leadbay_pull_leads\` and
+report "empty" — the lens is warming up, not empty. Tell the user the lens was
+created and its leads are streaming in, and offer to pull in ~30s.
+
+| Observation                             | Suggest                                  | Calls                                                  |
+|-----------------------------------------|------------------------------------------|--------------------------------------------------------|
+| \`preview\` (not yet created)             | "Yes, create this lens"                  | \`leadbay_new_lens(...same args..., confirm=true)\`      |
+| \`preview\` (not yet created)             | "Change the sectors/size first"          | (re-ask the user, then \`leadbay_new_lens\` with new args) |
+| Lens created, \`computing_wishlist=true\` | "Give it ~30s, then pull leads (the wishlist is still computing)" | \`leadbay_manage_lenses(switchToLensId=<new id>)\` then \`leadbay_pull_leads()\` after ~30s |
+| Lens created (no criteria)              | "Switch to it and pull leads"            | \`leadbay_manage_lenses(switchToLensId=<new id>)\` then \`leadbay_pull_leads()\` |
+| Lens created                            | "Refine the audience further"            | \`leadbay_adjust_audience(lensName=<new name>, ...)\`    |
+| Lens created                            | "Leave it; keep my current lens active"  | (no call)                                              |
+| \`ambiguous_sectors\`                     | "Pick the right sector and create"       | \`leadbay_new_lens(name=..., sectors=[<chosen id>])\`    |
+
+If nothing fits, default to "switch to the new lens and pull leads in ~30s
+(the wishlist may still be computing)" — never invent a tool that doesn't exist.`,
+  leadbay_prepare_outreach: `## RENDER — host-native message composer is the PRIMARY surface
+
+Route every draft through \`message_compose_v1\` (Claude's email composer). Above it, emit ONE short markdown context paragraph: score callout, sector fit, linked contact name, bare phone/email pills. Do NOT also paste the email body into chat prose — the composer IS the visual.
+
+Variant shape: 1–3 entries, labels per the widget table below. \`kind: "email"\` needs \`subject\`; call openers use \`kind: "other"\` with the opener in \`body\`.
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+
+
+---
+
+## RENDERING — outreach brief (single-record card)
+
+Present as the richest single-record card the MCP emits. The user is seconds-to-minutes away from contacting someone — every section earns its place by either (a) telling them HOW to outreach, (b) showing what they've done before, or (c) surfacing what's missing and how to get it.
+
+**Async enrichment.** When \`enrichment.triggered && !enrichment.complete\`, draft from what IS available (\`split_ai_summary.approach_angle\`, company-line phone, LinkedIn-search fallback) with \`⏳\` on the un-enriched channels, then fill them in once your check shows them.
+
+### Structure
+
+**Header** (H5): \`📞 Outreach prep — [Contact name](LinkedIn) · [Company](website)\`
+
+- Sub-line: job title · \`+N more contacts\` when \`additional_contacts_count > 0\`.
+- Prefix \`https://\` to \`website\` if it's a bare hostname.
+
+**Score line** (when \`lead.score\` is present): the 10-segment bar inline, no \`<br>\`. Same algorithm as \`pull_leads\`.
+
+**Channel readiness** — a single line of pill chips, \` · \`-separated:
+
+- \`🔗 LinkedIn\` — \`profile\` (linked to real URL) if \`linkedin_page\` present; \`search\` (linked to people-search fallback) otherwise. \`⏳\` during enrichment.
+- \`📧 Email\` — show address if present; \`⏳ enriching\` when \`enrichment.triggered && !complete\`; \`⚪ not enriched\` otherwise.
+- \`📞 Phone\` — contact-specific number if present; fall back to \`lead.phone_numbers[0]\` with \`(company line)\` annotation; \`⏳\` / \`⚪\` otherwise.
+
+**H5: 🎯 Angles & approach**
+
+- Render \`lead.split_ai_summary.approach_angle\` as the lead-in.
+- 3–4 bullets distilling \`split_ai_summary.next_step\`, \`signals\` and \`qualification\` into salesperson-voice talking points. Cite \`[source](url)\` inline when known.
+- Final line: \`Recommended channel: <X> — <rationale>\`. Compute the recommendation from what data is available (email present → email; phone present → call; LinkedIn only → DM).
+
+**H5: 📜 History with [Company name]**
+
+From \`history\`, newest first: \`<date> · <activity type>\` per \`activities\` entry, then the \`notes\` quote-blocked, each prefixed with its \`contact\` when set. When a note or an \`EPILOGUE_*\` entry records a past contact, the draft follows up on it instead of opening cold. Both lists empty: \`*No prior touchpoints recorded.*\`
+
+**H5: 👥 Other contacts** (only if \`additional_contacts_count > 0\`)
+
+One line: \`+N more contacts at this company — [see them all](leadbay_research_lead_by_id)\`.
+
+**Hide:** \`id\`, \`lead.id\`, raw \`enrichment.hint\` when redundant with channel pills, any field whose value is the string \`"null"\`, deprecated \`other_contacts_count\` (use \`additional_contacts_count\`).
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
+
+When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
+
+\`social_presence\` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+
+
+---
+
+## NEXT STEPS — after the outreach brief
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Offer 2–3 follow-ups. Choose based on enrichment state + available channels + history. Always offer the "log outreach" option once the user has clearly contacted someone.
+
+| Observation                                     | Suggest                                                       | Calls                                                  |
+|-------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
+| \`enrichment.triggered && !enrichment.complete\`  | "Refresh now to check enrichment progress"                    | leadbay_prepare_outreach(leadId) — re-call             |
+| Email available                                 | "Draft the outreach email"                                    | (agent self-drafts inline from signals + history)      |
+| Direct phone available                          | "Draft the 60-second call opener"                             | (agent self-drafts inline)                             |
+| LinkedIn URL available                          | "Draft the LinkedIn DM"                                       | (agent self-drafts inline)                             |
+| Only company line, no direct phone              | "Draft a switchboard script targeting [Contact]"              | (agent self-drafts; flag uncertainty)                  |
+| \`additional_contacts_count > 0\`                 | "Show me the other N contacts at this company"                | leadbay_get_contacts(leadId)                           |
+| User reports they reached out                   | "Log this outreach — creates prospecting action + outcome"    | leadbay_report_outreach(leadId, contact_id, ...)       |
+| User adds context for next time                 | "Save a note on the contact or company"                       | leadbay_add_note                                       |
+| After a successful exchange                     | "Update qualification answers based on what you learned"      | leadbay_answer_clarification                           |
+The "log outreach" step is the most-important follow-up — it closes the loop and populates history for the next \`leadbay_prepare_outreach\` call. Detect intent from natural language: "I sent the email", "she didn't pick up", "left a voicemail", "they responded yes/no", etc.`,
+  leadbay_pull_followups: `---
+
+## RENDERING — follow-ups table, status-badge driven
+
+Markdown table with FOUR columns, sorted by \`last_monitor_action_at\` desc. **NO score bar in this view** — discovery owns the \`▰❖▱\` visual identity; follow-up uses status badges. Active-pushback leads are already excluded server-side.
+
+**Active-filters line** ABOVE the table, \` · \`-separated chips from \`active_filters.criteria\`:
+
+| Criterion type | Chip |
+| --- | --- |
+| \`location_ids\` | 📍 \\<resolved name\\> |
+| \`sector_ids\` | 🏷 \\<sector name\\> |
+| \`keywords\` | 🔍 \\<keyword\\> |
+| \`size\` | 👥 \\<min\\>–\\<max\\> |
+| \`last_action_date\` | 📅 \\<window\\> |
+| \`last_action\` | 🎯 \\<action types\\> |
+| \`liked\` / \`yc\` | ⭐ liked / 🏅 YC |
+| \`custom_field*\` | ⚙ \\<field name\\> |
+
+Render \`*No filters applied.*\` when empty.
+
+**Column 1 — Status** (DERIVED from existing fields, priority order):
+
+1. \`epilogue_status == "EPILOGUE_INTEREST_VALIDATED_OR_MEETING_PLANED"\` → 🎯 Meeting booked
+2. \`epilogue_status == "EPILOGUE_COULD_NOT_REACH_STILL_TRYING"\` → ⚡ Trying to reach
+3. \`epilogue_status == "EPILOGUE_STILL_CHASING"\` + last_prospecting_action_at within 14d → 🟢 In progress
+4. \`epilogue_status == "EPILOGUE_NOT_INTERESTED_LOST"\` → ❄ Not interested (usually filtered out)
+5. \`epilogue_status == null\` + \`last_prospecting_action_at == null\` → ✨ New
+6. \`epilogue_status == null\` + \`last_prospecting_action_at > 60d\` → 💤 Dormant
+7. Otherwise → 🔥 Hot
+
+Append \`<relative time>\` of \`last_monitor_action_at\` (\`today\`/\`Nd\`/\`Nw\`/\`Nmo\`). For ✨, show \`new\`. Line 2: **[Company](website)** bold. Line 3: short location · compact size.
+
+**Column 2 — AI take** (3 lines from \`split_ai_summary\` verbatim, \`<br>\`-separated):
+
+- Line 1: emoji + **bold split_ai_summary.worth_pursuing**. Emoji from leading word: \`Yes…\`→✅, \`No…\`→❌, \`Maybe…\`→🤔, else→💡.
+- Line 2: *italic split_ai_summary.approach_angle* (≤ 18 words).
+- Line 3: **Next:** split_ai_summary.next_step.
+- Fallback when null: render \`ai_summary\` italic, no emoji.
+
+**Column 3 — History & notes**
+
+- Line 1: \`<relative time> ago · <last_prospecting_action>\` (humanize: snake_case → Title Case; drop \`LEAD_\` prefix). When null: \`*Never touched.*\`
+- Line 2 (when \`epilogue_status\` set): \`📌 Outcome: <user-facing label> · <relative time>\` — NEVER show the wire-format \`EPILOGUE_*\` value.
+- Line 3 (when a recent note surfaces): \`📝 *<note clipped ≤ 14 words>* (<rel time>)\`.
+- If neither: \`*0 prior touches · 0 notes*\`.
+
+**Column 4 — Contacts** (max 3 lines, recommended_contact first):
+
+\`\`\`
+★ [Name](linkedin_page or people-search) · ☎ phone · 📧 email
+\`\`\`
+
+Markers: \`★\` recommended, \`💎\` hot in web_insights key_people. Channel pills: \`☎ phone\` (rec.phone_number → lead.phone_numbers[0] \`(co)\` → \`⚪ phone\`); \`📧 email\` (rec.email → \`⚪ email\`). When no visible contact has email/direct phone: append \`*enrich first*\` in italic.
+
+**Hide:** \`id\`, \`location.pos\`, \`web_fetch_in_progress\`, \`enrichment_in_progress\`, \`stale_at\`, \`sector_id\`, zero counters, \`social_presence\` booleans (except °-flag), \`score\`, string \`"null"\`.
+
+**Legend** (user-facing — NEVER say "epilogue"):
+
+🎯 Meeting booked · ⚡ Trying to reach · 🟢 In progress · 💤 Dormant · ✨ New · 🔥 Hot · ❄ Not interested · ★ recommended · 💎 hot in web_insights · ☎ (co) = company line · ⚪ not enriched
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
+
+When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
+
+\`social_presence\` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+
+
+---
+
+## NEXT STEPS — after the follow-ups table
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+| Observation | Suggest | Calls |
+|---|---|---|
+| Always (top of menu) | "Prep outreach for [top row's contact]" | leadbay_prepare_outreach(leadId) |
+| ≥ 1 lead returned | "Build an interactive call board" | leadbay_get_artifact_runtime → its CANONICAL board recipe, data in hand |
+| "how well do we cover sector X / city Y" | "Build a coverage board" | leadbay_get_artifact_runtime → its COVERAGE recipe (\`lb.portfolioSectors\` + \`lb.segmentCount\`) |
+| User named a city / sector / timeframe | "Refilter by [their phrase]" | leadbay_pull_followups(set_filter: { criteria: [...] }) |
+| \`pagination.has_more == true\` | "Pull the next page" | leadbay_pull_followups(page = current + 1) |
+| ≥3 rows ✨ (never-touched) | "Surface only never-touched leads" | set_filter with \`last_action_date.last_days = 0\` |
+| ≥3 rows ⚡ (Trying to reach) | "Focus on overdue commitments" | set_filter with \`last_action.types = ["EPILOGUE_COULD_NOT_REACH_STILL_TRYING"]\` |
+| User planning a trip / in a city | "Group by city for trip planning" | leadbay_pull_followups({city: "<their city>"}) — composite resolves admin_area_id via /geo/search |
+| All rows last action > 60d | "Re-qualify — context may have changed" | leadbay_bulk_qualify_leads([leadId, ...]) |
+| One obvious priority row | "Take me to that lead's full brief" | leadbay_prepare_outreach(leadId) / leadbay_research_lead_by_id(leadId) |
+| User wants to defer a lead | "Snooze [Company] for 3 / 6 / 12 months" | leadbay_set_pushback({ lead_ids:[leadId], status:"3" }) |
+| User completed outreach mid-flow | "Log the outreach + record the outcome" | leadbay_report_outreach |
+| Discovery mode might fit better | "Looking for NEW leads instead? Switch to discovery." | leadbay_pull_leads |
+Always offer at least one of: prep outreach, refilter, pushback. Pushback is the canonical way to honor "not now" / "next quarter".`,
   leadbay_pull_leads: `## RENDERING — markdown table, three columns, score-bar driven
 
 Present the response as a markdown table **in the exact order the tool returned the leads** — this is the Discover-tab order (the backend orders by new-today first, then status, then score). Do **not** re-sort the rows (in particular, do NOT re-order by \`score\`); render them top-to-bottom as received so the list matches what the user sees in the Leadbay UI. Exactly three columns. Do not summarize in prose. Do not show the numeric score anywhere.
@@ -119,6 +1555,477 @@ Pick 2–3 items below based on what was actually observed in the response. The 
 | User wants a narrower / wider audience                     | "Adjust the lens filters (sector / size)"                    | leadbay_adjust_audience(...)                           |
 | Phase 4 research was run (\`research_lead_by_id\` called) AND top contacts lack direct email/phone | "Enrich contacts on [Lead1], [Lead2] to get direct emails and phone numbers" | leadbay_enrich_contacts(leadId, contactId) — ONE call per contact (the tool takes a single leadId + contactId, never a list) |
 If nothing in the menu applies cleanly, suggest only "pull next page" and "research a specific lead in depth" — never invent a tool that doesn't exist.`,
+  leadbay_qualify_leads: `---
+
+## RENDERING — identity pass (\`rows[]\`)
+
+\`rows[]\` replaces \`leads[]\`: one row per company, in the user's order. One
+table: **Company** (\`input\`, plus \`name\` when it differs) · **Website** ·
+**LinkedIn**. Skipped rows stay in it: \`not_in_universe\` → "not in Leadbay",
+\`low_confidence_identity\` → "several matches — add a city or website".
+
+Then ONE coverage line from \`summary\`: found \`resolved\` of \`rows_total\` ·
+\`with_website\` with a website · \`with_linkedin\` with a LinkedIn ·
+\`ambiguous\` unclear · \`not_found\` not found. When most rows lack what the
+user asked for, that line is the answer: say so, and do not look the
+missing ones up one by one.
+
+Done job with \`next_poll.offset\`: say "showing N of \`rows_total\`" and offer
+the rest via \`leadbay_lead_job_status(job_id, compact: true, offset)\`.
+
+\`file\` set (local install only): every row is saved there as a CSV. Give the
+user that path.
+
+
+## RENDERING — delivery table + honest funnel line
+
+Render delivered leads (\`leads[]\`, i.e. items with status \`delivered\` or
+\`degraded\`) as a markdown table **in the order returned**. Exactly three
+columns. Then ALWAYS close with the funnel line (below), even when nothing
+was delivered.
+
+**Column 1 — Company**
+
+- Line 1: 10-segment fit bar in inline-code backticks from \`lead.fit.score\`
+  (0-100): \`filled = round(score/10)\`, glyphs \`▰\` filled / \`▱\` empty. When
+  \`lead.fit.components.qualification.available\` is true AND \`ai_score > 0\`,
+  replace the LAST filled segment with \`❖\` (AI-confirmed cap). When
+  \`fit.available\` is false, render \`▱▱▱▱▱▱▱▱▱▱\` and say "unscored" in col 2.
+  Never print the numeric score.
+- Insert \`<br>\`, then: linked company name (target \`company.website\`, bare
+  hostnames get \`https://\`; unlinked plain text when absent) + \` · \` + short
+  location (City, ST / City, Country) + \` · \` + employees as \`min–max\` (omit
+  when \`employees.known\` is false).
+
+**Column 2 — Why it fits**
+
+- One sentence ≤ 20 words. Priority: \`fit.reasoning\` → gist of
+  \`company.description\` → top \`fit.components.qualification.matched_tags\`.
+- If the item status is \`degraded\` or a requested channel failed, append the
+  honest flag in italics, e.g. *(email could not be sourced)*.
+
+**Column 3 — Contact**
+
+- \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
+  exists; plain name otherwise). Below it, the FOUND channels only:
+  \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
+- Channel statuses: \`delivered\` → show value; \`already_owned\` → value +
+  *(already yours)*; \`masked\` → "on file — reveal via channels";
+  \`not_requested\` → omit; \`failed_*\` → *(no verified email/phone)*.
+- No contact on the item (\`contact\` null): render \`—\` (title_gate \`prefer\`
+  delivers such rows flagged; say so in col 2 only when contact_titles were
+  requested).
+
+**The funnel line (mandatory, after the table):**
+
+One short line narrating the delivery honestly, from \`funnel\` +
+\`explain.scope_notes\`:
+
+> Matched N · examined E · qualified Q · disqualified D → **delivered X of
+> the Y asked** · stopped: <stop_reason in plain words>.
+
+**No money, anywhere.** \`cost.*\`, \`estimated_cost.max\` and quotes are internal
+usage units: never render them, convert them to a currency or call them a
+charge — a price reads as a bill. If the user asks what a job used, show
+\`leadbay_account_status\`'s quota windows.
+
+"of the Y asked" needs \`summary.items_requested\`: a \`leadbay_lead_job_status\`
+snapshot lacks it, so take it from the launch result. Without it write
+**delivered X** — never back-fill Y from \`matched\`/\`examined\`, never guess it.
+
+Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
+"ran out of matching candidates", \`max_cost\` → "hit the job's usage cap", \`quota\` →
+"hit an org quota", \`time_budget\` → "hit the 30-min time budget".
+
+**When a FINISHED job delivered 0**: NEVER say just "no results". Render no table; give
+the funnel line plus the relevant \`explain.scope_notes\`, then propose the concrete fix (reshape the seed per the craft
+rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a filter) as NEXT STEPS.
+
+**Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
+the table as an answer — open with "weak matches only", show at most the top 3,
+propose reshaping the seed/filters first.
+
+**Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
+requested fence; drop and call out leaks (same-named cities slip through).
+(b) When \`explain.seed_strategy\` is \`text_match_exemplars\` (the standard FR
+path), treat high fit scores skeptically and verify each row's \`description\`.
+
+**Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
+table \`Ref → Outcome\` translating \`status_reason\` to plain words:
+\`not_in_universe\` → "not in the Leadbay universe (import it first)",
+\`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
+\`no_matching_contact\` → "no contact with the requested title",
+\`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
+\`enrichment_failed\` → "channel could not be sourced (no quota used)".
+
+**\`items_truncated\`**: rows are a PREFIX, not the batch. Say so, and offer
+\`leadbay_lead_job_status(job_id, since: next_since)\` for the rest.
+
+**Hide from the user:** UUIDs (keep for tool calls, never render), cursors,
+\`explain.model\`/\`intelligence_snapshot\`, raw \`distance\`/\`calibration\`,
+\`seq\`/\`from_cache\`, empty arrays.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+
+
+**Delivered ≠ endorsed.** This tool DELIVERS org-owned companies that FAILED
+qualification, carrying their negative evidence — so a delivered item is not
+automatically a prospect. An item whose \`status_reason\` is \`disqualified\`, or
+whose \`fit.components.qualification\` is available with a negative \`ai_score\`,
+must NOT go in the fit table: its firmographic score can still be high, and a
+full bar beside "why it fits" reads as a recommendation to call an account the
+evaluation just rejected.
+
+Give those their own short section after the fit table, titled
+**Evaluated — does not fit**: linked company, then the verdict in plain
+words from the
+qualification evidence (failed question verdicts, missed tags, IBP reasoning).
+That is the deliverable — "here's why to skip this account" — not a defect to
+hide.
+
+
+---
+
+## NEXT STEPS — after a qualify_leads delivery
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Pick the 2-3 options that match what actually happened:
+
+| Observation | Suggest | Calls |
+|---|---|---|
+| Fit leads with contacts delivered | "Draft outreach for the qualified ones" | leadbay_prepare_outreach |
+| Items skipped \`not_in_universe\` | "Import those companies first, then re-qualify" | leadbay_import_leads → leadbay_qualify_leads |
+| Items skipped \`low_confidence_identity\` | "Pick the right match" (show \`resolution.alternatives\`) | leadbay_qualify_leads with the chosen lead_id |
+| Contacts delivered without channels | "Get verified emails/phones for the keepers (uses quota — say so first)" | leadbay_qualify_leads(lead_refs with contact_id, channels) |
+| Disqualified with evidence | "Review why — adjust qualification questions if the criteria are off" | leadbay_get_qualification_questions |
+| Identity pass, list over 500 | "Run the next 500" | leadbay_qualify_leads(next 500, qualify: false) |
+| Identity pass, \`summary.without_website\` > 0. LAST option, never run unasked | "N have no website in Leadbay. Web research can look for one. It uses your plan's quota and may find none." | leadbay_qualify_leads(lead_refs: [{lead_id}] of rows without website, qualify: true) → quote first, confirm on the user's yes |`,
+  leadbay_research_lead_by_id: `---
+
+## RENDERING — single-record research card, mode-adaptive
+
+Present as a single-record card, not a table. This tool gets invoked in two distinct user contexts — detect which and adapt the body density accordingly.
+
+**MODE A — Discovery.** The user is evaluating whether to pursue this company as a target. Signals: "tell me about", "what do they do", "is this a fit", "research [company]", arrival via a click-through from \`leadbay_pull_leads\`, no prior outreach context in the conversation. Next step is usually qualify, deep-dive via \`leadbay_research_lead_by_id\`, or decide whether to start outreach.
+
+**MODE B — Contact preparation.** The user is about to call or email someone at this company and needs the talking points. Signals: "I'm calling them", "draft an email", "before my call", "outreach prep", "what should I say", or the conversation has already touched on a specific contact. Next step is usually \`leadbay_prepare_outreach\`.
+
+Default to MODE A when uncertain. Always offer the cross-mode pivot at the end so the user can redirect if you guessed wrong.
+
+### Common structure (both modes)
+
+- **Header** (H4 or H5): \`<10-segment score bar>\` \`[Company name](website)\`. Use the score-bar algorithm; the bar lives in a single inline-code span. Prefix \`https://\` to website if it's a bare hostname.
+- **Pill row** (immediately below the header): short location · compact size · social pill chips iterated over \`social_urls\` (each non-null platform becomes \`[<platform-label>](<url>)\`) · \`[website-domain](website)\` · \`☎ phone\` when \`phone_numbers[]\` is non-empty (use the first number). All \` · \`-separated.
+- **Blurb**: render \`description\` (preferred) or \`short_description\` as a single blockquoted paragraph.
+- **Staleness line**: italic, \`"Researched <relative time>"\` from \`web_insights_fetched_at\`. Use \`"today"\` / \`"yesterday"\` / \`"N days ago"\` up to 30 days, then absolute date. Prefix with \`⚠\` if older than 30 days.
+- **Contacts table** (always at the bottom):
+  \`\`\`
+  |   | Name | Title | LinkedIn |
+  \`\`\`
+  Markers in column 1:
+  - \`★\` — \`recommended_contact\` match.
+  - \`💎\` — name fuzzy-matches a \`hot: true\` entry in \`web_insights\` key_people. (Use \`💎\`, not \`🔥\`, to avoid glyph collision with the follow-up status badge.)
+  Sort \`★\` first, then \`💎\`-only rows, then API order. Link the name via \`linkedin_page\` first; fall back to LinkedIn people-search with \`<First>+<Last>+<Company>\`. Append \`°\` only when the fallback is in use AND \`social_presence.linkedin == false\`. Cap to 6 rows; if \`contacts_count > shown\`, end with \`"+N more — ask to see the full list"\`.
+
+### MODE A body (Discovery, fuller, scannable)
+
+Render each non-empty \`web_insights\` section as H5 with the emoji + label intact. Section order: \`🏢 company profile\` → \`📈 business signals\` → \`💡 prospecting clues\` → \`🧩 strategic positioning\` → \`🔎 technologies & innovation\`. Inside each, bullet 3–5 items. Sort \`hot: true\` items first. **Bold** the description text of hot items; leave cold items plain. Render \`source\` as \`[source](url)\` at the end; include \`date\` when present. Omit empty sections. Skip \`🔗 social links\` (already in the pill row) and \`👤 key people\` (already in the contacts table).
+
+### MODE B body (Contact preparation, tighter)
+
+Render exactly two H5 sections:
+
+##### 🎯 Conversation hooks
+
+Distill the 3 most recent / most hot signals from \`📈 business signals\` and \`💡 prospecting clues\` into one-sentence talking points in salesperson voice. Strip the academic framing. Cite the source inline.
+
+##### 👤 About the person *(only when recommended_contact is non-empty)*
+
+2-line summary: their title + any context from \`web_insights\` key_people. If they appear in a hot signal ("X appointed CEO"), surface that prominently.
+
+Skip 🏢 profile, 🧩 strategic positioning, 🔎 technologies in MODE B — context the user doesn't need for the next 30 seconds.
+
+If \`qualification[]\` is non-empty, append one collapsed line: \`"Qualification: N questions answered, avg boost X"\` and offer to expand in NEXT STEPS.
+
+**Hide:** \`id\`, \`lead.id\`, \`contact.id\`, \`lead.location.pos\`, \`web_fetch_in_progress\`, \`enrichment_in_progress\`, \`recommended_contact_title\` (duplicates \`recommended_contact.job_title\`), empty arrays, fields whose value is the string \`"null"\`, \`contact.source\` (internal), insights whose \`source\` is empty.
+
+**Legend (print once below the card):** \`\` \`▰\` firmographic · \`❖\` AI booster · \`▱\` unfilled · ★ recommended · 💎 hot in web_insights · ° = no company LinkedIn (fallback link only) \`\`
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
+
+When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
+
+\`social_presence\` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+
+
+---
+
+## NEXT STEPS — after the research card
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Offer 2–3 follow-ups that match what the lead's response actually contains.
+
+**Primary branching signal**: \`contacts.reachable[]\` vs \`contacts.candidates[]\`.
+- \`contacts.reachable[]\` = people with an email or phone right now. Message them directly.
+- \`contacts.candidates[]\` = people identified at this company (LinkedIn-only), \`enrichment_done: false\`. Cannot be messaged without first calling \`leadbay_enrich_titles\` (or \`leadbay_prepare_outreach({enrich:true})\`).
+- \`_meta.has_reachable_contact\` is the boolean shortcut — true iff \`reachable.length > 0\` or the recommended_contact has a channel.
+
+Always offer a cross-mode pivot at the end so the user can redirect if you guessed wrong.
+
+### MODE A — Nobody reachable yet (\`contacts.reachable\` is empty)
+
+| Observation                                            | Suggest                                                  | Calls                                                          |
+|--------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------|
+| \`contacts.candidates[]\` non-empty                      | "Enrich N candidate contacts to acquire emails / phones" | leadbay_enrich_titles({ leadIds: [leadId] })                   |
+| User wants outreach now anyway                         | "Enrich + draft outreach in one shot"                    | leadbay_prepare_outreach({ leadId, enrich: true })             |
+| \`qualification[]\` is empty                             | "Run AI qualification on this lead first"                | leadbay_bulk_qualify_leads([leadId])                           |
+| \`web_insights_fetched_at\` older than 30 days           | "Refresh the web research — this is stale"               | leadbay_research_lead_by_id({ leadId }) — re-runs the fetch    |
+| User is exploring multiple companies                   | "Back to the lead list"                                  | leadbay_pull_leads                                             |
+
+End MODE A with the pivot offer: \`"Want the strategic overview before
+enriching? (already shown above)"\`
+
+### MODE B — At least one reachable contact (\`contacts.reachable[]\` non-empty OR recommended_contact has channels)
+
+| Observation                                            | Suggest                                                  | Calls                                                          |
+|--------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------|
+| Recommended contact has an email                       | "Draft the outreach email"                               | leadbay_prepare_outreach({ leadId })                           |
+| \`firmographics.phone_numbers[]\` non-empty              | "Show full call notes + a 60-second opener"              | leadbay_prepare_outreach({ leadId })                           |
+| \`recent_activities[]\` non-empty                        | "Log a follow-up touchpoint"                             | leadbay_report_outreach                                        |
+| Adding pre-call context                                | "Add a note to this lead"                                | leadbay_add_note                                               |
+| \`qualification[]\` non-empty                            | "Expand the AI qualification answers"                    | (render qualification[] as a sub-card)                         |
+
+End MODE B with the pivot offer: \`"Want to qualify deeper before reaching
+out?"\`
+
+### Cross-mode rows (always available)
+
+| Observation                                            | Suggest                                                  | Calls                                                          |
+|--------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------|
+| Lead is clearly not a fit (wrong industry, too small)  | "Dislike this lead"                                      | leadbay_dislike_lead({ lead_id, reason })                      |
+| User is done with this lead                            | "Back to the inbox"                                      | leadbay_pull_leads                                             |`,
+  leadbay_research_lead_by_name_fuzzy: `---
+
+## RENDERING — single-record research card, mode-adaptive
+
+Present as a single-record card, not a table. This tool gets invoked in two distinct user contexts — detect which and adapt the body density accordingly.
+
+**MODE A — Discovery.** The user is evaluating whether to pursue this company as a target. Signals: "tell me about", "what do they do", "is this a fit", "research [company]", arrival via a click-through from \`leadbay_pull_leads\`, no prior outreach context in the conversation. Next step is usually qualify, deep-dive via \`leadbay_research_lead_by_id\`, or decide whether to start outreach.
+
+**MODE B — Contact preparation.** The user is about to call or email someone at this company and needs the talking points. Signals: "I'm calling them", "draft an email", "before my call", "outreach prep", "what should I say", or the conversation has already touched on a specific contact. Next step is usually \`leadbay_prepare_outreach\`.
+
+Default to MODE A when uncertain. Always offer the cross-mode pivot at the end so the user can redirect if you guessed wrong.
+
+### Common structure (both modes)
+
+- **Header** (H4 or H5): \`<10-segment score bar>\` \`[Company name](website)\`. Use the score-bar algorithm; the bar lives in a single inline-code span. Prefix \`https://\` to website if it's a bare hostname.
+- **Pill row** (immediately below the header): short location · compact size · social pill chips iterated over \`social_urls\` (each non-null platform becomes \`[<platform-label>](<url>)\`) · \`[website-domain](website)\` · \`☎ phone\` when \`phone_numbers[]\` is non-empty (use the first number). All \` · \`-separated.
+- **Blurb**: render \`description\` (preferred) or \`short_description\` as a single blockquoted paragraph.
+- **Staleness line**: italic, \`"Researched <relative time>"\` from \`web_insights_fetched_at\`. Use \`"today"\` / \`"yesterday"\` / \`"N days ago"\` up to 30 days, then absolute date. Prefix with \`⚠\` if older than 30 days.
+- **Contacts table** (always at the bottom):
+  \`\`\`
+  |   | Name | Title | LinkedIn |
+  \`\`\`
+  Markers in column 1:
+  - \`★\` — \`recommended_contact\` match.
+  - \`💎\` — name fuzzy-matches a \`hot: true\` entry in \`web_insights\` key_people. (Use \`💎\`, not \`🔥\`, to avoid glyph collision with the follow-up status badge.)
+  Sort \`★\` first, then \`💎\`-only rows, then API order. Link the name via \`linkedin_page\` first; fall back to LinkedIn people-search with \`<First>+<Last>+<Company>\`. Append \`°\` only when the fallback is in use AND \`social_presence.linkedin == false\`. Cap to 6 rows; if \`contacts_count > shown\`, end with \`"+N more — ask to see the full list"\`.
+
+### MODE A body (Discovery, fuller, scannable)
+
+Render each non-empty \`web_insights\` section as H5 with the emoji + label intact. Section order: \`🏢 company profile\` → \`📈 business signals\` → \`💡 prospecting clues\` → \`🧩 strategic positioning\` → \`🔎 technologies & innovation\`. Inside each, bullet 3–5 items. Sort \`hot: true\` items first. **Bold** the description text of hot items; leave cold items plain. Render \`source\` as \`[source](url)\` at the end; include \`date\` when present. Omit empty sections. Skip \`🔗 social links\` (already in the pill row) and \`👤 key people\` (already in the contacts table).
+
+### MODE B body (Contact preparation, tighter)
+
+Render exactly two H5 sections:
+
+##### 🎯 Conversation hooks
+
+Distill the 3 most recent / most hot signals from \`📈 business signals\` and \`💡 prospecting clues\` into one-sentence talking points in salesperson voice. Strip the academic framing. Cite the source inline.
+
+##### 👤 About the person *(only when recommended_contact is non-empty)*
+
+2-line summary: their title + any context from \`web_insights\` key_people. If they appear in a hot signal ("X appointed CEO"), surface that prominently.
+
+Skip 🏢 profile, 🧩 strategic positioning, 🔎 technologies in MODE B — context the user doesn't need for the next 30 seconds.
+
+If \`qualification[]\` is non-empty, append one collapsed line: \`"Qualification: N questions answered, avg boost X"\` and offer to expand in NEXT STEPS.
+
+**Hide:** \`id\`, \`lead.id\`, \`contact.id\`, \`lead.location.pos\`, \`web_fetch_in_progress\`, \`enrichment_in_progress\`, \`recommended_contact_title\` (duplicates \`recommended_contact.job_title\`), empty arrays, fields whose value is the string \`"null"\`, \`contact.source\` (internal), insights whose \`source\` is empty.
+
+**Legend (print once below the card):** \`\` \`▰\` firmographic · \`❖\` AI booster · \`▱\` unfilled · ★ recommended · 💎 hot in web_insights · ° = no company LinkedIn (fallback link only) \`\`
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+## Linking the company
+
+Use the lead's \`website\` as the company-name link target — prefix \`https://\` if the value is a bare hostname. (The MCP does NOT synthesize a Leadbay-app deep-link URL; the team has not standardized one. Linking to \`website\` is always real data.)
+
+When the response carries \`social_urls\` (the post-fix multi-platform URL block on rich-lead responses), render every non-null platform as a pill chip in the company-info row. Iterate over \`social_urls\`'s keys — never hardcode a fixed list — and emit each as \`[<platform-label>](<url>)\`. Skip platforms whose URL is null.
+
+\`social_presence\` carries booleans for the same 6 platforms (crunchbase, facebook, instagram, linkedin, tiktok, twitter) — useful when you only care that the company has a profile somewhere. Use it as the °-flag signal in the contact people-search fallback (see linking/contact-linkedin).
+
+
+
+---
+
+## NEXT STEPS — after the research card
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Offer 2–3 follow-ups that match what the lead's response actually contains.
+
+**Primary branching signal**: \`contacts.reachable[]\` vs \`contacts.candidates[]\`.
+- \`contacts.reachable[]\` = people with an email or phone right now. Message them directly.
+- \`contacts.candidates[]\` = people identified at this company (LinkedIn-only), \`enrichment_done: false\`. Cannot be messaged without first calling \`leadbay_enrich_titles\` (or \`leadbay_prepare_outreach({enrich:true})\`).
+- \`_meta.has_reachable_contact\` is the boolean shortcut — true iff \`reachable.length > 0\` or the recommended_contact has a channel.
+
+Always offer a cross-mode pivot at the end so the user can redirect if you guessed wrong.
+
+### MODE A — Nobody reachable yet (\`contacts.reachable\` is empty)
+
+| Observation                                            | Suggest                                                  | Calls                                                          |
+|--------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------|
+| \`contacts.candidates[]\` non-empty                      | "Enrich N candidate contacts to acquire emails / phones" | leadbay_enrich_titles({ leadIds: [leadId] })                   |
+| User wants outreach now anyway                         | "Enrich + draft outreach in one shot"                    | leadbay_prepare_outreach({ leadId, enrich: true })             |
+| \`qualification[]\` is empty                             | "Run AI qualification on this lead first"                | leadbay_bulk_qualify_leads([leadId])                           |
+| \`web_insights_fetched_at\` older than 30 days           | "Refresh the web research — this is stale"               | leadbay_research_lead_by_id({ leadId }) — re-runs the fetch    |
+| User is exploring multiple companies                   | "Back to the lead list"                                  | leadbay_pull_leads                                             |
+
+End MODE A with the pivot offer: \`"Want the strategic overview before
+enriching? (already shown above)"\`
+
+### MODE B — At least one reachable contact (\`contacts.reachable[]\` non-empty OR recommended_contact has channels)
+
+| Observation                                            | Suggest                                                  | Calls                                                          |
+|--------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------|
+| Recommended contact has an email                       | "Draft the outreach email"                               | leadbay_prepare_outreach({ leadId })                           |
+| \`firmographics.phone_numbers[]\` non-empty              | "Show full call notes + a 60-second opener"              | leadbay_prepare_outreach({ leadId })                           |
+| \`recent_activities[]\` non-empty                        | "Log a follow-up touchpoint"                             | leadbay_report_outreach                                        |
+| Adding pre-call context                                | "Add a note to this lead"                                | leadbay_add_note                                               |
+| \`qualification[]\` non-empty                            | "Expand the AI qualification answers"                    | (render qualification[] as a sub-card)                         |
+
+End MODE B with the pivot offer: \`"Want to qualify deeper before reaching
+out?"\`
+
+### Cross-mode rows (always available)
+
+| Observation                                            | Suggest                                                  | Calls                                                          |
+|--------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------|
+| Lead is clearly not a fit (wrong industry, too small)  | "Dislike this lead"                                      | leadbay_dislike_lead({ lead_id, reason })                      |
+| User is done with this lead                            | "Back to the inbox"                                      | leadbay_pull_leads                                             |`,
+  leadbay_resolve_import_rows: `## RENDERING
+
+Present as a markdown table of resolution outcomes per row.
+
+\`\`\`
+| Source row | Match status | Resolved leadId / candidates |
+\`\`\`
+
+Status emoji map:
+
+- \`✓\` unambiguous match — one Leadbay lead, high confidence
+- \`⚠\` ambiguous — multiple candidates returned
+- \`✗\` no match — backend has no candidates; can still import if \`website\` is present
+- \`⏳\` resolving — async resolve still running
+
+For ambiguous rows, list up to 3 candidate names + leadIds inline. Truncate the source row to a short identifier (first non-empty column or domain).
+
+Below the table, a one-liner: \`"Ready: K rows · Ambiguous: A rows · Unmatched: U rows"\`
+
+---
+
+## NEXT STEPS
+
+| Observation                            | Suggest                                                     | Calls                                                  |
+|----------------------------------------|-------------------------------------------------------------|--------------------------------------------------------|
+| All rows resolved cleanly              | "Import these rows now"                                     | leadbay_import_leads(records_for_import, mappings_for_import) |
+| Ambiguous rows present                 | "Inspect candidates for each ambiguous row"                 | (re-call with include_candidate_profiles=true)         |
+| Unmatched rows but websites present    | "Import anyway — Leadbay crawls & adds them to your account later" | leadbay_import_leads (the late-added leads populate in Leadbay; re-run the import to pull them back through the MCP) |
+| User wants to skip rows they can't ID  | "Drop unmatched rows and import the rest"                   | leadbay_import_leads (with filtered records)           |`,
   leadbay_scan_portfolio_signals: `## RENDERING — bulk signal-scan results
 
 The output is a cohort, grouped by lead. Lead with the matches, end with an
@@ -204,10 +2111,366 @@ almost always "turn the matched leads into a campaign."
 NEVER report leads in \`not_researched\` as if they had no matching signal — they
 were never read. Distinguish "no signal X found" (researched, no match) from
 "not yet researched" (no data to search) every time.`,
+  leadbay_send_feedback: `## NEXT STEPS — after sending feedback
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+| Observation                                  | Suggest                                              | Calls                                   |
+|----------------------------------------------|------------------------------------------------------|-----------------------------------------|
+| \`sent == true\`                               | "Anything else you'd like to flag to the team?"      | leadbay_send_feedback(message)          |
+| \`sent == false\`                              | "It didn't go through — want to try sending again?"  | leadbay_send_feedback(message)          |
+| Feedback was about an error the user hit      | "Want me to retry the action that failed?"           | (re-call the tool that errored)         |`,
+  leadbay_set_qualification_questions: `## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+
+### RENDERING
+
+After a change, confirm in one line — e.g. **"Added 1 question — you now score leads against 4 questions."** or **"Removed 'the flooring question' — 3 questions remain."** Then list the resulting questions as a numbered list. When the result is a non-changing preview (a removal awaiting confirmation), surface the \`hint\` (what would be removed) and ask the user to confirm — do NOT auto-confirm. After \`add_anti_patterns\`, confirm in one line — e.g. **"Added 1 negative criterion to your buyer profile."** — then list \`anti_patterns\`.`,
+  leadbay_tour_plan: `## RENDER — present the leads, then OFFER the map (render on yes)
+
+First present the leads grouped by mode as a tight per-lead list (badge + company + city + best contact). Then **ALWAYS offer the map** as the next step — "Want me to put these on a map?" — and render it only when the user accepts (or asked for a map in their original message). The map is mandatory to *offer* on every tour; it is *rendered* on acceptance.
+
+When rendering, use the **two-step host flow** — this is what produces a real interactive street map instead of a schematic neighborhood scatter:
+
+1. **\`places_search\` first, once per lead.** For each entry in \`map_locations\`, call \`places_search\` with a natural query built from the lead's \`name\` + \`address\` (the full street address, e.g. "Brooklyn Brewery, 79 N 11th St, Brooklyn, NY"). This resolves a real \`place_id\` + verified coordinates/ratings from the host's place index. Run them up front (resolve all stops first), as the host's own guidance prescribes.
+2. **\`places_map_display_v0\` second**, fed the resolved places. Use **Itinerary mode** for a tour (multi-stop, route order, optional arrival times / stop durations) — a field-sales day IS an itinerary; Markers mode is only for a plain "show me X on a map". Carry each lead's mode badge (★/✦) + one-line pitch from \`map_locations[i].notes\` into the place's note.
+
+Do NOT skip \`places_search\` and push raw \`latitude\`/\`longitude\` straight into the display widget — that's exactly what falls back to the schematic relative scatter (dots by neighborhood, no streets). The \`map_locations\` array already gives you everything \`places_search\` needs (\`name\`, full \`address\`, \`latitude\`, \`longitude\`, badge-tagged \`notes\`); do NOT shorten the address to just the city.
+
+For reference, the badge the server already applied to each \`notes\`:
+
+- \`★ Customer\` — Monitor lead with prior engagement history (\`epilogue_status\`, \`last_prospecting_action_at\`, or \`last_monitor_action_at\` set).
+- \`★ Qualified\` — Monitor lead with a high score but no recent action.
+- \`✦ New\` — Discover lead from \`discover_leads\`.
+
+Example of a server-built \`notes\` string you pass through unchanged:
+
+\`\`\`
+✦ New — Strong mid-size hardware distributor fit. Reach Marie Dupont, Sales Director: +33 5 55 12 34 56, m.dupont@example.fr.
+\`\`\`
+
+Leads without coordinates are already omitted from \`map_locations\`. Use \`map_summary.leads_without_coords\` to footnote "+ N leads without coordinates" below the widget — no need to re-count.
+
+## Chat prose AFTER the widget (where markdown DOES render)
+
+Group the leads into THREE sections (Customers / Qualified Prospects / New Discoveries) and emit a short chat-prose list per group with LinkedIn-linked contact name + bare phone/email pills. This is the "Notes from Claude" companion that the carousel can't render. Mirror the \`followups_map\` recipe exactly — score callout, contact name as markdown link, \`·\`-separated channel pills.
+
+If the user said something like "3+3+3", honor that split. If \`followups_count\` returned fewer Customers than asked, fill from Qualified.
+
+## RENDER — fallback for hosts without \`places_map_display_v0\` (still a map, never a prose list)
+
+When the widget isn't in your tool set (e.g. Claude Desktop), you MUST still produce a map by emitting one place-card block per \`map_locations\` entry in EXACTLY this shape — the \`### Company · City, State\` heading with the address is what makes the host auto-detect it and render its own Google-Place-card carousel:
+
+\`\`\`
+### <Company Name> · <City>, <State>
+
+<★ Customer | ★ Qualified | ✦ New> — <one-sentence fit>. Reach **[<Contact>](<LinkedIn URL>)**, <role>. ☎ <bare phone>.
+\`\`\`
+
+Group the blocks by mode (Customers → Qualified → New). A flat narrative paragraph ("Brooklyn Brewery — Broadway, 10018 (Midtown). Contact: …") does NOT auto-detect into cards and is WRONG — the per-lead heading with the city is mandatory.
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.`,
+  leadbay_update_custom_field: `### RENDERING
+
+Confirm the change in one line naming the field and what changed, e.g. **"Renamed custom field #12 → 'Account Tier' (TEXT)."** or **"Updated #13 'ARR' → PRICE (USD)."** Don't dump the raw payload.`,
 };
 
 // The same blocks with the {{commerce}} parts deleted. Nothing is reworded.
 export const NO_COMMERCE_RENDER_BLOCKS: Record<string, string> = {
+  leadbay_account_status: `---
+
+## RENDERING — quota windows (percentage + $, like the frontend)
+
+Mirror the Leadbay web quota widget: three windows side by side — **Daily**,
+**Weekly**, **Monthly** — each headlined by a **% used** gauge and a **$ spend /
+$ cap** figure, with a per-resource usage breakdown underneath. **Never speak in
+raw "credits"** for quota — the unit is a percentage and a dollar spend.
+
+**Show the quota only when it matters** — when the user asks about their quota,
+usage or account status, or when a window is exhausted and blocks what they
+asked for. A plain "what account am I connected to?" is answered with user +
+org alone. Even then, the silence gate below comes first.
+
+**Silence gate (check FIRST).** Render NOTHING about quota when any of these
+holds — do not mention quota at all, do not say "unreadable", never tell the user
+to reconnect:
+- \`quota\` is null, OR \`quota_error\` is set (a 401/403 backend quirk for plan-less
+  orgs — the same token read user/org fine), OR
+- \`organization.unlimited_credits\` is true (internal/unlimited account — stay
+  silent on quota; never announce "unlimited").
+
+**Pick the group (for DISPLAY only).** Prefer \`quota.user\` (present for every
+caller). Use \`quota.org\` only when \`quota.user\` is absent (admins receive both —
+still show the caller's own \`user\` view). Call the chosen group \`<group>\` below.
+
+**Exception — lens-refill pre-checks read the refill row, ORG-first.** This
+user-preference is for the display gauge ONLY. When you pre-check the
+\`LENS_EXTRA_REFILL\` resource before \`leadbay_extend_lens\`, look for the row in
+**\`quota.org.resources[]\` first** (admins get the org group, and the refill
+quota is org-scoped there); when \`quota.org\` is absent — non-admin callers only
+receive the \`user\` group — fall back to **\`quota.user.resources[]\`**. Match the
+resource type case-insensitively (\`LENS_EXTRA_REFILL\` / \`lens_extra_refill\`).
+Skipping the \`user\` fallback for non-admins would make the row invisible even
+when the quota data exists, so the agent burns the write and hits the very 429
+this pre-check exists to avoid.
+
+**Per window (fixed order: daily → weekly → monthly).** Match entries by
+\`window_type\` (\`"daily"\` / \`"weekly"\` / \`"monthly"\`).
+
+**Headline — when \`<group>.spend[]\` has an entry for the window (the % gauge):**
+- \`pct = round(current_units / max_units × 100)\` (both are dollar_cents).
+- \`$used = (current_units / 100).toFixed(2)\`, \`$cap = (max_units / 100).toFixed(2)\`.
+- 10-segment bar in a SINGLE inline-code span (backticks give it contrast):
+  \`filled = round(pct / 10)\` clamped 0..10; \`bar = "▰"×filled + "▱"×(10 − filled)\`.
+  Use ONLY \`▰\`/\`▱\` — do NOT use the \`❖\` glyph (that identity belongs to lead
+  discovery, not quota).
+- Line: **\`<Window>\`** \`\` \`▰▰▱▱▱▱▱▱▱▱\` \`\` \`<pct>% used · $<used> / $<cap> · resets <resets_at, relative>\`.
+  e.g. \`**Daily** \` + \`\` \`▰▱▱▱▱▱▱▱▱▱\` \`\` + \` 7% used · $0.84 / $12.00 · resets in ~7 h\`.
+
+**Fallback — when \`<group>.spend[]\` is empty** (internal / free orgs have no
+OVERALL_SPEND quota): no gauge. Render the per-window resource breakdown as a
+compact table instead — one row per resource in \`<group>.resources[]\` for that
+window: the friendly label + \`count\` (append \`/ <max_units>\` only when
+\`max_units\` is a number). This is the pre-existing behavior, preserved.
+
+**Resource labels (look up case-insensitively — lower-case \`resource_type\`
+first).** Localize to \`user.language\` (FR canonical shown; English in parens):
+- \`llm_completion\` → **Générations par IA** (AI generations)
+- \`ai_rescore\` → **Leads qualifiés** (qualified leads)
+- \`web_fetch\` → **Informations web** (web insights)
+- \`contact_enrichment_phone\` → **Téléphones enrichis** (phones enriched)
+- \`contact_enrichment_email\` → **E-mails enrichis** (emails enriched)
+
+Skip any resource type not in this map silently — never dump the raw
+\`resource_type\` string at the user.
+
+**\`resets_at\`.** Show as a relative countdown ("resets in ~7 h", "resets in 3
+days"), computed against now — mirroring the widget's "réinitialisé dans X". The
+raw value is an ISO-8601 timestamp.
+
+**Legend** (once, below): \`\` \`▰\` used · \`▱\` remaining \`\`.`,
+  leadbay_extend_lens: `---
+
+## NEXT STEPS — after \`leadbay_extend_lens\`
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Pick the row matching the response \`status\`. Seed-picking is internal; do NOT add chips that imply the user reviewed candidates.
+
+| \`status\`                | Suggest                                                       | Calls                                                  |
+|-------------------------|---------------------------------------------------------------|--------------------------------------------------------|
+| \`queued\`                | "Pull leads in ~30s to see the new ones"                      | \`leadbay_pull_leads()\` (after a short wait)            |
+| \`quota_exceeded\`        | "Try with a smaller \`extra_count\`"                            | \`leadbay_extend_lens(extra_count=<smaller>)\`           |
+| \`quota_exceeded\`        | "Wait until the daily quota resets at \`<resets_at>\`"          | (no call — surface the reset time to the user)         |
+| \`refresh_in_progress\`   | "Lens is already filling — pull leads in a minute"            | \`leadbay_pull_leads()\` (after a short wait)            |
+| \`no_valid_seeds\`        | (silent retry — re-call \`leadbay_list_lens_seed_candidates\` then \`leadbay_extend_lens\`) | internal — only surface if the second attempt also fails |
+| \`no_candidates\`         | "Widen the audience — this lens has nothing left to add"       | \`leadbay_adjust_audience()\` — never \`leadbay_extend_lens\` again |
+| \`no_candidates\` (\`reason.code: no_new_leads\`) | "Work the leads already in the lens"        | \`leadbay_pull_followups()\`                             |
+
+If nothing matches cleanly, default to "pull leads now to see what's queued" — never invent a tool that doesn't exist.`,
+  leadbay_find_new_leads: `---
+
+## RENDERING — delivery table + honest funnel line
+
+Render delivered leads (\`leads[]\`, i.e. items with status \`delivered\` or
+\`degraded\`) as a markdown table **in the order returned**. Exactly three
+columns. Then ALWAYS close with the funnel line (below), even when nothing
+was delivered.
+
+**Column 1 — Company**
+
+- Line 1: 10-segment fit bar in inline-code backticks from \`lead.fit.score\`
+  (0-100): \`filled = round(score/10)\`, glyphs \`▰\` filled / \`▱\` empty. When
+  \`lead.fit.components.qualification.available\` is true AND \`ai_score > 0\`,
+  replace the LAST filled segment with \`❖\` (AI-confirmed cap). When
+  \`fit.available\` is false, render \`▱▱▱▱▱▱▱▱▱▱\` and say "unscored" in col 2.
+  Never print the numeric score.
+- Insert \`<br>\`, then: linked company name (target \`company.website\`, bare
+  hostnames get \`https://\`; unlinked plain text when absent) + \` · \` + short
+  location (City, ST / City, Country) + \` · \` + employees as \`min–max\` (omit
+  when \`employees.known\` is false).
+
+**Column 2 — Why it fits**
+
+- One sentence ≤ 20 words. Priority: \`fit.reasoning\` → gist of
+  \`company.description\` → top \`fit.components.qualification.matched_tags\`.
+- If the item status is \`degraded\` or a requested channel failed, append the
+  honest flag in italics, e.g. *(email could not be sourced)*.
+
+**Column 3 — Contact**
+
+- \`[Name](linkedin) · role\` (linked name mandatory when a LinkedIn URL
+  exists; plain name otherwise). Below it, the FOUND channels only:
+  \`✉ value\` / \`☎ value\` inline as plain text (they auto-linkify).
+- Channel statuses: \`delivered\` → show value; \`already_owned\` → value +
+  *(already yours)*; \`masked\` → "on file — reveal via channels";
+  \`not_requested\` → omit; \`failed_*\` → *(no verified email/phone)*.
+- No contact on the item (\`contact\` null): render \`—\` (title_gate \`prefer\`
+  delivers such rows flagged; say so in col 2 only when contact_titles were
+  requested).
+
+**The funnel line (mandatory, after the table):**
+
+One short line narrating the delivery honestly, from \`funnel\` +
+\`explain.scope_notes\`:
+
+> Matched N · examined E · qualified Q · disqualified D → **delivered X of
+> the Y asked** · stopped: <stop_reason in plain words>.
+
+**No money, anywhere.** \`cost.*\`, \`estimated_cost.max\` and quotes are internal
+usage units: never render them, convert them to a currency or call them a
+charge — a price reads as a bill. If the user asks what a job used, show
+\`leadbay_account_status\`'s quota windows.
+
+"of the Y asked" needs \`summary.items_requested\`: a \`leadbay_lead_job_status\`
+snapshot lacks it, so take it from the launch result. Without it write
+**delivered X** — never back-fill Y from \`matched\`/\`examined\`, never guess it.
+
+Plain-word stop reasons: \`target_reached\` → omit (success), \`pool_exhausted\` →
+"ran out of matching candidates", \`max_cost\` → "hit the job's usage cap", \`quota\` →
+"hit an org quota", \`time_budget\` → "hit the 30-min time budget".
+
+**When a FINISHED job delivered 0**: NEVER say just "no results". Render no table; give
+the funnel line plus the relevant \`explain.scope_notes\`, then propose the concrete fix (reshape the seed per the craft
+rules, lower \`min_ai_score\`, raise \`max_cost\`, drop a filter) as NEXT STEPS.
+
+**Weak batch**: when the BEST delivered \`fit.score\` is under 30, don't present
+the table as an answer — open with "weak matches only", show at most the top 3,
+propose reshaping the seed/filters first.
+
+**Sanity-check every row**: (a) geo — \`city\`/\`region\` must sit inside any
+requested fence; drop and call out leaks (same-named cities slip through).
+(b) When \`explain.seed_strategy\` is \`text_match_exemplars\` (the standard FR
+path), treat high fit scores skeptically and verify each row's \`description\`.
+
+**Skipped items** (\`skipped[]\`, qualify jobs mostly): render a compact second
+table \`Ref → Outcome\` translating \`status_reason\` to plain words:
+\`not_in_universe\` → "not in the Leadbay universe (import it first)",
+\`low_confidence_identity\` → "couldn't safely match — check \`resolution.alternatives\`",
+\`no_matching_contact\` → "no contact with the requested title",
+\`disqualified\` → "evaluated: does not fit" (evidence is in the item when owned),
+\`enrichment_failed\` → "channel could not be sourced (no quota used)".
+
+**\`items_truncated\`**: rows are a PREFIX, not the batch. Say so, and offer
+\`leadbay_lead_job_status(job_id, since: next_since)\` for the rest.
+
+**Hide from the user:** UUIDs (keep for tool calls, never render), cursors,
+\`explain.model\`/\`intelligence_snapshot\`, raw \`distance\`/\`calibration\`,
+\`seq\`/\`from_cache\`, empty arrays.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+
+
+---
+
+## NEXT STEPS — after a find_new_leads delivery
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Pick the 2-3 that match what happened, never the whole table:
+
+| Observation | Suggest | Calls |
+|---|---|---|
+| ≥ 1 delivered — offer FIRST | "Build an interactive lead triage board" | leadbay_get_artifact_runtime → CANONICAL recipe, data in hand |
+| Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
+| Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
+| Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
+| Stopped at the job's usage cap (\`stop_reason: max_cost\`) | "Raise the job's cap and get the remaining N" — no amount, no currency | leadbay_find_new_leads, NEW request_id + higher max_cost + \`count\` = the SHORTFALL (\`items_requested\` − delivered) + \`exclude_lead_ids\` = the examined-but-REJECTED ids (novelty covers delivered ones; without these the rerun re-buys the rejected) |
+| Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it stops in the same place | leadbay_account_status |
+| User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |`,
   leadbay_scan_portfolio_signals: `## RENDERING — bulk signal-scan results
 
 The output is a cohort, grouped by lead. Lead with the matches, end with an
@@ -296,12 +2559,42 @@ were never read. Distinguish "no signal X found" (researched, no match) from
 // One-line recipe per tool, from the template's `rendering_hint`. Rides on
 // every result so the agent can render without fetching the full block.
 export const RENDER_RECIPES: Record<string, string> = {
+  leadbay_account_history: `Single resurfaced-account card. Lead the card with the current signal/trigger line (from \`signals\`), then a "History" section: notes digest (chronological) + the activity timeline. Close with a one-line "why revisit now" synthesis and a suggested outreach angle tied to the freshest signal.`,
+  leadbay_account_status: `Report user + org + one line on what the account targets (\`search_configuration\`). Show quota only when asked (quota/account status) or a window is exhausted. NEVER mention the lens unless asked (use \`last_requested_lens_name\`, never the id). SILENT on quota when \`quota_error\` set, \`unlimited_credits\` true, or quota null. Else render Daily/Weekly/Monthly from \`quota.user\` (else \`quota.org\`) as \`$used / $cap (N% used) · resets\` (resource-count table if \`spend[]\` empty). Never say raw "credits".`,
+  leadbay_bulk_qualify_leads: `One sentence on what was launched and how many leads it covers, then the NEXT STEPS menu. No table, no per-lead list: the verdicts arrive from \`leadbay_qualify_status\`. Full layout via \`leadbay_render_guide\`.`,
+  leadbay_campaign_call_sheet: `Per-lead CARD sorted by AI score desc. Heading \`### ⚡ **<Company>** — <City>, <State>\`; one-line "★ Next step: …" from split_ai_summary; then a 4-col table of contacts: Contact / Phone / Role / Recent. Cell 1 stacks linked name + email + (if constructed) LinkedIn marker °. Phone is \`[bare](tel:URL)\`. Recent stacks last note + lead headline. Top of page = summary chip from \`summary\` + readiness flags.`,
+  leadbay_delete_custom_field: `Without \`confirm\`, show the \`hint\` and ask the user to confirm; never self-confirm. After deletion, one line naming the field that is gone.`,
+  leadbay_enrich_titles: `Prefer the host's choice widget for the title/channel confirmation; fall back to a short list. Name the channels and what they cost before launching. Full layout via \`leadbay_render_guide\`.`,
+  leadbay_extend_lens: `\`queued\` → ✅ "Queued <N> extra leads on lens <id>. Pull in ~30s." \`accepted_seeds\` is internal; never list it. \`no_candidates\` → ⛔ surface \`reason.message\`, name the criteria, offer \`leadbay_adjust_audience\`. Never re-call it. \`quota_exceeded\` → three options via the host's choice widget (smaller count / wait for reset / upgrade). \`refresh_in_progress\` → "filling; retry in a minute". \`no_valid_seeds\` → re-fetch seeds, retry once.`,
+  leadbay_find_new_leads: `3-col table of delivered leads in returned order: col 1 = 10-segment fit bar + linked company · location · size; col 2 = why-fits ≤20 words; col 3 = contact + found channels. ALWAYS close with the honest funnel line, even at 0 delivered.`,
+  leadbay_followups_map: `Two render surfaces — host picks. Primary: route to Claude's \`places_map_display_v0\` widget with \`{name, address (lead.location.full), latitude+longitude (lead.location.pos[0/1]), notes (short prose with bare phone+email)}\` per lead. Fallback: per-lead markdown blocks \`### **Company** · City, ST\` + one-sentence note + bare phone/email — chat hosts auto-detect into place-card carousel. Detail below.`,
+  leadbay_get_lead_custom_fields: `3-column markdown table: Field | Type | Value, one row per entry. When \`custom_fields\` is empty, render the \`hint\` sentence instead of an empty table.`,
+  leadbay_get_qualification_questions: `Numbered list of the questions (chat-native markdown), each one line, verbatim. Below it, the ideal buyer profile summary + anti-patterns and the targeting prompt when set. When \`is_admin\` is true, append the \`hint\` as a footnote (points at leadbay_set_qualification_questions). When the question list is empty, say so explicitly and render the \`hint\` instead.`,
+  leadbay_getting_started: `Not a data table. Run the walkthrough ONE gate at a time: fire your host's choice widget with that step's forward option + exit, wait for the click, make that step's tool call, then advance. Never dump all four steps at once, and never render a gate as a prose question.`,
+  leadbay_import_and_qualify: `Terse single-record import summary: rows read, matched, created, skipped, then what happens next. No row-by-row dump. Full layout via \`leadbay_render_guide\`.`,
+  leadbay_import_leads: `Terse single-record import summary: rows read, matched, created, skipped, then what happens next. No row-by-row dump. Full layout via \`leadbay_render_guide\`.`,
+  leadbay_import_status: `One sentence on where the import stands and what is still running, then the next check. Full layout via \`leadbay_render_guide\`.`,
+  leadbay_lead_job_status: `Terminal job -> render the full delivery per the lead-delivery table + honest funnel line. Still running -> one progress line (examined / delivered so far), then check again in this turn. Never render UUIDs or cursors.`,
+  leadbay_list_mappable_fields: `Mid-import: do not render, the data feeds the mapping. Asked directly: standard fields then custom fields, one short list each. Full layout via \`leadbay_render_guide\`.`,
+  leadbay_manage_lenses: `Small markdown table, active lens first: col 1 = ⭐ prefix when active + lens name; col 2 = description (or \`—\`); col 3 = its criteria by name. After a switch lead with "Now showing **<name>**."; after a rename lead with the rename confirmation. Full algorithm below.`,
+  leadbay_new_lens: `On \`preview\` (default — NOTHING created yet): show the lens that WILL be created (name + resolved sectors/sizes as chips) and ASK the user to confirm via ask_user_input_v0 ("Create this lens?" / "Change something"). Only on "yes" re-call with confirm:true. On \`created\`: confirm "Created **<name>**." (if \`computing_wishlist:true\`, add that leads stream in — pull in ~30s, don't report "empty"). On \`ambiguous_sectors\` / \`ambiguous_locations\`: surface the candidates to pick from.`,
+  leadbay_prepare_outreach: `Route the draft through \`message_compose_v1\` (Claude's email composer) with 2–3 strategic variants — labels describe STRATEGY, not tone ("Push for alignment", "Reference M&A signal", "Soft intro — peer reference"). Above the composer, emit ONE short markdown paragraph with score callout + sector fit + linked contact name + bare phone / email. Do NOT paste the email body into chat prose alongside.`,
+  leadbay_pull_followups: `4-col markdown table sorted by \`last_monitor_action_at\` desc, NO score bar (status badges instead). Col 1 = status (🎯⚡🟢💤✨🔥❄) + company link + location/size. Col 2 = AI take (3 lines from \`split_ai_summary\`). Col 3 = history + notes. Col 4 = contacts (★ recommended, ☎ 📧 pills). Active-filters chip line ABOVE the table. Detail + status priority below.`,
   leadbay_pull_leads: `3-col markdown table in the order the tool returns them (the Discover-tab order — do NOT re-sort by score) — DO NOT print the numeric score. Col 1 = inline-code 10-segment bar (\`▰\` firmographic, \`❖\` AI booster cap at the right end of the filled run, \`▱\` empty; filled=round(score/10), ai=round(avg_boost/3.3)) + \`<br>\` + linked company · location · size. Col 2 = why-fits ≤20 words. Col 3 = linked contact + title. Full algorithm + linking rules below.`,
+  leadbay_qualify_leads: `Identity pass (\`rows[]\`): one table Company / Website / LinkedIn, then the coverage line. Otherwise a 3-col table for delivered items (fit bar + company / why-fits ≤20 words / contact + channels) in returned order, then a compact Ref → Outcome table for skipped refs (not_in_universe, low_confidence_identity, ... in plain words), then the honest funnel line. \`still_running\`: no verdicts yet, check first. Full algorithm below.`,
+  leadbay_research_lead_by_id: `Single-record research card, mode-adaptive: identity line, why it fits, the qualification answers, signals, then contacts with every name a markdown link. Full layout via \`leadbay_render_guide\`.`,
+  leadbay_research_lead_by_name_fuzzy: `Single-record research card, mode-adaptive: identity line, why it fits, the qualification answers, signals, then contacts with every name a markdown link. Full layout via \`leadbay_render_guide\`.`,
+  leadbay_resolve_import_rows: `Markdown table of per-row resolution outcomes, one row per input row. Full layout via \`leadbay_render_guide\`.`,
   leadbay_scan_portfolio_signals: `Cohort grouped by lead: one block per matched lead (name · location + its matched signal entries, hot first, source-linked). Open with "N match <query> (M scanned)"; ALWAYS close with an honesty footer — "scanned N · matched M · K not yet researched". Never present not_researched leads as "no signal". Full layout below.`,
+  leadbay_send_feedback: `Confirm the exact wording with the user BEFORE calling (this is sent to the team). After sending, show a one-line confirmation from the result's \`message\` (e.g. "✓ Sent to the Leadbay team"). If \`sent\` is false, tell the user it could NOT be delivered — never imply it was sent.`,
+  leadbay_set_qualification_questions: `Before writing: show the exact question text you propose, say what it changes, and ask for a yes (route via ask_user_input_v0). After writing: one confirmation line ("Added 1 question — you now score leads against 4 questions.") then the resulting questions as a numbered list. On a non-changing preview, surface the \`hint\` and ask — never auto-confirm.`,
+  leadbay_tour_plan: `Present the leads grouped by mode (★ Customer / ★ Qualified / ✦ New), then ALWAYS offer to plot them on a map ("Want me to put these on a map?"). On yes (or if the user asked for a map up front), render it: pass \`map_locations\` verbatim into \`places_map_display_v0\`, or on a host without the widget emit one \`### Company · City, State\` place-card block per lead so the host's address carousel renders. Never a flat prose paragraph. Full recipe below.`,
+  leadbay_update_custom_field: `One line naming the field and what changed, e.g. "Renamed custom field #12 to 'Account Tier' (TEXT)."`,
 };
 
 // The same recipes with the {{commerce}} parts deleted. The recipe rides on
 // EVERY result, so it needs the same gate the block and the description have:
 // a rendering_hint may name a top-up (leadbay_extend_lens does today).
 export const NO_COMMERCE_RENDER_RECIPES: Record<string, string> = {
+  leadbay_extend_lens: `\`queued\` → ✅ "Queued <N> extra leads on lens <id>. Pull in ~30s." \`accepted_seeds\` is internal; never list it. \`no_candidates\` → ⛔ surface \`reason.message\`, name the criteria, offer \`leadbay_adjust_audience\`. Never re-call it. \`quota_exceeded\` → options via the host's choice widget (smaller count / wait for reset). \`refresh_in_progress\` → "filling; retry in a minute". \`no_valid_seeds\` → re-fetch seeds, retry once.`,
 };

@@ -67,7 +67,7 @@ describe("render blocks leave the description and arrive on the result", () => {
 
   it("answers a tool without a guide plainly instead of erroring", async () => {
     const client = new LeadbayClient("https://api-us.leadbay.app", "u.t", "us");
-    const res: any = await renderGuide.execute(client, { tool: "leadbay_account_status" });
+    const res: any = await renderGuide.execute(client, { tool: "leadbay_like_lead" });
     expect(res.guide).toBeNull();
     expect(res.hint).toContain("leadbay_render_guide");
     expect(res.hint).toContain("markdown");
@@ -90,7 +90,7 @@ describe("render blocks leave the description and arrive on the result", () => {
     // leadbay_extend_lens's rendering_hint names a top-up today, which is how
     // this would reach ChatGPT ungated the moment that tool is migrated.
     for (const [name, recipe] of Object.entries(RENDER_RECIPES)) {
-      if (!/top.?up|credit|upgrade|buy/i.test(recipe)) continue;
+      if (!/top.?up|upgrade plan|checkout|buy credits|purchase/i.test(recipe)) continue;
       expect(
         NO_COMMERCE_RENDER_RECIPES[name],
         `${name}'s recipe mentions a purchase but has no commerce-free variant`,

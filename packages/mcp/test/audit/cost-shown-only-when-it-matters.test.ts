@@ -21,15 +21,27 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  leadbay_account_status,
-  leadbay_bulk_enrich_status,
-  leadbay_enrich_contacts,
-  leadbay_enrich_titles,
-  leadbay_find_new_leads,
-  leadbay_lead_job_status,
-  leadbay_qualify_leads,
-  NO_COMMERCE_TOOL_DESCRIPTIONS,
+  leadbay_account_status as raw_leadbay_account_status,
+  leadbay_bulk_enrich_status as raw_leadbay_bulk_enrich_status,
+  leadbay_enrich_contacts as raw_leadbay_enrich_contacts,
+  leadbay_enrich_titles as raw_leadbay_enrich_titles,
+  leadbay_find_new_leads as raw_leadbay_find_new_leads,
+  leadbay_lead_job_status as raw_leadbay_lead_job_status,
+  leadbay_qualify_leads as raw_leadbay_qualify_leads,
+  NO_COMMERCE_TOOL_DESCRIPTIONS as RAW_NO_COMMERCE_TOOL_DESCRIPTIONS,
 } from "@leadbay/core/dist/tool-descriptions.generated.js";
+import { agentText, withRenderBlocks } from "./_agent-text.js";
+
+// Description plus render block: `{{render}}` moved the rendering and NEXT
+// STEPS blocks this audit reads onto the result.
+const leadbay_account_status = agentText("leadbay_account_status", raw_leadbay_account_status);
+const leadbay_bulk_enrich_status = agentText("leadbay_bulk_enrich_status", raw_leadbay_bulk_enrich_status);
+const leadbay_enrich_contacts = agentText("leadbay_enrich_contacts", raw_leadbay_enrich_contacts);
+const leadbay_enrich_titles = agentText("leadbay_enrich_titles", raw_leadbay_enrich_titles);
+const leadbay_find_new_leads = agentText("leadbay_find_new_leads", raw_leadbay_find_new_leads);
+const leadbay_lead_job_status = agentText("leadbay_lead_job_status", raw_leadbay_lead_job_status);
+const leadbay_qualify_leads = agentText("leadbay_qualify_leads", raw_leadbay_qualify_leads);
+const NO_COMMERCE_TOOL_DESCRIPTIONS = withRenderBlocks(RAW_NO_COMMERCE_TOOL_DESCRIPTIONS, false);
 import * as Prompts from "../../src/prompts.generated.js";
 import { QUOTA_REFRESH } from "../../src/server-instructions.generated.js";
 

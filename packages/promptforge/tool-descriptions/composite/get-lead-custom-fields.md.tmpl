@@ -68,7 +68,7 @@ it ages out of the 'new' Discover view.
 Companion tools: **leadbay_list_mappable_fields** for the catalog/definitions;
 **leadbay_research_lead_by_id** for the full lead dossier (signals, contacts,
 qualification answers).
-
+{{render}}
 ### RENDERING
 
 Render `custom_fields` as a 3-column markdown table: **Field** (`name`, or the
@@ -76,3 +76,5 @@ Render `custom_fields` as a 3-column markdown table: **Field** (`name`, or the
 null/empty). One row per entry, in the order returned. When `custom_fields` is
 empty, render the `hint` sentence instead of an empty table. Don't fabricate
 fields or values — render verbatim.
+
+{{/render}}

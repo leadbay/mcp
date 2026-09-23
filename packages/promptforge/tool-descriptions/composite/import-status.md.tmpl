@@ -4,6 +4,9 @@ kind: tool-description
 short_description: |
   Retrieve the current state of an async lead import by its `importIds`
   (or legacy `importIds[]`). Single refresh pass — never polls in a loop.
+rendering_hint: |
+  One sentence on where the import stands and what is still running, then the
+  next check. Full layout via `leadbay_render_guide`.
 annotations:
   readOnlyHint: true
   destructiveHint: false
@@ -19,10 +22,11 @@ Retrieve the current **status/progress** of a lead import, and its leadIds once 
 {{include:heuristics/launched-work-poll-only}}
 
 {{include:gates/launched-job}}
-
+{{render}}
 ---
 
 {{include:rendering/status-inline}}
+{{/render}}
 
 Specifically for import status:
 
@@ -36,8 +40,10 @@ Caveat on `progress`: `records_processed` counts only the rows that MATCHED an e
 - Complete, **`result` present AND it was a dry run** (`result.dry_run:true`, or every `result.not_imported` row has `reason:"dry_run"`) → this resolved handle was a VALIDATION pass, nothing committed. Render `"🔎 Dry run complete — V rows validated, nothing imported. Re-run without dry_run to commit."` — do NOT render it as a real import completion or use the pending/attention buckets.
 - Complete, **`result` present** (async handle resolved, real import) → then, and only then, partition `result.not_imported` as in the shared import-result render block below — `"✓ Import complete — N imported · P pending crawl · Q need attention"` where **pending crawl** is `uncrawled` rows that HAVE a `domain` (not failures) and no-`domain` `uncrawled` rows fall under need-attention. Drop any zero segment.
 - Error / failed → `"⚠ Import failed: <error>. See leadbay_resolve_import_rows for diagnosis."` — reserve this ONLY for a true transport/backend error on the import itself, never for `uncrawled` rows.
+{{render}}
 
 {{include:rendering/uncrawled-status}}
+{{/render}}
 
 ---
 

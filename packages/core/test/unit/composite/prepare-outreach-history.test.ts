@@ -15,6 +15,7 @@ vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
 import { prepareOutreach } from "../../../src/composite/prepare-outreach.js";
+import { RENDER_BLOCKS } from "../../../src/render-blocks.generated.js";
 
 const BASE = "https://api-us.leadbay.app";
 const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
@@ -326,8 +327,14 @@ describe("leadbay_prepare_outreach — history and research in the brief (produc
 });
 
 describe("leadbay_prepare_outreach — the render spec asks only for what the payload carries", () => {
+  // What the agent reads for this tool: the description plus the render block
+  // that promptforge's {{render}} marker moved onto the result. The spec did
+  // not change, only the channel that carries it.
   // Snippets are hard-wrapped markdown: match on collapsed whitespace.
-  const description = prepareOutreach.description.replace(/\s+/g, " ");
+  const description = `${prepareOutreach.description}\n${RENDER_BLOCKS[prepareOutreach.name] ?? ""}`.replace(
+    /\s+/g,
+    " ",
+  );
   const props = (prepareOutreach.outputSchema as any).properties;
 
   it("reads history from the `history` block, not a counter the payload never had", () => {

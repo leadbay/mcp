@@ -5,6 +5,10 @@ short_description: |
   Pick the next N unqualified leads in the active lens and qualify them
   (AI rescore + web fetch). Async via wait_for_completion:false +
   notification_id; blocking otherwise. Already-qualified leads are no-ops.
+rendering_hint: |
+  One sentence on what was launched and how many leads it covers, then the
+  NEXT STEPS menu. No table, no per-lead list: the verdicts arrive from
+  `leadbay_qualify_status`. Full layout via `leadbay_render_guide`.
 annotations:
   readOnlyHint: false
   destructiveHint: false
@@ -26,10 +30,11 @@ Context: Leadbay auto-qualifies roughly the top 10 of each daily batch. Leads be
 {{include:gates/launched-job}}
 
 {{include:headers/verification-required-if-write}}
-
+{{render}}
 ---
 
 {{include:rendering/status-inline}}
+{{/render}}
 
 Specifically for bulk qualify:
 
@@ -41,7 +46,8 @@ Specifically for bulk qualify:
 Do not enumerate the affected leads — that's the job of `leadbay_pull_leads`.
 
 ---
-
+{{render}}
 ---
 
 {{include:next-steps/bulk-qualify-leads}}
+{{/render}}

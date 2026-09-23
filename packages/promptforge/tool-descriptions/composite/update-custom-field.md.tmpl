@@ -4,6 +4,9 @@ kind: tool-description
 short_description: |
   Update an existing org CRM custom field — rename it and/or change its type +
   config. Pass the field id from leadbay_list_mappable_fields.
+rendering_hint: |
+  One line naming the field and what changed, e.g. "Renamed custom field #12
+  to 'Account Tier' (TEXT)."
 annotations:
   readOnlyHint: false
   destructiveHint: true
@@ -19,7 +22,9 @@ Type + config rules mirror creation: `EXTERNAL_ID` requires `config.url_template
 {{include:headers/tool-when-to-use}} the user wants to change an existing custom field's name or type.
 
 {{include:headers/tool-when-not-to-use}} to CREATE a new field (use leadbay_create_custom_field) or to DELETE one (use leadbay_delete_custom_field). To read a lead's custom-field values use leadbay_get_lead_custom_fields; to list the catalog use leadbay_list_mappable_fields.
-
+{{render}}
 ### RENDERING
 
 Confirm the change in one line naming the field and what changed, e.g. **"Renamed custom field #12 → 'Account Tier' (TEXT)."** or **"Updated #13 'ARR' → PRICE (USD)."** Don't dump the raw payload.
+
+{{/render}}

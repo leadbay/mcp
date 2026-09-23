@@ -29,6 +29,7 @@ import {
   NO_COMMERCE_TOOL_DESCRIPTIONS,
   type Tool,
 } from "@leadbay/core";
+import { agentText } from "./_agent-text.js";
 
 const COMMERCE_TOOLS = new Set([
   "leadbay_create_topup_link",
@@ -44,7 +45,13 @@ function commerceFreeSurface(): Array<{ name: string; description: string }> {
   }
   return [...seen.values()].map((t) => ({
     name: t.name,
-    description: NO_COMMERCE_TOOL_DESCRIPTIONS[t.name] ?? t.description,
+    // The render block is served by leadbay_render_guide on that surface, so a
+    // purchase offer inside a layout would reach ChatGPT through it.
+    description: agentText(
+      t.name,
+      NO_COMMERCE_TOOL_DESCRIPTIONS[t.name] ?? t.description,
+      false,
+    ),
   }));
 }
 
@@ -81,8 +88,10 @@ describe("audit: no purchase offer on the commerce-free surface", () => {
     // TIER2=1000)" and the word "three" from BOTH surfaces, because the edit
     // rewrote the sentence instead of wrapping the part that sells. Every
     // phrase below is one the Claude surface is supposed to keep.
+    // Description plus render block: the Claude surface serves both, and
+    // `{{render}}` moved several of these phrases into the block.
     const all = [...compositeReadTools, ...compositeWriteTools]
-      .map((t) => t.description)
+      .map((t) => agentText(t.name, t.description))
       .join("\n");
     const KEPT = [
       "wait-or-top-up",
