@@ -32,7 +32,10 @@ Fetch one page from the chosen source:
 - discover → `leadbay_pull_leads({count: 25})`
 - campaign → `leadbay_campaign_call_sheet({campaign_id})`
 
-Then count, on the rows you just got back, how many carry a company phone or email. A lead is reachable when `has_phone` is true, or `phone_numbers` holds a real value, or `email` does. **The API returns the literal string `"null"` for a missing value** in both `phone_numbers` and `email` — guard it, or the count reports a callable book that is not.
+**Then count how many rows are reachable — and the fields differ by source.** Reading the wrong ones reports an empty book while the sheet is full of dialable numbers:
+
+- **follow-ups / discover** — a lead is reachable when `has_phone` is true, or `phone_numbers` holds a real value, or `email` does. **The API returns the literal string `"null"`** for a missing value in both `phone_numbers` and `email`; guard it, or the count claims a callable book that is not.
+- **campaign** — do NOT look for those fields; a call-sheet block has none of them. The sheet already did the counting: read `summary.leads_with_phone`, `summary.leads_with_email` and `summary.leads_without_contacts`, and its `readiness` booleans (`ready_for_calling`, `ready_for_emailing`, `needs_enrichment`). Per lead, the channels live in `contacts[].phone_number` / `contacts[].email`, with the switchboard in `company_phone_numbers`.
 
 **`contacts_count > 0` is NOT reachability.** It counts known people, not people you can dial; a lead can show thousands of contacts and zero channels.
 
