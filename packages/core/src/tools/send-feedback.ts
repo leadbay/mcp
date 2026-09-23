@@ -54,6 +54,17 @@ export const sendFeedback: Tool<SendFeedbackParams> = {
     description:
       "Whether the feedback reached the Leadbay team. `sent: true` means it landed in the team's inbox.",
     properties: {
+      // Layout pointer, attached by the MCP server. The full block moved to
+      // render-blocks.generated.ts via promptforge's {{render}} marker.
+      render: {
+        type: "object",
+        description:
+          "Layout for this result. `recipe` is the one-line version; `guide` is the tool name to pass to leadbay_render_guide for the full algorithm.",
+        properties: {
+          recipe: { type: "string" },
+          guide: { type: "string" },
+        },
+      },
       sent: { type: "boolean" },
       message: { type: "string" },
       _meta: {

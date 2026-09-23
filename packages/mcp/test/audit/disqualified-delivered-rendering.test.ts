@@ -16,8 +16,11 @@
 
 import { describe, it, expect } from "vitest";
 import * as Generated from "@leadbay/core/dist/tool-descriptions.generated.js";
+import { withRenderBlocks } from "./_agent-text.js";
 
-const G = Generated as unknown as Record<string, string>;
+// Description PLUS the render block: `{{render}}` moved the layout and the
+// NEXT STEPS menu onto the result, so both channels are what the agent reads.
+const G = withRenderBlocks(Generated as unknown as Record<string, string>);
 const EMITTERS = ["leadbay_qualify_leads", "leadbay_lead_job_status"];
 
 describe("audit: delivered-but-disqualified rendering", () => {

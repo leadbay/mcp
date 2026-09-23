@@ -5,6 +5,10 @@ short_description: |
   Composite: import a list of leads (CSV-shaped records OR a list of domains),
   then trigger Leadbay's AI qualification on every imported leadId, and return
   both the import outcome and the per-lead qualification answers — in one call.
+rendering_hint: |
+  Terse single-record import summary: rows read, matched, created, skipped,
+  then what happens next. No row-by-row dump. Full layout via
+  `leadbay_render_guide`.
 annotations:
   readOnlyHint: false
   destructiveHint: false
@@ -27,7 +31,7 @@ Budgets: `total_budget_ms` caps wall-clock; `per_lead_budget_ms` caps each lead'
 {{include:headers/verification-required-if-write}}
 
 Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role; active billing. Imported leads are NOT auto-promoted to the Monitor view; lens-scoring threshold decides.
-
+{{render}}
 ---
 
 {{include:rendering/import-result}}
@@ -35,3 +39,4 @@ Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role; 
 ---
 
 {{include:next-steps/import-leads}}
+{{/render}}

@@ -29,6 +29,16 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import * as Generated from "@leadbay/core/dist/tool-descriptions.generated.js";
+import { RENDER_BLOCKS } from "@leadbay/core";
+
+/**
+ * What the agent actually reads for this tool: its description PLUS the
+ * render block, if promptforge's `{{render}}` marker moved the layout onto the
+ * result. Both channels reach the agent; only one of them is truncated at
+ * 2,048 characters by Claude Code, which is why the layout moved.
+ */
+const agentReads = (toolName: string): string =>
+  `${(Generated as Record<string, string>)[toolName] ?? ""}\n${RENDER_BLOCKS[toolName] ?? ""}`;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -80,23 +90,23 @@ describe("audit: contact-name-MUST-be-a-markdown-link invariant", () => {
         `tool ${toolName} is missing from generated descriptions — add it, or remove it from TOOLS_THAT_RENDER_CONTACTS in this audit if it no longer surfaces contacts`
       ).toBeTruthy();
 
-      // The agent reads the bundled description. The mandate MUST land
-      // somewhere inside it — either via {{include:linking/contact-linkedin}}
-      // (the normal path) or written inline. Either way, the imperative
-      // phrase must reach the agent.
+      // The mandate MUST land in something the agent reads: the description
+      // via {{include:linking/contact-linkedin}}, or the render block that
+      // `{{render}}` moved onto the result. Either way the imperative phrase
+      // has to reach the agent — that is the invariant, not its address.
+      const read = agentReads(toolName);
       expect(
-        desc,
-        `${toolName} description has lost the always-link mandate; re-add {{include:linking/contact-linkedin}} (or equivalent) to the tool's template`
+        read,
+        `${toolName} has lost the always-link mandate; re-add {{include:linking/contact-linkedin}} (or equivalent) to the tool's template, inside or outside its {{render}} region`
       ).toMatch(/MUST be wrapped in markdown link syntax/i);
-      expect(desc).toMatch(/Never render a contact name as bare text/i);
+      expect(read).toMatch(/Never render a contact name as bare text/i);
     }
   );
 
   it("the constructed people-search URL pattern is documented in every contact-rendering tool", () => {
     for (const toolName of TOOLS_THAT_RENDER_CONTACTS) {
-      const desc = (Generated as Record<string, string>)[toolName];
       expect(
-        desc,
+        agentReads(toolName),
         `${toolName} doesn't document the linkedin.com/search/results/people fallback URL; the agent has no way to construct a link when linkedin_page is null and will regress to plain text`
       ).toMatch(/linkedin\.com\/search\/results\/people\/\?keywords=/);
     }

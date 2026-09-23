@@ -134,6 +134,7 @@ import { teamActivity } from "./composite/team-activity.js";
 import { sendFeedback } from "./tools/send-feedback.js";
 import { artifactKit } from "./tools/get-artifact-runtime.js";
 import { artifactEvent } from "./tools/report-artifact-error.js";
+import { renderGuide } from "./tools/render-guide.js";
 
 import type { Tool } from "./types.js";
 
@@ -184,7 +185,7 @@ export {
   seedCandidates, extendLens,
   // MCP-first lead delivery
   findNewLeads, qualifyLeads, leadJobStatus,
-  artifactKit, artifactEvent,
+  artifactKit, artifactEvent, renderGuide,
 };
 
 // ─── Tool catalogues ─────────────────────────────────────────────────────
@@ -365,6 +366,12 @@ export const compositeReadTools: Tool[] = [
   // button click, which has no fresh user utterance, carries no _triggered_by
   // mandate. Never consent-gated user text — that is reportFriction.
   artifactEvent,
+  // The presentation half of a description, served on demand. `{{render}}`
+  // moved those blocks out of the descriptions (hosts truncate them); a result
+  // carries the one-line recipe plus `render.guide`, and this returns the full
+  // layout for that name. Read-only, no backend call, always exposed — a tool
+  // whose layout the agent cannot fetch renders as prose.
+  renderGuide,
 ];
 
 /** Every MCP-first delivery tool, regardless of the deployment gate above.
@@ -482,6 +489,18 @@ export const tools: Tool[] = [...compositeTools, ...granularTools];
 // the templates that carry the marker. The MCP server swaps these in on a
 // surface that may not promote a purchase; nothing is reworded.
 export { NO_COMMERCE_TOOL_DESCRIPTIONS } from "./tool-descriptions.generated.js";
+// Presentation blocks lifted out of descriptions by promptforge's {{render}}
+// marker. The MCP server puts RENDER_RECIPES on each result; leadbay_render_guide
+// serves the full block, commerce-free variant included.
+export {
+  RENDER_BLOCKS,
+  NO_COMMERCE_RENDER_BLOCKS,
+  RENDER_RECIPES,
+  NO_COMMERCE_RENDER_RECIPES,
+} from "./render-blocks.generated.js";
+// Routing test set per tool (positive + negative sentences). Emitted by
+// promptforge instead of being shipped inside the description.
+export { ROUTING_EXAMPLES, type RoutingExamples } from "./routing-examples.generated.js";
 // In-process double-launch guard. All that remains of the old bulk store:
 // job identity, retention and tenancy belong to the backend, so nothing here
 // persists. See jobs/launch-guard.ts.

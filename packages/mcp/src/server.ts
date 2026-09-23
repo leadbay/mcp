@@ -21,6 +21,7 @@ import {
   readResource,
 } from "./resources.js";
 import { BUILTIN_WIDGETS_PARAGRAPH } from "./host-widgets.js";
+import { RENDER_RECIPES, NO_COMMERCE_RENDER_RECIPES } from "@leadbay/core";
 import {
   compositeReadTools,
   compositeWriteTools,
@@ -751,6 +752,36 @@ function findShapeMismatch(
   return undefined;
 }
 
+// A tool whose layout moved to the result gains a `render` field on every
+// successful payload (maybeAttachRender). Declare it on the tool's
+// outputSchema in the same place, or structuredContent no longer matches the
+// schema the tool published — the conformance audit catches exactly that.
+function withRenderOutput(tool: Tool): Tool {
+  if (!RENDER_RECIPES[tool.name]) return tool;
+  const schema = tool.outputSchema as Record<string, unknown> | undefined;
+  if (!schema || schema.type !== "object") return tool;
+  const props = (schema.properties as Record<string, unknown> | undefined) ?? {};
+  if (Object.prototype.hasOwnProperty.call(props, "render")) return tool;
+  return {
+    ...tool,
+    outputSchema: {
+      ...schema,
+      properties: {
+        ...props,
+        render: {
+          type: "object",
+          description:
+            "How to lay this result out. `recipe` is the one-line version; `guide` is the tool name to pass to leadbay_render_guide for the full algorithm.",
+          properties: {
+            recipe: { type: "string" },
+            guide: { type: "string" },
+          },
+        },
+      },
+    },
+  };
+}
+
 function toolsListPayload(tools: Tool[]) {
   return tools.map((t) => {
     const out: Record<string, unknown> = {
@@ -831,7 +862,7 @@ export function buildServer(
       : NO_COMMERCE_TOOL_DESCRIPTIONS[t.name];
     toolByName.set(
       t.name,
-      withTriggeredByMeta(noCommerce ? { ...t, description: noCommerce } : t, {
+      withTriggeredByMeta(withRenderOutput(noCommerce ? { ...t, description: noCommerce } : t), {
         mandatory: COMPOSITE_FILE_TOOL_NAMES.has(t.name),
       })
     );
@@ -1149,6 +1180,40 @@ export function buildServer(
   // leadbay_acknowledge_notification(id), so a missed read on this turn
   // resurfaces on the next call. Auto-expiry inside the inbox prevents
   // unbounded growth if the agent never acks (unattended automation).
+  // Put the layout on the RESULT, not in the description.
+  //
+  // `{{render}}` in a template lifts the rendering algorithm out of the tool
+  // description into RENDER_BLOCKS, because Claude Code truncates every MCP
+  // description at 2,048 chars and the algorithm sat past that point. What
+  // rides here instead is the one-line recipe from the template's
+  // `rendering_hint`, plus the name to pass to leadbay_render_guide for the
+  // full block.
+  //
+  // Written as data (a `render` object), never as an instruction sentence: a
+  // result that gives the agent orders gets reported to the user as injected
+  // instructions (measured on #257/#259, up to 3 runs in 11).
+  const maybeAttachRender = (toolName: string, result: unknown): void => {
+    // The recipe rides on every result, so it takes the same commerce gate as
+    // the description and the full block: a rendering_hint may name a top-up
+    // (leadbay_extend_lens's does), and that must not reach the ChatGPT surface.
+    const recipe = includeCommerce
+      ? RENDER_RECIPES[toolName]
+      : (NO_COMMERCE_RENDER_RECIPES[toolName] ?? RENDER_RECIPES[toolName]);
+    if (!recipe) return;
+    if (result === null || typeof result !== "object" || Array.isArray(result)) return;
+    const envelope = result as Record<string, unknown>;
+    if (envelope.error === true) return;
+    const target =
+      envelope.__markdown_envelope === true &&
+      envelope.structured !== null &&
+      typeof envelope.structured === "object" &&
+      !Array.isArray(envelope.structured)
+        ? (envelope.structured as Record<string, unknown>)
+        : envelope;
+    if (target.render !== undefined) return;
+    target.render = { recipe, guide: toolName };
+  };
+
   const maybeAttachNotifications = (result: unknown): void => {
     const inbox = opts.notificationsInbox;
     if (!inbox) return;
@@ -1593,6 +1658,7 @@ export function buildServer(
       // Inject `_meta.notifications` into ANY tool result when the inbox
       // is non-empty. Same timing as maybeAttachUpdate so the field rides
       // along regardless of whether the response is markdown or JSON.
+      maybeAttachRender(name, result);
       maybeAttachNotifications(result);
       // Leadbay tools may return error envelopes ({ error: true, code, ... })
       // rather than throwing. Surface those as MCP isError so the LLM doesn't

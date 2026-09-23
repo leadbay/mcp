@@ -46,7 +46,7 @@ rendering_hint: |
   lens name; col 2 = description (or `—`); col 3 = its criteria by name.
   After a switch lead with
   "Now showing **<name>**."; after a rename lead with the rename confirmation.
-  Full algorithm below.
+  Full algorithm: `leadbay_render_guide`.
 next_steps: my-lenses
 annotations:
   readOnlyHint: false
@@ -75,6 +75,7 @@ List the user's lenses (saved audiences) and, when asked, switch which one is ac
 {{include:headers/tool-when-not-to-use}} to change a lens's audience criteria — that's `leadbay_adjust_audience`. Not for refining beyond firmographics (`leadbay_refine_lead_targeting`), not for topping up the same lens (`leadbay_extend_lens`), not for the daily pull (`leadbay_pull_leads`).
 
 {{include:headers/verification-required-if-write}}
+{{render}}
 
 {{include:gates/builtin-widgets}}
 
@@ -83,3 +84,4 @@ List the user's lenses (saved audiences) and, when asked, switch which one is ac
 {{include:rendering/my-lenses-table}}
 
 {{include:next-steps/my-lenses}}
+{{/render}}

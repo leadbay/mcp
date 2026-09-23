@@ -26,6 +26,10 @@ routing:
     negative:
       - "Look up Acme Corp for me."
       - "Show me today's leads."
+rendering_hint: |
+  Single-record research card, mode-adaptive: identity line, why it fits, the
+  qualification answers, signals, then contacts with every name a markdown
+  link. Full layout via `leadbay_render_guide`.
 annotations:
   readOnlyHint: false
   destructiveHint: false
@@ -66,7 +70,7 @@ it **sequentially or in small batches (≤3 parallel)**. Firing 10+ in parallel
 saturates the transport and produces misleading `"Tool permission stream
 closed"` errors — that's backpressure, not a permission failure. On a transient
 stream/timeout failure, retry the same lead once before moving on.
-
+{{render}}
 ---
 
 {{include:rendering/research-company-card}}
@@ -74,3 +78,4 @@ stream/timeout failure, retry the same lead once before moving on.
 ---
 
 {{include:next-steps/research-lead-by-id}}
+{{/render}}

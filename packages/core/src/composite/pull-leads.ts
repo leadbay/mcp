@@ -233,7 +233,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
       lensId: {
         type: "number",
         description:
-          "Override the auto-resolved last-active lens (escape hatch — normally omit)",
+          "Override the auto-resolved last-active lens (escape hatch — normally omit). The active lens can change between calls (5-minute cache plus the backend's `last_requested_lens`), so in a multi-step workflow capture `lens.id` from the first response and pass it here on every later call, including re-pulls, bulk qualifies and research. Re-pulling without it after a long-running tool can switch lens and discard the earlier work.",
       },
       count: { type: "number", description: "Leads per page, max 50 (default 20)" },
       page: { type: "number", description: "Page number, 0-indexed (default 0)" },
@@ -253,6 +253,19 @@ export const pullLeads: Tool<PullLeadsParams> = {
   outputSchema: {
     type: "object",
     properties: {
+      // How to lay the batch out. The full algorithm used to sit in this
+      // tool's description, where Claude Code truncated it at 2,048 chars;
+      // promptforge's {{render}} marker moved it to render-blocks.generated.ts
+      // and the MCP server puts this pointer on every result instead.
+      render: {
+        type: "object",
+        description:
+          "Layout for this result. `recipe` is the one-line version to follow; `guide` is the tool name to pass to leadbay_render_guide for the full algorithm (score bar, columns, link rules).",
+        properties: {
+          recipe: { type: "string" },
+          guide: { type: "string" },
+        },
+      },
       lens: {
         type: "object",
         description: "Lens metadata (id of the lens that was queried).",
@@ -261,7 +274,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
       leads: {
         type: "array",
         description:
-          "The page of leads. In default mode (verbose:false) each lead is the trimmed agent-friendly shape; in verbose:true the full LeadPayload.",
+          "The page of leads. In default mode (verbose:false) each lead is the trimmed agent-friendly shape; in verbose:true the full LeadPayload. Each lead already carries `recommended_contact` (with `linkedin_page` when known), `phone_numbers`, `split_ai_summary.{worth_pursuing, approach_angle, next_step}` when AI-qualified, and per-platform `social_urls`. They are in this response: no second call is needed for them. Render every contact name as a markdown link, using `linkedin_page` when set and a `linkedin.com/search/results/people/?keywords=` URL built from the name and company otherwise.",
         items: { type: "object" },
       },
       pagination: {

@@ -12,6 +12,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { ROUTING_EXAMPLES } from "@leadbay/core";
 import {
   compositeReadTools,
   compositeWriteTools,
@@ -132,19 +133,15 @@ describe("audit: routing block in the description head", () => {
     // of each — leaves room for a tool with naturally fewer angles
     // without losing the discriminative signal.
     const violations: string[] = [];
-    // Examples may live just past the 600-char header window
-    // (positives + negatives compound length); widen to 1500 so we
-    // catch them without being noisy.
-    const EXAMPLE_WINDOW = 2000;
-    const POS_BLOCK_RE = /Examples that SHOULD invoke this tool:\n([\s\S]+?)(?:\n\n|$)/;
-    const NEG_BLOCK_RE = /Examples that should NOT invoke this tool[^:]*:\n([\s\S]+?)(?:\n\n|$)/;
+    // The examples are a test set, not description text: promptforge emits them
+    // to ROUTING_EXAMPLES rather than into the head, where they cost 17,223
+    // characters of the window a host keeps. The invariant is unchanged — every
+    // routed tool still declares two of each — only its address moved.
     for (const t of ALL_TOOLS) {
       if (!TOOLS_WITH_ROUTING.has(t.name)) continue;
-      const head = t.description.slice(0, EXAMPLE_WINDOW);
-      const pos = head.match(POS_BLOCK_RE);
-      const neg = head.match(NEG_BLOCK_RE);
-      const posCount = pos ? pos[1].split("\n").filter((l) => l.trim().startsWith("- ")).length : 0;
-      const negCount = neg ? neg[1].split("\n").filter((l) => l.trim().startsWith("- ")).length : 0;
+      const examples = ROUTING_EXAMPLES[t.name];
+      const posCount = examples?.positive.length ?? 0;
+      const negCount = examples?.negative.length ?? 0;
       if (posCount < 2) {
         violations.push(`${t.name}: only ${posCount} positive example(s) (need ≥2)`);
       }

@@ -5,6 +5,9 @@ short_description: |
   Resolve messy CSV-shaped lead rows against Leadbay before file import.
   Returns matched lead IDs, ambiguous candidate IDs, and a SAFE identity-only
   mapping starting point for leadbay_import_leads / leadbay_import_and_qualify.
+rendering_hint: |
+  Markdown table of per-row resolution outcomes, one row per input row. Full
+  layout via `leadbay_render_guide`.
 annotations:
   readOnlyHint: true
   destructiveHint: false
@@ -16,9 +19,7 @@ Resolve messy CSV-shaped lead rows against Leadbay before file import. The tool 
 {{include:headers/tool-when-to-use}} before importing user-supplied files when domains, names, CRM IDs, registry numbers, or Leadbay IDs may be inconsistently formatted; when the agent needs to pre-resolve messy rows, inspect ambiguous candidates, or prepare LEADBAY_ID values for the import composites. For contact-only files, first derive company website/domain from business contact emails where possible, while ignoring consumer mailbox domains. Deterministic matches get a LEADBAY_ID column inserted so the standard import commits immediately. Ambiguous rows are deliberately left without LEADBAY_ID; inspect candidates and choose one only when the evidence is good. Rows with websites but no match can still be imported; Leadbay may crawl and match them later (a late import), and those leads then populate in the user's Leadbay account as the crawl completes (no tool here fetches them on demand — re-run the import later to pull them back through the MCP).
 
 {{include:headers/tool-when-not-to-use}} for prospect discovery from scratch (use leadbay_pull_leads); for one known company profile (use leadbay_research_lead_by_name_fuzzy / leadbay_research_lead_by_id); or when the file already has clean, final LEADBAY_ID/CRM_ID/SIREN mappings and no row-level identity disambiguation is needed.
-
----
-
+{{render}}
 ## RENDERING
 
 Present as a markdown table of resolution outcomes per row.
@@ -48,3 +49,5 @@ Below the table, a one-liner: `"Ready: K rows · Ambiguous: A rows · Unmatched:
 | Ambiguous rows present                 | "Inspect candidates for each ambiguous row"                 | (re-call with include_candidate_profiles=true)         |
 | Unmatched rows but websites present    | "Import anyway — Leadbay crawls & adds them to your account later" | leadbay_import_leads (the late-added leads populate in Leadbay; re-run the import to pull them back through the MCP) |
 | User wants to skip rows they can't ID  | "Drop unmatched rows and import the rest"                   | leadbay_import_leads (with filtered records)           |
+
+{{/render}}

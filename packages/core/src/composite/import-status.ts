@@ -252,6 +252,17 @@ export const importStatus: Tool<ImportStatusParams, ImportStatusResult> = {
   outputSchema: {
     type: "object",
     properties: {
+      // Layout pointer, attached by the MCP server. The full block moved to
+      // render-blocks.generated.ts via promptforge's {{render}} marker.
+      render: {
+        type: "object",
+        description:
+          "Layout for this result. `recipe` is the one-line version; `guide` is the tool name to pass to leadbay_render_guide for the full algorithm.",
+        properties: {
+          recipe: { type: "string" },
+          guide: { type: "string" },
+        },
+      },
       status: { type: "string", description: "running, complete, or failed." },
       importIds: { type: "array", items: { type: "string" } },
       progress: { type: "object" },

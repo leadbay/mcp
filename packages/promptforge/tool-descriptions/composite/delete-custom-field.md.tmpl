@@ -5,6 +5,9 @@ short_description: |
   Delete an org CRM custom field. DESTRUCTIVE — drops the field's values from
   every lead. Requires confirm:true. Pass the field id from
   leadbay_list_mappable_fields.
+rendering_hint: |
+  Without `confirm`, show the `hint` and ask the user to confirm; never
+  self-confirm. After deletion, one line naming the field that is gone.
 annotations:
   readOnlyHint: false
   destructiveHint: true
@@ -23,7 +26,9 @@ Delete an org-level CRM custom field. Use when the user explicitly wants to remo
 {{include:headers/tool-when-to-use}} the user explicitly asks to delete/remove a custom field — and only fire with confirm:true after they confirm.
 
 {{include:headers/tool-when-not-to-use}} to rename or retype a field (use leadbay_update_custom_field) or to create one (use leadbay_create_custom_field).
-
+{{render}}
 ### RENDERING
 
 Before deleting (no confirm), render the `hint` and ask the user to confirm — do NOT auto-confirm on the user's behalf. After a confirmed delete, acknowledge in one line: **"Deleted custom field #12 'Legacy Source'."**
+
+{{/render}}

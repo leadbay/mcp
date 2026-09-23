@@ -201,6 +201,41 @@ The canonical RENDERING markdown — full algorithm, link priorities,
 glyph palette. Shared snippets live in
 `packages/promptforge/snippets/rendering/`.
 
+**Wrap it in `{{render}}` so it ships with the result, not with the tool.**
+Claude Code truncates every MCP tool description at 2,048 characters (its
+docs, and `j_=2048` in the 2.1.247 binary), so a rendering algorithm further
+down the description is read by nobody: measured 2026-09-18, 75% of our
+description characters sat past that cut, and the rendering block survived it
+in 4 of the 21 tools that carried one.
+
+```markdown
+{{render}}
+{{include:rendering/pull-leads-table}}
+
+---
+
+{{include:next-steps/pull-leads}}
+{{/render}}
+```
+
+promptforge cuts the marked region out of the description and emits it into
+`packages/core/src/render-blocks.generated.ts`. Two channels then carry it:
+the MCP server puts `render: {recipe, guide}` on every successful result of
+that tool (`recipe` is the frontmatter `rendering_hint`), and
+`leadbay_render_guide` returns the full block on demand.
+
+Rules when you migrate a tool:
+
+- Declare `render` in the tool's own `outputSchema`, or the
+  `output-schema-conformance` audit fails on the new key.
+- Keep `rendering_hint` short and self-sufficient: it is what most calls will
+  ever read.
+- Write the result field as data. A result that gives the agent orders gets
+  reported to the user as injected instructions (measured 0 to 3 runs in 11
+  on #257/#259).
+- `{{commerce}}` inside a `{{render}}` region still works: the block ships in
+  both variants, and `/chatgpt/mcp` serves the stripped one.
+
 ### Section 5 — `next_steps` (optional)
 
 Some tools have a NEXT STEPS table; others don't. When set in

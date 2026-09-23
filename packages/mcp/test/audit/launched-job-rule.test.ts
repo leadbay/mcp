@@ -23,6 +23,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import * as Generated from "@leadbay/core/dist/tool-descriptions.generated.js";
+import { withRenderBlocks } from "./_agent-text.js";
 import * as Prompts from "../../src/prompts.generated.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -35,7 +36,9 @@ const RULE = readFileSync(
 /** Snippets are hard-wrapped; compare on collapsed whitespace. */
 const collapse = (s: string) => s.replace(/\s+/g, " ").trim();
 
-const descriptions = Generated as Record<string, unknown>;
+// Description PLUS the render block, which is where `{{render}}` moved the
+// NEXT STEPS menus this audit reads.
+const descriptions = withRenderBlocks(Generated as unknown as Record<string, string>);
 const describeTool = (name: string) => descriptions[name] as string | undefined;
 
 /**

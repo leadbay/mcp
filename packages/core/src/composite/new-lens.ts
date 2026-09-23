@@ -105,6 +105,17 @@ export const newLens: Tool<NewLensParams> = {
     description:
       "'preview' (default, NOTHING created — confirm with the user then re-call with confirm:true); 'created' on success; 'ambiguous_sectors' / 'ambiguous_locations' when free-text sectors / locations didn't resolve (re-call with ids — the lens was NOT created); 'country_level_location' when a country-level value was passed as a location (the lens was NOT created; read `hint` — re-calling without the value is often itself wrong).",
     properties: {
+      // Layout pointer, attached by the MCP server. The full block moved to
+      // render-blocks.generated.ts via promptforge's {{render}} marker.
+      render: {
+        type: "object",
+        description:
+          "Layout for this result. `recipe` is the one-line version; `guide` is the tool name to pass to leadbay_render_guide for the full algorithm.",
+        properties: {
+          recipe: { type: "string" },
+          guide: { type: "string" },
+        },
+      },
       status: { type: "string", description: "'preview', 'created', 'ambiguous_sectors', 'ambiguous_locations', 'country_level_location', or 'orphan_created' (filter write failed + cleanup failed)." },
       will_create: {
         type: "object",

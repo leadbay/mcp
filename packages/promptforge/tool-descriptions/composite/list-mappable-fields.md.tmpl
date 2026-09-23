@@ -5,6 +5,10 @@ short_description: |
   List every CRM field the agent can target when calling import_leads /
   import_and_qualify. Returns standard_fields enum + org's custom_fields
   with their `CUSTOM.<id>` wire-format mapping_value.
+rendering_hint: |
+  Mid-import: do not render, the data feeds the mapping. Asked directly:
+  standard fields then custom fields, one short list each. Full layout via
+  `leadbay_render_guide`.
 annotations:
   readOnlyHint: false
   destructiveHint: false
@@ -20,9 +24,7 @@ Optional `for_records` param: pass a sample of CSV-shaped rows and the tool also
 {{include:headers/tool-when-to-use}} before authoring an import mapping, especially when the CSV has columns that aren't obvious matches for standard fields.
 
 {{include:headers/tool-when-not-to-use}} when you already know the mapping — this call is cheap (~50ms without for_records, ~5–10s with) but unnecessary if the agent has already cached the catalog within the same conversation. Cache the result per session; re-fetch only after a `leadbay_create_custom_field` call (which can change the catalog).
-
----
-
+{{render}}
 ## RENDERING
 
 When called mid-import (internal use), do NOT render — return the data only.
@@ -48,3 +50,5 @@ When called with `for_records`, append a final section **"Mapping hints for your
 | User is preparing an import                | "Map a file"                                                | leadbay_resolve_import_rows / leadbay_import_leads     |
 | User needs a custom field that doesn't exist | "Create a new custom field"                               | leadbay_create_custom_field                            |
 | for_records was passed; hints look good    | "Run the import with these mappings"                        | leadbay_import_leads(records, mappings)                |
+
+{{/render}}

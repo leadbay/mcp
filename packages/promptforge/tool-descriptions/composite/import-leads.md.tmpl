@@ -5,6 +5,10 @@ short_description: |
   Import leads into Leadbay's CRM via the file-import wizard. Returns
   stable Leadbay leadIds for downstream chaining into bulk_qualify_leads
   or research_lead. Supports domain-list shortcut OR records+mappings.
+rendering_hint: |
+  Terse single-record import summary: rows read, matched, created, skipped,
+  then what happens next. No row-by-row dump. Full layout via
+  `leadbay_render_guide`.
 annotations:
   readOnlyHint: false
   destructiveHint: false
@@ -29,7 +33,7 @@ MUTATES USER STATE: each call creates a row in the user's CRM-imports list (visi
 {{include:headers/verification-required-if-write}}
 
 Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role on the Leadbay account; active billing.
-
+{{render}}
 ---
 
 {{include:rendering/import-result}}
@@ -37,3 +41,4 @@ Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw); admin role o
 ---
 
 {{include:next-steps/import-leads}}
+{{/render}}

@@ -46,7 +46,7 @@ rendering_hint: |
   contact + channels) in returned order, then a compact Ref → Outcome table
   for skipped refs (not_in_universe, low_confidence_identity, ... in plain
   words), then the honest funnel line. `still_running`: no verdicts yet, check
-  first. Full algorithm below.
+  first. Full algorithm: `leadbay_render_guide`.
 next_steps: qualify-leads
 annotations:
   readOnlyHint: false
@@ -97,7 +97,7 @@ retries of the same batch.
 
 **Limits**: 500 refs/job, 3 active jobs/org, 10 submits/hour (429 +
 Retry-After beyond — wait, don't hammer), 30-min job wall clock.
-
+{{render}}
 ---
 
 {{include:rendering/identity-rows}}
@@ -109,3 +109,4 @@ Retry-After beyond — wait, don't hammer), 30-min job wall clock.
 ---
 
 {{include:next-steps/qualify-leads}}
+{{/render}}
