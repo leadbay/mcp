@@ -25,12 +25,12 @@ routing:
     - phrase: "add <sector> to my <name> lens"
       route_to: leadbay_adjust_audience
     - phrase: "focus on a qualitative trait beyond sector/size"
-      route_to: leadbay_refine_prompt
+      route_to: leadbay_refine_lead_targeting
     - phrase: "show me / list / switch my lenses"
-      route_to: leadbay_my_lenses
+      route_to: leadbay_manage_lenses
     - phrase: "more leads on this lens"
       route_to: leadbay_extend_lens
-  prefer_when: "user wants a brand-new lens (create/make/set up, often 'specialized in <X>'). Editing an existing lens → leadbay_adjust_audience (use lensName). Qualitative refinement → refine_prompt (admin-only)."
+  prefer_when: "user wants a brand-new lens (create/make/set up, often 'specialized in <X>'). Editing an existing lens → leadbay_adjust_audience (use lensName). Qualitative refinement → leadbay_refine_lead_targeting (admin-only)."
   examples:
     positive:
       - "Create a lens called Joinery for the fintech sector."
@@ -66,15 +66,15 @@ Create a brand-new lens (saved audience) and apply its sector/size criteria. Clo
 
 {{include:heuristics/single-country-universe}}
 
-**A new lens is a CLONE, and inherits the base lens's geography.** `base` defaults to the ACTIVE lens, so this applies even when no base was named. A criteria-less clone inherits the base audience wholesale, and adding sectors does not clear the base's location criteria either — so "nationwide healthcare" built on a Paris-scoped active lens creates a Paris healthcare lens under a nationwide name. Omitting `locations` is therefore not the same as having no geography. Read the base's `criteria` in `leadbay_my_lenses` (or the `lens://<base>/definition` resource on hosts that expose one) before describing a new lens as workspace-wide, and say the scope is unverified if you cannot.
+**A new lens is a CLONE, and inherits the base lens's geography.** `base` defaults to the ACTIVE lens, so this applies even when no base was named. A criteria-less clone inherits the base audience wholesale, and adding sectors does not clear the base's location criteria either — so "nationwide healthcare" built on a Paris-scoped active lens creates a Paris healthcare lens under a nationwide name. Omitting `locations` is therefore not the same as having no geography. Read the base's `criteria` in `leadbay_manage_lenses` (or the `lens://<base>/definition` resource on hosts that expose one) before describing a new lens as workspace-wide, and say the scope is unverified if you cannot.
 
-**Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer `leadbay_my_lenses(switchToLensId=<new id>)` as a next step if they want to start pulling from it.
+**Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer `leadbay_manage_lenses(switchToLensId=<new id>)` as a next step if they want to start pulling from it.
 
 **Leads compute asynchronously.** When the lens has criteria, applying the filter kicks off a backend wishlist rebuild — the `created` result carries `computing_wishlist:true`. An immediate `leadbay_pull_leads` may read empty for a few seconds while it computes; that lens is *warming up*, not empty. Check with `leadbay_pull_leads` from ~30s on until leads are listed. A criteria-less clone inherits the base lens's leads right away (`computing_wishlist:false`).
 
 {{include:headers/tool-when-to-use}} when the user wants a NEW lens. Canonical phrasings: "create a lens called X", "make a new audience for Y", "set up a lens for <sector>".
 
-{{include:headers/tool-when-not-to-use}} to EDIT an existing lens — use `leadbay_adjust_audience` (pass `lensName` to target one by name). Not for listing/switching (`leadbay_my_lenses`) or topping up (`leadbay_extend_lens`).
+{{include:headers/tool-when-not-to-use}} to EDIT an existing lens — use `leadbay_adjust_audience` (pass `lensName` to target one by name). Not for listing/switching (`leadbay_manage_lenses`) or topping up (`leadbay_extend_lens`).
 
 {{include:headers/verification-required-if-write}}
 

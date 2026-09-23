@@ -5,8 +5,8 @@
 | Observation | Suggest | Calls |
 |---|---|---|
 | Always (top of menu) | "Prep outreach for [top row's contact]" | leadbay_prepare_outreach(leadId) |
-| ≥ 1 lead returned | "Build an interactive call board" | leadbay_artifact_kit → its CANONICAL board recipe, data in hand |
-| "how well do we cover sector X / city Y" | "Build a coverage board" | leadbay_artifact_kit → its COVERAGE recipe (`lb.portfolioSectors` + `lb.segmentCount`) |
+| ≥ 1 lead returned | "Build an interactive call board" | leadbay_get_artifact_runtime → its CANONICAL board recipe, data in hand |
+| "how well do we cover sector X / city Y" | "Build a coverage board" | leadbay_get_artifact_runtime → its COVERAGE recipe (`lb.portfolioSectors` + `lb.segmentCount`) |
 | User named a city / sector / timeframe | "Refilter by [their phrase]" | leadbay_pull_followups(set_filter: { criteria: [...] }) |
 | `pagination.has_more == true` | "Pull the next page" | leadbay_pull_followups(page = current + 1) |
 | ≥3 rows ✨ (never-touched) | "Surface only never-touched leads" | set_filter with `last_action_date.last_days = 0` |

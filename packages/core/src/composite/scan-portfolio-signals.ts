@@ -159,10 +159,10 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
   name: "leadbay_scan_portfolio_signals",
   annotations: {
     title: "Scan a portfolio for a web-research signal in bulk",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: SCAN_PORTFOLIO_SIGNALS_DESCRIPTION,
   inputSchema: {

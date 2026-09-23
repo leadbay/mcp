@@ -310,10 +310,10 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     // paid composites — annotations are static and must describe the worst
     // case, not the default. The free path is protected in execute() instead:
     // a paid call is withheld until `confirm: true`.
-    destructiveHint: true,
+    destructiveHint: false,
     // The mandatory request_id dedups: re-submitting the same request returns
     // the SAME live job instead of double-spending.
-    idempotentHint: true,
+    idempotentHint: false,
     openWorldHint: true,
   },
   write: true,
@@ -324,7 +324,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       query: {
         type: "string",
         description:
-          "Natural-language ICP ask. Matches topic VOCABULARY — can surface vendors of a product as easily as buyers of it. Prefer example_lead. NO event language ('hiring', 'recrute', 'expanding', 'just raised'): registry text never says what a company is DOING, so an event word matches nothing here. Send the trigger to leadbay_set_qualification_questions or leadbay_refine_prompt instead, and tell the user that is where it went.",
+          "Natural-language ICP ask. Matches topic VOCABULARY — can surface vendors of a product as easily as buyers of it. Prefer example_lead. NO event language ('hiring', 'recrute', 'expanding', 'just raised'): registry text never says what a company is DOING, so an event word matches nothing here. Send the trigger to leadbay_set_qualification_questions or leadbay_refine_lead_targeting instead, and tell the user that is where it went.",
       },
       example_lead: {
         type: "object",

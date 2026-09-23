@@ -27,9 +27,9 @@ export const setEpilogueStatus: Tool<SetEpilogueStatusParams> = {
   annotations: {
     title: "Set lead epilogue status",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: SET_EPILOGUE_STATUS_DESCRIPTION,
   optional: true,

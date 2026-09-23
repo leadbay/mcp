@@ -35,9 +35,9 @@ export const prepareOutreach: Tool<PrepareOutreachParams> = {
   name: "leadbay_prepare_outreach",
   annotations: {
     title: "Prepare outreach package for a lead",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
-    idempotentHint: true,
+    idempotentHint: false,
     openWorldHint: true,
   },
   description: PREPARE_OUTREACH_DESCRIPTION,

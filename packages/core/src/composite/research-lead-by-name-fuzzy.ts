@@ -306,10 +306,10 @@ export const researchLeadByNameFuzzy: Tool<ResearchLeadByNameFuzzyParams> = {
   name: "leadbay_research_lead_by_name_fuzzy",
   annotations: {
     title: "Look up a lead by company name (fuzzy)",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: RESEARCH_LEAD_BY_NAME_FUZZY_DESCRIPTION,
   inputSchema: {

@@ -49,7 +49,7 @@ export const newLens: Tool<NewLensParams> = {
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: false, // each call creates a distinct lens
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: NEW_LENS_DESCRIPTION,
   inputSchema: {
@@ -197,7 +197,7 @@ export const newLens: Tool<NewLensParams> = {
       const baseRef = params.base ?? "<active lens id>";
       return {
         ...envelope,
-        hint: `${envelope.hint} Before that re-call, read the geography of the lens being cloned — lens ${baseRef}'s \`criteria\` in \`leadbay_my_lenses\` names its \`location_ids\` (so does the \`lens://${baseRef}/definition\` resource on hosts that expose one; \`leadbay_pull_leads\` returns only \`lens: {id}\`, so it cannot). A clone INHERITS that geography, so if the base carries any, the new lens is scoped to it no matter that no location was passed — and calling the result whole-workspace would be false. If it does carry geography, either clear it on the new lens or say plainly which places it actually covers.`,
+        hint: `${envelope.hint} Before that re-call, read the geography of the lens being cloned — lens ${baseRef}'s \`criteria\` in \`leadbay_manage_lenses\` names its \`location_ids\` (so does the \`lens://${baseRef}/definition\` resource on hosts that expose one; \`leadbay_pull_leads\` returns only \`lens: {id}\`, so it cannot). A clone INHERITS that geography, so if the base carries any, the new lens is scoped to it no matter that no location was passed — and calling the result whole-workspace would be false. If it does carry geography, either clear it on the new lens or say plainly which places it actually covers.`,
       };
     }
 
@@ -362,7 +362,7 @@ export const newLens: Tool<NewLensParams> = {
           return {
             status: "orphan_created",
             lens: { id: created.id, name: created.name },
-            message: `Created "${created.name}" but applying its filter failed, and cleanup also failed. The lens exists with no criteria — delete it via leadbay_my_lenses(deleteLensId:"${created.id}", confirm:true) or set its audience with leadbay_adjust_audience.`,
+            message: `Created "${created.name}" but applying its filter failed, and cleanup also failed. The lens exists with no criteria — delete it via leadbay_manage_lenses(deleteLensId:"${created.id}", confirm:true) or set its audience with leadbay_adjust_audience.`,
             _meta: { region: client.region },
           };
         }

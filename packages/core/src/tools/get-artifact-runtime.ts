@@ -1,14 +1,14 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
 
-import { leadbay_artifact_kit as ARTIFACT_KIT_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { leadbay_get_artifact_runtime as ARTIFACT_KIT_DESCRIPTION } from "../tool-descriptions.generated.js";
 import {
   ARTIFACT_RUNTIME,
   ARTIFACT_USAGE_GUIDE,
   ARTIFACT_KIT_VERSION,
 } from "../artifact-runtime.generated.js";
 
-// leadbay_artifact_kit hands the agent everything to BUILD an interactive HTML
+// leadbay_get_artifact_runtime hands the agent everything to BUILD an interactive HTML
 // artifact (the user's cowork surface): the headless `@leadbay/components`
 // runtime string + a markdown usage guide. It makes no backend call and mutates
 // nothing — it returns static, version-locked content emitted by
@@ -24,7 +24,7 @@ export interface ArtifactKitParams {
 }
 
 export const artifactKit: Tool<ArtifactKitParams> = {
-  name: "leadbay_artifact_kit",
+  name: "leadbay_get_artifact_runtime",
   annotations: {
     title: "Artifact component kit",
     readOnlyHint: true,

@@ -412,14 +412,14 @@ describe.skipIf(!runLive)("@leadbay/mcp — live composite suite (#3504)", () =>
     expect(verdict?.verdict, `judge: ${verdict?.reason}`).not.toBe("broken");
   }, 120_000);
 
-  it("leadbay_recall_ordered_titles — returns titles array", async () => {
+  it("leadbay_list_previously_enriched_titles — returns titles array", async () => {
     if (pulledLeadIds.length === 0) {
       console.log("[smoke] skipped: no lead ids available");
       return;
     }
     const { result, verdict } = await exerciseAndJudge(
       client,
-      "leadbay_recall_ordered_titles",
+      "leadbay_list_previously_enriched_titles",
       { leadIds: pulledLeadIds },
       ["source"]
     );

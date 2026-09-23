@@ -36,9 +36,9 @@ export const createCampaign: Tool<CreateCampaignParams> = {
   annotations: {
     title: "Create a named campaign (optionally seeded with leads)",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: CREATE_CAMPAIGN_DESCRIPTION,
   optional: true, // gated behind LEADBAY_MCP_WRITE=1 in MCP

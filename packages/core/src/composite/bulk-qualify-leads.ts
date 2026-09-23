@@ -116,10 +116,10 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams, any> = {
   annotations: {
     title: "Bulk-qualify next N leads",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     // Same set of leads + same options ⇒ same backend job (idempotency
     // hash); already-qualified leads are silent no-ops. Re-call is safe.
-    idempotentHint: true,
+    idempotentHint: false,
     openWorldHint: true,
   },
   description: BULK_QUALIFY_LEADS_DESCRIPTION,

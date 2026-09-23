@@ -211,8 +211,8 @@ These never modify your account, so they're always safe to allow.
 | Tool | Description |
 |------|-------------|
 | `leadbay_list_sectors` | List the real sector taxonomy labels — so you (and the agent) name sectors correctly, no guessing |
-| `leadbay_recall_ordered_titles` | Recall the job titles previously enriched by the org (use before `leadbay_enrich_titles`) |
-| `leadbay_seed_candidates` | Read-only discovery surface for building a bigger lens |
+| `leadbay_list_previously_enriched_titles` | Recall the job titles previously enriched by the org (use before `leadbay_enrich_titles`) |
+| `leadbay_list_lens_seed_candidates` | Read-only discovery surface for building a bigger lens |
 | `leadbay_get_qualification_questions` | Retrieve the org's AI-agent qualification questions (how leads are scored) |
 | `leadbay_get_lead_custom_fields` | Retrieve the custom-field values stored on one lead |
 | `leadbay_list_mappable_fields` | List the CRM fields you can map an import onto |
@@ -235,7 +235,7 @@ These never modify your account, so they're always safe to allow.
 | `leadbay_open_billing_portal` | Open the billing portal |
 | `leadbay_acknowledge_notification` | Clear a terminal bulk-job notification so it stops resurfacing |
 | `leadbay_report_friction` | Report a problem to the Leadbay team — asks you first, and shows you what was sent (no account change) |
-| `leadbay_artifact_kit` | Fetch the headless view-models the agent uses to build an interactive HTML artifact |
+| `leadbay_get_artifact_runtime` | Fetch the headless view-models the agent uses to build an interactive HTML artifact |
 
 ### Write actions (on by default since 0.3.0; set `LEADBAY_MCP_WRITE=0` to disable)
 
@@ -272,11 +272,11 @@ These take action on your account. Every action is one you could take yourself i
 
 | Tool | Description |
 |------|-------------|
-| `leadbay_my_lenses` | List, switch, rename/describe, or delete your lenses (delete is confirm-gated) |
+| `leadbay_manage_lenses` | List, switch, rename/describe, or delete your lenses (delete is confirm-gated) |
 | `leadbay_new_lens` | Create a named lens with sector / company-size (and optional location) criteria |
 | `leadbay_adjust_audience` | Edit a lens's audience ("stop showing me companies over 50 employees"); pass `lensName` to edit a lens by name |
 | `leadbay_extend_lens` | Fill your current lens with more leads on demand (subject to a daily refill quota) |
-| `leadbay_refine_prompt` | Refine the qualification prompt that scores your leads |
+| `leadbay_refine_lead_targeting` | Refine the qualification prompt that scores your leads |
 | `leadbay_answer_clarification` | Answer a clarification question Leadbay asked about your audience |
 
 **Imports & campaigns**
@@ -312,7 +312,7 @@ Low-level, single-API-call tools for power users and integrations (`leadbay_disc
 
 The MCP server automatically uses your **active lens** (the last lens you used in Leadbay). Just call `leadbay_pull_leads` and it works — no lens configuration needed.
 
-You can also manage lenses directly from chat: `leadbay_my_lenses` lists them and switches/renames/deletes; `leadbay_new_lens` creates a named one with sector/size criteria; and `leadbay_adjust_audience` edits an existing lens (the active one, or any lens by name via `lensName`). Sector names resolve against the live taxonomy — `leadbay_list_sectors` surfaces the real labels.
+You can also manage lenses directly from chat: `leadbay_manage_lenses` lists them and switches/renames/deletes; `leadbay_new_lens` creates a named one with sector/size criteria; and `leadbay_adjust_audience` edits an existing lens (the active one, or any lens by name via `lensName`). Sector names resolve against the live taxonomy — `leadbay_list_sectors` surfaces the real labels.
 
 `leadbay_research_lead_by_id` bundles multiple API calls (lead details + AI qualification + contacts) into a single response. If some data isn't available yet, it returns partial results instead of failing.
 

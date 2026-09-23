@@ -1,5 +1,30 @@
 # Changelog — @leadbay/mcp
 
+## 0.40.0 — 2026-09-22 — every tool says plainly what it does and what it changes
+
+- **Each tool now says what it does before it says when to use it.** A tool's
+  description used to open with the phrases that trigger it. It opens with one
+  or two sentences on what the tool does, so both the assistant and a reviewer
+  read the purpose first.
+- **Every tool declares honestly whether it only reads.** Pulling leads,
+  researching a company and opening a follow-up list all write something small
+  back to your account — they record which leads you were shown so the same
+  ones stop coming back tomorrow. They used to be advertised as pure reads.
+  They are now declared as actions, so your assistant can tell you before it
+  runs one.
+- **Only the tools that really reach outside your account say so.** Everything
+  that just talks to your own Leadbay workspace no longer claims to reach the
+  open internet. The fourteen that genuinely do — finding new companies,
+  qualifying them, buying contact details, sending feedback — say so, and each
+  one now carries a written reason.
+- **Six tools were renamed to say what they do.** "my lenses" also switches,
+  renames and deletes a view, so it is now "manage lenses". "refine prompt"
+  edits what your account looks for, so it is now "refine lead targeting". The
+  other four are "list previously enriched titles", "list lens seed
+  candidates", "get artifact runtime" and "report artifact error".
+- **Wording that ranked one tool above another is gone.** Tool descriptions no
+  longer say one surface beats another or that one path is preferred.
+
 ## 0.39.0 — 2026-09-15
 
 Two changes merged since 0.38.2 (#231, #232), both product#4131.
@@ -123,7 +148,7 @@ of the remaining 15:
 
 - `leadbay_account_history`, `leadbay_team_activity` — rich nested payloads the
   model previously had to infer from prose.
-- `leadbay_getting_started`, `leadbay_artifact_kit` — static manifests; cheap to
+- `leadbay_getting_started`, `leadbay_get_artifact_runtime` — static manifests; cheap to
   declare, and both are consumed programmatically.
 
 Each gets a real entry in `output-schema-conformance.test.ts` CASES, not an
@@ -603,7 +628,7 @@ vise en priorité les entreprises qui ont plus de 100 voitures dans leur parc"*,
 *"les transporteurs ne sont pas forcément de bons prospects sauf ceux qui font
 du last mile delivery"*. Stored as notes those changed one conversation. The
 new `headers/durable-preferences` snippet, included by the seven prompts that
-carried the memory preamble, routes them to `leadbay_refine_prompt` instead,
+carried the memory preamble, routes them to `leadbay_refine_lead_targeting` instead,
 where they mutate `computing_intelligence` and change what the product finds
 for the whole organization. A rejected lead goes to a dislike.
 
@@ -991,7 +1016,7 @@ account-**conquest** plan from Leadbay data: the accounts worth activating,
 ranked by the strongest Leadbay signal (not by money — Leadbay holds no
 invoicing data), each carrying one of six strategic motifs (SAUVETAGE / PLAN DE
 COMPTE / MONTÉE EN GAMME / RÉVEIL / CONQUÊTE / SUIVI) that drives its phone
-pitch and three-step checklist (product#3863). Renders via `leadbay_artifact_kit` when the user
+pitch and three-step checklist (product#3863). Renders via `leadbay_get_artifact_runtime` when the user
 accepts the offered deck; the chat table stands alone otherwise.
 
 **Leadbay-only by design.** Leadbay holds no invoicing data, so the plan ranks
@@ -1024,7 +1049,7 @@ split those rows into the Pilotage four.
 Fixes a stale `server.json` npx pin that tracked the `0.25` line while the
 package was on `0.26`, and bumps the `.claude-plugin` bundle off `@leadbay/mcp@0.13`,
 which predated `leadbay_get_qualification_questions`,
-`leadbay_scan_portfolio_signals` and `leadbay_artifact_kit`.
+`leadbay_scan_portfolio_signals` and `leadbay_get_artifact_runtime`.
 
 ## 0.27.0 — 2026-07-31
 
@@ -1168,7 +1193,7 @@ Guided campaign builder.
 Headless artifact SDK + two always-on read tools, so the user's Claude (cowork) can build interactive HTML artifacts that call Leadbay.
 
 - **New package `@leadbay/components`** — vanilla view-models (`lb.field` / `action` / `resource` / `list`, plus domain helpers `outreach`, `note`, `like`/`dislike`, `leadHistory`, `leadProfile`, `callList`, `enrichment`, `teamActivity`) that own a control's data lifecycle: populate-from-API, value/loading/error, validation, polling, request sequencing, a 30s call timeout, and the `report_outreach` verification + `_triggered_by` footguns. The agent owns 100% of markup; the library renders nothing. The build emits a minified runtime into core; a `components:check` drift guard fails CI if the committed runtime goes stale.
-- **`leadbay_artifact_kit`** (always-on read) — returns the runtime string + a usage guide the agent reads to assemble an artifact. Lives in `tools/` (granular-shaped) so a kit fetch carries no `_triggered_by` mandate.
+- **`leadbay_get_artifact_runtime`** (always-on read) — returns the runtime string + a usage guide the agent reads to assemble an artifact. Lives in `tools/` (granular-shaped) so a kit fetch carries no `_triggered_by` mandate.
 - **`leadbay_team_activity`** (always-on read) — per-rep activity leaderboard + activity trend for a look-back window, wrapping `/kpi/users` + `/kpi/trends` (the web Dashboard-Manager data). Admins get the whole org; non-admins are scoped to themselves by the backend.
 
 Validated by agent-dogfood tests: an independent agent builds a working cold-call sheet + a manager dashboard from the usage guide alone, and jsdom asserts the real tool calls fire with the right args. (Core 0.8.4, components 0.3.1.)
@@ -1261,11 +1286,11 @@ Backend long-task notifications are now consumed by the MCP. When the user (or a
 ## 0.17.3 — 2026-06-01
 
 - **Lens management on the default surface**: lenses are now fully manageable from chat, no `LEADBAY_MCP_ADVANCED` needed.
-  - `leadbay_my_lenses` (write) — list your lenses, switch the active one, rename / set description, or delete (delete is confirm-gated and refuses the default lens).
+  - `leadbay_manage_lenses` (write) — list your lenses, switch the active one, rename / set description, or delete (delete is confirm-gated and refuses the default lens).
   - `leadbay_new_lens` (write) — create a named lens with sector/size criteria in one call; previews and confirms before creating, and rolls back the created lens if applying its filter fails (no orphan half-built lenses).
   - `leadbay_adjust_audience` — new `lensName` param edits a lens **by name** without switching your active lens (edit-only).
   - `leadbay_list_sectors` (read, always-on) — the sector taxonomy lookup, so the agent stops guessing sector names.
-- **Routing**: `leadbay_adjust_audience` and `leadbay_refine_prompt` gained routing blocks so "create a lens" reaches `new_lens` (not `refine_prompt`) and "add X to my Y lens" fills `lensName` instead of editing the active lens.
+- **Routing**: `leadbay_adjust_audience` and `leadbay_refine_lead_targeting` gained routing blocks so "create a lens" reaches `new_lens` (not `refine_prompt`) and "add X to my Y lens" fills `lensName` instead of editing the active lens.
 - **Backend contract fixes** (were causing `400 JSON deserialization error` on lens create/edit, verified live): `POST /lenses` `base` sent as a string; `POST /lenses/:id/filter` sent as the unwrapped `{items:[…]}` body; `size` criteria carry both `min` and `max`.
 
 ## 0.17.2 — 2026-06-01
@@ -1289,7 +1314,7 @@ Backend long-task notifications are now consumed by the MCP. When the user (or a
     `quota.used_today` + `quota.resets_at` and a message instructing the
     agent to surface three options to the user (smaller `extra_count` /
     wait for reset / upgrade plan).
-  - `leadbay_seed_candidates` (read) — internal scaffolding for the
+  - `leadbay_list_lens_seed_candidates` (read) — internal scaffolding for the
     extend flow. Returns ranked candidate leads with rich signal
     (description, sector, tags, qq_answers, engagement). The agent picks
     3–5 seeds silently and chains to `extend_lens`; the user never
@@ -1697,7 +1722,7 @@ Behavior-changing release: closes [product#3504](https://github.com/leadbay/prod
 
 ### Coverage — composite write tools default ON
 
-- **`LEADBAY_MCP_WRITE` default is now `"1"` (ON).** The composite write tools (`leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, `leadbay_refine_prompt`, `leadbay_report_outreach`, `leadbay_adjust_audience`, `leadbay_answer_clarification`, `leadbay_import_leads`) are exposed by default. Set `LEADBAY_MCP_WRITE=0` (or `--no-write` on `install`) to disable them.
+- **`LEADBAY_MCP_WRITE` default is now `"1"` (ON).** The composite write tools (`leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, `leadbay_refine_lead_targeting`, `leadbay_report_outreach`, `leadbay_adjust_audience`, `leadbay_answer_clarification`, `leadbay_import_leads`) are exposed by default. Set `LEADBAY_MCP_WRITE=0` (or `--no-write` on `install`) to disable them.
 - **`SERVER_INSTRUCTIONS` is now dynamic.** The system prompt sent to MCP clients references only the tools actually registered on this instance. Read-only-mode agents receive a different prompt that omits the verification mandate and tells the agent to ask the user to enable writes if they request a config-mutating action.
 - **`leadbay-mcp install --include-write` is a no-op (deprecated).** Writes are on by default. Pass `--no-write` for the inverse. The deprecation warning prints **before** the password prompt so it's not buried.
 - **`LEADBAY_MCP_WRITE` value-vocabulary expanded.** In 0.2.x only `"1"` was ON; `"true"` / `"yes"` / `"on"` were treated as OFF. In 0.3.0 the parser accepts all of those as ON, and `"0"` / `"false"` / `"no"` / `"off"` as OFF. Unrecognized values default to ON with a one-shot stderr warning. **Existing operators using `=true` / `=yes` / `=on` will see writes flip ON.** See [MIGRATION.md](./MIGRATION.md).
@@ -1755,13 +1780,13 @@ Claude Desktop 2026 compatibility + install UX polish. Also publishes the `refin
 - **New: shipping a `.dxt` bundle** — drag-drop into Claude Desktop 2026 → Settings → Extensions. Uploaded to each [GitHub Release](https://github.com/leadbay/mcp/releases). Dialog asks for token + region + write-toggle; no terminal required. Manifest is DXT 0.2 (`dxt_version: "0.2"`, `user_config.leadbay_token.sensitive: true`). Source for the build lives in `packages/dxt/`.
 - **Fix**: `login` 401 errors no longer end with a dangling `:` when the backend returns an empty body. Messages now read `login failed (401) at <url> (wrong email or password?)`. 429/5xx get their own hints too. The core helper `formatLoginError` is exported from `@leadbay/core` so the MCP and ClawHub surfaces stay in sync.
 - **README**: new section on `npm install -g` EACCES (sudo / npx / nvm workarounds — common on the official nodejs.org `.pkg`), and a pointer to the `.dxt` install for Claude Desktop 2026.
-- **Also shipping** (previously merged but not yet published to npm) — `leadbay_refine_prompt` / `leadbay_set_user_prompt` now send `{ user_prompt }` instead of `{ prompt }` to `POST /user_prompt` ([product#3508](https://github.com/leadbay/product/issues/3508)). Fixes the JSON deserialization 400 Ludo hit during the 0.2.2 install session.
+- **Also shipping** (previously merged but not yet published to npm) — `leadbay_refine_lead_targeting` / `leadbay_set_user_prompt` now send `{ user_prompt }` instead of `{ prompt }` to `POST /user_prompt` ([product#3508](https://github.com/leadbay/product/issues/3508)). Fixes the JSON deserialization 400 Ludo hit during the 0.2.2 install session.
 
 ## 0.2.3 — 2026-04-21
 
 Bug fix release.
 
-- **Fix [product#3508](https://github.com/leadbay/product/issues/3508)**: `leadbay_refine_prompt` (and the granular `leadbay_set_user_prompt`) now send the correct `{ user_prompt }` body key to `POST /organizations/{orgId}/user_prompt`. Previous versions sent `{ prompt }`, which the backend's strict kotlinx.serialization rejected with a JSON deserialization error (400). The `dry_run` preview for both tools was printing the wrong shape too, which hid the mismatch from anyone inspecting it. New unit tests pin the wire key so this contract can't silently regress again.
+- **Fix [product#3508](https://github.com/leadbay/product/issues/3508)**: `leadbay_refine_lead_targeting` (and the granular `leadbay_set_user_prompt`) now send the correct `{ user_prompt }` body key to `POST /organizations/{orgId}/user_prompt`. Previous versions sent `{ prompt }`, which the backend's strict kotlinx.serialization rejected with a JSON deserialization error (400). The `dry_run` preview for both tools was printing the wrong shape too, which hid the mismatch from anyone inspecting it. New unit tests pin the wire key so this contract can't silently regress again.
 
 ## 0.2.2 — 2026-04-21
 

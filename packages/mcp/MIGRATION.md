@@ -151,7 +151,7 @@ This release fixes [product#3504](https://github.com/leadbay/product/issues/3504
 
 ## 1. `LEADBAY_MCP_WRITE` defaults to ON
 
-In 0.2.x the composite write tools (`leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, `leadbay_refine_prompt`, `leadbay_report_outreach`, `leadbay_adjust_audience`, `leadbay_answer_clarification`, `leadbay_import_leads`) were gated behind `LEADBAY_MCP_WRITE=1`. The `SERVER_INSTRUCTIONS` referenced them anyway → users got an agent system prompt that lied about what was available.
+In 0.2.x the composite write tools (`leadbay_bulk_qualify_leads`, `leadbay_enrich_titles`, `leadbay_refine_lead_targeting`, `leadbay_report_outreach`, `leadbay_adjust_audience`, `leadbay_answer_clarification`, `leadbay_import_leads`) were gated behind `LEADBAY_MCP_WRITE=1`. The `SERVER_INSTRUCTIONS` referenced them anyway → users got an agent system prompt that lied about what was available.
 
 **0.3.0**: `LEADBAY_MCP_WRITE` defaults to `"1"` (ON). The system prompt is built from the actual exposed tool set, so it stops lying. To restore the previous read-only behavior, set `LEADBAY_MCP_WRITE=0` (or `--no-write` on `leadbay-mcp install`).
 
@@ -232,12 +232,12 @@ remain available behind config flags.
 - **New composite agent surface** (the agent's default toolbox):
   - `leadbay_pull_leads` — paginated wishlist with qualification digest
   - `leadbay_research_lead` — full lead detail (qualification → signals → firmographics → contacts → engagement)
-  - `leadbay_recall_ordered_titles` — show titles previously enriched
+  - `leadbay_list_previously_enriched_titles` — show titles previously enriched
   - `leadbay_account_status` — admin / language / quota / intelligence state
   - `leadbay_bulk_qualify_leads` — paginate past already-qualified, fan-out + poll
   - `leadbay_enrich_titles` — selection-lifecycle-managed bulk enrichment
   - `leadbay_adjust_audience` — sector / size filter mutation with permission auto-routing
-  - `leadbay_refine_prompt` — set the org intelligence-refinement prompt
+  - `leadbay_refine_lead_targeting` — set the org intelligence-refinement prompt
   - `leadbay_answer_clarification` — answer the question Leadbay raised
   - `leadbay_report_outreach` — log outreach **with mandatory verification**
 - **New gating model** (both MCP and OpenClaw):

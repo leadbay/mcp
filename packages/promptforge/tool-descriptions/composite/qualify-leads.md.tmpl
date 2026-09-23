@@ -2,12 +2,10 @@
 name: leadbay_qualify_leads
 kind: tool-description
 short_description: |
-  One server-side batch (up to 500) over companies the user ALREADY names —
-  a pasted list, a file, CRM rows, prior deliveries. Free identity pass
-  (qualify:false): is each one in Leadbay, its website and LinkedIn. Paid
-  pass: fit verdicts with evidence and the right contact on each. Use when
-  the user lists the companies. Don't use it to FIND new companies
-  (leadbay_find_new_leads) or for the lens top-N (leadbay_bulk_qualify_leads).
+  Run one server-side batch (up to 500) over companies the user already named
+  — a pasted list, a file, CRM rows. Identity pass returns website and
+  LinkedIn; the qualified pass adds fit verdicts with evidence and a contact.
+  Use leadbay_find_new_leads to discover companies instead.
 routing:
   triggers:
     - "for each of these companies, give me the website / LinkedIn"

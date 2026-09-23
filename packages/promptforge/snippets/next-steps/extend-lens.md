@@ -11,7 +11,7 @@ Pick the row matching the response `status`. Seed-picking is internal; do NOT ad
 | `quota_exceeded`        | "Wait until the daily quota resets at `<resets_at>`"          | (no call — surface the reset time to the user)         |
 | `quota_exceeded`        | "Upgrade plan for a higher daily limit"                       | (no call — direct user to contact account manager / sales) |
 | `refresh_in_progress`   | "Lens is already filling — pull leads in a minute"            | `leadbay_pull_leads()` (after a short wait)            |
-| `no_valid_seeds`        | (silent retry — re-call `leadbay_seed_candidates` then `leadbay_extend_lens`) | internal — only surface if the second attempt also fails |
+| `no_valid_seeds`        | (silent retry — re-call `leadbay_list_lens_seed_candidates` then `leadbay_extend_lens`) | internal — only surface if the second attempt also fails |
 | `no_candidates`         | "Widen the audience — this lens has nothing left to add"       | `leadbay_adjust_audience()` — never `leadbay_extend_lens` again |
 | `no_candidates` (`reason.code: no_new_leads`) | "Work the leads already in the lens"        | `leadbay_pull_followups()`                             |
 

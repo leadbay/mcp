@@ -10,7 +10,7 @@ export const listLenses: Tool<Record<string, never>> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: LIST_LENSES_DESCRIPTION,
   inputSchema: {

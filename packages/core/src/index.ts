@@ -108,7 +108,7 @@ import { setQualificationQuestions } from "./composite/set-qualification-questio
 import { getLeadCustomFields } from "./composite/get-lead-custom-fields.js";
 import { accountHistory } from "./composite/account-history.js";
 import { scanPortfolioSignals } from "./composite/scan-portfolio-signals.js";
-import { recallOrderedTitles } from "./composite/recall-ordered-titles.js";
+import { recallOrderedTitles } from "./composite/list-previously-enriched-titles.js";
 import { accountStatus } from "./composite/account-status.js";
 import { bulkQualifyLeads } from "./composite/bulk-qualify-leads.js";
 import { resolveImportRows } from "./composite/resolve-import-rows.js";
@@ -119,21 +119,21 @@ import { qualifyStatus } from "./composite/qualify-status.js";
 import { enrichTitles } from "./composite/enrich-titles.js";
 import { bulkEnrichStatus } from "./composite/bulk-enrich-status.js";
 import { adjustAudience } from "./composite/adjust-audience.js";
-import { refinePrompt } from "./composite/refine-prompt.js";
-import { seedCandidates } from "./composite/seed-candidates.js";
+import { refinePrompt } from "./composite/refine-lead-targeting.js";
+import { seedCandidates } from "./composite/list-lens-seed-candidates.js";
 import { findNewLeads } from "./composite/find-new-leads.js";
 import { qualifyLeads } from "./composite/qualify-leads.js";
 import { leadJobStatus } from "./composite/lead-job-status.js";
 import { extendLens } from "./composite/extend-lens.js";
-import { myLenses } from "./composite/my-lenses.js";
+import { myLenses } from "./composite/manage-lenses.js";
 import { newLens } from "./composite/new-lens.js";
 import { answerClarification } from "./composite/answer-clarification.js";
 import { reportOutreach } from "./composite/report-outreach.js";
 import { reportFriction } from "./composite/report-friction.js";
 import { teamActivity } from "./composite/team-activity.js";
 import { sendFeedback } from "./tools/send-feedback.js";
-import { artifactKit } from "./tools/artifact-kit.js";
-import { artifactEvent } from "./tools/artifact-event.js";
+import { artifactKit } from "./tools/get-artifact-runtime.js";
+import { artifactEvent } from "./tools/report-artifact-error.js";
 
 import type { Tool } from "./types.js";
 

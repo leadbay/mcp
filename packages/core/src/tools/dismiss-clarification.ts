@@ -7,9 +7,9 @@ export const dismissClarification: Tool<Record<string, never>> = {
   annotations: {
     title: "Dismiss a clarification",
     readOnlyHint: false,
-    destructiveHint: true,
-    idempotentHint: false,
-    openWorldHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
   },
   description: DISMISS_CLARIFICATION_DESCRIPTION,
   optional: true,

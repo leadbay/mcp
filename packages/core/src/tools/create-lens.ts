@@ -13,9 +13,9 @@ export const createLens: Tool<CreateLensParams> = {
   annotations: {
     title: "Create a new lens",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: CREATE_LENS_DESCRIPTION,
   optional: true,

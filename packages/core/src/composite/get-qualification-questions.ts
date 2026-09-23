@@ -24,7 +24,7 @@ export const getQualificationQuestions: Tool<Record<string, never>> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_QUALIFICATION_QUESTIONS_DESCRIPTION,
   inputSchema: {
@@ -52,7 +52,7 @@ export const getQualificationQuestions: Tool<Record<string, never>> = {
       targeting_prompt: {
         type: ["string", "null"],
         description:
-          "The org's free-text targeting prompt (user_prompt) the AI agent follows, or null when unset. Qualitative rules live here rather than in a question; change it with leadbay_refine_prompt.",
+          "The org's free-text targeting prompt (user_prompt) the AI agent follows, or null when unset. Qualitative rules live here rather than in a question; change it with leadbay_refine_lead_targeting.",
       },
       is_admin: {
         type: "boolean",

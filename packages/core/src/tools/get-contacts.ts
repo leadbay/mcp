@@ -14,7 +14,7 @@ export const getContacts: Tool<GetContactsParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_CONTACTS_DESCRIPTION,
   inputSchema: {

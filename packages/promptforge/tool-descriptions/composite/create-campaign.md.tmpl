@@ -45,9 +45,9 @@ rendering_hint: |
   follow-up.
 annotations:
   readOnlyHint: false
-  destructiveHint: true
+  destructiveHint: false
   idempotentHint: false
-  openWorldHint: true
+  openWorldHint: false
 ---
 Create a new campaign — a server-persisted grouping of leads the user (or their manager) plans to work systematically. Wraps `POST /campaigns` (see `.context/campaigns-probe/API.md` for the discovered shape). Body is snake_case (the backend's `apiJson` uses `JsonNamingStrategy.SnakeCase`); this composite handles that translation — agents pass camelCase via the input schema but the wire is snake_case.
 

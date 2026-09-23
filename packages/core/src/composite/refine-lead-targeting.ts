@@ -1,7 +1,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext, ClarificationPayload } from "../types.js";
 
-import { leadbay_refine_prompt as REFINE_PROMPT_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { leadbay_refine_lead_targeting as REFINE_PROMPT_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface RefinePromptParams {
   prompt: string;
   clarification_poll_attempts?: number;
@@ -13,7 +13,7 @@ const DEFAULT_POLL_ATTEMPTS = 2;
 const DEFAULT_POLL_GAP_MS = 5_000;
 
 export const refinePrompt: Tool<RefinePromptParams> = {
-  name: "leadbay_refine_prompt",
+  name: "leadbay_refine_lead_targeting",
   annotations: {
     title: "Refine the audience prompt",
     readOnlyHint: false,
@@ -22,7 +22,7 @@ export const refinePrompt: Tool<RefinePromptParams> = {
     // call replaces the prior prompt — a second call with a different
     // instruction is NOT idempotent (the second prompt wins).
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: REFINE_PROMPT_DESCRIPTION,
   inputSchema: {
@@ -92,7 +92,7 @@ export const refinePrompt: Tool<RefinePromptParams> = {
       return {
         error: true,
         code: "FORBIDDEN",
-        message: "leadbay_refine_prompt requires admin rights on the org",
+        message: "leadbay_refine_lead_targeting requires admin rights on the org",
         hint:
           "Ask your Leadbay org admin to set the refinement prompt, or use leadbay_adjust_audience for firmographic changes",
       };
@@ -140,7 +140,7 @@ export const refinePrompt: Tool<RefinePromptParams> = {
             const createdMs = Date.parse(c.created_at);
             if (Number.isFinite(createdMs) && createdMs < postedAt - STALE_GUARD_MS) {
               ctx?.logger?.warn?.(
-                `refine_prompt: stale clarification (created_at=${c.created_at}, posted=${new Date(postedAt).toISOString()}) — ignoring`
+                `refine_lead_targeting: stale clarification (created_at=${c.created_at}, posted=${new Date(postedAt).toISOString()}) — ignoring`
               );
               continue;
             }
@@ -150,7 +150,7 @@ export const refinePrompt: Tool<RefinePromptParams> = {
         }
       } catch (err: any) {
         ctx?.logger?.warn?.(
-          `refine_prompt: clarification poll error: ${err?.message}`
+          `refine_lead_targeting: clarification poll error: ${err?.message}`
         );
       }
     }
@@ -224,7 +224,7 @@ export const refinePrompt: Tool<RefinePromptParams> = {
                 };
               } catch (err: any) {
                 ctx?.logger?.warn?.(
-                  `refine_prompt: pick_clarification POST failed after elicit: ${err?.message ?? err?.code ?? err}`
+                  `refine_lead_targeting: pick_clarification POST failed after elicit: ${err?.message ?? err?.code ?? err}`
                 );
                 // Fall through to telephone path; let the agent retry via
                 // answer_clarification.
@@ -235,7 +235,7 @@ export const refinePrompt: Tool<RefinePromptParams> = {
           // ask the user another way (or abandon).
         } catch (err: any) {
           ctx?.logger?.warn?.(
-            `refine_prompt: elicit failed: ${err?.message ?? err?.code ?? err} — falling back to telephone path`
+            `refine_lead_targeting: elicit failed: ${err?.message ?? err?.code ?? err} — falling back to telephone path`
           );
         }
       }

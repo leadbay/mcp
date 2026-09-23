@@ -13,9 +13,9 @@ export const addNote: Tool<AddNoteParams> = {
   annotations: {
     title: "Add a note on a lead",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: ADD_NOTE_DESCRIPTION,
   optional: true,

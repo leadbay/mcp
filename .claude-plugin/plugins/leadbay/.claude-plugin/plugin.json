@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "leadbay",
-  "version": "0.39.10",
+  "version": "0.40.0",
   "description": "AI lead discovery, qualification, and outreach prep on your Leadbay account.",
   "author": {
     "name": "Leadbay",
@@ -23,7 +23,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "--package=@leadbay/mcp@0.39",
+        "--package=@leadbay/mcp@0.40",
         "leadbay-mcp"
       ],
       "env": {
@@ -51,7 +51,7 @@
     "leadbay_mcp_write": {
       "type": "boolean",
       "title": "Enable composite write tools",
-      "description": "Expose composite write tools such as refine_prompt, adjust_audience, report_outreach, bulk_qualify_leads, enrich_titles, answer_clarification, and import_leads.",
+      "description": "Expose composite write tools such as leadbay_refine_lead_targeting, adjust_audience, report_outreach, bulk_qualify_leads, enrich_titles, answer_clarification, and import_leads.",
       "default": true,
       "required": false
     }

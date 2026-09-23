@@ -26,9 +26,9 @@ export const addLeadsToCampaign: Tool<AddLeadsParams> = {
   annotations: {
     title: "Add leads to an existing campaign",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: ADD_LEADS_DESCRIPTION,
   optional: true,

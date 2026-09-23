@@ -6,9 +6,9 @@ short_description: |
   out of leadbay_pull_followups until the window expires.
 annotations:
   readOnlyHint: false
-  destructiveHint: true
+  destructiveHint: false
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 ---
 Snooze (pushback) one or more leads for 3, 6, or 12 months. The leads remain in the user's pipeline but are excluded from `leadbay_pull_followups` until the pushback window expires. Use this when the user says "not now", "next quarter", "follow up in 3 months", "6 months out", "next year", or any equivalent deferral.
 

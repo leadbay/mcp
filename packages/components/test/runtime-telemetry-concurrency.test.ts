@@ -26,7 +26,7 @@ function installBridge(handler: (tool: string) => Promise<unknown>) {
 }
 
 const events = (sent: Sent[]) =>
-  sent.filter((s) => s.tool === "leadbay_artifact_event").map((s) => s.args);
+  sent.filter((s) => s.tool === "leadbay_report_artifact_error").map((s) => s.args);
 
 const settle = () => new Promise((r) => setTimeout(r, 30));
 

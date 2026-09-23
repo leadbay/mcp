@@ -718,7 +718,7 @@ const CASES: ConformanceCase[] = [
     },
   },
   {
-    toolName: "leadbay_recall_ordered_titles",
+    toolName: "leadbay_list_previously_enriched_titles",
     arguments: { leadIds: ["lead-9"] },
     setupMocks: () => {
       mockHttp([
@@ -952,7 +952,7 @@ const CASES: ConformanceCase[] = [
     },
   },
   {
-    toolName: "leadbay_refine_prompt",
+    toolName: "leadbay_refine_lead_targeting",
     arguments: { prompt: "focus on Spanish hospitals", dry_run: true },
     setupMocks: () => {
       mockHttp([
@@ -1146,7 +1146,7 @@ const CASES: ConformanceCase[] = [
     },
   },
   {
-    toolName: "leadbay_seed_candidates",
+    toolName: "leadbay_list_lens_seed_candidates",
     arguments: { lensId: 42, limit: 10, _triggered_by: "test: seed_candidates conformance" },
     setupMocks: () => {
       mockHttp([
@@ -1203,7 +1203,7 @@ const CASES: ConformanceCase[] = [
   },
   {
     // List path (no switch) — pure read, simplest deterministic happy path.
-    toolName: "leadbay_my_lenses",
+    toolName: "leadbay_manage_lenses",
     arguments: { _triggered_by: "test: my_lenses conformance" },
     setupMocks: () => {
       mockHttp([
@@ -1360,7 +1360,7 @@ const CASES: ConformanceCase[] = [
     },
   },
   {
-    toolName: "leadbay_artifact_kit",
+    toolName: "leadbay_get_artifact_runtime",
     arguments: {},
     setupMocks: () => {
       mockHttp([]);

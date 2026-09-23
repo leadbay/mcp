@@ -59,7 +59,7 @@ export const addContact: Tool<AddContactParams, AddContactResult> = {
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   inputSchema: {
     type: "object",

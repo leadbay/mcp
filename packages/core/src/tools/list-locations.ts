@@ -17,7 +17,7 @@ export const listLocations: Tool<ListLocationsParams, GeoSearchResponse> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: LIST_LOCATIONS_DESCRIPTION,
   inputSchema: {

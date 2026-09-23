@@ -14,8 +14,8 @@ created and its leads are streaming in, and offer to pull in ~30s.
 |-----------------------------------------|------------------------------------------|--------------------------------------------------------|
 | `preview` (not yet created)             | "Yes, create this lens"                  | `leadbay_new_lens(...same args..., confirm=true)`      |
 | `preview` (not yet created)             | "Change the sectors/size first"          | (re-ask the user, then `leadbay_new_lens` with new args) |
-| Lens created, `computing_wishlist=true` | "Give it ~30s, then pull leads (the wishlist is still computing)" | `leadbay_my_lenses(switchToLensId=<new id>)` then `leadbay_pull_leads()` after ~30s |
-| Lens created (no criteria)              | "Switch to it and pull leads"            | `leadbay_my_lenses(switchToLensId=<new id>)` then `leadbay_pull_leads()` |
+| Lens created, `computing_wishlist=true` | "Give it ~30s, then pull leads (the wishlist is still computing)" | `leadbay_manage_lenses(switchToLensId=<new id>)` then `leadbay_pull_leads()` after ~30s |
+| Lens created (no criteria)              | "Switch to it and pull leads"            | `leadbay_manage_lenses(switchToLensId=<new id>)` then `leadbay_pull_leads()` |
 | Lens created                            | "Refine the audience further"            | `leadbay_adjust_audience(lensName=<new name>, ...)`    |
 | Lens created                            | "Leave it; keep my current lens active"  | (no call)                                              |
 | `ambiguous_sectors`                     | "Pick the right sector and create"       | `leadbay_new_lens(name=..., sectors=[<chosen id>])`    |

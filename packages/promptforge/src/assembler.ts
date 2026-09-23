@@ -22,17 +22,24 @@ function emitRoutingBlock(routing: Routing | undefined): string {
     lines.push(`Trigger phrases: ${phrases}.`);
   }
   if (routing.anti_triggers && routing.anti_triggers.length > 0) {
-    const formatted = routing.anti_triggers
-      .map(
-        (a) =>
-          `"${a.phrase}" → \`${a.route_to}\`` +
-          (a.gated ? " (only if listed)" : "")
-      )
+    // Group by destination. Seven phrases that all route to
+    // `leadbay_pull_followups` used to repeat the target seven times; the
+    // header is the part of the description hosts truncate to, so the
+    // repetition cost real routing signal.
+    const byTarget = new Map<string, string[]>();
+    for (const a of routing.anti_triggers) {
+      const key = `\`${a.route_to}\`` + (a.gated ? " (only if listed)" : "");
+      const bucket = byTarget.get(key);
+      if (bucket) bucket.push(a.phrase);
+      else byTarget.set(key, [a.phrase]);
+    }
+    const formatted = [...byTarget.entries()]
+      .map(([target, phrases]) => `${phrases.map((p) => `"${p}"`).join(", ")} → ${target}`)
       .join("; ");
     lines.push(`Do NOT use for: ${formatted}.`);
   }
   if (routing.prefer_when) {
-    lines.push(`Prefer when: ${routing.prefer_when.trim()}`);
+    lines.push(`Use this when: ${routing.prefer_when.trim()}`);
   }
   if (routing.examples) {
     const positives = routing.examples.positive ?? [];
@@ -47,6 +54,23 @@ function emitRoutingBlock(routing: Routing | undefined): string {
     }
   }
   return lines.join("\n\n");
+}
+
+/**
+ * Generate the `## WHAT IT DOES` block from `short_description`.
+ *
+ * Emitted FIRST, before routing, so the opening sentences of every tool
+ * description state what the tool does rather than which phrases trigger it.
+ * OpenAI's plugin guidelines require each tool to "include a description that
+ * explains its purpose explicitly and accurately"; a description that opens
+ * with a trigger-phrase list does not, and reads as recommending broad
+ * triggering.
+ */
+function emitWhatItDoesBlock(shortDescription: string | undefined): string {
+  if (!shortDescription) return "";
+  const oneLine = shortDescription.replace(/\s+/g, " ").trim();
+  if (!oneLine) return "";
+  return ["## WHAT IT DOES", oneLine].join("\n\n");
 }
 
 /**
@@ -67,7 +91,11 @@ function emitRenderHintBlock(hint: string | undefined): string {
  */
 export function applyDescriptionHeader(fm: Frontmatter, body: string): string {
   const blocks: string[] = [];
+  const whatItDoes = emitWhatItDoesBlock(fm.short_description);
   const routing = emitRoutingBlock(fm.routing);
+  // Only lead with WHAT IT DOES when there is a routing block after it —
+  // templates without routing already open with their own prose body.
+  if (whatItDoes && routing) blocks.push(whatItDoes);
   if (routing) blocks.push(routing);
   const renderHint = emitRenderHintBlock(fm.rendering_hint);
   if (renderHint) blocks.push(renderHint);

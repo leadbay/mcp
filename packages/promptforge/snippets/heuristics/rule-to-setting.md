@@ -27,7 +27,7 @@ already covered without seeing them.
 | A sector, a headcount band, a territory | `leadbay_adjust_audience` / `leadbay_new_lens` filters — never a question |
 | A company trait a stranger could estimate from that company's own website or registry record — "runs its own maintenance crew", "operates a large vehicle fleet", "is legally active and not in liquidation" | a qualification question |
 | A kind of company that is never the buyer — "consulting firms", "franchise locations of national chains", "subsidiaries of large listed groups" | a negative criterion of the ideal buyer profile, `leadbay_set_qualification_questions({add_anti_patterns})`. It uses no question slot, and qualification reads it as a negative signal |
-| A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, `leadbay_refine_prompt` |
+| A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, `leadbay_refine_lead_targeting` |
 | Named companies — "exclude Groupe Solidum, Dentego" | `leadbay_dislike_lead` with the user's words as `reason` / `leadbay_set_lead_status` on those leads. A status stores no reason, so add the user's reason with `leadbay_add_note`. A question must NEVER name a company |
 | CRM state — "already contacted", "already in a campaign", "already excluded" | read it: `leadbay_pull_followups`, `leadbay_list_campaigns`. A question cannot observe your own history |
 | A delivery requirement — "email AND phone mandatory", "only score 54–95" | enrichment plus your own post-filter of the result. A question scores the COMPANY; it cannot see whether Leadbay holds a phone number for a contact |
@@ -103,7 +103,7 @@ three different dimensions — not one. Propose all three at once.
 **5 — The change is the user's call, not yours.** This holds for the questions,
 the targeting prompt and the buyer profile alike. Show the exact text you
 propose and what it will change, then get an explicit yes before calling
-`leadbay_set_qualification_questions` or `leadbay_refine_prompt`. Ask through
+`leadbay_set_qualification_questions` or `leadbay_refine_lead_targeting`. Ask through
 `ask_user_input_v0` when the host offers it. A removal or a swap additionally
 needs `confirm:true`. Do not write an org setting in the same turn the user
 first stated the rule — and once they have said yes, actually write it:

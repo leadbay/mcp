@@ -17,7 +17,7 @@ export const answerClarification: Tool<AnswerClarificationParams> = {
     // triggers regeneration. Re-calling with a different answer wins;
     // not idempotent.
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: ANSWER_CLARIFICATION_DESCRIPTION,
   inputSchema: {
@@ -83,7 +83,7 @@ export const answerClarification: Tool<AnswerClarificationParams> = {
       return {
         status: "no_pending_clarification",
         hint:
-          "There's no pending clarification — either it was already answered or none was raised. Use leadbay_refine_prompt to set a new prompt.",
+          "There's no pending clarification — either it was already answered or none was raised. Use leadbay_refine_lead_targeting to set a new prompt.",
       };
     }
 

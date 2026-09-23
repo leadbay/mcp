@@ -891,7 +891,7 @@ export interface ToolContext {
     severity?: string;
   }) => boolean;
   // Deliver a runtime failure reported by the @leadbay/components artifact
-  // runtime (leadbay_artifact_event — product#4081). Wired by the MCP server,
+  // runtime (leadbay_report_artifact_error — product#4081). Wired by the MCP server,
   // which routes it the way the rest of the repo splits telemetry: the four
   // exception kinds to Sentry via captureException, the three outcome kinds to
   // PostHog. NOT leadbay_report_friction — that tool is consent-gated and must
@@ -931,19 +931,28 @@ export type JSONSchema = Record<string, unknown>;
 export interface ToolAnnotations {
   // Short human-readable label for client UIs. Optional; falls back to name.
   title?: string;
-  // True if the tool does not modify any state (calling it is a no-op for
-  // observability purposes). Composites that only fetch are readOnly:true.
-  readOnlyHint?: boolean;
-  // True if the tool may perform an irreversible side-effect — mutates state
-  // in a way that can't be cleanly undone. Sets readOnlyHint:false implicitly.
-  destructiveHint?: boolean;
+  // True when the call only reads: nothing is created, updated, deleted, or
+  // sent outside the conversation. A read that also records a receipt the
+  // backend acts on later (LEAD_SEEN, which drives lead rotation) is NOT
+  // read-only.
+  readOnlyHint: boolean;
+  // True when the call can remove, or irreversibly replace, records the user
+  // created — notes, contacts, lenses, custom fields, campaign membership,
+  // qualification config — or when an identical repeat spends the user's paid
+  // enrichment quota a second time with no guard in front of it (product#4039).
+  // Setting a status flag, a per-user hide flag, or the transient server-side
+  // selection is not that, and stays false.
+  destructiveHint: boolean;
   // True if calling the same tool twice with the same arguments is safe and
   // produces the same observable outcome (no double-write side-effect).
   idempotentHint?: boolean;
-  // True if the tool reaches outside the local process / context — typically
-  // any tool that hits a remote API. False for self-contained calls (status
-  // checks against in-memory state only).
-  openWorldHint?: boolean;
+  // True when the call makes Leadbay reach BEYOND the signed-in user's own
+  // workspace: the public web (company discovery, AI web research), a
+  // third-party contact-data provider, Stripe, or a third-party telemetry
+  // sink. Talking to api-us.leadbay.app is NOT open-world on its own — a
+  // bounded private workspace stays bounded even though it is externally
+  // hosted. (OpenAI plugin guidelines, "Correct annotation".)
+  openWorldHint: boolean;
 }
 
 export interface Tool<P = any, R = any> {

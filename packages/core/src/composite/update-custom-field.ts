@@ -29,9 +29,9 @@ export const updateCustomField: Tool<UpdateCustomFieldParams> = {
   annotations: {
     title: "Update CRM custom field",
     readOnlyHint: false,
-    destructiveHint: false,
+    destructiveHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: UPDATE_CUSTOM_FIELD_DESCRIPTION,
   write: true,

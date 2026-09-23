@@ -69,45 +69,84 @@ describe("every composite tool has annotations (drift catcher)", () => {
     expect(missingHints).toEqual([]);
   });
 
-  it("destructive tools that mutate state are flagged readOnlyHint:false", async () => {
+  it("tools that write are flagged readOnlyHint:false", async () => {
     const { mcpClient } = await connect();
     const listed = await mcpClient.listTools();
-    const destructiveNames = [
+    const writeNames = [
       "leadbay_report_outreach",
       "leadbay_bulk_qualify_leads",
       "leadbay_enrich_titles",
       "leadbay_adjust_audience",
-      "leadbay_refine_prompt",
+      "leadbay_refine_lead_targeting",
       "leadbay_answer_clarification",
       "leadbay_import_leads",
       "leadbay_import_and_qualify",
     ];
-    for (const name of destructiveNames) {
+    for (const name of writeNames) {
       const t = listed.tools.find((tool) => tool.name === name);
       expect(t, `${name} not found`).toBeDefined();
       expect(t!.annotations).toBeDefined();
-      expect(t!.annotations!.destructiveHint, `${name} destructiveHint`).toBe(true);
       expect(t!.annotations!.readOnlyHint, `${name} readOnlyHint`).toBe(false);
+    }
+  });
+
+  it("only tools that remove or replace stored records are destructiveHint:true", async () => {
+    const { mcpClient } = await connect();
+    const listed = await mcpClient.listTools();
+    // OpenAI's plugin reference: destructiveHint declares that the tool "may
+    // delete or overwrite user data". Appending a note, creating a campaign or
+    // launching a qualification job does not, so those are false.
+    const destructive = [
+      "leadbay_adjust_audience",
+      "leadbay_refine_lead_targeting",
+      "leadbay_delete_custom_field",
+      "leadbay_remove_contact",
+      "leadbay_remove_leads_from_campaign",
+      "leadbay_set_qualification_questions",
+      "leadbay_manage_lenses",
+    ];
+    const notDestructive = [
+      "leadbay_add_note",
+      "leadbay_create_campaign",
+      "leadbay_add_leads_to_campaign",
+      "leadbay_import_leads",
+      "leadbay_find_new_leads",
+      "leadbay_enrich_titles",
+      "leadbay_report_outreach",
+      "leadbay_set_lead_status",
+    ];
+    for (const name of destructive) {
+      const t = listed.tools.find((tool) => tool.name === name);
+      expect(t, `${name} not found`).toBeDefined();
+      expect(t!.annotations!.destructiveHint, `${name} destructiveHint`).toBe(true);
+    }
+    for (const name of notDestructive) {
+      const t = listed.tools.find((tool) => tool.name === name);
+      expect(t, `${name} not found`).toBeDefined();
+      expect(t!.annotations!.destructiveHint, `${name} destructiveHint`).toBe(false);
     }
   });
 });
 
 describe("tools/list annotations (MCP spec ToolAnnotations)", () => {
-  it("leadbay_pull_leads is annotated readOnly + idempotent + openWorld", async () => {
+  it("leadbay_pull_leads is a write (it records LEAD_SEEN) inside the workspace", async () => {
     const { mcpClient } = await connect();
     const listed = await mcpClient.listTools();
     const t = listed.tools.find((tool) => tool.name === "leadbay_pull_leads");
     expect(t).toBeDefined();
     expect(t!.annotations).toEqual({
       title: "Pull fresh Leadbay leads",
-      readOnlyHint: true,
+      // Not read-only: every returned lead is reported to POST /interactions as
+      // LEAD_SEEN, which is what rotates it out of tomorrow's Discover list.
+      readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
-      openWorldHint: true,
+      // The call stays inside the signed-in user's own Leadbay workspace.
+      openWorldHint: false,
     });
   });
 
-  it("leadbay_report_outreach is annotated destructive + non-idempotent + openWorld", async () => {
+  it("leadbay_report_outreach appends rather than deletes, and stays in-workspace", async () => {
     const { mcpClient } = await connect();
     const listed = await mcpClient.listTools();
     const t = listed.tools.find((tool) => tool.name === "leadbay_report_outreach");
@@ -115,23 +154,24 @@ describe("tools/list annotations (MCP spec ToolAnnotations)", () => {
     expect(t!.annotations).toEqual({
       title: "Report outreach to Leadbay",
       readOnlyHint: false,
-      destructiveHint: true,
+      // Writes a note and a status; it removes nothing.
+      destructiveHint: false,
       idempotentHint: false,
-      openWorldHint: true,
+      openWorldHint: false,
     });
   });
 
-  it("research_lead is annotated readOnly + idempotent + openWorld (extended in iter 2)", async () => {
+  it("research_lead_by_id is a write (it records LEAD_SEEN) inside the workspace", async () => {
     const { mcpClient } = await connect();
     const listed = await mcpClient.listTools();
     const t = listed.tools.find((tool) => tool.name === "leadbay_research_lead_by_id");
     expect(t).toBeDefined();
     expect(t!.annotations).toEqual({
       title: "Research a Leadbay lead in depth (by UUID)",
-      readOnlyHint: true,
+      readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
-      openWorldHint: true,
+      openWorldHint: false,
     });
   });
 });
@@ -154,8 +194,6 @@ describe("granular tool annotations (advanced surface — iter 3)", () => {
     const listed = await mcpClient.listTools();
     const granularReadNames = [
       "leadbay_list_lenses",
-      "leadbay_discover_leads",
-      "leadbay_get_lead_profile",
       "leadbay_get_lead_activities",
       "leadbay_get_taste_profile",
       "leadbay_get_contacts",
@@ -171,10 +209,6 @@ describe("granular tool annotations (advanced surface — iter 3)", () => {
       "leadbay_get_web_fetch",
       "leadbay_get_selection_ids",
       "leadbay_get_enrichment_job_titles",
-      "leadbay_list_mappable_fields",
-      // preview_bulk_enrichment is in granularWriteTools by catalog but
-      // is read-only on the wire.
-      "leadbay_preview_bulk_enrichment",
     ];
     for (const name of granularReadNames) {
       const t = listed.tools.find((tool) => tool.name === name);
@@ -184,7 +218,7 @@ describe("granular tool annotations (advanced surface — iter 3)", () => {
     }
   });
 
-  it("granular writes are flagged destructiveHint:true with correct idempotency", async () => {
+  it("granular writes are flagged readOnlyHint:false with correct idempotency", async () => {
     const { mcpClient } = await connect({ includeAdvanced: true, includeWrite: true });
     const listed = await mcpClient.listTools();
     // (toolName, expectedIdempotent)
@@ -201,10 +235,14 @@ describe("granular tool annotations (advanced surface — iter 3)", () => {
       ["leadbay_update_lens_filter", true],
       ["leadbay_create_lens_draft", false],
       ["leadbay_promote_lens", false],
+      ["leadbay_discover_leads", true],
+      ["leadbay_get_lead_profile", true],
+      ["leadbay_list_mappable_fields", false],
+      ["leadbay_preview_bulk_enrichment", true],
       ["leadbay_set_user_prompt", true],
       ["leadbay_clear_user_prompt", true],
       ["leadbay_pick_clarification", false],
-      ["leadbay_dismiss_clarification", false],
+      ["leadbay_dismiss_clarification", true],
       ["leadbay_set_epilogue_status", true],
       ["leadbay_remove_epilogue", true],
       // product#4039: no double-launch guard on these three — an identical
@@ -214,7 +252,6 @@ describe("granular tool annotations (advanced surface — iter 3)", () => {
     for (const [name, idempotent] of granularWrites) {
       const t = listed.tools.find((tool) => tool.name === name);
       expect(t, `${name} not found`).toBeDefined();
-      expect(t!.annotations!.destructiveHint, `${name} destructiveHint`).toBe(true);
       expect(t!.annotations!.readOnlyHint, `${name} readOnlyHint`).toBe(false);
       expect(t!.annotations!.idempotentHint, `${name} idempotentHint`).toBe(idempotent);
     }

@@ -1,5 +1,5 @@
 ---
-name: leadbay_seed_candidates
+name: leadbay_list_lens_seed_candidates
 kind: tool-description
 short_description: |
   INTERNAL scaffolding for `leadbay_extend_lens` — fetch ranked candidate
@@ -17,7 +17,7 @@ routing:
     - phrase: "narrow the audience"
       route_to: leadbay_adjust_audience
     - phrase: "stop showing me X"
-      route_to: leadbay_refine_prompt
+      route_to: leadbay_refine_lead_targeting
   prefer_when: "agent is mid-`leadbay_extend_my_lens` flow and needs to pick seeds before calling `leadbay_extend_lens`"
   examples:
     positive:
@@ -56,6 +56,6 @@ Backed by `GET /lenses/{lensId}/seed_candidates`. By construction every lead ret
 
 {{include:headers/tool-when-to-use}} only as the scaffolding step inside an extend-the-lens flow. The `leadbay_extend_my_lens` prompt orchestrates this; agents called this tool by themselves should be rare.
 
-{{include:headers/tool-when-not-to-use}} when the user wants to CHANGE the audience (sector / size / criteria) — route to `leadbay_adjust_audience` or `leadbay_refine_prompt`. Not for the daily inbox pull — route to `leadbay_pull_leads`. Never as a "here are some candidates, which do you want?" user-facing surface.
+{{include:headers/tool-when-not-to-use}} when the user wants to CHANGE the audience (sector / size / criteria) — route to `leadbay_adjust_audience` or `leadbay_refine_lead_targeting`. Not for the daily inbox pull — route to `leadbay_pull_leads`. Never as a "here are some candidates, which do you want?" user-facing surface.
 
 Response shape (relayed verbatim from the backend): `{ candidates: [{lead_id, name, description?, sector?, size_min?, size_max?, website?, ai_agent_score?, tags[], qq_answers[], org_lead_status?, engagement: {liked, org_contacts_count, prospecting_actions_count}}] }`.

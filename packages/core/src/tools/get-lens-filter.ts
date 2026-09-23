@@ -13,7 +13,7 @@ export const getLensFilter: Tool<GetLensFilterParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_LENS_FILTER_DESCRIPTION,
   inputSchema: {

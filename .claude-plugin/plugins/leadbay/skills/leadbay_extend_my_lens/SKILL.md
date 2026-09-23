@@ -19,7 +19,7 @@ Call `leadbay_account_status` and find the `LENS_EXTRA_REFILL` entry — in `quo
 
 IRON LAW — DO NOT SHOW THE SEED CANDIDATES TO THE USER. They asked for more leads, not a candidate review. The seed list is internal scaffolding.
 
-Call `leadbay_seed_candidates` (defaults to last-active lens). Pick 3–5 seeds using this priority order:
+Call `leadbay_list_lens_seed_candidates` (defaults to last-active lens). Pick 3–5 seeds using this priority order:
 
 1. **Engagement** (load-bearing) — `liked: true`, then high `org_contacts_count + prospecting_actions_count`. The user already validated these.
 2. **`qq_answers`** — pick candidates whose qualification answers align with the target profile.
@@ -43,6 +43,6 @@ Call `leadbay_extend_lens` with:
 | `queued`                | ✅ One-line confirmation: "Queued <N> extra leads on lens <id>. Pull in ~30s." Offer `leadbay_pull_leads` as next step. |
 | `quota_exceeded`        | Surface the three options via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`): smaller `extra_count` / wait until `resets_at` / upgrade plan (TIER1=150, TIER2=1000). Do NOT silently retry. |
 | `refresh_in_progress`   | "Lens is already filling — pull leads in a minute." Offer `leadbay_pull_leads` after a short wait.                      |
-| `no_valid_seeds`        | Silently re-call `leadbay_seed_candidates` and retry `leadbay_extend_lens` once. Only surface to the user if the second attempt also fails. |
+| `no_valid_seeds`        | Silently re-call `leadbay_list_lens_seed_candidates` and retry `leadbay_extend_lens` once. Only surface to the user if the second attempt also fails. |
 
 Never list `accepted_seeds` to the user. They are internal — the user wants the *outcome* (queue confirmation), not the *picking step*.

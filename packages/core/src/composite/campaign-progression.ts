@@ -59,7 +59,7 @@ export const campaignProgression: Tool<ProgressionParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: CAMPAIGN_PROGRESSION_DESCRIPTION,
   inputSchema: {

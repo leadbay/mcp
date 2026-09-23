@@ -1,5 +1,5 @@
 /**
- * leadbay_seed_candidates — GET /lenses/{id}/seed_candidates
+ * leadbay_list_lens_seed_candidates — GET /lenses/{id}/seed_candidates
  *
  * Returns a ranked list of leads currently in the lens that are valid
  * inputs to leadbay_extend_lens. Each candidate carries enough signal
@@ -12,7 +12,7 @@
 import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
 
-import { leadbay_seed_candidates as SEED_CANDIDATES_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { leadbay_list_lens_seed_candidates as SEED_CANDIDATES_DESCRIPTION } from "../tool-descriptions.generated.js";
 
 interface SeedCandidatesParams {
   lensId?: number;
@@ -52,13 +52,13 @@ interface SeedCandidatesResponse {
 }
 
 export const seedCandidates: Tool<SeedCandidatesParams> = {
-  name: "leadbay_seed_candidates",
+  name: "leadbay_list_lens_seed_candidates",
   annotations: {
     title: "List candidate seeds for a lens extra-refill",
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: SEED_CANDIDATES_DESCRIPTION,
   inputSchema: {

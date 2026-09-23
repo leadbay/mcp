@@ -94,7 +94,7 @@ export const bulkEnrichStatus: Tool<BulkEnrichStatusParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: BULK_ENRICH_STATUS_DESCRIPTION,
   inputSchema: {

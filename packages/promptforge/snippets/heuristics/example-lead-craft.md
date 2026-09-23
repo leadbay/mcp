@@ -21,7 +21,7 @@ measured:
 4. **NO event language — in `description` or `query`.** "recrute", "hiring",
    "expanding", "just raised" never appear in registry text, so they match
    nothing. Send the trigger to `leadbay_set_qualification_questions` or
-   `leadbay_refine_prompt` and say so. "companies hiring a senior SDR" seeds as
+   `leadbay_refine_lead_targeting` and say so. "companies hiring a senior SDR" seeds as
    "B2B software company operating an in-house outbound sales team."
 5. **No meta-markers.** Never "(example)", "(fictional)", "(placeholder)".
 6. **Hard constraints go in `filters`, not prose — exact keys:**

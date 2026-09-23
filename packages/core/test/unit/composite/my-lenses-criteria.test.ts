@@ -1,6 +1,6 @@
 /**
  * product#4176 — "what is this lens searching for" had no answer on the
- * default tool surface. `leadbay_my_lenses` returned {id, name, description,
+ * default tool surface. `leadbay_manage_lenses` returned {id, name, description,
  * is_active} and nothing else; the only read of a lens's criteria was
  * advanced-gated. Every lens in every response now carries all its metadata
  * and its own criteria, with sector and location ids named.
@@ -15,7 +15,7 @@ import {
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { myLenses } from "../../../src/composite/my-lenses.js";
+import { myLenses } from "../../../src/composite/manage-lenses.js";
 
 const BASE = "https://api-us.leadbay.app";
 const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
@@ -81,7 +81,7 @@ const SECTORS_AND_PLACE = {
 
 beforeEach(() => resetHttpMock());
 
-describe("leadbay_my_lenses returns every lens's criteria (product#4176)", () => {
+describe("leadbay_manage_lenses returns every lens's criteria (product#4176)", () => {
   it("plain list: every lens has its metadata and named criteria", async () => {
     mockHttp([
       { method: "GET", path: "/1.6/lenses", status: 200, body: LENSES },

@@ -121,9 +121,9 @@ export const setLeadStatus: Tool<SetLeadStatusParams> = {
     readOnlyHint: false,
     // Org-wide and overwrites whatever the last rep set — destructive in the
     // MCP sense (not reversible from the value we replaced).
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: SET_LEAD_STATUS_DESCRIPTION,
   optional: true,

@@ -6,7 +6,7 @@ description: "Manager-led prospecting setup: conversationally turn a natural-lan
 
 Set up manager-led prospecting for me: turn the audience into a lens, validate candidates, then persist as named campaigns.
 
-Audience: **<Natural-language audience description (e.g. 'plumbing companies with 10-50 employees in Seine-Maritime'). The lens-creation step (`leadbay_refine_prompt` → `leadbay_create_lens`) interprets it. A country name is not a scope here — this workspace already covers exactly one country, so drop it and keep the rest of the description; a DIFFERENT country cannot be targeted at all. If not provided in the user's most recent message, ask once before proceeding.>**
+Audience: **<Natural-language audience description (e.g. 'plumbing companies with 10-50 employees in Seine-Maritime'). The lens-creation step (`leadbay_refine_lead_targeting` → `leadbay_create_lens`) interprets it. A country name is not a scope here — this workspace already covers exactly one country, so drop it and keep the rest of the description; a DIFFERENT country cannot be targeted at all. If not provided in the user's most recent message, ask once before proceeding.>**
 <if the user supplied this argument, render the short block derived from it; otherwise empty. Source: Optional: how to split the validated leads into per-rep campaigns. Free text — e.g. 'split by city' or 'one campaign per rep: John gets Tulsa, Sarah gets OKC'. Splitting by country is not a split — the workspace is single-country.>
 
 GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
@@ -33,7 +33,7 @@ On a lens-WRITING tool (`new_lens`, `adjust_audience`, `update_lens_filter`) wri
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read `_meta.region` on any tool result — it outranks any recalled memory; on `custom`, claim nothing.
 
-Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.
+Place names never go in `keywords`, `sectors` or `leadbay_refine_lead_targeting` — text matches, not geo filters.
 
 
 **Before calling, find out which country this workspace serves.** You cannot tell from
@@ -53,7 +53,7 @@ single-country cohort along an axis that does not exist here, and PHASE 3 will p
 those campaigns without ever looking again. The three cases do NOT get the same
 treatment:
 
-- **This workspace's own country** ("plumbers across the US" on a US workspace) → drop only that clause and keep everything else. Say you dropped it, then continue: the lens covers the whole workspace anyway. **Unless dropping it leaves NOTHING** — `audience: "France"` on an FR workspace is entirely that clause, and what remains is an empty string. Do NOT continue into PHASE 1 with it: `leadbay_refine_prompt({user_prompt: ""})` would overwrite my refinement prompt with nothing and `leadbay_create_lens` + `leadbay_promote_lens` would then persist and ACTIVATE a scopeless lens, to express something this workspace already is. Write nothing at all: tell me the workspace already covers exactly that, and ask for a real sector, size, or sub-country criterion before anything is created. Same for `rep_split` — if the sanitized split is empty, there is no split to make.
+- **This workspace's own country** ("plumbers across the US" on a US workspace) → drop only that clause and keep everything else. Say you dropped it, then continue: the lens covers the whole workspace anyway. **Unless dropping it leaves NOTHING** — `audience: "France"` on an FR workspace is entirely that clause, and what remains is an empty string. Do NOT continue into PHASE 1 with it: `leadbay_refine_lead_targeting({user_prompt: ""})` would overwrite my refinement prompt with nothing and `leadbay_create_lens` + `leadbay_promote_lens` would then persist and ACTIVATE a scopeless lens, to express something this workspace already is. Write nothing at all: tell me the workspace already covers exactly that, and ask for a real sector, size, or sub-country criterion before anything is created. Same for `rep_split` — if the sanitized split is empty, there is no split to make.
 - **A different country** ("plumbers across France" on a US workspace) → **STOP. Create nothing.** Do NOT drop the country and build a lens for this workspace instead — that would hand me a US lens, plus campaigns, presented as the answer to a France request. Say this workspace holds only its own country's companies, so the ask cannot be filled here, and end your turn.
 - **A supra-national scope** ("plumbers across EMEA") → also stop: name what the workspace covers and ask whether I want that instead, rather than assuming it.
 
@@ -68,7 +68,7 @@ that rep: stop rather than silently handing them an empty campaign or, worse, a 
 the home country's leads labelled with another country's name. Carry only the sanitized
 split into PHASE 3.
 
-Call `leadbay_refine_prompt({user_prompt: "<my audience with the home-country clause removed>"})` — pass the SANITIZED text, not the raw argument, or the country label reaches the lens anyway and fences it to a same-named village. This handles the clarification protocol natively — if the system needs more info (e.g. industry disambiguation, geography precision), it returns `status: "clarification_needed"` with options. Surface those to me; on my answer, re-call `leadbay_refine_prompt` until the prompt converges.
+Call `leadbay_refine_lead_targeting({user_prompt: "<my audience with the home-country clause removed>"})` — pass the SANITIZED text, not the raw argument, or the country label reaches the lens anyway and fences it to a same-named village. This handles the clarification protocol natively — if the system needs more info (e.g. industry disambiguation, geography precision), it returns `status: "clarification_needed"` with options. Surface those to me; on my answer, re-call `leadbay_refine_lead_targeting` until the prompt converges.
 
 When the prompt has converged, call `leadbay_create_lens({user_prompt: <refined>, name: "<short descriptive name>"})` to create a draft lens, then `leadbay_promote_lens({lensId})` to make it the active lens.
 

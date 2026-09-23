@@ -13,7 +13,7 @@ export const likeLead: Tool<LikeLeadParams> = {
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: LIKE_LEAD_DESCRIPTION,
   optional: true,

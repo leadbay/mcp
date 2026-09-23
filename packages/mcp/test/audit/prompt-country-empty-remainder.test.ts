@@ -43,7 +43,7 @@ describe("audit: stripping the country to nothing is a stop, not a continue", ()
     // A generic "stop" is easy to talk past. Naming the three calls that would
     // fire is what makes the instruction checkable by the agent reading it.
     const body = Prompts.leadbay_setup_team_prospecting;
-    expect(body).toMatch(/leadbay_refine_prompt\(\{user_prompt: ""\}\)/);
+    expect(body).toMatch(/leadbay_refine_lead_targeting\(\{user_prompt: ""\}\)/);
     expect(body).toMatch(/leadbay_create_lens/);
     expect(body).toMatch(/leadbay_promote_lens/);
     // And it must say what to ask for instead of just refusing.

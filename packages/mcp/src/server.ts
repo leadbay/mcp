@@ -172,7 +172,7 @@ function buildStartHereParagraph(has: (name: string) => boolean): string {
   const base =
     "Start with leadbay_account_status to see the user's state, then leadbay_pull_leads to surface fresh leads. " +
     "Use leadbay_research_lead_by_id to dig into one lead deeply (qualification answers, signals, contacts).";
-  const compositeNames = ["bulk_qualify_leads", "adjust_audience", "refine_prompt", "enrich_titles"]
+  const compositeNames = ["bulk_qualify_leads", "adjust_audience", "refine_lead_targeting", "enrich_titles"]
     .filter((n) => has(`leadbay_${n}`));
   if (compositeNames.length > 0) {
     return (
@@ -310,7 +310,7 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
     "refine_prompt clarifications",
     "report_outreach.user_confirmed",
   ].filter((label) => {
-    if (label.startsWith("refine_prompt")) return has("leadbay_refine_prompt");
+    if (label.startsWith("refine_lead_targeting")) return has("leadbay_refine_lead_targeting");
     if (label.startsWith("report_outreach")) return has("leadbay_report_outreach");
     return false;
   });
@@ -1538,7 +1538,7 @@ export function buildServer(
             telemetry.captureException(
               new Error(`artifact ${ev.kind} (${ev.surface})${where}`),
               {
-                tool: ev.tool ?? "leadbay_artifact_event",
+                tool: ev.tool ?? "leadbay_report_artifact_error",
                 source: "artifact",
                 ...(ev.code ? { code: ev.code } : {}),
                 message: `artifact runtime ${ev.kind} on surface=${ev.surface}${

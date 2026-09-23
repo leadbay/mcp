@@ -1338,12 +1338,12 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
   annotations: {
     title: "Import leads from list/file",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     // Backend dedupes by domain/registry id; same input set ⇒ same lead set
     // (no duplicate leads are created). bulk-store also keys on the
     // input-hash → returns the same importId on retry.
-    idempotentHint: true,
-    openWorldHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
   },
   description: IMPORT_LEADS_DESCRIPTION,
   write: true,

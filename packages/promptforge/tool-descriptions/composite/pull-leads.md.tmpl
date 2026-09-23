@@ -2,12 +2,8 @@
 name: leadbay_pull_leads
 kind: tool-description
 short_description: |
-  Pull NEW leads from the Discover wishlist — fresh prospects, not known
-  pipeline. For KNOWN leads to follow up with, use leadbay_pull_followups.
-  Render as a 3-col markdown table in the order the tool returns them (the
-  Discover-tab order — do NOT re-sort by score); col 1 is the inline-code
-  10-segment `▰❖▱` bar + linked company + location + size; col 2 is
-  why-fits ≤20 words; col 3 is linked contact + title.
+  Pull today's NEW leads from the user's Discover wishlist — fresh prospects
+  the AI has scored for fit, not the known pipeline. Records each one as seen.
 routing:
   triggers:
     - "show me leads"
@@ -70,14 +66,16 @@ rendering_hint: |
   contact + title. Full algorithm + linking rules below.
 next_steps: pull-leads
 annotations:
-  readOnlyHint: true
+  readOnlyHint: false
   destructiveHint: false
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 ---
-Pull up new leads from the user's last-active lens — the canonical "show me today's prospects" tool.
 
-Leadbay works like an inbox: each time the user logs back in, a fresh batch is delivered, paced by how many leads they've actually acted on recently. Pulling more won't produce more; user outreach/skips/saves does. Leads liked, disliked, noted, with a status or in a campaign are left out. Each returned lead carries a one-line `qualification_summary` built from leadbay_ai_agent_responses, plus the rich tags / scores / engagement counters / in-flight flags from the lead summary.
+{{include:gates/lead-seen-side-effect}}
+
+
+Leadbay works like an inbox: each login delivers a fresh batch, paced by how many leads the user actually acted on recently. Pulling more won't produce more; outreach, skips and saves do. Leads liked, disliked, noted, with a status or in a campaign are left out. Each returned lead carries a one-line `qualification_summary` built from the lead's AI qualification answers, plus the rich tags / scores / engagement counters / in-flight flags from the lead summary.
 
 Roughly the top 10 of the batch come pre-qualified (populated qualification_summary + ai_agent_lead_score); leads below the top ~10 carry only the basic firmographic `score` — not worse, just resource-saved by the system. Call leadbay_bulk_qualify_leads to deepen any of them on demand — a healthy daily rhythm is to bulk-qualify the rows without ❖ caps so tomorrow's top-10 list is richer.
 

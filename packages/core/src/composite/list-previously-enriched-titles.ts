@@ -7,7 +7,7 @@ import type {
   WishlistResponse,
 } from "../types.js";
 
-import { leadbay_recall_ordered_titles as RECALL_ORDERED_TITLES_DESCRIPTION } from "../tool-descriptions.generated.js";
+import { leadbay_list_previously_enriched_titles as RECALL_ORDERED_TITLES_DESCRIPTION } from "../tool-descriptions.generated.js";
 interface RecallOrderedTitlesParams {
   leadIds?: string[];
   lensId?: number;
@@ -21,13 +21,13 @@ interface TitleStat {
 }
 
 export const recallOrderedTitles: Tool<RecallOrderedTitlesParams> = {
-  name: "leadbay_recall_ordered_titles",
+  name: "leadbay_list_previously_enriched_titles",
   annotations: {
     title: "Recall titles previously enriched",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: RECALL_ORDERED_TITLES_DESCRIPTION,
   inputSchema: {
@@ -125,14 +125,14 @@ export const recallOrderedTitles: Tool<RecallOrderedTitlesParams> = {
         }
       } catch (err: any) {
         ctx?.logger?.warn?.(
-          `recall_ordered_titles: preview path failed: ${err?.message ?? err?.code ?? err}`
+          `list_previously_enriched_titles: preview path failed: ${err?.message ?? err?.code ?? err}`
         );
       } finally {
         try {
           await client.requestVoid("POST", "/leads/selection/clear");
         } catch (e: any) {
           ctx?.logger?.warn?.(
-            `recall_ordered_titles: selection clear failed: ${e?.message}`
+            `list_previously_enriched_titles: selection clear failed: ${e?.message}`
           );
         }
       }
@@ -177,7 +177,7 @@ export const recallOrderedTitles: Tool<RecallOrderedTitlesParams> = {
           }
         } catch (err: any) {
           ctx?.logger?.warn?.(
-            `recall_ordered_titles: contacts fetch failed for ${leadId}: ${err?.message}`
+            `list_previously_enriched_titles: contacts fetch failed for ${leadId}: ${err?.message}`
           );
         }
       })

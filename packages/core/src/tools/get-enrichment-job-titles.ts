@@ -9,7 +9,7 @@ export const getEnrichmentJobTitles: Tool<Record<string, never>> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_ENRICHMENT_JOB_TITLES_DESCRIPTION,
   inputSchema: { type: "object", properties: {}, additionalProperties: false },

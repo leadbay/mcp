@@ -18,7 +18,7 @@ export const getLensScoring: Tool<GetLensScoringParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_LENS_SCORING_DESCRIPTION,
   inputSchema: {

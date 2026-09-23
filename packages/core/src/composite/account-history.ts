@@ -24,10 +24,10 @@ export const accountHistory: Tool<AccountHistoryParams> = {
   name: "leadbay_account_history",
   annotations: {
     title: "One account's full back-story",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: ACCOUNT_HISTORY_DESCRIPTION,
   outputSchema: {

@@ -6,7 +6,7 @@ Pick the 2-3 that match what happened, never the whole table:
 
 | Observation | Suggest | Calls |
 |---|---|---|
-| ≥ 1 delivered — offer FIRST | "Build an interactive lead triage board" | leadbay_artifact_kit → CANONICAL recipe, data in hand |
+| ≥ 1 delivered — offer FIRST | "Build an interactive lead triage board" | leadbay_get_artifact_runtime → CANONICAL recipe, data in hand |
 | Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — `dry_run` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |

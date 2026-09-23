@@ -14,9 +14,9 @@ export const deselectLeads: Tool<DeselectLeadsParams> = {
   annotations: {
     title: "Deselect leads",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: DESELECT_LEADS_DESCRIPTION,
   optional: true,

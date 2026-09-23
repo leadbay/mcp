@@ -7,9 +7,9 @@ short_description: |
   or research_lead. Supports domain-list shortcut OR records+mappings.
 annotations:
   readOnlyHint: false
-  destructiveHint: true
-  idempotentHint: true
-  openWorldHint: true
+  destructiveHint: false
+  idempotentHint: false
+  openWorldHint: false
 ---
 Import leads into Leadbay's CRM via the file-import wizard. Returns stable Leadbay leadIds for downstream chaining into leadbay_bulk_qualify_leads / leadbay_research_lead_by_id. For MCP clients with short transport timeouts, pass `wait_for_completion:false` to return quickly with `{status:'running', importIds}`; poll leadbay_import_status with that handle. For end-to-end import+qualify in one call, prefer leadbay_import_and_qualify. For messy files, prefer the `leadbay_import_file` prompt which walks an agent through scan → resolve → preserve → commit phases.
 

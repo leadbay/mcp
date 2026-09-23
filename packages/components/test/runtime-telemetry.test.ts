@@ -3,7 +3,7 @@ import { lb, configure, call, resetTelemetry } from "../src/runtime.js";
 
 // Runtime telemetry (product#4081). The artifact runs in a chat-hosted page
 // whose only channel out is window.cowork.callMcpTool, so every failure signal
-// travels as a `leadbay_artifact_event` tool call. These lock:
+// travels as a `leadbay_report_artifact_error` tool call. These lock:
 //   - each of the six failure points actually emits
 //   - the kind/surface classification (which decides Sentry vs PostHog server-side)
 //   - that NO message text ever rides along (product#3943)
@@ -27,7 +27,7 @@ function installBridge(handler?: (tool: string, args: Record<string, unknown>) =
 }
 
 const events = (sent: Sent[]) =>
-  sent.filter((s) => s.tool === "leadbay_artifact_event").map((s) => s.args);
+  sent.filter((s) => s.tool === "leadbay_report_artifact_error").map((s) => s.args);
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -208,7 +208,7 @@ describe("privacy, safety and bounds", () => {
 
   it("never reports on the telemetry tool itself — no feedback loop", async () => {
     const sent = installBridge((tool) => {
-      if (tool === "leadbay_artifact_event") throw new Error("sink down");
+      if (tool === "leadbay_report_artifact_error") throw new Error("sink down");
       throw new Error("boom");
     });
     await expect(call("leadbay_pull_leads", {})).rejects.toThrow();
@@ -220,7 +220,7 @@ describe("privacy, safety and bounds", () => {
 
   it("a failing telemetry sink never surfaces to the user", async () => {
     installBridge((tool) => {
-      if (tool === "leadbay_artifact_event") return Promise.reject(new Error("sink down"));
+      if (tool === "leadbay_report_artifact_error") return Promise.reject(new Error("sink down"));
       return { structuredContent: [] };
     });
     const f = lb.field({ load: () => call("leadbay_list_campaigns", {}) });

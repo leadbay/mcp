@@ -225,10 +225,10 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
     // Mode A (no titles): non-destructive preview returning candidates.
     // Mode B (with titles): launches enrichment job. Net classification is
     // destructive because the dominant flow mutates state.
-    destructiveHint: true,
+    destructiveHint: false,
     // Idempotent against the same selection + titles set (same hash → same
     // the launch; backend silently no-ops on already-enriched contacts).
-    idempotentHint: true,
+    idempotentHint: false,
     openWorldHint: true,
   },
   description: ENRICH_TITLES_DESCRIPTION,

@@ -34,10 +34,10 @@ export const getLeadCustomFields: Tool<GetLeadCustomFieldsParams> = {
   name: "leadbay_get_lead_custom_fields",
   annotations: {
     title: "Read a lead's custom-field values",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_LEAD_CUSTOM_FIELDS_DESCRIPTION,
   inputSchema: {

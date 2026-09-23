@@ -948,7 +948,7 @@ does not stay invisible: a picker that loads zero options, a button blocked by
 validation, a call that timed out, failed, came back as an error envelope, or
 answered with unparseable text. It sends these itself, over the same bridge,
 deduped and capped — **you do not need to add anything**, and you should not
-call `leadbay_artifact_event` yourself.
+call `leadbay_report_artifact_error` yourself.
 
 Only bounded values travel: the failure kind, which view-model surfaced it, the
 tool name, an error code, and the kit version. Never a message, never user text,

@@ -32,8 +32,8 @@ describe("every lead-batch tool offers the board", () => {
       expect(md).toMatch(/board/i);
     });
 
-    it(`${snippet} routes the offer through leadbay_artifact_kit`, () => {
-      expect(read(snippet)).toContain("leadbay_artifact_kit");
+    it(`${snippet} routes the offer through leadbay_get_artifact_runtime`, () => {
+      expect(read(snippet)).toContain("leadbay_get_artifact_runtime");
     });
 
     it(`${snippet} builds from data in hand, not a re-call`, () => {

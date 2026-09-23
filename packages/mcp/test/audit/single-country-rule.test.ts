@@ -47,7 +47,7 @@ const SNIPPET_PATH = resolve(
  * the audit refuses to let a new geo-accepting tool skip the rule.
  *
  * Intentionally EXCLUDED: leadbay_pull_leads / leadbay_extend_lens /
- * leadbay_seed_candidates (no geo argument — geography lives on the lens), and
+ * leadbay_list_lens_seed_candidates (no geo argument — geography lives on the lens), and
  * leadbay_campaign_call_sheet / leadbay_research_lead_by_id / the tour_plan
  * render block (they RENDER `location.country`, they never filter on it).
  */
@@ -493,11 +493,14 @@ describe("audit: single-country-universe rule", () => {
         desc,
         `${toolName} must say a foreign country is unsupported rather than unfiltered`
       ).toMatch(/foreign country is unsupported, not unfiltered/);
-      // And it has to land where a truncating host still reads it.
+      // And it has to land where a truncating host still reads it. 1100, not
+      // 600: `## WHAT IT DOES` now precedes the routing block (see
+      // audit/routing-block.test.ts for why), which pushes every anti-trigger
+      // down by the length of the tool's short_description.
       expect(
         desc.indexOf("foreign country is unsupported"),
-        `${toolName} carries the correction past the first 600 chars, where the wrong instruction is read and the right one is not`
-      ).toBeLessThan(600);
+        `${toolName} carries the correction past the first 1100 chars, where the wrong instruction is read and the right one is not`
+      ).toBeLessThan(1100);
     }
   );
 
@@ -509,7 +512,7 @@ describe("audit: single-country-universe rule", () => {
     expect(
       body,
       "the refine_prompt call must not interpolate the raw audience argument after asking the agent to strip a country from it"
-    ).not.toMatch(/leadbay_refine_prompt\(\{user_prompt: "\{\{arg:audience\}\}"\}\)/);
+    ).not.toMatch(/leadbay_refine_lead_targeting\(\{user_prompt: "\{\{arg:audience\}\}"\}\)/);
   });
 
   it("no prompt legitimizes country-level place names", () => {

@@ -11,9 +11,9 @@ export const promoteLens: Tool<PromoteLensParams> = {
   annotations: {
     title: "Promote a lens draft to active",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: PROMOTE_LENS_DESCRIPTION,
   optional: true,

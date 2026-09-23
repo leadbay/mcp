@@ -5,13 +5,17 @@
 // Tool descriptions, alphabetized by frontmatter.name.
 
 // region: leadbay_account_history
-export const leadbay_account_history: string = `## WHEN TO USE
+export const leadbay_account_history: string = `## WHAT IT DOES
+
+Give me ONE account's full back-story in a single call — current AI signals PLUS the historical notes logged on the record PLUS the full interaction timeline. Use when the user wants to know why a dormant or half-forgotten account is worth revisiting. Don't use it for the live-signals-only deep dive (that's leadbay_research_lead_by_id) or for a list of accounts to follow up (that's leadbay_pull_followups).
+
+## WHEN TO USE
 
 Trigger phrases: "what's the history on this account", "why should I revisit this account", "summarize everything we've done with <Company>", "has this account gone cold", "give me the back-story on lead <UUID>".
 
 Do NOT use for: "live signals only, no history" → \`leadbay_research_lead_by_id\`; "which accounts should I follow up with" → \`leadbay_pull_followups\`.
 
-Prefer when: user wants ONE account's full back-story — notes + past activity + current signals together; pass \`leadId\`
+Use this when: user wants ONE account's full back-story — notes + past activity + current signals together; pass \`leadId\`
 
 Examples that SHOULD invoke this tool:
 - "What's the full history on this account — why did it resurface?"
@@ -34,6 +38,11 @@ Give me one account's full back-story in a single call. This is the tool for
 the **reprioritize-a-neglected-account** workflow: the user has an account
 that was contacted or quoted long ago and wants to know, in one shot, whether
 a fresh signal makes it worth another visit.
+
+**Side effect.** Leads returned here are recorded as seen in the user's own
+Leadbay account, which rotates them out of tomorrow's Discover list.
+
+
 
 It bundles three reads on one \`leadId\`:
 
@@ -152,13 +161,17 @@ account resurfaced:
 // endregion: leadbay_account_history
 
 // region: leadbay_account_status
-export const leadbay_account_status: string = `## WHEN TO USE
+export const leadbay_account_status: string = `## WHAT IT DOES
+
+Show the user's account state — admin rights, language, last-active lens, what the account is set up to find, and quota usage shown like the web app: a percentage-used + dollar-spend gauge for each daily/weekly/monthly window, with a per-resource breakdown, plus regeneration flags.
+
+## WHEN TO USE
 
 Trigger phrases: "what's my account status", "how much quota do I have", "what lens am I on", "I topped up / I bought credits / I added credits", "what version of Leadbay am I running".
 
 Do NOT use for: "show me leads" → \`leadbay_pull_leads\`.
 
-Prefer when: meta question about account, quota, active lens, or top-up recovery
+Use this when: meta question about account, quota, active lens, or top-up recovery
 
 Examples that SHOULD invoke this tool:
 - "What's my account status?"
@@ -345,13 +358,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_acknowledge_notification
 
 // region: leadbay_add_contact
-export const leadbay_add_contact: string = `## WHEN TO USE
+export const leadbay_add_contact: string = `## WHAT IT DOES
+
+Add a single contact (a person) to a known company in one call — name plus optional title, LinkedIn URL, email, phone. Use when a rep found someone (often just a LinkedIn URL) and wants them on an already-identified lead. Don't use it to import a list of companies, or to enrich an existing contact's email/phone.
+
+## WHEN TO USE
 
 Trigger phrases: "add a contact to this company", "add this person to <company>", "create a contact from this LinkedIn URL", "this company has no contacts — add one", "I found someone on LinkedIn, add them to <lead>".
 
 Do NOT use for: "import these companies / a CSV of leads and qualify them" → \`leadbay_import_and_qualify\`; "get email/phone for a contact already on the company" → \`leadbay_enrich_titles\`; "remove / delete this contact" → \`leadbay_remove_contact\`.
 
-Prefer when: user wants to attach ONE known person to an already-identified company — pass the company's \`lead_id\` plus the person's name (+ optional linkedin_page/title/email/phone)
+Use this when: user wants to attach ONE known person to an already-identified company — pass the company's \`lead_id\` plus the person's name (+ optional linkedin_page/title/email/phone)
 
 Examples that SHOULD invoke this tool:
 - "Acme has no suggested contacts — add Jane Doe, VP Eng, here's her LinkedIn."
@@ -385,13 +402,17 @@ Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw).
 // endregion: leadbay_add_contact
 
 // region: leadbay_add_leads_to_campaign
-export const leadbay_add_leads_to_campaign: string = `## WHEN TO USE
+export const leadbay_add_leads_to_campaign: string = `## WHAT IT DOES
+
+Add leads to an existing campaign. Idempotent at the lead level — the server dedups against existing membership and returns \`{added, already_present}\` so the agent can render the no-op count separately.
+
+## WHEN TO USE
 
 Trigger phrases: "add leads to <name> campaign", "attach these to <campaign>", "put these in Q2 Push", "add to existing campaign".
 
 Do NOT use for: "create a new campaign" → \`leadbay_create_campaign\`; "remove lead from campaign" → \`leadbay_remove_leads_from_campaign\`; "list campaigns" → \`leadbay_list_campaigns\`.
 
-Prefer when: existing campaign plus lead ids to attach; for a new campaign, use create_campaign
+Use this when: existing campaign plus lead ids to attach; for a new campaign, use create_campaign
 
 Examples that SHOULD invoke this tool:
 - "Add the three new Tulsa leads to my 'OK Sweep' campaign."
@@ -443,13 +464,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_add_note
 
 // region: leadbay_adjust_audience
-export const leadbay_adjust_audience: string = `## WHEN TO USE
+export const leadbay_adjust_audience: string = `## WHAT IT DOES
+
+Edit an EXISTING lens's audience by sector / size / geography. Free-text sectors and locations auto-resolve; ambiguous matches are surfaced rather than guessed. Filter MERGES with existing criteria. Pass \`lensName\` to edit a lens by name; otherwise edits the active lens.
+
+## WHEN TO USE
 
 Trigger phrases: "narrow the audience to <sector>", "add <sector> to my <name> lens", "remove <sector> from this lens", "only show me companies of <size>", "stop including <sector>", "broaden this lens to also include <sector>", "restrict this lens to <city/département/région/state>", "only companies in <place>", "exclude <region> from this lens".
 
-Do NOT use for: "companies anywhere in this workspace's OWN country / nationwide (a foreign country is unsupported, not unfiltered — call nothing)" → \`leadbay_pull_leads\`; "create a new lens called X" → \`leadbay_new_lens\`; "make a new audience for Y" → \`leadbay_new_lens\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`; "focus on a kind of company beyond sector/size (e.g. 'hospitals running their own IT')" → \`leadbay_refine_prompt\`.
+Do NOT use for: "companies anywhere in this workspace's OWN country / nationwide (a foreign country is unsupported, not unfiltered — call nothing)" → \`leadbay_pull_leads\`; "create a new lens called X", "make a new audience for Y" → \`leadbay_new_lens\`; "show me / list / switch my lenses" → \`leadbay_manage_lenses\`; "focus on a kind of company beyond sector/size (e.g. 'hospitals running their own IT')" → \`leadbay_refine_lead_targeting\`.
 
-Prefer when: user wants to change an EXISTING lens's sectors/sizes. If the user NAMES a lens ('my Joinery lens'), you MUST pass lensName with that name — do NOT edit the active lens. To create a brand-new lens use leadbay_new_lens instead.
+Use this when: user wants to change an EXISTING lens's sectors/sizes. If the user NAMES a lens ('my Joinery lens'), you MUST pass lensName with that name — do NOT edit the active lens. To create a brand-new lens use leadbay_new_lens instead.
 
 Examples that SHOULD invoke this tool:
 - "Add fintech to my Joinery lens."
@@ -475,7 +500,7 @@ Restrict (or expand) the lens audience by sector / size. Free-text sectors are a
 
 **A complaint about relevance is not a filter request.** "The leads aren't relevant", "they don't look like my customers", "I keep getting the wrong companies" says the OUTPUT is wrong — it does not say which sector to add. Read \`leadbay_get_qualification_questions\` first (it returns the questions, the ideal buyer profile AND the targeting prompt), and find out WHICH leads were wrong, ideally by pulling some and pointing at them. Sector and size are only one of the places the answer can live; editing them blind fixes the wrong thing and leaves the real cause in place.
 
-**Targeting a lens — READ THIS.** By default this edits the user's ACTIVE lens. **If the user names a lens** ("add fintech to my **Joinery** lens", "in my Nordics lens, exclude retail"), you MUST pass \`lensName\` with that name (\`lensName:"Joinery"\`). Do NOT silently edit the active lens when a different one was named — that corrupts the wrong audience and is a top friction source. The name resolves against the user's lenses (case-insensitive, exact then unique-substring); it is edit-only and does NOT change which lens is active. An unmatched name returns \`status:"lens_not_found"\` with the lens list, and a name matching several returns \`status:"ambiguous_lens"\` with the candidates — surface them and re-call with the exact \`lensName\` or a \`lensId\`. Use \`leadbay_my_lenses\` if the user first wants to SEE or SWITCH lenses. To CREATE a brand-new lens, use \`leadbay_new_lens\` — not this tool.
+**Targeting a lens — READ THIS.** By default this edits the user's ACTIVE lens. **If the user names a lens** ("add fintech to my **Joinery** lens", "in my Nordics lens, exclude retail"), you MUST pass \`lensName\` with that name (\`lensName:"Joinery"\`). Do NOT silently edit the active lens when a different one was named — that corrupts the wrong audience and is a top friction source. The name resolves against the user's lenses (case-insensitive, exact then unique-substring); it is edit-only and does NOT change which lens is active. An unmatched name returns \`status:"lens_not_found"\` with the lens list, and a name matching several returns \`status:"ambiguous_lens"\` with the candidates — surface them and re-call with the exact \`lensName\` or a \`lensId\`. Use \`leadbay_manage_lenses\` if the user first wants to SEE or SWITCH lenses. To CREATE a brand-new lens, use \`leadbay_new_lens\` — not this tool.
 
 **Geography — scope a sales territory.** Pass \`locations\` (free text like \`["Indre-et-Loire"]\`, \`["Texas"]\`, \`["Austin"]\`, or admin-area ids) to restrict the lens to a region, and \`exclude_locations\` to carve one out. Free text auto-resolves via \`/geo/search\` at any level from state down to city — state, *région*, *département*, county, city. Unresolved/ambiguous text returns \`status:"ambiguous_locations"\` with candidates — surface them and re-call the chosen id via the SAME axis it came from: an INCLUDE pick → \`location_ids\`; an EXCLUDE pick → \`exclude_locations\` (**NOT** \`location_ids\`, which would include the area the user asked to exclude). The returned \`message\` names the right param per text. This is how a director scopes a rep's territory and then asks for net-new accounts there.
 
@@ -496,25 +521,25 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
-Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+Place names never go in \`keywords\`, \`sectors\` or \`leadbay_refine_lead_targeting\` — text matches, not geo filters.
 
 
-**Widening to the whole workspace is NOT "pass no locations".** Location criteria MERGE here rather than replace, so any geography the lens already carries survives an edit that simply omits \`locations\`. "Make this healthcare nationwide" on a lens scoped to Paris returns Paris healthcare — and calling that nationwide is the same confidently-wrong answer as the country fence itself, just in the header instead of the filter. Read the lens's \`criteria\` in \`leadbay_my_lenses\` FIRST, which names its \`location_ids\` (so does the \`lens://<lensId>/definition\` resource on hosts that expose one; \`leadbay_pull_leads\` returns only \`lens: {id}\`). Then either clear those criteria explicitly, or state which places the audience actually covers. If you cannot read the criteria, say the scope is unverified rather than calling it workspace-wide.
+**Widening to the whole workspace is NOT "pass no locations".** Location criteria MERGE here rather than replace, so any geography the lens already carries survives an edit that simply omits \`locations\`. "Make this healthcare nationwide" on a lens scoped to Paris returns Paris healthcare — and calling that nationwide is the same confidently-wrong answer as the country fence itself, just in the header instead of the filter. Read the lens's \`criteria\` in \`leadbay_manage_lenses\` FIRST, which names its \`location_ids\` (so does the \`lens://<lensId>/definition\` resource on hosts that expose one; \`leadbay_pull_leads\` returns only \`lens: {id}\`). Then either clear those criteria explicitly, or state which places the audience actually covers. If you cannot read the criteria, say the scope is unverified rather than calling it workspace-wide.
 
 WHEN TO USE: when the user wants to see different kinds of leads (sector / size / geography / etc.).
 
-WHEN NOT TO USE: to refine BEYOND firmographics — that's leadbay_refine_prompt.
+WHEN NOT TO USE: to refine BEYOND firmographics — that's leadbay_refine_lead_targeting.
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_adjust_audience
 
 // region: leadbay_answer_clarification
-export const leadbay_answer_clarification: string = `Answer the pending clarification question Leadbay raised after a refine_prompt. The answer is stored as the new \`user_prompt\` and triggers regeneration. Pass \`option_id\` (preferred — pick from the offered options) or \`text_answer\` (free-text). Admin-only.
+export const leadbay_answer_clarification: string = `Answer the pending clarification question Leadbay raised after a leadbay_refine_lead_targeting call. The answer is stored as the new \`user_prompt\` and triggers regeneration. Pass \`option_id\` (preferred — pick from the offered options) or \`text_answer\` (free-text). Admin-only.
 
-WHEN TO USE: after leadbay_refine_prompt returns \`status='clarification_pending'\`.
+WHEN TO USE: after leadbay_refine_lead_targeting returns \`status='clarification_pending'\`.
 
-WHEN NOT TO USE: to set a brand-new prompt — use leadbay_refine_prompt.
+WHEN NOT TO USE: to set a brand-new prompt — use leadbay_refine_lead_targeting.
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
@@ -539,89 +564,6 @@ only if the user said not to wait or the check tool says the job stalled. Then
 say it is not ready, show what landed, and that asking again fetches the rest.
 `;
 // endregion: leadbay_answer_clarification
-
-// region: leadbay_artifact_event
-export const leadbay_artifact_event: string = `**Do not call this tool.** It is the ingest endpoint for the
-\`@leadbay/components\` runtime that \`leadbay_artifact_kit\` ships, and the only
-legitimate caller is that runtime's own \`lb.report()\` — running inside an
-artifact page, in the browser, with no human in the loop.
-
-An artifact runs in a chat-hosted page whose only channel out is
-\`window.cowork.callMcpTool\`. When one of its controls fails — a picker that
-loaded zero options, a button blocked by validation, a call that timed out or
-came back as a failure envelope — there is no other way for that fact to reach
-the Leadbay team. This tool is that way. The runtime calls it automatically,
-deduped and capped; you do not need to do anything to make it work, and calling
-it yourself would inject a failure that never happened.
-
-If a user tells you an artifact is broken and asks you to report it, that is
-\`leadbay_report_friction\`, not this. That tool carries the user's own words and
-requires their consent. This one is automatic, carries only bounded enum values
-and error codes, and never carries user text.
-
-Parameters (supplied by the runtime): \`kind\` — one of \`bridge_unavailable\`,
-\`call_timeout\`, \`call_failed\`, \`parse_failed\` (exceptions) or \`options_empty\`,
-\`action_blocked\`, \`result_rejected\` (outcomes, where nothing threw and the call
-reported success). \`surface\` — which view-model surfaced it: \`call\`, \`field\`,
-\`action\`, \`resource\`, \`list\`. Optional \`kit_version\`, \`tool\`, \`code\`.
-
-Returns \`{ recorded, kind }\`. \`recorded: true\` means the event was accepted, not
-that it was delivered — a user who has opted out via \`leadbay_set_telemetry\`
-sends nothing, by design. The artifact ignores the result either way.
-
-WHEN NOT TO USE: always — this is not a tool you call.
-The artifact runtime calls it for you. To report a problem a USER raised, use
-\`leadbay_report_friction\` instead.
-`;
-// endregion: leadbay_artifact_event
-
-// region: leadbay_artifact_kit
-export const leadbay_artifact_kit: string = `## WHEN TO USE
-
-Trigger phrases: "build me a dashboard", "build a call sheet", "interactive artifact", "make a page with buttons", "build an artifact to work my leads", "interactive lead triage board", "a page with buttons that log my calls".
-
-Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "log that I emailed" → \`leadbay_report_outreach\`.
-
-Prefer when: the user wants a clickable/interactive HTML artifact whose controls call Leadbay tools — not a one-off data answer
-
-Examples that SHOULD invoke this tool:
-- "Build me an interactive call sheet for these leads."
-- "Make an artifact with buttons to log call outcomes per lead."
-- "I want a clickable lead-triage board I can work down."
-
-Examples that should NOT invoke this tool (sound similar, route elsewhere):
-- "Show me today's leads."
-- "Which leads should I follow up with this week?"
-- "Log that I emailed Acme's CTO."
-
-## RENDER (quick)
-
-Do NOT render this tool's result as prose or a table. It returns
-\`runtime\` (a JS string) + \`usage_guide\` (the recipe) + \`version\`. Inline
-\`runtime\` as ONE \`<script>\` (it self-attaches \`window.LeadbayArtifacts\`),
-build view-models with \`lb.field/action/resource/list\` + the domain helpers,
-bind them to your own HTML, and pass the tools you call as the artifact's
-\`mcp_tools\`. READ \`usage_guide\` first. The artifact is the answer.
-
----
-
-Hands you everything to build an interactive HTML **artifact** the user runs inside their own Claude (cowork): headless **domain view-models** + a markdown usage guide. A view-model owns a control's whole data lifecycle — populate a dropdown's options from a Leadbay call, hold the value, expose loading/error, validate, encapsulate the API call + business rules. You own 100% of the markup, layout, and style. The library renders nothing.
-
-Returns \`{ runtime, usage_guide, version }\`:
-- \`runtime\` — a minified, zero-dependency vanilla IIFE that self-attaches \`window.LeadbayArtifacts\` (call it \`lb\`). Inline once as \`<script>\`.
-- \`usage_guide\` — the full recipe: \`lb.field\` / \`lb.action\` / the \`lb.bind*\` sugar, a copy-paste cold-call call sheet, and the write-call rules. READ IT before building.
-
-The model — two layers. Primitives: \`lb.field\` (value + API-populated options), \`lb.action\` (write/submit), \`lb.resource\` (load-on-click / poll-until-done / \`.refresh()\`), \`lb.list\` (paginated rows); each exposes \`.loading/.error/.subscribe\`, and you bind them to YOUR native elements with \`lb.bindSelect/bindValue/bindAction\` (no style imposed). Domain components (pre-wired, footguns baked in): \`lb.campaigns\`, \`lb.outreach\`, \`lb.note\`, \`lb.like/dislike\`, \`lb.leadHistory\`, \`lb.leadProfile\`, \`lb.callList\`, \`lb.enrichment\` (launch + poll), \`lb.teamActivity\` (manager leaderboard + trend). TanStack-Query's headless-view-model separation, vanilla (cowork is inline-only — no React).
-
-Canonical uses: a cold-call sheet (\`lb.callList\` + per-row \`lb.outreach\`/\`lb.leadHistory\`); a manager dashboard (\`lb.teamActivity\` → leaderboard table + Chart.js trend); a live enrichment view (\`lb.enrichment\` → progress + refresh). Live auto-poll is host-dependent — always wire a Refresh.
-
-Write-call footguns (in the guide, repeated because they bite): for \`leadbay_report_outreach\` (status/disposition) the \`args\` MUST include \`verification:{source:"user_confirmed",ref:"…"}\` AND \`_triggered_by:"<the user's request>"\`, or the call is rejected. \`leadbay_add_leads_to_campaign\` needs \`_triggered_by\` too. \`leadbay_add_note\`/\`leadbay_like_lead\`/\`leadbay_dislike_lead\` need only their own args. Snoozing (pushback) is advanced-gated — not callable from a default artifact. Org CRM status IS available: \`lb.leadStatus()\` gives the Wanted/Won/Lost/Unwanted picker field and \`lb.setStatus()\` the write (\`leadbay_set_lead_status\`), with the partial-write check baked in. Keep it distinct from \`report_outreach\`'s \`epilogue_status\`, which records how one outreach ATTEMPT went.
-
-WHEN TO USE: the user asks for a clickable / interactive artifact, dashboard, or call sheet that DOES things (not just displays data).
-
-WHEN NOT TO USE: the user wants a plain data answer (route to leadbay_pull_leads / leadbay_pull_followups) or to log a single real outreach you just did (leadbay_report_outreach).
-`;
-// endregion: leadbay_artifact_kit
 
 // region: leadbay_bulk_enrich_status
 export const leadbay_bulk_enrich_status: string = `Check status + per-lead contacts for a bulk enrichment you previously launched via leadbay_enrich_titles. Pass the \`notification_id\`, and/or the \`lead_ids\` + \`titles\` + \`email\` / \`phone\` the launch returned. Either one alone is a valid call: with \`notification_id\` the tool reads the job's lead set back from the backend, so an id kept from an earlier conversation still answers with per-lead progress. Pass \`lead_ids\` as well whenever you still have them — the job lookup is a scan of your recent notifications, so an archived job may not be found, but the leads always answer. \`titles\` / \`email\` / \`phone\` scope the count to the roles and channel THIS run asked for. When \`include_contacts=true\` (opt-in), includes each contact's email/phone_number/job_title/enrichment.done.
@@ -813,13 +755,17 @@ Exactly two offers — keep it terse, this is a status tool:
 // endregion: leadbay_bulk_qualify_leads
 
 // region: leadbay_campaign_call_sheet
-export const leadbay_campaign_call_sheet: string = `## WHEN TO USE
+export const leadbay_campaign_call_sheet: string = `## WHAT IT DOES
+
+Cold-calling cheat sheet for a campaign — joins \`/campaigns/{id}/contacts\` + \`/campaigns/{id}/leads\` into one call-ready payload. Each lead block carries the AI next-step + every reachable contact (name, phone with \`tel:\` URL, LinkedIn, role). Optional \`map_locations\` is ready to pass into \`places_map_display_v0\` for a geographic call route.
+
+## WHEN TO USE
 
 Trigger phrases: "campaign call sheet", "people to call in <campaign>", "cold-calling cheat sheet", "work this campaign", "calling session for <campaign>".
 
 Do NOT use for: "campaign pulse only" → \`leadbay_campaign_progression\`; "create campaign" → \`leadbay_create_campaign\`; "list campaigns" → \`leadbay_list_campaigns\`.
 
-Prefer when: user wants one campaign with phone + LinkedIn contacts ready to call
+Use this when: user wants one campaign with phone + LinkedIn contacts ready to call
 
 Examples that SHOULD invoke this tool:
 - "Show me my Limoges Tour campaign as a call sheet."
@@ -974,13 +920,17 @@ Never link a person's name to the company's LinkedIn page (and vice versa) — t
 // endregion: leadbay_campaign_call_sheet
 
 // region: leadbay_campaign_progression
-export const leadbay_campaign_progression: string = `## WHEN TO USE
+export const leadbay_campaign_progression: string = `## WHAT IT DOES
+
+Per-lead progression inside one campaign. For each lead: contact counts (total / in-progress / declined), the most recent interaction headline, and affiliation overlap (which OTHER campaigns this lead is also in, plus a teammate-overlap count). The drill-down view for managerial follow-up.
+
+## WHEN TO USE
 
 Trigger phrases: "how is my <name> campaign doing", "campaign progression", "lead-by-lead status on <campaign>", "who in <campaign> have I contacted", "what's stuck in my campaign".
 
 Do NOT use for: "pulse across all campaigns (not one)" → \`leadbay_list_campaigns\`; "log an outreach event" → \`leadbay_report_outreach\`.
 
-Prefer when: user named (or just selected from list_campaigns) ONE campaign and wants per-lead status. Use list_campaigns for the cross-campaign overview
+Use this when: user named (or just selected from list_campaigns) ONE campaign and wants per-lead status. Use list_campaigns for the cross-campaign overview
 
 Examples that SHOULD invoke this tool:
 - "Walk me through the Limoges Tour campaign — who have I touched?"
@@ -1044,20 +994,24 @@ export const leadbay_clear_user_prompt: string = `Remove the org's intelligence-
 
 WHEN TO USE: when a refinement turned out to be the wrong direction.
 
-WHEN NOT TO USE: to replace with a different prompt — just call leadbay_refine_prompt; that overwrites.
+WHEN NOT TO USE: to replace with a different prompt — just call leadbay_refine_lead_targeting; that overwrites.
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_clear_user_prompt
 
 // region: leadbay_create_campaign
-export const leadbay_create_campaign: string = `## WHEN TO USE
+export const leadbay_create_campaign: string = `## WHAT IT DOES
+
+Create a named campaign — a persistent grouping of leads the user (or their manager) plans to work systematically. Seed it with lead_ids at creation (the backend AI-suggests a name from them) or start empty and add leads later via \`leadbay_add_leads_to_campaign\`. Persists the user's prospecting decisions across sessions.
+
+## WHEN TO USE
 
 Trigger phrases: "create a campaign called <name>", "save these leads as a campaign", "campaign for my <city> trip", "group these leads", "persist these leads", "prepare <N> campaigns to re-engage my prospects".
 
 Do NOT use for: "list campaigns" → \`leadbay_list_campaigns\`; "add to existing campaign" → \`leadbay_add_leads_to_campaign\`; "log outreach" → \`leadbay_report_outreach\`.
 
-Prefer when: user wants to persist picked leads as a named cohort to work later
+Use this when: user wants to persist picked leads as a named cohort to work later
 
 Examples that SHOULD invoke this tool:
 - "Save these 9 leads as a campaign called 'Limoges Tour – May 24'."
@@ -1193,7 +1147,13 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_deselect_leads
 
 // region: leadbay_discover_leads
-export const leadbay_discover_leads: string = `Get AI-recommended leads from Leadbay. Returns paginated lead summaries with scores, AI summaries, tags, and recommended contacts. Auto-resolves to the active lens if \`lensId\` is omitted; \`count\` is capped at 50 per page.
+export const leadbay_discover_leads: string = `
+Get AI-recommended leads from Leadbay. Returns paginated lead summaries with scores, AI summaries, tags, and recommended contacts. Auto-resolves to the active lens if \`lensId\` is omitted; \`count\` is capped at 50 per page.
+
+**Side effect.** Leads returned here are recorded as seen in the user's own
+Leadbay account, which rotates them out of tomorrow's Discover list.
+
+
 
 WHEN TO USE: low-level — when you need raw paginated wishlist access without the qualification_summary attached by leadbay_pull_leads.
 
@@ -1202,13 +1162,17 @@ WHEN NOT TO USE: as the agent's default lead-discovery entry point — use leadb
 // endregion: leadbay_discover_leads
 
 // region: leadbay_dislike_lead
-export const leadbay_dislike_lead: string = `## WHEN TO USE
+export const leadbay_dislike_lead: string = `## WHAT IT DOES
+
+Mark a lead as disliked, hiding it from this user, and save the user's reason as a note on the lead. Use when the user rejects a lead ("not relevant", "thumbs down", "wrong industry"). Distinct from \`leadbay_set_pushback\`, which is a temporary deferral the user expects to revisit.
+
+## WHEN TO USE
 
 Trigger phrases: "I don't like this lead", "thumbs down", "not relevant", "wrong industry", "too small", "skip permanently", "not a fit", "no to this one".
 
 Do NOT use for: "remind me later / snooze / not now" → \`leadbay_set_pushback\`; "thumbs up / save this one" → \`leadbay_like_lead\`.
 
-Prefer when: durable rejection of a specific lead; pass \`lead_id\`, and the user's words as \`reason\`. For temporary deferral, route to \`leadbay_set_pushback\`.
+Use this when: durable rejection of a specific lead; pass \`lead_id\`, and the user's words as \`reason\`. For temporary deferral, route to \`leadbay_set_pushback\`.
 
 Examples that SHOULD invoke this tool:
 - "Thumbs down — wrong industry."
@@ -1237,7 +1201,7 @@ Pass the lead's UUID as \`lead_id\`, and the user's reason as \`reason\` wheneve
 
 Dislike is a **permanent** rejection of this lead. If the user only wants to defer a lead ("not now", "remind me next month", "I'll look at this one later"), call \`leadbay_set_pushback\` instead; that's reversible and time-bounded.
 
-WHEN TO USE: the user explicitly rejects a lead ("not relevant", "wrong industry", "too small", "thumbs down", "skip this", "not a fit"). Use proactively after \`leadbay_research_lead\` reveals disqualifying signals.
+WHEN TO USE: the user explicitly rejects a lead ("not relevant", "wrong industry", "too small", "thumbs down", "skip this", "not a fit"). Use proactively after \`leadbay_research_lead_by_id\` reveals disqualifying signals.
 
 WHEN NOT TO USE: the user simply wants to defer a lead — use \`leadbay_set_pushback\` to snooze instead. Dislike is a permanent negative signal; pushback is a temporary deferral.
 
@@ -1257,13 +1221,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_dismiss_clarification
 
 // region: leadbay_enrich_contacts
-export const leadbay_enrich_contacts: string = `## WHEN TO USE
+export const leadbay_enrich_contacts: string = `## WHAT IT DOES
+
+Order email and/or phone enrichment for ONE specific contact on a lead — the person the user named, not a job title. Use when the user has already picked who they want. Don't use it to enrich a title across many leads.
+
+## WHEN TO USE
 
 Trigger phrases: "enrich this contact", "get this person's email", "find <name>'s phone number", "reveal the email of <name> at <company>", "enrich the managing director, not the president", "enrichir le DG à la place du président".
 
 Do NOT use for: "enrich the CEOs / a job title across my leads" → \`leadbay_enrich_titles\`; "pin / mark this person as the priority contact" → \`leadbay_pin_contact\`; "draft an email / prepare outreach for this lead" → \`leadbay_prepare_outreach\`.
 
-Prefer when: the user names ONE person on ONE company — pass the lead id + that contact's own id. A \`source:"paid"\` candidate id from leadbay_research_lead_by_id is valid input. Pinning does not enrich anyone.
+Use this when: the user names ONE person on ONE company — pass the lead id + that contact's own id. A \`source:"paid"\` candidate id from leadbay_research_lead_by_id is valid input. Pinning does not enrich anyone.
 
 Examples that SHOULD invoke this tool:
 - "Get me Jane Doe's email at Acme."
@@ -1437,13 +1405,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_enrich_titles
 
 // region: leadbay_extend_lens
-export const leadbay_extend_lens: string = `## WHEN TO USE
+export const leadbay_extend_lens: string = `## WHAT IT DOES
+
+Queue an additive extra-refill on a lens (more leads, same criteria), for users whose daily appetite exceeds the standard batch. The agent picks 3–5 seeds silently via \`leadbay_list_lens_seed_candidates\` first; the user never reviews them. Subject to the daily \`LENS_EXTRA_REFILL\` quota (429 → smaller / wait / upgrade). Checks extendability first: a lens whose candidate pool is empty is refused (\`no_candidates\`), not queued.
+
+## WHEN TO USE
 
 Trigger phrases: "I want more leads on this lens", "extend the lens", "I need a bigger batch today", "fill more leads, I've burned through these", "more leads like the ones in this lens".
 
-Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "find me companies that <different profile than the lens>" → \`leadbay_find_new_leads\`; "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me X" → \`leadbay_refine_prompt\`.
+Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "find me companies that <different profile than the lens>" → \`leadbay_find_new_leads\`; "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me X" → \`leadbay_refine_lead_targeting\`.
 
-Prefer when: user has bigger appetite than the daily lens fill delivers — additive refill on same criteria
+Use this when: user has bigger appetite than the daily lens fill delivers — additive refill on same criteria
 
 Examples that SHOULD invoke this tool:
 - "Give me more leads on this lens — I want a bigger batch."
@@ -1464,13 +1436,13 @@ list \`accepted_seeds\`; they're internal.
 \`quota_exceeded\` → three options via the host's choice widget
 (smaller count / wait for reset / upgrade).
 \`refresh_in_progress\` → "lens is filling, retry in a minute".
-\`no_valid_seeds\` → silently re-call \`leadbay_seed_candidates\`, retry once.
+\`no_valid_seeds\` → silently re-fetch seeds and retry once.
 
 ---
 
 Queue an additive extra-refill on a lens — more leads on the same criteria, without changing the audience. For users whose daily appetite exceeds what the standard fill delivers. Wraps \`POST /lenses/{lensId}/extra_refill\`. The fill happens asynchronously; new leads stream in over ~30s, observable through \`leadbay_pull_leads\`.
 
-**Mandatory chain — agent picks seeds silently.** Unless the user has explicitly said "no seeds, just fill it", the agent MUST call \`leadbay_seed_candidates\` FIRST, pick 3–5 seed leads using the heuristics in that tool's description, and pass them here as \`seed_lead_ids\`. The seed list is **never shown to the user** — the user asked for more leads, not a candidate review meeting. The canonical \`leadbay_extend_my_lens\` prompt drives this chain.
+**Mandatory chain — agent picks seeds silently.** Unless the user has explicitly said "no seeds, just fill it", the agent MUST call \`leadbay_list_lens_seed_candidates\` FIRST, pick 3–5 seed leads using the heuristics in that tool's description, and pass them here as \`seed_lead_ids\`. The seed list is **never shown to the user** — the user asked for more leads, not a candidate review meeting. The canonical \`leadbay_extend_my_lens\` prompt drives this chain.
 
 **Seeds are optional at the wire level** — omit or empty array → backend falls back to default centroid strategies (same behaviour as a normal fill). The response's \`accepted_seeds\` echoes the subset that passed validation. Prefer the seeded path because it gives the recommender a signal beyond the lens centroid (which it already biases on).
 
@@ -1481,14 +1453,14 @@ Queue an additive extra-refill on a lens — more leads on the same criteria, wi
 - \`status: "queued"\` — fill is queued. \`accepted_seeds\` lists IDs that passed validation. NEXT STEP: call \`leadbay_pull_leads\` in ~30s.
 - \`status: "quota_exceeded"\` — daily LENS_EXTRA_REFILL hit. Response carries \`quota: {used_today, resets_at}\` + a \`message\` to surface. **Render three options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`)**: (1) smaller \`extra_count\`, (2) wait until \`resets_at\`, (3) upgrade plan (TIER1=150, TIER2=1000). Do NOT silently retry.
 - \`status: "refresh_in_progress"\` — a refresh or extra-refill is already running. Tell the user to wait and call \`leadbay_pull_leads\` in ~30s.
-- \`status: "no_valid_seeds"\` — seeds went stale. Silently re-call \`leadbay_seed_candidates\` and retry once; only surface to the user if the second attempt also fails.
+- \`status: "no_valid_seeds"\` — seeds went stale. Silently re-call \`leadbay_list_lens_seed_candidates\` and retry once; only surface to the user if the second attempt also fails.
 - \`status: "no_candidates"\` — **the refill was NOT queued.** The lens's candidate pool is empty, so a refill would report success, consume no quota and deliver nothing. \`reason\` carries the same \`{code, message, retryable, criteria?, narrow_locations?}\` shape \`leadbay_pull_leads\` returns in \`empty_reason\`, with \`retryable: false\`. **Stop. Do not re-call this tool on this lens** — the outcome cannot change until the audience changes. Surface \`reason.message\`, name the criteria in play, and offer \`leadbay_adjust_audience\` (or \`leadbay_pull_followups\` when \`reason.code\` is \`no_new_leads\` and the lens already holds leads).
 
 **Extendability is checked before the write.** Every response carries \`available_count\` — how many leads a refill could still draw, read from the lens's own pool. \`0\` means the call was refused (\`no_candidates\`); \`null\` means the pool could not be read and the refill was queued anyway. An empty lens is NOT evidence of a broken refill: it is usually a lens that never had candidates. Reach for \`leadbay_adjust_audience\`, not another \`leadbay_extend_lens\`.
 
 WHEN TO USE: when the user has a bigger appetite than the daily lens fill delivers — they want MORE of the same kind of leads, on demand. Canonical phrasings: "I want more leads on this lens", "extend the lens", "give me a bigger batch today". The \`leadbay_extend_my_lens\` prompt is the user-facing entry point that orchestrates the whole flow.
 
-WHEN NOT TO USE: for daily inbox pulls (\`leadbay_pull_leads\`). Not for audience criteria changes (\`leadbay_adjust_audience\` / \`leadbay_refine_prompt\`). Never call this without seeds unless the user explicitly opted out — the seeded path produces materially better fill.
+WHEN NOT TO USE: for daily inbox pulls (\`leadbay_pull_leads\`). Not for audience criteria changes (\`leadbay_adjust_audience\` / \`leadbay_refine_lead_targeting\`). Never call this without seeds unless the user explicitly opted out — the seeded path produces materially better fill.
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
@@ -1542,7 +1514,7 @@ Pick the row matching the response \`status\`. Seed-picking is internal; do NOT 
 | \`quota_exceeded\`        | "Wait until the daily quota resets at \`<resets_at>\`"          | (no call — surface the reset time to the user)         |
 | \`quota_exceeded\`        | "Upgrade plan for a higher daily limit"                       | (no call — direct user to contact account manager / sales) |
 | \`refresh_in_progress\`   | "Lens is already filling — pull leads in a minute"            | \`leadbay_pull_leads()\` (after a short wait)            |
-| \`no_valid_seeds\`        | (silent retry — re-call \`leadbay_seed_candidates\` then \`leadbay_extend_lens\`) | internal — only surface if the second attempt also fails |
+| \`no_valid_seeds\`        | (silent retry — re-call \`leadbay_list_lens_seed_candidates\` then \`leadbay_extend_lens\`) | internal — only surface if the second attempt also fails |
 | \`no_candidates\`         | "Widen the audience — this lens has nothing left to add"       | \`leadbay_adjust_audience()\` — never \`leadbay_extend_lens\` again |
 | \`no_candidates\` (\`reason.code: no_new_leads\`) | "Work the leads already in the lens"        | \`leadbay_pull_followups()\`                             |
 
@@ -1551,13 +1523,17 @@ If nothing matches cleanly, default to "pull leads now to see what's queued" —
 // endregion: leadbay_extend_lens
 
 // region: leadbay_find_new_leads
-export const leadbay_find_new_leads: string = `## WHEN TO USE
+export const leadbay_find_new_leads: string = `## WHAT IT DOES
+
+Search for NET-NEW companies matching an ideal-customer profile the user describes, scored for fit and optionally AI-qualified with contacts. Use it when the user describes who they want.
+
+## WHEN TO USE
 
 Trigger phrases: "find me N companies that <profile>", "get me new prospects like <company>", "I need leads in <place> that <do X>", "search for companies that would buy <product>", "net-new leads outside my current pipeline", "we're entering <market> — who should we target".
 
-Do NOT use for: "show me today's leads / what's new today" → \`leadbay_pull_leads\`; "find me new leads (no profile, no count named)" → \`leadbay_pull_leads\`; "more leads like the ones in my lens" → \`leadbay_extend_lens\`; "qualify / vet these companies I have" → \`leadbay_qualify_leads\`; "qualify the top N of my batch" → \`leadbay_bulk_qualify_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "tell me about <one company>" → \`leadbay_research_lead_by_name_fuzzy\`.
+Do NOT use for: "show me today's leads / what's new today", "find me new leads (no profile, no count named)" → \`leadbay_pull_leads\`; "more leads like the ones in my lens" → \`leadbay_extend_lens\`; "qualify / vet these companies I have" → \`leadbay_qualify_leads\`; "qualify the top N of my batch" → \`leadbay_bulk_qualify_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "tell me about <one company>" → \`leadbay_research_lead_by_name_fuzzy\`.
 
-Prefer when: the user describes a target profile or names a count of NEW companies — craft the example_lead per the seed rules below BEFORE calling; never pass the user's raw sentence as query.
+Use this when: the user describes a target profile or names a count of NEW companies — craft the example_lead per the seed rules below BEFORE calling; never pass the user's raw sentence as query.
 
 Examples that SHOULD invoke this tool:
 - "Find me 10 gyms around Dallas that would buy our flooring, with a contact."
@@ -1578,12 +1554,11 @@ delivered.
 
 ---
 
-Submit a net-new lead search: the backend matches an ICP seed against the full
-company universe, applies hard filters, skips what the org already knows
-(\`novelty: org\`), optionally qualifies against the org's own intelligence
-(questions, tags, ideal buyer profile — frozen at submit), and optionally reveals
-contact channels. Polls up to \`wait_seconds\` (default 45); a longer job returns
-a receipt — check it with \`leadbay_lead_job_status\`, usually 5–20 min. Results kept 30 days.
+The backend matches the ICP seed against the full company universe, applies
+hard filters, skips what the org already knows (\`novelty: org\`), and freezes the
+org's intelligence (questions, tags, ideal buyer profile) at submit. Polls up to
+\`wait_seconds\` (default 45); a longer job returns a receipt — check it with
+\`leadbay_lead_job_status\`, usually 5–20 min. Results kept 30 days.
 
 ## A LAUNCHED JOB — its first result is a receipt, not the answer
 
@@ -1603,20 +1578,19 @@ only if the user said not to wait or the check tool says the job stalled. Then
 say it is not ready, show what landed, and that asking again fetches the rest.
 
 
-**Free vs usage quota — never use quota silently.** Default (\`qualify: false\`,
-\`channels: []\`) is FREE: company profile + fit score + cached research +
-contact identity. \`qualify: true\` (per candidate EXAMINED, capped by
-\`exploration_cap\`/\`max_cost\`) and \`channels\` (only when a value is found) draw
-on the org's usage quota; nothing is invoiced. Such a call is WITHHELD unless it
-carries \`confirm: true\`: nothing is submitted, and \`mode: "needs_confirmation"\` carries
-a real quote to show the user. Re-call with \`confirm: true\` on their go-ahead
-("go ahead / get their emails" counts); \`confirm: false\` vetoes. **Preview free first** — reshaping an off-profile seed
-is free, exploring it with \`qualify: true\` is not.
+**Never use quota silently.** Default (\`qualify: false\`, \`channels: []\`) is
+free: company profile, fit score, cached research, contact identity.
+\`qualify: true\` (per candidate EXAMINED, capped by \`exploration_cap\`/\`max_cost\`)
+and \`channels\` (only when a value is found) draw on the org's usage quota;
+nothing is invoiced. Such a call is WITHHELD unless it carries \`confirm: true\`:
+nothing is submitted and \`mode: "needs_confirmation"\` carries a real quote for
+the user. Re-call with \`confirm: true\` on their go-ahead ("go ahead / get their
+emails" counts); \`confirm: false\` vetoes. Preview free first.
 
 **Ad-hoc exclusions ("no chains") are enforced by NO tier** — \`filters\` has no
-exclusion key, and \`qualify\` scores against the org's FROZEN questions and IBP.
-Violators get delivered and use quota: post-filter them yourself and say so. Durable enforcement →
-\`leadbay_set_qualification_questions\` / \`leadbay_refine_prompt\`.
+exclusion key and \`qualify\` scores against the org's FROZEN questions and IBP.
+Violators get delivered and use quota: post-filter them and say so. Durable
+enforcement → \`leadbay_set_qualification_questions\`.
 
 ### Crafting the \`example_lead\` seed — the input that decides result quality
 
@@ -1641,7 +1615,7 @@ measured:
 4. **NO event language — in \`description\` or \`query\`.** "recrute", "hiring",
    "expanding", "just raised" never appear in registry text, so they match
    nothing. Send the trigger to \`leadbay_set_qualification_questions\` or
-   \`leadbay_refine_prompt\` and say so. "companies hiring a senior SDR" seeds as
+   \`leadbay_refine_lead_targeting\` and say so. "companies hiring a senior SDR" seeds as
    "B2B software company operating an in-house outbound sales team."
 5. **No meta-markers.** Never "(example)", "(fictional)", "(placeholder)".
 6. **Hard constraints go in \`filters\`, not prose — exact keys:**
@@ -1658,9 +1632,9 @@ measured:
 
 
 **Parameter notes**
-- \`request_id\` (REQUIRED) is the retry contract: SAME value retrying the same
-  ask (same live job, no double launch); NEW for a changed ask. Derive from ask
-  + archetype + date: \`gyms-dallas-2026-07-28\`.
+- \`request_id\` (REQUIRED) is the retry contract: SAME value retries the same
+  ask (same job, no double launch), NEW for a changed ask. Derive it from ask +
+  archetype + date: \`gyms-dallas-2026-07-28\`.
 - Never lower \`min_ai_score\` with \`channels\` — that reveals emails for leads
   the AI just scored as junk.
 - \`count\` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After: wait).
@@ -1794,7 +1768,7 @@ Pick the 2-3 that match what happened, never the whole table:
 
 | Observation | Suggest | Calls |
 |---|---|---|
-| ≥ 1 delivered — offer FIRST | "Build an interactive lead triage board" | leadbay_artifact_kit → CANONICAL recipe, data in hand |
+| ≥ 1 delivered — offer FIRST | "Build an interactive lead triage board" | leadbay_get_artifact_runtime → CANONICAL recipe, data in hand |
 | Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
@@ -1806,13 +1780,17 @@ Pick the 2-3 that match what happened, never the whole table:
 // endregion: leadbay_find_new_leads
 
 // region: leadbay_followups_map
-export const leadbay_followups_map: string = `## WHEN TO USE
+export const leadbay_followups_map: string = `## WHAT IT DOES
+
+Plot follow-up leads on a map for travel / in-person / "I'm going to <city>" intent. Same backend as pull_followups; pass \`city\` (NYC / SF / LA aliases auto-expand) and route into either \`places_map_display_v0\` (Claude native widget) or per-lead place-card prose blocks (host's auto-detected carousel).
+
+## WHEN TO USE
 
 Trigger phrases: "I'm going to <city>", "visit in person", "map of leads", "plan my itinerary".
 
 Do NOT use for: "default follow-up table" → \`leadbay_pull_followups\`; "new prospects" → \`leadbay_pull_leads\`.
 
-Prefer when: geographic, travel, in-person, itinerary, or map intent; NEVER a country name — a whole-country ask means NO geo filter
+Use this when: geographic, travel, in-person, itinerary, or map intent; NEVER a country name — a whole-country ask means NO geo filter
 
 Examples that SHOULD invoke this tool:
 - "I'm flying to New York Thursday — who should I meet in person?"
@@ -1833,7 +1811,7 @@ bare phone+email)}\` per lead. Fallback: per-lead markdown blocks
 
 ---
 
-Plot the user's follow-up leads on an interactive map — the canonical surface for travel / in-person / "I'm going to <city>" intent. Wraps \`leadbay_pull_followups\` (same params, response, store-then-apply geo filter); named separately so the agent has an explicit entry-point for travel intent and can route to \`places_map_display_v0\` (when the host exposes it) or emit place-card prose blocks (which most chat hosts auto-detect into Google Place cards).
+Plot the user's follow-up leads on an interactive map for travel / in-person / "I'm going to <city>" intent. Wraps \`leadbay_pull_followups\` (same params, response, store-then-apply geo filter); named separately so the agent has an explicit entry-point for travel intent and can route to \`places_map_display_v0\` (when the host exposes it) or emit place-card prose blocks (which most chat hosts auto-detect into Google Place cards).
 
 **Common city aliases resolve automatically** — \`NYC\` / \`New York\` → City of New York, \`SF\` / \`S.F.\` → San Francisco, \`LA\` / \`L.A.\` → Los Angeles, \`DC\` / \`Washington D.C.\` → Washington, \`Philly\` → Philadelphia, \`Vegas\` → Las Vegas, \`NOLA\` → New Orleans. Pass either an abbreviation, a city name, or a pre-resolved \`city_id\`. Ambiguous matches surface as \`status: "ambiguous_locations"\` + \`location_ambiguities[]\` — pick an id and re-call with \`city_id\`.
 
@@ -1856,16 +1834,16 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
-Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+Place names never go in \`keywords\`, \`sectors\` or \`leadbay_refine_lead_targeting\` — text matches, not geo filters.
 
 
 ---
 
-## RENDER — host-native map widget (REQUIRED, preferred)
+## RENDER — host-native map widget (REQUIRED)
 
-When the host exposes Claude's \`places_map_display_v0\`, route the leads there. It owns the visual surface (markers, place-card carousel, "Notes from Claude") and beats inline prose by miles.
+When the host exposes Claude's \`places_map_display_v0\`, route the leads there. It owns the visual surface: markers, place-card carousel, "Notes from Claude".
 
-**Call shape — pass the most precise data you have. The richer the address + coordinates, the more likely Google resolves a real business listing and shows structured property pills (phone, website, Directions button, rating) on each card. Cheap city-level data => basic pin + your notes string only.**
+**Call shape — pass the most precise data you have. A full address plus coordinates lets Google resolve a real business listing and show property pills (phone, website, Directions button, rating) on each card. City-level data gives a basic pin and your notes string only.**
 
 \`\`\`
 places_map_display_v0({
@@ -2000,10 +1978,62 @@ The response shape is identical to \`leadbay_pull_followups\`: \`{leads, active_
 `;
 // endregion: leadbay_followups_map
 
+// region: leadbay_get_artifact_runtime
+export const leadbay_get_artifact_runtime: string = `## WHAT IT DOES
+
+Get the headless runtime + usage guide to BUILD an interactive HTML artifact whose buttons/dropdowns call Leadbay tools (e.g. a cold-call sheet that logs notes, statuses, likes per lead). Use when the user wants a clickable artifact. Don't use it to answer a data question.
+
+## WHEN TO USE
+
+Trigger phrases: "build me a dashboard", "build a call sheet", "interactive artifact", "make a page with buttons", "build an artifact to work my leads", "interactive lead triage board", "a page with buttons that log my calls".
+
+Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "log that I emailed" → \`leadbay_report_outreach\`.
+
+Use this when: the user wants a clickable/interactive HTML artifact whose controls call Leadbay tools — not a one-off data answer
+
+Examples that SHOULD invoke this tool:
+- "Build me an interactive call sheet for these leads."
+- "Make an artifact with buttons to log call outcomes per lead."
+- "I want a clickable lead-triage board I can work down."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Show me today's leads."
+- "Which leads should I follow up with this week?"
+- "Log that I emailed Acme's CTO."
+
+## RENDER (quick)
+
+Do NOT render this tool's result as prose or a table. It returns
+\`runtime\` (a JS string) + \`usage_guide\` (the recipe) + \`version\`. Inline
+\`runtime\` as ONE \`<script>\` (it self-attaches \`window.LeadbayArtifacts\`),
+build view-models with \`lb.field/action/resource/list\` + the domain helpers,
+bind them to your own HTML, and pass the tools you call as the artifact's
+\`mcp_tools\`. READ \`usage_guide\` first. The artifact is the answer.
+
+---
+
+Hands you everything to build an interactive HTML **artifact** the user runs inside their own Claude (cowork): headless **domain view-models** + a markdown usage guide. A view-model owns a control's whole data lifecycle — populate a dropdown's options from a Leadbay call, hold the value, expose loading/error, validate, encapsulate the API call + business rules. You own 100% of the markup, layout, and style. The library renders nothing.
+
+Returns \`{ runtime, usage_guide, version }\`:
+- \`runtime\` — a minified, zero-dependency vanilla IIFE that self-attaches \`window.LeadbayArtifacts\` (call it \`lb\`). Inline once as \`<script>\`.
+- \`usage_guide\` — the full recipe: \`lb.field\` / \`lb.action\` / the \`lb.bind*\` sugar, a copy-paste cold-call call sheet, and the write-call rules. READ IT before building.
+
+The model — two layers. Primitives: \`lb.field\` (value + API-populated options), \`lb.action\` (write/submit), \`lb.resource\` (load-on-click / poll-until-done / \`.refresh()\`), \`lb.list\` (paginated rows); each exposes \`.loading/.error/.subscribe\`, and you bind them to YOUR native elements with \`lb.bindSelect/bindValue/bindAction\` (no style imposed). Domain components (pre-wired, footguns baked in): \`lb.campaigns\`, \`lb.outreach\`, \`lb.note\`, \`lb.like/dislike\`, \`lb.leadHistory\`, \`lb.leadProfile\`, \`lb.callList\`, \`lb.enrichment\` (launch + poll), \`lb.teamActivity\` (manager leaderboard + trend). TanStack-Query's headless-view-model separation, vanilla (cowork is inline-only — no React).
+
+Canonical uses: a cold-call sheet (\`lb.callList\` + per-row \`lb.outreach\`/\`lb.leadHistory\`); a manager dashboard (\`lb.teamActivity\` → leaderboard table + Chart.js trend); a live enrichment view (\`lb.enrichment\` → progress + refresh). Live auto-poll is host-dependent — always wire a Refresh.
+
+Write-call footguns (in the guide, repeated because they bite): for \`leadbay_report_outreach\` (status/disposition) the \`args\` MUST include \`verification:{source:"user_confirmed",ref:"…"}\` AND \`_triggered_by:"<the user's request>"\`, or the call is rejected. \`leadbay_add_leads_to_campaign\` needs \`_triggered_by\` too. \`leadbay_add_note\`/\`leadbay_like_lead\`/\`leadbay_dislike_lead\` need only their own args. Snoozing (pushback) is advanced-gated — not callable from a default artifact. Org CRM status IS available: \`lb.leadStatus()\` gives the Wanted/Won/Lost/Unwanted picker field and \`lb.setStatus()\` the write (\`leadbay_set_lead_status\`), with the partial-write check baked in. Keep it distinct from \`report_outreach\`'s \`epilogue_status\`, which records how one outreach ATTEMPT went.
+
+WHEN TO USE: the user asks for a clickable / interactive artifact, dashboard, or call sheet that DOES things (not just displays data).
+
+WHEN NOT TO USE: the user wants a plain data answer (route to leadbay_pull_leads / leadbay_pull_followups) or to log a single real outreach you just did (leadbay_report_outreach).
+`;
+// endregion: leadbay_get_artifact_runtime
+
 // region: leadbay_get_clarification
 export const leadbay_get_clarification: string = `Check whether Leadbay has a pending clarification question — a question raised when refining the intelligence prompt produced contradictory or ambiguous criteria. Returns \`{pending: false, clarification: null}\` when nothing is pending (the backend returns 204).
 
-WHEN TO USE: after leadbay_refine_prompt, to see if Leadbay needs the user to disambiguate.
+WHEN TO USE: after leadbay_refine_lead_targeting, to see if Leadbay needs the user to disambiguate.
 
 WHEN NOT TO USE: to answer the question — use leadbay_answer_clarification.
 `;
@@ -2068,13 +2098,17 @@ WHEN NOT TO USE: when leadbay_research_lead_by_id has already been called — it
 // endregion: leadbay_get_lead_activities
 
 // region: leadbay_get_lead_custom_fields
-export const leadbay_get_lead_custom_fields: string = `## WHEN TO USE
+export const leadbay_get_lead_custom_fields: string = `## WHAT IT DOES
+
+Retrieve the CRM custom-field VALUES stored on one lead. Use when the user asks what custom fields a specific company/lead has, or for the value of a named custom field on a lead. Don't use it for the custom-field DEFINITIONS / catalog (that's leadbay_list_mappable_fields) or for a lead's full research dossier (that's leadbay_research_lead_by_id).
+
+## WHEN TO USE
 
 Trigger phrases: "what custom fields are on this lead", "show the CRM custom field values for <Company>", "what's the <custom field name> on this lead", "get lead <UUID>'s custom fields", "does this lead have any custom field values".
 
 Do NOT use for: "what custom fields exist on my account" → \`leadbay_list_mappable_fields\`; "give me the full research dossier on this lead" → \`leadbay_research_lead_by_id\`.
 
-Prefer when: user wants the custom-field VALUES on ONE lead; pass \`leadId\`
+Use this when: user wants the custom-field VALUES on ONE lead; pass \`leadId\`
 
 Examples that SHOULD invoke this tool:
 - "What custom field values are stored on this lead?"
@@ -2094,6 +2128,11 @@ table.
 
 Retrieve the CRM custom-field **values** stored on a single lead — the actual
 data (\`value\`) per custom field, not the field definitions.
+
+**Side effect.** Leads returned here are recorded as seen in the user's own
+Leadbay account, which rotates them out of tomorrow's Discover list.
+
+
 
 This is distinct from **leadbay_list_mappable_fields**, which returns the org's
 custom-field *catalog* (the definitions: id/name/type, used for import
@@ -2140,7 +2179,13 @@ WHEN NOT TO USE: when the lead summary's \`notes_count\` is 0 — there's nothin
 // endregion: leadbay_get_lead_notes
 
 // region: leadbay_get_lead_profile
-export const leadbay_get_lead_profile: string = `Get a full lead profile including company details, AI qualification scores, web insights, and contacts. Also marks the lead as SEEN+CLICKED in the user's lens so it ages out of the "new" Discover view (fire-and-forget; profile fetch never blocks on it).
+export const leadbay_get_lead_profile: string = `
+Get a full lead profile including company details, AI qualification scores, web insights, and contacts. Also marks the lead as SEEN+CLICKED in the user's lens so it ages out of the "new" Discover view (fire-and-forget; profile fetch never blocks on it).
+
+**Side effect.** Leads returned here are recorded as seen in the user's own
+Leadbay account, which rotates them out of tomorrow's Discover list.
+
+
 
 WHEN TO USE: low-level — for fine-grained access to the raw shape of the lead profile.
 
@@ -2176,13 +2221,17 @@ WHEN NOT TO USE: when the lead summary's \`prospecting_actions_count\` is 0.
 // endregion: leadbay_get_prospecting_actions
 
 // region: leadbay_get_qualification_questions
-export const leadbay_get_qualification_questions: string = `## WHEN TO USE
+export const leadbay_get_qualification_questions: string = `## WHAT IT DOES
+
+Retrieve the org's qualification questions, its ideal buyer profile and its targeting prompt — everything that decides which leads Leadbay surfaces. Use when the user wants to know HOW their leads are qualified, and ALWAYS before changing any of it. Don't use it for one lead's qualification ANSWERS (that's leadbay_research_lead_by_id).
+
+## WHEN TO USE
 
 Trigger phrases: "what are my qualification questions", "what questions does Leadbay ask about each lead", "show me the org qualification questions", "how are my leads being qualified", "what's the qualification criteria", "(before any settings change) what is configured today", "why am I getting these leads", "the leads aren't relevant — what are my settings".
 
 Do NOT use for: "how did this lead score on the qualification questions" → \`leadbay_research_lead_by_id\`; "change / add / remove a qualification question" → \`leadbay_set_qualification_questions\`; "answer a pending clarification" → \`leadbay_answer_clarification\`.
 
-Prefer when: user wants the ORG-level qualification settings, or you are about to change any of them — read this FIRST to see whether their rule is already covered
+Use this when: user wants the ORG-level qualification settings, or you are about to change any of them — read this FIRST to see whether their rule is already covered
 
 Examples that SHOULD invoke this tool:
 - "What qualification questions does Leadbay use to score my leads?"
@@ -2221,7 +2270,7 @@ Returns:
   \`leadbay_set_qualification_questions({add_anti_patterns})\`.
 - **\`targeting_prompt\`** — the org's free-text instruction to the AI agent, or
   null. Qualitative rules that no single yes/no can express live here; change
-  it with \`leadbay_refine_prompt\`.
+  it with \`leadbay_refine_lead_targeting\`.
 - **\`is_admin\`** — whether the current user is an org admin. Modifying the
   questions (\`leadbay_set_qualification_questions\`) is an org-admin action; for
   admins a \`hint\` points there.
@@ -2230,7 +2279,7 @@ Returns:
 
 This tool only READS. To change the questions, use
 **leadbay_set_qualification_questions**; to change the targeting prompt, use
-**leadbay_refine_prompt**; for sector / size / territory, use
+**leadbay_refine_lead_targeting**; for sector / size / territory, use
 **leadbay_adjust_audience**. **leadbay_research_lead_by_id** shows how a
 SPECIFIC lead answered these questions.
 
@@ -2263,7 +2312,7 @@ already covered without seeing them.
 | A sector, a headcount band, a territory | \`leadbay_adjust_audience\` / \`leadbay_new_lens\` filters — never a question |
 | A company trait a stranger could estimate from that company's own website or registry record — "runs its own maintenance crew", "operates a large vehicle fleet", "is legally active and not in liquidation" | a qualification question |
 | A kind of company that is never the buyer — "consulting firms", "franchise locations of national chains", "subsidiaries of large listed groups" | a negative criterion of the ideal buyer profile, \`leadbay_set_qualification_questions({add_anti_patterns})\`. It uses no question slot, and qualification reads it as a negative signal |
-| A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, \`leadbay_refine_prompt\` |
+| A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, \`leadbay_refine_lead_targeting\` |
 | Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` with the user's words as \`reason\` / \`leadbay_set_lead_status\` on those leads. A status stores no reason, so add the user's reason with \`leadbay_add_note\`. A question must NEVER name a company |
 | CRM state — "already contacted", "already in a campaign", "already excluded" | read it: \`leadbay_pull_followups\`, \`leadbay_list_campaigns\`. A question cannot observe your own history |
 | A delivery requirement — "email AND phone mandatory", "only score 54–95" | enrichment plus your own post-filter of the result. A question scores the COMPANY; it cannot see whether Leadbay holds a phone number for a contact |
@@ -2339,7 +2388,7 @@ three different dimensions — not one. Propose all three at once.
 **5 — The change is the user's call, not yours.** This holds for the questions,
 the targeting prompt and the buyer profile alike. Show the exact text you
 propose and what it will change, then get an explicit yes before calling
-\`leadbay_set_qualification_questions\` or \`leadbay_refine_prompt\`. Ask through
+\`leadbay_set_qualification_questions\` or \`leadbay_refine_lead_targeting\`. Ask through
 \`ask_user_input_v0\` when the host offers it. A removal or a swap additionally
 needs \`confirm:true\`. Do not write an org setting in the same turn the user
 first stated the rule — and once they have said yes, actually write it:
@@ -2396,7 +2445,7 @@ export const leadbay_get_user_prompt: string = `Read the org's intelligence-refi
 
 WHEN TO USE: to know what's currently steering the agent's recommendations before suggesting a refine.
 
-WHEN NOT TO USE: to set/change the prompt — use leadbay_refine_prompt.
+WHEN NOT TO USE: to set/change the prompt — use leadbay_refine_lead_targeting.
 `;
 // endregion: leadbay_get_user_prompt
 
@@ -2410,13 +2459,17 @@ WHEN NOT TO USE: as the first read on a lead — the leadbay_research_lead_by_id
 // endregion: leadbay_get_web_fetch
 
 // region: leadbay_getting_started
-export const leadbay_getting_started: string = `## WHEN TO USE
+export const leadbay_getting_started: string = `## WHAT IT DOES
+
+Returns the guided first-run walkthrough script — four one-forward-option gates (check the account → pull leads → draft a first email to the top one → reveal who to send it to). Use when the user is new or asks to be SHOWN how Leadbay works. Don't use it to answer a data question or orientation prose.
+
+## WHEN TO USE
 
 Trigger phrases: "walk me through leadbay", "I'm new", "how do I use this", "getting started", "show me how this works", "give me a tour", "help me get started", "I just installed this".
 
-Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "which audiences do I have" → \`leadbay_my_lenses\`; "where am I / what's my plan and quota" → \`leadbay_account_status\`.
+Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "which audiences do I have" → \`leadbay_manage_lenses\`; "where am I / what's my plan and quota" → \`leadbay_account_status\`.
 
-Prefer when: the user has never used Leadbay, or asks to be SHOWN rather than told — the walkthrough runs real calls on their own account
+Use this when: the user has never used Leadbay, or asks to be SHOWN rather than told — the walkthrough runs real calls on their own account
 
 Examples that SHOULD invoke this tool:
 - "Walk me through Leadbay."
@@ -2483,7 +2536,7 @@ The manifest also carries **\`keep_going\`**: the closing cheat-sheet of *what y
 
 **Step 3 drafts, and uses no quota.** Call \`leadbay_prepare_outreach\` with \`leadId\` alone — **never \`enrich: true\`**, which launches a contact reveal off the back of a *draft* click. \`recommended_contact\` returns with \`email\`/\`phone\` null; that is expected, and it is the hook for step 4. Render through \`message_compose_v1\` (2–3 strategy-labelled variants), address it to the job TITLE — no name exists yet, and inventing one is fabrication — and never send it or offer to.
 
-**Step 4 runs in two beats — free first, the reveal only on consent.** Scoped to the ONE lead step 3 drafted for. Beat 1 omits \`titles\` and returns \`mode:"discover"\`, the free list of job titles at that company; say plainly that nothing has run yet. Beat 2 names the title the draft is addressed to, says BEFORE they decide that revealing one contact uses a little of their plan's quota (no amount, no price), and only on confirmation calls again with \`titles\` + \`confirm:true\` + \`email:true\` — polled via \`leadbay_bulk_enrich_status\` until done, reporting only what actually resolved. The gate click bought the free look, not the reveal: never launch without an explicit confirm.
+**Step 4 runs in two passes — free first, the reveal only on consent.** Scoped to the ONE lead step 3 drafted for. Pass 1 omits \`titles\` and returns \`mode:"discover"\`, the free list of job titles at that company; say plainly that nothing has run yet. Pass 2 names the title the draft is addressed to, says BEFORE they decide that revealing one contact uses a little of their plan's quota (no amount, no price), and only on confirmation calls again with \`titles\` + \`confirm:true\` + \`email:true\` — polled via \`leadbay_bulk_enrich_status\` until done, reporting only what actually resolved. The gate click bought the free look, not the reveal: never launch without an explicit confirm.
 
 ## Empty first batch is normal, not an error
 
@@ -2914,13 +2967,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_launch_bulk_enrichment
 
 // region: leadbay_lead_job_status
-export const leadbay_lead_job_status: string = `## WHEN TO USE
+export const leadbay_lead_job_status: string = `## WHAT IT DOES
+
+Poll a running leadbay_find_new_leads / leadbay_qualify_leads job by job_id — cumulative results and funnel. Use when a delivery tool returned still_running:true or the user asks "is it done / any results yet". Don't use it for enrichment jobs (leadbay_bulk_enrich_status) or imports (leadbay_import_status).
+
+## WHEN TO USE
 
 Trigger phrases: "is the lead search done", "any results yet on that job", "check on the delivery".
 
 Do NOT use for: "is the enrichment done" → \`leadbay_bulk_enrich_status\`; "is my import done" → \`leadbay_import_status\`; "is the top-N qualification done" → \`leadbay_qualify_status\`.
 
-Prefer when: a find_new_leads / qualify_leads result carried next_poll — pass its job_id, and wait_seconds 45 while the user waits on the result.
+Use this when: a find_new_leads / qualify_leads result carried next_poll — pass its job_id, and wait_seconds 45 while the user waits on the result.
 
 Examples that SHOULD invoke this tool:
 - "Any leads yet from that search you started?"
@@ -3148,13 +3205,17 @@ is a status tool, keep it terse:
 // endregion: leadbay_lead_job_status
 
 // region: leadbay_like_lead
-export const leadbay_like_lead: string = `## WHEN TO USE
+export const leadbay_like_lead: string = `## WHAT IT DOES
+
+Mark a lead as liked — signals positive interest to the Leadbay scoring engine, influencing future batch composition. Use when the user explicitly approves a lead ("thumbs up", "save this one", "I like this"). Don't use it for snoozing — that's \`leadbay_set_pushback\`.
+
+## WHEN TO USE
 
 Trigger phrases: "I like this lead", "thumbs up", "this one looks good", "save this one", "this is a good fit", "more like this", "yes to this one".
 
 Do NOT use for: "remind me about this lead later / snooze it" → \`leadbay_set_pushback\`; "not relevant / wrong fit / thumbs down" → \`leadbay_dislike_lead\`.
 
-Prefer when: user expresses durable positive interest in a specific lead; pass the lead's UUID as \`lead_id\`
+Use this when: user expresses durable positive interest in a specific lead; pass the lead's UUID as \`lead_id\`
 
 Examples that SHOULD invoke this tool:
 - "I like this lead — show me more like it."
@@ -3178,7 +3239,7 @@ Mark a lead as liked. This is the same action as clicking the thumbs-up on the L
 
 Pass the lead's UUID as \`lead_id\`.
 
-WHEN TO USE: the user explicitly approves of a lead ("this one looks good", "I like this", "thumbs up", "save this one", "this is a good fit"). Also use after \`leadbay_research_lead\` reveals strong signals.
+WHEN TO USE: the user explicitly approves of a lead ("this one looks good", "I like this", "thumbs up", "save this one", "this is a good fit"). Also use after \`leadbay_research_lead_by_id\` reveals strong signals.
 
 WHEN NOT TO USE: the user is just reading or researching a lead without expressing approval. Use \`leadbay_dislike_lead\` for negative signals; use \`leadbay_set_pushback\` for "remind me later" / temporary snooze (like is durable; pushback is reversible).
 
@@ -3187,13 +3248,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_like_lead
 
 // region: leadbay_list_campaigns
-export const leadbay_list_campaigns: string = `## WHEN TO USE
+export const leadbay_list_campaigns: string = `## WHAT IT DOES
+
+List the caller's campaigns with roll-up stats (lead count, contact count, contacted / meeting-booked / declined counts). The manager's "what's in flight" view. Scoped to the calling user — teammates' campaigns are not surfaced (backend filters by \`created_by\`).
+
+## WHEN TO USE
 
 Trigger phrases: "what campaigns do I have", "list my campaigns", "show me my active campaigns", "campaign overview", "what's in flight", "pulse on my campaigns".
 
-Do NOT use for: "create a new campaign" → \`leadbay_create_campaign\`; "drill into one specific campaign's progression" → \`leadbay_campaign_progression\`; "prepare campaigns to re-engage my prospects" → \`leadbay_create_campaign\`.
+Do NOT use for: "create a new campaign", "prepare campaigns to re-engage my prospects" → \`leadbay_create_campaign\`; "drill into one specific campaign's progression" → \`leadbay_campaign_progression\`.
 
-Prefer when: user wants the pulse / overview view across all their campaigns. Use campaign_progression to drill into one
+Use this when: user wants the pulse / overview view across all their campaigns. Use campaign_progression to drill into one
 
 Examples that SHOULD invoke this tool:
 - "What campaigns am I running?"
@@ -3232,6 +3297,61 @@ WHEN NOT TO USE: for per-lead progression inside ONE campaign (use \`leadbay_cam
 `;
 // endregion: leadbay_list_campaigns
 
+// region: leadbay_list_lens_seed_candidates
+export const leadbay_list_lens_seed_candidates: string = `## WHAT IT DOES
+
+INTERNAL scaffolding for \`leadbay_extend_lens\` — fetch ranked candidate leads currently in the lens so the agent can pick 3–5 seeds itself, silently, and chain to the extend call. Do NOT surface the candidate list to the user; the user asked for "more leads", not "pick seeds".
+
+## WHEN TO USE
+
+Trigger phrases: "(internal) agent decided to extend the lens — fetch seed candidates".
+
+Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me X" → \`leadbay_refine_lead_targeting\`.
+
+Use this when: agent is mid-\`leadbay_extend_my_lens\` flow and needs to pick seeds before calling \`leadbay_extend_lens\`
+
+Examples that SHOULD invoke this tool:
+- "(agent-internal) user asked for more leads — fetch seeds before calling extend_lens"
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Show me today's leads."
+- "Restrict the audience to fintech only."
+- "Which leads should I follow up with this week?"
+
+## RENDER (quick)
+
+DO NOT RENDER TO THE USER. This is internal data the agent reasons over
+before calling \`leadbay_extend_lens\`. No table, no list of company names,
+no "here are your candidates". The user asked for more leads; surface the
+*outcome* of extend_lens, not the picking step.
+
+---
+
+**INTERNAL TOOL — do not surface candidates to the user.** The user asked for more leads on the lens (a higher daily appetite than the standard fill delivers), not to manually review candidates. This tool exists so the agent can pick seeds *silently*, then chain to \`leadbay_extend_lens\`. Picking is an agent decision; the user only sees the extend confirmation.
+
+Backed by \`GET /lenses/{lensId}/seed_candidates\`. By construction every lead returned is a valid input to \`extra_refill\` (same eligibility query). Defaults to the user's last-active lens.
+
+**Pick 3–5 seeds that represent the *kind* of leads the user wants more of**, using these signals in priority order:
+
+1. **\`engagement\`** (load-bearing) — \`liked: true\`, \`org_contacts_count > 0\`, and \`prospecting_actions_count > 0\` mean the user (or their team) already validated this lead. These are the strongest signal.
+2. **\`qq_answers\`** — what the AI agent already answered when qualifying this lead. Match candidates whose answers align with the target profile.
+3. **\`tags\`** — purchase-intent alignment, ordered by score (most-relevant first).
+4. **\`sector\`, \`size_min\`, \`size_max\`** — shape similarity to known-good prospects.
+5. **\`ai_agent_score\`** — overall AI fit (0–99); null when the lead has not been AI-rescored.
+6. **\`description\`** — short company blurb for the final tie-breaker.
+
+**Default heuristic** (no explicit user steering): top 3 by engagement (prefer \`liked: true\`; break ties by \`org_contacts_count + prospecting_actions_count\`), then fill to 5 with the top \`ai_agent_score\` rows whose \`tags\` overlap the engagement leaders' tags.
+
+**Once seeds are picked, call \`leadbay_extend_lens\` immediately with \`seed_lead_ids=[...picked lead_ids]\`.** Do not pause for user approval; the user wants more leads, not a seed-review meeting.
+
+WHEN TO USE: only as the scaffolding step inside an extend-the-lens flow. The \`leadbay_extend_my_lens\` prompt orchestrates this; agents called this tool by themselves should be rare.
+
+WHEN NOT TO USE: when the user wants to CHANGE the audience (sector / size / criteria) — route to \`leadbay_adjust_audience\` or \`leadbay_refine_lead_targeting\`. Not for the daily inbox pull — route to \`leadbay_pull_leads\`. Never as a "here are some candidates, which do you want?" user-facing surface.
+
+Response shape (relayed verbatim from the backend): \`{ candidates: [{lead_id, name, description?, sector?, size_min?, size_max?, website?, ai_agent_score?, tags[], qq_answers[], org_lead_status?, engagement: {liked, org_contacts_count, prospecting_actions_count}}] }\`.
+`;
+// endregion: leadbay_list_lens_seed_candidates
+
 // region: leadbay_list_lenses
 export const leadbay_list_lenses: string = `List all available Leadbay lenses (saved lead-search configurations). Each lens defines a different target market or buyer segment. The lens with \`is_last_active=true\` is used by default for lead discovery.
 
@@ -3263,7 +3383,7 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
-Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+Place names never go in \`keywords\`, \`sectors\` or \`leadbay_refine_lead_targeting\` — text matches, not geo filters.
 
 
 **The include-axis recovery above does NOT apply to this tool.** "Omit the geo argument and the result covers everything" describes a tool that READS leads and can widen. This one resolves names to ids: \`q\` is REQUIRED, and the empty-\`q\` path returns no matches rather than workspace-wide data — so re-calling without it either fails validation or produces an empty lookup that would then be reported as full coverage. There is no country id to hand out and nothing to retry. Look up a place INSIDE the workspace instead; or, if the whole workspace was meant, skip this tool entirely — the tools that consume these ids just omit their geo argument.
@@ -3315,6 +3435,15 @@ When called with \`for_records\`, append a final section **"Mapping hints for yo
 `;
 // endregion: leadbay_list_mappable_fields
 
+// region: leadbay_list_previously_enriched_titles
+export const leadbay_list_previously_enriched_titles: string = `Show job titles the org has previously enriched, so the agent can repeat the same titles for new leads (or skip already-saturated ones). Two implementation paths: (1) PRIMARY — a selection-scoped preview call that reads \`previously_enriched_titles\` from the backend (newer prod field). (2) FALLBACK — live aggregation across each lead's enriched contacts. The composite picks transparently.
+
+WHEN TO USE: before leadbay_enrich_titles, to plan which titles to order.
+
+WHEN NOT TO USE: when you already know the exact titles you want to enrich.
+`;
+// endregion: leadbay_list_previously_enriched_titles
+
 // region: leadbay_list_sectors
 export const leadbay_list_sectors: string = `List the sector taxonomy (id + display name in the requested language). Default: \`lang\` follows the caller's language; \`includeInvisible=false\` returns ~1,091 visible sectors.
 
@@ -3335,14 +3464,18 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 `;
 // endregion: leadbay_login
 
-// region: leadbay_my_lenses
-export const leadbay_my_lenses: string = `## WHEN TO USE
+// region: leadbay_manage_lenses
+export const leadbay_manage_lenses: string = `## WHAT IT DOES
+
+List the user's lenses (audiences), marking the active one. Switch active (\`switchToLensId\`), edit name/description (\`editLensId\`+\`newName\`/\`newDescription\`), or delete (\`deleteLensId\`, confirm-gated). With no args it is a pure read. Every lens comes with its criteria (sectors, locations, sizes by name): use it to say what a lens is searching for.
+
+## WHEN TO USE
 
 Trigger phrases: "show me my lenses", "list my lenses", "which audiences do I have", "what is my lens searching for", "what are the criteria of my <name> lens", "give me my current criteria", "switch to my <name> lens", "change lens", "rename my <name> lens to <X>", "set the description of my <name> lens", "delete my <name> lens", "remove this lens".
 
-Do NOT use for: "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me <sector>" → \`leadbay_refine_prompt\`; "more leads on this lens" → \`leadbay_extend_lens\`; "show me today's leads" → \`leadbay_pull_leads\`.
+Do NOT use for: "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me <sector>" → \`leadbay_refine_lead_targeting\`; "more leads on this lens" → \`leadbay_extend_lens\`; "show me today's leads" → \`leadbay_pull_leads\`.
 
-Prefer when: user wants to SEE lenses or a lens's criteria, CHANGE which is active, RENAME one, or DELETE one — not edit a lens's sector/size criteria
+Use this when: user wants to SEE lenses or a lens's criteria, CHANGE which is active, RENAME one, or DELETE one — not edit a lens's sector/size criteria
 
 Examples that SHOULD invoke this tool:
 - "Show me my lenses."
@@ -3383,7 +3516,7 @@ List the user's lenses (saved audiences) and, when asked, switch which one is ac
 
 WHEN TO USE: when the user wants to see their lenses or switch the active one. Canonical phrasings: "show me my lenses", "which audiences do I have", "switch to my <name> lens".
 
-WHEN NOT TO USE: to change a lens's audience criteria — that's \`leadbay_adjust_audience\`. Not for refining beyond firmographics (\`leadbay_refine_prompt\`), not for topping up the same lens (\`leadbay_extend_lens\`), not for the daily pull (\`leadbay_pull_leads\`).
+WHEN NOT TO USE: to change a lens's audience criteria — that's \`leadbay_adjust_audience\`. Not for refining beyond firmographics (\`leadbay_refine_lead_targeting\`), not for topping up the same lens (\`leadbay_extend_lens\`), not for the daily pull (\`leadbay_pull_leads\`).
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
@@ -3446,7 +3579,7 @@ render an empty table.
 **Legend:** ⭐ active lens.
 
 
-## NEXT STEPS — after \`leadbay_my_lenses\`
+## NEXT STEPS — after \`leadbay_manage_lenses\`
 
 **ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
 
@@ -3468,15 +3601,15 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 
 Pick the 2–3 rows that fit what the user is likely to want next. When the user
 named no target but wants to switch, offer the lenses themselves as the
-quick-select options (each option = a lens name → \`leadbay_my_lenses(switchToLensId=<id>)\`).
+quick-select options (each option = a lens name → \`leadbay_manage_lenses(switchToLensId=<id>)\`).
 
 | Observation                          | Suggest                                  | Calls                                                |
 |--------------------------------------|------------------------------------------|------------------------------------------------------|
 | User wants to add / remove a criterion| "Change <lens name>'s criteria"         | \`leadbay_adjust_audience(lensId=<id>, …)\`            |
-| User wants a different lens          | "Switch to <lens name>"                  | \`leadbay_my_lenses(switchToLensId=<id>)\`             |
-| User wants to rename / describe a lens| "Rename or describe <lens>"             | \`leadbay_my_lenses(editLensId=<id>, newName?=<X>, newDescription?=<Y>)\` |
-| User wants to delete a lens          | "Delete <lens>"                          | \`leadbay_my_lenses(deleteLensId=<id>)\` → confirm → \`confirm=true\` |
-| \`delete_preview\` (not yet deleted)   | "Yes, delete it"                         | \`leadbay_my_lenses(deleteLensId=<id>, confirm=true)\` |
+| User wants a different lens          | "Switch to <lens name>"                  | \`leadbay_manage_lenses(switchToLensId=<id>)\`             |
+| User wants to rename / describe a lens| "Rename or describe <lens>"             | \`leadbay_manage_lenses(editLensId=<id>, newName?=<X>, newDescription?=<Y>)\` |
+| User wants to delete a lens          | "Delete <lens>"                          | \`leadbay_manage_lenses(deleteLensId=<id>)\` → confirm → \`confirm=true\` |
+| \`delete_preview\` (not yet deleted)   | "Yes, delete it"                         | \`leadbay_manage_lenses(deleteLensId=<id>, confirm=true)\` |
 | User wants leads on the active lens  | "Pull today's leads"                     | \`leadbay_pull_leads()\`                               |
 | User wants to change the audience    | "Adjust this lens's audience"            | \`leadbay_adjust_audience(...)\`                       |
 | User wants more of the same          | "Get a bigger batch on this lens"        | \`leadbay_extend_lens(...)\`                           |
@@ -3484,16 +3617,20 @@ quick-select options (each option = a lens name → \`leadbay_my_lenses(switchTo
 If nothing fits, default to "pull today's leads on the active lens" — never
 invent a tool that doesn't exist.
 `;
-// endregion: leadbay_my_lenses
+// endregion: leadbay_manage_lenses
 
 // region: leadbay_new_lens
-export const leadbay_new_lens: string = `## WHEN TO USE
+export const leadbay_new_lens: string = `## WHAT IT DOES
+
+Create a new named lens (audience) in one call — clones a base lens, names it, and applies sector / size / geography criteria. Free-text sectors and locations auto-resolve; the lens is NOT created until they resolve. Does not switch the active lens.
+
+## WHEN TO USE
 
 Trigger phrases: "create a lens", "create a new lens called <name>", "create a lens specialized in/into <X>", "make me a new audience for <X>", "set up a lens for <sector>", "new lens named <name>", "I want a lens just for <X>", "create a lens for net-new accounts in <place>", "a lens scoped to <territory>".
 
-Do NOT use for: "companies anywhere in this workspace's OWN country / nationwide (a foreign country is unsupported, not unfiltered — call nothing)" → \`leadbay_pull_leads\`; "narrow the audience / add or remove a sector on an EXISTING lens" → \`leadbay_adjust_audience\`; "add <sector> to my <name> lens" → \`leadbay_adjust_audience\`; "focus on a qualitative trait beyond sector/size" → \`leadbay_refine_prompt\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`; "more leads on this lens" → \`leadbay_extend_lens\`.
+Do NOT use for: "companies anywhere in this workspace's OWN country / nationwide (a foreign country is unsupported, not unfiltered — call nothing)" → \`leadbay_pull_leads\`; "narrow the audience / add or remove a sector on an EXISTING lens", "add <sector> to my <name> lens" → \`leadbay_adjust_audience\`; "focus on a qualitative trait beyond sector/size" → \`leadbay_refine_lead_targeting\`; "show me / list / switch my lenses" → \`leadbay_manage_lenses\`; "more leads on this lens" → \`leadbay_extend_lens\`.
 
-Prefer when: user wants a brand-new lens (create/make/set up, often 'specialized in <X>'). Editing an existing lens → leadbay_adjust_audience (use lensName). Qualitative refinement → refine_prompt (admin-only).
+Use this when: user wants a brand-new lens (create/make/set up, often 'specialized in <X>'). Editing an existing lens → leadbay_adjust_audience (use lensName). Qualitative refinement → leadbay_refine_lead_targeting (admin-only).
 
 Examples that SHOULD invoke this tool:
 - "Create a lens called Joinery for the fintech sector."
@@ -3543,18 +3680,18 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
-Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+Place names never go in \`keywords\`, \`sectors\` or \`leadbay_refine_lead_targeting\` — text matches, not geo filters.
 
 
-**A new lens is a CLONE, and inherits the base lens's geography.** \`base\` defaults to the ACTIVE lens, so this applies even when no base was named. A criteria-less clone inherits the base audience wholesale, and adding sectors does not clear the base's location criteria either — so "nationwide healthcare" built on a Paris-scoped active lens creates a Paris healthcare lens under a nationwide name. Omitting \`locations\` is therefore not the same as having no geography. Read the base's \`criteria\` in \`leadbay_my_lenses\` (or the \`lens://<base>/definition\` resource on hosts that expose one) before describing a new lens as workspace-wide, and say the scope is unverified if you cannot.
+**A new lens is a CLONE, and inherits the base lens's geography.** \`base\` defaults to the ACTIVE lens, so this applies even when no base was named. A criteria-less clone inherits the base audience wholesale, and adding sectors does not clear the base's location criteria either — so "nationwide healthcare" built on a Paris-scoped active lens creates a Paris healthcare lens under a nationwide name. Omitting \`locations\` is therefore not the same as having no geography. Read the base's \`criteria\` in \`leadbay_manage_lenses\` (or the \`lens://<base>/definition\` resource on hosts that expose one) before describing a new lens as workspace-wide, and say the scope is unverified if you cannot.
 
-**Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer \`leadbay_my_lenses(switchToLensId=<new id>)\` as a next step if they want to start pulling from it.
+**Does not switch the active lens.** The new lens is created but the user stays on their current one. Offer \`leadbay_manage_lenses(switchToLensId=<new id>)\` as a next step if they want to start pulling from it.
 
 **Leads compute asynchronously.** When the lens has criteria, applying the filter kicks off a backend wishlist rebuild — the \`created\` result carries \`computing_wishlist:true\`. An immediate \`leadbay_pull_leads\` may read empty for a few seconds while it computes; that lens is *warming up*, not empty. Check with \`leadbay_pull_leads\` from ~30s on until leads are listed. A criteria-less clone inherits the base lens's leads right away (\`computing_wishlist:false\`).
 
 WHEN TO USE: when the user wants a NEW lens. Canonical phrasings: "create a lens called X", "make a new audience for Y", "set up a lens for <sector>".
 
-WHEN NOT TO USE: to EDIT an existing lens — use \`leadbay_adjust_audience\` (pass \`lensName\` to target one by name). Not for listing/switching (\`leadbay_my_lenses\`) or topping up (\`leadbay_extend_lens\`).
+WHEN NOT TO USE: to EDIT an existing lens — use \`leadbay_adjust_audience\` (pass \`lensName\` to target one by name). Not for listing/switching (\`leadbay_manage_lenses\`) or topping up (\`leadbay_extend_lens\`).
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 
@@ -3632,8 +3769,8 @@ created and its leads are streaming in, and offer to pull in ~30s.
 |-----------------------------------------|------------------------------------------|--------------------------------------------------------|
 | \`preview\` (not yet created)             | "Yes, create this lens"                  | \`leadbay_new_lens(...same args..., confirm=true)\`      |
 | \`preview\` (not yet created)             | "Change the sectors/size first"          | (re-ask the user, then \`leadbay_new_lens\` with new args) |
-| Lens created, \`computing_wishlist=true\` | "Give it ~30s, then pull leads (the wishlist is still computing)" | \`leadbay_my_lenses(switchToLensId=<new id>)\` then \`leadbay_pull_leads()\` after ~30s |
-| Lens created (no criteria)              | "Switch to it and pull leads"            | \`leadbay_my_lenses(switchToLensId=<new id>)\` then \`leadbay_pull_leads()\` |
+| Lens created, \`computing_wishlist=true\` | "Give it ~30s, then pull leads (the wishlist is still computing)" | \`leadbay_manage_lenses(switchToLensId=<new id>)\` then \`leadbay_pull_leads()\` after ~30s |
+| Lens created (no criteria)              | "Switch to it and pull leads"            | \`leadbay_manage_lenses(switchToLensId=<new id>)\` then \`leadbay_pull_leads()\` |
 | Lens created                            | "Refine the audience further"            | \`leadbay_adjust_audience(lensName=<new name>, ...)\`    |
 | Lens created                            | "Leave it; keep my current lens active"  | (no call)                                              |
 | \`ambiguous_sectors\`                     | "Pick the right sector and create"       | \`leadbay_new_lens(name=..., sectors=[<chosen id>])\`    |
@@ -3669,13 +3806,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_pick_clarification
 
 // region: leadbay_pin_contact
-export const leadbay_pin_contact: string = `## WHEN TO USE
+export const leadbay_pin_contact: string = `## WHAT IT DOES
+
+Pin a contact on a company so it surfaces first as a priority/favourite. Use when the user wants to mark a specific person as the one to focus on. Don't use it to add a contact, remove one, or skip a whole lead.
+
+## WHEN TO USE
 
 Trigger phrases: "pin this contact", "mark this person as priority", "make this the main contact", "favourite this contact".
 
 Do NOT use for: "unpin / remove the pin" → \`leadbay_unpin_contact\`; "add a contact to this company" → \`leadbay_add_contact\`; "remove / delete this contact" → \`leadbay_remove_contact\`.
 
-Prefer when: user wants ONE person flagged as the priority on a company — pass that contact's own \`contact_id\`, and ONLY a \`source:"org"\` contact can be pinned (a \`source:"paid"\` candidate returns 'contact not found')
+Use this when: user wants ONE person flagged as the priority on a company — pass that contact's own \`contact_id\`, and ONLY a \`source:"org"\` contact can be pinned (a \`source:"paid"\` candidate returns 'contact not found')
 
 Examples that SHOULD invoke this tool:
 - "Pin Jane Doe as the main contact on this company."
@@ -3721,13 +3862,17 @@ Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw).
 // endregion: leadbay_pin_contact
 
 // region: leadbay_prepare_outreach
-export const leadbay_prepare_outreach: string = `## WHEN TO USE
+export const leadbay_prepare_outreach: string = `## WHAT IT DOES
+
+Prepare an outreach brief for one lead: lead block, recommended contact, channel readiness and AI angles in one call. \`enrich: true\` also orders the contact's details.
+
+## WHEN TO USE
 
 Trigger phrases: "draft outreach for <Contact>", "write an email to <Contact>", "outreach package for <Company>".
 
 Do NOT use for: "research a lead, no draft" → \`leadbay_research_lead_by_id\`; "log sent outreach" → \`leadbay_report_outreach\`; "bulk enrich contacts" → \`leadbay_enrich_titles\`.
 
-Prefer when: single picked lead/contact; action-imminent drafting context
+Use this when: single picked lead/contact; action-imminent drafting context
 
 Examples that SHOULD invoke this tool:
 - "Draft an email to Sarah at Acme."
@@ -3748,9 +3893,9 @@ email. Do NOT paste the email body into chat prose alongside.
 
 ---
 
-Prepare a single-lead outreach brief: the full \`lead\` block (score, \`split_ai_summary\`, \`location\`, \`size\`, \`phone_numbers\`, \`website\`, \`description\`, \`social_urls\`, \`social_presence\`), the \`recommended_contact\` in post-enrichment shape (\`contact_id\`, names, \`job_title\`, \`email\`, \`phone_number\`, \`linkedin_page\`, \`is_org_contact\` — nulls where not yet enriched), \`additional_contacts_count\`, an \`enrichment\` block describing async state, the lead's \`qualification\` answers and web-research \`signals\`, and its \`history\` (\`notes\` on the lead and on each of its people, plus the \`activities\` timeline).
+Payload: the full \`lead\` block (score, \`split_ai_summary\`, \`location\`, \`size\`, \`phone_numbers\`, \`website\`, \`description\`, \`social_urls\`, \`social_presence\`); \`recommended_contact\` in post-enrichment shape (\`contact_id\`, names, \`job_title\`, \`email\`, \`phone_number\`, \`linkedin_page\`, \`is_org_contact\`, null where not enriched); \`additional_contacts_count\`; an \`enrichment\` block; the lead's \`qualification\` answers and web-research \`signals\`; and its \`history\` (\`notes\` on the lead and on each of its people, plus the \`activities\` timeline).
 
-Optionally trigger contact enrichment with \`enrich:true\` (async, ~1 min). Check it by re-calling \`leadbay_prepare_outreach(leadId)\` without \`enrich\` until \`enrichment.complete: true\`; the recommended contact then carries \`email\` and/or \`phone_number\`.
+\`enrich:true\` orders contact details (async, ~1 min). Re-call without \`enrich\` until \`enrichment.complete: true\`; the recommended contact then carries \`email\` and/or \`phone_number\`.
 
 ## A LAUNCHED JOB — its first result is a receipt, not the answer
 
@@ -3770,22 +3915,22 @@ only if the user said not to wait or the check tool says the job stalled. Then
 say it is not ready, show what landed, and that asking again fetches the rest.
 
 
-Each call marks the lead seen so it ages out of the Discover "new" view. That is not a prospecting action and never shows in \`history\`.
+Each call marks the lead seen so it ages out of the Discover "new" view. That is not a prospecting action and never shows in \`history\`. With \`enrich:true\` it also orders contact details from Leadbay's data providers.
 
 IRON LAW — OUTCOME AFTER OUTREACH. The moment the user reports outreach happened ("I sent it", "she didn't pick up", "left a voicemail", "they replied", a forwarded email thread, a calendar invite), you MUST (1) call leadbay_report_outreach with verification (gmail_message_id, calendar_event_id, or the user's literal one-sentence confirmation as user_confirmed.ref) AND (2) ask the user about the outcome and set epilogue_status to one of the 4 canonical values: EPILOGUE_INTEREST_VALIDATED_OR_MEETING_PLANED ("Meeting booked"), EPILOGUE_COULD_NOT_REACH_STILL_TRYING ("Trying to reach"), EPILOGUE_NOT_INTERESTED_LOST ("Not interested"), EPILOGUE_STILL_CHASING ("In progress"). Use the user-facing labels in dialogue ("What's the outcome — meeting booked, trying to reach, not interested, or in progress?"); never say "epilogue" out loud. Skipping this step silently de-ranks every future follow-up suggestion because pull_followups depends on honest, current outcomes.
 
 
 WHEN TO USE: when the agent is about to draft outreach for ONE specific lead and needs everything to compose — channels + angles + history context.
 
-WHEN NOT TO USE: across many leads — use leadbay_enrich_titles for bulk; for general lead detail use leadbay_research_lead_by_id (richer signals); to actually log the outreach action use leadbay_report_outreach (requires verification).
+WHEN NOT TO USE: across many leads — use leadbay_enrich_titles for bulk, leadbay_research_lead_by_id for general lead detail, and leadbay_report_outreach to log the action.
 
 ---
 
 ## RENDER — host-native message composer is the PRIMARY surface
 
-Route every draft through \`message_compose_v1\` (Claude's email composer). Above it, emit ONE short markdown context paragraph: score callout + sector fit + linked contact name + bare phone/email pills. Do NOT paste the email body into chat prose alongside — the composer IS the visual.
+Route every draft through \`message_compose_v1\` (Claude's email composer). Above it, emit ONE short markdown context paragraph: score callout, sector fit, linked contact name, bare phone/email pills. Do NOT also paste the email body into chat prose — the composer IS the visual.
 
-Variant shape: 1–3 entries, labels per the widget table below. \`kind: "email"\` requires \`subject\`; phone/call openers use \`kind: "other"\` with the opener in \`body\`.
+Variant shape: 1–3 entries, labels per the widget table below. \`kind: "email"\` needs \`subject\`; call openers use \`kind: "other"\` with the opener in \`body\`.
 
 ## GATE — PREFER BUILT-IN HOST WIDGETS
 
@@ -3928,13 +4073,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_promote_lens
 
 // region: leadbay_pull_followups
-export const leadbay_pull_followups: string = `## WHEN TO USE
+export const leadbay_pull_followups: string = `## WHAT IT DOES
+
+Pull the KNOWN leads that are due a follow-up (the Monitor view), filtered by city, sector, recency or last action.
+
+## WHEN TO USE
 
 Trigger phrases: "what should I follow up on", "leads I've already worked", "what's overdue", "stale leads", "leads in <city / state / region>", "reach out to today", "should reach out to", "get back to", "contact today", "reconnect with", "re-engage", "leads to contact", "who should I ping".
 
 Do NOT use for: "new leads / today's prospects" → \`leadbay_pull_leads\`; "map / trip / in person" → \`leadbay_followups_map\`.
 
-Prefer when: known Monitor leads; pass \`city\` or \`set_filter\` for geo/sector/recency; NEVER a country name — a whole-country ask means NO geo filter
+Use this when: known Monitor leads; pass \`city\` or \`set_filter\` for geo/sector/recency; NEVER a country name — a whole-country ask means NO geo filter
 
 Examples that SHOULD invoke this tool:
 - "What should I follow up on this week?"
@@ -3956,11 +4105,9 @@ table. Detail + status priority below.
 
 ---
 
-Pull KNOWN leads from the user's Monitor view — the re-engagement entry point.
+Wraps \`GET /1.6/monitor\`, preceded by \`POST /1.6/monitor/filter\` when \`set_filter\` is supplied. The Monitor filter is one \`FilterItem\` per user, server-persisted across sessions; \`set_filter\` overwrites it.
 
-Backend: wraps \`GET /1.6/monitor\` plus, when \`set_filter\` is supplied, a preceding \`POST /1.6/monitor/filter\`. The Monitor filter is a single \`FilterItem\` per user, server-persisted across sessions.
-
-**Filter mechanism — store-then-apply.** Pass \`set_filter: { criteria: FilterCriterion[] }\` to overwrite the server-stored filter, then the composite re-fetches with \`filtered:true\`. Every \`FilterCriterion\` MUST carry a \`type\` discriminator — \`{sector_ids: [...]}\` is silently dropped, \`{type: "sector_ids", sectors: [...]}\` is not. Types: \`size\`, \`keywords\`, \`sector_ids\`, \`location_ids\`, \`custom_field\`(\`_comparison\`), \`yc\`, \`liked\`, \`last_action\`, \`last_action_date\`.
+**Filter mechanism — store-then-apply.** \`set_filter: { criteria: FilterCriterion[] }\` overwrites the stored filter, then the composite re-fetches with \`filtered:true\`. Every \`FilterCriterion\` MUST carry a \`type\` discriminator — \`{sector_ids: [...]}\` is silently dropped, \`{type: "sector_ids", sectors: [...]}\` is not. Types: \`size\`, \`keywords\`, \`sector_ids\`, \`location_ids\`, \`custom_field\`(\`_comparison\`), \`yc\`, \`liked\`, \`last_action\`, \`last_action_date\`.
 
 Practical mapping from user phrasing to criterion:
 
@@ -3968,15 +4115,15 @@ Practical mapping from user phrasing to criterion:
 |---|---|
 | "supermarket leads" | \`{type: "sector_ids", sectors: ["5134"]}\` |
 | "leads in Lyon" | \`{type: "location_ids", locations: [<admin_area_id>]}\` |
-| "healthcare staffing" | \`{type: "keywords", keywords: ["healthcare", "staffing"]}\` |
-| "leads I haven't touched in 30 days" | \`{type: "last_action_date", last_days: 30}\` |
+| "healthcare staffing" | \`{type: "keywords", keywords: ["healthcare"]}\` |
+| "not touched in 30 days" | \`{type: "last_action_date", last_days: 30}\` |
 | "leads I liked" | \`{type: "liked"}\` |
 | "leads 50–200 employees" | \`{type: "size", sizes: [{min: 50, max: 200}]}\` |
 | "Y Combinator companies" | \`{type: "yc"}\` |
 
-Geo filtering needs \`admin_area_id\` resolution — \`location_ids\` rejects free text. Pass \`city\` and the composite resolves it via \`/geo/search\`. Ambiguous matches return \`status: "ambiguous_locations"\` — pick an id and re-call with \`city_id\`.
+Geo filtering needs \`admin_area_id\` resolution: \`location_ids\` rejects free text. Pass \`city\` and the composite resolves it via \`/geo/search\`. Ambiguous matches return \`status: "ambiguous_locations"\` — pick an id and re-call with \`city_id\`.
 
-In \`keywords\` a place name is a TEXT-MATCH on company descriptions (≈0 hits), not a filter — never fall back to it, nor to the unfiltered view, when a place is ambiguous.
+In \`keywords\` a place name is a TEXT-MATCH on company descriptions (≈0 hits), not a filter — never fall back to it, or to the unfiltered view, on an ambiguous place.
 
 **One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
 
@@ -3995,16 +4142,16 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
-Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+Place names never go in \`keywords\`, \`sectors\` or \`leadbay_refine_lead_targeting\` — text matches, not geo filters.
 
 
-**A whole-workspace read also needs \`filtered:false\`.** Omitting \`city\` does not widen this tool — \`filtered\` defaults to true, so a filter persisted earlier still applies and its stale cohort reads as everything. If other criteria were requested, re-send them in \`set_filter\` instead; \`active_filters\` reports what applied.
+**A whole-workspace read also needs \`filtered:false\`.** Omitting \`city\` does not widen this tool: \`filtered\` defaults to true, so a filter persisted earlier still applies and its stale cohort reads as everything. If other criteria were requested, re-send them in \`set_filter\`; \`active_filters\` reports what applied.
 
-**Pushback exclusion.** Leads with active pushback (\`pushback_status\` set, \`pushback_until > today\`) are excluded client-side; \`total_excluded_by_pushback\` reports how many rows were dropped.
+**Pushback exclusion.** Leads with active pushback (\`pushback_status\` set, \`pushback_until > today\`) are excluded client-side; \`total_excluded_by_pushback\` counts the dropped rows.
 
-The canonical orchestrator for a re-engagement pass is the \`leadbay_followup_check_in\` prompt.
+The \`leadbay_followup_check_in\` prompt orchestrates a full re-engagement pass.
 
-**Anti-confusion guardrail.** Iterating \`pull_leads\` pages looking for \`prospecting_actions_count > 0\` or \`notes_count > 0\` rows is the wrong entry point — the two read different tables. Leads with follow-up history live in \`pull_followups\`.
+**Anti-confusion guardrail.** Iterating \`pull_leads\` pages for \`prospecting_actions_count > 0\` or \`notes_count > 0\` is the wrong entry point: the two read different tables. Leads with follow-up history live here.
 
 **SIGNAL HONESTY — never infer signals from freshness.** \`stale_at\`,
 \`web_fetch_in_progress\`, \`fetch_at\` are freshness markers, not signal
@@ -4123,8 +4270,8 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 | Observation | Suggest | Calls |
 |---|---|---|
 | Always (top of menu) | "Prep outreach for [top row's contact]" | leadbay_prepare_outreach(leadId) |
-| ≥ 1 lead returned | "Build an interactive call board" | leadbay_artifact_kit → its CANONICAL board recipe, data in hand |
-| "how well do we cover sector X / city Y" | "Build a coverage board" | leadbay_artifact_kit → its COVERAGE recipe (\`lb.portfolioSectors\` + \`lb.segmentCount\`) |
+| ≥ 1 lead returned | "Build an interactive call board" | leadbay_get_artifact_runtime → its CANONICAL board recipe, data in hand |
+| "how well do we cover sector X / city Y" | "Build a coverage board" | leadbay_get_artifact_runtime → its COVERAGE recipe (\`lb.portfolioSectors\` + \`lb.segmentCount\`) |
 | User named a city / sector / timeframe | "Refilter by [their phrase]" | leadbay_pull_followups(set_filter: { criteria: [...] }) |
 | \`pagination.has_more == true\` | "Pull the next page" | leadbay_pull_followups(page = current + 1) |
 | ≥3 rows ✨ (never-touched) | "Surface only never-touched leads" | set_filter with \`last_action_date.last_days = 0\` |
@@ -4140,13 +4287,17 @@ Always offer at least one of: prep outreach, refilter, pushback. Pushback is the
 // endregion: leadbay_pull_followups
 
 // region: leadbay_pull_leads
-export const leadbay_pull_leads: string = `## WHEN TO USE
+export const leadbay_pull_leads: string = `## WHAT IT DOES
+
+Pull today's NEW leads from the user's Discover wishlist — fresh prospects the AI has scored for fit, not the known pipeline. Records each one as seen.
+
+## WHEN TO USE
 
 Trigger phrases: "show me leads", "show me new leads", "show me today's leads", "today's prospects", "best new leads", "fresh leads", "what's new today".
 
-Do NOT use for: "find me N companies that <specific profile>" → \`leadbay_find_new_leads\`; "new prospects like <company> with their emails" → \`leadbay_find_new_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "I'm going to <city>" → \`leadbay_tour_plan\`; "I'm in <city> next week — who's worth meeting" → \`leadbay_tour_plan\`; "who should I meet in <city>" → \`leadbay_tour_plan\`; "visiting <city> — who's worth meeting / seeing" → \`leadbay_tour_plan\`; "leads I should reach out to" → \`leadbay_pull_followups\`; "leads to get back to" → \`leadbay_pull_followups\`; "leads to contact today" → \`leadbay_pull_followups\`; "should I contact" → \`leadbay_pull_followups\`; "reconnect with" → \`leadbay_pull_followups\`; "re-engage" → \`leadbay_pull_followups\`.
+Do NOT use for: "find me N companies that <specific profile>", "new prospects like <company> with their emails" → \`leadbay_find_new_leads\`; "leads I should follow up with", "leads I should reach out to", "leads to get back to", "leads to contact today", "should I contact", "reconnect with", "re-engage" → \`leadbay_pull_followups\`; "I'm going to <city>", "I'm in <city> next week — who's worth meeting", "who should I meet in <city>", "visiting <city> — who's worth meeting / seeing" → \`leadbay_tour_plan\`.
 
-Prefer when: fresh Discover leads; if a lens is named, pass \`lensId\` and pin it
+Use this when: fresh Discover leads; if a lens is named, pass \`lensId\` and pin it
 
 Examples that SHOULD invoke this tool:
 - "Show me today's leads."
@@ -4173,9 +4324,12 @@ contact + title. Full algorithm + linking rules below.
 
 ---
 
-Pull up new leads from the user's last-active lens — the canonical "show me today's prospects" tool.
+**Side effect.** Leads returned here are recorded as seen in the user's own
+Leadbay account, which rotates them out of tomorrow's Discover list.
 
-Leadbay works like an inbox: each time the user logs back in, a fresh batch is delivered, paced by how many leads they've actually acted on recently. Pulling more won't produce more; user outreach/skips/saves does. Leads liked, disliked, noted, with a status or in a campaign are left out. Each returned lead carries a one-line \`qualification_summary\` built from leadbay_ai_agent_responses, plus the rich tags / scores / engagement counters / in-flight flags from the lead summary.
+
+
+Leadbay works like an inbox: each login delivers a fresh batch, paced by how many leads the user actually acted on recently. Pulling more won't produce more; outreach, skips and saves do. Leads liked, disliked, noted, with a status or in a campaign are left out. Each returned lead carries a one-line \`qualification_summary\` built from the lead's AI qualification answers, plus the rich tags / scores / engagement counters / in-flight flags from the lead summary.
 
 Roughly the top 10 of the batch come pre-qualified (populated qualification_summary + ai_agent_lead_score); leads below the top ~10 carry only the basic firmographic \`score\` — not worse, just resource-saved by the system. Call leadbay_bulk_qualify_leads to deepen any of them on demand — a healthy daily rhythm is to bulk-qualify the rows without ❖ caps so tomorrow's top-10 list is richer.
 
@@ -4292,7 +4446,7 @@ Pick 2–3 items below based on what was actually observed in the response. The 
 
 | Observation                                                | Suggest                                                      | Calls                                                  |
 |------------------------------------------------------------|--------------------------------------------------------------|--------------------------------------------------------|
-| ≥ 1 lead returned — offer FIRST                            | "Build an interactive lead triage board"                     | leadbay_artifact_kit → its CANONICAL triage-board recipe, data in hand (do NOT re-call pull_leads) |
+| ≥ 1 lead returned — offer FIRST                            | "Build an interactive lead triage board"                     | leadbay_get_artifact_runtime → its CANONICAL triage-board recipe, data in hand (do NOT re-call pull_leads) |
 | ≥ 1 lead returned (any batch)                              | "Enrich top leads" (reveal decision-maker email/phone on the top leads) | leadbay_enrich_titles({ leadIds: shown leads[].id, lensId }) — scope to the leads JUST shown; OMIT \`titles\` so it runs the no-spend discovery preview. Confirm titles + channels, then re-call with titles + confirm to launch |
 | \`has_more == true\`                                         | "Pull the next page (page N+1 of M)"                         | leadbay_pull_leads(page = current + 1, lensId = pinned)|
 | ≥ 3 rows have \`qualification_summary.answered == 0\`        | "Deepen AI qualification on the rows without ❖ caps"         | leadbay_bulk_qualify_leads(leadIds=[…])                |
@@ -4339,13 +4493,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_qualify_lead
 
 // region: leadbay_qualify_leads
-export const leadbay_qualify_leads: string = `## WHEN TO USE
+export const leadbay_qualify_leads: string = `## WHAT IT DOES
+
+Run one server-side batch (up to 500) over companies the user already named — a pasted list, a file, CRM rows. Identity pass returns website and LinkedIn; the qualified pass adds fit verdicts with evidence and a contact. Use leadbay_find_new_leads to discover companies instead.
+
+## WHEN TO USE
 
 Trigger phrases: "for each of these companies, give me the website / LinkedIn", "qualify these companies", "vet this list", "which of these fit our ICP", "score these websites / accounts", "get me the right contact at these companies", "re-qualify what you delivered last week".
 
 Do NOT use for: "find me new leads / companies that <profile>" → \`leadbay_find_new_leads\`; "qualify the top N of my lens batch" → \`leadbay_bulk_qualify_leads\`; "import this CSV file" → \`leadbay_import_leads\`; "tell me about <one company> in depth" → \`leadbay_research_lead_by_name_fuzzy\`; "add emails to the contacts I selected" → \`leadbay_enrich_titles\`.
 
-Prefer when: the user points at SPECIFIC companies (ids, websites, names, a pasted list, "what you found yesterday") and wants fit verdicts and/or the right person to talk to.
+Use this when: the user points at SPECIFIC companies (ids, websites, names, a pasted list, "what you found yesterday") and wants fit verdicts and/or the right person to talk to.
 
 Examples that SHOULD invoke this tool:
 - "For each of these 300 brokers, give me the website and LinkedIn, nothing else."
@@ -4671,23 +4829,18 @@ say it is not ready, show what landed, and that asking again fetches the rest.
 `;
 // endregion: leadbay_qualify_status
 
-// region: leadbay_recall_ordered_titles
-export const leadbay_recall_ordered_titles: string = `Show job titles the org has previously enriched, so the agent can repeat the same titles for new leads (or skip already-saturated ones). Two implementation paths: (1) PREFERRED — a selection-scoped preview call that reads \`previously_enriched_titles\` from the backend (newer prod field). (2) FALLBACK — live aggregation across each lead's enriched contacts. The composite picks transparently.
+// region: leadbay_refine_lead_targeting
+export const leadbay_refine_lead_targeting: string = `## WHAT IT DOES
 
-WHEN TO USE: before leadbay_enrich_titles, to plan which titles to order.
+Refine the kind of leads Leadbay surfaces, beyond firmographics (qualitative intent, not sector/size). Sets the org's user_prompt and may raise a clarification question the composite polls for. Admin-only.
 
-WHEN NOT TO USE: when you already know the exact titles you want to enrich.
-`;
-// endregion: leadbay_recall_ordered_titles
-
-// region: leadbay_refine_prompt
-export const leadbay_refine_prompt: string = `## WHEN TO USE
+## WHEN TO USE
 
 Trigger phrases: "focus on companies that <qualitative trait>", "I prefer leads that <behavior/characteristic>", "prioritize companies running their own IT", "deprioritize companies that just raised", "stop showing me <kind of company>", "we only sell to the private sector, not the public one", "harden the exclusion on <business model>, not the keyword", "competitors / resellers are never prospects for us".
 
-Do NOT use for: "create a new lens / a lens specialized into <X>" → \`leadbay_new_lens\`; "add/remove <sector> to/from my <name> lens" → \`leadbay_adjust_audience\`; "narrow the audience to <sector> / <size>" → \`leadbay_adjust_audience\`; "show me / list / switch my lenses" → \`leadbay_my_lenses\`; "a company trait one yes/no question could estimate from their website" → \`leadbay_set_qualification_questions\`; "exclude <named company>" → \`leadbay_dislike_lead\`.
+Do NOT use for: "create a new lens / a lens specialized into <X>" → \`leadbay_new_lens\`; "add/remove <sector> to/from my <name> lens", "narrow the audience to <sector> / <size>" → \`leadbay_adjust_audience\`; "show me / list / switch my lenses" → \`leadbay_manage_lenses\`; "a company trait one yes/no question could estimate from their website" → \`leadbay_set_qualification_questions\`; "exclude <named company>" → \`leadbay_dislike_lead\`.
 
-Prefer when: ADMIN-ONLY. A qualitative ORIENTATION too broad for one yes/no — a segment to avoid, a business model to rule out. One estimable company trait goes to set_qualification_questions; a named company to dislike_lead.
+Use this when: ADMIN-ONLY. A qualitative ORIENTATION too broad for one yes/no — a segment to avoid, a business model to rule out. One estimable company trait goes to set_qualification_questions; a named company to dislike_lead.
 
 Examples that SHOULD invoke this tool:
 - "Focus on hospitals that run their own IT in-house."
@@ -4743,7 +4896,7 @@ already covered without seeing them.
 | A sector, a headcount band, a territory | \`leadbay_adjust_audience\` / \`leadbay_new_lens\` filters — never a question |
 | A company trait a stranger could estimate from that company's own website or registry record — "runs its own maintenance crew", "operates a large vehicle fleet", "is legally active and not in liquidation" | a qualification question |
 | A kind of company that is never the buyer — "consulting firms", "franchise locations of national chains", "subsidiaries of large listed groups" | a negative criterion of the ideal buyer profile, \`leadbay_set_qualification_questions({add_anti_patterns})\`. It uses no question slot, and qualification reads it as a negative signal |
-| A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, \`leadbay_refine_prompt\` |
+| A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, \`leadbay_refine_lead_targeting\` |
 | Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` with the user's words as \`reason\` / \`leadbay_set_lead_status\` on those leads. A status stores no reason, so add the user's reason with \`leadbay_add_note\`. A question must NEVER name a company |
 | CRM state — "already contacted", "already in a campaign", "already excluded" | read it: \`leadbay_pull_followups\`, \`leadbay_list_campaigns\`. A question cannot observe your own history |
 | A delivery requirement — "email AND phone mandatory", "only score 54–95" | enrichment plus your own post-filter of the result. A question scores the COMPANY; it cannot see whether Leadbay holds a phone number for a contact |
@@ -4819,7 +4972,7 @@ three different dimensions — not one. Propose all three at once.
 **5 — The change is the user's call, not yours.** This holds for the questions,
 the targeting prompt and the buyer profile alike. Show the exact text you
 propose and what it will change, then get an explicit yes before calling
-\`leadbay_set_qualification_questions\` or \`leadbay_refine_prompt\`. Ask through
+\`leadbay_set_qualification_questions\` or \`leadbay_refine_lead_targeting\`. Ask through
 \`ask_user_input_v0\` when the host offers it. A removal or a swap additionally
 needs \`confirm:true\`. Do not write an org setting in the same turn the user
 first stated the rule — and once they have said yes, actually write it:
@@ -4856,16 +5009,20 @@ Calling the launcher again is not a check: it can charge twice. Stop early
 only if the user said not to wait or the check tool says the job stalled. Then
 say it is not ready, show what landed, and that asking again fetches the rest.
 `;
-// endregion: leadbay_refine_prompt
+// endregion: leadbay_refine_lead_targeting
 
 // region: leadbay_remove_contact
-export const leadbay_remove_contact: string = `## WHEN TO USE
+export const leadbay_remove_contact: string = `## WHAT IT DOES
+
+Remove (archive) a single contact from a company — the undo for the add-a-contact path. Use when the user wants to delete a person off a lead. Don't use it to remove a whole lead, or to skip/dislike a lead.
+
+## WHEN TO USE
 
 Trigger phrases: "remove this contact", "delete this contact", "take this person off the company", "that contact is wrong — get rid of it", "undo the contact I just added".
 
 Do NOT use for: "add a contact to this company" → \`leadbay_add_contact\`; "stop showing me this lead / not interested" → \`leadbay_dislike_lead\`.
 
-Prefer when: user wants a specific PERSON gone from a company — pass that contact's own \`contact_id\` (from a contacts list), not the lead id
+Use this when: user wants a specific PERSON gone from a company — pass that contact's own \`contact_id\` (from a contacts list), not the lead id
 
 Examples that SHOULD invoke this tool:
 - "Remove Jane Doe from that company — I added her by mistake."
@@ -4908,13 +5065,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_remove_epilogue
 
 // region: leadbay_remove_leads_from_campaign
-export const leadbay_remove_leads_from_campaign: string = `## WHEN TO USE
+export const leadbay_remove_leads_from_campaign: string = `## WHAT IT DOES
+
+Remove leads from an existing campaign. Backend success is 204 with no body; the tool returns a synthetic \`removed\` count.
+
+## WHEN TO USE
 
 Trigger phrases: "remove lead from campaign", "take this out of <campaign>", "remove these from Q2 Push", "delete lead from campaign", "clean up campaign".
 
 Do NOT use for: "add leads to campaign" → \`leadbay_add_leads_to_campaign\`; "create a new campaign" → \`leadbay_create_campaign\`; "list campaigns" → \`leadbay_list_campaigns\`.
 
-Prefer when: user wants to detach one or more leads from an existing campaign
+Use this when: user wants to detach one or more leads from an existing campaign
 
 Examples that SHOULD invoke this tool:
 - "Remove the Austin lead from my Q2 Push campaign."
@@ -4963,14 +5124,53 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 `;
 // endregion: leadbay_remove_pushback
 
+// region: leadbay_report_artifact_error
+export const leadbay_report_artifact_error: string = `**Do not call this tool.** It is the ingest endpoint for the
+\`@leadbay/components\` runtime that \`leadbay_get_artifact_runtime\` ships, and the only
+legitimate caller is that runtime's own \`lb.report()\` — running inside an
+artifact page, in the browser, with no human in the loop.
+
+An artifact runs in a chat-hosted page whose only channel out is
+\`window.cowork.callMcpTool\`. When one of its controls fails — a picker that
+loaded zero options, a button blocked by validation, a call that timed out or
+came back as a failure envelope — there is no other way for that fact to reach
+the Leadbay team. This tool is that way. The runtime calls it automatically,
+deduped and capped; you do not need to do anything to make it work, and calling
+it yourself would inject a failure that never happened.
+
+If a user tells you an artifact is broken and asks you to report it, that is
+\`leadbay_report_friction\`, not this. That tool carries the user's own words and
+requires their consent. This one is automatic, carries only bounded enum values
+and error codes, and never carries user text.
+
+Parameters (supplied by the runtime): \`kind\` — one of \`bridge_unavailable\`,
+\`call_timeout\`, \`call_failed\`, \`parse_failed\` (exceptions) or \`options_empty\`,
+\`action_blocked\`, \`result_rejected\` (outcomes, where nothing threw and the call
+reported success). \`surface\` — which view-model surfaced it: \`call\`, \`field\`,
+\`action\`, \`resource\`, \`list\`. Optional \`kit_version\`, \`tool\`, \`code\`.
+
+Returns \`{ recorded, kind }\`. \`recorded: true\` means the event was accepted, not
+that it was delivered — a user who has opted out via \`leadbay_set_telemetry\`
+sends nothing, by design. The artifact ignores the result either way.
+
+WHEN NOT TO USE: always — this is not a tool you call.
+The artifact runtime calls it for you. To report a problem a USER raised, use
+\`leadbay_report_friction\` instead.
+`;
+// endregion: leadbay_report_artifact_error
+
 // region: leadbay_report_friction
-export const leadbay_report_friction: string = `## WHEN TO USE
+export const leadbay_report_friction: string = `## WHAT IT DOES
+
+Reports a specific problem with Leadbay to the team — a search that came back empty, a wrong result, a missing capability. Use when the user asks to report something, or when they accept your offer to report a problem you hit. The user's own words, confirmed with them before sending, and the send is always visible. Don't use it for routine acknowledgements.
+
+## WHEN TO USE
 
 Trigger phrases: "report this problem", "tell the Leadbay team this didn't work", "this is broken, let them know", "file a report about this", "flag this to Leadbay".
 
 Do NOT use for: "user vents about follow-ups but has not asked to report anything — keep solving the ask they actually made" → \`leadbay_pull_followups\`; "user vents about a company or result but has not asked to report anything — answer the underlying question" → \`leadbay_research_lead_by_name_fuzzy\`; "general feedback, praise, or a feature request the user wants sent" → \`leadbay_send_feedback\`; "log outreach" → \`leadbay_report_outreach\`; "thumbs up / down" → \`leadbay_like_lead\`; "snooze / pushback" → \`leadbay_set_pushback\`.
 
-Prefer when: the user has asked for a specific Leadbay problem to be reported, or has said yes to your offer to report one. Frustration on its own is NOT a trigger — offer first, and only call this if they agree.
+Use this when: the user has asked for a specific Leadbay problem to be reported, or has said yes to your offer to report one. Frustration on its own is NOT a trigger — offer first, and only call this if they agree.
 
 Examples that SHOULD invoke this tool:
 - "Report this to the Leadbay team — searching Wisconsin returns nothing."
@@ -5078,13 +5278,17 @@ The \`leadbay_sync_outreach\` prompt runs the block below once, over the last 14
 // endregion: leadbay_report_outreach
 
 // region: leadbay_research_lead_by_id
-export const leadbay_research_lead_by_id: string = `## WHEN TO USE
+export const leadbay_research_lead_by_id: string = `## WHAT IT DOES
+
+Return everything decision-relevant about one lead identified by its Leadbay UUID: qualification answers, web-research signals, firmographics, contacts and recent activity in one call. Use leadbay_research_lead_by_name_fuzzy when only the company name is known.
+
+## WHEN TO USE
 
 Trigger phrases: "tell me about this lead", "deep dive on the lead I just picked", "everything you know about lead <UUID>".
 
 Do NOT use for: "company name without lead id" → \`leadbay_research_lead_by_name_fuzzy\`; "draft outreach for <Contact>" → \`leadbay_prepare_outreach\`; "add a contact to this company" → \`leadbay_add_contact\`.
 
-Prefer when: user picked a row and you have its UUID; pass \`leadId\`
+Use this when: user picked a row and you have its UUID; pass \`leadId\`
 
 Examples that SHOULD invoke this tool:
 - "Tell me everything about that lead I just picked."
@@ -5096,12 +5300,15 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ---
 
-Tell me everything decision-relevant about a single lead, identified by its
-Leadbay UUID. Bundles the lens-scoped profile, AI qualification answers,
-structured web-research signals (hot flags + sources), the two-tier contact set
-(\`enriched\` + \`org\`), the unified \`recent_activities\` timeline, engagement
-counts, and a \`_meta.has_reachable_contact\` hint that drives NEXT STEPS. Order
-is deliberate: qualification, signals, firmographics, contacts, recent activity.
+Payload order is deliberate: qualification, signals, firmographics, contacts,
+recent activity. Contacts arrive in two tiers (\`enriched\` + \`org\`), web-research
+signals carry hot flags + sources, and \`_meta.has_reachable_contact\` drives
+NEXT STEPS.
+
+**Side effect.** Leads returned here are recorded as seen in the user's own
+Leadbay account, which rotates them out of tomorrow's Discover list.
+
+
 
 Scoring has two layers: the basic \`score\` (firmographic, always present) and
 the AI qualification layer (\`ai_agent_lead_score\` + per-question answers +
@@ -5109,9 +5316,8 @@ web_fetch signals). The AI layer is pre-populated for roughly the top 10 of
 each daily batch, and on-demand (via leadbay_bulk_qualify_leads) below that.
 Combine both when judging a lead.
 
-The companion **leadbay_research_lead_by_name_fuzzy** wraps this one when the
-user names a company without a UUID: it fuzzy-resolves against the active
-lens's wishlist, then delegates here. Same shape, plus \`_meta.resolved_from\` /
+**leadbay_research_lead_by_name_fuzzy** wraps this tool when the user names a
+company without a UUID: same shape, plus \`_meta.resolved_from\` /
 \`_meta.match_candidates\`.
 
 WHEN TO USE: when picking up a single lead from
@@ -5120,8 +5326,7 @@ act on it.
 
 WHEN NOT TO USE: across many leads at once — that's
 leadbay_pull_leads' job (portfolio-wide signal questions go to
-leadbay_scan_portfolio_signals; see below). This composite supersedes the
-lower-level leadbay_get_lead_profile.
+leadbay_scan_portfolio_signals; see below).
 
 **SIGNAL HONESTY — never infer signals from freshness.** \`stale_at\`,
 \`web_fetch_in_progress\`, \`fetch_at\` are freshness markers, not signal
@@ -5278,13 +5483,17 @@ out?"\`
 // endregion: leadbay_research_lead_by_id
 
 // region: leadbay_research_lead_by_name_fuzzy
-export const leadbay_research_lead_by_name_fuzzy: string = `## WHEN TO USE
+export const leadbay_research_lead_by_name_fuzzy: string = `## WHAT IT DOES
+
+Resolve a company name, domain, or contact across the user's own leads and the Leadbay company registry, then return its research card. Use when there is no lead_id; use leadbay_research_lead_by_id when the UUID is known.
+
+## WHEN TO USE
 
 Trigger phrases: "look up <Company>", "research <Company>", "what do we know about <Company>".
 
 Do NOT use for: "picked row with leadId" → \`leadbay_research_lead_by_id\`; "draft outreach for <Contact>" → \`leadbay_prepare_outreach\`; "for each of these companies…" → \`leadbay_qualify_leads\`.
 
-Prefer when: ONE company name or domain in prose, no Leadbay id yet — always pass \`website\` if a domain was mentioned
+Use this when: ONE company name or domain in prose, no Leadbay id yet — always pass \`website\` if a domain was mentioned
 
 Examples that SHOULD invoke this tool:
 - "Look up Acme Corp for me."
@@ -5298,20 +5507,19 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ---
 
-Resolves across the user's visible Discover/Monitor/Activate leads AND the
-**Leadbay company registry** — so a company they do not own yet is still
-findable — then delegates to **leadbay_research_lead_by_id**.
+**Side effect.** Leads returned here are recorded as seen in the user's own
+Leadbay account, which rotates them out of tomorrow's Discover list.
 
-**Pass \`website\` whenever the user mentioned a domain** — the strongest match
-key. It survives a misspelled company name and is what turns "not in your
-list" into an answer. With only a contact email, pass \`email\`: the company
-domain is derived from it, consumer mailboxes ignored.
 
-Both \`resolution\` answers below are successes, not cards. \`"ambiguous"\`
-carries \`candidates[]\`: ask which one, never guess from \`score\`.
-\`"not_found"\` carries \`summary\` + \`next_step\`: nobody has it, so say that and
-do what \`next_step\` says — usually ask for the param \`would_help\` names, then
-call again. Do not offer an import before asking.
+
+**Pass \`website\` whenever the user mentioned a domain.** It survives a
+misspelled name and turns "not in your list" into an answer. With only a
+contact email, pass \`email\`: the domain is derived from it, consumer mailboxes
+ignored.
+
+Both \`resolution\` answers below are successes, not cards. \`"ambiguous"\` carries
+\`candidates[]\`: ask which one, never guess from \`score\`. \`"not_found"\` carries
+\`summary\` + \`next_step\`: say nobody has it, then do what \`next_step\` says.
 
 ---
 
@@ -5450,8 +5658,8 @@ out?"\`
 | User is done with this lead                            | "Back to the inbox"                                      | leadbay_pull_leads                                             |
 
 
-When \`resolution\` is \`"ambiguous"\`, render no card: use \`ask_user_input_v0\`,
-ONE \`single_select\` question ("Which one?"), one short label per candidate
+When \`resolution\` is \`"ambiguous"\`, render no card: use \`ask_user_input_v0\`
+with ONE \`single_select\` ("Which one?") and one short label per candidate
 combining \`name\` and \`location\`. \`"not_found"\` renders no card either.
 
 When \`_meta.match_candidates\` is non-empty, prepend one extra NEXT STEPS row:
@@ -5504,13 +5712,17 @@ Below the table, a one-liner: \`"Ready: K rows · Ambiguous: A rows · Unmatched
 // endregion: leadbay_resolve_import_rows
 
 // region: leadbay_scan_portfolio_signals
-export const leadbay_scan_portfolio_signals: string = `## WHEN TO USE
+export const leadbay_scan_portfolio_signals: string = `## WHAT IT DOES
+
+Scan a KNOWN portfolio (Monitor view, or an explicit lead-id list) for a specific web-research signal in bulk — e.g. "which of my leads acquired a company since 2025". Reads CACHED signals across many leads in one call and returns only the matches, campaign-ready. Use instead of looping leadbay_research_lead_by_id per lead. Don't use it to research one named company (that's leadbay_research_lead_by_name_fuzzy) or to qualify unresearched leads (that's leadbay_bulk_qualify_leads).
+
+## WHEN TO USE
 
 Trigger phrases: "which of my leads <did X>", "find leads that <raised / acquired / hired / moved / changed CEO>", "scan my portfolio for <signal>", "identify all the ones that <event> since <date>", "who in Monitor has a <funding / M&A / hiring> signal", "build a campaign from leads with <signal>".
 
 Do NOT use for: "research one named company" → \`leadbay_research_lead_by_name_fuzzy\`; "everything about lead <UUID>" → \`leadbay_research_lead_by_id\`; "qualify my next N leads (they aren't researched yet)" → \`leadbay_bulk_qualify_leads\`; "just list my follow-ups" → \`leadbay_pull_followups\`.
 
-Prefer when: user wants to FILTER a known portfolio by a web-research signal in bulk — pass \`query\`, optionally \`since\`, \`city\`/\`set_filter\`, or \`leadIds\`; NEVER a country name in \`city\` — a whole-country ask means NO geo filter
+Use this when: user wants to FILTER a known portfolio by a web-research signal in bulk — pass \`query\`, optionally \`since\`, \`city\`/\`set_filter\`, or \`leadIds\`; NEVER a country name in \`city\` — a whole-country ask means NO geo filter
 
 Examples that SHOULD invoke this tool:
 - "Which of my leads acquired a company since 2025?"
@@ -5566,7 +5778,7 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
-Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+Place names never go in \`keywords\`, \`sectors\` or \`leadbay_refine_lead_targeting\` — text matches, not geo filters.
  The
 scan is bounded by \`max_leads\` (default 200, hard cap 300); when the portfolio
 is larger, \`truncated_at\` is set and coverage is partial — say so.
@@ -5696,57 +5908,6 @@ were never read. Distinguish "no signal X found" (researched, no match) from
 `;
 // endregion: leadbay_scan_portfolio_signals
 
-// region: leadbay_seed_candidates
-export const leadbay_seed_candidates: string = `## WHEN TO USE
-
-Trigger phrases: "(internal) agent decided to extend the lens — fetch seed candidates".
-
-Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me X" → \`leadbay_refine_prompt\`.
-
-Prefer when: agent is mid-\`leadbay_extend_my_lens\` flow and needs to pick seeds before calling \`leadbay_extend_lens\`
-
-Examples that SHOULD invoke this tool:
-- "(agent-internal) user asked for more leads — fetch seeds before calling extend_lens"
-
-Examples that should NOT invoke this tool (sound similar, route elsewhere):
-- "Show me today's leads."
-- "Restrict the audience to fintech only."
-- "Which leads should I follow up with this week?"
-
-## RENDER (quick)
-
-DO NOT RENDER TO THE USER. This is internal data the agent reasons over
-before calling \`leadbay_extend_lens\`. No table, no list of company names,
-no "here are your candidates". The user asked for more leads; surface the
-*outcome* of extend_lens, not the picking step.
-
----
-
-**INTERNAL TOOL — do not surface candidates to the user.** The user asked for more leads on the lens (a higher daily appetite than the standard fill delivers), not to manually review candidates. This tool exists so the agent can pick seeds *silently*, then chain to \`leadbay_extend_lens\`. Picking is an agent decision; the user only sees the extend confirmation.
-
-Backed by \`GET /lenses/{lensId}/seed_candidates\`. By construction every lead returned is a valid input to \`extra_refill\` (same eligibility query). Defaults to the user's last-active lens.
-
-**Pick 3–5 seeds that represent the *kind* of leads the user wants more of**, using these signals in priority order:
-
-1. **\`engagement\`** (load-bearing) — \`liked: true\`, \`org_contacts_count > 0\`, and \`prospecting_actions_count > 0\` mean the user (or their team) already validated this lead. These are the strongest signal.
-2. **\`qq_answers\`** — what the AI agent already answered when qualifying this lead. Match candidates whose answers align with the target profile.
-3. **\`tags\`** — purchase-intent alignment, ordered by score (most-relevant first).
-4. **\`sector\`, \`size_min\`, \`size_max\`** — shape similarity to known-good prospects.
-5. **\`ai_agent_score\`** — overall AI fit (0–99); null when the lead has not been AI-rescored.
-6. **\`description\`** — short company blurb for the final tie-breaker.
-
-**Default heuristic** (no explicit user steering): top 3 by engagement (prefer \`liked: true\`; break ties by \`org_contacts_count + prospecting_actions_count\`), then fill to 5 with the top \`ai_agent_score\` rows whose \`tags\` overlap the engagement leaders' tags.
-
-**Once seeds are picked, call \`leadbay_extend_lens\` immediately with \`seed_lead_ids=[...picked lead_ids]\`.** Do not pause for user approval; the user wants more leads, not a seed-review meeting.
-
-WHEN TO USE: only as the scaffolding step inside an extend-the-lens flow. The \`leadbay_extend_my_lens\` prompt orchestrates this; agents called this tool by themselves should be rare.
-
-WHEN NOT TO USE: when the user wants to CHANGE the audience (sector / size / criteria) — route to \`leadbay_adjust_audience\` or \`leadbay_refine_prompt\`. Not for the daily inbox pull — route to \`leadbay_pull_leads\`. Never as a "here are some candidates, which do you want?" user-facing surface.
-
-Response shape (relayed verbatim from the backend): \`{ candidates: [{lead_id, name, description?, sector?, size_min?, size_max?, website?, ai_agent_score?, tags[], qq_answers[], org_lead_status?, engagement: {liked, org_contacts_count, prospecting_actions_count}}] }\`.
-`;
-// endregion: leadbay_seed_candidates
-
 // region: leadbay_select_leads
 export const leadbay_select_leads: string = `Add leads to the user's transient selection (used by selection-scoped bulk operations). Accepts 1-1000 \`leadIds\` per call.
 
@@ -5759,13 +5920,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_select_leads
 
 // region: leadbay_send_feedback
-export const leadbay_send_feedback: string = `## WHEN TO USE
+export const leadbay_send_feedback: string = `## WHAT IT DOES
+
+Send the user's feedback to the Leadbay team's inbox — the SAME place the Leadbay web app's "Send feedback" form delivers to. Use when the user wants to tell the team something (a bug, a request, praise, "let Leadbay know…"), OR when a tool errored and the user accepts your offer to report it. The user writes the message; you confirm the wording, then send. Use leadbay_report_friction instead when the user is reporting one specific tool result that disappointed them.
+
+## WHEN TO USE
 
 Trigger phrases: "send feedback", "I want to report a bug", "tell the Leadbay team", "let Leadbay know", "give feedback", "report this to support", "I have a feature request".
 
 Do NOT use for: "report this specific empty/wrong result to the team" → \`leadbay_report_friction\`; "log the email I sent" → \`leadbay_report_outreach\`.
 
-Prefer when: the user explicitly wants the Leadbay TEAM to receive a message they authored — or accepts your offer to report an error. When the report is about one specific tool result that disappointed them, use leadbay_report_friction instead.
+Use this when: the user explicitly wants the Leadbay TEAM to receive a message they authored — or accepts your offer to report an error. When the report is about one specific tool result that disappointed them, use leadbay_report_friction instead.
 
 Examples that SHOULD invoke this tool:
 - "Send feedback to the team: the lead scores feel off this week."
@@ -5868,13 +6033,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_set_epilogue_status
 
 // region: leadbay_set_lead_status
-export const leadbay_set_lead_status: string = `## WHEN TO USE
+export const leadbay_set_lead_status: string = `## WHAT IT DOES
+
+Set the org-wide CRM status on one or more leads — WANTED, WON, LOST, or UNWANTED — optionally stamping the date the status was reached. Use when the user states a commercial outcome ("we won Acme", "mark these as lost"). Don't use it for post-outreach disposition — that's \`leadbay_report_outreach\`'s \`epilogue_status\`.
+
+## WHEN TO USE
 
 Trigger phrases: "we won this deal", "mark this lead as won", "we lost them", "mark as lost", "this one is a target", "add them to my wanted list", "set the status on these leads", "closed the deal with", "they signed", "not a target anymore".
 
 Do NOT use for: "I sent the email / left a voicemail — log the outcome" → \`leadbay_report_outreach\`; "thumbs up, I like this lead" → \`leadbay_like_lead\`; "remind me about this lead next week / snooze it" → \`leadbay_set_pushback\`.
 
-Prefer when: user states a COMMERCIAL outcome or pipeline stage, not an outreach event; pass \`lead_ids\` + the uppercase \`status\`, and \`status_date\` when they name a close date
+Use this when: user states a COMMERCIAL outcome or pipeline stage, not an outreach event; pass \`lead_ids\` + the uppercase \`status\`, and \`status_date\` when they name a close date
 
 Examples that SHOULD invoke this tool:
 - "We just signed Acme Corp — mark them as won."
@@ -5962,13 +6131,17 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 // endregion: leadbay_set_pushback
 
 // region: leadbay_set_qualification_questions
-export const leadbay_set_qualification_questions: string = `## WHEN TO USE
+export const leadbay_set_qualification_questions: string = `## WHAT IT DOES
+
+Modify the org's qualification questions — the AI-agent questions every lead is scored against — or add negative criteria to its ideal buyer profile. Use when the user states what makes a lead good or bad and no existing question or anti-pattern covers it. Don't use it for a sector/size/territory rule (leadbay_adjust_audience), a named company, or a delivery requirement like "email and phone required".
+
+## WHEN TO USE
 
 Trigger phrases: "add / remove / replace a qualification question", "update my qualification so Leadbay looks for <trait>", "my best customers are <trait> — target those", "I don't want <kind of company> at all", "the leads aren't relevant, fix my criteria".
 
-Do NOT use for: "what are my qualification questions" → \`leadbay_get_qualification_questions\`; "narrow to <sector> / <headcount> / <territory>" → \`leadbay_adjust_audience\`; "a qualitative orientation one yes/no can't express" → \`leadbay_refine_prompt\`; "exclude <named company>" → \`leadbay_dislike_lead\`; "only leads that already have an email and a phone" → \`leadbay_enrich_titles\`.
+Do NOT use for: "what are my qualification questions" → \`leadbay_get_qualification_questions\`; "narrow to <sector> / <headcount> / <territory>" → \`leadbay_adjust_audience\`; "a qualitative orientation one yes/no can't express" → \`leadbay_refine_lead_targeting\`; "exclude <named company>" → \`leadbay_dislike_lead\`; "only leads that already have an email and a phone" → \`leadbay_enrich_titles\`.
 
-Prefer when: the user stated a durable company TRAIT a stranger could estimate from that company's public material, and get_qualification_questions shows nothing covering it. Read first, propose the text, write only on a yes.
+Use this when: the user stated a durable company TRAIT a stranger could estimate from that company's public material, and get_qualification_questions shows nothing covering it. Read first, propose the text, write only on a yes.
 
 Examples that SHOULD invoke this tool:
 - "Our best customers are cold-storage plants that run their own maintenance crews — update my qualification for that."
@@ -6035,7 +6208,7 @@ already covered without seeing them.
 | A sector, a headcount band, a territory | \`leadbay_adjust_audience\` / \`leadbay_new_lens\` filters — never a question |
 | A company trait a stranger could estimate from that company's own website or registry record — "runs its own maintenance crew", "operates a large vehicle fleet", "is legally active and not in liquidation" | a qualification question |
 | A kind of company that is never the buyer — "consulting firms", "franchise locations of national chains", "subsidiaries of large listed groups" | a negative criterion of the ideal buyer profile, \`leadbay_set_qualification_questions({add_anti_patterns})\`. It uses no question slot, and qualification reads it as a negative signal |
-| A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, \`leadbay_refine_prompt\` |
+| A qualitative orientation too broad for one yes/no — "we sell to the private sector, not the public one", "harden the exclusion on the business model" | the targeting prompt, \`leadbay_refine_lead_targeting\` |
 | Named companies — "exclude Groupe Solidum, Dentego" | \`leadbay_dislike_lead\` with the user's words as \`reason\` / \`leadbay_set_lead_status\` on those leads. A status stores no reason, so add the user's reason with \`leadbay_add_note\`. A question must NEVER name a company |
 | CRM state — "already contacted", "already in a campaign", "already excluded" | read it: \`leadbay_pull_followups\`, \`leadbay_list_campaigns\`. A question cannot observe your own history |
 | A delivery requirement — "email AND phone mandatory", "only score 54–95" | enrichment plus your own post-filter of the result. A question scores the COMPANY; it cannot see whether Leadbay holds a phone number for a contact |
@@ -6111,7 +6284,7 @@ three different dimensions — not one. Propose all three at once.
 **5 — The change is the user's call, not yours.** This holds for the questions,
 the targeting prompt and the buyer profile alike. Show the exact text you
 propose and what it will change, then get an explicit yes before calling
-\`leadbay_set_qualification_questions\` or \`leadbay_refine_prompt\`. Ask through
+\`leadbay_set_qualification_questions\` or \`leadbay_refine_lead_targeting\`. Ask through
 \`ask_user_input_v0\` when the host offers it. A removal or a swap additionally
 needs \`confirm:true\`. Do not write an org setting in the same turn the user
 first stated the rule — and once they have said yes, actually write it:
@@ -6154,11 +6327,15 @@ After a change, confirm in one line — e.g. **"Added 1 question — you now sco
 // endregion: leadbay_set_qualification_questions
 
 // region: leadbay_set_telemetry
-export const leadbay_set_telemetry: string = `## WHEN TO USE
+export const leadbay_set_telemetry: string = `## WHAT IT DOES
+
+Turn product-usage telemetry ON or OFF for the user, or report the current setting. Use when the user asks to opt out of / into analytics, disable or enable telemetry/tracking, or check whether telemetry is on. Telemetry is ON by default (opt-out model). Don't use it for sending feedback or reporting bugs.
+
+## WHEN TO USE
 
 Trigger phrases: "disable telemetry", "turn off telemetry", "opt out of analytics", "stop sending usage data", "enable telemetry", "turn analytics back on", "is telemetry on", "is my usage being tracked", "what's my telemetry setting".
 
-Prefer when: user wants to change or read the telemetry/analytics on-off preference for their account
+Use this when: user wants to change or read the telemetry/analytics on-off preference for their account
 
 Examples that SHOULD invoke this tool:
 - "Turn off telemetry, I don't want my usage tracked."
@@ -6220,20 +6397,24 @@ export const leadbay_set_user_prompt: string = `Set the org's intelligence-refin
 
 WHEN TO USE: low-level.
 
-WHEN NOT TO USE: from agent flow — use leadbay_refine_prompt, which polls for follow-up clarifications.
+WHEN NOT TO USE: from agent flow — use leadbay_refine_lead_targeting, which polls for follow-up clarifications.
 
 This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
 `;
 // endregion: leadbay_set_user_prompt
 
 // region: leadbay_team_activity
-export const leadbay_team_activity: string = `## WHEN TO USE
+export const leadbay_team_activity: string = `## WHAT IT DOES
+
+Manager view: per-rep activity leaderboard + team activity-over-time, for a look-back window. Use when a manager asks how the team is doing / who's most active / top performers. Don't use it to list leads or one rep's pipeline.
+
+## WHEN TO USE
 
 Trigger phrases: "how is my team doing", "team activity", "top performers", "rep leaderboard", "manager dashboard", "who's most active this week", "activity by rep".
 
 Do NOT use for: "show me leads" → \`leadbay_pull_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "how is this campaign progressing" → \`leadbay_campaign_progression\`.
 
-Prefer when: a manager wants team-wide / per-rep activity aggregates, not a lead list
+Use this when: a manager wants team-wide / per-rep activity aggregates, not a lead list
 
 Examples that SHOULD invoke this tool:
 - "How is my team doing this month?"
@@ -6272,13 +6453,17 @@ WHEN NOT TO USE: the user wants a lead list (leadbay_pull_leads / leadbay_pull_f
 // endregion: leadbay_team_activity
 
 // region: leadbay_tour_plan
-export const leadbay_tour_plan: string = `## WHEN TO USE
+export const leadbay_tour_plan: string = `## WHAT IT DOES
+
+Build a mixed-mode field-sales itinerary for a city — Monitor follow-ups (known accounts) + fresh Discover leads (new prospects) in one call. The single entry point for "I'm visiting <city> in N days — who should I meet". Pairs with the \`leadbay_plan_tour_in_city\` prompt and renders via \`places_map_display_v0\`.
+
+## WHEN TO USE
 
 Trigger phrases: "visiting <city> in <N> days", "I'm in <city> next week / Tuesday — who's worth meeting", "I'm going to <city> — who should I see", "who's worth meeting in <city>", "field tour in <city>", "plan a tour in <city>", "who should I meet in <city>", "prospects within <N> km of <city>", "<city> and the surrounding area", "customers plus prospects in <city>", "tour itinerary".
 
 Do NOT use for: "follow-ups only, no new prospects" → \`leadbay_followups_map\`; "new leads only" → \`leadbay_pull_leads\`; "research one account" → \`leadbay_research_lead_by_id\`.
 
-Prefer when: known accounts plus new discoveries in one itinerary; pass \`radius_km\` when they name a radius; NEVER a country name, and do NOT omit \`city\`: a city-less tour is arbitrary nationwide leads, so ask which city or region
+Use this when: known accounts plus new discoveries in one itinerary; pass \`radius_km\` when they name a radius; NEVER a country name, and do NOT omit \`city\`: a city-less tour is arbitrary nationwide leads, so ask which city or region
 
 Examples that SHOULD invoke this tool:
 - "I'm flying to Limoges in 4 days — give me 3 customers, 3 qualified prospects, and 3 new high-potential."
@@ -6306,6 +6491,11 @@ prose paragraph. Full recipe below.
 
 **BEFORE YOU CALL — clarify scope with a tap-to-answer question.** A field tour is high-intent, so unless the user already said it, ASK first (via \`ask_user_input_v0\` / \`AskUserQuestion\` — whichever is in your tool set) and wait for the answer before calling this tool: (1) **Who to include?** — "Mix — known accounts + fresh prospects" (default) / "Only my known accounts" / "Only fresh new prospects"; (2) **Enrich contacts with no phone/email?** — "Yes, enrich the top stops" / "No, just plan". Map answers to args: only-known → \`discover_count: 0\`; only-new → \`followups_count: 0\`; mix → defaults; enrich=yes → after planning, run \`leadbay_enrich_titles\` / \`leadbay_prepare_outreach(enrich:true)\` on top stops missing a channel. Skip the question only if the request already states scope ("plan a tour of just my new leads" → only-new, don't ask). Do NOT skip straight to building + mapping without this.
 
+**Side effect.** Leads returned here are recorded as seen in the user's own
+Leadbay account, which rotates them out of tomorrow's Discover list.
+
+
+
 Build a single-call mixed-mode itinerary for a field sales tour. Combines \`leadbay_pull_followups\` (Monitor leads in the city — known accounts) with \`leadbay_pull_leads\` (Discover wishlist — new prospects, then client-side filtered by city) so the agent can answer the canonical #3630 US1 ask: *"I'm visiting Limoges in 4 days — propose 3 customers + 3 qualified prospects + 3 new high-potential discoveries."*
 
 **Geo resolution** is identical to \`leadbay_followups_map\`: pass \`city\` (any level from state down to neighborhood — state, *région*, county, city — the \`/geo/search\` resolver picks the best match), or a pre-resolved \`city_id\`. Ambiguous matches surface as \`status: "ambiguous_locations"\` + \`location_ambiguities[]\`; re-call with \`city_id\` set to the id you pick AND \`city\` set to that candidate's \`name\`. Both are needed: the id scopes the follow-ups, the name scopes the Discover leads, and with \`city_id\` alone \`discover_leads\` comes back empty.
@@ -6327,7 +6517,7 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
-Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+Place names never go in \`keywords\`, \`sectors\` or \`leadbay_refine_lead_targeting\` — text matches, not geo filters.
 
 
 **Tour-specific override of the rule above.** For a tour, the home-country
@@ -6423,13 +6613,17 @@ WHEN NOT TO USE: if the user only wants follow-ups (use \`leadbay_followups_map\
 // endregion: leadbay_tour_plan
 
 // region: leadbay_unpin_contact
-export const leadbay_unpin_contact: string = `## WHEN TO USE
+export const leadbay_unpin_contact: string = `## WHAT IT DOES
+
+Unpin a contact on a company — the inverse of pinning. Use when the user wants to clear a contact's priority/favourite flag. Don't use it to remove the contact entirely (that's leadbay_remove_contact).
+
+## WHEN TO USE
 
 Trigger phrases: "unpin this contact", "remove the pin from this contact", "this person isn't the priority anymore", "unfavourite this contact".
 
 Do NOT use for: "pin / mark as priority" → \`leadbay_pin_contact\`; "remove / delete this contact" → \`leadbay_remove_contact\`.
 
-Prefer when: user wants to clear the pinned flag on a contact (but keep the contact) — pass that contact's own \`contact_id\`, and ONLY a \`source:"org"\` contact can be unpinned (a \`source:"paid"\` candidate returns 'contact not found')
+Use this when: user wants to clear the pinned flag on a contact (but keep the contact) — pass that contact's own \`contact_id\`, and ONLY a \`source:"org"\` contact can be unpinned (a \`source:"paid"\` candidate returns 'contact not found')
 
 Examples that SHOULD invoke this tool:
 - "Unpin Jane Doe — she's not the priority anymore."
@@ -6478,13 +6672,17 @@ Requires: LEADBAY_MCP_WRITE=1 (MCP) or exposeWrite=true (OpenClaw).
 // endregion: leadbay_unpin_contact
 
 // region: leadbay_update_contact
-export const leadbay_update_contact: string = `## WHEN TO USE
+export const leadbay_update_contact: string = `## WHAT IT DOES
+
+Edit an existing contact in place — change their title, LinkedIn, email, phone, or name. Send only the fields you are changing; the rest keep their values. Pass a field as null to erase it. Use when the user wants to fix or update a contact's details. Don't use it to add a new contact or remove one.
+
+## WHEN TO USE
 
 Trigger phrases: "update this contact", "fix this contact's title", "change their email / phone / LinkedIn", "edit this person's details", "correct the contact's name".
 
-Do NOT use for: "add a new contact to this company" → \`leadbay_add_contact\`; "remove / delete this contact" → \`leadbay_remove_contact\`; "get email/phone for a contact (enrichment)" → \`leadbay_enrich_titles\`; "fix an enriched contact's details" → \`leadbay_add_contact\`.
+Do NOT use for: "add a new contact to this company", "fix an enriched contact's details" → \`leadbay_add_contact\`; "remove / delete this contact" → \`leadbay_remove_contact\`; "get email/phone for a contact (enrichment)" → \`leadbay_enrich_titles\`.
 
-Prefer when: user wants to change details on a contact that is in their own directory (\`source: "org"\`) — pass its \`contact_id\`, first_name, last_name and only the fields being changed
+Use this when: user wants to change details on a contact that is in their own directory (\`source: "org"\`) — pass its \`contact_id\`, first_name, last_name and only the fields being changed
 
 Examples that SHOULD invoke this tool:
 - "Update Jane's title to SVP Engineering."
@@ -6594,7 +6792,7 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
-Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+Place names never go in \`keywords\`, \`sectors\` or \`leadbay_refine_lead_targeting\` — text matches, not geo filters.
 
 
 WHEN TO USE: low-level mutation when you've already prepared the merged filter.
@@ -6615,8 +6813,6 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_add_note,
   leadbay_adjust_audience,
   leadbay_answer_clarification,
-  leadbay_artifact_event,
-  leadbay_artifact_kit,
   leadbay_bulk_enrich_status,
   leadbay_bulk_qualify_leads,
   leadbay_campaign_call_sheet,
@@ -6638,6 +6834,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_extend_lens,
   leadbay_find_new_leads,
   leadbay_followups_map,
+  leadbay_get_artifact_runtime,
   leadbay_get_clarification,
   leadbay_get_contacts,
   leadbay_get_enrichment_job_titles,
@@ -6663,12 +6860,14 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_lead_job_status,
   leadbay_like_lead,
   leadbay_list_campaigns,
+  leadbay_list_lens_seed_candidates,
   leadbay_list_lenses,
   leadbay_list_locations,
   leadbay_list_mappable_fields,
+  leadbay_list_previously_enriched_titles,
   leadbay_list_sectors,
   leadbay_login,
-  leadbay_my_lenses,
+  leadbay_manage_lenses,
   leadbay_new_lens,
   leadbay_open_billing_portal,
   leadbay_pick_clarification,
@@ -6681,19 +6880,18 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_qualify_lead,
   leadbay_qualify_leads,
   leadbay_qualify_status,
-  leadbay_recall_ordered_titles,
-  leadbay_refine_prompt,
+  leadbay_refine_lead_targeting,
   leadbay_remove_contact,
   leadbay_remove_epilogue,
   leadbay_remove_leads_from_campaign,
   leadbay_remove_pushback,
+  leadbay_report_artifact_error,
   leadbay_report_friction,
   leadbay_report_outreach,
   leadbay_research_lead_by_id,
   leadbay_research_lead_by_name_fuzzy,
   leadbay_resolve_import_rows,
   leadbay_scan_portfolio_signals,
-  leadbay_seed_candidates,
   leadbay_select_leads,
   leadbay_send_feedback,
   leadbay_set_active_lens,
@@ -6718,13 +6916,17 @@ export type ToolDescriptionName = keyof typeof TOOL_DESCRIPTIONS;
 // server swaps these in when commerce is gated off; tools absent from this
 // map read identically on both surfaces.
 export const NO_COMMERCE_TOOL_DESCRIPTIONS: Record<string, string> = {
-  leadbay_account_status: `## WHEN TO USE
+  leadbay_account_status: `## WHAT IT DOES
+
+Show the user's account state — admin rights, language, last-active lens, what the account is set up to find, and quota usage shown like the web app: a percentage-used + dollar-spend gauge for each daily/weekly/monthly window, with a per-resource breakdown, plus regeneration flags.
+
+## WHEN TO USE
 
 Trigger phrases: "what's my account status", "how much quota do I have", "what lens am I on", "I topped up / I bought credits / I added credits", "what version of Leadbay am I running".
 
 Do NOT use for: "show me leads" → \`leadbay_pull_leads\`.
 
-Prefer when: meta question about account, quota, active lens, or top-up recovery
+Use this when: meta question about account, quota, active lens, or top-up recovery
 
 Examples that SHOULD invoke this tool:
 - "What's my account status?"
@@ -6887,13 +7089,17 @@ WHEN TO USE: when the user asks about their account, quota or version, after a 4
 
 WHEN NOT TO USE: as a pre-flight gate before bulk ops — operations themselves return 429; this tool is for context, not gating. And: a recent quota snapshot showing "exhausted" is NOT a reason to refuse a write call when the user has just topped up — re-call this tool first, then proceed.
 `,
-  leadbay_find_new_leads: `## WHEN TO USE
+  leadbay_find_new_leads: `## WHAT IT DOES
+
+Search for NET-NEW companies matching an ideal-customer profile the user describes, scored for fit and optionally AI-qualified with contacts. Use it when the user describes who they want.
+
+## WHEN TO USE
 
 Trigger phrases: "find me N companies that <profile>", "get me new prospects like <company>", "I need leads in <place> that <do X>", "search for companies that would buy <product>", "net-new leads outside my current pipeline", "we're entering <market> — who should we target".
 
-Do NOT use for: "show me today's leads / what's new today" → \`leadbay_pull_leads\`; "find me new leads (no profile, no count named)" → \`leadbay_pull_leads\`; "more leads like the ones in my lens" → \`leadbay_extend_lens\`; "qualify / vet these companies I have" → \`leadbay_qualify_leads\`; "qualify the top N of my batch" → \`leadbay_bulk_qualify_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "tell me about <one company>" → \`leadbay_research_lead_by_name_fuzzy\`.
+Do NOT use for: "show me today's leads / what's new today", "find me new leads (no profile, no count named)" → \`leadbay_pull_leads\`; "more leads like the ones in my lens" → \`leadbay_extend_lens\`; "qualify / vet these companies I have" → \`leadbay_qualify_leads\`; "qualify the top N of my batch" → \`leadbay_bulk_qualify_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "tell me about <one company>" → \`leadbay_research_lead_by_name_fuzzy\`.
 
-Prefer when: the user describes a target profile or names a count of NEW companies — craft the example_lead per the seed rules below BEFORE calling; never pass the user's raw sentence as query.
+Use this when: the user describes a target profile or names a count of NEW companies — craft the example_lead per the seed rules below BEFORE calling; never pass the user's raw sentence as query.
 
 Examples that SHOULD invoke this tool:
 - "Find me 10 gyms around Dallas that would buy our flooring, with a contact."
@@ -6914,12 +7120,11 @@ delivered.
 
 ---
 
-Submit a net-new lead search: the backend matches an ICP seed against the full
-company universe, applies hard filters, skips what the org already knows
-(\`novelty: org\`), optionally qualifies against the org's own intelligence
-(questions, tags, ideal buyer profile — frozen at submit), and optionally reveals
-contact channels. Polls up to \`wait_seconds\` (default 45); a longer job returns
-a receipt — check it with \`leadbay_lead_job_status\`, usually 5–20 min. Results kept 30 days.
+The backend matches the ICP seed against the full company universe, applies
+hard filters, skips what the org already knows (\`novelty: org\`), and freezes the
+org's intelligence (questions, tags, ideal buyer profile) at submit. Polls up to
+\`wait_seconds\` (default 45); a longer job returns a receipt — check it with
+\`leadbay_lead_job_status\`, usually 5–20 min. Results kept 30 days.
 
 ## A LAUNCHED JOB — its first result is a receipt, not the answer
 
@@ -6939,20 +7144,19 @@ only if the user said not to wait or the check tool says the job stalled. Then
 say it is not ready, show what landed, and that asking again fetches the rest.
 
 
-**Free vs usage quota — never use quota silently.** Default (\`qualify: false\`,
-\`channels: []\`) is FREE: company profile + fit score + cached research +
-contact identity. \`qualify: true\` (per candidate EXAMINED, capped by
-\`exploration_cap\`/\`max_cost\`) and \`channels\` (only when a value is found) draw
-on the org's usage quota; nothing is invoiced. Such a call is WITHHELD unless it
-carries \`confirm: true\`: nothing is submitted, and \`mode: "needs_confirmation"\` carries
-a real quote to show the user. Re-call with \`confirm: true\` on their go-ahead
-("go ahead / get their emails" counts); \`confirm: false\` vetoes. **Preview free first** — reshaping an off-profile seed
-is free, exploring it with \`qualify: true\` is not.
+**Never use quota silently.** Default (\`qualify: false\`, \`channels: []\`) is
+free: company profile, fit score, cached research, contact identity.
+\`qualify: true\` (per candidate EXAMINED, capped by \`exploration_cap\`/\`max_cost\`)
+and \`channels\` (only when a value is found) draw on the org's usage quota;
+nothing is invoiced. Such a call is WITHHELD unless it carries \`confirm: true\`:
+nothing is submitted and \`mode: "needs_confirmation"\` carries a real quote for
+the user. Re-call with \`confirm: true\` on their go-ahead ("go ahead / get their
+emails" counts); \`confirm: false\` vetoes. Preview free first.
 
 **Ad-hoc exclusions ("no chains") are enforced by NO tier** — \`filters\` has no
-exclusion key, and \`qualify\` scores against the org's FROZEN questions and IBP.
-Violators get delivered and use quota: post-filter them yourself and say so. Durable enforcement →
-\`leadbay_set_qualification_questions\` / \`leadbay_refine_prompt\`.
+exclusion key and \`qualify\` scores against the org's FROZEN questions and IBP.
+Violators get delivered and use quota: post-filter them and say so. Durable
+enforcement → \`leadbay_set_qualification_questions\`.
 
 ### Crafting the \`example_lead\` seed — the input that decides result quality
 
@@ -6977,7 +7181,7 @@ measured:
 4. **NO event language — in \`description\` or \`query\`.** "recrute", "hiring",
    "expanding", "just raised" never appear in registry text, so they match
    nothing. Send the trigger to \`leadbay_set_qualification_questions\` or
-   \`leadbay_refine_prompt\` and say so. "companies hiring a senior SDR" seeds as
+   \`leadbay_refine_lead_targeting\` and say so. "companies hiring a senior SDR" seeds as
    "B2B software company operating an in-house outbound sales team."
 5. **No meta-markers.** Never "(example)", "(fictional)", "(placeholder)".
 6. **Hard constraints go in \`filters\`, not prose — exact keys:**
@@ -6994,9 +7198,9 @@ measured:
 
 
 **Parameter notes**
-- \`request_id\` (REQUIRED) is the retry contract: SAME value retrying the same
-  ask (same live job, no double launch); NEW for a changed ask. Derive from ask
-  + archetype + date: \`gyms-dallas-2026-07-28\`.
+- \`request_id\` (REQUIRED) is the retry contract: SAME value retries the same
+  ask (same job, no double launch), NEW for a changed ask. Derive it from ask +
+  archetype + date: \`gyms-dallas-2026-07-28\`.
 - Never lower \`min_ai_score\` with \`channels\` — that reveals emails for leads
   the AI just scored as junk.
 - \`count\` ≤ 50; ≤3 active jobs/org; ≤10 submits/hour (429 + Retry-After: wait).
@@ -7130,7 +7334,7 @@ Pick the 2-3 that match what happened, never the whole table:
 
 | Observation | Suggest | Calls |
 |---|---|---|
-| ≥ 1 delivered — offer FIRST | "Build an interactive lead triage board" | leadbay_artifact_kit → CANONICAL recipe, data in hand |
+| ≥ 1 delivered — offer FIRST | "Build an interactive lead triage board" | leadbay_get_artifact_runtime → CANONICAL recipe, data in hand |
 | Free run delivered on-profile leads | "Qualify these N against your criteria (uses quota — \`dry_run\` first)" | leadbay_qualify_leads(prior_deliveries: {job_id}) |
 | Delivered leads look right | "Draft outreach for the top ones" | leadbay_prepare_outreach |
 | Delivered 0 or off-profile | "Reshape the example and retry" (name the fix from funnel + scope_notes) | leadbay_find_new_leads (NEW request_id) |
@@ -7138,13 +7342,17 @@ Pick the 2-3 that match what happened, never the whole table:
 | Stopped on org quota (\`stop_reason: quota\`) | "Check which window is exhausted and when it resets" — never a re-run: it stops in the same place | leadbay_account_status |
 | User wants these tracked in Leadbay | "Add the keepers to a campaign" | leadbay_create_campaign / leadbay_add_leads_to_campaign |
 `,
-  leadbay_scan_portfolio_signals: `## WHEN TO USE
+  leadbay_scan_portfolio_signals: `## WHAT IT DOES
+
+Scan a KNOWN portfolio (Monitor view, or an explicit lead-id list) for a specific web-research signal in bulk — e.g. "which of my leads acquired a company since 2025". Reads CACHED signals across many leads in one call and returns only the matches, campaign-ready. Use instead of looping leadbay_research_lead_by_id per lead. Don't use it to research one named company (that's leadbay_research_lead_by_name_fuzzy) or to qualify unresearched leads (that's leadbay_bulk_qualify_leads).
+
+## WHEN TO USE
 
 Trigger phrases: "which of my leads <did X>", "find leads that <raised / acquired / hired / moved / changed CEO>", "scan my portfolio for <signal>", "identify all the ones that <event> since <date>", "who in Monitor has a <funding / M&A / hiring> signal", "build a campaign from leads with <signal>".
 
 Do NOT use for: "research one named company" → \`leadbay_research_lead_by_name_fuzzy\`; "everything about lead <UUID>" → \`leadbay_research_lead_by_id\`; "qualify my next N leads (they aren't researched yet)" → \`leadbay_bulk_qualify_leads\`; "just list my follow-ups" → \`leadbay_pull_followups\`.
 
-Prefer when: user wants to FILTER a known portfolio by a web-research signal in bulk — pass \`query\`, optionally \`since\`, \`city\`/\`set_filter\`, or \`leadIds\`; NEVER a country name in \`city\` — a whole-country ask means NO geo filter
+Use this when: user wants to FILTER a known portfolio by a web-research signal in bulk — pass \`query\`, optionally \`since\`, \`city\`/\`set_filter\`, or \`leadIds\`; NEVER a country name in \`city\` — a whole-country ask means NO geo filter
 
 Examples that SHOULD invoke this tool:
 - "Which of my leads acquired a company since 2025?"
@@ -7200,7 +7408,7 @@ On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
 
-Place names never go in \`keywords\`, \`sectors\` or \`refine_prompt\` — text matches, not geo filters.
+Place names never go in \`keywords\`, \`sectors\` or \`leadbay_refine_lead_targeting\` — text matches, not geo filters.
  The
 scan is bounded by \`max_leads\` (default 200, hard cap 300); when the portfolio
 is larger, \`truncated_at\` is set and coverage is partial — say so.

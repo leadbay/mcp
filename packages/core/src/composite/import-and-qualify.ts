@@ -325,11 +325,11 @@ export const importAndQualify: Tool<
   annotations: {
     title: "Import + qualify leads",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     // Composite of import (idempotent against domain hash) + qualify (which
     // is silent no-op for already-qualified leads). bulk-store + import
     // hashes return same handles on retry.
-    idempotentHint: true,
+    idempotentHint: false,
     openWorldHint: true,
   },
   description: IMPORT_AND_QUALIFY_DESCRIPTION,
