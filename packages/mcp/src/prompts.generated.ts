@@ -1860,6 +1860,107 @@ without my say-so.
 `;
 // endregion: leadbay_new_leads
 
+// region: leadbay_outreach_session
+export const leadbay_outreach_session: string = `
+Run an outreach session over my **{{arg:source_label}}**{{arg:campaign_paren}}.
+
+GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
+
+If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
+
+
+# PHASE 0 — PICK THE SOURCE
+
+If the source was given, use it. Otherwise surface a \`single_select\` via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`):
+
+> Which leads do you want to work?
+> - Follow-ups — leads already in my Monitor
+> - New leads — today's batch from my active lens
+> - A campaign — pick one
+
+For the campaign branch, resolve the name I gave you or call \`leadbay_list_campaigns()\` and let me pick (cap at 4, sorted by \`updated_at\` desc, archived hidden). Capture the \`campaign_id\`.
+
+**If I named a specific campaign up front**, this prompt is the wrong door — \`leadbay_work_campaign\` is the campaign-shaped session and already knows that flow. Say so in one line and hand over.
+
+# PHASE 1 — ASSESS WHO IS ACTUALLY REACHABLE (the load-bearing phase)
+
+Fetch one page from the chosen source:
+
+- follow-ups → \`leadbay_pull_followups({count: 25})\`
+- discover → \`leadbay_pull_leads({count: 25})\`
+- campaign → \`leadbay_campaign_call_sheet({campaign_id})\`
+
+Then count, on the rows you just got back, how many carry a company phone or email. A lead is reachable when \`has_phone\` is true, or \`phone_numbers\` holds a real value, or \`email\` does. **The API returns the literal string \`"null"\` for a missing value** in both \`phone_numbers\` and \`email\` — guard it, or the count reports a callable book that is not.
+
+**\`contacts_count > 0\` is NOT reachability.** It counts known people, not people you can dial; a lead can show thousands of contacts and zero channels.
+
+**One-line situation report**, always, before anything else:
+
+\`\`\`
+📋 <N> leads · ☎ <with_phone> with a phone · ✉ <with_email> with an email · 🔴 <no_channel> need enrichment
+\`\`\`
+
+**Then branch:**
+
+- **Nothing reachable at all** — do NOT build a board the rep cannot work. Say it plainly ("none of these 25 leads has a phone or email on file"), then offer, as a \`single_select\`: enrich the top leads' buyer titles (\`leadbay_enrich_titles\`), build the desk anyway so I can enrich row by row, or pick a different source.
+- **Some reachable** — go to Phase 2. Mention the unreachable count once so I know the desk will show enrich controls on those rows.
+
+# PHASE 2 — BUILD THE LEAD DESK
+
+Call \`leadbay_get_artifact_runtime\` and follow its **LEAD DESK** recipe. Build from the leads already in hand — do NOT re-call the source tool to populate the board.
+
+The desk is one row per lead, carrying:
+
+- the company, its sector / description and the COMPANY switchboard (labelled as the company's, never as the contact's direct line)
+- the contact, with email and phone — **lazy**, loaded when I open the row, because those come from \`research_lead_by_id\` and prefetching is one request per row
+- an enrich control on any contact missing a channel, which names the spend before buying
+- the CRM status (Wanted / Won / Lost / Unwanted), saving on change
+- this attempt's outcome + a note, which is required
+- like / dislike, and Qualify / Requalify
+
+Set the artifact's \`mcp_tools\` to every tool the page calls, or its controls are inert.
+
+End the turn with the standby line:
+
+> The desk is up. Tell me what happened after each call or email — I'll record the outcome and the status.
+
+# PHASE 3 — RECORD OUTCOMES, ONE AT A TIME
+
+When I dictate something like *"Called Michel at Starmat, voicemail, trying Thursday"* or *"Talked to Christian, wants a quote, meeting booked Tuesday"*, parse:
+
+1. **Which lead** — by company or contact name, cross-referenced with the rows on the desk.
+2. **The note** — my exact words. Don't paraphrase; the next rep reads this.
+3. **The outcome** — ONE of:
+   - \`STILL_CHASING\` — pursuing, no decision ("trying again", "they'll get back to me")
+   - \`COULD_NOT_REACH_STILL_TRYING\` — voicemail, no answer, gatekeeper
+   - \`INTEREST_VALIDATED_OR_MEETING_PLANED\` — meeting booked, quote requested, "send me more"
+   - \`NOT_INTERESTED_LOST\` — declined, "not now", "not a fit"
+
+Call \`leadbay_report_outreach({lead_id, note, epilogue_status, verification: {source: "user_confirmed", ref: <my exact words>}})\`.
+
+**If I also reported a commercial outcome** — "we won it", "they're out" — that is a LEAD STATUS, a different axis. Fire \`leadbay_set_lead_status\` as well. Setting one never sets the other.
+
+Confirm in ONE line: *"✅ Logged: <Company> → <outcome>. Next?"* Then wait. Don't ask "anything else?".
+
+# PHASE 4 — STOP
+
+When I say "done" / "that's it" / "wrapping up":
+
+> Session complete — N logged: X meetings booked · Y still chasing · Z couldn't reach · W declined.
+
+If any lead still has no channel, add one line: *"<N> leads still have nobody to call — want to enrich them for next time?"*
+
+# Iron laws
+
+- \`verification\` on \`leadbay_report_outreach\` is REQUIRED. For a call, \`{source: "user_confirmed", ref: <my verbatim words>}\`. Fabricating a gmail_message_id for a call is forbidden.
+- ONE attempt → ONE \`leadbay_report_outreach\`. Never batched at the end of the session.
+- Epilogue and lead status are different systems. When I report both in one breath, fire both.
+- Enrichment SPENDS QUOTA. Name the contact and the channels before buying, and never buy a channel already on file.
+- Never build the desk by hand. \`leadbay_get_artifact_runtime\` owns the skin and the wiring; a hand-built board logs nothing.
+- If an outcome I dictate doesn't map cleanly to one of the four epilogue values, ASK ONCE rather than guessing.
+`;
+// endregion: leadbay_outreach_session
+
 // region: leadbay_plan_tour_in_city
 export const leadbay_plan_tour_in_city: string = `
 Plan a field sales tour for me in **{{arg:city}}**{{arg:date_paren}}.
@@ -3353,6 +3454,7 @@ export const PROMPT_META = {
   leadbay_import_file: {"name":"leadbay_import_file","short_description":"Import a user-supplied CSV/file into Leadbay through five phases with\nevidence gates — scan, derive, resolve identities, preserve & commit,\nthen optionally qualify and report. The job is to maximize how many\nrows the Leadbay system actually ingests and matches.\n","arguments":[{"name":"file","description":"Path or user-visible name of the CSV/file to import. If omitted, use the file the user attached or referenced.","required":false},{"name":"instruction","description":"Additional user goal, e.g. \"then qualify the leads\", \"preserve owner phone as a custom field\", or \"only import restaurants in Manhattan\".","required":false}],"expected_calls":["leadbay_resolve_import_rows","leadbay_list_mappable_fields","leadbay_create_custom_field","leadbay_import_leads","leadbay_import_and_qualify","leadbay_add_note","leadbay_import_status"],"failure_modes":["Picks LEADBAY_ID from score alone, name-only, fuzzy-name-only, root-domain-only, brand-only, postcode-only, or city-only evidence","Drops meaningful business notes or CRM record links instead of preserving them as custom fields or lead notes","Treats a consumer mailbox domain (gmail.com, hotmail.com, ...) as the company domain","Skips deriving company_domain from a business email when no website column exists (this kills match rate)","Skips the COLUMN PRESERVATION PLAN byproduct before importing","Skips the DECISION LOG byproduct before writing LEADBAY_ID","Returns the imported records WITHOUT writing LEADBAY_ID values back into the user's file (leaves the user no audit trail of what matched)","Fabricates leadIds, contact emails, or mapping IDs not present in the file or a tool response"]},
   leadbay_log_outreach: {"name":"leadbay_log_outreach","short_description":"Log outreach (an email I sent, a call I made, a meeting I had) on a\nspecific lead. Captures verification so the SDR pipeline trusts the entry.\n","arguments":[{"name":"lead_id","description":"The lead UUID. Get it from leadbay_pull_leads or leadbay_research_lead_by_id.","required":true},{"name":"summary","description":"1-2 sentences describing what I did (e.g. 'Sent intro email to CTO citing recent Hornsea contract').","required":true}],"expected_calls":["leadbay_report_outreach"],"failure_modes":["Calls leadbay_report_outreach without first collecting a verification source","Fabricates a gmail_message_id or calendar_event_id (the human team treats verification as canonical)","Records outreach to a different lead_id than the one the user supplied","Skips the dry_run step when the user is unsure what would be sent"]},
   leadbay_new_leads: {"name":"leadbay_new_leads","short_description":"Guided net-new lead delivery — turn a described need (\"gyms around Dallas\nthat would buy our flooring\") into ICP-perfect NEW companies with\nqualification evidence and the right contact, via leadbay_find_new_leads.\nTrigger when the user DESCRIBES who they want: \"get me N companies that\n<profile>\", \"we're entering <market>\". A bare \"find me new leads\" with no\nprofile, and \"today's leads\", are the daily lens batch — leadbay_pull_leads.\n\"Qualify these companies I have\" is leadbay_qualify_leads.\n","arguments":[{"name":"need","description":"What the user is looking for, in their own words (e.g. '10 gyms around Dallas that would buy modular flooring, with phone numbers'). Optional — the session starts by asking when absent.","required":false}],"expected_calls":["leadbay_find_new_leads","leadbay_lead_job_status","leadbay_qualify_leads"],"failure_modes":["Passes the user's raw sentence as `query` instead of crafting an example_lead description (vendor-vocabulary trap — measured 0 delivered from a raw query vs on-profile results from a crafted example)","Invents a distinctive brand name in example_lead.name (pulls matching toward name-lookalikes)","Puts event language (\"hiring\", \"expanding\", \"just raised\") into the seed description","Launches qualify:true or channels without a dry_run quote and the user's explicit go-ahead","Retries a failed/timed-out submit with a NEW request_id (double launch) — the same ask must reuse the same request_id","Reports \"no results\" without narrating the funnel + scope_notes and proposing a concrete fix","Renders delivered leads as freeform prose instead of the canonical lead-delivery table","Blends two distinct buyer archetypes into one seed description instead of running one search per archetype","Passes a country name in filters.locations (silently matches a same-named town — whole-country intent means OMITTING locations) or a nested employees object instead of the flat employees_min/employees_max","Renders rows that visibly violate the user's exclusions, or presents a best-fit-under-30 table as an answer instead of flagging weak matches"]},
+  leadbay_outreach_session: {"name":"leadbay_outreach_session","short_description":"Run an outreach session over ANY set of leads: follow-ups, a Discover\nlens, or a campaign. Assess who is actually reachable, build the lead\ndesk, then record each outcome as you dictate it. Trigger on \"relance\nplan\", \"campagne de relance\", \"cold calling session\", \"prospection\nsession\", \"outreach session\", \"let's contact leads\", \"who do I call\ntoday\". For a campaign the user NAMES, prefer `leadbay_work_campaign`.\n","arguments":[{"name":"source","description":"Optional: where the leads come from — 'followups' (the Monitor, default), 'discover' (the active lens), or 'campaign'. Omit and the session asks.","required":false},{"name":"campaign","description":"Optional: campaign name (fuzzy-matched against your own campaigns) or UUID, when source is 'campaign'. Omit to list and pick.","required":false}],"expected_calls":["leadbay_pull_followups","leadbay_get_artifact_runtime","leadbay_enrich_contacts","leadbay_report_outreach","leadbay_set_lead_status"],"failure_modes":["Builds the desk before checking reachability — a board of leads with no phone or email is a page the rep cannot work. Assess FIRST, and when nothing is callable say so and offer enrichment instead.","Renders a markdown table instead of the lead desk artifact — a table cannot log outreach, set status, or buy a missing channel. The desk is the deliverable.","Hand-writes the artifact instead of calling `leadbay_get_artifact_runtime` — a hand-built board misses the product skin and wires its buttons to nothing, so the rep's work never reaches Leadbay.","Prefetches every row's contacts to fill the table — that is one `research_lead_by_id` per row for cells the rep may never read. Contacts are LAZY; the desk loads them per row on the rep's gesture.","Records outreach WITHOUT verification — `verification.source/ref` is REQUIRED. For a call, pass `{source: 'user_confirmed', ref: <the user's exact words>}`. Fabricating a gmail_message_id for a call is forbidden.","Records the epilogue but not the CRM status when the user reports both — 'she's interested, meeting booked' is an epilogue AND a status. Setting one never sets the other.","Batches the outreach logs at the end of the session — one attempt is one `leadbay_report_outreach`, recorded as the rep dictates it, or a crash loses the lot.","Enriches a contact without saying it spends quota — every email and phone reveal is a purchase. Name the contact and the channels before buying.","Treats `contacts_count > 0` as reachable — it counts known PEOPLE, not people you can dial. A lead can carry thousands of contacts and no channel at all."]},
   leadbay_plan_tour_in_city: {"name":"leadbay_plan_tour_in_city","short_description":"Use whenever the user names a city they'll be in and asks who to see\n— \"I'm in SF next Tuesday, who's worth meeting?\", \"I'm going to Berlin\n— who should I visit?\", \"plan my <city> tour\". Any in-person/visit\nintent tied to a place routes here, NOT to `leadbay_pull_leads`. It\nsurfaces follow-ups + fresh Discover leads in the city via\n`leadbay_tour_plan`, ALWAYS offers to plot them on a map (rendering it\non yes), then offers outreach drafts + campaign persistence.\n","arguments":[{"name":"city","description":"City or region the user is visiting (e.g. 'Limoges', 'Bay Area'). Used as the geo filter for both Monitor and Discover lookups. A country is not a city: this workspace already covers exactly one country, and a country name here silently fences the tour to a same-named village. Do NOT omit the argument to recover — a city-less tour returns arbitrary leads from across the whole workspace, which is not an itinerary. Ask which city or region the visit is to.","required":true},{"name":"date","description":"When the visit is (e.g. 'May 24', 'next Thursday'). Surfaced in the outreach drafts as 'I'll be in <city> on <date>'.","required":false}],"expected_calls":["leadbay_tour_plan","leadbay_research_lead_by_id","leadbay_prepare_outreach","leadbay_create_campaign"],"failure_modes":["Calls leadbay_followups_map (Monitor-only) instead of leadbay_tour_plan — loses the Discover (fresh-lead) half that the user explicitly asked for","Calls leadbay_pull_leads then drops the geo filter — returns the lens-wide wishlist instead of city-relevant fresh leads","Skips the campaign-persist step (\"would you like to save these as a tour?\") — leaves the rep with a one-shot map but no follow-up artifact","Creates a campaign WITHOUT asking the user first — the persist step is high-intent; offer it, don't assume","Fabricates lead_ids when seeding the campaign instead of using the ids returned by tour_plan"]},
   leadbay_prospecting_overview: {"name":"leadbay_prospecting_overview","short_description":"Orientation for working with Leadbay from any host — discovery vs.\nfollow-up, the outreach loop, outcome recording, imports, pushback /\nsnooze, and the connected-outreach-tool registry. Trigger when the\nconversation involves Leadbay leads, prospecting, pipeline, follow-up,\noutreach, or lens / ICP — anything from \"show me my leads\" to \"what\nshould I follow up on\" to \"I'll send via lemlist\".\n","arguments":[],"expected_calls":["leadbay_account_status","leadbay_pull_leads","leadbay_pull_followups","leadbay_research_lead_by_id","leadbay_research_lead_by_name_fuzzy","leadbay_prepare_outreach","leadbay_report_outreach","leadbay_set_pushback","leadbay_remove_pushback","leadbay_bulk_qualify_leads","leadbay_enrich_titles","leadbay_import_leads","leadbay_add_note","leadbay_adjust_audience"],"failure_modes":["Drives outreach without asking the user \"how did it go?\" afterwards — leaving prospecting_actions and epilogue_status stale","Says \"epilogue\" in user-facing dialogue instead of \"outcome\"","Says \"Monitor\" in user-facing dialogue instead of \"follow-ups\"","Treats a \"not now / next quarter\" reply as a note instead of routing through the pushback mechanism","Drafts outreach in a generic format when the user has a connected sequencer (lemlist, Outreach.io, etc.) that has its own idiom","Re-pulls leads without passing the captured lensId, allowing a backend lens shift to discard prior work","Skips the STOP byproduct in any multi-step workflow it triggers","Calls leadbay_pull_leads (Discover wishlist) for a follow-up query, or leadbay_pull_followups (Monitor view) for a discovery query — the two entry points read from different backend tables; the right orchestrators are leadbay_daily_check_in (discovery) and leadbay_followup_check_in (follow-up)"]},
   leadbay_qualify_top_n: {"name":"leadbay_qualify_top_n","short_description":"Bulk-qualify the top N un-qualified leads in the active lens. Uses\nleadbay_bulk_qualify_leads with a sensible default budget.\n","arguments":[{"name":"count","description":"How many leads to qualify (default 10, max 25). Higher counts may take 5+ minutes.","required":false}],"expected_calls":["leadbay_bulk_qualify_leads","leadbay_qualify_status","leadbay_pull_leads","leadbay_research_lead_by_id"],"failure_modes":["Picks a count larger than the user asked for (or larger than the max 25)","Glosses over still-running leads in the summary instead of naming them","Recommends a lead from the existing qualified pool instead of one from this batch's actual results","Replaces the canonical pull_leads table with prose when rendering the newly-qualified batch (the per-tool RENDERING block is the structural contract; \"standouts\" commentary sits above it)","Expands the qualify-status sentence into a card or table instead of the one-line status-inline render"]},
@@ -3378,6 +3480,7 @@ export const PROMPT_CATALOG_BULLETS = {
   leadbay_import_file: `- \`leadbay_import_file\` (optional args: file, instruction): Import a user-supplied CSV/file into Leadbay through five phases with evidence gates — scan, derive, resolve identities, preserve & commit, then optionally qualify and report. The job is to maximize how many rows the Leadbay system actually ingests and matches.`,
   leadbay_log_outreach: `- \`leadbay_log_outreach\` (required args: lead_id, summary): Log outreach (an email I sent, a call I made, a meeting I had) on a specific lead. Captures verification so the SDR pipeline trusts the entry.`,
   leadbay_new_leads: `- \`leadbay_new_leads\` (optional args: need): Guided net-new lead delivery — turn a described need ("gyms around Dallas that would buy our flooring") into ICP-perfect NEW companies with qualification evidence and the right contact, via leadbay_find_new_leads. Trigger when the user DESCRIBES who they want: "get me N companies that <profile>", "we're entering <market>". A bare "find me new leads" with no profile, and "today's leads", are the daily lens batch — leadbay_pull_leads. "Qualify these companies I have" is leadbay_qualify_leads.`,
+  leadbay_outreach_session: `- \`leadbay_outreach_session\` (optional args: source, campaign): Run an outreach session over ANY set of leads: follow-ups, a Discover lens, or a campaign. Assess who is actually reachable, build the lead desk, then record each outcome as you dictate it. Trigger on "relance plan", "campagne de relance", "cold calling session", "prospection session", "outreach session", "let's contact leads", "who do I call today". For a campaign the user NAMES, prefer \`leadbay_work_campaign\`.`,
   leadbay_plan_tour_in_city: `- \`leadbay_plan_tour_in_city\` (required args: city; optional args: date): Use whenever the user names a city they'll be in and asks who to see — "I'm in SF next Tuesday, who's worth meeting?", "I'm going to Berlin — who should I visit?", "plan my <city> tour". Any in-person/visit intent tied to a place routes here, NOT to \`leadbay_pull_leads\`. It surfaces follow-ups + fresh Discover leads in the city via \`leadbay_tour_plan\`, ALWAYS offers to plot them on a map (rendering it on yes), then offers outreach drafts + campaign persistence.`,
   leadbay_prospecting_overview: `- \`leadbay_prospecting_overview\`: Orientation for working with Leadbay from any host — discovery vs. follow-up, the outreach loop, outcome recording, imports, pushback / snooze, and the connected-outreach-tool registry. Trigger when the conversation involves Leadbay leads, prospecting, pipeline, follow-up, outreach, or lens / ICP — anything from "show me my leads" to "what should I follow up on" to "I'll send via lemlist".`,
   leadbay_qualify_top_n: `- \`leadbay_qualify_top_n\` (optional args: count): Bulk-qualify the top N un-qualified leads in the active lens. Uses leadbay_bulk_qualify_leads with a sensible default budget.`,
@@ -3399,6 +3502,7 @@ export const PROMPT_CATALOG_INSTRUCTIONS: string = `This server exposes the foll
 - \`leadbay_import_file\` (optional args: file, instruction): Import a user-supplied CSV/file into Leadbay through five phases with evidence gates — scan, derive, resolve identities, preserve & commit, then optionally qualify and report. The job is to maximize how many rows the Leadbay system actually ingests and matches.
 - \`leadbay_log_outreach\` (required args: lead_id, summary): Log outreach (an email I sent, a call I made, a meeting I had) on a specific lead. Captures verification so the SDR pipeline trusts the entry.
 - \`leadbay_new_leads\` (optional args: need): Guided net-new lead delivery — turn a described need ("gyms around Dallas that would buy our flooring") into ICP-perfect NEW companies with qualification evidence and the right contact, via leadbay_find_new_leads. Trigger when the user DESCRIBES who they want: "get me N companies that <profile>", "we're entering <market>". A bare "find me new leads" with no profile, and "today's leads", are the daily lens batch — leadbay_pull_leads. "Qualify these companies I have" is leadbay_qualify_leads.
+- \`leadbay_outreach_session\` (optional args: source, campaign): Run an outreach session over ANY set of leads: follow-ups, a Discover lens, or a campaign. Assess who is actually reachable, build the lead desk, then record each outcome as you dictate it. Trigger on "relance plan", "campagne de relance", "cold calling session", "prospection session", "outreach session", "let's contact leads", "who do I call today". For a campaign the user NAMES, prefer \`leadbay_work_campaign\`.
 - \`leadbay_plan_tour_in_city\` (required args: city; optional args: date): Use whenever the user names a city they'll be in and asks who to see — "I'm in SF next Tuesday, who's worth meeting?", "I'm going to Berlin — who should I visit?", "plan my <city> tour". Any in-person/visit intent tied to a place routes here, NOT to \`leadbay_pull_leads\`. It surfaces follow-ups + fresh Discover leads in the city via \`leadbay_tour_plan\`, ALWAYS offers to plot them on a map (rendering it on yes), then offers outreach drafts + campaign persistence.
 - \`leadbay_prospecting_overview\`: Orientation for working with Leadbay from any host — discovery vs. follow-up, the outreach loop, outcome recording, imports, pushback / snooze, and the connected-outreach-tool registry. Trigger when the conversation involves Leadbay leads, prospecting, pipeline, follow-up, outreach, or lens / ICP — anything from "show me my leads" to "what should I follow up on" to "I'll send via lemlist".
 - \`leadbay_qualify_top_n\` (optional args: count): Bulk-qualify the top N un-qualified leads in the active lens. Uses leadbay_bulk_qualify_leads with a sensible default budget.
