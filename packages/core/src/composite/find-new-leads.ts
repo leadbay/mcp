@@ -313,7 +313,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
     destructiveHint: false,
     // The mandatory request_id dedups: re-submitting the same request returns
     // the SAME live job instead of double-spending.
-    idempotentHint: false,
+    idempotentHint: true,
     openWorldHint: true,
   },
   write: true,

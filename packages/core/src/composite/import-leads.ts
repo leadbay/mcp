@@ -1342,7 +1342,7 @@ export const importLeads: Tool<ImportLeadsParams, ImportLeadsToolResult> = {
     // Backend dedupes by domain/registry id; same input set ⇒ same lead set
     // (no duplicate leads are created). bulk-store also keys on the
     // input-hash → returns the same importId on retry.
-    idempotentHint: false,
+    idempotentHint: true,
     openWorldHint: false,
   },
   description: IMPORT_LEADS_DESCRIPTION,

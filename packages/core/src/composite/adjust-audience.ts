@@ -279,7 +279,7 @@ export const adjustAudience: Tool<AdjustAudienceParams> = {
     // with the same args produces the same final state (last write wins on
     // overlapping criteria, but the merge is deterministic). Per spec
     // idempotentHint is about same observable outcome — re-call is safe.
-    idempotentHint: false,
+    idempotentHint: true,
     openWorldHint: false,
   },
   description: ADJUST_AUDIENCE_DESCRIPTION,

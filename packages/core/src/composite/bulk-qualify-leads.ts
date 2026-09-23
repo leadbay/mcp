@@ -119,7 +119,7 @@ export const bulkQualifyLeads: Tool<BulkQualifyLeadsParams, any> = {
     destructiveHint: false,
     // Same set of leads + same options ⇒ same backend job (idempotency
     // hash); already-qualified leads are silent no-ops. Re-call is safe.
-    idempotentHint: false,
+    idempotentHint: true,
     openWorldHint: true,
   },
   description: BULK_QUALIFY_LEADS_DESCRIPTION,

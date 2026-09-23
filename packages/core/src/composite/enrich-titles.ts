@@ -228,7 +228,7 @@ export const enrichTitles: Tool<EnrichTitlesParams> = {
     destructiveHint: false,
     // Idempotent against the same selection + titles set (same hash → same
     // the launch; backend silently no-ops on already-enriched contacts).
-    idempotentHint: false,
+    idempotentHint: true,
     openWorldHint: true,
   },
   description: ENRICH_TITLES_DESCRIPTION,

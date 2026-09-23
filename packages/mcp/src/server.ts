@@ -307,7 +307,7 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
     ["find_new_leads", "qualify_leads", "lead_job_status"].includes(n)
   );
   const elicitTools = [
-    "refine_prompt clarifications",
+    "refine_lead_targeting clarifications",
     "report_outreach.user_confirmed",
   ].filter((label) => {
     if (label.startsWith("refine_lead_targeting")) return has("leadbay_refine_lead_targeting");

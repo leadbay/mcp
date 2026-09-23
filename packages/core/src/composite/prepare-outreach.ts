@@ -37,6 +37,9 @@ export const prepareOutreach: Tool<PrepareOutreachParams> = {
     title: "Prepare outreach package for a lead",
     readOnlyHint: false,
     destructiveHint: false,
+    // Not idempotent: with `enrich: true` a repeat orders the contact's
+    // details again and spends the org's enrichment quota a second time.
+    // Annotations are static and describe the worst case, not the default.
     idempotentHint: false,
     openWorldHint: true,
   },

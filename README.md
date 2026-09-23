@@ -169,34 +169,37 @@ Opens the uninstall wizard — only shows clients that already have Leadbay MCP 
 
 Your assistant calls these on your behalf — you never call them directly. You ask in plain language ("show me today's leads", "research acme.com", "log that I emailed Jane") and the agent picks the right tool. The default surface below is always exposed; the [full per-tool reference](https://docs.leadbay.ai/leadbay-mcp/tools-reference) lives in the user guide.
 
-### Read-only (always on)
+### Reading tools (always on)
 
-These never modify your account, so they're always safe to allow.
+These answer questions about your account. None of them creates, deletes or
+sends anything. Some of them do write one small thing back while answering —
+which leads you were shown, or the filter you asked for — and the table says
+which, because that is why they are not labelled read-only over the wire.
 
 **Discover & follow up**
 
 | Tool | Description |
 |------|-------------|
-| `leadbay_pull_leads` | Pull today's fresh batch of scored, ranked leads |
-| `leadbay_pull_followups` | Pull the leads that need a follow-up action |
+| `leadbay_pull_leads` | Pull today's fresh batch of scored, ranked leads. Records each one as seen, so it rotates out of tomorrow's batch |
+| `leadbay_pull_followups` | Pull the leads that need a follow-up action. Saves the filter when you ask for one |
 | `leadbay_account_status` | Check quota, credits, and account state |
-| `leadbay_scan_portfolio_signals` | Scan your existing leads for a web signal in one pass ("which of my leads acquired a company since 2025?") — no quota burn |
+| `leadbay_scan_portfolio_signals` | Scan your existing leads for a web signal in one pass ("which of my leads acquired a company since 2025?") — no quota burn. Saves the filter when you ask for one |
 
 **Research a company**
 
 | Tool | Description |
 |------|-------------|
-| `leadbay_research_lead_by_id` | Deep-dive research card for a known lead — details + AI qualification + contacts in one response |
-| `leadbay_research_lead_by_name_fuzzy` | Look up a lead by company name or domain when you don't have its ID |
-| `leadbay_account_history` | Full history on one account — current AI signals + all notes + interaction timeline, in one call ("why has this account resurfaced?") |
-| `leadbay_prepare_outreach` | Build a personalized outreach brief for a lead |
+| `leadbay_research_lead_by_id` | Deep-dive research card for a known lead — details + AI qualification + contacts in one response. Records the lead as seen |
+| `leadbay_research_lead_by_name_fuzzy` | Look up a lead by company name or domain when you don't have its ID. Records the lead it finds as seen |
+| `leadbay_account_history` | Full history on one account — current AI signals + all notes + interaction timeline, in one call ("why has this account resurfaced?"). Records the lead as seen |
+| `leadbay_prepare_outreach` | Build a personalized outreach brief for a lead. With enrichment on, it also orders the contact's details |
 
 **Travel & field sales**
 
 | Tool | Description |
 |------|-------------|
-| `leadbay_followups_map` | Geo-cluster your follow-ups on a map for travel planning |
-| `leadbay_tour_plan` | Build a visit itinerary for an upcoming trip to a city |
+| `leadbay_followups_map` | Geo-cluster your follow-ups on a map for travel planning. Saves the filter when you ask for one |
+| `leadbay_tour_plan` | Build a visit itinerary for an upcoming trip to a city. Records the new leads it shows as seen |
 
 **Campaigns**
 
@@ -214,8 +217,8 @@ These never modify your account, so they're always safe to allow.
 | `leadbay_list_previously_enriched_titles` | Recall the job titles previously enriched by the org (use before `leadbay_enrich_titles`) |
 | `leadbay_list_lens_seed_candidates` | Read-only discovery surface for building a bigger lens |
 | `leadbay_get_qualification_questions` | Retrieve the org's AI-agent qualification questions (how leads are scored) |
-| `leadbay_get_lead_custom_fields` | Retrieve the custom-field values stored on one lead |
-| `leadbay_list_mappable_fields` | List the CRM fields you can map an import onto |
+| `leadbay_get_lead_custom_fields` | Retrieve the custom-field values stored on one lead. Records the lead as seen |
+| `leadbay_list_mappable_fields` | List the CRM fields you can map an import onto. Given sample rows, it uploads them to get the backend's mapping hints |
 
 **Imports & jobs**
 

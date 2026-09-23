@@ -329,7 +329,7 @@ export const importAndQualify: Tool<
     // Composite of import (idempotent against domain hash) + qualify (which
     // is silent no-op for already-qualified leads). bulk-store + import
     // hashes return same handles on retry.
-    idempotentHint: false,
+    idempotentHint: true,
     openWorldHint: true,
   },
   description: IMPORT_AND_QUALIFY_DESCRIPTION,
