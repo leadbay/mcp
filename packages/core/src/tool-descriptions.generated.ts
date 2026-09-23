@@ -1433,7 +1433,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 list \`accepted_seeds\`; they're internal.
 \`no_candidates\` → ⛔ surface \`reason.message\`, name the criteria, offer
 \`leadbay_adjust_audience\`. Never re-call on that lens.
-\`quota_exceeded\` → three options via the host's choice widget
+\`quota_exceeded\` → options via the host's choice widget
 (smaller count / wait for reset / upgrade).
 \`refresh_in_progress\` → "lens is filling, retry in a minute".
 \`no_valid_seeds\` → silently re-fetch seeds and retry once.
@@ -7357,7 +7357,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 list \`accepted_seeds\`; they're internal.
 \`no_candidates\` → ⛔ surface \`reason.message\`, name the criteria, offer
 \`leadbay_adjust_audience\`. Never re-call on that lens.
-\`quota_exceeded\` → three options via the host's choice widget
+\`quota_exceeded\` → options via the host's choice widget
 (smaller count / wait for reset).
 \`refresh_in_progress\` → "lens is filling, retry in a minute".
 \`no_valid_seeds\` → silently re-fetch seeds and retry once.
