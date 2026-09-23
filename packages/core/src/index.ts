@@ -496,6 +496,7 @@ export {
   RENDER_BLOCKS,
   NO_COMMERCE_RENDER_BLOCKS,
   RENDER_RECIPES,
+  NO_COMMERCE_RENDER_RECIPES,
 } from "./render-blocks.generated.js";
 // In-process double-launch guard. All that remains of the old bulk store:
 // job identity, retention and tenancy belong to the backend, so nothing here

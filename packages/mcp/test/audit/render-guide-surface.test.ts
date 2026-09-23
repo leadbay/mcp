@@ -19,6 +19,7 @@ import {
   RENDER_BLOCKS,
   NO_COMMERCE_RENDER_BLOCKS,
   RENDER_RECIPES,
+  NO_COMMERCE_RENDER_RECIPES,
   renderGuide,
   compositeReadTools,
   LeadbayClient,
@@ -81,6 +82,31 @@ describe("render blocks leave the description and arrive on the result", () => {
         stripped,
       );
       expect(res.guide.length).toBeLessThan(RENDER_BLOCKS[name].length);
+    }
+  });
+
+  it("a recipe that names a purchase has a commerce-free twin", () => {
+    // The recipe rides on EVERY result, so it needs the gate the block has.
+    // leadbay_extend_lens's rendering_hint names a top-up today, which is how
+    // this would reach ChatGPT ungated the moment that tool is migrated.
+    for (const [name, recipe] of Object.entries(RENDER_RECIPES)) {
+      if (!/top.?up|credit|upgrade|buy/i.test(recipe)) continue;
+      expect(
+        NO_COMMERCE_RENDER_RECIPES[name],
+        `${name}'s recipe mentions a purchase but has no commerce-free variant`,
+      ).toBeTruthy();
+    }
+  });
+
+  it("every commerce-free recipe is a subsequence of the full one", () => {
+    for (const [name, stripped] of Object.entries(NO_COMMERCE_RENDER_RECIPES)) {
+      const full = RENDER_RECIPES[name];
+      let i = 0;
+      for (const ch of stripped) {
+        i = full.indexOf(ch, i);
+        expect(i, `${name}: commerce-free recipe is not a subsequence`).toBeGreaterThan(-1);
+        i += 1;
+      }
     }
   });
 

@@ -21,7 +21,7 @@ import {
   readResource,
 } from "./resources.js";
 import { BUILTIN_WIDGETS_PARAGRAPH } from "./host-widgets.js";
-import { RENDER_RECIPES } from "@leadbay/core";
+import { RENDER_RECIPES, NO_COMMERCE_RENDER_RECIPES } from "@leadbay/core";
 import {
   compositeReadTools,
   compositeWriteTools,
@@ -1193,7 +1193,12 @@ export function buildServer(
   // result that gives the agent orders gets reported to the user as injected
   // instructions (measured on #257/#259, up to 3 runs in 11).
   const maybeAttachRender = (toolName: string, result: unknown): void => {
-    const recipe = RENDER_RECIPES[toolName];
+    // The recipe rides on every result, so it takes the same commerce gate as
+    // the description and the full block: a rendering_hint may name a top-up
+    // (leadbay_extend_lens's does), and that must not reach the ChatGPT surface.
+    const recipe = includeCommerce
+      ? RENDER_RECIPES[toolName]
+      : (NO_COMMERCE_RENDER_RECIPES[toolName] ?? RENDER_RECIPES[toolName]);
     if (!recipe) return;
     if (result === null || typeof result !== "object" || Array.isArray(result)) return;
     const envelope = result as Record<string, unknown>;

@@ -299,3 +299,9 @@ export const RENDER_RECIPES: Record<string, string> = {
   leadbay_pull_leads: `3-col markdown table in the order the tool returns them (the Discover-tab order — do NOT re-sort by score) — DO NOT print the numeric score. Col 1 = inline-code 10-segment bar (\`▰\` firmographic, \`❖\` AI booster cap at the right end of the filled run, \`▱\` empty; filled=round(score/10), ai=round(avg_boost/3.3)) + \`<br>\` + linked company · location · size. Col 2 = why-fits ≤20 words. Col 3 = linked contact + title. Full algorithm + linking rules below.`,
   leadbay_scan_portfolio_signals: `Cohort grouped by lead: one block per matched lead (name · location + its matched signal entries, hot first, source-linked). Open with "N match <query> (M scanned)"; ALWAYS close with an honesty footer — "scanned N · matched M · K not yet researched". Never present not_researched leads as "no signal". Full layout below.`,
 };
+
+// The same recipes with the {{commerce}} parts deleted. The recipe rides on
+// EVERY result, so it needs the same gate the block and the description have:
+// a rendering_hint may name a top-up (leadbay_extend_lens does today).
+export const NO_COMMERCE_RENDER_RECIPES: Record<string, string> = {
+};
