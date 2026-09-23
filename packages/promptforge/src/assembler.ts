@@ -319,6 +319,15 @@ export function assemble(opts: AssembleOptions): AssembleResult {
     const markerError = validateCommerceMarkers(finalBody);
     if (markerError) throw new AssemblyError(markerError, path);
 
+    // `rendering_hint` is validated on its own, because a migrated tool no
+    // longer folds it into the body: the recipe ships on the result instead.
+    // Without this, an unbalanced `{{commerce}}` marker in a hint would reach
+    // every result of that tool as a literal, and nothing would fail the build.
+    if (parsed.frontmatter.rendering_hint) {
+      const hintError = validateCommerceMarkers(parsed.frontmatter.rendering_hint);
+      if (hintError) throw new AssemblyError(`rendering_hint: ${hintError}`, path);
+    }
+
     // Cut the `{{render}}` region out of the description before the commerce
     // pass, then run that pass over both halves: a `{{commerce}}` block inside
     // a render region must disappear from the ChatGPT surface exactly as it
