@@ -31,7 +31,7 @@ import { leadbay_getting_started as GETTING_STARTED_DESCRIPTION } from "../tool-
 //   2. `_triggered_by` must be the verbatim user slice. On a click-through the
 //      "message" is a widget selection, so a per-step tool would emit
 //      provenance that is the agent's own option labels, three times over.
-//   3. Precedent: leadbay_artifact_kit is the existing "hand the agent a
+//   3. Precedent: leadbay_get_artifact_runtime is the existing "hand the agent a
 //      script, not data" tool — zero input, static content, no orchestration.
 //
 // Lives in composite/ (user-facing, per CLAUDE.md) so it carries the
@@ -501,7 +501,7 @@ export const gettingStarted: Tool<GettingStartedParams> = {
     properties: {},
     additionalProperties: false,
   },
-  // No outputSchema by design — same trade-off as leadbay_artifact_kit:
+  // No outputSchema by design — same trade-off as leadbay_get_artifact_runtime:
   // declaring one enrolls the tool in the output-schema-conformance
   // drift-catcher (an existing test file we don't modify). The server still
   // emits the plain-object return as structuredContent.

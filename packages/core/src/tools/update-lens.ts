@@ -15,9 +15,9 @@ export const updateLens: Tool<UpdateLensParams> = {
   annotations: {
     title: "Update a lens",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: UPDATE_LENS_DESCRIPTION,
   optional: true,

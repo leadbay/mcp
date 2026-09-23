@@ -1,18 +1,18 @@
 ---
-name: leadbay_artifact_event
+name: leadbay_report_artifact_error
 kind: tool-description
 short_description: |
   Internal diagnostics sink for the Leadbay artifact runtime. Called BY the
   artifact's own JavaScript when a control fails — never by you, and never in
   response to anything the user says.
 annotations:
-  readOnlyHint: true
+  readOnlyHint: false
   destructiveHint: false
-  idempotentHint: true
-  openWorldHint: false
+  idempotentHint: false
+  openWorldHint: true
 ---
 **Do not call this tool.** It is the ingest endpoint for the
-`@leadbay/components` runtime that `leadbay_artifact_kit` ships, and the only
+`@leadbay/components` runtime that `leadbay_get_artifact_runtime` ships, and the only
 legitimate caller is that runtime's own `lb.report()` — running inside an
 artifact page, in the browser, with no human in the loop.
 

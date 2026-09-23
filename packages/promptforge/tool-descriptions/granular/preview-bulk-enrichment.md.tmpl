@@ -5,10 +5,10 @@ short_description: |
   Preview a bulk enrichment given a set of job titles applied to the
   current selection.
 annotations:
-  readOnlyHint: true
+  readOnlyHint: false
   destructiveHint: false
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 ---
 Preview a bulk enrichment given a set of job titles applied to the current selection. Returns `{selected_leads, enriched_contacts, enrichable_contacts, title_suggestions, auto_included_titles, previously_enriched_titles}`. `previously_enriched_titles` is a newer field (in prod soon) — when present, the agent can recommend repeating those titles for new leads.
 

@@ -10,10 +10,10 @@ export const previewBulkEnrichment: Tool<PreviewBulkEnrichmentParams> = {
   name: "leadbay_preview_bulk_enrichment",
   annotations: {
     title: "Preview bulk enrichment",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: PREVIEW_BULK_ENRICHMENT_DESCRIPTION,
   optional: true,

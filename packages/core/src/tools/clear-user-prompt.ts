@@ -9,7 +9,7 @@ export const clearUserPrompt: Tool<Record<string, never>> = {
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: CLEAR_USER_PROMPT_DESCRIPTION,
   optional: true,

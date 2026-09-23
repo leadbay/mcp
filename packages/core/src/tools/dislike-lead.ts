@@ -49,9 +49,9 @@ export const dislikeLead: Tool<DislikeLeadParams> = {
   annotations: {
     title: "Dislike a lead",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: DISLIKE_LEAD_DESCRIPTION,
   optional: true,

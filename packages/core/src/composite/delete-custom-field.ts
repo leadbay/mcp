@@ -20,7 +20,7 @@ export const deleteCustomField: Tool<DeleteCustomFieldParams> = {
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: DELETE_CUSTOM_FIELD_DESCRIPTION,
   write: true,

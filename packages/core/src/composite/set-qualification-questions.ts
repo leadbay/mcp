@@ -80,7 +80,7 @@ async function addAntiPatterns(client: LeadbayClient, toAdd: string[]) {
     return {
       ...base,
       changed: false,
-      hint: "This org has no ideal buyer profile yet, so there is nowhere to add a negative criterion. Use a qualification question or leadbay_refine_prompt for this rule instead.",
+      hint: "This org has no ideal buyer profile yet, so there is nowhere to add a negative criterion. Use a qualification question or leadbay_refine_lead_targeting for this rule instead.",
     };
   }
 
@@ -133,7 +133,7 @@ export const setQualificationQuestions: Tool<SetQualificationQuestionsParams> = 
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: SET_QUALIFICATION_QUESTIONS_DESCRIPTION,
   write: true,

@@ -14,7 +14,7 @@ export const listSectors: Tool<ListSectorsParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: LIST_SECTORS_DESCRIPTION,
   inputSchema: {

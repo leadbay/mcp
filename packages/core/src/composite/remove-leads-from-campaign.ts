@@ -22,7 +22,7 @@ export const removeLeadsFromCampaign: Tool<RemoveLeadsParams> = {
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: REMOVE_LEADS_DESCRIPTION,
   optional: true,

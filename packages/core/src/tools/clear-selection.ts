@@ -7,9 +7,9 @@ export const clearSelection: Tool<Record<string, never>> = {
   annotations: {
     title: "Clear selection",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: CLEAR_SELECTION_DESCRIPTION,
   optional: true,

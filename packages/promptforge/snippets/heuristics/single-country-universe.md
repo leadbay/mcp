@@ -15,4 +15,4 @@ On a lens-WRITING tool (`new_lens`, `adjust_audience`, `update_lens_filter`) wri
 
 **Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read `_meta.region` on any tool result — it outranks any recalled memory; on `custom`, claim nothing.
 
-Place names never go in `keywords`, `sectors` or `refine_prompt` — text matches, not geo filters.
+Place names never go in `keywords`, `sectors` or `leadbay_refine_lead_targeting` — text matches, not geo filters.

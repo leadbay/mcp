@@ -387,10 +387,10 @@ export const tourPlan: Tool<TourPlanParams> = {
   name: "leadbay_tour_plan",
   annotations: {
     title: "Plan a mixed-mode tour itinerary (known + fresh leads)",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: TOUR_PLAN_DESCRIPTION,
   inputSchema: {

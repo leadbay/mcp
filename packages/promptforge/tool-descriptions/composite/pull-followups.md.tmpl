@@ -2,9 +2,8 @@
 name: leadbay_pull_followups
 kind: tool-description
 short_description: |
-  Pull KNOWN leads to follow up — Monitor view (re-engagement). Filter
-  by city/sector/recency/action. 4-col status-badge table (NO score
-  bar). Distinct from leadbay_pull_leads (discovery / fresh leads).
+  Pull the KNOWN leads that are due a follow-up (the Monitor view), filtered by
+  city, sector, recency or last action.
 routing:
   triggers:
     - "what should I follow up on"
@@ -43,16 +42,14 @@ rendering_hint: |
   table. Detail + status priority below.
 next_steps: pull-followups
 annotations:
-  readOnlyHint: true
+  readOnlyHint: false
   destructiveHint: false
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 ---
-Pull KNOWN leads from the user's Monitor view — the re-engagement entry point.
+Wraps `GET /1.6/monitor`, preceded by `POST /1.6/monitor/filter` when `set_filter` is supplied. The Monitor filter is one `FilterItem` per user, server-persisted across sessions; `set_filter` overwrites it.
 
-Backend: wraps `GET /1.6/monitor` plus, when `set_filter` is supplied, a preceding `POST /1.6/monitor/filter`. The Monitor filter is a single `FilterItem` per user, server-persisted across sessions.
-
-**Filter mechanism — store-then-apply.** Pass `set_filter: { criteria: FilterCriterion[] }` to overwrite the server-stored filter, then the composite re-fetches with `filtered:true`. Every `FilterCriterion` MUST carry a `type` discriminator — `{sector_ids: [...]}` is silently dropped, `{type: "sector_ids", sectors: [...]}` is not. Types: `size`, `keywords`, `sector_ids`, `location_ids`, `custom_field`(`_comparison`), `yc`, `liked`, `last_action`, `last_action_date`.
+**Filter mechanism — store-then-apply.** `set_filter: { criteria: FilterCriterion[] }` overwrites the stored filter, then the composite re-fetches with `filtered:true`. Every `FilterCriterion` MUST carry a `type` discriminator — `{sector_ids: [...]}` is silently dropped, `{type: "sector_ids", sectors: [...]}` is not. Types: `size`, `keywords`, `sector_ids`, `location_ids`, `custom_field`(`_comparison`), `yc`, `liked`, `last_action`, `last_action_date`.
 
 Practical mapping from user phrasing to criterion:
 
@@ -60,25 +57,25 @@ Practical mapping from user phrasing to criterion:
 |---|---|
 | "supermarket leads" | `{type: "sector_ids", sectors: ["5134"]}` |
 | "leads in Lyon" | `{type: "location_ids", locations: [<admin_area_id>]}` |
-| "healthcare staffing" | `{type: "keywords", keywords: ["healthcare", "staffing"]}` |
-| "leads I haven't touched in 30 days" | `{type: "last_action_date", last_days: 30}` |
+| "healthcare staffing" | `{type: "keywords", keywords: ["healthcare"]}` |
+| "not touched in 30 days" | `{type: "last_action_date", last_days: 30}` |
 | "leads I liked" | `{type: "liked"}` |
 | "leads 50–200 employees" | `{type: "size", sizes: [{min: 50, max: 200}]}` |
 | "Y Combinator companies" | `{type: "yc"}` |
 
-Geo filtering needs `admin_area_id` resolution — `location_ids` rejects free text. Pass `city` and the composite resolves it via `/geo/search`. Ambiguous matches return `status: "ambiguous_locations"` — pick an id and re-call with `city_id`.
+Geo filtering needs `admin_area_id` resolution: `location_ids` rejects free text. Pass `city` and the composite resolves it via `/geo/search`. Ambiguous matches return `status: "ambiguous_locations"` — pick an id and re-call with `city_id`.
 
-In `keywords` a place name is a TEXT-MATCH on company descriptions (≈0 hits), not a filter — never fall back to it, nor to the unfiltered view, when a place is ambiguous.
+In `keywords` a place name is a TEXT-MATCH on company descriptions (≈0 hits), not a filter — never fall back to it, or to the unfiltered view, on an ambiguous place.
 
 {{include:heuristics/single-country-universe}}
 
-**A whole-workspace read also needs `filtered:false`.** Omitting `city` does not widen this tool — `filtered` defaults to true, so a filter persisted earlier still applies and its stale cohort reads as everything. If other criteria were requested, re-send them in `set_filter` instead; `active_filters` reports what applied.
+**A whole-workspace read also needs `filtered:false`.** Omitting `city` does not widen this tool: `filtered` defaults to true, so a filter persisted earlier still applies and its stale cohort reads as everything. If other criteria were requested, re-send them in `set_filter`; `active_filters` reports what applied.
 
-**Pushback exclusion.** Leads with active pushback (`pushback_status` set, `pushback_until > today`) are excluded client-side; `total_excluded_by_pushback` reports how many rows were dropped.
+**Pushback exclusion.** Leads with active pushback (`pushback_status` set, `pushback_until > today`) are excluded client-side; `total_excluded_by_pushback` counts the dropped rows.
 
-The canonical orchestrator for a re-engagement pass is the `leadbay_followup_check_in` prompt.
+The `leadbay_followup_check_in` prompt orchestrates a full re-engagement pass.
 
-**Anti-confusion guardrail.** Iterating `pull_leads` pages looking for `prospecting_actions_count > 0` or `notes_count > 0` rows is the wrong entry point — the two read different tables. Leads with follow-up history live in `pull_followups`.
+**Anti-confusion guardrail.** Iterating `pull_leads` pages for `prospecting_actions_count > 0` or `notes_count > 0` is the wrong entry point: the two read different tables. Leads with follow-up history live here.
 
 {{include:gates/signal-honesty}}
 

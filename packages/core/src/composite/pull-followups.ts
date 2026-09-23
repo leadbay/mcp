@@ -267,10 +267,10 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
   name: "leadbay_pull_followups",
   annotations: {
     title: "Pull known leads to follow up on (Monitor view)",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: PULL_FOLLOWUPS_DESCRIPTION,
   inputSchema: {

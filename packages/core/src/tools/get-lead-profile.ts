@@ -30,10 +30,10 @@ export const getLeadProfile: Tool<GetLeadProfileParams> = {
   name: "leadbay_get_lead_profile",
   annotations: {
     title: "Read a lead profile",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_LEAD_PROFILE_DESCRIPTION,
   inputSchema: {

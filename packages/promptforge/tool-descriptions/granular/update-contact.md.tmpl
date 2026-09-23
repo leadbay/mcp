@@ -8,9 +8,9 @@ short_description: |
   update a contact's details. Don't use it to add a new contact or remove one.
 annotations:
   readOnlyHint: false
-  destructiveHint: false
+  destructiveHint: true
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 routing:
   triggers:
     - "update this contact"

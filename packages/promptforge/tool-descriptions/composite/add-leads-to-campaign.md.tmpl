@@ -37,9 +37,9 @@ rendering_hint: |
   (campaign_progression) or "Add more".
 annotations:
   readOnlyHint: false
-  destructiveHint: true
+  destructiveHint: false
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 ---
 Attach a list of `lead_ids` to an existing campaign. Wraps `POST /campaigns/{id}/leads`. The backend dedups against `campaign_leads`, so callers can safely retry without creating duplicates — the response separates `added` (newly attached) from `already_present` (no-op).
 

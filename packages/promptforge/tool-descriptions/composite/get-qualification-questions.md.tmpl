@@ -63,7 +63,7 @@ Returns:
   `leadbay_set_qualification_questions({add_anti_patterns})`.
 - **`targeting_prompt`** — the org's free-text instruction to the AI agent, or
   null. Qualitative rules that no single yes/no can express live here; change
-  it with `leadbay_refine_prompt`.
+  it with `leadbay_refine_lead_targeting`.
 - **`is_admin`** — whether the current user is an org admin. Modifying the
   questions (`leadbay_set_qualification_questions`) is an org-admin action; for
   admins a `hint` points there.
@@ -72,7 +72,7 @@ Returns:
 
 This tool only READS. To change the questions, use
 **leadbay_set_qualification_questions**; to change the targeting prompt, use
-**leadbay_refine_prompt**; for sector / size / territory, use
+**leadbay_refine_lead_targeting**; for sector / size / territory, use
 **leadbay_adjust_audience**. **leadbay_research_lead_by_id** shows how a
 SPECIFIC lead answered these questions.
 

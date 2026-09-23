@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.40.0 — 2026-09-22 — every tool says plainly what it does and what it changes
+
+- **Each tool now says what it does before it says when to use it.** A tool's
+  description used to open with the phrases that trigger it. It opens with one
+  or two sentences on what the tool does, so both the assistant and a reviewer
+  read the purpose first.
+- **Every tool declares honestly whether it only reads.** Pulling leads,
+  researching a company and opening a follow-up list all write something small
+  back to your account — they record which leads you were shown so the same
+  ones stop coming back tomorrow. They used to be advertised as pure reads.
+  They are now declared as actions, so your assistant can tell you before it
+  runs one.
+- **Only the tools that really reach outside your account say so.** Everything
+  that just talks to your own Leadbay workspace no longer claims to reach the
+  open internet. The fourteen that genuinely do — finding new companies,
+  qualifying them, buying contact details, sending feedback — say so, and each
+  one now carries a written reason.
+- **Six tools were renamed to say what they do.** "my lenses" also switches,
+  renames and deletes a view, so it is now "manage lenses". "refine prompt"
+  edits what your account looks for, so it is now "refine lead targeting". The
+  other four are "list previously enriched titles", "list lens seed
+  candidates", "get artifact runtime" and "report artifact error".
+- **Wording that ranked one tool above another is gone.** Tool descriptions no
+  longer say one surface beats another or that one path is preferred.
+
 ## 0.39.10 — 2026-09-18 — Claude knows what your account looks for and what you already did
 
 - **"Am I connected?" also says what your account is set up to find.** The

@@ -80,7 +80,7 @@ describe("product#4171 — a fact about one company is written as a note", () =>
     for (const tool of [
       "leadbay_get_qualification_questions",
       "leadbay_set_qualification_questions",
-      "leadbay_refine_prompt",
+      "leadbay_refine_lead_targeting",
     ]) {
       const row = description(tool).split("\n").find((l) => l.startsWith("| Named companies"));
       expect(row, tool).toBeDefined();

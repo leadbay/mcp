@@ -77,7 +77,7 @@ export const teamActivity: Tool<TeamActivityParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: TEAM_ACTIVITY_DESCRIPTION,
   outputSchema: {

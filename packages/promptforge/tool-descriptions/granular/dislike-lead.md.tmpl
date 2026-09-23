@@ -39,9 +39,9 @@ rendering_hint: |
   continue the current flow (don't dump the full lead card again).
 annotations:
   readOnlyHint: false
-  destructiveHint: true
+  destructiveHint: false
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 ---
 Mark a lead as disliked. This is the same action as clicking the thumbs-down on the Leadbay website: the lead stops appearing for this user. The dislike itself carries no reason and changes no lens filter, qualification question or targeting prompt. Leadbay only avoids a sector on the lens's next refresh after two of the lens's leads in it are disliked and none liked, and a city after two.
 
@@ -51,7 +51,7 @@ Pass the lead's UUID as `lead_id`, and the user's reason as `reason` whenever th
 
 Dislike is a **permanent** rejection of this lead. If the user only wants to defer a lead ("not now", "remind me next month", "I'll look at this one later"), call `leadbay_set_pushback` instead; that's reversible and time-bounded.
 
-{{include:headers/tool-when-to-use}} the user explicitly rejects a lead ("not relevant", "wrong industry", "too small", "thumbs down", "skip this", "not a fit"). Use proactively after `leadbay_research_lead` reveals disqualifying signals.
+{{include:headers/tool-when-to-use}} the user explicitly rejects a lead ("not relevant", "wrong industry", "too small", "thumbs down", "skip this", "not a fit"). Use proactively after `leadbay_research_lead_by_id` reveals disqualifying signals.
 
 {{include:headers/tool-when-not-to-use}} the user simply wants to defer a lead — use `leadbay_set_pushback` to snooze instead. Dislike is a permanent negative signal; pushback is a temporary deferral.
 

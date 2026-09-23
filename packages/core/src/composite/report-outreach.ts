@@ -59,9 +59,9 @@ export const reportOutreach: Tool<ReportOutreachParams> = {
   annotations: {
     title: "Report outreach to Leadbay",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: false,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: REPORT_OUTREACH_DESCRIPTION,
   optional: true,

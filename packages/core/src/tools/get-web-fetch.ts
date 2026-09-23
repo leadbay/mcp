@@ -13,7 +13,7 @@ export const getWebFetch: Tool<GetWebFetchParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_WEB_FETCH_DESCRIPTION,
   inputSchema: {

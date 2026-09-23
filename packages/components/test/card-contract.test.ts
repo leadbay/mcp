@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { ARTIFACT_USAGE_GUIDE as GUIDE } from "../../core/src/artifact-runtime.generated.js";
 
 // The usage guide is the ONLY thing telling the agent what a lead card must
-// contain — it ships verbatim inside leadbay_artifact_kit's response. The
+// contain — it ships verbatim inside leadbay_get_artifact_runtime's response. The
 // pull_leads table has a rigorous RENDERING spec in its tool description; cards
 // had none, so every artifact improvised (raw score, no sector, blank
 // why-it-fits). These assertions pin the contract so it cannot quietly rot.

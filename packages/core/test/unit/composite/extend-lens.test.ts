@@ -217,7 +217,7 @@ describe("leadbay_extend_lens", () => {
 
     expect(out.status).toBe("no_valid_seeds");
     expect(out.lens.id).toBe(9001);
-    expect(out.message).toMatch(/stale|refetch|leadbay_seed_candidates/i);
+    expect(out.message).toMatch(/stale|refetch|leadbay_list_lens_seed_candidates/i);
   });
 
   it("unexpected error (500) — propagates as LeadbayError", async () => {

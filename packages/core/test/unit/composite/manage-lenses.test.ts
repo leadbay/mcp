@@ -8,7 +8,7 @@ import {
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { myLenses } from "../../../src/composite/my-lenses.js";
+import { myLenses } from "../../../src/composite/manage-lenses.js";
 
 const BASE = "https://api-us.leadbay.app";
 const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
@@ -28,7 +28,7 @@ const LENSES = [
 
 beforeEach(() => resetHttpMock());
 
-describe("leadbay_my_lenses", () => {
+describe("leadbay_manage_lenses", () => {
   it("list — marks the active lens from /me.last_requested_lens (string ids)", async () => {
     mockHttp([
       { method: "GET", path: "/1.6/lenses", status: 200, body: LENSES },

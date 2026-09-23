@@ -16,9 +16,9 @@ export const selectLeads: Tool<SelectLeadsParams> = {
   annotations: {
     title: "Select leads",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: SELECT_LEADS_DESCRIPTION,
   optional: true,

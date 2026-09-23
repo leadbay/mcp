@@ -1,5 +1,5 @@
 ---
-name: leadbay_my_lenses
+name: leadbay_manage_lenses
 kind: tool-description
 short_description: |
   List the user's lenses (audiences), marking the active one. Switch active
@@ -25,7 +25,7 @@ routing:
     - phrase: "narrow the audience"
       route_to: leadbay_adjust_audience
     - phrase: "stop showing me <sector>"
-      route_to: leadbay_refine_prompt
+      route_to: leadbay_refine_lead_targeting
     - phrase: "more leads on this lens"
       route_to: leadbay_extend_lens
     - phrase: "show me today's leads"
@@ -72,7 +72,7 @@ List the user's lenses (saved audiences) and, when asked, switch which one is ac
 
 {{include:headers/tool-when-to-use}} when the user wants to see their lenses or switch the active one. Canonical phrasings: "show me my lenses", "which audiences do I have", "switch to my <name> lens".
 
-{{include:headers/tool-when-not-to-use}} to change a lens's audience criteria — that's `leadbay_adjust_audience`. Not for refining beyond firmographics (`leadbay_refine_prompt`), not for topping up the same lens (`leadbay_extend_lens`), not for the daily pull (`leadbay_pull_leads`).
+{{include:headers/tool-when-not-to-use}} to change a lens's audience criteria — that's `leadbay_adjust_audience`. Not for refining beyond firmographics (`leadbay_refine_lead_targeting`), not for topping up the same lens (`leadbay_extend_lens`), not for the daily pull (`leadbay_pull_leads`).
 
 {{include:headers/verification-required-if-write}}
 

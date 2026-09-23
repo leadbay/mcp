@@ -7,8 +7,8 @@ short_description: |
   then launch. Returns notification_id for polling via bulk_enrich_status.
 annotations:
   readOnlyHint: false
-  destructiveHint: true
-  idempotentHint: true
+  destructiveHint: false
+  idempotentHint: false
   openWorldHint: true
 ---
 Order contact enrichments by job title across many leads. Contacts are NOT returned by default with a lead (Leadbay keeps enrichment out-of-band); the agent requests them on demand via this tool when it's ready to actually reach out. Two modes: (A) NO `titles` param — returns the available titles + Leadbay's `title_suggestions` + `auto_included_titles` + a count of enrichable contacts, so the agent can ask the user which titles to enrich. (B) `titles` given — calls preview, then launches if there's anything enrichable. On 429 returns `{status:'quota_exceeded'}` cleanly. Selection lifecycle is wrapped in a try/finally so the user's selection is left clean even on error.
@@ -21,7 +21,7 @@ Order contact enrichments by job title across many leads. Contacts are NOT retur
 
 ## ENRICHMENT CONSUMES QUOTA — the model to reason with
 
-Each email reveal and each phone reveal **consumes quota** (the per-window daily / weekly / monthly allowance shown in `leadbay_account_status`). That is the ONLY thing that gates enrichment. Do **NOT** reason about, mention, or block on "credits": there is no separate credit wall the user must clear first — enrichment either fits the user's remaining quota or the backend returns 429 (`{status:'quota_exceeded'}`) when a window is actually exhausted. **Never pre-refuse enrichment because a credit number looks low or zero** — a fresh/freemium account with quota still available can enrich even when its credit counter reads 0. If and only if the backend returns `quota_exceeded`, tell the user which window is exhausted and offer the wait-or-top-up choice (see `leadbay_account_status`).
+Each email reveal and each phone reveal **consumes quota** (the per-window daily / weekly / monthly allowance shown in `leadbay_account_status`). That is the ONLY thing that gates enrichment. Do **NOT** reason about, mention, or block on "credits": there is no separate credit wall the user must clear first — enrichment either fits the user's remaining quota or the backend returns 429 (`{status:'quota_exceeded'}`) when a window is actually exhausted. **Never pre-refuse enrichment because a credit number looks low or zero** — a fresh/freemium account with quota still available can enrich even when its credit counter reads 0. If and only if the backend returns `quota_exceeded`, tell the user which window is exhausted{{commerce}} and offer the wait-or-top-up choice (see `leadbay_account_status`){{/commerce}}.
 
 ## CONSENT — email is the default channel; phone is opt-in; never launch silently
 

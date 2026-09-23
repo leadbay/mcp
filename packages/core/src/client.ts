@@ -498,7 +498,7 @@ export class LeadbayClient {
   // The telemetry preference lives in its OWN field, separate from mePayload,
   // so it survives invalidateMe() (Codex P1). Otherwise a leadbay_set_telemetry
   // disable would be forgotten the moment the very next same-session tool
-  // invalidates the /me cache (refine_prompt, my_lenses, set_active_lens, …),
+  // invalidates the /me cache (refine_lead_targeting, manage_lenses, set_active_lens, …),
   // dropping cachedTelemetryEnabled() back to undefined and letting the hosted
   // suppression predicate fall through to a stale "enabled". undefined = never
   // observed; the last read/stamp always wins and persists across /me churn.

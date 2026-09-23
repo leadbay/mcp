@@ -26,7 +26,7 @@ const READS = [
   "leadbay_account_status",
   "leadbay_pull_leads",
   "leadbay_research_lead_by_id",
-  "leadbay_recall_ordered_titles",
+  "leadbay_list_previously_enriched_titles",
 ];
 
 describe("buildServerInstructions — partial composite-write exposures", () => {
@@ -61,12 +61,12 @@ describe("buildServerInstructions — partial composite-write exposures", () => 
   it("partial composite write subset (refine_prompt only) → only that name appears in the start-here list", () => {
     const exposed = new Set([
       ...READS,
-      "leadbay_refine_prompt",
+      "leadbay_refine_lead_targeting",
       "leadbay_report_outreach", // present so the verification mandate stays out of the start-here paragraph
     ]);
     const out = buildServerInstructions(exposed);
     // Start-here paragraph names refine_prompt in the composite list…
-    expect(out).toMatch(/refine_prompt/);
+    expect(out).toMatch(/refine_lead_targeting/);
     // …but not the other composite-write names that are NOT exposed.
     expect(out).not.toMatch(/bulk_qualify_leads/);
     expect(out).not.toMatch(/adjust_audience/);

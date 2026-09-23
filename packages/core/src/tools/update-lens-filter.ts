@@ -20,7 +20,7 @@ export const updateLensFilter: Tool<UpdateLensFilterParams> = {
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: UPDATE_LENS_FILTER_DESCRIPTION,
   optional: true,

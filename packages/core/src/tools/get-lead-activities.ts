@@ -15,7 +15,7 @@ export const getLeadActivities: Tool<GetLeadActivitiesParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_LEAD_ACTIVITIES_DESCRIPTION,
   inputSchema: {

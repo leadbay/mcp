@@ -1,5 +1,5 @@
 ---
-name: leadbay_refine_prompt
+name: leadbay_refine_lead_targeting
 kind: tool-description
 short_description: |
   Refine the kind of leads Leadbay surfaces, beyond firmographics (qualitative
@@ -9,7 +9,7 @@ annotations:
   readOnlyHint: false
   destructiveHint: true
   idempotentHint: false
-  openWorldHint: true
+  openWorldHint: false
 routing:
   triggers:
     - "focus on companies that <qualitative trait>"
@@ -28,7 +28,7 @@ routing:
     - phrase: "narrow the audience to <sector> / <size>"
       route_to: leadbay_adjust_audience
     - phrase: "show me / list / switch my lenses"
-      route_to: leadbay_my_lenses
+      route_to: leadbay_manage_lenses
     - phrase: "a company trait one yes/no question could estimate from their website"
       route_to: leadbay_set_qualification_questions
     - phrase: "exclude <named company>"

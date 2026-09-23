@@ -11,9 +11,9 @@ export const removePushback: Tool<RemovePushbackParams> = {
   annotations: {
     title: "Remove pushback (un-snooze) leads",
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: REMOVE_PUSHBACK_DESCRIPTION,
   optional: true,

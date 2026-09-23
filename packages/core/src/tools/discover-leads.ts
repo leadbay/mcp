@@ -14,10 +14,10 @@ export const discoverLeads: Tool<DiscoverLeadsParams> = {
   name: "leadbay_discover_leads",
   annotations: {
     title: "Discover leads in a lens",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: DISCOVER_LEADS_DESCRIPTION,
   inputSchema: {

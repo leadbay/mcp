@@ -159,7 +159,7 @@ describe("elicitation/create round-trip (P2 elicitInput)", () => {
     ]);
 
     const result = await mcpClient.callTool({
-      name: "leadbay_refine_prompt",
+      name: "leadbay_refine_lead_targeting",
       arguments: {
         prompt: "focus on hospitals",
         clarification_poll_attempts: 1,

@@ -121,7 +121,7 @@ prohibited_effects:
   - conversation
   - tools
 - id: prohibited-3
-  statement: No leadbay_refine_prompt operation is attempted during this journey.
+  statement: No leadbay_refine_lead_targeting operation is attempted during this journey.
   evidence:
   - conversation
   - tools

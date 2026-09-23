@@ -35,7 +35,7 @@ export const removeContact: Tool<RemoveContactParams, RemoveContactResult> = {
     // list, so flag it destructive so cautious clients can confirm.
     destructiveHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   inputSchema: {
     type: "object",

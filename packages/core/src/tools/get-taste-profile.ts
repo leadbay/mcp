@@ -9,7 +9,7 @@ export const getTasteProfile: Tool<Record<string, never>> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_TASTE_PROFILE_DESCRIPTION,
   inputSchema: {
@@ -69,7 +69,7 @@ export const getTasteProfile: Tool<Record<string, never>> = {
       })),
       ...(isEmpty
         ? {
-            hint: "No taste profile configured yet. Use leadbay_refine_prompt or contact Leadbay support to set one up for better lead matching.",
+            hint: "No taste profile configured yet. Use leadbay_refine_lead_targeting or contact Leadbay support to set one up for better lead matching.",
           }
         : {}),
     };

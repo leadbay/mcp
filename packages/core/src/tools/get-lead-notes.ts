@@ -13,7 +13,7 @@ export const getLeadNotes: Tool<GetLeadNotesParams> = {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: GET_LEAD_NOTES_DESCRIPTION,
   inputSchema: {

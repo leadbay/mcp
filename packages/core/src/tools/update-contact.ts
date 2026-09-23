@@ -58,9 +58,9 @@ export const updateContact: Tool<UpdateContactParams, UpdateContactResult> = {
   annotations: {
     title: "Update a contact",
     readOnlyHint: false,
-    destructiveHint: false,
+    destructiveHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   inputSchema: {
     type: "object",

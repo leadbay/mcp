@@ -7,7 +7,7 @@ short_description: |
 annotations:
   readOnlyHint: false
   destructiveHint: true
-  idempotentHint: true
+  idempotentHint: false
   openWorldHint: true
 ---
 Trigger AI qualification for a single lead (web fetch + AI rescore). The operation is asynchronous — results take ~60s. `forceFetch:true` re-runs even if recent data exists.

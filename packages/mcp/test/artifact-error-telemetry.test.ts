@@ -2,7 +2,7 @@
  * Artifact-runtime telemetry routing (product#4081).
  *
  * The @leadbay/components runtime reports its failures through the
- * `leadbay_artifact_event` tool. This file locks the DECISION that tool's
+ * `leadbay_report_artifact_error` tool. This file locks the DECISION that tool's
  * dispatch wiring makes — the same split the rest of the server already uses
  * for its own failures:
  *
@@ -152,7 +152,7 @@ describe("exception kinds route to Sentry, not PostHog", () => {
       const { mcpClient, identityDone } = await connect();
       await identityDone;
       await mcpClient.callTool({
-        name: "leadbay_artifact_event",
+        name: "leadbay_report_artifact_error",
         arguments: { kind, surface: "action", tool: "leadbay_add_note", code: "timeout" },
       });
       expect(artifactScopes()).toHaveLength(1);
@@ -167,7 +167,7 @@ describe("exception kinds route to Sentry, not PostHog", () => {
     const { mcpClient, identityDone } = await connect();
     await identityDone;
     await mcpClient.callTool({
-      name: "leadbay_artifact_event",
+      name: "leadbay_report_artifact_error",
       arguments: { kind: "call_timeout", surface: "action", tool: "leadbay_add_note", code: "timeout" },
     });
     expect(artifactScopes()[0].fingerprint).toEqual([
@@ -183,11 +183,11 @@ describe("exception kinds route to Sentry, not PostHog", () => {
     const { mcpClient, identityDone } = await connect();
     await identityDone;
     await mcpClient.callTool({
-      name: "leadbay_artifact_event",
+      name: "leadbay_report_artifact_error",
       arguments: { kind: "call_timeout", surface: "action", tool: "leadbay_add_note", code: "timeout" },
     });
     await mcpClient.callTool({
-      name: "leadbay_artifact_event",
+      name: "leadbay_report_artifact_error",
       arguments: { kind: "call_failed", surface: "list", tool: "leadbay_pull_leads", code: "API_ERROR" },
     });
     const fps = artifactScopes().map((s) => JSON.stringify(s.fingerprint));
@@ -202,7 +202,7 @@ describe("outcome kinds route to PostHog, not Sentry", () => {
       const { mcpClient, identityDone } = await connect();
       await identityDone;
       await mcpClient.callTool({
-        name: "leadbay_artifact_event",
+        name: "leadbay_report_artifact_error",
         arguments: { kind, surface: "field", tool: "leadbay_list_campaigns", kit_version: "0.6.0" },
       });
       const evs = artifactEvents();
@@ -223,7 +223,7 @@ describe("outcome kinds route to PostHog, not Sentry", () => {
     const { mcpClient, identityDone } = await connect();
     await identityDone;
     await mcpClient.callTool({
-      name: "leadbay_artifact_event",
+      name: "leadbay_report_artifact_error",
       arguments: { kind: "options_empty", surface: "field" },
     });
     expect(artifactEvents()[0]).toMatchObject({ source: "mcp", mcp_version: "0.39.9" });
@@ -234,7 +234,7 @@ describe("outcome kinds route to PostHog, not Sentry", () => {
     const { mcpClient, identityDone } = await connect();
     await identityDone;
     await mcpClient.callTool({
-      name: "leadbay_artifact_event",
+      name: "leadbay_report_artifact_error",
       arguments: { kind: "result_rejected", surface: "action", code: "QUOTA_EXCEEDED" },
     });
     expect(artifactEvents()[0]).not.toHaveProperty("message");
@@ -248,11 +248,11 @@ describe("the opt-out is honored without extra plumbing", () => {
     const { mcpClient, identityDone } = await connect();
     await identityDone;
     await mcpClient.callTool({
-      name: "leadbay_artifact_event",
+      name: "leadbay_report_artifact_error",
       arguments: { kind: "call_failed", surface: "call" },
     });
     await mcpClient.callTool({
-      name: "leadbay_artifact_event",
+      name: "leadbay_report_artifact_error",
       arguments: { kind: "options_empty", surface: "field" },
     });
     expect(posthogState.capture).not.toHaveBeenCalled();

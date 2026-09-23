@@ -5,12 +5,16 @@ short_description: |
   Get AI-recommended leads from Leadbay. Returns paginated lead summaries with
   scores, AI summaries, tags, and recommended contacts.
 annotations:
-  readOnlyHint: true
+  readOnlyHint: false
   destructiveHint: false
   idempotentHint: true
-  openWorldHint: true
+  openWorldHint: false
 ---
+
 Get AI-recommended leads from Leadbay. Returns paginated lead summaries with scores, AI summaries, tags, and recommended contacts. Auto-resolves to the active lens if `lensId` is omitted; `count` is capped at 50 per page.
+
+{{include:gates/lead-seen-side-effect}}
+
 
 {{include:headers/tool-when-to-use}} low-level — when you need raw paginated wishlist access without the qualification_summary attached by leadbay_pull_leads.
 

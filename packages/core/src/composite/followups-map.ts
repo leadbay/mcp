@@ -33,10 +33,10 @@ export const followupsMap: Tool = {
   // directives instead of an auto-rendered MCP Apps widget.
   annotations: {
     title: "Plot follow-up leads on a map (travel / in-person intent)",
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: FOLLOWUPS_MAP_DESCRIPTION,
   // Delegate everything else verbatim — same params, same output, same

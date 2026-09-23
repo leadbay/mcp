@@ -7,9 +7,9 @@ short_description: |
   EPILOGUE status. REQUIRES verification (anti-hallucination).
 annotations:
   readOnlyHint: false
-  destructiveHint: true
+  destructiveHint: false
   idempotentHint: false
-  openWorldHint: true
+  openWorldHint: false
 ---
 Log an outreach action (email, call, message, meeting) on a lead so the human team using Leadbay sees the progress in their UI. Writes a NOTE on the lead and (optionally) sets an EPILOGUE status (still chasing, meeting booked, etc.). Bulk variant: pass `lead_ids=[uuid,...]` instead of `lead_id` (epilogue is bulk-native; notes fan out per-lead).
 

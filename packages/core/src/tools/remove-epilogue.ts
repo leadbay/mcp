@@ -13,7 +13,7 @@ export const removeEpilogue: Tool<RemoveEpilogueParams> = {
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
   description: REMOVE_EPILOGUE_DESCRIPTION,
   optional: true,

@@ -4,14 +4,14 @@ import { mockHttp, resetHttpMock, httpsMockFactory, getHttpRequests } from "../.
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { artifactKit } from "../../../src/tools/artifact-kit.js";
+import { artifactKit } from "../../../src/tools/get-artifact-runtime.js";
 
 const BASE = "https://api-us.leadbay.app";
 const newClient = () => new LeadbayClient(BASE, "u.test-token", "us");
 
 beforeEach(() => resetHttpMock());
 
-describe("leadbay_artifact_kit", () => {
+describe("leadbay_get_artifact_runtime", () => {
   it("returns the runtime + usage guide + version, with no HTTP call", async () => {
     mockHttp([]);
     const res: any = await artifactKit.execute(newClient(), {});
