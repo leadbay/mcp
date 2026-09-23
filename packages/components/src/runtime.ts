@@ -349,6 +349,10 @@ export function configure(
   // needed when the viewer's Leadbay connector is named something else.
   if (opts.server) mcpServerName = opts.server;
   mcpPromise = null;
+  // Caches keyed to the transport must not outlive it: a page that
+  // reconfigures (or a test that swaps the stub) would otherwise keep a
+  // taxonomy fetched through the previous one.
+  sectorLabelsPromise = null;
 }
 
 /** Inject the optional `lb-*` stylesheet (see styles.ts). OPT-IN: the library
@@ -658,8 +662,23 @@ export class Action extends Store<Action> {
       }
     }
 
-    if (this.cfg.confirm && typeof globalThis.confirm === "function" && !globalThis.confirm(this.cfg.confirm)) {
-      return undefined;
+    // A native dialog is NOT available everywhere. In a sandboxed artifact
+    // iframe `window.confirm` is commonly blocked: it returns false without
+    // ever showing anything, so a confirmed action returned here silently and
+    // the control read as a dead button — no dialog, no error, no message.
+    // Distinguish the two outcomes: a real decline is silent (the rep knows
+    // they said no), an unavailable dialog is an error the page can render.
+    if (this.cfg.confirm) {
+      if (typeof globalThis.confirm !== "function") {
+        this.error = {
+          message: "This action needs confirmation, which this page cannot show.",
+          unavailable: false,
+        };
+        this.emit();
+        report({ kind: "action_blocked", surface: "action", tool: this.cfg.tool });
+        return undefined;
+      }
+      if (!globalThis.confirm(this.cfg.confirm)) return undefined;
     }
 
     this.loading = true;
@@ -1302,6 +1321,486 @@ function leadProfile(leadId: string, ask: string): Resource {
     autoLoad: false,
     load: () => call("leadbay_research_lead_by_id", { leadId, _triggered_by: ask }),
   });
+}
+
+/**
+ * The sector taxonomy as `{id: label}`, fetched once per page and cached.
+ *
+ * `sector_id` on a lead is a RAW ID (`"5134"`) and the card contract forbids
+ * printing it — but the taxonomy is ~1,091 visible rows, far too large to
+ * inline in an artifact. So every board either embedded a hand-picked subset
+ * (which goes stale and misses the sectors the user actually holds) or
+ * dropped the sector line entirely. This makes the label available to every
+ * artifact for the cost of one cached call.
+ *
+ * Resolves to `{}` when the call fails rather than rejecting: a missing
+ * sector label degrades one line of a card, and should never take the board
+ * down with it.
+ */
+let sectorLabelsPromise: Promise<Record<string, string>> | null = null;
+function sectorLabels(opts: { lang?: string } = {}): Promise<Record<string, string>> {
+  if (!sectorLabelsPromise) {
+    sectorLabelsPromise = (async () => {
+      try {
+        const r = await call("leadbay_list_sectors", {
+          ...(opts.lang ? { lang: opts.lang } : {}),
+        });
+        const list = Array.isArray(r)
+          ? r
+          : Array.isArray((r as { sectors?: unknown[] })?.sectors)
+            ? (r as { sectors: unknown[] }).sectors
+            : [];
+        const out: Record<string, string> = {};
+        for (const s of list) {
+          const o = (s ?? {}) as { id?: unknown; label?: unknown };
+          if (o.id != null && typeof o.label === "string" && o.label) {
+            out[String(o.id)] = o.label;
+          }
+        }
+        return out;
+      } catch {
+        return {};
+      }
+    })();
+  }
+  return sectorLabelsPromise;
+}
+
+/**
+ * The company-level context line every lead row shows: what the company does,
+ * and how to reach the company itself.
+ *
+ * Both halves were previously left to each artifact, and both were got wrong
+ * the same way. The sector came out as a raw id (`"5134"`) or was dropped;
+ * the channels were either omitted — hiding a phone the rep could have dialled
+ * immediately — or merged into the contact line, which claims a direct line
+ * that does not exist. `phone_numbers` and `email` on a lead belong to the
+ * COMPANY switchboard, not to `recommended_contact`.
+ */
+export interface LeadContext {
+  /** `short_description`, else `description`, else the resolved sector label.
+   *  Undefined when the lead carries none of the three. */
+  summary?: string;
+  /** The resolved sector label, when the taxonomy had it. */
+  sector?: string;
+  /** Company switchboard — NOT the contact's direct line. Label it as such. */
+  phone?: string;
+  /** Company email — same caveat. */
+  email?: string;
+}
+
+/**
+ * Build the context line for one lead. `labels` comes from `lb.sectorLabels()`;
+ * pass `{}` and the sector is simply omitted rather than printed raw.
+ *
+ * Guards the literal string "null", which the API returns for a missing value
+ * in `phone_numbers` AND in `email` — a row printing "☎ null" invites the rep
+ * to dial nothing.
+ */
+export function leadContext(lead: unknown, labels: Record<string, string> = {}): LeadContext {
+  const l = (lead ?? {}) as Record<string, any>;
+  const real = (v: unknown) =>
+    typeof v === "string" && v.trim() && v.trim() !== "null" ? v.trim() : undefined;
+
+  const sector = l.sector_id != null ? labels[String(l.sector_id)] : undefined;
+  const phones = Array.isArray(l.phone_numbers) ? l.phone_numbers : [];
+  return {
+    // Same fallback chain the card contract defines, stopping at the first
+    // hit: short_description, then description, then the sector label.
+    summary: real(l.short_description) ?? real(l.description) ?? sector,
+    sector,
+    phone: phones.map(real).find(Boolean),
+    email: real(l.email),
+  };
+}
+
+/** Where a lead board's rows come from. */
+export type LeadSourceKind = "followups" | "discover" | "campaign";
+
+export interface LeadSourceOpts {
+  /** Read at load time, so changing it and calling `.loadPage(0)` re-sources
+   *  without rebuilding the model. Pass a Field to bind it to a `<select>`. */
+  kind: LeadSourceKind | Field | (() => LeadSourceKind);
+  /** Required when kind is "campaign"; a Field binds it to a picker. */
+  campaignId?: string | Field;
+  /** Discover only. Omit for the active lens. */
+  lensId?: number;
+  /** Followups only. */
+  city?: string;
+  order?: Field | string;
+  pageSize?: number;
+  ask: string;
+}
+
+/**
+ * ONE paginated list over any Leadbay source — the Monitor, a Discover lens,
+ * or a campaign.
+ *
+ * `lb.callList` and `lb.leadList` each wrap one tool, which is right for a
+ * board built for one job. A general lead board is the other case: the rep
+ * picks where the rows come from, and everything downstream (the row's
+ * contacts, status, outreach, qualify) is identical whichever they pick. Left
+ * to the artifact, that switch means rebuilding a list model per source and
+ * re-wiring every row.
+ *
+ * TWO THINGS DIFFER BY SOURCE and this owns both:
+ *
+ *  - The deep link's view. `pull_leads` rows are Discover, `pull_followups`
+ *    rows carry `in_monitor` and belong on Monitor, and a campaign row needs
+ *    `?campaign=<id>&lead=<id>`. `.leadUrl(lead)` answers it per row.
+ *  - Sorting. A campaign call sheet has no `order` param, so the order is
+ *    DROPPED for that source rather than sent and rejected.
+ */
+function leadSource(opts: LeadSourceOpts): ListModel & { leadUrl: (lead: unknown) => string } {
+  const kindOf = (): LeadSourceKind => {
+    const k = opts.kind;
+    if (typeof k === "string") return k;
+    if (typeof k === "function") return k();
+    return (String(k?.value ?? "followups") as LeadSourceKind) || "followups";
+  };
+  const campaignOf = (): string | undefined => {
+    const c = opts.campaignId;
+    const v = typeof c === "string" ? c : c?.value;
+    return v ? String(v) : undefined;
+  };
+  const orderOf = (): string =>
+    typeof opts.order === "string" ? opts.order : String(opts.order?.value ?? "");
+
+  const model = new ListModel({
+    pageSize: opts.pageSize ?? 20,
+    load: async ({ page, pageSize }) => {
+      const kind = kindOf();
+      let r: unknown;
+      if (kind === "campaign") {
+        const campaignId = campaignOf();
+        if (!campaignId) return { items: [], total: 0 };
+        // No `order`: leadbay_campaign_call_sheet has no such param and
+        // sending one is rejected.
+        r = await call("leadbay_campaign_call_sheet", {
+          campaign_id: campaignId,
+          page,
+          count: pageSize,
+          _triggered_by: opts.ask,
+        });
+      } else if (kind === "discover") {
+        r = await call("leadbay_pull_leads", {
+          page,
+          count: pageSize,
+          ...(opts.lensId ? { lensId: opts.lensId } : {}),
+          ...(orderOf() ? { order: orderOf() } : {}),
+          _triggered_by: opts.ask,
+        });
+      } else {
+        r = await call("leadbay_pull_followups", {
+          page,
+          count: pageSize,
+          ...(opts.city ? { city: opts.city } : {}),
+          ...(orderOf() ? { order: orderOf() } : {}),
+          _triggered_by: opts.ask,
+        });
+      }
+      const o = (r ?? {}) as {
+        leads?: unknown[];
+        items?: unknown[];
+        total_leads?: number;
+        pagination?: { total?: number };
+      };
+      const items = o.leads ?? o.items ?? [];
+      return { items, total: o.pagination?.total ?? o.total_leads ?? items.length };
+    },
+  });
+
+  return Object.assign(model, {
+    leadUrl: (lead: unknown): string => {
+      const l = (lead ?? {}) as { id?: string; in_monitor?: boolean };
+      const id = encodeURIComponent(String(l.id ?? ""));
+      const kind = kindOf();
+      if (kind === "campaign") {
+        const c = campaignOf();
+        // Omitting `campaign=` opens an empty campaign view.
+        if (c) return `https://leadbay.app/app/campaign?campaign=${encodeURIComponent(c)}&lead=${id}`;
+      }
+      // `pull_leads` omits in_monitor entirely; its rows are Discover by
+      // definition. A followups row carries in_monitor:true.
+      const view = kind === "discover" ? "discover" : l.in_monitor === false ? "discover" : "monitor";
+      return `https://leadbay.app/app/${view}?lead=${id}`;
+    },
+  });
+}
+
+/** One contact a rep can actually reach, flattened from a lead profile. */
+export interface RelanceContact {
+  contactId?: string;
+  name: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  /** The contact's LinkedIn profile. A ROUTE the rep can take — show it — but
+   *  NOT a channel for reachability counting: it cannot be dialled or mailed,
+   *  and `lb.leadReach` deliberately ignores it. Both rules are right; they
+   *  answer different questions ("can I contact this person right now" vs
+   *  "how much of the book is callable"). */
+  linkedin?: string;
+  /** The row's default target: the contact's own `recommended` flag, falling
+   *  back to the engagement block's `recommended_contact` id. */
+  recommended: boolean;
+  /** True when a channel has already been purchased for this contact
+   *  (`enrichment_done`). False means enrichment would buy one. */
+  enriched: boolean;
+}
+
+/**
+ * Everything one row of a relance (follow-up) table needs, as one object.
+ *
+ * A relance row is not a lead card: the rep is not deciding whether the lead
+ * fits, they are deciding who to call and recording what happened. So the row
+ * bundles four things that were previously four separate wirings each artifact
+ * assembled by hand — and got subtly wrong in the same places:
+ *
+ *   `contacts`  who to reach, with the CHANNELS (lazy — see below)
+ *   `status`    the org-wide CRM outcome     → lb.setStatus
+ *   `epilogue`  how this attempt went        → lb.outreach
+ *   `note`      what was said                → gated, required to log
+ *
+ * TWO SYSTEMS, NOT ONE. Epilogue is how one outreach ATTEMPT went and drives
+ * follow-up ranking; lead status is the commercial outcome the whole org sees.
+ * Setting one never sets the other, so a row exposes both and a rep reporting
+ * "she's interested, meeting booked" fires both actions.
+ *
+ * CHANNELS ARE LAZY, BY NECESSITY. The list payloads (`pull_followups`,
+ * `campaign_call_sheet`) carry `recommended_contact` as a NAME and nothing
+ * else — no email, no phone. Those live on `research_lead_by_id` as
+ * `contacts.reachable[]`. Prefetching them for a 20-row table means 20
+ * requests to fill cells the rep may never read, so `contacts` is a Resource
+ * with `autoLoad:false`: the row renders instantly from the list, and the
+ * channels load when the rep opens that row. One call for one lead they chose.
+ */
+export interface RelanceRow {
+  leadId: string;
+  /** Lazy: `.load()` on the rep's gesture. `.data` is RelanceContact[]. */
+  contacts: Resource;
+  /** Company-level context, loaded automatically: `.data` is a LeadContext
+   *  (summary / sector / company phone / company email). Present only when
+   *  `lead` was passed. */
+  context: Resource;
+  /** CRM status field + its write. Saves on change; no submit button. */
+  status: Field;
+  saveStatus: Action;
+  /** Epilogue select + note + the write that needs both. */
+  epilogue: Field;
+  note: Field;
+  logOutreach: Action;
+  /** Taste — an axis INDEPENDENT of CRM status. A lead can be liked and lost. */
+  like: Action;
+  dislike: Action;
+  /** Qualify / Requalify. `qualify.label` carries which word to show. */
+  qualify: Action;
+}
+
+export function relanceRow(opts: {
+  leadId: string;
+  ask: string;
+  /** The lead's current `state.status`, so the select opens on it. */
+  currentStatus?: string | null;
+  /** The lead row from the list payload. Pass it and the row resolves its own
+   *  `context` (sector label, description, company switchboard) so an artifact
+   *  does not have to wire that separately. */
+  lead?: unknown;
+}): RelanceRow {
+  const status = leadStatus(opts.currentStatus);
+  const epilogue = new Field({
+    kind: "select",
+    value: EPILOGUE_STATUSES[0],
+    load: async () =>
+      EPILOGUE_STATUSES.map((v) => ({
+        value: v,
+        label: EPILOGUE_LABELS[v] ?? v,
+      })),
+  });
+  // Gated: report_outreach without a note records that something happened and
+  // not what, which is worse than no record — the next rep reads an empty
+  // follow-up and calls blind.
+  const note = new Field({
+    validate: (v) => (String(v ?? "").trim() ? null : "Add a note before logging"),
+  });
+
+  const contacts = new Resource({
+    autoLoad: false,
+    load: async () => {
+      const r = (await call("leadbay_research_lead_by_id", {
+        leadId: opts.leadId,
+        _triggered_by: opts.ask,
+      })) as {
+        contacts?: { reachable?: unknown[]; candidates?: unknown[] };
+        engagement?: { recommended_contact?: { contact_id?: string } };
+      };
+
+      // The contact set is TWO-TIER: `reachable` holds contacts with a
+      // purchased channel, `candidates` holds everyone known. On an
+      // un-enriched book `reachable` is EMPTY and every contact sits in
+      // `candidates` — reading only `reachable` renders "no contacts" for a
+      // lead with nine of them. Show both, reachable first, de-duplicated by
+      // id in case a contact appears in each.
+      const reachable = Array.isArray(r?.contacts?.reachable) ? r.contacts!.reachable! : [];
+      const candidates = Array.isArray(r?.contacts?.candidates) ? r.contacts!.candidates! : [];
+      const seen = new Set<string>();
+      const list: unknown[] = [];
+      for (const c of [...reachable, ...candidates]) {
+        const id = (c as { id?: string; contact_id?: string })?.id
+          ?? (c as { contact_id?: string })?.contact_id;
+        if (id && seen.has(id)) continue;
+        if (id) seen.add(id);
+        list.push(c);
+      }
+
+      // TWO sources disagree about who is recommended, and they are both real:
+      // a contact's own `recommended: true` flag, and the engagement block's
+      // `recommended_contact` (the ORG contact the Monitor row shows). On one
+      // observed lead they named different people. The contact's own flag wins
+      // — it is per-contact and is what the research payload asserts about
+      // this set — and the engagement id is the fallback for payloads that
+      // omit the flag. Note it lives under `engagement`, NOT at the top level.
+      const engagementId = r?.engagement?.recommended_contact?.contact_id;
+      return list.map((c) => flattenContact(c, engagementId));
+    },
+  });
+
+  // Company context resolves against the cached taxonomy, so N rows share one
+  // fetch. Synchronous callers get the channels immediately (they are on the
+  // list payload) and the sector label once the taxonomy lands.
+  const context = new Resource({
+    load: async () => leadContext(opts.lead, await sectorLabels()),
+  });
+
+  return {
+    leadId: opts.leadId,
+    contacts,
+    context,
+    status,
+    saveStatus: setStatus({ leadId: opts.leadId, status, ask: opts.ask }),
+    epilogue,
+    note,
+    logOutreach: outreach({ leadId: opts.leadId, ask: opts.ask, status: epilogue, note }),
+    like: like(opts.leadId),
+    dislike: dislike(opts.leadId),
+    // Label comes from the lead's own score, so a never-qualified lead is not
+    // offered a "re-run" that never ran.
+    qualify: qualify({
+      leadId: opts.leadId,
+      ask: opts.ask,
+      scored: qualifyLabel(opts.lead) === "Requalify",
+    }),
+  };
+}
+
+/**
+ * Reveal one contact's email, phone, or both — the action a relance row
+ * offers on a contact with no channel.
+ *
+ * SPENDS QUOTA, so it carries a `confirm` by default. Enrichment is gated
+ * server-side per organisation and a reveal is not free; a rep clicking
+ * through a table should be told which channels they are buying, for whom,
+ * before the call goes out. Pass `confirm: ""` to suppress it only when the
+ * surrounding UI has already asked.
+ *
+ * `email` and `phone` both default TRUE on the tool, and it rejects a call
+ * with both false. This component surfaces them as explicit choices instead,
+ * because "both" is the expensive default and a rep who only needs a phone
+ * should be able to say so.
+ *
+ * WHAT COMES BACK IS NOT ALWAYS THE SAME ROW. For a `source:"paid"`
+ * candidate the channel lands on a NEW `source:"org"` contact with a
+ * DIFFERENT id — the candidate row itself only flips `enrichment_done`. So
+ * after a successful reveal, re-load the lead's contacts rather than patching
+ * the row in place: `onDone` fires for exactly that, and
+ * `relanceRow.contacts.load()` is what to call. Note also that
+ * `enrichment_done: true` alone does not mean the requested channel arrived —
+ * a contact enriched earlier for the other channel already reads done.
+ */
+export function enrichContact(opts: {
+  leadId: string;
+  contactId: string;
+  /** Which channels to buy. Both default true, matching the tool. */
+  email?: boolean | (() => boolean);
+  phone?: boolean | (() => boolean);
+  ask?: string;
+  /** Override the spend confirmation; "" disables it. */
+  confirm?: string;
+  /** Re-load the contact set here — the channel may land on a NEW contact. */
+  onDone?: () => void;
+}): Action {
+  const want = (v: boolean | (() => boolean) | undefined) =>
+    typeof v === "function" ? v() : v !== false;
+  // The tool rejects email:false + phone:false. A Field validates BEFORE the
+  // call, so the rep gets a sentence instead of a schema error — and before
+  // the confirm dialog, so they are not asked to approve a spend that cannot
+  // happen.
+  const channels = new Field({
+    value: "ok",
+    validate: () => (want(opts.email) || want(opts.phone) ? null : "Pick email, phone, or both."),
+  });
+  return new Action({
+    tool: "leadbay_enrich_contacts",
+    fields: [channels],
+    confirm:
+      opts.confirm === "" ? undefined : (opts.confirm ?? "Reveal this contact? It uses enrichment quota."),
+    // `_triggered_by` IS accepted here — the MCP-exposed schema carries it as
+    // optional metadata, even though the raw inputSchema in the tool source
+    // does not list it. Verified against a live call.
+    args: () => ({
+      leadId: opts.leadId,
+      contactId: opts.contactId,
+      email: want(opts.email),
+      phone: want(opts.phone),
+      ...(opts.ask ? { _triggered_by: opts.ask } : {}),
+    }),
+    checkResult: (r) => {
+      const res = (r ?? {}) as { error?: unknown; message?: string };
+      return res.error ? (res.message ?? "Enrichment failed") : null;
+    },
+    onSuccess: () => opts.onDone?.(),
+  });
+}
+
+/** The four epilogue values in the rep's words. The raw enum names are
+ *  shouted constants; a select showing INTEREST_VALIDATED_OR_MEETING_PLANED
+ *  makes the rep translate before they can answer. */
+export const EPILOGUE_LABELS: Record<string, string> = {
+  STILL_CHASING: "Still chasing",
+  COULD_NOT_REACH_STILL_TRYING: "Could not reach — still trying",
+  INTEREST_VALIDATED_OR_MEETING_PLANED: "Interested / meeting planned",
+  NOT_INTERESTED_LOST: "Not interested — lost",
+};
+
+/** Flatten one profile contact to the fields a relance row shows. Guards the
+ *  literal "null" string the API returns for a missing value, in every channel
+ *  field — a row printing "☎ null" invites the rep to dial nothing. */
+function flattenContact(c: unknown, recommendedId?: string): RelanceContact {
+  const o = (c ?? {}) as Record<string, any>;
+  const real = (v: unknown) =>
+    typeof v === "string" && v.trim() && v !== "null" ? v.trim() : undefined;
+  const name =
+    [real(o.first_name), real(o.last_name)].filter(Boolean).join(" ") ||
+    real(o.name) ||
+    "Unnamed contact";
+  const id = real(o.id) ?? real(o.contact_id);
+  return {
+    contactId: id,
+    name,
+    title: real(o.job_title) ?? real(o.title),
+    email: real(o.email),
+    phone: real(o.phone) ?? real(o.phone_number) ?? real((o.phone_numbers ?? [])[0]),
+    linkedin: real(o.linkedin_page),
+    // The contact's own flag first — it is what this payload asserts about
+    // this set. The engagement id is the fallback for a contact that carries
+    // no flag at all.
+    recommended:
+      o.recommended === true || (recommendedId != null && id === recommendedId),
+    /** True once a channel has been purchased for this contact. A candidate
+     *  with `enrichment_done:false` and no channel is not a dead end — it is
+     *  exactly what enrichment buys. */
+    enriched: o.enrichment_done === true,
+  };
 }
 
 interface EnrichOpts {
@@ -2265,12 +2764,25 @@ export const lb = {
   qualifyStatus,
   leadStatus,
   setStatus,
+  // Relance (follow-up) table: one row's contacts + status + epilogue + note,
+  // bundled so an artifact wires a row once instead of five times.
+  relanceRow,
+  enrichContact,
+  // Company-level context for a lead row: what it does (resolved sector /
+  // description) and the company switchboard. `sectorLabels` caches the
+  // taxonomy so no artifact has to inline or omit it.
+  sectorLabels,
+  leadContext,
+  EPILOGUE_LABELS,
   sortOrder,
   leadHistory,
   leadProfile,
   enrichment,
   callList,
   leadList,
+  // One list over ANY source (Monitor / Discover lens / campaign), with the
+  // per-source deep link and the campaign's no-sort rule built in.
+  leadSource,
   teamActivity,
   EPILOGUE_STATUSES,
   LEAD_STATUSES,

@@ -41,6 +41,11 @@ then on every change — render your own DOM from it.
 | `lb.qualify({leadId or leadIds, ask, scored?})` | action | the MANDATORY Qualify/Requalify button → `bulk_qualify_leads` (camelCase `leadIds`, queue-not-wait, `failed[]` + quota checked) |
 | `lb.qualifyLabel(lead)` | `"Qualify"` \| `"Requalify"` | which word the button takes, from the lead's own score |
 | `lb.qualifyStatus(launch, ask?)` | resource (polling) | watches a launch to its verdict → `leadbay_qualify_status` |
+| `lb.relanceRow({leadId, ask, currentStatus?})` | row bundle | ONE follow-up table row: lazy `contacts` (with email/phone), `status` + `saveStatus`, `epilogue` + `note` + `logOutreach` |
+| `lb.enrichContact({leadId, contactId, email?, phone?, ask?, onDone?})` | action | buy ONE contact's email / phone / both → `enrich_contacts`. Confirms the spend; the channel may land on a DIFFERENT contact, so `onDone` re-reads |
+| `lb.sectorLabels()` | `Promise<{id: label}>` | the sector taxonomy, fetched ONCE per page and cached — so no artifact inlines ~1,091 rows or prints a raw id |
+| `lb.leadContext(lead, labels)` | `LeadContext` | one lead's company line: `summary` (short_description → description → sector), `sector`, and the COMPANY `phone` / `email` |
+| `lb.EPILOGUE_LABELS` | `Record<string,string>` | the four epilogue values in the rep's words, for the select |
 | `lb.leadStatus(current?)` | field | a status `<select>` (Wanted/Won/Lost/Unwanted) |
 | `lb.setStatus({leadId or leadIds, status, date?, ask})` | action | write the org CRM status → `set_lead_status` |
 | `lb.leadHistory(leadId, ask)` | resource (lazy) | notes + activities + engagement → `account_history` |
@@ -48,6 +53,7 @@ then on every change — render your own DOM from it.
 | `lb.sortOrder(current?)` | field | a sort `<select>` mirroring the app's TableSort |
 | `lb.leadList({lensId?, order?, ask})` | list | a sortable Discover batch → `pull_leads` |
 | `lb.callList({source:'followups'\|'campaign', campaignId?, city?, ask})` | list | a cold-call list (Monitor or a campaign) |
+| `lb.leadSource({kind, campaignId?, lensId?, order?, ask})` | list + `.leadUrl(lead)` | ONE list over any source — Monitor / Discover lens / campaign — with the per-source deep link and the campaign's no-sort rule built in |
 | `lb.enrichment({leadIds, titles, ask, pollEvery?})` | resource (polling) | launch + watch contact enrichment |
 | `lb.teamActivity({weeks, ask})` | resource | manager leaderboard + activity trend → `leadbay_team_activity` |
 
@@ -678,6 +684,178 @@ Declare BOTH tools in the artifact's `mcp_tools`:
 
 Give the button `class="lb-btn lb-btn-ai"` — purple is the product's AI
 affordance, and the app's own QualifyButton is `variant="ai"`.
+
+## Recipe: the LEAD DESK (the default board for working leads)
+
+When the rep accepts the board after `leadbay_pull_followups` or
+`leadbay_campaign_call_sheet`, build THIS. It is the relance table below plus
+a source picker, and it is the canonical answer to "give me somewhere to work
+these leads".
+
+```js
+const source   = lb.field({ value: "followups" });   // or "discover" | "campaign"
+const campaign = lb.campaigns(ASK);                  // only for the campaign source
+const sort     = lb.sortOrder();
+
+const list = lb.leadSource({
+  kind: source, campaignId: campaign, order: sort, ask: ASK, pageSize: 15,
+});
+list.subscribe((l) => renderRows(l.items));
+```
+
+`lb.leadSource` owns the two things that differ by source, and only those:
+
+- **The deep link's view.** `list.leadUrl(lead)` answers per row — a Monitor
+  lead opened on Discover drops the rep into a list that does not contain it,
+  and a campaign row needs `?campaign=<id>&lead=<id>` or it opens an empty
+  campaign view.
+- **Sorting.** `leadbay_campaign_call_sheet` has NO `order` param, so the
+  order is DROPPED for that source rather than sent and rejected. Hide the
+  sort control there too: offering it promises something the tool cannot do.
+
+Changing the source or the sort resets to page 0 — page 2 of the old list is
+not page 2 of the new one. Every row is a `lb.relanceRow`, which now carries
+taste and qualify alongside contacts, status and outreach, so the row is
+complete whichever source it came from.
+
+## Recipe: relance table (the follow-up board)
+
+"Give me a table where I can see who to call, reach them, and record what
+happened." One row per lead, everything in one place. `lb.relanceRow` bundles
+the row so you wire it once instead of five times:
+
+```js
+const list = lb.callList({ source: "followups", ask: ASK });
+list.subscribe((l) => renderRows(l.items));
+
+function wireRow(lead, els) {
+  const row = lb.relanceRow({
+    leadId: lead.id,
+    ask: ASK,
+    currentStatus: lead.state?.status,       // the select opens on it
+  });
+
+  // CHANNELS — lazy. The row renders from the list; this fires on the gesture.
+  row.contacts.subscribe((c) => renderContacts(els.contacts, c));
+  els.reveal.onclick = () => row.contacts.load();
+
+  // STATUS — saves on change, no button.
+  lb.bindSelect(els.status, row.status);
+  els.status.onchange = () => row.saveStatus.run();
+
+  // OUTREACH — epilogue + note, note required.
+  lb.bindSelect(els.epilogue, row.epilogue);
+  lb.bindValue(els.note, row.note);
+  lb.bindAction(els.log, row.logOutreach);
+}
+```
+
+**Every row's lead cell carries its context — this is not optional.** The row
+resolves it for you when you pass the lead:
+
+```js
+const row = lb.relanceRow({ leadId: lead.id, ask: ASK, lead });
+row.context.subscribe((c) => {
+  if (!c.data) return;
+  els.summary.textContent = c.data.summary ?? "";        // what they do
+  if (c.data.phone) els.coPhone.href = "tel:" + c.data.phone;
+  if (c.data.email) els.coEmail.href = "mailto:" + c.data.email;
+});
+```
+
+Three rules the component enforces so a row cannot get them wrong:
+
+- **Never print `sector_id`.** It is a raw id (`"5134"`); `lb.sectorLabels()`
+  resolves it, fetching the ~1,091-row taxonomy once per page and caching it.
+  Unresolvable means the line is OMITTED, never shown raw.
+- **Show the company's phone and email when they exist.** A rep who can dial
+  the switchboard today should not have to open Leadbay to find out.
+- **Label them as the COMPANY's.** `phone_numbers` and `email` on a lead are
+  the switchboard, not `recommended_contact`'s direct line. Rendering
+  "Jean · ☎ 01 23…" claims a line that does not exist.
+
+**A contact's LinkedIn is a route, show it.** `lb.relanceRow` flattens
+`linkedin_page` onto each contact, so a contact with no email or phone may
+still be reachable — render it beside the other channels. It is deliberately
+NOT counted as reachability by `lb.leadReach`: the two rules answer different
+questions ("can I contact this person now" vs "how much of the book is
+callable"), and a URL cannot be dialled.
+
+**Email and phone are NOT on the list payload.** `pull_followups` and
+`campaign_call_sheet` carry `recommended_contact` as a NAME and nothing else;
+the channels live on `research_lead_by_id` as `contacts.reachable[]`. So a
+table that renders `☎` straight from the list renders nothing, and one that
+prefetches fires a request per row to fill cells the rep may never read.
+`row.contacts` is a lazy Resource for exactly that reason: render the row
+instantly, load the channels when the rep opens it. Show a **Reveal contact**
+control rather than an empty cell, so the rep knows the data exists.
+
+**Two write systems, both on the row.** `row.saveStatus` writes the org-wide
+CRM outcome (Wanted/Won/Lost/Unwanted); `row.logOutreach` records how THIS
+attempt went (still chasing / could not reach / interested / lost) and drives
+follow-up ranking. Setting one never sets the other, so when the rep says
+"she's interested, meeting booked" both fire. Use `lb.EPILOGUE_LABELS` for the
+select — the raw enum values are shouted constants and a rep should not have
+to translate `INTEREST_VALIDATED_OR_MEETING_PLANED` before answering.
+
+**The note is required and the component enforces it.** `report_outreach`
+without a note records that something happened and not what; the next rep
+reads an empty follow-up and calls blind.
+
+**A contact with no channel gets an enrich offer, not a dead end.** That is
+the whole point of showing candidates: they are one purchase away from being
+callable.
+
+```js
+// wherever a channel is MISSING — never gate on `enriched`, see below
+if (!c.phone || !c.email) {
+  lb.bindAction(els.enrich, lb.enrichContact({
+    leadId: lead.id,
+    contactId: c.contactId,
+    email: () => emailBox.checked,     // both default true, as the tool does
+    phone: () => phoneBox.checked,
+    ask: ASK,
+    onDone: () => row.contacts.load(), // ← see below
+  }));
+}
+```
+
+`lb.enrichContact` SPENDS QUOTA, so it confirms by default and names the
+spend.
+
+**`window.confirm` does not work in a published artifact.** The iframe is
+sandboxed and the call returns false without showing a dialog, so an action
+carrying a `confirm` returns early with no error and no message — a control
+that silently does nothing. `Action` now reports that case as an error rather
+than swallowing it, but the fix for a real page is to supply your OWN
+confirmation: pass `confirm: ""` and arm the button in-page (first click
+arms and relabels, second click spends, with a timeout that disarms). Apply
+the same to the triage board's bulk apply, which has the same footgun. Offer
+email and phone as separate choices rather than always buying both — the tool
+defaults both to true and rejects a call with both false, which the component
+catches before the confirm so nobody approves a spend that cannot happen.
+
+**Never gate the offer on `enriched`.** `enrichment_done` flips true once ANY
+channel resolves, so a contact enriched for email earlier reads done while
+still having no phone — and an org contact can read done carrying nothing at
+all. Hiding the button there hides it on exactly the contacts that need it.
+Gate on the CHANNEL being missing, and default each checkbox to the missing
+one so a rep cannot re-buy what is already on file.
+
+**The call launches an async job; it does not return a channel.** The real
+response is `{triggered: true, email_requested, phone_requested, hint}` — no
+`ok`, no contact. The reveal lands minutes later, so a UI that expects the
+email in this result shows the rep nothing.
+
+**Re-read the contacts afterwards; do not patch the row.** For a
+`source:"paid"` candidate the channel lands on a NEW `source:"org"` contact
+with a DIFFERENT id — the candidate row itself only flips `enrichment_done`.
+That is what `onDone` is for.
+
+**Layout.** It is a table, so `lb-table` with `data-num` on any count, and the
+per-row controls stacked in their cell (`lb-stack`) so a select and an input
+share one width. Keep `lb-msg` out of the control row — a failed write is the
+most important thing on that row at that moment.
 
 ## Recipe: cold-call sheet (one row per lead)
 
