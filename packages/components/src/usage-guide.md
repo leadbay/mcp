@@ -18,7 +18,7 @@ Pass every tool you use as the artifact's `mcp_tools` so the host permits it.
   `.run()/.loading/.error/.lastResult/.subscribe`.
 - `lb.resource({ load, pollEvery?, until?, autoLoad? })` — one read that may change:
   load-on-click or poll-until-`until`. `.data/.loading/.refreshing/.error/.done/.load()/.refresh()/.stop()/.subscribe`.
-- `lb.list({ load, pageSize })` — paginated rows. `.items/.page/.total/.loading/.loadPage(n)/.next()/.prev()/.hasMore/.subscribe`.
+- `lb.list({ load, pageSize, autoLoad })` — paginated rows. `.items/.page/.total/.loading/.loadPage(n)/.next()/.prev()/.hasMore/.subscribe`.
 
 `.error` is `{ message, unavailable } | null`. `subscribe(cb)` fires immediately
 then on every change — render your own DOM from it.
@@ -29,7 +29,7 @@ then on every change — render your own DOM from it.
 |---|---|---|
 | `lb.campaigns(ask)` | field | a campaign `<select>`, options from `leadbay_list_campaigns` |
 | `lb.segmentCount({sectorIds, city, ask})` | `Promise<{total, applied, trusted}>` | how many Monitor leads match one sector/location — `count: 1` + `pagination.total`, so a segment costs one cheap call |
-| `lb.portfolioSectors({sample, sectors, ask})` | `Promise<PortfolioSector[]>` | which sectors the user ACTUALLY holds — samples one page of followups, tallies `sector_id`, resolves names against an embedded taxonomy |
+| `lb.portfolioSectors({sample, sectors, ask})` | `Promise<PortfolioSector[]>` | which sectors the user ACTUALLY holds — samples one page of followups, tallies `sector_id`, resolves names against an embedded taxonomy. A 200-lead sample is ~600 kB, so await it on demand, never on the boot path |
 | `lb.outreach({leadId, ask, status?, note?})` | action | log a call → `report_outreach` (verification + `_triggered_by` baked in) |
 | `lb.note({leadId, note})` | action | add a note → `add_note` |
 | `lb.like(leadId)` / `lb.dislike(leadId)` | action | taste signal |
@@ -38,8 +38,8 @@ then on every change — render your own DOM from it.
 | `lb.leadHistory(leadId, ask)` | resource (lazy) | notes + activities + engagement → `account_history` |
 | `lb.leadProfile(leadId, ask)` | resource (lazy) | full lead profile → `research_lead_by_id` |
 | `lb.sortOrder(current?)` | field | a sort `<select>` mirroring the app's TableSort |
-| `lb.leadList({lensId?, order?, ask})` | list | a sortable Discover batch → `pull_leads` |
-| `lb.callList({source:'followups'\|'campaign', campaignId?, city?, ask})` | list | a cold-call list (Monitor or a campaign) |
+| `lb.leadList({lensId?, order?, autoLoad?, ask})` | list | a sortable Discover batch → `pull_leads`; `autoLoad:false` for a tab the rep has not opened |
+| `lb.callList({source:'followups'\|'campaign', campaignId?, city?, autoLoad?, ask})` | list | a cold-call list (Monitor or a campaign); `autoLoad:false` defers the read |
 | `lb.enrichment({leadIds, titles, ask, pollEvery?})` | resource (polling) | launch + watch contact enrichment |
 | `lb.teamActivity({weeks, ask})` | resource | manager leaderboard + activity trend → `leadbay_team_activity` |
 
@@ -595,6 +595,25 @@ els.expand.onclick = () => profile.load();        // one call, on demand
 Never prefetch it for the batch: a 20-lead board would fire 20 requests to fill
 lines the rep may never read. The list payload already carries everything the
 collapsed card shows.
+
+**One list loads on open — the one the rep is looking at.** The same rule, one
+level up. A board with a tab per lens constructs one `lb.leadList` per lens, and
+every list reads page 0 the moment it is constructed, so the board reads the
+rep's whole book before they have clicked anything. Pass `autoLoad: false` to
+every list but the visible one and load it on selection:
+
+```js
+const lists = lenses.map((l) =>
+  lb.leadList({ lensId: l.id, ask: ASK, autoLoad: l.id === activeLensId }),
+);
+tab.onclick = () => lists[i].loadPage(0);        // one read, when he opens it
+```
+
+`lb.callList` takes `autoLoad` too. This is not a micro-optimisation: one real
+board opened 21 lenses eagerly and spent 42 `pull_leads`, 2 MB and 32 seconds on
+every open, for the one lens the rep then read. An artifact is re-rendered
+whenever the agent republishes it, so that cost is paid again each time — nothing
+is cached between renders. Load what is on screen.
 
 **Requalify** is `leadbay_bulk_qualify_leads` with `leadIds` (camelCase — NOT
 `lead_ids`) and `wait_for_completion: false`, so the button returns as soon as

@@ -22,7 +22,7 @@
 
 import { STYLES, STYLE_ELEMENT_ID } from "./styles.js";
 
-export const VERSION = "0.6.0";
+export const VERSION = "0.6.1";
 
 // ─── Bridge to the host (window.cowork.callMcpTool) ──────────────────────────
 
@@ -1215,6 +1215,9 @@ interface CallListOpts {
   /** A Field holding a LeadOrder string (from `lb.sortOrder()`), or a literal.
    *  Read at load time, so changing it and calling `.loadPage(0)` re-sorts. */
   order?: Field | string;
+  /** Read page 0 on construction (default true). Pass false for a list the rep
+   *  has not opened yet — see the note on LeadListOpts. */
+  autoLoad?: boolean;
 }
 export interface LeadListOpts {
   lensId?: number;
@@ -1223,6 +1226,14 @@ export interface LeadListOpts {
   /** A Field holding a LeadOrder string (from `lb.sortOrder()`), or a literal.
    *  Read at request time, so changing it and calling `.loadPage(0)` re-sorts. */
   order?: Field | string;
+  /** Read page 0 on construction (default true). Pass false and call
+   *  `.loadPage(0)` when the rep opens that tab.
+   *
+   *  A board with one list per lens constructs them all, so an eager default
+   *  fires one read per lens before the rep has looked at anything. One real
+   *  account's board did 42 `pull_leads` across 21 lenses on every open —
+   *  2 MB and 32 s for the one list they were going to read. Defer the rest. */
+  autoLoad?: boolean;
 }
 /** A paginated DISCOVER list (leadbay_pull_leads), sortable via `order`.
  *  Use this rather than re-sorting rows client-side: the backend sorts the WHOLE
@@ -1234,6 +1245,7 @@ function leadList(opts: LeadListOpts): ListModel {
     typeof opts.order === "string" ? opts.order : String(opts.order?.value ?? "");
   return new ListModel({
     pageSize: opts.pageSize ?? 20,
+    autoLoad: opts.autoLoad,
     load: async ({ page, pageSize }) => {
       const r = (await call("leadbay_pull_leads", {
         page,
@@ -1256,6 +1268,7 @@ function callList(opts: CallListOpts): ListModel {
     typeof opts.order === "string" ? opts.order : String(opts.order?.value ?? "");
   return new ListModel({
     pageSize: opts.pageSize ?? 20,
+    autoLoad: opts.autoLoad,
     load: async ({ page, pageSize }) => {
       const r =
         source === "campaign"
