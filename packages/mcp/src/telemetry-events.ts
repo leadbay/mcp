@@ -57,6 +57,12 @@ export interface ToolCallProps {
   // into every tool's input schema. Optional because legacy agents and
   // unrelated automated calls (e.g., update_check) won't supply it.
   triggered_by?: string;
+  // Who made the call (product#4081): "artifact" when a control inside a
+  // rendered Leadbay artifact issued it (the runtime stamps `_origin`),
+  // "agent" otherwise. Present on every tool-call event so artifact traffic
+  // can be split from agent traffic on existing dashboards without a parallel
+  // event family.
+  origin?: "agent" | "artifact";
   // Set by the capture layer, NEVER by callers: true when the measured duration
   // exceeded DURATION_PLAUSIBILITY_CEILING_MS. When set, `duration_ms` is
   // omitted from the emitted event and the measured value moves to
@@ -113,6 +119,10 @@ export interface CompositeCallProps {
   // enrich_titles floor lives, so the join surface needs it too. Absent on
   // success and on errors that never hit the HTTP layer.
   http_status?: number;
+  // Who made the call (product#4081) — see ToolCallProps.origin. A composite
+  // invoked from an artifact button is a materially different event from the
+  // agent choosing to call it, and until now they were indistinguishable.
+  origin?: "agent" | "artifact";
   // Set by the capture layer, NEVER by callers: true when the measured duration
   // exceeded DURATION_PLAUSIBILITY_CEILING_MS. When set, `duration_ms` is
   // omitted from the emitted event and the measured value moves to
@@ -139,6 +149,34 @@ export interface FrictionReportedProps {
   message: string;
   tool_called?: string;
   severity?: "low" | "medium" | "high";
+}
+
+// Artifact-runtime diagnostics (product#4081). Fired by the
+// `leadbay_artifact_event` ingest tool for the OUTCOME kinds only — the ones
+// where nothing threw, so Sentry would never see them: a picker that loaded
+// zero options, a button blocked by validation before any call, and a resolved
+// call that carried a failure envelope. The EXCEPTION kinds go to Sentry via
+// captureException with source:"artifact" instead, matching how every other
+// failure in this repo splits (errors → Sentry, behaviour → PostHog).
+//
+// Deliberately carries no message/duration/bytes: the matching `mcp tool
+// called` event already records the transport facts, and an artifact-side
+// message can contain API payload text the user never approved for sending
+// (product#3943). Codes only.
+export const EV_ARTIFACT_EVENT = "mcp artifact event";
+
+export type ArtifactEventSurface = "call" | "field" | "action" | "resource" | "list";
+
+export interface ArtifactEventProps {
+  // The outcome kind: options_empty | action_blocked | result_rejected.
+  // Exception kinds never reach this event.
+  kind: string;
+  surface: ArtifactEventSurface | string;
+  // @leadbay/components VERSION that emitted it. Bumps whenever the runtime
+  // changes, so a regression can be pinned to a kit release.
+  kit_version?: string;
+  tool?: string;
+  code?: string;
 }
 
 export interface QuotaHitProps {
@@ -171,7 +209,11 @@ export interface ExceptionCtx {
   retry_after?: number | null;
   http_status?: number;
   triggered_by?: string;
-  source?: "business" | "unexpected";
+  // "artifact" (product#4081) is the third surface: a failure that happened in
+  // the artifact PAGE, not in this process. It has no stack — the error crossed
+  // the bridge as JSON — so it is fingerprinted by shape instead, and the
+  // Sentry `source` tag keeps it out of the "MCP bugs" view.
+  source?: "business" | "unexpected" | "artifact";
 }
 
 // auth_state buckets startups by whether resolveClientFromEnv produced a

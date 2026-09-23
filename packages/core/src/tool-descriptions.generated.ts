@@ -540,6 +540,41 @@ say it is not ready, show what landed, and that asking again fetches the rest.
 `;
 // endregion: leadbay_answer_clarification
 
+// region: leadbay_artifact_event
+export const leadbay_artifact_event: string = `**Do not call this tool.** It is the ingest endpoint for the
+\`@leadbay/components\` runtime that \`leadbay_artifact_kit\` ships, and the only
+legitimate caller is that runtime's own \`lb.report()\` — running inside an
+artifact page, in the browser, with no human in the loop.
+
+An artifact runs in a chat-hosted page whose only channel out is
+\`window.cowork.callMcpTool\`. When one of its controls fails — a picker that
+loaded zero options, a button blocked by validation, a call that timed out or
+came back as a failure envelope — there is no other way for that fact to reach
+the Leadbay team. This tool is that way. The runtime calls it automatically,
+deduped and capped; you do not need to do anything to make it work, and calling
+it yourself would inject a failure that never happened.
+
+If a user tells you an artifact is broken and asks you to report it, that is
+\`leadbay_report_friction\`, not this. That tool carries the user's own words and
+requires their consent. This one is automatic, carries only bounded enum values
+and error codes, and never carries user text.
+
+Parameters (supplied by the runtime): \`kind\` — one of \`bridge_unavailable\`,
+\`call_timeout\`, \`call_failed\`, \`parse_failed\` (exceptions) or \`options_empty\`,
+\`action_blocked\`, \`result_rejected\` (outcomes, where nothing threw and the call
+reported success). \`surface\` — which view-model surfaced it: \`call\`, \`field\`,
+\`action\`, \`resource\`, \`list\`. Optional \`kit_version\`, \`tool\`, \`code\`.
+
+Returns \`{ recorded, kind }\`. \`recorded: true\` means the event was accepted, not
+that it was delivered — a user who has opted out via \`leadbay_set_telemetry\`
+sends nothing, by design. The artifact ignores the result either way.
+
+WHEN NOT TO USE: always — this is not a tool you call.
+The artifact runtime calls it for you. To report a problem a USER raised, use
+\`leadbay_report_friction\` instead.
+`;
+// endregion: leadbay_artifact_event
+
 // region: leadbay_artifact_kit
 export const leadbay_artifact_kit: string = `## WHEN TO USE
 
@@ -6580,6 +6615,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_add_note,
   leadbay_adjust_audience,
   leadbay_answer_clarification,
+  leadbay_artifact_event,
   leadbay_artifact_kit,
   leadbay_bulk_enrich_status,
   leadbay_bulk_qualify_leads,
