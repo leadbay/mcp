@@ -55,7 +55,8 @@ let timeoutMs = 30_000;
  *  manifest's `servers[].server` carries. Override with
  *  `lb.configure({ server })` when the viewer's connector is named something
  *  else. */
-let mcpServerName = "Leadbay";
+const DEFAULT_MCP_SERVER = "Leadbay";
+let mcpServerName: string = DEFAULT_MCP_SERVER;
 
 /**
  * Bridge to the host. TWO transports, because the kit runs on two surfaces:
@@ -347,12 +348,16 @@ export function configure(
   timeoutMs = opts.timeoutMs ?? 30_000;
   // The connector's DISPLAY name, for the claude.ai `mcp` transport. Only
   // needed when the viewer's Leadbay connector is named something else.
-  if (opts.server) mcpServerName = opts.server;
+  // RESET when absent, like every other option: an `if (opts.server)` guard
+  // made this a one-way ratchet, so once a page called configure({server})
+  // a later configure({}) could never restore the default — state leaking
+  // across reconfigures and across tests.
+  mcpServerName = opts.server ?? DEFAULT_MCP_SERVER;
   mcpPromise = null;
   // Caches keyed to the transport must not outlive it: a page that
   // reconfigures (or a test that swaps the stub) would otherwise keep a
   // taxonomy fetched through the previous one.
-  sectorLabelsPromise = null;
+  sectorLabelsCache.clear();
 }
 
 /** Inject the optional `lb-*` stylesheet (see styles.ts). OPT-IN: the library
@@ -1242,14 +1247,23 @@ function qualify(opts: QualifyOpts): Action {
     if (Array.isArray(v)) return v;
     return opts.leadId ? [opts.leadId] : [];
   };
+  // What was actually SUBMITTED, captured when args() ran. checkResult fires
+  // after the round trip, and re-reading a live `leadIds` thunk there counts
+  // the selection as it is NOW — so a rep who ticks another box mid-flight
+  // gets "1 of 4 did not start" about a launch that only ever covered 3.
+  let submitted = 0;
   const act = new Action({
     tool: "leadbay_bulk_qualify_leads",
     confirm: opts.confirm,
-    args: () => ({
-      leadIds: ids(),
-      wait_for_completion: false,
-      ...(opts.ask ? { _triggered_by: opts.ask } : {}),
-    }),
+    args: () => {
+      const leadIds = ids();
+      submitted = leadIds.length;
+      return {
+        leadIds,
+        wait_for_completion: false,
+        ...(opts.ask ? { _triggered_by: opts.ask } : {}),
+      };
+    },
     checkResult: (r) => {
       const res = (r ?? {}) as {
         failed?: Array<{ lead_id?: string; error?: string }>;
@@ -1257,7 +1271,7 @@ function qualify(opts: QualifyOpts): Action {
         launched_count?: number;
       };
       const failed = Array.isArray(res.failed) ? res.failed : [];
-      const total = ids().length;
+      const total = submitted;
       if (failed.length > 0) {
         // `failed[]` entries carry `error`, not `message` — set_lead_status
         // uses the other key, and reading the wrong one prints "undefined".
@@ -1277,8 +1291,18 @@ function qualify(opts: QualifyOpts): Action {
   });
   // The label is a property of the control, not of the write, so it rides here
   // rather than forcing every card to re-derive it.
-  (act as Action & { label: string }).label =
-    (typeof opts.scored === "function" ? opts.scored() : opts.scored) ? "Requalify" : "Qualify";
+  //
+  // A GETTER, not a value: `scored` is documented as accepting a thunk "when
+  // the card repaints after a launch", and evaluating it once at construction
+  // made that promise a lie — the word never changed. Reading it per access
+  // means a card that re-renders after the verdict lands sees "Requalify".
+  Object.defineProperty(act, "label", {
+    enumerable: true,
+    get: () =>
+      (typeof opts.scored === "function" ? opts.scored() : opts.scored)
+        ? "Requalify"
+        : "Qualify",
+  });
   return act;
 }
 
@@ -1337,10 +1361,16 @@ function leadProfile(leadId: string, ask: string): Resource {
  * sector label degrades one line of a card, and should never take the board
  * down with it.
  */
-let sectorLabelsPromise: Promise<Record<string, string>> | null = null;
+// Keyed by `lang`, not a single slot. Unkeyed, a page whose first caller
+// took the default and whose second asked for "fr" silently got the first
+// call's labels back — no error, no cache miss, just the wrong language on
+// every row. Different languages are different answers.
+const sectorLabelsCache = new Map<string, Promise<Record<string, string>>>();
 function sectorLabels(opts: { lang?: string } = {}): Promise<Record<string, string>> {
-  if (!sectorLabelsPromise) {
-    sectorLabelsPromise = (async () => {
+  const key = opts.lang ?? "";
+  let cached = sectorLabelsCache.get(key);
+  if (!cached) {
+    cached = (async () => {
       try {
         const r = await call("leadbay_list_sectors", {
           ...(opts.lang ? { lang: opts.lang } : {}),
@@ -1362,8 +1392,9 @@ function sectorLabels(opts: { lang?: string } = {}): Promise<Record<string, stri
         return {};
       }
     })();
+    sectorLabelsCache.set(key, cached);
   }
-  return sectorLabelsPromise;
+  return cached;
 }
 
 /**
