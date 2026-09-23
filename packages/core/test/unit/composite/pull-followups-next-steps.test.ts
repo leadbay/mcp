@@ -61,7 +61,7 @@ describe("leadbay_pull_followups NEXT STEPS", () => {
     // Renamed from "Call board": the lead desk does the same job with the
     // rest of the per-lead surface in the same row, so it takes the slot
     // rather than sitting beside a strictly worse version of itself.
-    expect(r.next_steps.options[0].label).toBe("Lead desk");
+    expect(r.next_steps.options[0].label).toBe("Contact and outreach");
   });
 
   it("is for WORKING leads, not triaging them", async () => {

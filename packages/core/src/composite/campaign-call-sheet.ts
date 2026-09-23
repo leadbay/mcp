@@ -50,9 +50,9 @@ export function buildCallSheetNextSteps(args: {
   const mostlyEmpty = leadsWithoutContacts * 2 > leadCount;
 
   options.push({
-    label: "Lead desk",
+    label: "Contact and outreach",
     description:
-      "Build an interactive lead desk for this campaign: contacts with their " +
+      "Build an interactive board to contact this campaign: contacts with their " +
       "email and phone, the enrich that buys a missing one, CRM status, " +
       "outreach logging, taste and requalify — one row per lead. " +
       "Call leadbay_get_artifact_runtime and follow its LEAD DESK recipe with " +

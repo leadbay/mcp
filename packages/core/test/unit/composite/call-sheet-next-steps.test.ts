@@ -27,7 +27,7 @@ describe("the call sheet offers the lead desk first", () => {
   const ns = sheet();
 
   it("leads the menu with it", () => {
-    expect(ns!.options[0].label).toBe("Lead desk");
+    expect(ns!.options[0].label).toBe("Contact and outreach");
     expect(ns!.options[0].kind).toBe("build_artifact");
   });
 
@@ -84,7 +84,7 @@ describe("the menu stays valid", () => {
     const full = sheet({ hasMore: true, nextPage: 1, leadsWithoutContacts: 9 });
     expect(full!.options.length).toBeLessThanOrEqual(4);
     // …and the desk is never the one trimmed.
-    expect(full!.options[0].label).toBe("Lead desk");
+    expect(full!.options[0].label).toBe("Contact and outreach");
   });
 
   it("stays at or above the widget's two-option floor", () => {

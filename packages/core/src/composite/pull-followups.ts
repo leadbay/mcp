@@ -188,9 +188,9 @@ export function buildFollowupNextSteps(
   // and would leave the agent choosing between a board and a strictly better
   // version of it.
   options.push({
-    label: "Lead desk",
+    label: "Contact and outreach",
     description:
-      "Build an interactive lead desk to work these leads: contacts with their " +
+      "Build an interactive board to contact these leads: contacts with their " +
       "email and phone, the enrich that buys a missing one, CRM status, " +
       "outreach logging, taste and requalify — one row per lead. " +
       "Call leadbay_get_artifact_runtime and follow its LEAD DESK recipe, building " +

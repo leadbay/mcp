@@ -4271,7 +4271,7 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 | Observation | Suggest | Calls |
 |---|---|---|
 | Always (top of menu) | "Prep outreach for [top row's contact]" | leadbay_prepare_outreach(leadId) |
-| ≥ 1 lead returned | "Build an interactive lead desk" | leadbay_get_artifact_runtime → its LEAD DESK recipe, data in hand |
+| ≥ 1 lead returned | "Build an interactive board to contact these leads" | leadbay_get_artifact_runtime → its LEAD DESK recipe, data in hand |
 | "how well do we cover sector X / city Y" | "Build a coverage board" | leadbay_get_artifact_runtime → its COVERAGE recipe (\`lb.portfolioSectors\` + \`lb.segmentCount\`) |
 | User named a city / sector / timeframe | "Refilter by [their phrase]" | leadbay_pull_followups(set_filter: { criteria: [...] }) |
 | \`pagination.has_more == true\` | "Pull the next page" | leadbay_pull_followups(page = current + 1) |
