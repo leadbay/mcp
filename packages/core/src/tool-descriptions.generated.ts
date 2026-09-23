@@ -1432,7 +1432,7 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 \`queued\` → ✅ "Queued <N> extra leads on lens <id>. Pull in ~30s." Do NOT
 list \`accepted_seeds\`; they're internal.
 \`no_candidates\` → ⛔ surface \`reason.message\`, name the criteria, offer
-\`leadbay_adjust_audience\`. Never re-call this tool on that lens.
+\`leadbay_adjust_audience\`. Never re-call on that lens.
 \`quota_exceeded\` → three options via the host's choice widget
 (smaller count / wait for reset / upgrade).
 \`refresh_in_progress\` → "lens is filling, retry in a minute".
@@ -1446,12 +1446,12 @@ Queue an additive extra-refill on a lens — more leads on the same criteria, wi
 
 **Seeds are optional at the wire level** — omit or empty array → backend falls back to default centroid strategies (same behaviour as a normal fill). The response's \`accepted_seeds\` echoes the subset that passed validation. Prefer the seeded path because it gives the recommender a signal beyond the lens centroid (which it already biases on).
 
-**Quota gate.** Each call is charged against the per-org daily \`LENS_EXTRA_REFILL\` quota at pre-flight time (FREEMIUM=0 / TIER1=150 / TIER2=1000). The **full requested batch** must fit — there is no partial fulfillment. **Pre-check via \`leadbay_account_status\`**: look for the \`LENS_EXTRA_REFILL\` entry in \`quota.org.resources[]\` first, and fall back to \`quota.user.resources[]\` when \`quota.org\` is absent (non-admin callers only get the \`user\` group). Match the resource type case-insensitively (\`LENS_EXTRA_REFILL\` / \`lens_extra_refill\`). Read \`count\` (used today) and \`resets_at\`.
+**Quota gate.** Each call is charged against the per-org daily \`LENS_EXTRA_REFILL\` quota at pre-flight time. The **full requested batch** must fit — there is no partial fulfillment. **Pre-check via \`leadbay_account_status\`**: look for the \`LENS_EXTRA_REFILL\` entry in \`quota.org.resources[]\` first, and fall back to \`quota.user.resources[]\` when \`quota.org\` is absent (non-admin callers only get the \`user\` group). Match the resource type case-insensitively (\`LENS_EXTRA_REFILL\` / \`lens_extra_refill\`). Read \`count\` (used today) and \`resets_at\`.
 
 **Status envelope (translated from raw API errors so the agent routes on \`status\`).**
 
 - \`status: "queued"\` — fill is queued. \`accepted_seeds\` lists IDs that passed validation. NEXT STEP: call \`leadbay_pull_leads\` in ~30s.
-- \`status: "quota_exceeded"\` — daily LENS_EXTRA_REFILL hit. Response carries \`quota: {used_today, resets_at}\` + a \`message\` to surface. **Render three options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`)**: (1) smaller \`extra_count\`, (2) wait until \`resets_at\`, (3) upgrade plan (TIER1=150, TIER2=1000). Do NOT silently retry.
+- \`status: "quota_exceeded"\` — daily LENS_EXTRA_REFILL hit. Response carries \`quota: {used_today, resets_at}\` + a \`message\` to surface. **Render the options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`)**: (1) smaller \`extra_count\`, (2) wait until \`resets_at\`, (3) upgrade plan. Do NOT silently retry.
 - \`status: "refresh_in_progress"\` — a refresh or extra-refill is already running. Tell the user to wait and call \`leadbay_pull_leads\` in ~30s.
 - \`status: "no_valid_seeds"\` — seeds went stale. Silently re-call \`leadbay_list_lens_seed_candidates\` and retry once; only surface to the user if the second attempt also fails.
 - \`status: "no_candidates"\` — **the refill was NOT queued.** The lens's candidate pool is empty, so a refill would report success, consume no quota and deliver nothing. \`reason\` carries the same \`{code, message, retryable, criteria?, narrow_locations?}\` shape \`leadbay_pull_leads\` returns in \`empty_reason\`, with \`retryable: false\`. **Stop. Do not re-call this tool on this lens** — the outcome cannot change until the audience changes. Surface \`reason.message\`, name the criteria in play, and offer \`leadbay_adjust_audience\` (or \`leadbay_pull_followups\` when \`reason.code\` is \`no_new_leads\` and the lens already holds leads).
@@ -7076,10 +7076,6 @@ Skip any resource type not in this map silently — never dump the raw
 days"), computed against now — mirroring the widget's "réinitialisé dans X". The
 raw value is an ISO-8601 timestamp.
 
-**Top-up (optional, subordinate).** When \`quota.topup\` is present, you MAY add one
-small line below the windows: \`Top-up: $<(remaining_cents / 100).toFixed(2)> of $<(total_credit_cents / 100).toFixed(2)> left\`.
-Keep it secondary — the three window gauges are the headline. Omit when null.
-
 **Legend** (once, below): \`\` \`▰\` used · \`▱\` remaining \`\`.
 
 
@@ -7088,6 +7084,364 @@ Keep it secondary — the three window gauges are the headline. Omit when null.
 WHEN TO USE: when the user asks about their account, quota or version, after a 429 to explain to the user which resource window was exhausted and when it resets, and after the user signals a top-up so the agent can resume the interrupted workflow.
 
 WHEN NOT TO USE: as a pre-flight gate before bulk ops — operations themselves return 429; this tool is for context, not gating. And: a recent quota snapshot showing "exhausted" is NOT a reason to refuse a write call when the user has just topped up — re-call this tool first, then proceed.
+`,
+  leadbay_bulk_enrich_status: `Check status + per-lead contacts for a bulk enrichment you previously launched via leadbay_enrich_titles. Pass the \`notification_id\`, and/or the \`lead_ids\` + \`titles\` + \`email\` / \`phone\` the launch returned. Either one alone is a valid call: with \`notification_id\` the tool reads the job's lead set back from the backend, so an id kept from an earlier conversation still answers with per-lead progress. Pass \`lead_ids\` as well whenever you still have them — the job lookup is a scan of your recent notifications, so an archived job may not be found, but the leads always answer. \`titles\` / \`email\` / \`phone\` scope the count to the roles and channel THIS run asked for. When \`include_contacts=true\` (opt-in), includes each contact's email/phone_number/job_title/enrichment.done.
+
+WHEN TO USE: after leadbay_enrich_titles returns a \`notification_id\`, checking until the job is done. "Done" = \`all_done:true\`, OR \`overall_progress.done\` has held steady across several SPACED polls (~15–30s apart) over at least ~90s–2 min of elapsed time (a reservation the provider never answers stays \`done:false\`, so \`all_done\` can stay false forever — don't spin indefinitely; a contact with nothing found does flip, to \`done:true\` with \`credits_used:0\`). Do NOT declare a plateau from the first few back-to-back reads: right after launch, \`overall_progress.done\` can sit flat while the backend is still spinning the job up, so space your polls out and give it real elapsed time before treating a flat count as terminal. Also do NOT declare a plateau while the result carries \`partial_failures\` — a flat \`done\` there means a transient per-lead fetch error (e.g. a 429), NOT an unresolvable contact; keep polling (respecting any \`retry_after\`) or surface it as a temporary status failure, rather than reporting those leads as permanently unresolved. Default \`include_contacts=false\` for the cheap interim polls; set \`include_contacts=true\` on the read you report from to pull each lead's enriched contacts for the completion report.
+
+WHEN NOT TO USE: as a substitute for leadbay_research_lead_by_id — that already includes enriched contacts for a single lead.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. A job started by \`leadbay_enrich_titles\`,
+\`leadbay_bulk_qualify_leads\`, \`leadbay_import_leads\` or
+\`leadbay_import_and_qualify\` runs to completion on Leadbay. The user cancelling
+in the chat, a request timeout, or a closed stream stops YOUR waiting, never the
+job, and \`cancelled: true\` on an earlier result means we stopped watching, not
+that the work stopped.
+
+**This tool only reads.** Calling it again launches nothing and spends no quota,
+so poll it as often as the job needs — a timeout here is a reason to call it
+again, not a reason to stop.
+
+One import state does NOT progress: a chunk cancelled before its mappings were
+committed reads \`running\` / \`committing\` forever. If the counts hold flat across
+several spaced polls, say so and stop, rather than polling on.
+
+What must not be repeated is the LAUNCH — for work that actually launched. Re-run
+a launcher only for a subset that never started, never for the whole batch:
+
+- \`failed[]\` entries with \`error:"not_queued"\`;
+- a \`rows_pending_upload\` count;
+- leads in \`still_running\` after a CANCELLED \`leadbay_import_and_qualify\`. Its
+  fan-out is sequential, so an interruption leaves the remainder unlaunched and
+  folds them in with the ones that did launch. Nothing in the result tells the
+  two apart, and this tool cannot start either. Wait until the REST of the batch
+  has settled: what launched settles in order, so leads still unanswered after
+  that are the ones that never started. Only then call
+  \`leadbay_bulk_qualify_leads({leadIds, lensId})\` for exactly those ids. A lead
+  that is merely slow looks identical to one that never launched over a few
+  polls, and re-launching it uses the user's quota twice — when unsure, tell the user
+  rather than guess.
+
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
+
+## QUOTA, NOT CREDITS
+
+Enrichment consumes QUOTA (the per-window allowance), not a separate credit wall. The result's \`credits_remaining\` field is **advisory internal context only — do NOT display it**: it comes from \`billing.ai_credits\` (a consumed counter, not remaining), so printing \`_(N credits remaining)_\` can show a fresh/quota-backed account a false "0 remaining." Never render a credits balance; the \`leadbay_account_status\` quota gauge is the only place the user's standing is shown. Do NOT report a "credits used" figure for this run either: the per-contact cost can't be scoped to this specific enrichment (a lead's contact list mixes in earlier runs), so any "X used" number would be misleading.
+
+## COMPLETION REPORT — what to tell the user when the job is done
+
+The result always carries \`overall_progress:{done,total,done_ratio}\` and, with \`include_contacts:true\`, \`leads[]\` each with contacts' \`email\` / \`phone_number\` / \`job_title\` / \`enrichment.done\`. \`bulk_progress:{total_count,success_count,failure_count,quota_hit_count}\` is present only when you passed a \`notification_id\` AND the job was found; derive counts from \`overall_progress\` rather than assuming \`bulk_progress\` is there. With \`lead_ids\`, each entry carries \`enrichment_progress:{done,total}\` — \`total\` counts the reservations this run made (scoped to the \`titles\` it enriched, and to reservations whose \`enrichment.email_requested\` / \`phone_requested\` match the \`email\` / \`phone\` you pass, so a lead's pre-existing CFO email cannot inflate a CEO run) and \`done\` counts those that have settled (\`enrichment.done:true\`, found or not). The \`enrichment\` record sits on the \`source:"paid"\` entry and never carries \`email\` / \`phone_number\`: the revealed values land on the same person's \`source:"org"\` entry (match on name and \`job_title\`). Read what landed from the org entries — an org entry with \`email\` = email found, with \`phone_number\` = phone found — and a settled paid entry with \`credits_used:0\` = nothing found for that person. \`include_contacts\` returns each lead's FULL contact list (it fans out through \`leadbay_get_contacts\`), so it can include contacts of other roles that were enriched in earlier runs — filter your report to the \`titles\` this bulk enriched (match each contact's \`job_title\`), don't attribute a pre-existing email of an unrelated role to this run. Report it in the same turn: name which of the just-enriched contacts now have emails / phones, the done/total counts, and — if \`bulk_progress\` is present — any \`quota_hit_count\` (if non-zero, say some contacts were skipped because the quota window was exhausted). If you stopped on a plateau (not \`all_done\`), say so plainly — report the resolved contacts and name the ones that didn't resolve, keyed to the requested channel and the returned fields (no \`email\` → "no email found"; no \`phone_number\` → "no phone number found") — rather than implying the job fully finished. Do NOT print a credits-remaining line.
+`,
+  leadbay_enrich_contacts: `## WHAT IT DOES
+
+Order email and/or phone enrichment for ONE specific contact on a lead — the person the user named, not a job title. Use when the user has already picked who they want. Don't use it to enrich a title across many leads.
+
+## WHEN TO USE
+
+Trigger phrases: "enrich this contact", "get this person's email", "find <name>'s phone number", "reveal the email of <name> at <company>", "enrich the managing director, not the president", "enrichir le DG à la place du président".
+
+Do NOT use for: "enrich the CEOs / a job title across my leads" → \`leadbay_enrich_titles\`; "pin / mark this person as the priority contact" → \`leadbay_pin_contact\`; "draft an email / prepare outreach for this lead" → \`leadbay_prepare_outreach\`.
+
+Use this when: the user names ONE person on ONE company — pass the lead id + that contact's own id. A \`source:"paid"\` candidate id from leadbay_research_lead_by_id is valid input. Pinning does not enrich anyone.
+
+Examples that SHOULD invoke this tool:
+- "Get me Jane Doe's email at Acme."
+- "Enrich the managing director at Cromology, not the president."
+- "Reveal the phone number for this contact."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Enrich the CEOs across my top 10 leads."
+- "Pin Jane Doe as the main contact on Acme."
+- "Draft an outreach email for Acme."
+
+## RENDER (quick)
+
+One line: "Enrichment started for <name> (<email / phone>)". Then re-read the
+lead's contacts every ~30s via leadbay_research_lead_by_id and report when
+the requested channel has landed. Never print a credits figure.
+
+---
+
+Order email and/or phone enrichment for a specific contact. Tries the paid-contact path and falls back to the org-contact path on NOT_FOUND. Each email reveal and each phone reveal consumes QUOTA. Both \`email\` and \`phone\` default to \`true\` — a bare call enriches both channels.
+
+WHEN TO USE: when the user has already picked WHO they want on a company and you hold that person's \`contact_id\` — from \`leadbay_research_lead_by_id\` (\`reachable\` / \`candidates\` lists) or \`leadbay_get_contacts\` where exposed. A \`source: "paid"\` candidate id is the normal input here: it is the person Leadbay suggested but has not resolved yet, and this tool is what resolves them. What to expect on the re-read depends on which id you passed. **Paid candidate:** the candidate row never carries email or phone; when the provider finds a channel, the person appears as a \`source: "org"\` row (new, or merged into an existing org contact for the same person) with a DIFFERENT id, and that row holds the channel and is pinnable. If nothing is found, the candidate row reads \`enrichment_done: true\` with no channel and no org row is created. **Org contact** (\`source: "org"\`, e.g. adding phone to someone who already has an email): the SAME row is updated in place, same id.
+
+WHEN NOT TO USE: for bulk enrichment by job title across many leads — use leadbay_enrich_titles, which handles the selection lifecycle and returns a clean preview/launch flow. Not to mark someone as the priority contact — that is leadbay_pin_contact, and pinning does not enrich anyone.
+
+## A launched job cannot be stopped, and this tool has no retry guard
+
+Leadbay has no cancel. Once this call returns having actually launched, the work
+is queued on Leadbay and runs to completion, and the quota it uses is already
+committed. A \`dry_run\` result reached no backend and used nothing. The user
+cancelling in the chat, a request timeout, or a closed stream stops YOUR waiting,
+never the job.
+
+Unlike the composite launchers, this tool has **no double-launch guard**: calling
+it again always issues a new launch that uses quota again, even seconds later with identical
+arguments. So when a call returns nothing at all, do not simply retry. Read the
+record back first — \`leadbay_research_lead_by_id\` or \`leadbay_get_contacts\` for a
+lead, \`leadbay_account_status\` for background work that has since finished — to
+see whether the launch already landed, and tell the user what you are about to
+run before running it again.
+
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
+
+## QUOTA, NOT CREDITS
+
+Enrichment is gated by QUOTA (the per-window allowance in \`leadbay_account_status\`), not a credit balance. **Never pre-refuse because a credit number looks low or zero** — a freemium/fresh account with quota left can enrich even when its credit counter reads 0. The reveal either fits the remaining quota or the backend returns 429 (\`quota_exceeded\`); only THEN surface the exhausted window. The \`credits_remaining\` field on the result is **advisory internal context only — do NOT display it**. Because it can read \`0\` on an account that still has quota, printing \`_(N credits remaining)_\` would falsely tell the user they're out. Do not render a credits balance at all; if the user asks where they stand, call \`leadbay_account_status\` and show the quota gauge instead.
+
+**Channels: when the user asks to enrich a contact without naming a channel, confirm scope via \`ask_user_input_v0\`** — \`"Enrich email only, or email + phone? (phone uses more quota)"\` → \`["Email only", "Email + phone"]\` — then pass the chosen \`email\`/\`phone\` flags. Skip the question only if they already said which channel(s) they want.
+
+This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+`,
+  leadbay_enrich_titles: `Order contact enrichments by job title across many leads. Contacts are NOT returned by default with a lead (Leadbay keeps enrichment out-of-band); the agent requests them on demand via this tool when it's ready to actually reach out. Two modes: (A) NO \`titles\` param — returns the available titles + Leadbay's \`title_suggestions\` + \`auto_included_titles\` + a count of enrichable contacts, so the agent can ask the user which titles to enrich. (B) \`titles\` given — calls preview, then launches if there's anything enrichable. On 429 returns \`{status:'quota_exceeded'}\` cleanly. Selection lifecycle is wrapped in a try/finally so the user's selection is left clean even on error.
+
+WHEN TO USE: as the agent's go-to enrichment entry point, immediately before proposing outreach.
+
+WHEN NOT TO USE: to enrich a single named contact — that's leadbay_enrich_contacts. Speculatively, before the user has committed to outreaching — enrichment consumes quota. **NOT to add "titles" or "LinkedIn" to a list** — a contact's \`job_title\` and \`linkedin_page\` already ride on the contact record; they are FREE and need no enrichment. If the user asks for "title and LinkedIn only", read those fields directly (e.g. leadbay_get_contacts / leadbay_research_lead_by_id); do NOT launch a job here. This tool is strictly the email / phone reveal, which consumes quota.
+
+## A launched job cannot be stopped
+
+Leadbay has no cancel. Once \`leadbay_enrich_titles\`, \`leadbay_bulk_qualify_leads\`,
+\`leadbay_import_leads\` or \`leadbay_import_and_qualify\` has returned a launched or
+running result, that work is queued on Leadbay and runs to completion, and the
+quota it uses is already committed. A discovery, preview or \`dry_run\` result
+launched nothing and is not covered here.
+
+The user cancelling in the chat, a request timeout, or a closed stream stops YOUR
+waiting, never the job. \`cancelled: true\` means we stopped watching, not that the
+work stopped. What to do next depends on what you are holding:
+
+- **A handle.** Poll the status tool with it, and do not launch the work that
+  handle covers a second time — that uses the quota again on the same rows.
+  \`leadbay_import_status\` takes \`importIds\`, so pass the values of \`import_ids\`
+  under that name. A qualification started by \`leadbay_import_and_qualify\` has no
+  notification of its own: resume it with
+  \`leadbay_qualify_status({lead_ids, lens_id})\`.
+- **A handle AND a subset the result says never started** — \`failed[]\` entries
+  with \`error:"not_queued"\`, or a \`rows_pending_upload\` count. Poll the handle
+  for what was launched and re-run for that subset only, never for the whole
+  batch.
+- **No result at all**, because the call timed out or the stream closed before it
+  returned. Check \`leadbay_account_status\` first: the launch may have landed and
+  finished. Calling the same tool again with the same arguments will usually hand
+  back the job already launched rather than starting a second one, but that guard
+  is in-memory, five minutes, and per process, so it is best-effort — say what you
+  are about to re-run before you use the user's quota on it.
+
+
+## ENRICHMENT CONSUMES QUOTA — the model to reason with
+
+Each email reveal and each phone reveal **consumes quota** (the per-window daily / weekly / monthly allowance shown in \`leadbay_account_status\`). That is the ONLY thing that gates enrichment. Do **NOT** reason about, mention, or block on "credits": there is no separate credit wall the user must clear first — enrichment either fits the user's remaining quota or the backend returns 429 (\`{status:'quota_exceeded'}\`) when a window is actually exhausted. **Never pre-refuse enrichment because a credit number looks low or zero** — a fresh/freemium account with quota still available can enrich even when its credit counter reads 0. If and only if the backend returns \`quota_exceeded\`, tell the user which window is exhausted.
+
+## CONSENT — email is the default channel; phone is opt-in; never launch silently
+
+The \`email\` channel defaults **ON**; \`phone\` defaults **OFF**. A bare "enrich these titles" is **NOT** consent to use quota.
+
+**When the user asks to enrich without naming channels, ASK which channels via \`ask_user_input_v0\`** — email is included by default, so the real question is whether to add phone: \`"Enrich email only, or email + phone? (phone reveals use more quota)"\` → \`["Email only", "Email + phone"]\`. Then launch with the chosen channels (\`email:true\` always; \`phone:true\` if they picked email + phone). Only skip this question if the user already named the channel(s) explicitly ("just emails", "get their phone numbers too", etc.).
+
+**To preview with nothing launched on ANY host, pass \`dry_run:true\`** (or \`confirm:false\`). Either returns \`enrichable_contacts\` + the \`would_launch\` channels and launches nothing — guaranteed, regardless of host. Use this as your first call. Then surface the volume, get the user's explicit go-ahead (and channel choice, above), and re-call with \`confirm:true\` (and explicit \`email:true\`/\`phone:true\` for the channels they chose) to launch.
+
+Do NOT rely on a bare call (no \`confirm\`, no \`dry_run\`, no channels) as a "safe preview": on an elicitation-capable host it asks the user and withholds on decline (\`mode:"needs_confirmation"\`), but on a host WITHOUT elicitation (some direct/embedded callers) a bare call launches the default email reveal directly. If you're unsure whether the host can elicit, use \`dry_run:true\`/\`confirm:false\` for the preview. Passing \`email:true\`/\`phone:true\` (or \`confirm:true\`) always counts as consent and launches.
+
+## SHOW WHAT WILL RUN
+
+**BEFORE (confirm before launching).** The discover / preview_only / dry_run modes return \`enrichable_contacts\` (the volume that would be enriched). Tell the user plainly: **"This will enrich {enrichable_contacts} contacts (email + phone reveals consume quota)."** then confirm the channels + go-ahead via \`ask_user_input_v0\` before launching. Do NOT quote an exact cost or a "credits" figure — the per-reveal rate is backend-side and enrichment is gated by quota, not a credit balance. The \`credits_remaining\` field is advisory context only; never present it as a gate and never refuse based on it.
+
+**AFTER.** Do NOT invent a "credits used" figure for the run (per-run cost can't be scoped reliably — a lead's contacts mix earlier enrichments).
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
+
+For this tool: \`mode:"launched"\` → check \`leadbay_bulk_enrich_status({notification_id, lead_ids, titles, email, phone})\` until it reports done — its description defines done, plateau included — usually 2–5 min. A null \`notification_id\` means check by \`lead_ids\`, and nothing will surface on its own later. Pass \`include_contacts:true\` on the read you report from. It returns each lead's FULL contact list, which can include contacts of OTHER roles enriched in earlier runs, so **filter your report to the \`titles\` you just enriched** (match each contact's \`job_title\`). Report per that tool's COMPLETION REPORT.
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+
+
+This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+`,
+  leadbay_extend_lens: `## WHAT IT DOES
+
+Queue an additive extra-refill on a lens (more leads, same criteria), for users whose daily appetite exceeds the standard batch. The agent picks 3–5 seeds silently via \`leadbay_list_lens_seed_candidates\` first; the user never reviews them. Subject to the daily \`LENS_EXTRA_REFILL\` quota (429 → smaller / wait). Checks extendability first: a lens whose candidate pool is empty is refused (\`no_candidates\`), not queued.
+
+## WHEN TO USE
+
+Trigger phrases: "I want more leads on this lens", "extend the lens", "I need a bigger batch today", "fill more leads, I've burned through these", "more leads like the ones in this lens".
+
+Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "find me companies that <different profile than the lens>" → \`leadbay_find_new_leads\`; "narrow the audience" → \`leadbay_adjust_audience\`; "stop showing me X" → \`leadbay_refine_lead_targeting\`.
+
+Use this when: user has bigger appetite than the daily lens fill delivers — additive refill on same criteria
+
+Examples that SHOULD invoke this tool:
+- "Give me more leads on this lens — I want a bigger batch."
+- "Extend the lens, I've burned through what I had."
+- "Add 30 more leads like the ones in this batch."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "Show me today's leads."
+- "Narrow the audience to fintech only."
+- "Which leads should I follow up with this week?"
+
+## RENDER (quick)
+
+\`queued\` → ✅ "Queued <N> extra leads on lens <id>. Pull in ~30s." Do NOT
+list \`accepted_seeds\`; they're internal.
+\`no_candidates\` → ⛔ surface \`reason.message\`, name the criteria, offer
+\`leadbay_adjust_audience\`. Never re-call on that lens.
+\`quota_exceeded\` → three options via the host's choice widget
+(smaller count / wait for reset).
+\`refresh_in_progress\` → "lens is filling, retry in a minute".
+\`no_valid_seeds\` → silently re-fetch seeds and retry once.
+
+---
+
+Queue an additive extra-refill on a lens — more leads on the same criteria, without changing the audience. For users whose daily appetite exceeds what the standard fill delivers. Wraps \`POST /lenses/{lensId}/extra_refill\`. The fill happens asynchronously; new leads stream in over ~30s, observable through \`leadbay_pull_leads\`.
+
+**Mandatory chain — agent picks seeds silently.** Unless the user has explicitly said "no seeds, just fill it", the agent MUST call \`leadbay_list_lens_seed_candidates\` FIRST, pick 3–5 seed leads using the heuristics in that tool's description, and pass them here as \`seed_lead_ids\`. The seed list is **never shown to the user** — the user asked for more leads, not a candidate review meeting. The canonical \`leadbay_extend_my_lens\` prompt drives this chain.
+
+**Seeds are optional at the wire level** — omit or empty array → backend falls back to default centroid strategies (same behaviour as a normal fill). The response's \`accepted_seeds\` echoes the subset that passed validation. Prefer the seeded path because it gives the recommender a signal beyond the lens centroid (which it already biases on).
+
+**Quota gate.** Each call is charged against the per-org daily \`LENS_EXTRA_REFILL\` quota at pre-flight time. The **full requested batch** must fit — there is no partial fulfillment. **Pre-check via \`leadbay_account_status\`**: look for the \`LENS_EXTRA_REFILL\` entry in \`quota.org.resources[]\` first, and fall back to \`quota.user.resources[]\` when \`quota.org\` is absent (non-admin callers only get the \`user\` group). Match the resource type case-insensitively (\`LENS_EXTRA_REFILL\` / \`lens_extra_refill\`). Read \`count\` (used today) and \`resets_at\`.
+
+**Status envelope (translated from raw API errors so the agent routes on \`status\`).**
+
+- \`status: "queued"\` — fill is queued. \`accepted_seeds\` lists IDs that passed validation. NEXT STEP: call \`leadbay_pull_leads\` in ~30s.
+- \`status: "quota_exceeded"\` — daily LENS_EXTRA_REFILL hit. Response carries \`quota: {used_today, resets_at}\` + a \`message\` to surface. **Render the options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`)**: (1) smaller \`extra_count\`, (2) wait until \`resets_at\`. Do NOT silently retry.
+- \`status: "refresh_in_progress"\` — a refresh or extra-refill is already running. Tell the user to wait and call \`leadbay_pull_leads\` in ~30s.
+- \`status: "no_valid_seeds"\` — seeds went stale. Silently re-call \`leadbay_list_lens_seed_candidates\` and retry once; only surface to the user if the second attempt also fails.
+- \`status: "no_candidates"\` — **the refill was NOT queued.** The lens's candidate pool is empty, so a refill would report success, consume no quota and deliver nothing. \`reason\` carries the same \`{code, message, retryable, criteria?, narrow_locations?}\` shape \`leadbay_pull_leads\` returns in \`empty_reason\`, with \`retryable: false\`. **Stop. Do not re-call this tool on this lens** — the outcome cannot change until the audience changes. Surface \`reason.message\`, name the criteria in play, and offer \`leadbay_adjust_audience\` (or \`leadbay_pull_followups\` when \`reason.code\` is \`no_new_leads\` and the lens already holds leads).
+
+**Extendability is checked before the write.** Every response carries \`available_count\` — how many leads a refill could still draw, read from the lens's own pool. \`0\` means the call was refused (\`no_candidates\`); \`null\` means the pool could not be read and the refill was queued anyway. An empty lens is NOT evidence of a broken refill: it is usually a lens that never had candidates. Reach for \`leadbay_adjust_audience\`, not another \`leadbay_extend_lens\`.
+
+WHEN TO USE: when the user has a bigger appetite than the daily lens fill delivers — they want MORE of the same kind of leads, on demand. Canonical phrasings: "I want more leads on this lens", "extend the lens", "give me a bigger batch today". The \`leadbay_extend_my_lens\` prompt is the user-facing entry point that orchestrates the whole flow.
+
+WHEN NOT TO USE: for daily inbox pulls (\`leadbay_pull_leads\`). Not for audience criteria changes (\`leadbay_adjust_audience\` / \`leadbay_refine_lead_targeting\`). Never call this without seeds unless the user explicitly opted out — the seeded path produces materially better fill.
+
+This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible for confirming intent before invocation; the MCP server does not soft-prompt for confirmation. See \`annotations.destructiveHint\`.
+
+
+## A LAUNCHED JOB — its first result is a receipt, not the answer
+
+A result saying the job is still working (\`still_running\`, \`next_poll\`, a
+\`running\` status) holds only ids to check it with. If the user's request needs
+the output:
+
+1. Say in one line what is running and roughly how long it takes, so the wait
+   does not look broken.
+2. In this same turn, check it with the tool named here until it reports
+   finished: \`wait_seconds: 45\` where accepted, else every 15–30 s. A
+   \`stop_reason\` or an early flat count is not finished.
+3. Answer from the finished result.
+
+Calling the launcher again is not a check: it can charge twice. Stop early
+only if the user said not to wait or the check tool says the job stalled. Then
+say it is not ready, show what landed, and that asking again fetches the rest.
+
+
+---
+
+## NEXT STEPS — after \`leadbay_extend_lens\`
+
+**ALWAYS render NEXT STEPS via your host's next-step widget.** Use whichever is in your tool set — the NAME and SCHEMA differ: **\`ask_user_input_v0\`** (Claude chat / ChatGPT) takes plain-string options with \`type:"single_select"\`; **\`AskUserQuestion\`** (Claude cowork / Claude Code) takes object options \`{label, description}\` plus a required short \`header\` (≤12 chars) and \`multiSelect\`, NO \`type\` field, and never add an "Other" option (the host adds it). Match the schema to the tool you actually have — the wrong schema fails silently and you fall back to prose. Prose bullets are the fallback ONLY when NEITHER widget exists. Any turn that would end with a choice must be the widget — the widget IS the question.
+
+**If the tool result carries a \`next_steps\` object, that is the source of truth — use it directly.** Each option has a short \`.label\` (≤5 words) and a full \`.description\`. Map \`next_steps.options[]\` into your host widget VERBATIM and in order: for \`AskUserQuestion\` (cowork / Claude Code) pass each as \`{label, description}\`; for \`ask_user_input_v0\` (Claude chat / ChatGPT, string options only) pass each option's \`.description\` as the string (it's the full sentence). Do NOT reword, reorder, drop, or prose-ify them — they're built deterministically by the server so the offer (incl. the artifact option at position 0) fires every time. Fall back to the table below only when there is NO \`next_steps\` field.
+
+**One exception — skip the widget** when the user's original message contained a complete sequential instruction chain ("show me X and then do Y") AND all stated steps have been completed. In that case, end with STOP directly — the user stated their full plan and does not need a "what next?" prompt.
+- Skip example: "Show me today's leads and then research the top one for me." → after research completes, emit STOP without the widget.
+- Do NOT skip for: plain requests ("show me today's leads", "run my check-in"), recurring-language requests ("I do this every day"), or requests where only one action was stated.
+
+Pick 2–4 rows from the (Observation, Suggest, Calls) table below most relevant to the response, then call your host's widget with ITS schema (per the schema rules above — wrong schema fails silently):
+- \`ask_user_input_v0\`: \`{questions:[{question,type:"single_select",options:["<Suggest 1>","<Suggest 2>"]}]}\`
+- \`AskUserQuestion\`: \`{questions:[{question,header:"Next step",multiSelect:false,options:[{label:"<≤5 words>",description:"<Suggest 1>"}]}]}\`
+
+User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exclusive options, AskUserQuestion labels ≤5 words (full text in \`description\`), max 3 questions. Table stays internal; never recite it.
+
+---
+
+
+
+Pick the row matching the response \`status\`. Seed-picking is internal; do NOT add chips that imply the user reviewed candidates.
+
+| \`status\`                | Suggest                                                       | Calls                                                  |
+|-------------------------|---------------------------------------------------------------|--------------------------------------------------------|
+| \`queued\`                | "Pull leads in ~30s to see the new ones"                      | \`leadbay_pull_leads()\` (after a short wait)            |
+| \`quota_exceeded\`        | "Try with a smaller \`extra_count\`"                            | \`leadbay_extend_lens(extra_count=<smaller>)\`           |
+| \`quota_exceeded\`        | "Wait until the daily quota resets at \`<resets_at>\`"          | (no call — surface the reset time to the user)         |
+| \`refresh_in_progress\`   | "Lens is already filling — pull leads in a minute"            | \`leadbay_pull_leads()\` (after a short wait)            |
+| \`no_valid_seeds\`        | (silent retry — re-call \`leadbay_list_lens_seed_candidates\` then \`leadbay_extend_lens\`) | internal — only surface if the second attempt also fails |
+| \`no_candidates\`         | "Widen the audience — this lens has nothing left to add"       | \`leadbay_adjust_audience()\` — never \`leadbay_extend_lens\` again |
+| \`no_candidates\` (\`reason.code: no_new_leads\`) | "Work the leads already in the lens"        | \`leadbay_pull_followups()\`                             |
+
+If nothing matches cleanly, default to "pull leads now to see what's queued" — never invent a tool that doesn't exist.
 `,
   leadbay_find_new_leads: `## WHAT IT DOES
 

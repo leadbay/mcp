@@ -67,8 +67,10 @@ Skip any resource type not in this map silently — never dump the raw
 days"), computed against now — mirroring the widget's "réinitialisé dans X". The
 raw value is an ISO-8601 timestamp.
 
+{{commerce}}
 **Top-up (optional, subordinate).** When `quota.topup` is present, you MAY add one
 small line below the windows: `Top-up: $<(remaining_cents / 100).toFixed(2)> of $<(total_credit_cents / 100).toFixed(2)> left`.
 Keep it secondary — the three window gauges are the headline. Omit when null.
+{{/commerce}}
 
 **Legend** (once, below): `` `▰` used · `▱` remaining ``.
