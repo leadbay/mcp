@@ -498,6 +498,9 @@ export {
   RENDER_RECIPES,
   NO_COMMERCE_RENDER_RECIPES,
 } from "./render-blocks.generated.js";
+// Routing test set per tool (positive + negative sentences). Emitted by
+// promptforge instead of being shipped inside the description.
+export { ROUTING_EXAMPLES, type RoutingExamples } from "./routing-examples.generated.js";
 // In-process double-launch guard. All that remains of the old bulk store:
 // job identity, retention and tenancy belong to the backend, so nothing here
 // persists. See jobs/launch-guard.ts.

@@ -24,7 +24,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { mcpFirstDeliveryAllTools, type Tool } from "@leadbay/core";
+import { mcpFirstDeliveryAllTools, ROUTING_EXAMPLES, type Tool } from "@leadbay/core";
 
 // Widened from 600 on 2026-09-22. `## WHAT IT DOES` now precedes
 // `## WHEN TO USE` — OpenAI's plugin guidelines require a tool's description to
@@ -91,9 +91,11 @@ describe("audit: routing block on the MCP-first delivery tools", () => {
     // them sounds like the neighbour it must not route to.
     const violations: string[] = [];
     for (const t of DELIVERY_TOOLS) {
-      const head = t.description.slice(0, EXAMPLE_WINDOW);
-      const posCount = countBullets(head.match(POS_BLOCK_RE));
-      const negCount = countBullets(head.match(NEG_BLOCK_RE));
+      // The examples now live in ROUTING_EXAMPLES rather than in the emitted
+      // head: they are a routing test set, not text the agent needs to read.
+      const examples = ROUTING_EXAMPLES[t.name];
+      const posCount = examples?.positive.length ?? 0;
+      const negCount = examples?.negative.length ?? 0;
       if (posCount < 2) {
         violations.push(`${t.name}: only ${posCount} positive example(s) (need ≥2)`);
       }

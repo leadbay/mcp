@@ -180,6 +180,41 @@ export function emit(result: AssembleResult): EmitOutput {
 }
 
 /**
+ * Emit `routing-examples.generated.ts` for @leadbay/core.
+ *
+ * The `routing.examples` in each template are a test set, not description
+ * text: realistic sentences that should call the tool, and confusable ones
+ * that should call a different one. They used to ship inside the description,
+ * where they cost 17,223 characters in the window hosts keep. Here they stay
+ * checkable — the routing audit counts them, and the eval lane can replay
+ * them — without being paid for in every session.
+ */
+export function emitRoutingExamples(result: AssembleResult): string {
+  const parts: string[] = [HEADER];
+  parts.push(
+    "// Routing test set per tool: sentences that SHOULD call it (positive) and\n" +
+      "// confusable ones that should NOT (negative). Not shipped in descriptions.\n",
+  );
+  parts.push(
+    "export interface RoutingExamples {\n  positive: string[];\n  negative: string[];\n}\n\n",
+  );
+  parts.push("export const ROUTING_EXAMPLES: Record<string, RoutingExamples> = {\n");
+  for (const t of result.toolDescriptions) {
+    const ex = t.frontmatter.routing?.examples;
+    if (!ex) continue;
+    const pos = (ex.positive ?? []).map((s) => JSON.stringify(s.trim()));
+    const neg = (ex.negative ?? []).map((s) => JSON.stringify(s.trim()));
+    if (pos.length === 0 && neg.length === 0) continue;
+    parts.push(`  ${t.frontmatter.name}: {\n`);
+    parts.push(`    positive: [${pos.join(", ")}],\n`);
+    parts.push(`    negative: [${neg.join(", ")}],\n`);
+    parts.push("  },\n");
+  }
+  parts.push("};\n");
+  return parts.join("");
+}
+
+/**
  * Emit `render-blocks.generated.ts` for @leadbay/core.
  *
  * Holds what `{{render}}` cut out of each description: the full presentation

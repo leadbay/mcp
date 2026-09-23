@@ -46,16 +46,21 @@ function emitRoutingBlock(routing: Routing | undefined): string {
   if (routing.prefer_when) {
     lines.push(`Use this when: ${routing.prefer_when.trim()}`);
   }
+  // Only the NEGATIVES are emitted. They are the discriminating half: each one
+  // sounds like the neighbour it must not route to, which is the judgement the
+  // head has to carry. The positives are a test set, not text the agent needs:
+  // promptforge emits both halves to `routing-examples.generated.ts`, where the
+  // routing audit counts them and the eval lane can replay them.
+  //
+  // Measured before this split, 11 runs a side against origin/main on three
+  // sentences: routing held (one misroute on the branch, one harness error on
+  // each side), so the positives were removable. The negatives stay because
+  // that one misroute went to a neighbour tool.
   if (routing.examples) {
-    const positives = routing.examples.positive ?? [];
     const negatives = routing.examples.negative ?? [];
-    if (positives.length > 0) {
-      const items = positives.map((s) => `- "${s.trim()}"`).join("\n");
-      lines.push(`Examples that SHOULD invoke this tool:\n${items}`);
-    }
     if (negatives.length > 0) {
       const items = negatives.map((s) => `- "${s.trim()}"`).join("\n");
-      lines.push(`Examples that should NOT invoke this tool (sound similar, route elsewhere):\n${items}`);
+      lines.push(`Sounds similar, routes elsewhere:\n${items}`);
     }
   }
   return lines.join("\n\n");
@@ -94,7 +99,11 @@ function emitRenderHintBlock(hint: string | undefined): string {
  * body. If neither is set, returns the body unchanged so existing
  * templates that don't use the new frontmatter fields are unaffected.
  */
-export function applyDescriptionHeader(fm: Frontmatter, body: string): string {
+export function applyDescriptionHeader(
+  fm: Frontmatter,
+  body: string,
+  opts: { recipeOnResult?: boolean } = {},
+): string {
   const blocks: string[] = [];
   const whatItDoes = emitWhatItDoesBlock(fm.short_description);
   const routing = emitRoutingBlock(fm.routing);
@@ -102,7 +111,12 @@ export function applyDescriptionHeader(fm: Frontmatter, body: string): string {
   // templates without routing already open with their own prose body.
   if (whatItDoes && routing) blocks.push(whatItDoes);
   if (routing) blocks.push(routing);
-  const renderHint = emitRenderHintBlock(fm.rendering_hint);
+  // A tool with a `{{render}}` region already carries this same `rendering_hint`
+  // on every result (RENDER_RECIPES, attached by the MCP server). Printing it in
+  // the description too pays for the same sentences in every session, inside the
+  // 2,048 characters a host keeps. So the head carries it only for a tool whose
+  // results do not.
+  const renderHint = opts.recipeOnResult ? "" : emitRenderHintBlock(fm.rendering_hint);
   if (renderHint) blocks.push(renderHint);
   if (blocks.length === 0) return body;
   return blocks.join("\n\n") + "\n\n---\n\n" + body.replace(/^\s+/, "");
@@ -294,9 +308,12 @@ export function assemble(opts: AssembleOptions): AssembleResult {
     // so the routing/rendering directives land in the first ~600
     // chars even when a host truncates. Prompts (slash-commands) keep
     // their body verbatim — no auto-emitted blocks.
+    // The header is applied AFTER the render split is known, because a tool
+    // whose recipe rides on the result does not repeat it in the description.
+    const hasRender = expectedKind === "tool-description" && hasRenderRegion(resolved);
     const finalBody =
       expectedKind === "tool-description"
-        ? applyDescriptionHeader(parsed.frontmatter, resolved)
+        ? applyDescriptionHeader(parsed.frontmatter, resolved, { recipeOnResult: hasRender })
         : resolved;
 
     const markerError = validateCommerceMarkers(finalBody);

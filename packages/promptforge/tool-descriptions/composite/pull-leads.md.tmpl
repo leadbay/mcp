@@ -63,7 +63,7 @@ rendering_hint: |
   booster cap at the right end of the filled run, `▱` empty;
   filled=round(score/10), ai=round(avg_boost/3.3)) + `<br>` + linked
   company · location · size. Col 2 = why-fits ≤20 words. Col 3 = linked
-  contact + title. Full algorithm + linking rules below.
+  contact + title. Full algorithm and link rules: `leadbay_render_guide`.
 next_steps: pull-leads
 annotations:
   readOnlyHint: false
@@ -79,18 +79,7 @@ Leadbay works like an inbox: each login delivers a fresh batch, paced by how man
 
 Roughly the top 10 of the batch come pre-qualified (populated qualification_summary + ai_agent_lead_score); leads below the top ~10 carry only the basic firmographic `score` — not worse, just resource-saved by the system. Call leadbay_bulk_qualify_leads to deepen any of them on demand — a healthy daily rhythm is to bulk-qualify the rows without ❖ caps so tomorrow's top-10 list is richer.
 
-Every lead carries `recommended_contact` (with `linkedin_page` when the backend has it), `phone_numbers` (when available), `split_ai_summary.{worth_pursuing, approach_angle, next_step}` (when AI-qualified), and `social_urls` per-platform (linkedin, instagram, tiktok, facebook, twitter, crunchbase). Use them — they're already in the response, you don't need a second call.
-
-{{include:headers/tool-when-to-use}} as the agent's default opening move when the user wants to see leads, or as a daily check-in for what's new today.
-
-{{include:headers/tool-when-not-to-use}} when the user has named a specific lens — pass `lensId` to override the auto-resolution.
-
-The active lens can change between calls (5-min cache + backend `last_requested_lens`). If a multi-step workflow depends on staying on one lens, **capture `response.lens.id` from the first response and pass it as the `lensId` argument on every subsequent Leadbay call** — including re-pulls, bulk qualifies, and research. (Field-name caveat: response nests it as `lens.id`; the parameter is `lensId`.) Re-pulling without `lensId` after a long-running tool may silently switch to a different lens and discard prior work.
-
-**EMPTY BATCH — route on `empty_reason`, never loop.** When `leads` is empty the response carries `empty_reason: {code, message, retryable, criteria?, narrow_locations?}`. `retryable` is the only field that decides what you do next:
-
-- `retryable: true` (always `code: "computing"`) — the lens is still building. Say so, pull ONCE more in ~30s. Do not call it empty.
-- `retryable: false` — no amount of re-pulling, lens-switching or `leadbay_extend_lens` can produce leads on these criteria. **Stop calling tools.** Surface `message` to the user, name the criteria from `criteria` (and `narrow_locations` first when present — a city-scale geo scope is the usual culprit), and offer `leadbay_adjust_audience` to widen. A refill on a zero-candidate lens answers "queued", consumes no quota and delivers nothing, so retrying reads as progress while achieving none (product#3995).
+**EMPTY BATCH — read `empty_reason`, never loop.** `retryable: true` (code `computing`) means the lens is still building: say so and pull ONCE more in ~30s. `retryable: false` means no re-pull, lens switch or `leadbay_extend_lens` can produce leads: stop calling tools, surface `empty_reason.message`, name `empty_reason.criteria` with `narrow_locations` first, and offer `leadbay_adjust_audience` to widen. The reason carries its own next step; follow it rather than retrying.
 
 {{render}}
 {{include:rendering/pull-leads-table}}
