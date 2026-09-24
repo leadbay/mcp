@@ -625,15 +625,6 @@ follow-up.
 
 Create a new campaign — a server-persisted grouping of leads the user (or their manager) plans to work systematically. Wraps \`POST /campaigns\` (see \`.context/campaigns-probe/API.md\` for the discovered shape). Body is snake_case (the backend's \`apiJson\` uses \`JsonNamingStrategy.SnakeCase\`); this composite handles that translation — agents pass camelCase via the input schema but the wire is snake_case.
 
-**Name behavior**:
-- Pass \`name\` explicitly when the user named it ("Limoges Tour – May 24"). Max 255 chars.
-- Omit \`name\` AND pass non-empty \`lead_ids\` → backend calls \`SuggestCampaignName.generate()\` to AI-pick a name from the seed leads. Returned as both \`name\` (final) and \`ai_generated_name\` (the suggestion, in case the user wants to rename later).
-- Omit both → backend assigns a default (e.g. "Untitled campaign").
-
-**Seed leads vs. empty**:
-- Seed with \`lead_ids: [...]\` when the user already picked the leads (chain after \`leadbay_tour_plan\`, \`leadbay_pull_leads\`, \`leadbay_research_lead_by_id\`).
-- Create empty (\`lead_ids: []\`, default) and add later via \`leadbay_add_leads_to_campaign\` — useful when the user named the campaign first and wants to populate it incrementally.
-
 **Campaigns to re-engage the user's prospects** — *"prepare 3 email campaigns to chase my prospects"*, *« préparer 3 campagnes de mails pour relancer mes prospects »*. These prospects are leads the user already works, so read them with \`leadbay_pull_followups({filtered:false, order:"LAST_PROSPECTING_ACTION_AT:DESC"})\` unless the user named a subset. \`leadbay_list_campaigns\` only shows what exists; it does not answer this ask. Split the leads into the number of campaigns asked for by where each one stands: \`epilogue_status\`, then how long ago \`last_prospecting_action_at\` was, with never-contacted leads as their own group. When nearly every lead shares one state, pick another split that serves an email, such as sector or whether a named contact has an email. Call this tool once per campaign with a descriptive \`name\` and that group's \`lead_ids\`. Then, in the same answer, draft the email for each campaign: a subject and a body written for that group's situation, through \`message_compose_v1\` when the host offers it. The ask is the authorization for all of this: do not stop to ask how to split, which leads to include, or whether to draft. State the split in one line and deliver.
 
 **Scope**: campaigns are created in the caller's organization and \`created_by = caller_user_id\`. The list endpoint (\`leadbay_list_campaigns\`) is filtered to the creator — campaigns ARE NOT shared with teammates by default. For #3630 US3 "manager creates a campaign for a rep", today's MCP workaround is to name campaigns descriptively ("North-East – John") and have the rep visit /app to access via the web UI; cross-user assignment would need backend work.
@@ -643,8 +634,6 @@ Create a new campaign — a server-persisted grouping of leads the user (or thei
 WHEN TO USE: the user wants to persist a hand-picked set of leads as a named cohort they'll work through systematically. Typical chains: \`tour_plan → create_campaign(lead_ids=[...selected])\` for trip planning, or \`pull_leads → research_lead_by_id → create_campaign\` for incremental promising-lead curation.
 
 WHEN NOT TO USE: to LIST existing campaigns (use \`leadbay_list_campaigns\`); to ADD leads to an existing one (use \`leadbay_add_leads_to_campaign\`); to LOG an outreach event (use \`leadbay_report_outreach\`); to view per-lead campaign progression (use \`leadbay_campaign_progression\`).
-
-**Response**: full \`CampaignPayload\` — \`{id, name, ai_generated_name?, ai_name_count, archived, created_by, created_at, updated_at, last_accessed_at}\`. Echo \`id\` back to the user as the handle for follow-up tool calls.
 `;
 // endregion: leadbay_create_campaign
 
@@ -1073,43 +1062,10 @@ exclusion key and \`qualify\` scores against the org's FROZEN questions and IBP.
 Violators get delivered and use quota: post-filter them and say so. Durable
 enforcement → \`leadbay_set_qualification_questions\`.
 
-### Crafting the \`example_lead\` seed — the input that decides result quality
-
-The \`example_lead\` is a FICTIONAL typical ideal customer, matched against real
-registry/website descriptions — which state what a company **IS**, never what
-is happening. Write it the same way or the matcher drifts. Every rule below is
-measured:
-
-1. **Describe the BUYER, never the seller.** Ask: "would this company write a
-   check to my user?" A seed describing what the user SELLS surfaces their
-   *competitors and vendors*. If the product helps companies of type X serve
-   customers of type Y, the seed describes X — never Y.
-2. **Put everything in \`description\`; leave \`name\` unset.** An invented brand
-   name pulls matching toward name-lookalikes — a seed named "Meridian
-   Analytics" returned five unrelated "Meridian" companies.
-3. **Registry style, one sentence to ~250 chars.** Industry niche, business
-   model, what they sell or operate, who they serve, observable scale. Write
-   it like the first paragraph of their About-Us page.
-   - STRONG: "Operator of full-service fitness centers offering strength
-     areas, group classes and personal training to members across clubs."
-   - WEAK: "A gym in Texas." WRONG: "Supplier of gym flooring." (seller-side)
-4. **NO event language — in \`description\` or \`query\`.** "recrute", "hiring",
-   "expanding", "just raised" never appear in registry text, so they match
-   nothing. Send the trigger to \`leadbay_set_qualification_questions\` or
-   \`leadbay_refine_lead_targeting\` and say so. "companies hiring a senior SDR" seeds as
-   "B2B software company operating an in-house outbound sales team."
-5. **No meta-markers.** Never "(example)", "(fictional)", "(placeholder)".
-6. **Hard constraints go in \`filters\`, not prose — exact keys:**
-   \`sectors: string[]\`, \`locations: string[]\`, \`employees_min: number\`,
-   \`employees_max: number\`. FLAT numbers — nested \`employees: {min, max}\`
-   exists only in RESULT payloads. \`example_lead.employees\` does not filter.
-   \`locations\` take city/state/region names ("Dallas, TX", "Île-de-France");
-   never a country: this workspace's own is dropped, any other is refused.
-7. **Prefer \`example_lead\` over \`query\`.** Query matches topic *vocabulary*:
-   "gyms that need durable flooring" surfaced flooring VENDORS, 0 delivered.
-8. **One seed per buyer archetype.** An ask spanning two segments ("gyms and
-   warehouses") needs one search each with its own description and
-   \`request_id\` — a blended seed lands between the clusters, matching neither.
+**The \`example_lead\` seed decides result quality.** Its rules are on the
+parameter itself: describe the BUYER and never the seller, put everything in
+\`description\` and leave \`name\` unset, registry style with no event language,
+one seed per buyer archetype, hard constraints in \`filters\`.
 
 **Parameter notes**
 - \`request_id\` (REQUIRED) is the retry contract: SAME value retries the same
@@ -1558,17 +1514,9 @@ Sounds similar, routes elsewhere:
 
 Returns the **guided first-run walkthrough** — a short script the agent drives so a brand-new user learns Leadbay by *doing*, not by reading. Makes no backend call and mutates nothing; the content is static and version-locked.
 
-Every click in the walkthrough runs a real Leadbay call against the user's own account. By the end they have confirmed which account they're on, pulled today's leads, had a first email drafted to the best of them, and revealed the person to send it to. Every gate calls a real Leadbay tool — the tour ends where Leadbay's own value ends.
+Every gate runs a real Leadbay call against the user's own account. By the end they have confirmed which account they're on, pulled today's leads, had a first email drafted to the best of them, and revealed the person to send it to.
 
-For orientation **prose** with no clicking — "explain how Leadbay works", "what's the difference between discovery and follow-up" — this tool is the wrong answer; that's the \`leadbay_prospecting_overview\` prompt.
-
-And when the problem is **setup** rather than usage — the connector isn't installed, they can't sign in, their Leadbay tools aren't appearing, or they want to run this on another host — the walkthrough can't help either: it assumes a working connection, and step 1 is what proves it. Send them to the setup guide the manifest carries as \`docs_url\`: <https://docs.leadbay.app/doc/leadbay-mcp/quickstart>. Its \`docs_note\` names the only two moments the link should appear — that pre-check, and once at the closing. Never between gates.
-
-## THE ONE-FORWARD-OPTION RULE
-
-Every gate carries **exactly one way forward, plus a way out** — two options, never more: the action, and \`I'm done for now\`.
-
-A first-run user doesn't yet know enough to choose between PATHS — a menu of alternatives makes them stall. One forward move makes the next step obvious, and the click is what teaches the tool. The exit keeps the tour from being a trap and satisfies the host widget's 2–4 option requirement: a lone option is rejected or silently degrades to prose. Never add a third option, and never turn the exit into an alternative route. Typing works too: if they type something off-script, abandon the walkthrough and serve what they asked.
+For orientation **prose** with no clicking — "explain how Leadbay works", "what's the difference between discovery and follow-up" — this tool is the wrong answer; that is the \`leadbay_prospecting_overview\` prompt. When the problem is **setup** rather than usage — the connector isn't installed, they can't sign in, their Leadbay tools aren't appearing, or they want to run this on another host — the walkthrough can't help either: it assumes a working connection, and gate 1 is what proves it. Send them to the manifest's \`docs_url\`, and follow its \`docs_note\`, which names the only two moments that link may appear.
 
 ## What it returns
 
@@ -1576,12 +1524,21 @@ A first-run user doesn't yet know enough to choose between PATHS — a menu of a
 {
   version, intro, one_option_rule, docs_url, docs_note,
   calendly_url, exit_offer,
-  steps: [ { n, gate_label, gate_description, calls, args, ... } ],
+  steps: [ { n, gate_label, gate_description, explain, calls, args,
+             next_steps, branches, spend, ... } ],
   keep_going, stop
 }
 \`\`\`
 
-Per step: \`gate_label\` / \`gate_description\` are the widget's forward option, \`calls\` is the tool to invoke on click (or \`null\`), and \`args\` is the literal argument shape. Render each \`gate_label\` verbatim — don't reword them.
+**The manifest carries the instructions, not just the content.** Every rule for driving the tour ships inside it, on every call, because the payload is static. Read them from the result rather than from here:
+
+- \`intro\` — what to say before gate 1, and what not to say.
+- \`one_option_rule\` — exactly one way forward plus \`I'm done for now\`. Never a third option, and never a prose question in place of the widget.
+- \`exit_offer\` — the three parts of an exit close, in order, and which one gets dropped.
+- \`keep_going\` and \`stop\` — the closing cheat-sheet, and the one thing the tour never does.
+- Per step: \`explain\` (say this BEFORE firing), \`next_steps\` (already the widget's shape — map it verbatim), \`args\` and \`forbidden_args\`, \`spend\`, \`quota_note\`, and a \`branches[]\` of \`when\` / \`then\` for every state that step can land in, including an empty first batch and an unreadable quota.
+
+Render each \`gate_label\` verbatim. The \`keep_going\` phrases are lifted from each tool's own trigger list, so they genuinely route — prettifying one teaches the user a phrase that will not work.
 
 | Step | Gate | Calls |
 |---|---|---|
@@ -1589,24 +1546,6 @@ Per step: \`gate_label\` / \`gate_description\` are the widget's forward option,
 | 2 | Pull today's leads | \`leadbay_pull_leads\` (no args) |
 | 3 | Draft the first email | \`leadbay_prepare_outreach\` — \`leadId\` ONLY, never \`enrich\` |
 | 4 | Find who to email | \`leadbay_enrich_titles\` — free preview, then a reveal on consent |
-
-Steps 1, 2 and 3 carry \`branches[]\`, and steps 3 and 4 carry \`spend\` (+ \`quota_note\` on 4). Every step also carries \`explain\` (say this BEFORE firing) and \`next_steps\` (\`{question, options[]}\` — already the widget's shape, map it verbatim).
-
-When the user picks \`I'm done for now\`, don't just go quiet — **\`exit_offer\`** says what to do: one short line offering a 1:1 with Zoe (lens tuning, CRM wiring, automating the daily run) plus **\`calendly_url\`**, then stop. One sentence and the link, never a pitch, never a re-opened gate. Only on the EXIT click: if they left by *typing* a different request, skip it and serve what they asked.
-
-The manifest also carries **\`keep_going\`**: the closing cheat-sheet of *what you want → what you say*. The buttons vanish when the tour ends, so render these rows as a small two-column table at the finish, phrases **verbatim**. Each one is lifted from that tool's own trigger list, so it genuinely routes — inventing or prettifying a phrase teaches the user something that won't work. Add \`docs_url\` beneath it as one plain link, for what the gates didn't cover.
-
-## Three hard rules the manifest encodes
-
-**Step 1 shows the real account, and is silent about two things.** The click is labelled *check my account status*, so deliver it: user + org, then the **full quota windows** the way the web app renders them — Daily / Weekly / Monthly with a \`▰▱\` gauge, % used, $ spent against the cap, resets countdown, and the per-resource breakdown. Never raw "credits". But apply the silence gate first: when \`quota\` is null, \`quota_error\` is set, or the org has \`unlimited_credits\`, say **nothing** about quota — never mention a 401, never suggest logging in again (the token is fine, the same response just read their account), and never announce "unlimited". And **never volunteer the lens**: the response withholds it unless the user asked, so there is nothing to report and no other tool to reach for. Both are pinned regressions (WORKFLOWS #30 / #31).
-
-**Step 3 drafts, and uses no quota.** Call \`leadbay_prepare_outreach\` with \`leadId\` alone — **never \`enrich: true\`**, which launches a contact reveal off the back of a *draft* click. \`recommended_contact\` returns with \`email\`/\`phone\` null; that is expected, and it is the hook for step 4. Render through \`message_compose_v1\` (2–3 strategy-labelled variants), address it to the job TITLE — no name exists yet, and inventing one is fabrication — and never send it or offer to.
-
-**Step 4 runs in two passes — free first, the reveal only on consent.** Scoped to the ONE lead step 3 drafted for. Pass 1 omits \`titles\` and returns \`mode:"discover"\`, the free list of job titles at that company; say plainly that nothing has run yet. Pass 2 names the title the draft is addressed to, says BEFORE they decide that revealing one contact uses a little of their plan's quota (no amount, no price), and only on confirmation calls again with \`titles\` + \`confirm:true\` + \`email:true\` — polled via \`leadbay_bulk_enrich_status\` until done, reporting only what actually resolved. The gate click bought the free look, not the reveal: never launch without an explicit confirm.
-
-## Empty first batch is normal, not an error
-
-A brand-new lens reads empty for the first minute while the backend computes its wishlist. When \`leadbay_pull_leads\` returns no leads but \`computing_wishlist\` / \`computing_scores\` is true, the lens is warming up: render that tool's own two-option warm-up payload verbatim and pause. **Never report "no leads found"** in that state.
 `;
 // endregion: leadbay_getting_started
 
@@ -2967,31 +2906,8 @@ what you don't know. If they decline, or don't answer, don't call the tool.
 After a successful call, show the one-line confirmation. The user should always
 know a report was sent and what it said. Never send silently.
 
-## Result
-
-- \`reported: true\` → it reached the Leadbay team. Show the confirmation from \`message\`.
-- \`reported: false\` → delivery wasn't possible on this client (problem reporting
-  is unavailable — e.g. the user turned telemetry off). Tell the user it was NOT
-  sent. Do not claim success, and do not retry in a loop.
-
-## Categories
-
-Pick the closest fit; \`other\` is fine when nothing matches:
-
-- \`silent_failure\` — a tool returned ok but produced no useful output. Empty lead list when the user expected hits. Research returned a stub.
-- \`repeated_request\` — the user had to ask for the same thing 2+ times because earlier turns didn't deliver.
-- \`wrong_result\` — the tool answered a different question than the user asked. User wanted Wisconsin, got Wyoming.
-- \`dissatisfaction\` — the user is unhappy with a result and wants the team to know.
-- \`missing_capability\` — the user wants something the MCP cannot do today. "Why can't I export to HubSpot?"
-- \`other\` — none of the above.
-
-## Parameters
-
-- \`category\` (required) — one of the buckets above.
-- \`message\` (required) — what the user wants to report, in their own words,
-  confirmed with them before calling. Cap 500 chars.
-- \`tool_called\` (optional) — the tool that disappointed, e.g. \`leadbay_pull_leads\`.
-- \`severity\` (optional) — \`low\` | \`medium\` | \`high\`.
+The \`category\` enum, the \`message\` cap and the \`reported\` flag each carry their
+own rules on the schema — read them there rather than guessing the bucket.
 
 WHEN TO USE: the user asks you to report a Leadbay problem, or accepts your offer to report one you noticed. The user has seen and approved the message being sent.
 
@@ -3772,37 +3688,11 @@ One-line confirmation naming the contact and what changed. No table.
 
 Edit an existing contact in place — change their \`job_title\`, \`linkedin_page\`, \`email\`, \`phone_number\`, or name.
 
-Pass the contact's **own** \`contact_id\` — **not** the parent lead id.
-
-**Only your organization's own directory contacts can be edited.** Leadbay holds contacts in two separate id namespaces and this endpoint resolves one of them:
-
-| \`source\` on the contact | What it is | Editable here |
-|---|---|---|
-| \`"org"\` | A row in your organization's contact directory — added by you or your team, or promoted from an import | **yes** |
-| \`"paid"\` | An enrichment result bought from a data provider | **no** — returns \`NOT_FOUND\` / 404 |
-
-\`leadbay_research_lead_by_id\` returns both, merged into \`contacts.reachable\` / \`contacts.candidates\` and split by whether the person is messagable right now — **not** by which namespace they came from. So read \`source\` on the contact before calling this. If it is \`"paid"\` and the user wants different details on record, add the corrected person with \`leadbay_add_contact\` instead; the enrichment row is a provider's answer and is not ours to edit.
-
-A 404 from this tool almost always means a \`"paid"\` id was passed. Re-read the contact, check \`source\`, and do not retry the same id.
-
-## Omitting a field keeps it. Erasing one takes an explicit \`null\`.
-
-Send only what you are changing. Any field you leave out keeps its current value — you do NOT need to read the contact first and echo everything back.
-
-\`\`\`
-{ contact_id, first_name, last_name, job_title: "CEO" }
-→ title becomes CEO. email, phone and LinkedIn are untouched.
-\`\`\`
-
-**To erase a field, pass it as \`null\`.** Because erasing rewrites the whole record, that call must carry ALL of \`job_title\`, \`linkedin_page\`, \`email\`, \`phone_number\` — current value for the ones to keep, \`null\` for the ones to erase. If any are missing the call is refused with \`CONTACT_CLEAR_NEEDS_FULL_RECORD\` rather than deleting them; read the contact with \`leadbay_research_lead_by_id\` and re-call.
-
-\`\`\`
-{ contact_id, first_name, last_name, email: null,
-  job_title: "CEO", phone_number: "+33…", linkedin_page: "https://…" }
-→ email erased, everything else as given.
-\`\`\`
-
-\`first_name\` + \`last_name\` are required on every call. The backend validates the contact's identity and rejects a body without them (\`invalid contact\`), so pass the current values when you are not changing the name.
+**Omitting a field keeps it.** Send only what you are changing; you do not need to read
+the contact first and echo everything back. To erase a field, pass it as \`null\` — that
+rewrites the whole record, so the call must carry every other optional field too, or it
+is refused with \`CONTACT_CLEAR_NEEDS_FULL_RECORD\` and nothing is deleted. The
+\`contact_id\` parameter says which contacts this endpoint can reach at all.
 
 The result tells you which happened: \`mode\` is \`merge\` or \`replace\`, \`preserved\` lists the fields left untouched, \`cleared\` lists the fields erased. **Check \`cleared\` is what you intended.**
 

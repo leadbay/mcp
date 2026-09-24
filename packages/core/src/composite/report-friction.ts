@@ -124,7 +124,11 @@ export const reportFriction: Tool<ReportFrictionParams> = {
     description:
       "Confirmation the report was sent. `reported: true` + a user-facing `message` the agent should show back to the user. The `_friction` block carries the analytics payload — the MCP server detects it and emits a `mcp friction reported` PostHog event containing only the fields the user approved.",
     properties: {
-      reported: { type: "boolean" },
+      reported: {
+        type: "boolean",
+        description:
+          "true means the report reached the Leadbay team — show the confirmation in `message`. false means delivery was not possible on this client, usually because the user turned telemetry off: tell them it was NOT sent, do not claim success, and do not retry in a loop.",
+      },
       message: { type: "string" },
       _friction: {
         type: "object",

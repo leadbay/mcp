@@ -79,7 +79,10 @@ exclusion key and `qualify` scores against the org's FROZEN questions and IBP.
 Violators get delivered and use quota: post-filter them and say so. Durable
 enforcement → `leadbay_set_qualification_questions`.
 
-{{include:heuristics/example-lead-craft}}
+**The `example_lead` seed decides result quality.** Its rules are on the
+parameter itself: describe the BUYER and never the seller, put everything in
+`description` and leave `name` unset, registry style with no event language,
+one seed per buyer archetype, hard constraints in `filters`.
 
 **Parameter notes**
 - `request_id` (REQUIRED) is the retry contract: SAME value retries the same

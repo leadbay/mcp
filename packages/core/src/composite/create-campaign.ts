@@ -53,7 +53,7 @@ export const createCampaign: Tool<CreateCampaignParams> = {
       lead_ids: {
         type: "array",
         description:
-          "Lead UUIDs to attach at creation. Empty array (default) creates an empty campaign — add leads later via leadbay_add_leads_to_campaign. Non-empty seed enables AI name suggestion.",
+          "Lead UUIDs to attach at creation. Seed them when the user has already picked the leads — chain after leadbay_tour_plan, leadbay_pull_leads or leadbay_research_lead_by_id. An empty array (the default) creates an empty campaign, which suits a user who named it first and wants to populate it incrementally with leadbay_add_leads_to_campaign. A non-empty seed also enables AI name suggestion.",
         items: { type: "string" },
       },
     },
@@ -62,9 +62,17 @@ export const createCampaign: Tool<CreateCampaignParams> = {
   outputSchema: {
     type: "object",
     properties: {
-      id: { type: "string", description: "Campaign UUID." },
+      id: {
+        type: "string",
+        description:
+          "Campaign UUID. Echo it back to the user: it is the handle every follow-up call takes.",
+      },
       name: { type: "string" },
-      ai_generated_name: { type: ["string", "null"] },
+      ai_generated_name: {
+        type: ["string", "null"],
+        description:
+          "The name the backend suggested from the seed leads when `name` was omitted. `name` holds the final value; this keeps the suggestion in case the user wants to rename later.",
+      },
       ai_name_count: { type: "number" },
       archived: { type: "boolean" },
       created_by: { type: "string" },

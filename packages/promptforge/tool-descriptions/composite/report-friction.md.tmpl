@@ -78,31 +78,8 @@ what you don't know. If they decline, or don't answer, don't call the tool.
 After a successful call, show the one-line confirmation. The user should always
 know a report was sent and what it said. Never send silently.
 
-## Result
-
-- `reported: true` → it reached the Leadbay team. Show the confirmation from `message`.
-- `reported: false` → delivery wasn't possible on this client (problem reporting
-  is unavailable — e.g. the user turned telemetry off). Tell the user it was NOT
-  sent. Do not claim success, and do not retry in a loop.
-
-## Categories
-
-Pick the closest fit; `other` is fine when nothing matches:
-
-- `silent_failure` — a tool returned ok but produced no useful output. Empty lead list when the user expected hits. Research returned a stub.
-- `repeated_request` — the user had to ask for the same thing 2+ times because earlier turns didn't deliver.
-- `wrong_result` — the tool answered a different question than the user asked. User wanted Wisconsin, got Wyoming.
-- `dissatisfaction` — the user is unhappy with a result and wants the team to know.
-- `missing_capability` — the user wants something the MCP cannot do today. "Why can't I export to HubSpot?"
-- `other` — none of the above.
-
-## Parameters
-
-- `category` (required) — one of the buckets above.
-- `message` (required) — what the user wants to report, in their own words,
-  confirmed with them before calling. Cap 500 chars.
-- `tool_called` (optional) — the tool that disappointed, e.g. `leadbay_pull_leads`.
-- `severity` (optional) — `low` | `medium` | `high`.
+The `category` enum, the `message` cap and the `reported` flag each carry their
+own rules on the schema — read them there rather than guessing the bucket.
 
 {{include:headers/tool-when-to-use}} the user asks you to report a Leadbay problem, or accepts your offer to report one you noticed. The user has seen and approved the message being sent.
 
