@@ -625,15 +625,6 @@ follow-up.
 
 Create a new campaign — a server-persisted grouping of leads the user (or their manager) plans to work systematically. Wraps \`POST /campaigns\` (see \`.context/campaigns-probe/API.md\` for the discovered shape). Body is snake_case (the backend's \`apiJson\` uses \`JsonNamingStrategy.SnakeCase\`); this composite handles that translation — agents pass camelCase via the input schema but the wire is snake_case.
 
-**Name behavior**:
-- Pass \`name\` explicitly when the user named it ("Limoges Tour – May 24"). Max 255 chars.
-- Omit \`name\` AND pass non-empty \`lead_ids\` → backend calls \`SuggestCampaignName.generate()\` to AI-pick a name from the seed leads. Returned as both \`name\` (final) and \`ai_generated_name\` (the suggestion, in case the user wants to rename later).
-- Omit both → backend assigns a default (e.g. "Untitled campaign").
-
-**Seed leads vs. empty**:
-- Seed with \`lead_ids: [...]\` when the user already picked the leads (chain after \`leadbay_tour_plan\`, \`leadbay_pull_leads\`, \`leadbay_research_lead_by_id\`).
-- Create empty (\`lead_ids: []\`, default) and add later via \`leadbay_add_leads_to_campaign\` — useful when the user named the campaign first and wants to populate it incrementally.
-
 **Campaigns to re-engage the user's prospects** — *"prepare 3 email campaigns to chase my prospects"*, *« préparer 3 campagnes de mails pour relancer mes prospects »*. These prospects are leads the user already works, so read them with \`leadbay_pull_followups({filtered:false, order:"LAST_PROSPECTING_ACTION_AT:DESC"})\` unless the user named a subset. \`leadbay_list_campaigns\` only shows what exists; it does not answer this ask. Split the leads into the number of campaigns asked for by where each one stands: \`epilogue_status\`, then how long ago \`last_prospecting_action_at\` was, with never-contacted leads as their own group. When nearly every lead shares one state, pick another split that serves an email, such as sector or whether a named contact has an email. Call this tool once per campaign with a descriptive \`name\` and that group's \`lead_ids\`. Then, in the same answer, draft the email for each campaign: a subject and a body written for that group's situation, through \`message_compose_v1\` when the host offers it. The ask is the authorization for all of this: do not stop to ask how to split, which leads to include, or whether to draft. State the split in one line and deliver.
 
 **Scope**: campaigns are created in the caller's organization and \`created_by = caller_user_id\`. The list endpoint (\`leadbay_list_campaigns\`) is filtered to the creator — campaigns ARE NOT shared with teammates by default. For #3630 US3 "manager creates a campaign for a rep", today's MCP workaround is to name campaigns descriptively ("North-East – John") and have the rep visit /app to access via the web UI; cross-user assignment would need backend work.
@@ -643,8 +634,6 @@ Create a new campaign — a server-persisted grouping of leads the user (or thei
 WHEN TO USE: the user wants to persist a hand-picked set of leads as a named cohort they'll work through systematically. Typical chains: \`tour_plan → create_campaign(lead_ids=[...selected])\` for trip planning, or \`pull_leads → research_lead_by_id → create_campaign\` for incremental promising-lead curation.
 
 WHEN NOT TO USE: to LIST existing campaigns (use \`leadbay_list_campaigns\`); to ADD leads to an existing one (use \`leadbay_add_leads_to_campaign\`); to LOG an outreach event (use \`leadbay_report_outreach\`); to view per-lead campaign progression (use \`leadbay_campaign_progression\`).
-
-**Response**: full \`CampaignPayload\` — \`{id, name, ai_generated_name?, ai_name_count, archived, created_by, created_at, updated_at, last_accessed_at}\`. Echo \`id\` back to the user as the handle for follow-up tool calls.
 `;
 // endregion: leadbay_create_campaign
 
