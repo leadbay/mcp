@@ -56,17 +56,11 @@ annotations:
 ---
 List the user's lenses (saved audiences) and, when asked, switch which one is active. A lens shapes the kind of leads delivered each day; this tool is how the user sees their audiences and moves between them — it does NOT edit a lens's criteria (that's `leadbay_adjust_audience`).
 
-**Three modes, one tool:**
-
-- **List (no args)** — pure read. Returns `{status:"listed", lenses:[…], active_lens_id}`. The active lens is resolved from the user's last-requested lens, so `is_active` is authoritative.
-
-**Every lens in every response carries** all its metadata (`id`, `name`, `description`, `is_active`, `is_default`, `user_id`, `multi_product_mode`, `use_hq_only`, and the backend's `not_enough_lead_candidates` / `not_enough_new_leads` / `less_leads_than_targeted` flags) plus **`criteria`**: its own filter as the Leadbay web app shows it, one entry per criterion `{type, is_excluded, …}`. `sector_ids` and `location_ids` come as `[{id, name}]`; `size` as `sizes:[{min,max}]` (employees); any other type verbatim. `criteria: []` means the lens sets no criteria of its own; `null` means it could not be read. This is how to answer "what is this lens searching for", and the read before adding or removing a criterion with `leadbay_adjust_audience`.
-
-- **Switch (`switchToLensId`)** — changes the active lens to that id and returns the REFRESHED list. The id MUST be one of the user's lenses; an unknown id returns `{status:"not_found"}` with the current list — surface it and ask the user to pick, do NOT invent an id. Switching to the already-active lens is a harmless no-op.
-- **Edit (`editLensId` + `newName` and/or `newDescription`)** — rename and/or set the description of a lens in one call, returns the REFRESHED list. Provide either or both; pass `newDescription:""` to clear a description. Same not_found handling. Use the `id` from the list for the lens the user named.
-- **Delete (`deleteLensId`)** — DESTRUCTIVE and confirm-gated. Without `confirm:true` it returns `status:"delete_preview"` with `will_delete` and removes NOTHING — show it, get the user's explicit yes, then re-call with `confirm:true`. The DEFAULT lens cannot be deleted (`status:"cannot_delete_default"`). Deleting the active lens leaves no active lens until the next switch/pull resolves one.
-
-**Lens ids are strings** (e.g. `"40005"`) — pass the `id` value straight from the list when switching/renaming/deleting; it is fine to pass it as the string it came as.
+**Three modes, one tool.** No args is a pure read. `switchToLensId` changes which
+lens is active, `editLensId` with `newName` / `newDescription` renames one, and
+`deleteLensId` removes one behind a confirm. Each parameter carries its own
+not-found and confirm rules, and the `lenses` result field describes `criteria`,
+which is what answers "what is this lens searching for".
 
 **When the user is vague** ("switch lens" with no target), list first, then offer the lenses as a quick choice via `ask_user_input_v0` rather than guessing.
 
