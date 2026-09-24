@@ -54,6 +54,11 @@ then on every change — render your own DOM from it.
 | `lb.leadList({lensId?, order?, ask})` | list | a sortable Discover batch → `pull_leads` |
 | `lb.callList({source:'followups'\|'campaign', campaignId?, city?, ask})` | list | a cold-call list (Monitor or a campaign) |
 | `lb.leadSource({kind, campaignId?, lensId?, order?, ask})` | list + `.leadUrl(lead)` | ONE list over any source — Monitor / Discover lens / campaign — with the per-source deep link and the campaign's no-sort rule built in |
+| `lb.leadPos(lead)` | `[lat,lng]` \| `null` | a lead's coordinates, rejecting the `0,0` sentinel and out-of-range values |
+| `lb.distanceKm(a, b)` | number | great-circle km — never use flat geometry, it mis-orders east-west legs |
+| `lb.orderByProximity(stops, start?)` | stops | nearest-neighbour ordering, so the default route is not the API's arbitrary one |
+| `lb.routeUrl(stops)` | `{url, used, truncated}` \| `null` | a Google Maps driving link; `truncated` counts the stops past its 11-stop cap |
+| `lb.routeDistanceKm(stops)` | number | total straight-line km in driving order — label it "as the crow flies" |
 | `lb.enrichment({leadIds, titles, ask, pollEvery?})` | resource (polling) | launch + watch contact enrichment |
 | `lb.teamActivity({weeks, ask})` | resource | manager leaderboard + activity trend → `leadbay_team_activity` |
 
@@ -684,6 +689,47 @@ Declare BOTH tools in the artifact's `mcp_tools`:
 
 Give the button `class="lb-btn lb-btn-ai"` — purple is the product's AI
 affordance, and the app's own QualifyButton is `variant="ai"`.
+
+## Recipe: the ROUTE PLANNER (leads on a map, worked in person)
+
+When the rep is going somewhere — "I'm in Lyon Thursday", "plan my tournée",
+"who can I see on the way" — build THIS rather than the desk. Same writes,
+different question: not *who do I call* but *what order do I drive*.
+
+**Half map, half panel.** The map is the left half and the lead list the
+right; clicking a marker opens that lead in the panel with its actions. A
+map alone cannot be worked and a list alone is not a route.
+
+```js
+const stops = leads.map((l) => ({ lead: l, pos: lb.leadPos(l) })).filter((s) => s.pos);
+const ordered = lb.orderByProximity(stops);          // nearest-neighbour default
+const link = lb.routeUrl(ordered);                   // null when nothing is placeable
+if (link?.truncated) note(`${link.truncated} stops past Google's limit are not in this link`);
+```
+
+Five rules, each one something a hand-built map gets wrong:
+
+- **Ungeocoded leads are NORMAL — list them, never drop them.** An imported
+  book is mostly without coordinates. `lb.leadPos` returns null for those,
+  and they belong in the panel under a "no location" heading. A map that
+  silently shows 12 of 40 leads tells the rep their book is small.
+- **`0,0` is not a lead.** It is the API's missing-position sentinel, in the
+  Gulf of Guinea. `lb.leadPos` rejects it; a raw `location.pos` read does not.
+- **Distance is `lb.distanceKm`, never Pythagoras.** At French latitudes a
+  degree of longitude is ~73km against ~111km for latitude, so flat maths
+  overstates east-west legs by half and mis-orders the day.
+- **Google Maps drops stops past 11.** `lb.routeUrl` reports `truncated`;
+  say the number, because the alternative is a rep driving a route whose last
+  calls silently vanished.
+- **The pin must carry the state.** Colour it by CRM status and ring the ones
+  already worked today, so a glance at the map answers "where have I been".
+  Status changes from the panel repaint the pin immediately — that feedback
+  is the whole reason the two halves sit side by side.
+
+Per-lead actions are the desk's: `lb.setStatus`, `lb.outreach` (epilogue +
+note), `lb.relanceRow` if you want contacts and enrichment in the panel too.
+Straight-line totals from `lb.routeDistanceKm` are "as the crow flies" — label
+them that way rather than implying a drive time.
 
 ## Recipe: the LEAD DESK (the default board for working leads)
 

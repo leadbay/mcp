@@ -1559,6 +1559,118 @@ function leadSource(opts: LeadSourceOpts): ListModel & { leadUrl: (lead: unknown
   });
 }
 
+// ─── Route planning ──────────────────────────────────────────────────────────
+//
+// A rep planning a day on the road needs three things a lead list cannot give:
+// where each lead actually is, how far apart they are, and a way to hand the
+// order to the navigation app they will really drive with. All three were
+// hand-rolled in the first route-planner artifact; they belong here because
+// each one is easy to get subtly wrong and impossible to notice when you do.
+
+/** A lead's coordinates, or null when it has none.
+ *
+ *  `location.pos` is `[lat, lng]`. A lead with no coordinates is NORMAL — an
+ *  imported book is mostly ungeocoded — so this returns null rather than
+ *  throwing, and a map must render the ungeocoded ones somewhere other than
+ *  the map (a list beside it) rather than dropping them silently. */
+export function leadPos(lead: unknown): [number, number] | null {
+  const p = (lead as { location?: { pos?: unknown } } | null)?.location?.pos;
+  if (!Array.isArray(p) || p.length < 2) return null;
+  const [lat, lng] = p;
+  if (typeof lat !== "number" || typeof lng !== "number") return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  // 0,0 is in the Gulf of Guinea: the API's "no position" sentinel, not a lead.
+  if (lat === 0 && lng === 0) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return [lat, lng];
+}
+
+/** Great-circle kilometres between two `[lat, lng]` points.
+ *
+ *  Haversine, not Euclidean: at French latitudes a degree of longitude is
+ *  ~73km against 111km for latitude, so treating the pair as a plane
+ *  overstates east-west distance by half and mis-orders a route. */
+export function distanceKm(from: [number, number], to: [number, number]): number {
+  const rad = Math.PI / 180;
+  const dLat = (to[0] - from[0]) * rad;
+  const dLng = (to[1] - from[1]) * rad;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(from[0] * rad) * Math.cos(to[0] * rad) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Google Maps caps a directions URL at an origin, a destination and 9
+ *  waypoints. A longer route silently loses its tail, so callers must say so
+ *  rather than hand over a link that quietly drops stops. */
+export const GOOGLE_MAPS_STOP_LIMIT = 11;
+
+/** A driving-directions URL for an ordered list of stops.
+ *
+ *  Returns null for an empty list. Beyond GOOGLE_MAPS_STOP_LIMIT the tail is
+ *  DROPPED — `truncated` on the result says how many, so the page can tell the
+ *  rep instead of letting them drive a route missing its last calls. */
+export function routeUrl(
+  stops: Array<{ pos: [number, number] }>,
+): { url: string; used: number; truncated: number } | null {
+  const usable = stops.filter((s) => Array.isArray(s?.pos) && s.pos.length === 2);
+  if (usable.length === 0) return null;
+  const kept = usable.slice(0, GOOGLE_MAPS_STOP_LIMIT);
+  const coords = kept.map((s) => s.pos.join(","));
+  const params = new URLSearchParams({ api: "1", travelmode: "driving" });
+  if (coords.length === 1) {
+    params.set("destination", coords[0]);
+  } else {
+    params.set("origin", coords[0]);
+    params.set("destination", coords[coords.length - 1]);
+    if (coords.length > 2) params.set("waypoints", coords.slice(1, -1).join("|"));
+  }
+  return {
+    url: `https://www.google.com/maps/dir/?${params.toString()}`,
+    used: kept.length,
+    truncated: usable.length - kept.length,
+  };
+}
+
+/** Total driving-order distance across a route, in kilometres. Straight-line
+ *  per leg, so it UNDERSTATES road distance — label it "as the crow flies"
+ *  rather than presenting it as a drive estimate. */
+export function routeDistanceKm(stops: Array<{ pos: [number, number] }>): number {
+  let total = 0;
+  for (let i = 1; i < stops.length; i++) total += distanceKm(stops[i - 1].pos, stops[i].pos);
+  return total;
+}
+
+/** Order stops nearest-neighbour from the first (or from `start`).
+ *
+ *  A greedy heuristic, not an optimal tour: TSP is not worth solving for a
+ *  day's calls, and a rep re-orders by hand anyway. It exists so the default
+ *  order is not the arbitrary one the API returned. */
+export function orderByProximity<T extends { pos: [number, number] }>(
+  stops: T[],
+  start?: [number, number],
+): T[] {
+  const remaining = stops.slice();
+  if (remaining.length <= 2) return remaining;
+  const out: T[] = [];
+  let cursor = start ?? remaining[0].pos;
+  while (remaining.length) {
+    let best = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const d = distanceKm(cursor, remaining[i].pos);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    const [next] = remaining.splice(best, 1);
+    out.push(next);
+    cursor = next.pos;
+  }
+  return out;
+}
+
 /** One contact a rep can actually reach, flattened from a lead profile. */
 export interface RelanceContact {
   contactId?: string;
@@ -2804,6 +2916,14 @@ export const lb = {
   // taxonomy so no artifact has to inline or omit it.
   sectorLabels,
   leadContext,
+  // Route planning: where a lead is, how far apart stops are, and a
+  // navigation URL the rep can actually drive.
+  leadPos,
+  distanceKm,
+  routeUrl,
+  routeDistanceKm,
+  orderByProximity,
+  GOOGLE_MAPS_STOP_LIMIT,
   EPILOGUE_LABELS,
   sortOrder,
   leadHistory,
