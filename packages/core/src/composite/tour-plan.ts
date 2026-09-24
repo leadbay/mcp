@@ -17,8 +17,9 @@
  */
 import type { LeadbayClient } from "../client.js";
 import type { Tool, ToolContext } from "../types.js";
-import { pullFollowups } from "./pull-followups.js";
+import { pullFollowups, isMappable } from "./pull-followups.js";
 import { pullLeads } from "./pull-leads.js";
+import type { NextStepOption, NextSteps } from "./pull-leads.js";
 import { reportLeadInteractions } from "../interactions.js";
 import {
   countryLocationStatus,
@@ -27,6 +28,67 @@ import {
 import { expandAlias } from "./_geo-helpers.js";
 
 import { leadbay_tour_plan as TOUR_PLAN_DESCRIPTION } from "../tool-descriptions.generated.js";
+
+/**
+ * Deterministic NEXT STEPS for a tour plan.
+ *
+ * The tool had none: it answered "who can I see in Lyon" with two lists and
+ * left the rep to work out the rest. Of every lead-returning tool this is the
+ * one whose next move is least ambiguous — someone asking for a tour is going
+ * to drive it — so the route planner leads, unconditionally. No geo gate here
+ * the way there is on a plain followups page: reaching this tool at all IS
+ * the travel intent.
+ */
+export function buildTourNextSteps(
+  monitorLeads: unknown[],
+  discoverLeads: unknown[],
+  city: string | null,
+): NextSteps | null {
+  const all = [...monitorLeads, ...discoverLeads];
+  if (all.length === 0) return null; // nothing to plan a day around
+
+  const mappable = all.filter(isMappable).length;
+  const where = city ? ` in ${city}` : "";
+  const options: NextStepOption[] = [];
+
+  options.push({
+    label: "Route planner",
+    description:
+      `Build an interactive route planner for these ${all.length} leads${where}: ` +
+      "the map on one half, the lead list on the other, clicking a marker opens that " +
+      "lead to set status, log outreach and record a prospecting action, with the pin " +
+      "repainting as you work. " +
+      "Call leadbay_get_artifact_runtime and follow its ROUTE PLANNER recipe, building " +
+      "from the leads in hand (do NOT re-call tour_plan)." +
+      (mappable < all.length
+        ? ` ${all.length - mappable} have no coordinates — list them beside the map rather than dropping them.`
+        : ""),
+    kind: "build_artifact",
+  });
+
+  options.push({
+    label: "Prep outreach",
+    description:
+      "Prepare a call opener and email for the top lead on the tour, so the first " +
+      "visit has something to open with.",
+    kind: "enrich_top_leads",
+  });
+
+  // Only when there is a Monitor half to work: a tour that found nothing but
+  // fresh Discover leads has no follow-up history to review.
+  if (monitorLeads.length > 0) {
+    options.push({
+      label: "Contact and outreach",
+      description:
+        "Build the lead desk instead — one row per lead with contacts, status and " +
+        "outreach logging, for working these by phone rather than in person. " +
+        "Call leadbay_get_artifact_runtime and follow its LEAD DESK recipe.",
+      kind: "build_artifact",
+    });
+  }
+
+  return { question: "What do you want to do next?", options: options.slice(0, 4) };
+}
 
 interface TourPlanParams {
   city?: string;
@@ -443,6 +505,26 @@ export const tourPlan: Tool<TourPlanParams> = {
         description:
           "Human-readable summary of the client-side geo filter applied to Discover leads. Says how many stops are in the named town, how many are within `radius_km` of it, and which towns those are in — repeat that split to the user rather than presenting every stop as being in the city they named.",
       },
+      next_steps: {
+        type: ["object", "null"],
+        description:
+          "Deterministic follow-on offers, the route planner FIRST. Map `options[]` into the host's next-step widget VERBATIM and in order — do not reword, reorder or drop them. null when the tour found no leads. Each option: {label (≤5 words), description (the full sentence), kind}.",
+        properties: {
+          question: { type: "string" },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: { type: "string" },
+                description: { type: "string" },
+                kind: { type: "string" },
+              },
+              required: ["label", "description", "kind"],
+            },
+          },
+        },
+      },
       map_locations: {
         type: "array",
         description:
@@ -685,6 +767,7 @@ export const tourPlan: Tool<TourPlanParams> = {
       discover_leads: discoverLeads,
       discover_filter_note: filterNote,
       ...buildMap(monitorLeads, discoverLeads),
+      next_steps: buildTourNextSteps(monitorLeads, discoverLeads, params.city ?? null),
       _meta: {
         region: client.region,
         latency_ms: client.lastMeta?.latency_ms ?? null,
