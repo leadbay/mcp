@@ -68,7 +68,7 @@ export const updateContact: Tool<UpdateContactParams, UpdateContactResult> = {
       contact_id: {
         type: "string",
         description:
-          "UUID of the contact to edit (the contact's own `id` — NOT the parent lead id).",
+          "UUID of the contact to edit — the contact's own `id`, NOT the parent lead id. It must be one of YOUR organization's directory contacts, which carry `source: \"org\"`: rows your team added or an import promoted. A contact with `source: \"paid\"` is an enrichment result bought from a data provider, lives in a different id namespace, and returns 404 here. leadbay_research_lead_by_id merges both into `contacts.reachable` / `contacts.candidates`, split by whether the person is messagable and NOT by namespace, so read `source` before calling. A 404 from this tool almost always means a paid id: re-read the contact, check `source`, and do not retry the same id. If the user wants different details on a paid row, add the corrected person with leadbay_add_contact instead — a provider's answer is not ours to edit.",
       },
       first_name: {
         type: "string",
@@ -84,19 +84,19 @@ export const updateContact: Tool<UpdateContactParams, UpdateContactResult> = {
       // new value. execute forwards null verbatim; the backend accepts it.
       job_title: {
         type: ["string", "null"],
-        description: "Contact job title. Omit it to leave it unchanged. Pass null to ERASE it — an erase rewrites the whole contact, so that call must also carry every other optional field, or it is refused.",
+        description: "Contact job title. Omit it to leave it unchanged. Pass null to ERASE it — an erase rewrites the whole contact, so that call must also carry every other optional field (current value for the ones to keep), or it is refused with `CONTACT_CLEAR_NEEDS_FULL_RECORD` and nothing is deleted.",
       },
       linkedin_page: {
         type: ["string", "null"],
-        description: "Contact LinkedIn URL. Omit it to leave it unchanged. Pass null to ERASE it — an erase rewrites the whole contact, so that call must also carry every other optional field, or it is refused.",
+        description: "Contact LinkedIn URL. Omit it to leave it unchanged. Pass null to ERASE it — an erase rewrites the whole contact, so that call must also carry every other optional field (current value for the ones to keep), or it is refused with `CONTACT_CLEAR_NEEDS_FULL_RECORD` and nothing is deleted.",
       },
       email: {
         type: ["string", "null"],
-        description: "Contact email. Omit it to leave it unchanged. Pass null to ERASE it — an erase rewrites the whole contact, so that call must also carry every other optional field, or it is refused.",
+        description: "Contact email. Omit it to leave it unchanged. Pass null to ERASE it — an erase rewrites the whole contact, so that call must also carry every other optional field (current value for the ones to keep), or it is refused with `CONTACT_CLEAR_NEEDS_FULL_RECORD` and nothing is deleted.",
       },
       phone_number: {
         type: ["string", "null"],
-        description: "Contact phone (free-form). Omit it to leave it unchanged. Pass null to ERASE it — an erase rewrites the whole contact, so that call must also carry every other optional field, or it is refused.",
+        description: "Contact phone (free-form). Omit it to leave it unchanged. Pass null to ERASE it — an erase rewrites the whole contact, so that call must also carry every other optional field (current value for the ones to keep), or it is refused with `CONTACT_CLEAR_NEEDS_FULL_RECORD` and nothing is deleted.",
       },
     },
     required: ["contact_id", "first_name", "last_name"],

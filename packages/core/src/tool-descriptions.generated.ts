@@ -3699,37 +3699,11 @@ One-line confirmation naming the contact and what changed. No table.
 
 Edit an existing contact in place — change their \`job_title\`, \`linkedin_page\`, \`email\`, \`phone_number\`, or name.
 
-Pass the contact's **own** \`contact_id\` — **not** the parent lead id.
-
-**Only your organization's own directory contacts can be edited.** Leadbay holds contacts in two separate id namespaces and this endpoint resolves one of them:
-
-| \`source\` on the contact | What it is | Editable here |
-|---|---|---|
-| \`"org"\` | A row in your organization's contact directory — added by you or your team, or promoted from an import | **yes** |
-| \`"paid"\` | An enrichment result bought from a data provider | **no** — returns \`NOT_FOUND\` / 404 |
-
-\`leadbay_research_lead_by_id\` returns both, merged into \`contacts.reachable\` / \`contacts.candidates\` and split by whether the person is messagable right now — **not** by which namespace they came from. So read \`source\` on the contact before calling this. If it is \`"paid"\` and the user wants different details on record, add the corrected person with \`leadbay_add_contact\` instead; the enrichment row is a provider's answer and is not ours to edit.
-
-A 404 from this tool almost always means a \`"paid"\` id was passed. Re-read the contact, check \`source\`, and do not retry the same id.
-
-## Omitting a field keeps it. Erasing one takes an explicit \`null\`.
-
-Send only what you are changing. Any field you leave out keeps its current value — you do NOT need to read the contact first and echo everything back.
-
-\`\`\`
-{ contact_id, first_name, last_name, job_title: "CEO" }
-→ title becomes CEO. email, phone and LinkedIn are untouched.
-\`\`\`
-
-**To erase a field, pass it as \`null\`.** Because erasing rewrites the whole record, that call must carry ALL of \`job_title\`, \`linkedin_page\`, \`email\`, \`phone_number\` — current value for the ones to keep, \`null\` for the ones to erase. If any are missing the call is refused with \`CONTACT_CLEAR_NEEDS_FULL_RECORD\` rather than deleting them; read the contact with \`leadbay_research_lead_by_id\` and re-call.
-
-\`\`\`
-{ contact_id, first_name, last_name, email: null,
-  job_title: "CEO", phone_number: "+33…", linkedin_page: "https://…" }
-→ email erased, everything else as given.
-\`\`\`
-
-\`first_name\` + \`last_name\` are required on every call. The backend validates the contact's identity and rejects a body without them (\`invalid contact\`), so pass the current values when you are not changing the name.
+**Omitting a field keeps it.** Send only what you are changing; you do not need to read
+the contact first and echo everything back. To erase a field, pass it as \`null\` — that
+rewrites the whole record, so the call must carry every other optional field too, or it
+is refused with \`CONTACT_CLEAR_NEEDS_FULL_RECORD\` and nothing is deleted. The
+\`contact_id\` parameter says which contacts this endpoint can reach at all.
 
 The result tells you which happened: \`mode\` is \`merge\` or \`replace\`, \`preserved\` lists the fields left untouched, \`cleared\` lists the fields erased. **Check \`cleared\` is what you intended.**
 
