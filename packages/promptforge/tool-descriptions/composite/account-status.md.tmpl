@@ -40,7 +40,7 @@ annotations:
   idempotentHint: true
   openWorldHint: true
 ---
-Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **When you show quota, show it the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in `quota.<group>.spend[]` carries `current_units` / `max_units` in dollar_cents (% used = the ratio, $ = `/100`); the `quota.<group>.resources[]` list gives the per-resource usage breakdown (`count`, plus `max_units` when a per-resource cap exists). **Pre-check the `LENS_EXTRA_REFILL` resource here before calling `leadbay_extend_lens`** — look in **`quota.org.resources[]`** first (admins), and fall back to **`quota.user.resources[]`** when `quota.org` is absent (non-admin callers only get the `user` group), matching the resource type **case-insensitively** (it may arrive as `LENS_EXTRA_REFILL` or `lens_extra_refill`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
+Quota is read from `quota.user` (every caller) or `quota.org` (admins). The `quota` field's own description carries the gauge shape, the units and the `LENS_EXTRA_REFILL` pre-check for `leadbay_extend_lens`.
 
 {{commerce}}
 **Top-ups always beat waiting.** When a quota window is hit, the user has two options: wait for the window reset (`resets_at` in each quota entry) OR top up AI credits. Top-ups clear the throttle IMMEDIATELY; they are not subject to the same window. When you tell the user about a 429 / quota exhaustion, ALWAYS surface both options — "wait until <reset>" or "top up now (I can generate the link)" — and let them pick. Never default-recommend "wait until tomorrow" when a 30-second top-up unblocks the same operation.
@@ -54,9 +54,9 @@ Show the user's account state — admin rights, language, last-active lens, quot
 
 **`mcp_version`** is the version of the Leadbay MCP server answering the call. When the user asks which Leadbay version they are running, answer with it.
 
-**`notifications` block.** The response now includes a top-level `notifications` array listing background work the user (or agent) initiated that has since completed (`bulk_enrich`, `bulk_qualify`, `import`). These are signals to revise prior agent outputs the just-finished work might have made stale — they're NOT a pending-task list for the user. After revising (or confirming nothing is affected), call `leadbay_acknowledge_notification(notification_id)`. Full handling protocol below.
+{{include:gates/launched-job}}
 
-{{include:gates/notifications-inbox}}
+**Finished background work.** When a result carries a `notifications` array (or `_meta.notifications`), the work it names has finished: refresh whatever earlier output it made stale in the same turn, say what changed, then clear it with `leadbay_acknowledge_notification`. The entry's own description says what each kind affects.
 {{render}}
 ---
 
