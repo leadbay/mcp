@@ -649,7 +649,15 @@ qualification questions — leads are scored on firmographics alone"** and rende
 the \`hint\`. When \`is_admin\` is true and there are questions, append the \`hint\`
 as a one-line footnote. Do not invent questions or reword them — render
 verbatim.`,
-  leadbay_getting_started: `## GATE — PREFER BUILT-IN HOST WIDGETS
+  leadbay_getting_started: `### RENDERING
+
+Not a data table. Run the walkthrough ONE gate at a time: say that step's
+\`explain\`, fire your host's choice widget with its \`next_steps\` mapped verbatim,
+wait for the click, make the call in \`calls\` with \`args\`, then pick the matching
+\`branches[]\` entry and do what its \`then\` says. Only then advance. Never dump all
+four steps at once, and never render a gate as a prose question.
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
 
 Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
 
