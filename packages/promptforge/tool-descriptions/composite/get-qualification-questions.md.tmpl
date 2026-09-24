@@ -24,6 +24,12 @@ routing:
       route_to: leadbay_set_qualification_questions
     - phrase: "answer a pending clarification"
       route_to: leadbay_answer_clarification
+    - phrase: "narrow to <sector> / <headcount> / <territory>"
+      route_to: leadbay_adjust_audience
+    - phrase: "a qualitative orientation one yes/no can't express"
+      route_to: leadbay_refine_lead_targeting
+    - phrase: "exclude <named company>"
+      route_to: leadbay_dislike_lead
   prefer_when: "user wants the ORG-level qualification settings, or you are about to change any of them — read this FIRST to see whether their rule is already covered"
   examples:
     positive:
