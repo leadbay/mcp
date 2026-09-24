@@ -324,27 +324,44 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       query: {
         type: "string",
         description:
-          "Natural-language ICP ask. Matches topic VOCABULARY — can surface vendors of a product as easily as buyers of it. Prefer example_lead. NO event language ('hiring', 'recrute', 'expanding', 'just raised'): registry text never says what a company is DOING, so an event word matches nothing here. Send the trigger to leadbay_set_qualification_questions or leadbay_refine_lead_targeting instead, and tell the user that is where it went.",
+          "Natural-language ICP ask. Matches topic VOCABULARY — can surface vendors of a product as easily as buyers of it: \"gyms that need durable flooring\" surfaced flooring VENDORS and delivered nothing. Prefer example_lead. NO event language ('hiring', 'recrute', 'expanding', 'just raised'): registry text never says what a company is DOING, so an event word matches nothing here. Send the trigger to leadbay_set_qualification_questions or leadbay_refine_lead_targeting instead, and tell the user that is where it went.",
       },
       example_lead: {
         type: "object",
         description:
-          "A FICTIONAL typical ideal customer used as a look-alike seed — the highest-leverage input. Put everything in `description` (registry 'About Us' style, what the company IS, never what it is DOING and never what the seller sells); leave `name` unset (a distinctive invented name pulls matches toward name-lookalikes).",
+          "A FICTIONAL typical ideal customer used as a look-alike seed — the highest-leverage input. It is matched against real registry and website text, which states what a company IS and never what is happening to it, so write it the same way. Describe the BUYER, never the seller: ask whether this company would write a cheque to your user. If the product helps companies of type X serve customers of type Y, the seed describes X and never Y — a seller-side seed surfaces the user's own competitors and vendors. ONE seed per buyer archetype: an ask spanning two segments (\"gyms and warehouses\") needs one search each, with its own description and request_id, because a blended seed lands between the clusters and matches neither. Never write a meta-marker — \"(example)\", \"(fictional)\", \"(placeholder)\" — into any field.",
         properties: {
-          name: { type: "string" },
-          description: { type: "string" },
+          name: {
+            type: "string",
+            description:
+              "Leave this UNSET. A distinctive invented name pulls matching toward name-lookalikes: a seed named \"Meridian Analytics\" returned five unrelated \"Meridian\" companies.",
+          },
+          description: {
+            type: "string",
+            description:
+              "Everything goes here. Registry style, one sentence up to about 250 characters, written like the first paragraph of their About-Us page: industry niche, business model, what they sell or operate, who they serve, observable scale. STRONG: \"Operator of full-service fitness centers offering strength areas, group classes and personal training to members across clubs.\" WEAK: \"A gym in Texas.\" WRONG: \"Supplier of gym flooring\" — that is the seller side. NO event language: \"recrute\", \"hiring\", \"expanding\", \"just raised\" never appear in registry text, so they match nothing. Seed the trait behind the event instead — \"companies hiring a senior SDR\" becomes \"B2B software company operating an in-house outbound sales team\" — and send the trigger itself to leadbay_set_qualification_questions or leadbay_refine_lead_targeting.",
+          },
           location: { type: "string" },
-          employees: { type: "number" },
+          employees: {
+            type: "number",
+            description:
+              "Shapes ranking only. It does NOT filter — a headcount constraint belongs in filters.employees_min / filters.employees_max.",
+          },
         },
         additionalProperties: false,
       },
       filters: {
         type: "object",
         description:
-          "HARD constraints (the seed only shapes ranking). Sector/location labels resolve at submit. `sectors` must be a label from Leadbay's own taxonomy (leadbay_list_sectors) — everyday wording like 'Professional Services' is not one; a spelling/plural slip is corrected for you, but a word with no label comes back as mode:'needs_sector_choice' with the labels to pick from. An unresolvable location is a 400 naming it.",
+          "HARD constraints (the seed only shapes ranking). Numbers here are FLAT keys — the nested `employees: {min, max}` shape exists only in RESULT payloads and is not read here. Sector/location labels resolve at submit. `sectors` must be a label from Leadbay's own taxonomy (leadbay_list_sectors) — everyday wording like 'Professional Services' is not one; a spelling/plural slip is corrected for you, but a word with no label comes back as mode:'needs_sector_choice' with the labels to pick from. An unresolvable location is a 400 naming it.",
         properties: {
           sectors: { type: "array", items: { type: "string" } },
-          locations: { type: "array", items: { type: "string" } },
+          locations: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "City, state or region names (\"Dallas, TX\", \"Île-de-France\"). NEVER a country: this workspace's own country is dropped, and any other one is refused.",
+          },
           employees_min: { type: "number" },
           employees_max: { type: "number" },
         },
