@@ -34,6 +34,7 @@ import {
   leadbay_top_accounts_to_activate,
   leadbay_work_campaign,
   leadbay_outreach_session,
+  leadbay_route_session,
   leadbay_sync_outreach,
   PROMPT_META,
 } from "./prompts.generated.js";
@@ -273,6 +274,21 @@ const CATALOG: CatalogEntry[] = [
         ),
       ];
     },
+  },
+  {
+    name: "leadbay_route_session",
+    description: PROMPT_META.leadbay_route_session.short_description,
+    arguments: promptArguments("leadbay_route_session"),
+    render: (args) => [
+      userMessage(
+        substitutePlaceholders(leadbay_route_session, {
+          // " in Lyon" / "" — the opening line reads as a sentence either way,
+          // and Phase 0 asks when the place is missing.
+          city_in: args.city ? ` in ${args.city}` : "",
+          day_paren: args.day ? ` (${args.day})` : "",
+        }),
+      ),
+    ],
   },
   {
     name: "leadbay_qualify_top_n",

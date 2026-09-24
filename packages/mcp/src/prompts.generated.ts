@@ -2651,6 +2651,96 @@ The card itself handles the signal callouts (\`📈 business signals\`, \`💡 p
 `;
 // endregion: leadbay_research_a_domain
 
+// region: leadbay_route_session
+export const leadbay_route_session: string = `
+Plan my route{{arg:city_in}}{{arg:day_paren}}.
+
+GATE — DEFER TO TOOL RENDERING. When you call a Leadbay composite that ships its own RENDERING block (every composite in 0.9.0+ does), render the response using that block's recipe verbatim — score bars, glyph palette, column order, hide-list, link priorities, all of it. Do NOT substitute prose, a numbered list, or a different column structure even when an orchestrating prompt's body suggests alternate framing. Prompt-specific commentary (motivational nudges, summaries, next-action recommendations) belongs ABOVE or BELOW the canonical table, never in place of it.
+
+If the prompt's body and the tool's RENDERING appear to conflict, the tool's RENDERING wins for the structural layout; the prompt's voice wins for the commentary that surrounds it.
+
+
+# PHASE 0 — WHERE
+
+If I named a place, use it. Otherwise ask, once, as a short question — not a widget: a city is free text, not a choice between four.
+
+> Which city or area are you going to?
+
+**Never accept a country.** This workspace serves exactly one, so a country name is not a place to tour — it either fences the trip to a same-named commune or hands back the whole book as an itinerary. If I give you one, ask which city inside it.
+
+# PHASE 1 — WHO IS THERE
+
+Call \`leadbay_tour_plan({city})\`. It returns two halves and they are not the same thing:
+
+- \`monitor_leads\` — leads I already know and have worked. These are the visits.
+- \`discover_leads\` — fresh leads in the same place, filtered client-side. These are the opportunistic stops.
+- \`discover_filter_note\` — says how many are actually IN the city versus within the radius, and which towns those are in. **Repeat that split.** Presenting a lead from the next town over as being in the city is how a rep ends up with a 40-minute detour they did not plan.
+
+**Count what can actually go on a map.** A lead is placeable when \`location.pos\` holds real coordinates; \`[0, 0]\` is the API's missing-position sentinel, not a place. An imported book is mostly ungeocoded, so this number is usually well below the lead count — say both.
+
+\`\`\`
+🗺 <mappable> of <total> leads placed · 📍 <in_city> in <city>, <nearby> within <radius>km · 🔴 <unplaced> with no coordinates
+\`\`\`
+
+**If nothing is placeable**, do not build a map. Say so, list the leads, and offer to work them by phone with \`leadbay_outreach_session\` instead.
+
+# PHASE 2 — BUILD THE ROUTE PLANNER
+
+Call \`leadbay_get_artifact_runtime\` and follow its **ROUTE PLANNER** recipe. Build from the leads in hand — do NOT re-call \`tour_plan\` to populate it.
+
+Half map, half panel. Clicking a marker opens that lead in the panel with set status, log outreach, and record a prospecting action; the pin repaints as I work, so the map answers "where have I been" at a glance.
+
+Use the kit's geo helpers rather than hand-rolling them — each exists because the hand-rolled version is wrong in a way nothing surfaces:
+
+- \`lb.leadPos\` — rejects \`[0,0]\` and out-of-range values
+- \`lb.orderByProximity\` — a sensible default order, not the API's
+- \`lb.distanceKm\` / \`lb.routeDistanceKm\` — great-circle, not flat
+- \`lb.routeUrl\` — a Google Maps link, with \`truncated\` counting anything past its 11-stop cap
+
+**The leads with no coordinates go in the panel**, under their own heading, never dropped.
+
+End the turn with the standby line:
+
+> The route is up. Tell me how each visit went and I'll record it.
+
+# PHASE 3 — RECORD VISITS AS THEY HAPPEN
+
+When I say *"saw the manager at Starmat, wants a quote"* or *"Norba was closed"*, parse:
+
+1. **Which lead** — by company name, cross-referenced with the stops on the map.
+2. **The note** — my exact words.
+3. **The outcome** — ONE of:
+   - \`STILL_CHASING\` — spoke to someone, no decision
+   - \`COULD_NOT_REACH_STILL_TRYING\` — closed, nobody in, gatekeeper
+   - \`INTEREST_VALIDATED_OR_MEETING_PLANED\` — quote asked for, meeting booked
+   - \`NOT_INTERESTED_LOST\` — declined
+
+Call \`leadbay_report_outreach({lead_id, note, epilogue_status, verification: {source: "user_confirmed", ref: <my exact words>}})\`.
+
+**If I also report a commercial outcome** — "we won it", "they're out" — that is a LEAD STATUS, a different axis. Fire \`leadbay_set_lead_status\` too.
+
+Confirm in ONE line: *"✅ <Company> → <outcome>. Next stop?"* Then wait.
+
+# PHASE 4 — END OF THE DAY
+
+When I say I'm done:
+
+> Day complete — N visits: X quotes or meetings · Y still chasing · Z nobody in · W declined. Covered ≈<km>km as the crow flies.
+
+If any stop was never reached, name it and offer to carry it to the next trip.
+
+# Iron laws
+
+- A country is never a place to tour. Ask for the city.
+- \`verification\` on \`leadbay_report_outreach\` is REQUIRED — \`{source: "user_confirmed", ref: <my verbatim words>}\` for a visit.
+- ONE visit → ONE \`leadbay_report_outreach\`. Never batched at the end of the day.
+- Epilogue and lead status are different systems. When I report both, fire both.
+- Never drop a lead for having no coordinates; list it.
+- Straight-line distance is not drive distance. Say "as the crow flies".
+- Never build the map by hand — \`leadbay_get_artifact_runtime\` owns the skin, the geo helpers and the wiring.
+`;
+// endregion: leadbay_route_session
+
 // region: leadbay_setup_team_prospecting
 export const leadbay_setup_team_prospecting: string = `
 Set up manager-led prospecting for me: turn the audience into a lens, validate candidates, then persist as named campaigns.
@@ -3463,6 +3553,7 @@ export const PROMPT_META = {
   leadbay_qualify_top_n: {"name":"leadbay_qualify_top_n","short_description":"Bulk-qualify the top N un-qualified leads in the active lens. Uses\nleadbay_bulk_qualify_leads with a sensible default budget.\n","arguments":[{"name":"count","description":"How many leads to qualify (default 10, max 25). Higher counts may take 5+ minutes.","required":false}],"expected_calls":["leadbay_bulk_qualify_leads","leadbay_qualify_status","leadbay_pull_leads","leadbay_research_lead_by_id"],"failure_modes":["Picks a count larger than the user asked for (or larger than the max 25)","Glosses over still-running leads in the summary instead of naming them","Recommends a lead from the existing qualified pool instead of one from this batch's actual results","Replaces the canonical pull_leads table with prose when rendering the newly-qualified batch (the per-tool RENDERING block is the structural contract; \"standouts\" commentary sits above it)","Expands the qualify-status sentence into a card or table instead of the one-line status-inline render"]},
   leadbay_refine_audience: {"name":"leadbay_refine_audience","short_description":"Refine the kind of leads Leadbay surfaces beyond firmographics, with a\nfree-text instruction. Handles the clarification round-trip if the new\nprompt is ambiguous.\n","arguments":[{"name":"instruction","description":"The refinement (e.g. 'focus on hospitals running their own IT'). Set to plain English.","required":true}],"expected_calls":["leadbay_refine_lead_targeting","leadbay_account_status"],"failure_modes":["Calls leadbay_answer_clarification on the user's behalf instead of surfacing the clarification verbatim","Glosses over the clarification options instead of presenting them as offered","Promises immediate effect when status='applied' actually triggers an async intelligence recompute"]},
   leadbay_research_a_domain: {"name":"leadbay_research_a_domain","short_description":"Resolve a company by name or domain across the user's visible Discover,\nMonitor, and Activate corpus, then return everything Leadbay knows about it.\n","arguments":[{"name":"domain","description":"Company name or domain (for example 'Acme Corporation' or 'acme.com'). The legacy argument key remains `domain` for client compatibility.","required":true}],"expected_calls":["leadbay_research_lead_by_name_fuzzy"],"failure_modes":["Fabricates qualification answers not present in any tool response","Calls leadbay_import_and_qualify before searching the existing visible corpus","Treats the active lens as the entire search universe when the user did not request a lens scope","Imports a missing company without the user's explicit permission","Renders the research result as a freeform narrative instead of the canonical research-company-card layout (the card with header score bar, pill row, signal sections, contacts table is the structural contract; commentary belongs ABOVE or BELOW it)"]},
+  leadbay_route_session: {"name":"leadbay_route_session","short_description":"Plan and work a day on the road: pick the place, see the leads on a map,\ndrive them in a sensible order and record each visit as it happens.\nTrigger on \"plan my route\", \"tournée\", \"road trip\", \"I'm driving to\n<city>\", \"who can I visit in <city>\", \"plan my day in the field\",\n\"prospection terrain\". For working leads by PHONE from a desk, prefer\n`leadbay_outreach_session`.\n","arguments":[{"name":"city","description":"Where the rep is going — a city or region (e.g. 'Lyon', 'Hauts-de-France'). Omit and the session asks. NEVER a country: this workspace serves one country, so a country name is not a place to tour.","required":false},{"name":"day","description":"Optional: which day the trip is, in the rep's own words ('Thursday', 'next week'). Used only to frame the plan; nothing is scheduled.","required":false}],"expected_calls":["leadbay_tour_plan","leadbay_get_artifact_runtime","leadbay_report_outreach","leadbay_set_lead_status"],"failure_modes":["Renders a markdown list of addresses instead of the route planner — a list cannot show which stops are near each other, and that is the whole question a trip asks.","Drops the leads with no coordinates — an imported book is mostly ungeocoded, so a map of 12 out of 40 tells the rep their book is small. They belong in the panel beside the map under their own heading.","Treats `location.pos` of `[0, 0]` as a real place — that is the API's missing-position sentinel, and the pin lands in the Gulf of Guinea. `lb.leadPos` rejects it.","Orders the stops by score, or leaves the API's order — the rep is driving, so the order must be geographic. `lb.orderByProximity` is the default; they re-order by hand from there.","Measures distance with flat geometry — at these latitudes a degree of longitude is ~73km against ~111km for latitude, so an east-west leg reads as half its length and the route comes out wrong.","Hands over a Google Maps link with more than 11 stops and says nothing — everything past the cap is silently dropped, and the rep drives a day that ends early. `lb.routeUrl` returns `truncated`; say the number.","Presents the straight-line total as a drive estimate — it is 'as the crow flies' and always shorter than the road.","Passes a COUNTRY as the city — this workspace serves exactly one country, so that fences the tour to a same-named commune or returns the whole book as an itinerary.","Records a visit WITHOUT verification — `verification.source/ref` is REQUIRED. For a visit, pass `{source: 'user_confirmed', ref: <the rep's exact words>}`.","Records the epilogue but not the CRM status when the rep reports both — 'met the owner, they're in' is an epilogue AND a status. Setting one never sets the other."]},
   leadbay_setup_team_prospecting: {"name":"leadbay_setup_team_prospecting","short_description":"Manager-led prospecting setup: conversationally turn a natural-language\naudience ask into a Leadbay lens, validate the candidate leads, and\npersist them as one or more named campaigns the rep(s) can work\nthrough. Closes #3630 US3 end-to-end (within the current\ncreator-scoped campaign visibility model).\n","arguments":[{"name":"audience","description":"Natural-language audience description (e.g. 'plumbing companies with 10-50 employees in Seine-Maritime'). The lens-creation step (`leadbay_refine_lead_targeting` → `leadbay_create_lens`) interprets it. A country name is not a scope here — this workspace already covers exactly one country, so drop it and keep the rest of the description; a DIFFERENT country cannot be targeted at all.","required":true},{"name":"rep_split","description":"Optional: how to split the validated leads into per-rep campaigns. Free text — e.g. 'split by city' or 'one campaign per rep: John gets Tulsa, Sarah gets OKC'. Splitting by country is not a split — the workspace is single-country.","required":false}],"expected_calls":["leadbay_refine_lead_targeting","leadbay_create_lens","leadbay_promote_lens","leadbay_pull_leads","leadbay_research_lead_by_id","leadbay_create_campaign","leadbay_add_leads_to_campaign"],"failure_modes":["Skips the validation step — creates a campaign of unvetted leads from a freshly-created lens without giving the manager a chance to drop weak fits","Creates ONE campaign for all reps without asking about the split — the user explicitly mentioned per-rep distribution and the prompt should honor it","Pretends the backend supports cross-user assignment — campaigns are owned by the caller (creator-scoped). Surface this honestly instead of fabricating an assignment model","Asks ALL clarifying questions inline before tool calls — instead, run the lens refinement loop with `leadbay_refine_lead_targeting` which handles the clarification protocol natively"]},
   leadbay_sync_outreach: {"name":"leadbay_sync_outreach","short_description":"Keep Leadbay's record of who was contacted current: read my mailbox and\ncalendar, log every email and meeting with a Leadbay lead on the person it\ninvolved, then schedule the same sync to run every day. Trigger on \"log my\nemails in Leadbay\", \"sync my outreach\", \"keep Leadbay up to date with my\nemails\".\n","arguments":[{"name":"lookback_days","description":"Optional: how many days back the first run reads (default 14). The daily task always reads the last 2 days.","required":false}],"expected_calls":["leadbay_research_lead_by_name_fuzzy","leadbay_report_outreach"],"failure_modes":["Sends, replies to, archives or labels an email. The sync only reads the mailbox.","Logs outreach without a message id or event id read from the mailbox or calendar.","Imports a company found in the mailbox that is not already a Leadbay lead.","Logs on the lead when the person is a Leadbay contact, instead of passing that contact's id as contact_id.","Sets a status from a reply whose meaning is not plain, instead of listing it for the user.","Stops after the first run without scheduling the daily task, or without giving the user its text when the host cannot schedule.","Logs a CRM activity or a non-Gmail message with an invented proof."]},
   leadbay_top_accounts_to_activate: {"name":"leadbay_top_accounts_to_activate","short_description":"Build a ranked account-conquest plan from Leadbay data — the accounts worth\nactivating, each with a motif, a pitch and a checklist, ranked by the\nstrongest Leadbay signal. Every figure carries its source, and anything\nLeadbay can't measure is shown as OMITTED rather than estimated. Uses\n`leadbay_bulk_qualify_leads` and `leadbay_enrich_titles`. Trigger on\n\"top 50 accounts to activate\", \"who should we go after\".\n","arguments":[{"name":"count","description":"Optional: how many accounts the plan should hold (default 50).","required":false},{"name":"territory","description":"Optional: restrict the plan to a territory (e.g. 'Indre-et-Loire', 'Région Ouest'). Sets geography on the Discover lens. A country is not a territory — this workspace already covers exactly one country.","required":false}],"expected_calls":["leadbay_account_status","leadbay_get_qualification_questions","leadbay_pull_leads","leadbay_pull_followups","leadbay_bulk_qualify_leads","leadbay_qualify_status","leadbay_scan_portfolio_signals","leadbay_enrich_titles","leadbay_bulk_enrich_status","leadbay_account_history","leadbay_get_artifact_runtime","leadbay_new_lens","leadbay_adjust_audience"],"failure_modes":["Invents, estimates or proxies a revenue-realized figure — the single worst failure. Leadbay does not hold what an account buys, and headcount, sector and lead score are NOT proxies for it.","Sorts by cash-to-capture, synthesizing a revenue figure per account purely to make that ranking work. Leadbay has no revenue data: rank by the Leadbay signal, say so in the header, and never invent the key.","Emits € figures with no provenance class, so modelled numbers read as measured fact in front of a paying client.","Skips the PROVENANCE LEDGER, or drops un-sourceable fields from it instead of rendering them as OMITTED — which hides the gap.","Fabricates registry/TAM counts (France or regional company counts) instead of querying the registry or marking the figure NOT COMPUTED. Leadbay does not proxy SIRENE.","Invents the five qualification questions from this prompt's own recommendations instead of reading the org's actual questions via leadbay_get_qualification_questions.","Leaves the deck's live layer dead — qualification and enrichment handles never wired in, so the pills and contacts stay empty while the deck still looks finished.","Invents lead ids to make the qualification pills appear populated.","Fabricates a plausible-sounding signal ('just won a public tender') for an account whose signals were never read. No signal read means an explicit dash.","Assigns a motif outside the closed set of six, or assigns SAUVETAGE / PLAN DE COMPTE / MONTÉE EN GAMME / RÉVEIL from a lead score or sector when order history was never available.","Labels Monitor membership as 'is a client' — Monitor is a Leadbay view whose membership is decided by lens scoring, not by whether the company ever bought anything.","Launches enrichment on the whole plan without consent. Asking for a plan is not authorization to use quota on 50 accounts.","Re-launches enrichment from inside the built deck when a bulk handle already exists this session — uses the user's quota twice.","Forces the interactive deck without offering it first, or ships the deck INSTEAD of a chat answer that stands on its own.","Refuses the task because revenue data is missing, instead of delivering the conquest plan and naming what a cash-ranked version would need.","Ends the turn without a ranked list of real accounts — gating the whole plan on a NON-blocking question (a MISSING territory, a missing lens, or a 3-vs-5 qualification-question gap) so the user gets a plan-of-a-plan. Only two things may stop delivery: an unresolvable company-identity mismatch, and a territory naming a foreign or supra-national scope. Every other open question rides alongside the delivered plan.","Stops after the discovery contact preview to wait for enrichment consent, delivering no plan that turn — the ranked plan ships first; the reveal is offered alongside it.","Renders a contact channel enrichment never returned (e.g. a phone link when only email was approved and revealed) instead of showing the returned channels and marking the rest omitted."]},
@@ -3489,6 +3580,7 @@ export const PROMPT_CATALOG_BULLETS = {
   leadbay_qualify_top_n: `- \`leadbay_qualify_top_n\` (optional args: count): Bulk-qualify the top N un-qualified leads in the active lens. Uses leadbay_bulk_qualify_leads with a sensible default budget.`,
   leadbay_refine_audience: `- \`leadbay_refine_audience\` (required args: instruction): Refine the kind of leads Leadbay surfaces beyond firmographics, with a free-text instruction. Handles the clarification round-trip if the new prompt is ambiguous.`,
   leadbay_research_a_domain: `- \`leadbay_research_a_domain\` (required args: domain): Resolve a company by name or domain across the user's visible Discover, Monitor, and Activate corpus, then return everything Leadbay knows about it.`,
+  leadbay_route_session: `- \`leadbay_route_session\` (optional args: city, day): Plan and work a day on the road: pick the place, see the leads on a map, drive them in a sensible order and record each visit as it happens. Trigger on "plan my route", "tournée", "road trip", "I'm driving to <city>", "who can I visit in <city>", "plan my day in the field", "prospection terrain". For working leads by PHONE from a desk, prefer \`leadbay_outreach_session\`.`,
   leadbay_setup_team_prospecting: `- \`leadbay_setup_team_prospecting\` (required args: audience; optional args: rep_split): Manager-led prospecting setup: conversationally turn a natural-language audience ask into a Leadbay lens, validate the candidate leads, and persist them as one or more named campaigns the rep(s) can work through. Closes #3630 US3 end-to-end (within the current creator-scoped campaign visibility model).`,
   leadbay_sync_outreach: `- \`leadbay_sync_outreach\` (optional args: lookback_days): Keep Leadbay's record of who was contacted current: read my mailbox and calendar, log every email and meeting with a Leadbay lead on the person it involved, then schedule the same sync to run every day. Trigger on "log my emails in Leadbay", "sync my outreach", "keep Leadbay up to date with my emails".`,
   leadbay_top_accounts_to_activate: `- \`leadbay_top_accounts_to_activate\` (optional args: count, territory): Build a ranked account-conquest plan from Leadbay data — the accounts worth activating, each with a motif, a pitch and a checklist, ranked by the strongest Leadbay signal. Every figure carries its source, and anything Leadbay can't measure is shown as OMITTED rather than estimated. Uses \`leadbay_bulk_qualify_leads\` and \`leadbay_enrich_titles\`. Trigger on "top 50 accounts to activate", "who should we go after".`,
@@ -3511,6 +3603,7 @@ export const PROMPT_CATALOG_INSTRUCTIONS: string = `This server exposes the foll
 - \`leadbay_qualify_top_n\` (optional args: count): Bulk-qualify the top N un-qualified leads in the active lens. Uses leadbay_bulk_qualify_leads with a sensible default budget.
 - \`leadbay_refine_audience\` (required args: instruction): Refine the kind of leads Leadbay surfaces beyond firmographics, with a free-text instruction. Handles the clarification round-trip if the new prompt is ambiguous.
 - \`leadbay_research_a_domain\` (required args: domain): Resolve a company by name or domain across the user's visible Discover, Monitor, and Activate corpus, then return everything Leadbay knows about it.
+- \`leadbay_route_session\` (optional args: city, day): Plan and work a day on the road: pick the place, see the leads on a map, drive them in a sensible order and record each visit as it happens. Trigger on "plan my route", "tournée", "road trip", "I'm driving to <city>", "who can I visit in <city>", "plan my day in the field", "prospection terrain". For working leads by PHONE from a desk, prefer \`leadbay_outreach_session\`.
 - \`leadbay_setup_team_prospecting\` (required args: audience; optional args: rep_split): Manager-led prospecting setup: conversationally turn a natural-language audience ask into a Leadbay lens, validate the candidate leads, and persist them as one or more named campaigns the rep(s) can work through. Closes #3630 US3 end-to-end (within the current creator-scoped campaign visibility model).
 - \`leadbay_sync_outreach\` (optional args: lookback_days): Keep Leadbay's record of who was contacted current: read my mailbox and calendar, log every email and meeting with a Leadbay lead on the person it involved, then schedule the same sync to run every day. Trigger on "log my emails in Leadbay", "sync my outreach", "keep Leadbay up to date with my emails".
 - \`leadbay_top_accounts_to_activate\` (optional args: count, territory): Build a ranked account-conquest plan from Leadbay data — the accounts worth activating, each with a motif, a pitch and a checklist, ranked by the strongest Leadbay signal. Every figure carries its source, and anything Leadbay can't measure is shown as OMITTED rather than estimated. Uses \`leadbay_bulk_qualify_leads\` and \`leadbay_enrich_titles\`. Trigger on "top 50 accounts to activate", "who should we go after".
