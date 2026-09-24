@@ -250,7 +250,7 @@ export const extendLens: Tool<ExtendLensParams> = {
       status: {
         type: "string",
         description:
-          "queued | no_candidates | quota_exceeded | refresh_in_progress | no_valid_seeds",
+          "What happened, and what to do next. `queued` — the fill is running; call leadbay_pull_leads in about 30 s. `refresh_in_progress` — a refresh or another extra-refill is already running; tell the user to wait and pull in about 30 s. `no_valid_seeds` — the seeds went stale; silently re-call leadbay_list_lens_seed_candidates and retry ONCE, and only tell the user if the second attempt also fails. `no_candidates` — the refill was NOT queued and no quota was spent, because the lens's candidate pool is empty; STOP and do not re-call this tool on this lens, since the outcome cannot change until the audience does. Surface `reason.message`, name the criteria in play, and offer leadbay_adjust_audience, or leadbay_pull_followups when `reason.code` is no_new_leads and the lens already holds leads. `quota_exceeded` — the daily LENS_EXTRA_REFILL allowance is spent; `quota` carries {used_today, resets_at} and this tool's description says which choices to offer. Never silently retry it.",
       },
       lens: {
         type: "object",
@@ -270,7 +270,7 @@ export const extendLens: Tool<ExtendLensParams> = {
       available_count: {
         type: ["number", "null"],
         description:
-          "How many leads a refill on this lens could still draw, read from /extra_refill_preview before queueing. 0 means the refill was NOT queued (status=no_candidates). null means the pool could not be read and the refill was queued anyway.",
+          "How many leads a refill on this lens could still draw, read from /extra_refill_preview before queueing. 0 means the refill was NOT queued (status=no_candidates). null means the pool could not be read and the refill was queued anyway. A 0 is not evidence of a broken refill: it is usually a lens that never had candidates, so reach for leadbay_adjust_audience rather than another leadbay_extend_lens.",
       },
       reason: {
         type: "object",

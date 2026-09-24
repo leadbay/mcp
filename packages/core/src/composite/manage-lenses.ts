@@ -166,12 +166,12 @@ export const myLenses: Tool<MyLensesParams> = {
       switchToLensId: {
         type: ["string", "number"],
         description:
-          "When set, switch the active lens to this id (must be one of the user's lenses), then return the refreshed list.",
+          "When set, switch the active lens to this id, then return the REFRESHED list. Lens ids are strings (e.g. \"40005\"); pass the `id` value straight from a previous listing. It must be one of the user's own lenses — an unknown id returns status:\"not_found\" with the current list, so surface that and ask the user to pick rather than inventing an id. Switching to the already-active lens is a harmless no-op.",
       },
       editLensId: {
         type: ["string", "number"],
         description:
-          "When set, edit this lens's metadata — provide newName and/or newDescription. Must be one of the user's lenses.",
+          "When set, rename and/or re-describe this lens in one call, returning the REFRESHED list. Pass the `id` from a previous listing for the lens the user named. An unknown id returns status:\"not_found\" with the current list; surface it and ask rather than inventing an id.",
       },
       newName: {
         type: "string",
@@ -185,7 +185,7 @@ export const myLenses: Tool<MyLensesParams> = {
       deleteLensId: {
         type: ["string", "number"],
         description:
-          "When set, delete this lens. DESTRUCTIVE — returns a delete_preview unless confirm:true. Cannot delete the default lens.",
+          "When set, delete this lens. DESTRUCTIVE — without confirm:true it returns status:\"delete_preview\" with `will_delete` and removes NOTHING, so show that, get the user's explicit yes, then re-call with confirm:true. The DEFAULT lens cannot be deleted (status:\"cannot_delete_default\"). Deleting the ACTIVE lens leaves no active lens until the next switch or pull resolves one — say so.",
       },
       confirm: {
         type: "boolean",
@@ -225,7 +225,7 @@ export const myLenses: Tool<MyLensesParams> = {
       lenses: {
         type: "array",
         description:
-          "The user's lenses, each with every field GET /lenses returns plus is_active, is_default and `criteria` (its sectors, locations and sizes by name; null if unreadable).",
+          "The user's lenses, each with every field GET /lenses returns — id, name, description, is_active, is_default, user_id, multi_product_mode, use_hq_only and the backend's not_enough_lead_candidates / not_enough_new_leads / less_leads_than_targeted flags — plus `criteria`: the lens's own filter as the Leadbay web app shows it, one entry per criterion {type, is_excluded, …}. `sector_ids` and `location_ids` arrive as [{id, name}], `size` as sizes:[{min,max}] in employees, any other type verbatim. `criteria: []` means the lens sets no criteria of its own; null means it could not be read. This is what answers \"what is this lens searching for\", and it is the read to do before adding or removing a criterion with leadbay_adjust_audience. `is_active` is authoritative: it is resolved from the user's last-requested lens.",
         items: { type: "object" },
       },
       message: { type: "string" },

@@ -970,15 +970,12 @@ Queue an additive extra-refill on a lens — more leads on the same criteria, wi
 
 **Quota gate.** Each call is charged against the per-org daily \`LENS_EXTRA_REFILL\` quota at pre-flight time (FREEMIUM=0 / TIER1=150 / TIER2=1000). The **full requested batch** must fit — there is no partial fulfillment. **Pre-check via \`leadbay_account_status\`**: look for the \`LENS_EXTRA_REFILL\` entry in \`quota.org.resources[]\` first, and fall back to \`quota.user.resources[]\` when \`quota.org\` is absent (non-admin callers only get the \`user\` group). Match the resource type case-insensitively (\`LENS_EXTRA_REFILL\` / \`lens_extra_refill\`). Read \`count\` (used today) and \`resets_at\`.
 
-**Status envelope (translated from raw API errors so the agent routes on \`status\`).**
+**Status envelope.** Every branch of \`status\` says what to do next on the
+\`status\` field of the result, except this one, whose recovery names a plan:
 
-- \`status: "queued"\` — fill is queued. \`accepted_seeds\` lists IDs that passed validation. NEXT STEP: call \`leadbay_pull_leads\` in ~30s.
 - \`status: "quota_exceeded"\` — daily LENS_EXTRA_REFILL hit. Response carries \`quota: {used_today, resets_at}\` + a \`message\` to surface. **Render three options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`)**: (1) smaller \`extra_count\`, (2) wait until \`resets_at\`, (3) upgrade plan (TIER1=150, TIER2=1000). Do NOT silently retry.
-- \`status: "refresh_in_progress"\` — a refresh or extra-refill is already running. Tell the user to wait and call \`leadbay_pull_leads\` in ~30s.
-- \`status: "no_valid_seeds"\` — seeds went stale. Silently re-call \`leadbay_list_lens_seed_candidates\` and retry once; only surface to the user if the second attempt also fails.
-- \`status: "no_candidates"\` — **the refill was NOT queued.** The lens's candidate pool is empty, so a refill would report success, consume no quota and deliver nothing. \`reason\` carries the same \`{code, message, retryable, criteria?, narrow_locations?}\` shape \`leadbay_pull_leads\` returns in \`empty_reason\`, with \`retryable: false\`. **Stop. Do not re-call this tool on this lens** — the outcome cannot change until the audience changes. Surface \`reason.message\`, name the criteria in play, and offer \`leadbay_adjust_audience\` (or \`leadbay_pull_followups\` when \`reason.code\` is \`no_new_leads\` and the lens already holds leads).
 
-**Extendability is checked before the write.** Every response carries \`available_count\` — how many leads a refill could still draw, read from the lens's own pool. \`0\` means the call was refused (\`no_candidates\`); \`null\` means the pool could not be read and the refill was queued anyway. An empty lens is NOT evidence of a broken refill: it is usually a lens that never had candidates. Reach for \`leadbay_adjust_audience\`, not another \`leadbay_extend_lens\`.
+**Extendability is checked before the write** — see \`available_count\` on the result.
 
 WHEN TO USE: when the user has a bigger appetite than the daily lens fill delivers — they want MORE of the same kind of leads, on demand. Canonical phrasings: "I want more leads on this lens", "extend the lens", "give me a bigger batch today". The \`leadbay_extend_my_lens\` prompt is the user-facing entry point that orchestrates the whole flow.
 
@@ -2055,17 +2052,11 @@ Sounds similar, routes elsewhere:
 
 List the user's lenses (saved audiences) and, when asked, switch which one is active. A lens shapes the kind of leads delivered each day; this tool is how the user sees their audiences and moves between them — it does NOT edit a lens's criteria (that's \`leadbay_adjust_audience\`).
 
-**Three modes, one tool:**
-
-- **List (no args)** — pure read. Returns \`{status:"listed", lenses:[…], active_lens_id}\`. The active lens is resolved from the user's last-requested lens, so \`is_active\` is authoritative.
-
-**Every lens in every response carries** all its metadata (\`id\`, \`name\`, \`description\`, \`is_active\`, \`is_default\`, \`user_id\`, \`multi_product_mode\`, \`use_hq_only\`, and the backend's \`not_enough_lead_candidates\` / \`not_enough_new_leads\` / \`less_leads_than_targeted\` flags) plus **\`criteria\`**: its own filter as the Leadbay web app shows it, one entry per criterion \`{type, is_excluded, …}\`. \`sector_ids\` and \`location_ids\` come as \`[{id, name}]\`; \`size\` as \`sizes:[{min,max}]\` (employees); any other type verbatim. \`criteria: []\` means the lens sets no criteria of its own; \`null\` means it could not be read. This is how to answer "what is this lens searching for", and the read before adding or removing a criterion with \`leadbay_adjust_audience\`.
-
-- **Switch (\`switchToLensId\`)** — changes the active lens to that id and returns the REFRESHED list. The id MUST be one of the user's lenses; an unknown id returns \`{status:"not_found"}\` with the current list — surface it and ask the user to pick, do NOT invent an id. Switching to the already-active lens is a harmless no-op.
-- **Edit (\`editLensId\` + \`newName\` and/or \`newDescription\`)** — rename and/or set the description of a lens in one call, returns the REFRESHED list. Provide either or both; pass \`newDescription:""\` to clear a description. Same not_found handling. Use the \`id\` from the list for the lens the user named.
-- **Delete (\`deleteLensId\`)** — DESTRUCTIVE and confirm-gated. Without \`confirm:true\` it returns \`status:"delete_preview"\` with \`will_delete\` and removes NOTHING — show it, get the user's explicit yes, then re-call with \`confirm:true\`. The DEFAULT lens cannot be deleted (\`status:"cannot_delete_default"\`). Deleting the active lens leaves no active lens until the next switch/pull resolves one.
-
-**Lens ids are strings** (e.g. \`"40005"\`) — pass the \`id\` value straight from the list when switching/renaming/deleting; it is fine to pass it as the string it came as.
+**Three modes, one tool.** No args is a pure read. \`switchToLensId\` changes which
+lens is active, \`editLensId\` with \`newName\` / \`newDescription\` renames one, and
+\`deleteLensId\` removes one behind a confirm. Each parameter carries its own
+not-found and confirm rules, and the \`lenses\` result field describes \`criteria\`,
+which is what answers "what is this lens searching for".
 
 **When the user is vague** ("switch lens" with no target), list first, then offer the lenses as a quick choice via \`ask_user_input_v0\` rather than guessing.
 
@@ -3590,9 +3581,10 @@ not an itinerary. So for ANY country-level \`city\` — this workspace's own inc
 visiting and re-call with that. \`status: "country_level_location"\` carries the
 same instruction in its \`hint\`.
 
-**Counts**: \`followups_count\` (default 6 — generous so the agent can split into "customers + qualified" client-side) and \`discover_count\` (default 6 after client-side geo filter). The composite over-pulls Discover (30 raw) because the wishlist endpoint has no server-side geo filter — it then keeps the leads whose own \`location.city\` names the requested city, and falls back to \`location.state\` only when no city matched (which is what a regional ask like "Texas" or "Île-de-France" looks like). \`location.country\` is never consulted. \`discover_filter_note\` reports the ratio and which field carried it, so the agent can be honest about coverage. **When it says no Discover lead is in the city, say that** — return the Monitor half and offer \`leadbay_find_new_leads\` for that city. Never fill the gap with leads from elsewhere.
-
-**The next town over**: a tour is a day of driving, so after the town's own leads are found the composite adds the Discover leads whose own coordinates put them within **\`radius_km\` (default 20)** of it — West Sacramento on a tour of Sacramento, Courbevoie and Ivry-sur-Seine on a tour of Paris. The town's own leads always come first. **Pass the user's own number when they give one** ("dans un rayon de 10km autour de Colmar" → \`radius_km: 10\`; "within 15 miles" → \`radius_km: 24\`), and \`radius_km: 0\` to keep the tour strictly inside the named town. The radius applies to Discover leads only; the Monitor half is scoped server-side and is untouched. When \`discover_filter_note\` splits the stops into "N in '<city>' and M in <other towns>", **repeat that split** — say which town each nearby stop is actually in rather than presenting every stop as being in the city the user named.
+**Counts and geography are on the parameters.** \`discover_count\` says how the
+client-side city filter works and which field carries it, \`radius_km\` says how far
+outside the named town a stop may be and when to pass the user's own number, and
+\`discover_filter_note\` on the result says what to tell the user about coverage.
 
 **What \`tour_plan\` does NOT do**: it doesn't persist the tour as a campaign artifact. To do that — create a "Limoges Tour – May 24" campaign and attach the selected accounts — chain into \`leadbay_create_campaign({lead_ids: [...selected_ids], name: 'Limoges Tour – <date>'})\` after the user picks. See the \`leadbay_plan_tour_in_city\` prompt for the full end-to-end orchestrator.
 
@@ -3601,8 +3593,6 @@ same instruction in its \`hint\`.
 WHEN TO USE: the user signals a *mixed* tour-planning intent — they want both known accounts AND fresh discoveries on one geographic view, typically for a planned visit.
 
 WHEN NOT TO USE: if the user only wants follow-ups (use \`leadbay_followups_map\`), only wants new leads (use \`leadbay_pull_leads\`), wants research on one specific account (\`leadbay_research_lead_by_id\`), or wants to persist the tour as a campaign artifact (chain into \`leadbay_create_campaign\` after this).
-
-**Response envelope**: \`{city, city_id, monitor_leads, discover_leads, discover_filter_note, map_locations, map_summary, _meta}\` on happy path; \`{status: "ambiguous_locations", location_ambiguities, ...}\` when the passed \`city\` matched multiple admin areas.
 
 ---
 `;
@@ -4167,15 +4157,12 @@ Queue an additive extra-refill on a lens — more leads on the same criteria, wi
 
 **Quota gate.** Each call is charged against the per-org daily \`LENS_EXTRA_REFILL\` quota at pre-flight time. The **full requested batch** must fit — there is no partial fulfillment. **Pre-check via \`leadbay_account_status\`**: look for the \`LENS_EXTRA_REFILL\` entry in \`quota.org.resources[]\` first, and fall back to \`quota.user.resources[]\` when \`quota.org\` is absent (non-admin callers only get the \`user\` group). Match the resource type case-insensitively (\`LENS_EXTRA_REFILL\` / \`lens_extra_refill\`). Read \`count\` (used today) and \`resets_at\`.
 
-**Status envelope (translated from raw API errors so the agent routes on \`status\`).**
+**Status envelope.** Every branch of \`status\` says what to do next on the
+\`status\` field of the result, except this one, whose recovery names a plan:
 
-- \`status: "queued"\` — fill is queued. \`accepted_seeds\` lists IDs that passed validation. NEXT STEP: call \`leadbay_pull_leads\` in ~30s.
 - \`status: "quota_exceeded"\` — daily LENS_EXTRA_REFILL hit. Response carries \`quota: {used_today, resets_at}\` + a \`message\` to surface. **Render options via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`)**: (1) smaller \`extra_count\`, (2) wait until \`resets_at\`. Do NOT silently retry.
-- \`status: "refresh_in_progress"\` — a refresh or extra-refill is already running. Tell the user to wait and call \`leadbay_pull_leads\` in ~30s.
-- \`status: "no_valid_seeds"\` — seeds went stale. Silently re-call \`leadbay_list_lens_seed_candidates\` and retry once; only surface to the user if the second attempt also fails.
-- \`status: "no_candidates"\` — **the refill was NOT queued.** The lens's candidate pool is empty, so a refill would report success, consume no quota and deliver nothing. \`reason\` carries the same \`{code, message, retryable, criteria?, narrow_locations?}\` shape \`leadbay_pull_leads\` returns in \`empty_reason\`, with \`retryable: false\`. **Stop. Do not re-call this tool on this lens** — the outcome cannot change until the audience changes. Surface \`reason.message\`, name the criteria in play, and offer \`leadbay_adjust_audience\` (or \`leadbay_pull_followups\` when \`reason.code\` is \`no_new_leads\` and the lens already holds leads).
 
-**Extendability is checked before the write.** Every response carries \`available_count\` — how many leads a refill could still draw, read from the lens's own pool. \`0\` means the call was refused (\`no_candidates\`); \`null\` means the pool could not be read and the refill was queued anyway. An empty lens is NOT evidence of a broken refill: it is usually a lens that never had candidates. Reach for \`leadbay_adjust_audience\`, not another \`leadbay_extend_lens\`.
+**Extendability is checked before the write** — see \`available_count\` on the result.
 
 WHEN TO USE: when the user has a bigger appetite than the daily lens fill delivers — they want MORE of the same kind of leads, on demand. Canonical phrasings: "I want more leads on this lens", "extend the lens", "give me a bigger batch today". The \`leadbay_extend_my_lens\` prompt is the user-facing entry point that orchestrates the whole flow.
 
