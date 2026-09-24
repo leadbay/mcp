@@ -77,7 +77,7 @@ Sounds similar, routes elsewhere:
 
 ---
 
-Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **When you show quota, show it the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` in dollar_cents (% used = the ratio, $ = \`/100\`); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
+Quota is read from \`quota.user\` (every caller) or \`quota.org\` (admins). The \`quota\` field's own description carries the gauge shape, the units and the \`LENS_EXTRA_REFILL\` pre-check for \`leadbay_extend_lens\`.
 
 **Top-ups always beat waiting.** When a quota window is hit, the user has two options: wait for the window reset (\`resets_at\` in each quota entry) OR top up AI credits. Top-ups clear the throttle IMMEDIATELY; they are not subject to the same window. When you tell the user about a 429 / quota exhaustion, ALWAYS surface both options — "wait until <reset>" or "top up now (I can generate the link)" — and let them pick. Never default-recommend "wait until tomorrow" when a 30-second top-up unblocks the same operation.
 
@@ -88,32 +88,6 @@ Show the user's account state — admin rights, language, last-active lens, quot
 **\`search_configuration\`** is what this account is set up to find: the ideal buyer profile, the targeting prompt, the qualification questions and the buying signals Leadbay watches for. Even when the user only asked whether Leadbay is connected, it is how you tell them what Leadbay is looking for on their behalf. A null field is unset or unreadable: never tell the user it is missing.
 
 **\`mcp_version\`** is the version of the Leadbay MCP server answering the call. When the user asks which Leadbay version they are running, answer with it.
-
-**\`notifications\` block.** The response now includes a top-level \`notifications\` array listing background work the user (or agent) initiated that has since completed (\`bulk_enrich\`, \`bulk_qualify\`, \`import\`). These are signals to revise prior agent outputs the just-finished work might have made stale — they're NOT a pending-task list for the user. After revising (or confirming nothing is affected), call \`leadbay_acknowledge_notification(notification_id)\`. Full handling protocol below.
-
-## GATE — INSPECT \`_meta.notifications\` ON EVERY RESPONSE
-
-Some Leadbay tool responses include a \`_meta.notifications\` array listing **background work the user (or you) initiated that has since completed**. The three relevant kinds:
-
-| Kind | What just finished |
-|---|---|
-| \`bulk_enrich\` | A bulk contact-enrichment job (emails / phone numbers attached to leads' contacts). |
-| \`bulk_qualify\` | A bulk lead-qualification job (web-fetch + AI rescore, producing \`ai_agent_lead_score\` and qualification answers). |
-| \`import\` | A CSV / CRM file import (rows resolved to leads in the user's pipeline). |
-
-**Your job when you see an entry: revise prior outputs the just-finished work might have made stale.** This is NOT a pending-task list. It's a "your earlier answer used data that has now changed" signal.
-
-| Kind | Outputs you've produced that may now be stale — refresh them |
-|---|---|
-| \`bulk_enrich\` | Outreach drafts mentioning these leads' contacts; contact lists; recommended-lead lists citing \`contact_count\`; NEXT STEPS that asked the user to wait for emails / phones. Re-fetch via \`leadbay_get_contacts(leadId)\` for the affected leads. |
-| \`bulk_qualify\` | Lead rankings / shortlists you produced without \`ai_agent_lead_score\`; "today's leads"; followup maps; prepare-outreach picks. Re-pull via \`leadbay_pull_leads\` / \`leadbay_research_lead_by_id\`. |
-| \`import\` | "Available leads" claims; pulls from the affected lens that ran before the import landed; followup planning that needed the imported set. Re-pull via \`leadbay_pull_leads\` / \`leadbay_pull_followups\`. |
-
-**After revising (or after confirming no prior output is affected):** call \`leadbay_acknowledge_notification(notification_id)\` so the entry stops resurfacing on every tool response. Ack-and-move-on is correct even when nothing was stale — that's how the inbox stays focused on what's actually pending.
-
-**Do NOT** interpret these entries as "things waiting for the user." The user expects you to handle them silently. They are signals to YOU — agent — that prior outputs need a refresh.
-
-**A job from a PREVIOUS turn** (or before an MCP restart) that the user has not asked about: don't check it in the background. Its completion appears in \`_meta.notifications\` on your next tool call (the three kinds above). If the user asks about it or asks you to wait for it, check it now. **A job you launched THIS turn** follows the rule below.
 
 ## A LAUNCHED JOB — its first result is a receipt, not the answer
 
@@ -132,7 +106,7 @@ Calling the launcher again is not a check: it can charge twice. Stop early
 only if the user said not to wait or the check tool says the job stalled. Then
 say it is not ready, show what landed, and that asking again fetches the rest.
 
-Also surfaced as a top-level \`notifications\` array on \`leadbay_account_status\` — same shape, same handling.
+**Finished background work.** When a result carries a \`notifications\` array (or \`_meta.notifications\`), the work it names has finished: refresh whatever earlier output it made stale in the same turn, say what changed, then clear it with \`leadbay_acknowledge_notification\`. The entry's own description says what each kind affects.
 
 ---
 
@@ -4231,39 +4205,13 @@ Sounds similar, routes elsewhere:
 
 ---
 
-Show the user's account state — admin rights, language, last-active lens, quota usage across daily/weekly/monthly windows, and whether the org's intelligence is mid-regeneration. **When you show quota, show it the way the web app does — a percentage-used + dollar-spend gauge per window, never raw "credits".** Each window in \`quota.<group>.spend[]\` carries \`current_units\` / \`max_units\` in dollar_cents (% used = the ratio, $ = \`/100\`); the \`quota.<group>.resources[]\` list gives the per-resource usage breakdown (\`count\`, plus \`max_units\` when a per-resource cap exists). **Pre-check the \`LENS_EXTRA_REFILL\` resource here before calling \`leadbay_extend_lens\`** — look in **\`quota.org.resources[]\`** first (admins), and fall back to **\`quota.user.resources[]\`** when \`quota.org\` is absent (non-admin callers only get the \`user\` group), matching the resource type **case-insensitively** (it may arrive as \`LENS_EXTRA_REFILL\` or \`lens_extra_refill\`). Its full requested batch must fit into the remaining daily quota or the call is rejected outright. Quota windows also hint at the user's consumption pace: heavy recent activity (ai_rescore / web_fetch near their window limits) is a signal that Leadbay will deliver a larger fresh batch next time the user logs back in, since batch size is paced by real consumption.
+Quota is read from \`quota.user\` (every caller) or \`quota.org\` (admins). The \`quota\` field's own description carries the gauge shape, the units and the \`LENS_EXTRA_REFILL\` pre-check for \`leadbay_extend_lens\`.
 
 **After a user tops up, do NOT keep refusing — RETRY.** If the user signals they topped up / bought credits / added credits, the previous QUOTA_EXCEEDED is invalidated the moment the Stripe webhook lands. RE-CALL \`leadbay_account_status\` to pick up the new state AND retry the originally failed call. The retry itself does not require a successful account_status check first — a topped-up user has cleared the throttle whether or not your cached snapshot reflects it yet. **A stale quota snapshot is never a reason to gate-keep a topped-up user.**
 
 **\`search_configuration\`** is what this account is set up to find: the ideal buyer profile, the targeting prompt, the qualification questions and the buying signals Leadbay watches for. Even when the user only asked whether Leadbay is connected, it is how you tell them what Leadbay is looking for on their behalf. A null field is unset or unreadable: never tell the user it is missing.
 
 **\`mcp_version\`** is the version of the Leadbay MCP server answering the call. When the user asks which Leadbay version they are running, answer with it.
-
-**\`notifications\` block.** The response now includes a top-level \`notifications\` array listing background work the user (or agent) initiated that has since completed (\`bulk_enrich\`, \`bulk_qualify\`, \`import\`). These are signals to revise prior agent outputs the just-finished work might have made stale — they're NOT a pending-task list for the user. After revising (or confirming nothing is affected), call \`leadbay_acknowledge_notification(notification_id)\`. Full handling protocol below.
-
-## GATE — INSPECT \`_meta.notifications\` ON EVERY RESPONSE
-
-Some Leadbay tool responses include a \`_meta.notifications\` array listing **background work the user (or you) initiated that has since completed**. The three relevant kinds:
-
-| Kind | What just finished |
-|---|---|
-| \`bulk_enrich\` | A bulk contact-enrichment job (emails / phone numbers attached to leads' contacts). |
-| \`bulk_qualify\` | A bulk lead-qualification job (web-fetch + AI rescore, producing \`ai_agent_lead_score\` and qualification answers). |
-| \`import\` | A CSV / CRM file import (rows resolved to leads in the user's pipeline). |
-
-**Your job when you see an entry: revise prior outputs the just-finished work might have made stale.** This is NOT a pending-task list. It's a "your earlier answer used data that has now changed" signal.
-
-| Kind | Outputs you've produced that may now be stale — refresh them |
-|---|---|
-| \`bulk_enrich\` | Outreach drafts mentioning these leads' contacts; contact lists; recommended-lead lists citing \`contact_count\`; NEXT STEPS that asked the user to wait for emails / phones. Re-fetch via \`leadbay_get_contacts(leadId)\` for the affected leads. |
-| \`bulk_qualify\` | Lead rankings / shortlists you produced without \`ai_agent_lead_score\`; "today's leads"; followup maps; prepare-outreach picks. Re-pull via \`leadbay_pull_leads\` / \`leadbay_research_lead_by_id\`. |
-| \`import\` | "Available leads" claims; pulls from the affected lens that ran before the import landed; followup planning that needed the imported set. Re-pull via \`leadbay_pull_leads\` / \`leadbay_pull_followups\`. |
-
-**After revising (or after confirming no prior output is affected):** call \`leadbay_acknowledge_notification(notification_id)\` so the entry stops resurfacing on every tool response. Ack-and-move-on is correct even when nothing was stale — that's how the inbox stays focused on what's actually pending.
-
-**Do NOT** interpret these entries as "things waiting for the user." The user expects you to handle them silently. They are signals to YOU — agent — that prior outputs need a refresh.
-
-**A job from a PREVIOUS turn** (or before an MCP restart) that the user has not asked about: don't check it in the background. Its completion appears in \`_meta.notifications\` on your next tool call (the three kinds above). If the user asks about it or asks you to wait for it, check it now. **A job you launched THIS turn** follows the rule below.
 
 ## A LAUNCHED JOB — its first result is a receipt, not the answer
 
@@ -4282,7 +4230,7 @@ Calling the launcher again is not a check: it can charge twice. Stop early
 only if the user said not to wait or the check tool says the job stalled. Then
 say it is not ready, show what landed, and that asking again fetches the rest.
 
-Also surfaced as a top-level \`notifications\` array on \`leadbay_account_status\` — same shape, same handling.
+**Finished background work.** When a result carries a \`notifications\` array (or \`_meta.notifications\`), the work it names has finished: refresh whatever earlier output it made stale in the same turn, say what changed, then clear it with \`leadbay_acknowledge_notification\`. The entry's own description says what each kind affects.
 
 ---
 
