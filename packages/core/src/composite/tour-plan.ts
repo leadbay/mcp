@@ -408,11 +408,11 @@ export const tourPlan: Tool<TourPlanParams> = {
       },
       followups_count: {
         type: "number",
-        description: `Top-N follow-up (Monitor) leads to return. Default ${DEFAULT_FOLLOWUPS_COUNT}.`,
+        description: `Top-N follow-up (Monitor) leads to return. Default ${DEFAULT_FOLLOWUPS_COUNT}, which is generous on purpose so the agent can split them client-side into customers and qualified accounts.`,
       },
       discover_count: {
         type: "number",
-        description: `Top-N Discover leads (active lens wishlist) to return after client-side city filter. Default ${DEFAULT_DISCOVER_COUNT}.`,
+        description: `Top-N Discover leads (active lens wishlist) to return after the client-side city filter. Default ${DEFAULT_DISCOVER_COUNT}. The wishlist endpoint has no server-side geo filter, so the composite over-pulls 30 raw and keeps the leads whose own \`location.city\` names the requested city, falling back to \`location.state\` only when no city matched — which is what a regional ask like "Texas" or "Île-de-France" looks like. \`location.country\` is never consulted.`,
       },
       radius_km: {
         type: "number",
@@ -452,7 +452,7 @@ export const tourPlan: Tool<TourPlanParams> = {
       discover_filter_note: {
         type: "string",
         description:
-          "Human-readable summary of the client-side geo filter applied to Discover leads. Says how many stops are in the named town, how many are within `radius_km` of it, and which towns those are in — repeat that split to the user rather than presenting every stop as being in the city they named.",
+          "Human-readable summary of the client-side geo filter applied to Discover leads. Says how many stops are in the named town, how many are within `radius_km` of it, and which towns those are in — repeat that split to the user rather than presenting every stop as being in the city they named. When it says NO Discover lead is in the city, say exactly that: return the Monitor half and offer leadbay_find_new_leads for that city. Never fill the gap with leads from elsewhere.",
       },
       map_locations: {
         type: "array",

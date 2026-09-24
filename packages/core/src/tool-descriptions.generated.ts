@@ -3590,9 +3590,10 @@ not an itinerary. So for ANY country-level \`city\` — this workspace's own inc
 visiting and re-call with that. \`status: "country_level_location"\` carries the
 same instruction in its \`hint\`.
 
-**Counts**: \`followups_count\` (default 6 — generous so the agent can split into "customers + qualified" client-side) and \`discover_count\` (default 6 after client-side geo filter). The composite over-pulls Discover (30 raw) because the wishlist endpoint has no server-side geo filter — it then keeps the leads whose own \`location.city\` names the requested city, and falls back to \`location.state\` only when no city matched (which is what a regional ask like "Texas" or "Île-de-France" looks like). \`location.country\` is never consulted. \`discover_filter_note\` reports the ratio and which field carried it, so the agent can be honest about coverage. **When it says no Discover lead is in the city, say that** — return the Monitor half and offer \`leadbay_find_new_leads\` for that city. Never fill the gap with leads from elsewhere.
-
-**The next town over**: a tour is a day of driving, so after the town's own leads are found the composite adds the Discover leads whose own coordinates put them within **\`radius_km\` (default 20)** of it — West Sacramento on a tour of Sacramento, Courbevoie and Ivry-sur-Seine on a tour of Paris. The town's own leads always come first. **Pass the user's own number when they give one** ("dans un rayon de 10km autour de Colmar" → \`radius_km: 10\`; "within 15 miles" → \`radius_km: 24\`), and \`radius_km: 0\` to keep the tour strictly inside the named town. The radius applies to Discover leads only; the Monitor half is scoped server-side and is untouched. When \`discover_filter_note\` splits the stops into "N in '<city>' and M in <other towns>", **repeat that split** — say which town each nearby stop is actually in rather than presenting every stop as being in the city the user named.
+**Counts and geography are on the parameters.** \`discover_count\` says how the
+client-side city filter works and which field carries it, \`radius_km\` says how far
+outside the named town a stop may be and when to pass the user's own number, and
+\`discover_filter_note\` on the result says what to tell the user about coverage.
 
 **What \`tour_plan\` does NOT do**: it doesn't persist the tour as a campaign artifact. To do that — create a "Limoges Tour – May 24" campaign and attach the selected accounts — chain into \`leadbay_create_campaign({lead_ids: [...selected_ids], name: 'Limoges Tour – <date>'})\` after the user picks. See the \`leadbay_plan_tour_in_city\` prompt for the full end-to-end orchestrator.
 
@@ -3601,8 +3602,6 @@ same instruction in its \`hint\`.
 WHEN TO USE: the user signals a *mixed* tour-planning intent — they want both known accounts AND fresh discoveries on one geographic view, typically for a planned visit.
 
 WHEN NOT TO USE: if the user only wants follow-ups (use \`leadbay_followups_map\`), only wants new leads (use \`leadbay_pull_leads\`), wants research on one specific account (\`leadbay_research_lead_by_id\`), or wants to persist the tour as a campaign artifact (chain into \`leadbay_create_campaign\` after this).
-
-**Response envelope**: \`{city, city_id, monitor_leads, discover_leads, discover_filter_note, map_locations, map_summary, _meta}\` on happy path; \`{status: "ambiguous_locations", location_ambiguities, ...}\` when the passed \`city\` matched multiple admin areas.
 
 ---
 `;
