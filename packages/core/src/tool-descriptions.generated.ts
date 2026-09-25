@@ -6116,6 +6116,47 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 `;
 // endregion: leadbay_set_lead_status
 
+// region: leadbay_set_prospecting_action
+export const leadbay_set_prospecting_action: string = `## WHAT IT DOES
+
+Turns one of a lead's prospecting actions for today on or off (Still chasing, Couldn't reach, Meeting planned, Not interested), exactly as the web app's Prospection cell does. Writes no note.
+
+## WHEN TO USE
+
+Trigger phrases: "mark it as still chasing", "set the prospecting action", "untick meeting planned", "remove the couldn't reach", "clear the prospecting action", "that was a mistake, unset it".
+
+Do NOT use for: "I called them / I emailed them / we met" → \`leadbay_report_outreach\`; "mark it as won / lost" → \`leadbay_set_lead_status\`.
+
+Use this when: the user sets or clears the action flag itself, with no outreach to record; when an outreach happened, log it with leadbay_report_outreach instead
+
+Examples that SHOULD invoke this tool:
+- "Untick Meeting planned on Solimac, I clicked it by mistake."
+- "Set Bachelard to Still chasing."
+- "Clear the Couldn't reach on the Courthézon lead."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "I just called Solimac, they want a demo — log it."
+- "Mark Bachelard as won."
+- "Draft a follow-up email to Magali."
+
+## RENDER (quick)
+
+One line: ✅ "<Action>" on / off for <Company>. No table. When turning an
+action ON after a real call or visit, suggest logging it with
+leadbay_report_outreach so the note carries what happened.
+
+---
+
+Sets or clears one prospecting action for **today** on one lead. \`selected: true\` wraps \`POST /leads/epilogue\`; \`selected: false\` wraps \`DELETE /leads/{id}/epilogue?type=\`. Both return 204; the tool echoes \`{lead_id, action, selected}\`.
+
+**What "selected" means.** A lead's actions for today live in \`epilogue_today_statuses\`, and several can be on at once — the web app shows them as a multi-select. Turning one on appends it there and moves \`epilogue_status\`; turning one off removes that type from today's list and leaves \`epilogue_status\` alone. So read the current state from \`epilogue_today_statuses\`, never from \`epilogue_status\`, which is only the last value ever set.
+
+**Not a substitute for logging outreach.** This writes no note and takes no verification, because it records a flag the user controls, not a claim that something happened. When the user tells you a call, email, message or meeting took place, use \`leadbay_report_outreach\` — it writes the note, sets the action, and carries the proof.
+
+**Do not turn an action on twice.** Each \`selected: true\` appends another entry to today's list. Check \`epilogue_today_statuses\` first.
+`;
+// endregion: leadbay_set_prospecting_action
+
 // region: leadbay_set_pushback
 export const leadbay_set_pushback: string = `Snooze (pushback) one or more leads for 3, 6, or 12 months. The leads remain in the user's pipeline but are excluded from \`leadbay_pull_followups\` until the pushback window expires. Use this when the user says "not now", "next quarter", "follow up in 3 months", "6 months out", "next year", or any equivalent deferral.
 
@@ -6898,6 +6939,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_set_active_lens,
   leadbay_set_epilogue_status,
   leadbay_set_lead_status,
+  leadbay_set_prospecting_action,
   leadbay_set_pushback,
   leadbay_set_qualification_questions,
   leadbay_set_telemetry,

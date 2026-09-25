@@ -1613,6 +1613,8 @@ const OPT_OUT: Record<string, string> = {
     "Single POST /campaigns/{id}/leads with {added, already_present} response.",
   leadbay_remove_leads_from_campaign:
     "Single DELETE /campaigns/{id}/leads — backend returns 204, synthetic {removed} count returned.",
+  leadbay_set_prospecting_action:
+    "Single POST /leads/epilogue or DELETE /leads/{id}/epilogue?type= — both 204; the tool echoes {lead_id, action, selected}.",
   leadbay_list_campaigns:
     "Single GET /campaigns returning CampaignWithStatsPayload[]; envelope-level shape.",
   leadbay_campaign_progression:
