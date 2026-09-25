@@ -176,7 +176,7 @@ export const reportOutreach: Tool<ReportOutreachParams> = {
       confirmed_via: {
         type: "string",
         description:
-          "Audit trail of how verification was obtained: 'elicit' (user typed into client UI — anti-poisoning), 'artifact_action' (a control inside a rendered Leadbay artifact — the rep pressed the button themselves, which is the consent an elicitation would ask for, and a page has nowhere to render one), 'agent_supplied' (legacy path; user_confirmed source with no elicit), 'non_user_confirmed' (gmail_message_id or calendar_event_id — agent can't fabricate these).",
+          "Audit trail of how verification was obtained: 'elicit' (user typed into client UI — anti-poisoning), 'agent_supplied' (legacy path; user_confirmed source with no elicit), 'non_user_confirmed' (gmail_message_id or calendar_event_id — agent can't fabricate these).",
       },
       _meta: {
         type: "object",
@@ -254,38 +254,15 @@ export const reportOutreach: Tool<ReportOutreachParams> = {
     // Backwards-compat: legacy clients (no ctx.elicit) keep the existing
     // agent-supplied flow but the response carries confirmed_via:
     // "agent_supplied" so the SDR audit trail is honest.
-    const fromArtifact = ctx?.origin === "artifact";
-    let confirmedVia:
-      | "elicit"
-      | "artifact_action"
-      | "agent_supplied"
-      | "non_user_confirmed" =
-      params.verification.source !== "user_confirmed"
-        ? "non_user_confirmed"
-        : // A page's button IS the user's act, so it is neither an elicited
-          // confirmation nor an agent's claim about one. Tagging it
-          // "agent_supplied" would put a rep's own click in the same bucket as
-          // an assertion no human made.
-          fromArtifact
-          ? "artifact_action"
-          : "agent_supplied";
+    let confirmedVia: "elicit" | "agent_supplied" | "non_user_confirmed" =
+      params.verification.source === "user_confirmed"
+        ? "agent_supplied"
+        : "non_user_confirmed";
 
     let effectiveVerification: Verification = params.verification;
 
-    // A call from inside an artifact is NOT elicited. The prompt asks a human
-    // to type a confirmation, and a rendered page has nowhere to show it: the
-    // call hung until the page's call timeout fired, the rep was told Leadbay "took
-    // too long", and the catch below then fell through and wrote the row
-    // anyway. An error on screen over a write that landed — and "try again"
-    // logged the visit twice.
-    //
-    // The protection is not weakened. Elicitation exists so an AGENT cannot
-    // fabricate outreach it never did; inside an artifact the rep pressed the
-    // button themselves, which is the same consent the prompt asks for. Agent
-    // calls carry no _origin and still elicit.
     if (
       !params.dry_run &&
-      !fromArtifact &&
       params.verification.source === "user_confirmed" &&
       typeof ctx?.elicit === "function"
     ) {

@@ -31,9 +31,10 @@
 - **A board's buttons answer in a second, not a minute.** Logging outreach or
   setting a prospecting action from a board used to wait 60 seconds and then
   report that Leadbay "took too long" — even though the change had been saved.
-  Following that advice logged the same visit twice. The button now confirms
-  straight away. Outreach logged by the assistant itself still asks you to
-  confirm it, as before.
+  Following that advice logged the same visit twice. Boards now save a note
+  and a prospecting action the way the web app does, so they confirm straight
+  away. Outreach logged by the assistant itself still asks you to confirm it,
+  as before.
 
 ## 0.40.0 — 2026-09-22 — every tool says plainly what it does and what it changes
 

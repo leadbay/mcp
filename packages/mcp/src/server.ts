@@ -1499,10 +1499,6 @@ export function buildServer(
         signal: extra.signal,
         progress,
         elicit,
-        // Parsed from `_origin` above and stripped from args. Until now it
-        // fed telemetry only; report_outreach needs it to decide whether an
-        // elicitation prompt can actually be answered.
-        origin,
         // Verbatim user-message slice (stripped from args above). Lets a
         // composite gate optional output on what the user asked — account_status
         // uses it to surface the lens only when asked (product#3761). Uses the
