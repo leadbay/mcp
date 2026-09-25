@@ -249,7 +249,7 @@ export const scanPortfolioSignals: Tool<ScanPortfolioSignalsParams> = {
       quota_exceeded: {
         type: "boolean",
         description:
-          "True if a 429 was hit mid-scan. Partial `matched` is still returned. Offer wait-for-reset OR top-up.",
+          "True if a 429 was hit mid-scan. Partial `matched` is still returned, so report it rather than discarding it, and say which quota window is exhausted. What to offer the user next is in this tool's description, which is gated per surface — a schema field is not.",
       },
       status: {
         type: "string",
