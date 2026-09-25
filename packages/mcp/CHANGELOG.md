@@ -1,5 +1,40 @@
 # Changelog — @leadbay/mcp
 
+## 0.41.0 — 2026-09-25 — boards a rep can work from: a lead desk, a route planner, and buttons that answer
+
+- **Every Leadbay board is built from the same kit.** Asking for a triage board,
+  a call board or a coverage board now always produces one built on Leadbay's
+  own components, in the product's colours and on a light page — not a page the
+  assistant styles from scratch. Every lead card carries a **Qualify /
+  Requalify** button.
+- **A lead desk for working a list.** After a follow-up list or a campaign call
+  sheet, the assistant offers a *Contact and outreach* board: each lead's phone,
+  email and LinkedIn in one row, with the company context, and an **Enrich**
+  button on the contacts that have no way to reach them yet.
+- **A route planner for a day on the road.** "I'm driving to Lyon on Thursday"
+  now offers a board that is half map, half panel: click a pin to open the lead,
+  set its status, record how the visit went, and see the pin change as you work.
+  Leads with no address are listed beside the map instead of disappearing. The
+  map opens on France, and **Fit to leads** frames yours.
+- **Two new guided sessions.** *Outreach session* runs a working session over
+  any list — follow-ups, a lens or a campaign — and checks first whether the
+  leads can actually be reached. *Route session* plans the trip. Both record
+  each outcome as you tell it.
+- **Coverage over more than sectors.** The coverage board can measure the
+  portfolio by any dimension, and a new reachability view shows how many leads
+  have a phone, an email, both, or neither.
+- **Prospecting actions work the way they do in the web app.** On a board you
+  can tick and untick *Still chasing*, *Meeting planned*, *Could not reach* and
+  *Not interested*, several at once, in the web app's colours. What is ticked
+  is what you ticked today, and unticking one takes it off without leaving a
+  note behind.
+- **A board's buttons answer in a second, not a minute.** Logging outreach or
+  setting a prospecting action from a board used to wait 60 seconds and then
+  report that Leadbay "took too long" — even though the change had been saved.
+  Following that advice logged the same visit twice. The button now confirms
+  straight away. Outreach logged by the assistant itself still asks you to
+  confirm it, as before.
+
 ## 0.40.0 — 2026-09-22 — every tool says plainly what it does and what it changes
 
 - **Each tool now says what it does before it says when to use it.** A tool's
