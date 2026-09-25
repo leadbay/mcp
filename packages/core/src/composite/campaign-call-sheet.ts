@@ -22,6 +22,81 @@ import type { LeadbayClient } from "../client.js";
 import type { Tool } from "../types.js";
 
 import { leadbay_campaign_call_sheet as CALL_SHEET_DESCRIPTION } from "../tool-descriptions.generated.js";
+import type { NextStepOption, NextSteps } from "./pull-leads.js";
+
+/**
+ * Deterministic NEXT STEPS for a campaign call sheet.
+ *
+ * The sheet had none at all: it returned the rows and the rep was on their
+ * own. Every other lead-returning tool offers the board first, and this is
+ * the one whose rows are MOST ready to be worked — a campaign is already the
+ * curated set.
+ *
+ * The lead desk leads, and its wording varies with the sheet: a campaign
+ * where most rows have nobody to call needs enrichment before it needs a
+ * dialer, so the offer says so rather than promising a board of empty rows.
+ */
+export function buildCallSheetNextSteps(args: {
+  leadCount: number;
+  campaignId: string;
+  leadsWithoutContacts: number;
+  hasMore: boolean;
+  nextPage: number | null;
+}): NextSteps | null {
+  const { leadCount, campaignId, leadsWithoutContacts, hasMore, nextPage } = args;
+  if (leadCount <= 0) return null; // an empty sheet has nothing to offer
+
+  const options: NextStepOption[] = [];
+  const mostlyEmpty = leadsWithoutContacts * 2 > leadCount;
+
+  options.push({
+    label: "Contact and outreach",
+    description:
+      "Build an interactive board to contact this campaign: contacts with their " +
+      "email and phone, the enrich that buys a missing one, CRM status, " +
+      "outreach logging, taste and requalify — one row per lead. " +
+      "Call leadbay_get_artifact_runtime and follow its LEAD DESK recipe with " +
+      `source \`campaign\` and campaignId \`${campaignId}\`, building from the ` +
+      "leads in hand (do NOT re-call the call sheet)." +
+      (mostlyEmpty
+        ? " Most rows here have no contact yet, so lead with the enrich control."
+        : ""),
+    kind: "build_artifact",
+  });
+
+  if (mostlyEmpty) {
+    options.push({
+      label: "Enrich the campaign",
+      description:
+        `${leadsWithoutContacts} of ${leadCount} leads on this page have no contact to call. ` +
+        "Order contact enrichment for the buyer titles before working the sheet.",
+      kind: "enrich_top_leads",
+    });
+  } else {
+    options.push({
+      label: "Prep outreach",
+      description: "Prepare a call opener and email for the top lead on the sheet.",
+      kind: "enrich_top_leads",
+    });
+  }
+
+  options.push({
+    label: "Campaign progress",
+    description: "Show how far this campaign has been worked — contacted, replied, still open.",
+    kind: "qualify_deeper",
+  });
+
+  if (hasMore && nextPage != null) {
+    options.push({
+      label: "Next page",
+      description: `Pull page ${nextPage + 1} of the call sheet.`,
+      kind: "pull_next_page",
+    });
+  }
+
+  // The widget takes 2–4; the desk offer is first and never trimmed.
+  return { question: "What do you want to do next?", options: options.slice(0, 4) };
+}
 
 interface CallSheetParams {
   campaign_id: string;
@@ -203,6 +278,26 @@ export const campaignCallSheet: Tool<CallSheetParams> = {
           page: { type: "number" },
           pages: { type: "number" },
           total: { type: "number" },
+        },
+      },
+      next_steps: {
+        type: ["object", "null"],
+        description:
+          "Deterministic follow-on offers, artifact option FIRST. Map `options[]` into the host's next-step widget VERBATIM and in order — do not reword, reorder or drop them. null when the sheet is empty. Each option: {label (≤5 words), description (the full sentence), kind}.",
+        properties: {
+          question: { type: "string" },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: { type: "string" },
+                description: { type: "string" },
+                kind: { type: "string" },
+              },
+              required: ["label", "description", "kind"],
+            },
+          },
         },
       },
       _meta: {
@@ -407,10 +502,23 @@ export const campaignCallSheet: Tool<CallSheetParams> = {
       travel_friendly: leadsWithCoords >= 5 && coordRatio >= 0.6,
     };
 
+    const nextSteps = buildCallSheetNextSteps({
+      leadCount: blocks.length,
+      campaignId: params.campaign_id,
+      leadsWithoutContacts,
+      hasMore:
+        typeof leadsRes.pagination?.pages === "number" &&
+        typeof leadsRes.pagination?.page === "number" &&
+        leadsRes.pagination.page + 1 < leadsRes.pagination.pages,
+      nextPage:
+        typeof leadsRes.pagination?.page === "number" ? leadsRes.pagination.page + 1 : null,
+    });
+
     return {
       campaign_id: params.campaign_id,
       leads: blocks,
       map_locations: mapLocations,
+      next_steps: nextSteps,
       summary: {
         total_leads: blocks.length,
         total_contacts: totalContacts,

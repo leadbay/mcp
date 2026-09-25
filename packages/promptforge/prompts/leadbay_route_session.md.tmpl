@@ -1,0 +1,117 @@
+---
+name: leadbay_route_session
+kind: prompt
+short_description: |
+  Plan and work a day on the road: pick the place, see the leads on a map,
+  drive them in a sensible order and record each visit as it happens.
+  Trigger on "plan my route", "tournée", "road trip", "I'm driving to
+  <city>", "who can I visit in <city>", "plan my day in the field",
+  "prospection terrain". For working leads by PHONE from a desk, prefer
+  `leadbay_outreach_session`.
+arguments:
+  - name: city
+    description: "Where the rep is going — a city or region (e.g. 'Lyon', 'Hauts-de-France'). Omit and the session asks. NEVER a country: this workspace serves one country, so a country name is not a place to tour."
+    required: false
+  - name: day
+    description: "Optional: which day the trip is, in the rep's own words ('Thursday', 'next week'). Used only to frame the plan; nothing is scheduled."
+    required: false
+expected_calls:
+  - leadbay_tour_plan
+  - leadbay_get_artifact_runtime
+  - leadbay_report_outreach
+  - leadbay_set_lead_status
+failure_modes:
+  - "Renders a markdown list of addresses instead of the route planner — a list cannot show which stops are near each other, and that is the whole question a trip asks."
+  - "Drops the leads with no coordinates — an imported book is mostly ungeocoded, so a map of 12 out of 40 tells the rep their book is small. They belong in the panel beside the map under their own heading."
+  - "Treats `location.pos` of `[0, 0]` as a real place — that is the API's missing-position sentinel, and the pin lands in the Gulf of Guinea. `lb.leadPos` rejects it."
+  - "Orders the stops by score, or leaves the API's order — the rep is driving, so the order must be geographic. `lb.orderByProximity` is the default; they re-order by hand from there."
+  - "Measures distance with flat geometry — at these latitudes a degree of longitude is ~73km against ~111km for latitude, so an east-west leg reads as half its length and the route comes out wrong."
+  - "Hands over a Google Maps link with more than 11 stops and says nothing — everything past the cap is silently dropped, and the rep drives a day that ends early. `lb.routeUrl` returns `truncated`; say the number."
+  - "Presents the straight-line total as a drive estimate — it is 'as the crow flies' and always shorter than the road."
+  - "Passes a COUNTRY as the city — this workspace serves exactly one country, so that fences the tour to a same-named commune or returns the whole book as an itinerary."
+  - "Records a visit WITHOUT verification — `verification.source/ref` is REQUIRED. For a visit, pass `{source: 'user_confirmed', ref: <the rep's exact words>}`."
+  - "Records the epilogue but not the CRM status when the rep reports both — 'met the owner, they're in' is an epilogue AND a status. Setting one never sets the other."
+---
+
+Plan my route{{arg:city_in}}{{arg:day_paren}}.
+
+{{include:gates/defer-to-tool-rendering}}
+
+# PHASE 0 — WHERE
+
+If I named a place, use it. Otherwise ask, once, as a short question — not a widget: a city is free text, not a choice between four.
+
+> Which city or area are you going to?
+
+**Never accept a country.** This workspace serves exactly one, so a country name is not a place to tour — it either fences the trip to a same-named commune or hands back the whole book as an itinerary. If I give you one, ask which city inside it.
+
+# PHASE 1 — WHO IS THERE
+
+Call `leadbay_tour_plan({city})`. It returns two halves and they are not the same thing:
+
+- `monitor_leads` — leads I already know and have worked. These are the visits.
+- `discover_leads` — fresh leads in the same place, filtered client-side. These are the opportunistic stops.
+- `discover_filter_note` — says how many are actually IN the city versus within the radius, and which towns those are in. **Repeat that split.** Presenting a lead from the next town over as being in the city is how a rep ends up with a 40-minute detour they did not plan.
+
+**Count what can actually go on a map.** A lead is placeable when `location.pos` holds real coordinates; `[0, 0]` is the API's missing-position sentinel, not a place. An imported book is mostly ungeocoded, so this number is usually well below the lead count — say both.
+
+```
+🗺 <mappable> of <total> leads placed · 📍 <in_city> in <city>, <nearby> within <radius>km · 🔴 <unplaced> with no coordinates
+```
+
+**If nothing is placeable**, do not build a map. Say so, list the leads, and offer to work them by phone with `leadbay_outreach_session` instead.
+
+# PHASE 2 — BUILD THE ROUTE PLANNER
+
+Call `leadbay_get_artifact_runtime` and follow its **ROUTE PLANNER** recipe. Build from the leads in hand — do NOT re-call `tour_plan` to populate it.
+
+Half map, half panel. Clicking a marker opens that lead in the panel with set status, log outreach, and record a prospecting action; the pin repaints as I work, so the map answers "where have I been" at a glance.
+
+Use the kit's geo helpers rather than hand-rolling them — each exists because the hand-rolled version is wrong in a way nothing surfaces:
+
+- `lb.leadPos` — rejects `[0,0]` and out-of-range values
+- `lb.orderByProximity` — a sensible default order, not the API's
+- `lb.distanceKm` / `lb.routeDistanceKm` — great-circle, not flat
+- `lb.routeUrl` — a Google Maps link, with `truncated` counting anything past its 11-stop cap
+
+**The leads with no coordinates go in the panel**, under their own heading, never dropped.
+
+End the turn with the standby line:
+
+> The route is up. Tell me how each visit went and I'll record it.
+
+# PHASE 3 — RECORD VISITS AS THEY HAPPEN
+
+When I say *"saw the manager at Starmat, wants a quote"* or *"Norba was closed"*, parse:
+
+1. **Which lead** — by company name, cross-referenced with the stops on the map.
+2. **The note** — my exact words.
+3. **The outcome** — ONE of:
+   - `STILL_CHASING` — spoke to someone, no decision
+   - `COULD_NOT_REACH_STILL_TRYING` — closed, nobody in, gatekeeper
+   - `INTEREST_VALIDATED_OR_MEETING_PLANED` — quote asked for, meeting booked
+   - `NOT_INTERESTED_LOST` — declined
+
+Call `leadbay_report_outreach({lead_id, note, epilogue_status, verification: {source: "user_confirmed", ref: <my exact words>}})`.
+
+**If I also report a commercial outcome** — "we won it", "they're out" — that is a LEAD STATUS, a different axis. Fire `leadbay_set_lead_status` too.
+
+Confirm in ONE line: *"✅ <Company> → <outcome>. Next stop?"* Then wait.
+
+# PHASE 4 — END OF THE DAY
+
+When I say I'm done:
+
+> Day complete — N visits: X quotes or meetings · Y still chasing · Z nobody in · W declined. Covered ≈<km>km as the crow flies.
+
+If any stop was never reached, name it and offer to carry it to the next trip.
+
+# Iron laws
+
+- A country is never a place to tour. Ask for the city.
+- `verification` on `leadbay_report_outreach` is REQUIRED — `{source: "user_confirmed", ref: <my verbatim words>}` for a visit.
+- ONE visit → ONE `leadbay_report_outreach`. Never batched at the end of the day.
+- Epilogue and lead status are different systems. When I report both, fire both.
+- Never drop a lead for having no coordinates; list it.
+- Straight-line distance is not drive distance. Say "as the crow flies".
+- Never build the map by hand — `leadbay_get_artifact_runtime` owns the skin, the geo helpers and the wiring.

@@ -15,6 +15,12 @@ routing:
     - "build an artifact to work my leads"
     - "interactive lead triage board"
     - "a page with buttons that log my calls"
+    - "relance board"
+    - "campagne de relance"
+    - "board de relance"
+    - "follow-up table"
+    - "a table with emails and phone numbers to call my leads"
+    - "a table where I can set status and log what happened"
   anti_triggers:
     - phrase: "show me today's leads"
       route_to: leadbay_pull_leads
@@ -28,6 +34,7 @@ routing:
       - "Build me an interactive call sheet for these leads."
       - "Make an artifact with buttons to log call outcomes per lead."
       - "I want a clickable lead-triage board I can work down."
+      - "Build me a relance table with each lead's email and phone, where I can set the status and log what happened."
     negative:
       - "Show me today's leads."
       - "Which leads should I follow up with this week?"
@@ -53,9 +60,9 @@ Returns `{ runtime, usage_guide, version }`:
 
 The model — two layers. Primitives: `lb.field` (value + API-populated options), `lb.action` (write/submit), `lb.resource` (load-on-click / poll-until-done / `.refresh()`), `lb.list` (paginated rows); each exposes `.loading/.error/.subscribe`, and you bind them to YOUR native elements with `lb.bindSelect/bindValue/bindAction` (no style imposed). Domain components (pre-wired, footguns baked in): `lb.campaigns`, `lb.outreach`, `lb.note`, `lb.like/dislike`, `lb.leadHistory`, `lb.leadProfile`, `lb.callList`, `lb.enrichment` (launch + poll), `lb.teamActivity` (manager leaderboard + trend). TanStack-Query's headless-view-model separation, vanilla (cowork is inline-only — no React).
 
-Canonical uses: a cold-call sheet (`lb.callList` + per-row `lb.outreach`/`lb.leadHistory`); a manager dashboard (`lb.teamActivity` → leaderboard table + Chart.js trend); a live enrichment view (`lb.enrichment` → progress + refresh). Live auto-poll is host-dependent — always wire a Refresh.
+Canonical uses: a cold-call sheet (`lb.callList` + per-row `lb.note`, prospecting toggles and `lb.leadHistory`); a manager dashboard (`lb.teamActivity` → leaderboard table + Chart.js trend); a live enrichment view (`lb.enrichment` → progress + refresh). Live auto-poll is host-dependent — always wire a Refresh.
 
-Write-call footguns (in the guide, repeated because they bite): for `leadbay_report_outreach` (status/disposition) the `args` MUST include `verification:{source:"user_confirmed",ref:"…"}` AND `_triggered_by:"<the user's request>"`, or the call is rejected. `leadbay_add_leads_to_campaign` needs `_triggered_by` too. `leadbay_add_note`/`leadbay_like_lead`/`leadbay_dislike_lead` need only their own args. Snoozing (pushback) is advanced-gated — not callable from a default artifact. Org CRM status IS available: `lb.leadStatus()` gives the Wanted/Won/Lost/Unwanted picker field and `lb.setStatus()` the write (`leadbay_set_lead_status`), with the partial-write check baked in. Keep it distinct from `report_outreach`'s `epilogue_status`, which records how one outreach ATTEMPT went.
+Write-call footguns (in the guide, repeated because they bite): a page's buttons NEVER call `leadbay_report_outreach` (`lb.outreach`) — it asks a human to confirm every `user_confirmed` call, a page cannot show that prompt, and the button hangs 60s before writing anyway. Write the note with `lb.note` (`leadbay_add_note`) and the prospecting action with `leadbay_set_prospecting_action` (`{lead_id, action, selected, _triggered_by}`), toggles over the lead's `epilogue_today_statuses` as in the web app. `leadbay_add_leads_to_campaign` needs `_triggered_by` too. `leadbay_add_note`/`leadbay_like_lead`/`leadbay_dislike_lead` need only their own args. Snoozing (pushback) is advanced-gated — not callable from a default artifact. Org CRM status IS available: `lb.leadStatus()` gives the Wanted/Won/Lost/Unwanted picker field and `lb.setStatus()` the write (`leadbay_set_lead_status`), with the partial-write check baked in. Keep it distinct from the prospecting action, which records how one outreach ATTEMPT went.
 
 {{include:headers/tool-when-to-use}} the user asks for a clickable / interactive artifact, dashboard, or call sheet that DOES things (not just displays data).
 

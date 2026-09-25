@@ -129,6 +129,7 @@ import { myLenses } from "./composite/manage-lenses.js";
 import { newLens } from "./composite/new-lens.js";
 import { answerClarification } from "./composite/answer-clarification.js";
 import { reportOutreach } from "./composite/report-outreach.js";
+import { setProspectingAction } from "./composite/set-prospecting-action.js";
 import { reportFriction } from "./composite/report-friction.js";
 import { teamActivity } from "./composite/team-activity.js";
 import { sendFeedback } from "./tools/send-feedback.js";
@@ -179,7 +180,7 @@ export {
   bulkEnrichStatus, qualifyStatus, importStatus, resolveImportRows,
   // new composite writes
   bulkQualifyLeads, enrichTitles, adjustAudience, refinePrompt,
-  answerClarification, reportOutreach, reportFriction, sendFeedback, importLeads, importAndQualify,
+  answerClarification, reportOutreach, setProspectingAction, reportFriction, sendFeedback, importLeads, importAndQualify,
   createCampaign, addLeadsToCampaign, removeLeadsFromCampaign,
   seedCandidates, extendLens,
   // MCP-first lead delivery
@@ -398,6 +399,7 @@ export const compositeWriteTools: Tool[] = [
   refinePrompt,
   answerClarification,
   reportOutreach,
+  setProspectingAction,
   // sendFeedback is granular-shaped (a single call to the telemetry seam →
   // Sentry.captureFeedback, same inbox as the web app's feedback form), so it
   // lives in tools/, NOT composite/. Registered here (not advanced-gated) so

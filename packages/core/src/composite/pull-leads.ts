@@ -164,9 +164,20 @@ export function buildPullLeadsNextSteps(args: {
   // return-to" result the artifact gate targets. Always included when there
   // are leads to put on the board. Labels stay ≤5 words for AskUserQuestion;
   // the full sentence lives in `description`.
+  //
+  // That description NAMES the tool on purpose. Shipping the offer pre-built
+  // stopped the model dropping it, but "build an artifact" reads as an
+  // instruction to hand-write a page: an agent that follows it designs its own
+  // HTML, misses the product skin, and wires the buttons to nothing — a board
+  // whose triage never reaches Leadbay. `kind` alone cannot carry the fix
+  // ("build_artifact" is the generic verb); the tool name has to be in the text
+  // the model acts on.
   options.push({
     label: "Triage board",
-    description: "Build an interactive lead triage board to sort and filter this batch.",
+    description:
+      "Build an interactive lead triage board to sort and filter this batch — " +
+      "call leadbay_get_artifact_runtime and follow its canonical triage-board recipe, " +
+      "building from the leads in hand (do NOT re-call pull_leads).",
     kind: "build_artifact",
   });
 

@@ -50,12 +50,62 @@ export interface LbErrorState {
 let configuredCall: CallFn | null = null;
 let timeoutMs = 30_000;
 
+/** The connector name the claude.ai `mcp` capability knows us by. A published
+ *  artifact resolves connectors by their DISPLAY name, which is what the
+ *  manifest's `servers[].server` carries. Override with
+ *  `lb.configure({ server })` when the viewer's connector is named something
+ *  else. */
+const DEFAULT_MCP_SERVER = "Leadbay";
+let mcpServerName: string = DEFAULT_MCP_SERVER;
+
+/**
+ * Bridge to the host. TWO transports, because the kit runs on two surfaces:
+ *
+ * - **cowork** injects `window.cowork.callMcpTool` — synchronous to obtain,
+ *   and the only transport this kit had until now.
+ * - **A published claude.ai artifact** has no `window.cowork`. It reaches the
+ *   viewer's connectors through `window.claude.use("mcp")`, granted by the
+ *   `capabilities.mcp` manifest declared at publish. Without this arm every
+ *   kit artifact published to claude.ai threw `unavailable` on its first call
+ *   and showed an empty board — the page looked built and reached no data.
+ *
+ * `use("mcp")` is ASYNC (and resolves `null` when the view cannot run it),
+ * so this returns a CallFn that resolves the namespace on first use and
+ * memoizes it. `call()` already awaits the result, so the async hop is free.
+ */
 function hostCall(): CallFn | null {
   const cw = (globalThis as { cowork?: { callMcpTool?: CallFn } }).cowork;
   if (cw && typeof cw.callMcpTool === "function") {
     return (tool, args) => cw.callMcpTool!(tool, args);
   }
+
+  const claude = (globalThis as { claude?: { use?: (n: string) => Promise<unknown> } }).claude;
+  if (claude && typeof claude.use === "function") {
+    return async (tool, args) => {
+      const mcp = (await mcpNamespace(claude.use!)) as {
+        callTool?: (s: string, t: string, i?: unknown) => Promise<{ payload?: unknown }>;
+      } | null;
+      if (!mcp || typeof mcp.callTool !== "function") {
+        throw new LbError(
+          "Leadbay is not reachable from this page — the artifact must declare the " +
+            "Leadbay connector in its capabilities, and the viewer must have it enabled.",
+          { code: "unavailable" },
+        );
+      }
+      const res = await mcp.callTool(mcpServerName, tool, args);
+      // `payload` is the documented home of the JSON most connectors return;
+      // fall back to the whole envelope, which `normalize()` also understands.
+      return res && "payload" in res && res.payload !== undefined ? res.payload : res;
+    };
+  }
+
   return null;
+}
+
+let mcpPromise: Promise<unknown> | null = null;
+function mcpNamespace(use: (n: string) => Promise<unknown>): Promise<unknown> {
+  if (!mcpPromise) mcpPromise = Promise.resolve(use("mcp")).catch(() => null);
+  return mcpPromise;
 }
 
 // ─── Runtime telemetry (product#4081) ────────────────────────────────────────
@@ -291,9 +341,23 @@ function errState(e: unknown): LbErrorState {
 /** Override the bridge + per-call timeout (tests / non-cowork hosts). Optional —
  *  `call` resolves the host bridge lazily when not configured; `timeoutMs`
  *  defaults to 30s (pass 0 to disable). */
-export function configure(opts: { call?: CallFn; timeoutMs?: number } = {}): void {
+export function configure(
+  opts: { call?: CallFn; timeoutMs?: number; server?: string } = {},
+): void {
   configuredCall = opts.call ?? null;
   timeoutMs = opts.timeoutMs ?? 30_000;
+  // The connector's DISPLAY name, for the claude.ai `mcp` transport. Only
+  // needed when the viewer's Leadbay connector is named something else.
+  // RESET when absent, like every other option: an `if (opts.server)` guard
+  // made this a one-way ratchet, so once a page called configure({server})
+  // a later configure({}) could never restore the default — state leaking
+  // across reconfigures and across tests.
+  mcpServerName = opts.server ?? DEFAULT_MCP_SERVER;
+  mcpPromise = null;
+  // Caches keyed to the transport must not outlive it: a page that
+  // reconfigures (or a test that swaps the stub) would otherwise keep a
+  // taxonomy fetched through the previous one.
+  sectorLabelsCache.clear();
 }
 
 /** Inject the optional `lb-*` stylesheet (see styles.ts). OPT-IN: the library
@@ -351,7 +415,10 @@ export async function call(tool: string, args: Record<string, unknown> = {}): Pr
   const fn = configuredCall ?? hostCall();
   if (!fn) {
     if (!silent) report({ kind: "bridge_unavailable", surface, tool, code: "unavailable" });
-    throw new LbError("Leadbay bridge unavailable (window.cowork absent)", { code: "unavailable" });
+    throw new LbError(
+      "Leadbay bridge unavailable — no window.cowork and no window.claude.use(\"mcp\")",
+      { code: "unavailable" },
+    );
   }
   try {
     return normalize(
@@ -600,8 +667,23 @@ export class Action extends Store<Action> {
       }
     }
 
-    if (this.cfg.confirm && typeof globalThis.confirm === "function" && !globalThis.confirm(this.cfg.confirm)) {
-      return undefined;
+    // A native dialog is NOT available everywhere. In a sandboxed artifact
+    // iframe `window.confirm` is commonly blocked: it returns false without
+    // ever showing anything, so a confirmed action returned here silently and
+    // the control read as a dead button — no dialog, no error, no message.
+    // Distinguish the two outcomes: a real decline is silent (the rep knows
+    // they said no), an unavailable dialog is an error the page can render.
+    if (this.cfg.confirm) {
+      if (typeof globalThis.confirm !== "function") {
+        this.error = {
+          message: "This action needs confirmation, which this page cannot show.",
+          unavailable: false,
+        };
+        this.emit();
+        report({ kind: "action_blocked", surface: "action", tool: this.cfg.tool });
+        return undefined;
+      }
+      if (!globalThis.confirm(this.cfg.confirm)) return undefined;
     }
 
     this.loading = true;
@@ -1114,6 +1196,141 @@ function dislike(leadId: string): Action {
   return new Action({ tool: "leadbay_dislike_lead", args: { lead_id: leadId } });
 }
 
+export interface QualifyOpts {
+  /** One lead, or `leadIds` for the bulk apply across checked rows. A thunk is
+   *  evaluated at run() time, so a live checkbox selection works. */
+  leadId?: string;
+  leadIds?: string[] | (() => string[]);
+  /** The user request this artifact serves — recorded as `_triggered_by`. */
+  ask?: string;
+  /** Whether this lead already carries an AI score. It changes only the WORD
+   *  (`.label`): a scored lead is re-run, an unscored one is run for the first
+   *  time. Pass a thunk when the card repaints after a launch. */
+  scored?: boolean | (() => boolean);
+  confirm?: string;
+}
+
+/** The label a Qualify/Requalify control must carry. "Requalify" is only
+ *  honest once a verdict exists to replace — on an unscored lead it implies a
+ *  previous run that never happened, and the rep reads the empty tag row as a
+ *  failure of THIS button. A lead is scored when the qualifier has produced a
+ *  verdict for it: `ai_agent_lead_score` on a list payload, or a
+ *  `qualification_summary` with `answered > 0`. */
+export function qualifyLabel(lead: unknown): "Qualify" | "Requalify" {
+  const l = (lead ?? {}) as Record<string, any>;
+  const score = l.ai_agent_lead_score;
+  if (typeof score === "number" && score > 0) return "Requalify";
+  const answered = l.qualification_summary?.answered;
+  return typeof answered === "number" && answered > 0 ? "Requalify" : "Qualify";
+}
+
+/** bulk_qualify_leads action — the Qualify / Requalify button every lead card
+ *  carries. Three things it owns so a hand-rolled version cannot get them
+ *  wrong:
+ *
+ *  1. `leadIds` is camelCase. `lead_ids` is silently dropped by the schema,
+ *     and with no ids the tool falls back to the LENS's unqualified wishlist —
+ *     so the button appears to work while qualifying leads the rep never
+ *     selected.
+ *  2. `wait_for_completion: false`, so the click returns on QUEUE rather than
+ *     holding through the poll. `.lastResult` therefore means "launched", not
+ *     "verdict ready" — the card must say so and leave the old tags in place.
+ *     `lb.qualifyStatus` is how you watch it finish.
+ *  3. The launch fans out per lead and resolves 200 with a non-empty `failed[]`
+ *     when some never started, exactly as `set_lead_status` does. Without the
+ *     check the rep gets a green button over leads that were never queued.
+ *     `quota_exceeded` is the same lie at the batch level: already-launched
+ *     leads keep going, further launches stopped. */
+function qualify(opts: QualifyOpts): Action {
+  const ids = (): string[] => {
+    const v = typeof opts.leadIds === "function" ? opts.leadIds() : opts.leadIds;
+    if (Array.isArray(v)) return v;
+    return opts.leadId ? [opts.leadId] : [];
+  };
+  // What was actually SUBMITTED, captured when args() ran. checkResult fires
+  // after the round trip, and re-reading a live `leadIds` thunk there counts
+  // the selection as it is NOW — so a rep who ticks another box mid-flight
+  // gets "1 of 4 did not start" about a launch that only ever covered 3.
+  let submitted = 0;
+  const act = new Action({
+    tool: "leadbay_bulk_qualify_leads",
+    confirm: opts.confirm,
+    args: () => {
+      const leadIds = ids();
+      submitted = leadIds.length;
+      return {
+        leadIds,
+        wait_for_completion: false,
+        ...(opts.ask ? { _triggered_by: opts.ask } : {}),
+      };
+    },
+    checkResult: (r) => {
+      const res = (r ?? {}) as {
+        failed?: Array<{ lead_id?: string; error?: string }>;
+        quota_exceeded?: boolean;
+        launched_count?: number;
+      };
+      const failed = Array.isArray(res.failed) ? res.failed : [];
+      const total = submitted;
+      if (failed.length > 0) {
+        // `failed[]` entries carry `error`, not `message` — set_lead_status
+        // uses the other key, and reading the wrong one prints "undefined".
+        const first = failed[0]?.error ?? "launch rejected";
+        return failed.length >= total
+          ? `Qualification did not start: ${first}`
+          : `${failed.length} of ${total} leads did not start: ${first}`;
+      }
+      if (res.quota_exceeded) {
+        const ok = res.launched_count ?? 0;
+        return ok > 0
+          ? `Quota reached — ${ok} of ${total} launched, the rest were not started.`
+          : "Quota reached — no leads were queued.";
+      }
+      return null;
+    },
+  });
+  // The label is a property of the control, not of the write, so it rides here
+  // rather than forcing every card to re-derive it.
+  //
+  // A GETTER, not a value: `scored` is documented as accepting a thunk "when
+  // the card repaints after a launch", and evaluating it once at construction
+  // made that promise a lie — the word never changed. Reading it per access
+  // means a card that re-renders after the verdict lands sees "Requalify".
+  Object.defineProperty(act, "label", {
+    enumerable: true,
+    get: () =>
+      (typeof opts.scored === "function" ? opts.scored() : opts.scored)
+        ? "Requalify"
+        : "Qualify",
+  });
+  return act;
+}
+
+/** Watches a launch returned by `lb.qualify`. Feed it the launch result; it
+ *  polls `leadbay_qualify_status` until every lead settles. Without this the
+ *  card can only ever say "queued" — the verdict lands minutes later. */
+function qualifyStatus(
+  launch: { notification_id?: string | null; lead_ids?: string[]; lens_id?: number },
+  ask?: string,
+  pollEvery = 15000,
+): Resource {
+  return new Resource({
+    pollEvery,
+    load: () =>
+      call("leadbay_qualify_status", {
+        ...(launch?.notification_id ? { notification_id: launch.notification_id } : {}),
+        ...(launch?.lead_ids?.length ? { lead_ids: launch.lead_ids } : {}),
+        ...(typeof launch?.lens_id === "number" ? { lens_id: launch.lens_id } : {}),
+        ...(ask ? { _triggered_by: ask } : {}),
+      }),
+    until: (d) => {
+      const r = (d ?? {}) as { still_running?: unknown[]; status?: string };
+      if (Array.isArray(r.still_running)) return r.still_running.length === 0;
+      return r.status != null && r.status !== "running";
+    },
+  });
+}
+
 /** Lazy lead history (notes + activities + engagement) via account_history. */
 function leadHistory(leadId: string, ask: string): Resource {
   return new Resource({
@@ -1128,6 +1345,605 @@ function leadProfile(leadId: string, ask: string): Resource {
     autoLoad: false,
     load: () => call("leadbay_research_lead_by_id", { leadId, _triggered_by: ask }),
   });
+}
+
+/**
+ * The sector taxonomy as `{id: label}`, fetched once per page and cached.
+ *
+ * `sector_id` on a lead is a RAW ID (`"5134"`) and the card contract forbids
+ * printing it — but the taxonomy is ~1,091 visible rows, far too large to
+ * inline in an artifact. So every board either embedded a hand-picked subset
+ * (which goes stale and misses the sectors the user actually holds) or
+ * dropped the sector line entirely. This makes the label available to every
+ * artifact for the cost of one cached call.
+ *
+ * Resolves to `{}` when the call fails rather than rejecting: a missing
+ * sector label degrades one line of a card, and should never take the board
+ * down with it.
+ */
+// Keyed by `lang`, not a single slot. Unkeyed, a page whose first caller
+// took the default and whose second asked for "fr" silently got the first
+// call's labels back — no error, no cache miss, just the wrong language on
+// every row. Different languages are different answers.
+const sectorLabelsCache = new Map<string, Promise<Record<string, string>>>();
+function sectorLabels(opts: { lang?: string } = {}): Promise<Record<string, string>> {
+  const key = opts.lang ?? "";
+  let cached = sectorLabelsCache.get(key);
+  if (!cached) {
+    cached = (async () => {
+      try {
+        const r = await call("leadbay_list_sectors", {
+          ...(opts.lang ? { lang: opts.lang } : {}),
+        });
+        const list = Array.isArray(r)
+          ? r
+          : Array.isArray((r as { sectors?: unknown[] })?.sectors)
+            ? (r as { sectors: unknown[] }).sectors
+            : [];
+        const out: Record<string, string> = {};
+        for (const s of list) {
+          const o = (s ?? {}) as { id?: unknown; label?: unknown };
+          if (o.id != null && typeof o.label === "string" && o.label) {
+            out[String(o.id)] = o.label;
+          }
+        }
+        return out;
+      } catch {
+        return {};
+      }
+    })();
+    sectorLabelsCache.set(key, cached);
+  }
+  return cached;
+}
+
+/**
+ * The company-level context line every lead row shows: what the company does,
+ * and how to reach the company itself.
+ *
+ * Both halves were previously left to each artifact, and both were got wrong
+ * the same way. The sector came out as a raw id (`"5134"`) or was dropped;
+ * the channels were either omitted — hiding a phone the rep could have dialled
+ * immediately — or merged into the contact line, which claims a direct line
+ * that does not exist. `phone_numbers` and `email` on a lead belong to the
+ * COMPANY switchboard, not to `recommended_contact`.
+ */
+export interface LeadContext {
+  /** `short_description`, else `description`, else the resolved sector label.
+   *  Undefined when the lead carries none of the three. */
+  summary?: string;
+  /** The resolved sector label, when the taxonomy had it. */
+  sector?: string;
+  /** Company switchboard — NOT the contact's direct line. Label it as such. */
+  phone?: string;
+  /** Company email — same caveat. */
+  email?: string;
+}
+
+/**
+ * Build the context line for one lead. `labels` comes from `lb.sectorLabels()`;
+ * pass `{}` and the sector is simply omitted rather than printed raw.
+ *
+ * Guards the literal string "null", which the API returns for a missing value
+ * in `phone_numbers` AND in `email` — a row printing "☎ null" invites the rep
+ * to dial nothing.
+ */
+export function leadContext(lead: unknown, labels: Record<string, string> = {}): LeadContext {
+  const l = (lead ?? {}) as Record<string, any>;
+  const real = (v: unknown) =>
+    typeof v === "string" && v.trim() && v.trim() !== "null" ? v.trim() : undefined;
+
+  const sector = l.sector_id != null ? labels[String(l.sector_id)] : undefined;
+  const phones = Array.isArray(l.phone_numbers) ? l.phone_numbers : [];
+  return {
+    // Same fallback chain the card contract defines, stopping at the first
+    // hit: short_description, then description, then the sector label.
+    summary: real(l.short_description) ?? real(l.description) ?? sector,
+    sector,
+    phone: phones.map(real).find(Boolean),
+    email: real(l.email),
+  };
+}
+
+/** Where a lead board's rows come from. */
+export type LeadSourceKind = "followups" | "discover" | "campaign";
+
+export interface LeadSourceOpts {
+  /** Read at load time, so changing it and calling `.loadPage(0)` re-sources
+   *  without rebuilding the model. Pass a Field to bind it to a `<select>`. */
+  kind: LeadSourceKind | Field | (() => LeadSourceKind);
+  /** Required when kind is "campaign"; a Field binds it to a picker. */
+  campaignId?: string | Field;
+  /** Discover only. Omit for the active lens. */
+  lensId?: number;
+  /** Followups only. */
+  city?: string;
+  order?: Field | string;
+  pageSize?: number;
+  ask: string;
+}
+
+/**
+ * ONE paginated list over any Leadbay source — the Monitor, a Discover lens,
+ * or a campaign.
+ *
+ * `lb.callList` and `lb.leadList` each wrap one tool, which is right for a
+ * board built for one job. A general lead board is the other case: the rep
+ * picks where the rows come from, and everything downstream (the row's
+ * contacts, status, outreach, qualify) is identical whichever they pick. Left
+ * to the artifact, that switch means rebuilding a list model per source and
+ * re-wiring every row.
+ *
+ * TWO THINGS DIFFER BY SOURCE and this owns both:
+ *
+ *  - The deep link's view. `pull_leads` rows are Discover, `pull_followups`
+ *    rows carry `in_monitor` and belong on Monitor, and a campaign row needs
+ *    `?campaign=<id>&lead=<id>`. `.leadUrl(lead)` answers it per row.
+ *  - Sorting. A campaign call sheet has no `order` param, so the order is
+ *    DROPPED for that source rather than sent and rejected.
+ */
+function leadSource(opts: LeadSourceOpts): ListModel & { leadUrl: (lead: unknown) => string } {
+  const kindOf = (): LeadSourceKind => {
+    const k = opts.kind;
+    if (typeof k === "string") return k;
+    if (typeof k === "function") return k();
+    return (String(k?.value ?? "followups") as LeadSourceKind) || "followups";
+  };
+  const campaignOf = (): string | undefined => {
+    const c = opts.campaignId;
+    const v = typeof c === "string" ? c : c?.value;
+    return v ? String(v) : undefined;
+  };
+  const orderOf = (): string =>
+    typeof opts.order === "string" ? opts.order : String(opts.order?.value ?? "");
+
+  const model = new ListModel({
+    pageSize: opts.pageSize ?? 20,
+    load: async ({ page, pageSize }) => {
+      const kind = kindOf();
+      let r: unknown;
+      if (kind === "campaign") {
+        const campaignId = campaignOf();
+        if (!campaignId) return { items: [], total: 0 };
+        // No `order`: leadbay_campaign_call_sheet has no such param and
+        // sending one is rejected.
+        r = await call("leadbay_campaign_call_sheet", {
+          campaign_id: campaignId,
+          page,
+          count: pageSize,
+          _triggered_by: opts.ask,
+        });
+      } else if (kind === "discover") {
+        r = await call("leadbay_pull_leads", {
+          page,
+          count: pageSize,
+          ...(opts.lensId ? { lensId: opts.lensId } : {}),
+          ...(orderOf() ? { order: orderOf() } : {}),
+          _triggered_by: opts.ask,
+        });
+      } else {
+        r = await call("leadbay_pull_followups", {
+          page,
+          count: pageSize,
+          ...(opts.city ? { city: opts.city } : {}),
+          ...(orderOf() ? { order: orderOf() } : {}),
+          _triggered_by: opts.ask,
+        });
+      }
+      const o = (r ?? {}) as {
+        leads?: unknown[];
+        items?: unknown[];
+        total_leads?: number;
+        pagination?: { total?: number };
+      };
+      const items = o.leads ?? o.items ?? [];
+      return { items, total: o.pagination?.total ?? o.total_leads ?? items.length };
+    },
+  });
+
+  return Object.assign(model, {
+    leadUrl: (lead: unknown): string => {
+      const l = (lead ?? {}) as { id?: string; in_monitor?: boolean };
+      const id = encodeURIComponent(String(l.id ?? ""));
+      const kind = kindOf();
+      if (kind === "campaign") {
+        const c = campaignOf();
+        // Omitting `campaign=` opens an empty campaign view.
+        if (c) return `https://leadbay.app/app/campaign?campaign=${encodeURIComponent(c)}&lead=${id}`;
+      }
+      // `pull_leads` omits in_monitor entirely; its rows are Discover by
+      // definition. A followups row carries in_monitor:true.
+      const view = kind === "discover" ? "discover" : l.in_monitor === false ? "discover" : "monitor";
+      return `https://leadbay.app/app/${view}?lead=${id}`;
+    },
+  });
+}
+
+// ─── Route planning ──────────────────────────────────────────────────────────
+//
+// A rep planning a day on the road needs three things a lead list cannot give:
+// where each lead actually is, how far apart they are, and a way to hand the
+// order to the navigation app they will really drive with. All three were
+// hand-rolled in the first route-planner artifact; they belong here because
+// each one is easy to get subtly wrong and impossible to notice when you do.
+
+/** A lead's coordinates, or null when it has none.
+ *
+ *  `location.pos` is `[lat, lng]`. A lead with no coordinates is NORMAL — an
+ *  imported book is mostly ungeocoded — so this returns null rather than
+ *  throwing, and a map must render the ungeocoded ones somewhere other than
+ *  the map (a list beside it) rather than dropping them silently. */
+export function leadPos(lead: unknown): [number, number] | null {
+  const p = (lead as { location?: { pos?: unknown } } | null)?.location?.pos;
+  if (!Array.isArray(p) || p.length < 2) return null;
+  const [lat, lng] = p;
+  if (typeof lat !== "number" || typeof lng !== "number") return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  // 0,0 is in the Gulf of Guinea: the API's "no position" sentinel, not a lead.
+  if (lat === 0 && lng === 0) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return [lat, lng];
+}
+
+/** Great-circle kilometres between two `[lat, lng]` points.
+ *
+ *  Haversine, not Euclidean: at French latitudes a degree of longitude is
+ *  ~73km against 111km for latitude, so treating the pair as a plane
+ *  overstates east-west distance by half and mis-orders a route. */
+export function distanceKm(from: [number, number], to: [number, number]): number {
+  const rad = Math.PI / 180;
+  const dLat = (to[0] - from[0]) * rad;
+  const dLng = (to[1] - from[1]) * rad;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(from[0] * rad) * Math.cos(to[0] * rad) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Google Maps caps a directions URL at an origin, a destination and 9
+ *  waypoints. A longer route silently loses its tail, so callers must say so
+ *  rather than hand over a link that quietly drops stops. */
+export const GOOGLE_MAPS_STOP_LIMIT = 11;
+
+/** A driving-directions URL for an ordered list of stops.
+ *
+ *  Returns null for an empty list. Beyond GOOGLE_MAPS_STOP_LIMIT the tail is
+ *  DROPPED — `truncated` on the result says how many, so the page can tell the
+ *  rep instead of letting them drive a route missing its last calls. */
+export function routeUrl(
+  stops: Array<{ pos: [number, number] }>,
+): { url: string; used: number; truncated: number } | null {
+  const usable = stops.filter((s) => Array.isArray(s?.pos) && s.pos.length === 2);
+  if (usable.length === 0) return null;
+  const kept = usable.slice(0, GOOGLE_MAPS_STOP_LIMIT);
+  const coords = kept.map((s) => s.pos.join(","));
+  const params = new URLSearchParams({ api: "1", travelmode: "driving" });
+  if (coords.length === 1) {
+    params.set("destination", coords[0]);
+  } else {
+    params.set("origin", coords[0]);
+    params.set("destination", coords[coords.length - 1]);
+    if (coords.length > 2) params.set("waypoints", coords.slice(1, -1).join("|"));
+  }
+  return {
+    url: `https://www.google.com/maps/dir/?${params.toString()}`,
+    used: kept.length,
+    truncated: usable.length - kept.length,
+  };
+}
+
+/** Total driving-order distance across a route, in kilometres. Straight-line
+ *  per leg, so it UNDERSTATES road distance — label it "as the crow flies"
+ *  rather than presenting it as a drive estimate. */
+export function routeDistanceKm(stops: Array<{ pos: [number, number] }>): number {
+  let total = 0;
+  for (let i = 1; i < stops.length; i++) total += distanceKm(stops[i - 1].pos, stops[i].pos);
+  return total;
+}
+
+/** Order stops nearest-neighbour from the first (or from `start`).
+ *
+ *  A greedy heuristic, not an optimal tour: TSP is not worth solving for a
+ *  day's calls, and a rep re-orders by hand anyway. It exists so the default
+ *  order is not the arbitrary one the API returned. */
+export function orderByProximity<T extends { pos: [number, number] }>(
+  stops: T[],
+  start?: [number, number],
+): T[] {
+  const remaining = stops.slice();
+  if (remaining.length <= 2) return remaining;
+  const out: T[] = [];
+  let cursor = start ?? remaining[0].pos;
+  while (remaining.length) {
+    let best = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const d = distanceKm(cursor, remaining[i].pos);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    const [next] = remaining.splice(best, 1);
+    out.push(next);
+    cursor = next.pos;
+  }
+  return out;
+}
+
+/** One contact a rep can actually reach, flattened from a lead profile. */
+export interface RelanceContact {
+  contactId?: string;
+  name: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  /** The contact's LinkedIn profile. A ROUTE the rep can take — show it — but
+   *  NOT a channel for reachability counting: it cannot be dialled or mailed,
+   *  and `lb.leadReach` deliberately ignores it. Both rules are right; they
+   *  answer different questions ("can I contact this person right now" vs
+   *  "how much of the book is callable"). */
+  linkedin?: string;
+  /** The row's default target: the contact's own `recommended` flag, falling
+   *  back to the engagement block's `recommended_contact` id. */
+  recommended: boolean;
+  /** True when a channel has already been purchased for this contact
+   *  (`enrichment_done`). False means enrichment would buy one. */
+  enriched: boolean;
+}
+
+/**
+ * Everything one row of a relance (follow-up) table needs, as one object.
+ *
+ * A relance row is not a lead card: the rep is not deciding whether the lead
+ * fits, they are deciding who to call and recording what happened. So the row
+ * bundles four things that were previously four separate wirings each artifact
+ * assembled by hand — and got subtly wrong in the same places:
+ *
+ *   `contacts`  who to reach, with the CHANNELS (lazy — see below)
+ *   `status`    the org-wide CRM outcome     → lb.setStatus
+ *   `epilogue`  how this attempt went        → lb.outreach
+ *   `note`      what was said                → gated, required to log
+ *
+ * TWO SYSTEMS, NOT ONE. Epilogue is how one outreach ATTEMPT went and drives
+ * follow-up ranking; lead status is the commercial outcome the whole org sees.
+ * Setting one never sets the other, so a row exposes both and a rep reporting
+ * "she's interested, meeting booked" fires both actions.
+ *
+ * CHANNELS ARE LAZY, BY NECESSITY. The list payloads (`pull_followups`,
+ * `campaign_call_sheet`) carry `recommended_contact` as a NAME and nothing
+ * else — no email, no phone. Those live on `research_lead_by_id` as
+ * `contacts.reachable[]`. Prefetching them for a 20-row table means 20
+ * requests to fill cells the rep may never read, so `contacts` is a Resource
+ * with `autoLoad:false`: the row renders instantly from the list, and the
+ * channels load when the rep opens that row. One call for one lead they chose.
+ */
+export interface RelanceRow {
+  leadId: string;
+  /** Lazy: `.load()` on the rep's gesture. `.data` is RelanceContact[]. */
+  contacts: Resource;
+  /** Company-level context, loaded automatically: `.data` is a LeadContext
+   *  (summary / sector / company phone / company email). Present only when
+   *  `lead` was passed. */
+  context: Resource;
+  /** CRM status field + its write. Saves on change; no submit button. */
+  status: Field;
+  saveStatus: Action;
+  /** Epilogue select + note + the write that needs both. */
+  epilogue: Field;
+  note: Field;
+  logOutreach: Action;
+  /** Taste — an axis INDEPENDENT of CRM status. A lead can be liked and lost. */
+  like: Action;
+  dislike: Action;
+  /** Qualify / Requalify. `qualify.label` carries which word to show. */
+  qualify: Action;
+}
+
+export function relanceRow(opts: {
+  leadId: string;
+  ask: string;
+  /** The lead's current `state.status`, so the select opens on it. */
+  currentStatus?: string | null;
+  /** The lead row from the list payload. Pass it and the row resolves its own
+   *  `context` (sector label, description, company switchboard) so an artifact
+   *  does not have to wire that separately. */
+  lead?: unknown;
+}): RelanceRow {
+  const status = leadStatus(opts.currentStatus);
+  const epilogue = new Field({
+    kind: "select",
+    value: EPILOGUE_STATUSES[0],
+    load: async () =>
+      EPILOGUE_STATUSES.map((v) => ({
+        value: v,
+        label: EPILOGUE_LABELS[v] ?? v,
+      })),
+  });
+  // Gated: report_outreach without a note records that something happened and
+  // not what, which is worse than no record — the next rep reads an empty
+  // follow-up and calls blind.
+  const note = new Field({
+    validate: (v) => (String(v ?? "").trim() ? null : "Add a note before logging"),
+  });
+
+  const contacts = new Resource({
+    autoLoad: false,
+    load: async () => {
+      const r = (await call("leadbay_research_lead_by_id", {
+        leadId: opts.leadId,
+        _triggered_by: opts.ask,
+      })) as {
+        contacts?: { reachable?: unknown[]; candidates?: unknown[] };
+        engagement?: { recommended_contact?: { contact_id?: string } };
+      };
+
+      // The contact set is TWO-TIER: `reachable` holds contacts with a
+      // purchased channel, `candidates` holds everyone known. On an
+      // un-enriched book `reachable` is EMPTY and every contact sits in
+      // `candidates` — reading only `reachable` renders "no contacts" for a
+      // lead with nine of them. Show both, reachable first, de-duplicated by
+      // id in case a contact appears in each.
+      const reachable = Array.isArray(r?.contacts?.reachable) ? r.contacts!.reachable! : [];
+      const candidates = Array.isArray(r?.contacts?.candidates) ? r.contacts!.candidates! : [];
+      const seen = new Set<string>();
+      const list: unknown[] = [];
+      for (const c of [...reachable, ...candidates]) {
+        const id = (c as { id?: string; contact_id?: string })?.id
+          ?? (c as { contact_id?: string })?.contact_id;
+        if (id && seen.has(id)) continue;
+        if (id) seen.add(id);
+        list.push(c);
+      }
+
+      // TWO sources disagree about who is recommended, and they are both real:
+      // a contact's own `recommended: true` flag, and the engagement block's
+      // `recommended_contact` (the ORG contact the Monitor row shows). On one
+      // observed lead they named different people. The contact's own flag wins
+      // — it is per-contact and is what the research payload asserts about
+      // this set — and the engagement id is the fallback for payloads that
+      // omit the flag. Note it lives under `engagement`, NOT at the top level.
+      const engagementId = r?.engagement?.recommended_contact?.contact_id;
+      return list.map((c) => flattenContact(c, engagementId));
+    },
+  });
+
+  // Company context resolves against the cached taxonomy, so N rows share one
+  // fetch. Synchronous callers get the channels immediately (they are on the
+  // list payload) and the sector label once the taxonomy lands.
+  const context = new Resource({
+    load: async () => leadContext(opts.lead, await sectorLabels()),
+  });
+
+  return {
+    leadId: opts.leadId,
+    contacts,
+    context,
+    status,
+    saveStatus: setStatus({ leadId: opts.leadId, status, ask: opts.ask }),
+    epilogue,
+    note,
+    logOutreach: outreach({ leadId: opts.leadId, ask: opts.ask, status: epilogue, note }),
+    like: like(opts.leadId),
+    dislike: dislike(opts.leadId),
+    // Label comes from the lead's own score, so a never-qualified lead is not
+    // offered a "re-run" that never ran.
+    qualify: qualify({
+      leadId: opts.leadId,
+      ask: opts.ask,
+      scored: qualifyLabel(opts.lead) === "Requalify",
+    }),
+  };
+}
+
+/**
+ * Reveal one contact's email, phone, or both — the action a relance row
+ * offers on a contact with no channel.
+ *
+ * SPENDS QUOTA, so it carries a `confirm` by default. Enrichment is gated
+ * server-side per organisation and a reveal is not free; a rep clicking
+ * through a table should be told which channels they are buying, for whom,
+ * before the call goes out. Pass `confirm: ""` to suppress it only when the
+ * surrounding UI has already asked.
+ *
+ * `email` and `phone` both default TRUE on the tool, and it rejects a call
+ * with both false. This component surfaces them as explicit choices instead,
+ * because "both" is the expensive default and a rep who only needs a phone
+ * should be able to say so.
+ *
+ * WHAT COMES BACK IS NOT ALWAYS THE SAME ROW. For a `source:"paid"`
+ * candidate the channel lands on a NEW `source:"org"` contact with a
+ * DIFFERENT id — the candidate row itself only flips `enrichment_done`. So
+ * after a successful reveal, re-load the lead's contacts rather than patching
+ * the row in place: `onDone` fires for exactly that, and
+ * `relanceRow.contacts.load()` is what to call. Note also that
+ * `enrichment_done: true` alone does not mean the requested channel arrived —
+ * a contact enriched earlier for the other channel already reads done.
+ */
+export function enrichContact(opts: {
+  leadId: string;
+  contactId: string;
+  /** Which channels to buy. Both default true, matching the tool. */
+  email?: boolean | (() => boolean);
+  phone?: boolean | (() => boolean);
+  ask?: string;
+  /** Override the spend confirmation; "" disables it. */
+  confirm?: string;
+  /** Re-load the contact set here — the channel may land on a NEW contact. */
+  onDone?: () => void;
+}): Action {
+  const want = (v: boolean | (() => boolean) | undefined) =>
+    typeof v === "function" ? v() : v !== false;
+  // The tool rejects email:false + phone:false. A Field validates BEFORE the
+  // call, so the rep gets a sentence instead of a schema error — and before
+  // the confirm dialog, so they are not asked to approve a spend that cannot
+  // happen.
+  const channels = new Field({
+    value: "ok",
+    validate: () => (want(opts.email) || want(opts.phone) ? null : "Pick email, phone, or both."),
+  });
+  return new Action({
+    tool: "leadbay_enrich_contacts",
+    fields: [channels],
+    confirm:
+      opts.confirm === "" ? undefined : (opts.confirm ?? "Reveal this contact? It uses enrichment quota."),
+    // `_triggered_by` IS accepted here — the MCP-exposed schema carries it as
+    // optional metadata, even though the raw inputSchema in the tool source
+    // does not list it. Verified against a live call.
+    args: () => ({
+      leadId: opts.leadId,
+      contactId: opts.contactId,
+      email: want(opts.email),
+      phone: want(opts.phone),
+      ...(opts.ask ? { _triggered_by: opts.ask } : {}),
+    }),
+    checkResult: (r) => {
+      const res = (r ?? {}) as { error?: unknown; message?: string };
+      return res.error ? (res.message ?? "Enrichment failed") : null;
+    },
+    onSuccess: () => opts.onDone?.(),
+  });
+}
+
+/** The four epilogue values in the rep's words. The raw enum names are
+ *  shouted constants; a select showing INTEREST_VALIDATED_OR_MEETING_PLANED
+ *  makes the rep translate before they can answer. */
+export const EPILOGUE_LABELS: Record<string, string> = {
+  STILL_CHASING: "Still chasing",
+  COULD_NOT_REACH_STILL_TRYING: "Could not reach — still trying",
+  INTEREST_VALIDATED_OR_MEETING_PLANED: "Interested / meeting planned",
+  NOT_INTERESTED_LOST: "Not interested — lost",
+};
+
+/** Flatten one profile contact to the fields a relance row shows. Guards the
+ *  literal "null" string the API returns for a missing value, in every channel
+ *  field — a row printing "☎ null" invites the rep to dial nothing. */
+function flattenContact(c: unknown, recommendedId?: string): RelanceContact {
+  const o = (c ?? {}) as Record<string, any>;
+  const real = (v: unknown) =>
+    typeof v === "string" && v.trim() && v !== "null" ? v.trim() : undefined;
+  const name =
+    [real(o.first_name), real(o.last_name)].filter(Boolean).join(" ") ||
+    real(o.name) ||
+    "Unnamed contact";
+  const id = real(o.id) ?? real(o.contact_id);
+  return {
+    contactId: id,
+    name,
+    title: real(o.job_title) ?? real(o.title),
+    email: real(o.email),
+    phone: real(o.phone) ?? real(o.phone_number) ?? real((o.phone_numbers ?? [])[0]),
+    linkedin: real(o.linkedin_page),
+    // The contact's own flag first — it is what this payload asserts about
+    // this set. The engagement id is the fallback for a contact that carries
+    // no flag at all.
+    recommended:
+      o.recommended === true || (recommendedId != null && id === recommendedId),
+    /** True once a channel has been purchased for this contact. A candidate
+     *  with `enrichment_done:false` and no channel is not a dead end — it is
+     *  exactly what enrichment buys. */
+    enriched: o.enrichment_done === true,
+  };
 }
 
 interface EnrichOpts {
@@ -1407,14 +2223,26 @@ async function portfolioSectors(
  *    `active_filters` against what was sent, and a mismatch means the number
  *    is about something else.
  */
-async function segmentCount(opts: SegmentOpts): Promise<SegmentCount> {
-  const criteria: Array<Record<string, unknown>> = [];
-  if (opts.sectorIds?.length) {
-    criteria.push({ type: "sector_ids", sectors: opts.sectorIds, is_excluded: false });
-  }
+/**
+ * The counting primitive both `segmentCount` and `coverage` sit on: one
+ * filtered `pagination.total`, with the echo of the stored filter verified
+ * against what was sent.
+ *
+ * Kept generic over criteria so a dimension this file has never heard of —
+ * a size band, a custom field — gets the same guarantee as a sector. The
+ * comparison is by TYPE in both directions, plus values for the types where
+ * the caller has something to compare against (see `valueKey`).
+ */
+async function segmentCountRaw(opts: {
+  criteria: Array<Record<string, unknown>>;
+  personal?: boolean;
+  ask: string;
+  city?: string;
+  cityId?: string;
+}): Promise<SegmentCount> {
   const res = (await call("leadbay_pull_followups", {
     count: 1,
-    set_filter: { criteria },
+    set_filter: { criteria: opts.criteria },
     ...(opts.city ? { city: opts.city } : {}),
     ...(opts.cityId ? { city_id: opts.cityId } : {}),
     ...(opts.personal === undefined ? {} : { personal: opts.personal }),
@@ -1425,56 +2253,339 @@ async function segmentCount(opts: SegmentOpts): Promise<SegmentCount> {
   };
 
   const applied = res.active_filters?.criteria ?? [];
+  const typeOf = (c: Record<string, unknown>) =>
+    typeof c?.type === "string" ? (c.type as string) : null;
 
-  // Every criterion asked for must come back, whatever its type. An earlier
-  // version compared sector ids only, which left the city path unguarded: with
-  // `city` alone both sides of that comparison were the empty string, so a
-  // silently-dropped location criterion read as trusted and the board charted a
-  // count for a segment nobody asked for — the exact failure this flag exists to
-  // catch.
-  //
-  // `city` / `cityId` are sent as top-level params, not criteria: the composite
-  // resolves them through /geo/search into a `location_ids` criterion. So the
-  // type to expect back is one this function never constructed.
   const wantTypes = new Set<string>();
-  if (opts.sectorIds?.length) wantTypes.add("sector_ids");
+  for (const c of opts.criteria) {
+    const t = typeOf(c);
+    if (t) wantTypes.add(t);
+  }
+  // city/cityId are top-level params the composite resolves via /geo/search
+  // into a location_ids criterion — a type this function never constructed.
   if (opts.city || opts.cityId) wantTypes.add("location_ids");
 
   const gotTypes = new Set(
-    applied
-      .map((c) => (typeof c?.type === "string" ? c.type : null))
-      .filter((t): t is string => t != null),
+    applied.map(typeOf).filter((t): t is string => t != null),
   );
 
-  // Sector VALUES are checked too, not just the type: a stale sector filter is
-  // still a sector filter, so a type-only check would wave 5122 through when
-  // 5134 was asked for. Locations get no value check — the id is resolved
-  // server-side from free text, so the caller has nothing to compare against.
-  const wantSectors = (opts.sectorIds ?? []).slice().sort().join(",");
-  const gotSectors = applied
-    .filter((c) => c?.type === "sector_ids")
-    .flatMap((c) => (Array.isArray(c.sectors) ? (c.sectors as string[]) : []))
-    .slice()
-    .sort()
-    .join(",");
-
-  // The echo must match what was asked for in BOTH directions. Checking only
-  // that everything wanted arrived is a subset test, and the stored filter is
-  // cumulative: narrowing sector+city to sector-only leaves the location
-  // criterion in force, so the count is still fenced to a city nobody asked
-  // about while every requested type is present. An unrequested criterion
-  // narrows the result exactly as a dropped one widens it.
-  //
-  // This also covers the unfiltered case on its own terms: with nothing wanted,
-  // "nothing extra" IS "the echo is empty", which is what makes a whole-book
-  // denominator trustworthy.
+  // Both directions. "Everything I asked for arrived" is only a subset test,
+  // and the stored filter is cumulative: an unrequested criterion left over
+  // from the previous call narrows the count exactly as a dropped one widens
+  // it. With nothing wanted, "nothing extra" IS "the echo is empty", which is
+  // what makes the whole-book denominator trustworthy.
   const everyTypeLanded = [...wantTypes].every((t) => gotTypes.has(t));
-  const nothingExtraApplied = [...gotTypes].every((t) => wantTypes.has(t));
+  const nothingExtra = [...gotTypes].every((t) => wantTypes.has(t));
+
+  // VALUES, not just types. A stale filter of the right type is still the
+  // wrong question: sector 5122 echoed when 5134 was asked for, a size band
+  // 1–10 echoed when 20–49 was asked for. A type-only check waves both
+  // through, which is how a size sweep can return the same number twelve
+  // times and look plausible.
+  //
+  // Compared structurally so a dimension this file has never seen is covered
+  // by default — the alternative is an allowlist of value keys, and a
+  // criterion type missing from it silently loses its value check. Opting a
+  // type IN by accident costs a false `trusted:false`; leaving one OUT costs
+  // a charted wrong number, so the default must be to check.
+  //
+  // `location_ids` is the one deliberate exemption: the caller sends free
+  // text (`city`) and the server resolves it to an admin_area id through
+  // /geo/search, so the echo legitimately differs from anything sent and
+  // there is nothing to compare against. Presence is still required above.
+  const UNCOMPARABLE = new Set(["location_ids"]);
+  const canon = (list: Array<Record<string, unknown>>, type: string): string =>
+    list
+      .filter((c) => typeOf(c) === type)
+      .map((c) =>
+        JSON.stringify(
+          Object.keys(c)
+            .filter((k) => k !== "type")
+            .sort()
+            .map((k) => [k, c[k]]),
+        ),
+      )
+      .sort()
+      .join("|");
+  const valuesMatch = [...wantTypes].every(
+    (t) => UNCOMPARABLE.has(t) || canon(opts.criteria, t) === canon(applied, t),
+  );
 
   return {
     total: finite(res.pagination?.total),
     applied,
-    trusted: everyTypeLanded && nothingExtraApplied && wantSectors === gotSectors,
+    trusted: everyTypeLanded && nothingExtra && valuesMatch,
+  };
+}
+
+async function segmentCount(opts: SegmentOpts): Promise<SegmentCount> {
+  const criteria: Array<Record<string, unknown>> = [];
+  if (opts.sectorIds?.length) {
+    criteria.push({ type: "sector_ids", sectors: opts.sectorIds, is_excluded: false });
+  }
+  return segmentCountRaw({
+    criteria,
+    personal: opts.personal,
+    ask: opts.ask,
+    city: opts.city,
+    cityId: opts.cityId,
+  });
+}
+
+
+/** One value of a coverage dimension: the thing a bar measures. */
+export interface CoverageBucket {
+  /** Stable key — a sector id, a size band name, a custom-field value. */
+  id: string;
+  /** What the bar is labelled. */
+  label: string;
+  /** The FilterCriterion this bucket narrows by. Omit for a whole-book row.
+   *  It must be complete on its own: the stored filter is cumulative and this
+   *  runner always sends the full set, never a delta. */
+  criterion?: Record<string, unknown>;
+  /** Optional ordering hint from a sample (see `coverageBuckets`). Never
+   *  presented as the portfolio figure — `segmentCount` gives that. */
+  sampled?: number;
+}
+
+/** One measured bucket. `trusted:false` means the server echoed a filter that
+ *  did not match what was sent, so the number answers a different question and
+ *  MUST be shown as unmeasured rather than charted. */
+export interface CoverageRow extends CoverageBucket {
+  total: number;
+  trusted: boolean;
+  error?: string;
+}
+
+export interface CoverageOpts {
+  /** The buckets to measure, in render order. */
+  buckets: CoverageBucket[];
+  ask: string;
+  /** Whose book. `pull_followups` defaults to the whole ORGANISATION; on an
+   *  admin account that is a different number from their own followups. */
+  personal?: boolean;
+  /** Called after each bucket settles, for a progress cue. Measuring is
+   *  SEQUENTIAL by design — see below. */
+  onProgress?: (done: number, total: number, row: CoverageRow) => void;
+}
+
+/**
+ * Measure any dimension of the Monitor portfolio — sector, size, recency,
+ * liked, a custom field — as a list of counted buckets.
+ *
+ * This is `segmentCount` generalised. It owns the three things that make a
+ * hand-rolled multi-segment board wrong:
+ *
+ * 1. **Sequential, never a parallel burst.** A filtered count is normally
+ *    1–2s, but a `last_action_date` criterion was observed at 54s on a 3.6k
+ *    segment. Twelve of those in parallel is a hung page and a hammered
+ *    backend. `onProgress` exists so the UI can show the sweep advancing
+ *    instead of freezing.
+ * 2. **The complete criteria set on every call.** The stored Monitor filter is
+ *    a single server-side slot and CUMULATIVE: send bucket B as a delta after
+ *    bucket A and B inherits A's criterion, so every bar after the first is
+ *    fenced by the one before it. Each call here sends exactly its own
+ *    bucket's criterion and nothing else.
+ * 3. **Per-bucket echo verification.** A rejected criterion returns 200 with
+ *    the PREVIOUS filter still applied — a plausible number answering the
+ *    previous question. Each row carries its own `trusted`.
+ *
+ * A bucket that throws becomes a row with `trusted:false` and an `error`
+ * rather than aborting the sweep: one unmeasurable segment should not cost
+ * the other eleven.
+ */
+async function coverage(opts: CoverageOpts): Promise<CoverageRow[]> {
+  const rows: CoverageRow[] = [];
+  const total = opts.buckets.length;
+
+  for (const bucket of opts.buckets) {
+    let row: CoverageRow;
+    try {
+      const measured = await segmentCountRaw({
+        criteria: bucket.criterion ? [bucket.criterion] : [],
+        personal: opts.personal,
+        ask: opts.ask,
+      });
+      row = { ...bucket, total: measured.total, trusted: measured.trusted };
+    } catch (e) {
+      row = { ...bucket, total: 0, trusted: false, error: messageOf(e) };
+    }
+    rows.push(row);
+    opts.onProgress?.(rows.length, total, row);
+  }
+
+  return rows;
+}
+
+/** The whole-book denominator: one unfiltered count, at the same scope as the
+ *  buckets. Taken UNFILTERED on purpose, so it ignores whatever filter the
+ *  user's Monitor tab happens to have applied — a denominator that moves with
+ *  the UI makes every share meaningless. */
+async function coverageTotal(opts: { ask: string; personal?: boolean }): Promise<CoverageRow> {
+  try {
+    const m = await segmentCountRaw({ criteria: [], personal: opts.personal, ask: opts.ask });
+    return { id: "__all__", label: "Whole book", total: m.total, trusted: m.trusted };
+  } catch (e) {
+    return { id: "__all__", label: "Whole book", total: 0, trusted: false, error: messageOf(e) };
+  }
+}
+
+/**
+ * Derive a dimension's buckets from the leads the user ACTUALLY holds, by
+ * sampling one page and tallying a field.
+ *
+ * `portfolioSectors` generalised. Never hardcode a bucket list: the guide
+ * records what that did to one real portfolio — a hand-written list offered a
+ * sector holding 3 leads while omitting the third-largest at 555. The same
+ * applies to size bands and custom-field values, where the plausible-looking
+ * list is even easier to invent.
+ *
+ * `sampled` orders the list; it is NOT the portfolio figure. Pass the buckets
+ * to `coverage` for real counts.
+ */
+async function coverageBuckets(opts: {
+  /** Lead field to tally (`sector_id`, or a custom field's key). */
+  field: string;
+  /** id → display label. Unresolved ids fall back to `<field> <id>`. */
+  labels?: Record<string, string>;
+  /** Build the FilterCriterion for a tallied value. */
+  criterion?: (id: string) => Record<string, unknown>;
+  sample?: number;
+  personal?: boolean;
+  ask: string;
+  /** Keep at most N buckets, highest sample first. A sweep is sequential, so
+   *  an unbounded list is an unbounded wait. */
+  limit?: number;
+}): Promise<CoverageBucket[]> {
+  const res = (await call("leadbay_pull_followups", {
+    count: opts.sample ?? 200,
+    filtered: false,
+    ...(opts.personal === undefined ? {} : { personal: opts.personal }),
+    _triggered_by: opts.ask,
+  })) as { leads?: Array<Record<string, unknown>> };
+
+  const tally = new Map<string, number>();
+  for (const lead of res.leads ?? []) {
+    const raw = lead?.[opts.field];
+    if (raw == null || raw === "" || raw === "null") continue;
+    const id = String(raw);
+    tally.set(id, (tally.get(id) ?? 0) + 1);
+  }
+
+  const labels = opts.labels ?? {};
+  const out = [...tally.entries()]
+    .map(([id, sampled]) => ({
+      id,
+      label: labels[id] ?? `${opts.field} ${id}`,
+      sampled,
+      ...(opts.criterion ? { criterion: opts.criterion(id) } : {}),
+    }))
+    .sort((a, b) => b.sampled - a.sampled || a.id.localeCompare(b.id));
+
+  return opts.limit != null ? out.slice(0, opts.limit) : out;
+}
+
+/** The reachability of one lead, as a list payload can report it. */
+export type Reach = "reachable" | "contacts_only" | "empty";
+
+/** Classify one lead's reachability from a list payload.
+ *
+ * The distinction this exists to make: **`contacts_count > 0` is NOT
+ * reachability.** It counts known PEOPLE — a name and a job title — not
+ * people you can dial. A lead can show 2,518 contacts and zero channels, and
+ * a board that charts `contacts_count` tells a rep they have a pipeline when
+ * they have a phone book with no numbers. Nor is a `linkedin_page`: the rep
+ * cannot message a URL without leaving the artifact.
+ *
+ * So three states, not two:
+ *   - `reachable`      a company phone or email exists — callable today
+ *   - `contacts_only`  people are known, no channel — ENRICHMENT BUYS THIS
+ *   - `empty`          neither — needs discovery before enrichment
+ *
+ * The middle bucket is the point. It is the only one where spending money
+ * converts a dead row into a callable one, so it is the board's whole answer
+ * to "what should I buy?".
+ *
+ * `has_phone` is the ready-made boolean on `pull_followups`; `pull_leads`
+ * omits it, so `phone_numbers` is the fallback. The API returns the literal
+ * STRING "null" for a missing value in `phone_numbers` AND in `email`, so
+ * both are guarded — without it a lead with `phone_numbers:["null"]` counts
+ * as reachable and the board overstates the callable book. */
+export function leadReach(lead: unknown): Reach {
+  const l = (lead ?? {}) as Record<string, any>;
+  const real = (v: unknown) => (typeof v === "string" && v && v !== "null" ? v : null);
+
+  const phones = Array.isArray(l.phone_numbers) ? l.phone_numbers : [];
+  const hasPhone = l.has_phone === true || phones.some((p: unknown) => real(p) != null);
+  const hasEmail = real(l.email) != null;
+  if (hasPhone || hasEmail) return "reachable";
+
+  const known = finite(l.contacts_count) + finite(l.org_contacts_count);
+  return known > 0 ? "contacts_only" : "empty";
+}
+
+export interface ReachCoverage {
+  rows: CoverageRow[];
+  /** How many leads were classified. This is a SAMPLE, never the book. */
+  sampled: number;
+  /** The book's real size, from an unfiltered count — the denominator to
+   *  extrapolate against, and the number that makes the sample honest. */
+  bookTotal: number;
+}
+
+/**
+ * Reachability coverage: how much of the book is callable, how much is one
+ * enrichment away, how much is neither.
+ *
+ * WHY THIS ONE IS SAMPLED, unlike every other coverage dimension: reachability
+ * is not a `FilterCriterion`. The Monitor cannot filter on "has a phone", so
+ * there is no cheap `pagination.total` for it and the counts have to come from
+ * classifying real leads. That makes this an ESTIMATE — `sampled` says over
+ * how many, and `bookTotal` gives the real denominator, so a caller can
+ * extrapolate and label it honestly. Never present these as exact counts; the
+ * board must say "≈ 62% of 7,078, sampled over 200".
+ *
+ * One page, one call. The sample is taken UNFILTERED so the shape is the
+ * book's, not whatever the user's Monitor tab currently has applied.
+ */
+async function reachCoverage(opts: {
+  sample?: number;
+  personal?: boolean;
+  ask: string;
+}): Promise<ReachCoverage> {
+  const sample = opts.sample ?? 200;
+  const res = (await call("leadbay_pull_followups", {
+    count: sample,
+    filtered: false,
+    ...(opts.personal === undefined ? {} : { personal: opts.personal }),
+    _triggered_by: opts.ask,
+  })) as { leads?: unknown[]; pagination?: { total?: number } };
+
+  const leads = Array.isArray(res.leads) ? res.leads : [];
+  const tally: Record<Reach, number> = { reachable: 0, contacts_only: 0, empty: 0 };
+  for (const lead of leads) tally[leadReach(lead)]++;
+
+  const LABELS: Array<[Reach, string]> = [
+    ["reachable", "Callable now"],
+    ["contacts_only", "Contacts, no channel"],
+    ["empty", "No contacts"],
+  ];
+
+  return {
+    sampled: leads.length,
+    // The page's own pagination.total IS the unfiltered book, so this costs
+    // no extra call — the denominator rides along with the sample.
+    bookTotal: finite(res.pagination?.total),
+    rows: LABELS.map(([id, label]) => ({
+      id,
+      label,
+      total: tally[id],
+      // A classified sample is as trustworthy as the read that produced it:
+      // there is no stored filter to echo, so nothing can silently answer a
+      // different question the way segmentCountRaw guards against.
+      trusted: true,
+      sampled: tally[id],
+    })),
   };
 }
 
@@ -1773,18 +2884,56 @@ export const lb = {
   campaigns,
   segmentCount,
   portfolioSectors,
+  // Coverage: any dimension the Monitor filter can narrow by, not just sector.
+  // `coverageBuckets` derives the values from the book (never hardcode them),
+  // `coverage` sweeps them sequentially with a per-bucket trusted check, and
+  // `coverageTotal` is the unfiltered denominator.
+  coverage,
+  coverageBuckets,
+  coverageTotal,
+  // Reachability — the one coverage dimension the Monitor cannot filter on,
+  // so it is SAMPLED and its rows are an estimate against `bookTotal`.
+  reachCoverage,
+  leadReach,
   outreach,
   note: noteAction,
   like,
   dislike,
+  // Qualify / Requalify — mandatory on every lead card. `qualifyLabel` picks
+  // the word from the lead's own data so a card never offers to "re-run" a
+  // qualification that never ran.
+  qualify,
+  qualifyLabel,
+  qualifyStatus,
   leadStatus,
   setStatus,
+  // Relance (follow-up) table: one row's contacts + status + epilogue + note,
+  // bundled so an artifact wires a row once instead of five times.
+  relanceRow,
+  enrichContact,
+  // Company-level context for a lead row: what it does (resolved sector /
+  // description) and the company switchboard. `sectorLabels` caches the
+  // taxonomy so no artifact has to inline or omit it.
+  sectorLabels,
+  leadContext,
+  // Route planning: where a lead is, how far apart stops are, and a
+  // navigation URL the rep can actually drive.
+  leadPos,
+  distanceKm,
+  routeUrl,
+  routeDistanceKm,
+  orderByProximity,
+  GOOGLE_MAPS_STOP_LIMIT,
+  EPILOGUE_LABELS,
   sortOrder,
   leadHistory,
   leadProfile,
   enrichment,
   callList,
   leadList,
+  // One list over ANY source (Monitor / Discover lens / campaign), with the
+  // per-source deep link and the campaign's no-sort rule built in.
+  leadSource,
   teamActivity,
   EPILOGUE_STATUSES,
   LEAD_STATUSES,

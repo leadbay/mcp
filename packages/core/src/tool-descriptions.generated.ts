@@ -1985,7 +1985,7 @@ Get the headless runtime + usage guide to BUILD an interactive HTML artifact who
 
 ## WHEN TO USE
 
-Trigger phrases: "build me a dashboard", "build a call sheet", "interactive artifact", "make a page with buttons", "build an artifact to work my leads", "interactive lead triage board", "a page with buttons that log my calls".
+Trigger phrases: "build me a dashboard", "build a call sheet", "interactive artifact", "make a page with buttons", "build an artifact to work my leads", "interactive lead triage board", "a page with buttons that log my calls", "relance board", "campagne de relance", "board de relance", "follow-up table", "a table with emails and phone numbers to call my leads", "a table where I can set status and log what happened".
 
 Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "log that I emailed" → \`leadbay_report_outreach\`.
 
@@ -1995,6 +1995,7 @@ Examples that SHOULD invoke this tool:
 - "Build me an interactive call sheet for these leads."
 - "Make an artifact with buttons to log call outcomes per lead."
 - "I want a clickable lead-triage board I can work down."
+- "Build me a relance table with each lead's email and phone, where I can set the status and log what happened."
 
 Examples that should NOT invoke this tool (sound similar, route elsewhere):
 - "Show me today's leads."
@@ -2020,9 +2021,9 @@ Returns \`{ runtime, usage_guide, version }\`:
 
 The model — two layers. Primitives: \`lb.field\` (value + API-populated options), \`lb.action\` (write/submit), \`lb.resource\` (load-on-click / poll-until-done / \`.refresh()\`), \`lb.list\` (paginated rows); each exposes \`.loading/.error/.subscribe\`, and you bind them to YOUR native elements with \`lb.bindSelect/bindValue/bindAction\` (no style imposed). Domain components (pre-wired, footguns baked in): \`lb.campaigns\`, \`lb.outreach\`, \`lb.note\`, \`lb.like/dislike\`, \`lb.leadHistory\`, \`lb.leadProfile\`, \`lb.callList\`, \`lb.enrichment\` (launch + poll), \`lb.teamActivity\` (manager leaderboard + trend). TanStack-Query's headless-view-model separation, vanilla (cowork is inline-only — no React).
 
-Canonical uses: a cold-call sheet (\`lb.callList\` + per-row \`lb.outreach\`/\`lb.leadHistory\`); a manager dashboard (\`lb.teamActivity\` → leaderboard table + Chart.js trend); a live enrichment view (\`lb.enrichment\` → progress + refresh). Live auto-poll is host-dependent — always wire a Refresh.
+Canonical uses: a cold-call sheet (\`lb.callList\` + per-row \`lb.note\`, prospecting toggles and \`lb.leadHistory\`); a manager dashboard (\`lb.teamActivity\` → leaderboard table + Chart.js trend); a live enrichment view (\`lb.enrichment\` → progress + refresh). Live auto-poll is host-dependent — always wire a Refresh.
 
-Write-call footguns (in the guide, repeated because they bite): for \`leadbay_report_outreach\` (status/disposition) the \`args\` MUST include \`verification:{source:"user_confirmed",ref:"…"}\` AND \`_triggered_by:"<the user's request>"\`, or the call is rejected. \`leadbay_add_leads_to_campaign\` needs \`_triggered_by\` too. \`leadbay_add_note\`/\`leadbay_like_lead\`/\`leadbay_dislike_lead\` need only their own args. Snoozing (pushback) is advanced-gated — not callable from a default artifact. Org CRM status IS available: \`lb.leadStatus()\` gives the Wanted/Won/Lost/Unwanted picker field and \`lb.setStatus()\` the write (\`leadbay_set_lead_status\`), with the partial-write check baked in. Keep it distinct from \`report_outreach\`'s \`epilogue_status\`, which records how one outreach ATTEMPT went.
+Write-call footguns (in the guide, repeated because they bite): a page's buttons NEVER call \`leadbay_report_outreach\` (\`lb.outreach\`) — it asks a human to confirm every \`user_confirmed\` call, a page cannot show that prompt, and the button hangs 60s before writing anyway. Write the note with \`lb.note\` (\`leadbay_add_note\`) and the prospecting action with \`leadbay_set_prospecting_action\` (\`{lead_id, action, selected, _triggered_by}\`), toggles over the lead's \`epilogue_today_statuses\` as in the web app. \`leadbay_add_leads_to_campaign\` needs \`_triggered_by\` too. \`leadbay_add_note\`/\`leadbay_like_lead\`/\`leadbay_dislike_lead\` need only their own args. Snoozing (pushback) is advanced-gated — not callable from a default artifact. Org CRM status IS available: \`lb.leadStatus()\` gives the Wanted/Won/Lost/Unwanted picker field and \`lb.setStatus()\` the write (\`leadbay_set_lead_status\`), with the partial-write check baked in. Keep it distinct from the prospecting action, which records how one outreach ATTEMPT went.
 
 WHEN TO USE: the user asks for a clickable / interactive artifact, dashboard, or call sheet that DOES things (not just displays data).
 
@@ -4270,7 +4271,7 @@ User picks → call the matching \`Calls\` tool. Constraints: 2–4 mutually-exc
 | Observation | Suggest | Calls |
 |---|---|---|
 | Always (top of menu) | "Prep outreach for [top row's contact]" | leadbay_prepare_outreach(leadId) |
-| ≥ 1 lead returned | "Build an interactive call board" | leadbay_get_artifact_runtime → its CANONICAL board recipe, data in hand |
+| ≥ 1 lead returned | "Build an interactive board to contact these leads" | leadbay_get_artifact_runtime → its LEAD DESK recipe, data in hand |
 | "how well do we cover sector X / city Y" | "Build a coverage board" | leadbay_get_artifact_runtime → its COVERAGE recipe (\`lb.portfolioSectors\` + \`lb.segmentCount\`) |
 | User named a city / sector / timeframe | "Refilter by [their phrase]" | leadbay_pull_followups(set_filter: { criteria: [...] }) |
 | \`pagination.has_more == true\` | "Pull the next page" | leadbay_pull_followups(page = current + 1) |
@@ -6115,6 +6116,47 @@ This tool MUTATES state. The caller (agent or human-in-the-loop) is responsible 
 `;
 // endregion: leadbay_set_lead_status
 
+// region: leadbay_set_prospecting_action
+export const leadbay_set_prospecting_action: string = `## WHAT IT DOES
+
+Turns one of a lead's prospecting actions for today on or off (Still chasing, Couldn't reach, Meeting planned, Not interested), exactly as the web app's Prospection cell does. Writes no note.
+
+## WHEN TO USE
+
+Trigger phrases: "mark it as still chasing", "set the prospecting action", "untick meeting planned", "remove the couldn't reach", "clear the prospecting action", "that was a mistake, unset it".
+
+Do NOT use for: "I called them / I emailed them / we met" → \`leadbay_report_outreach\`; "mark it as won / lost" → \`leadbay_set_lead_status\`.
+
+Use this when: the user sets or clears the action flag itself, with no outreach to record; when an outreach happened, log it with leadbay_report_outreach instead
+
+Examples that SHOULD invoke this tool:
+- "Untick Meeting planned on Solimac, I clicked it by mistake."
+- "Set Bachelard to Still chasing."
+- "Clear the Couldn't reach on the Courthézon lead."
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "I just called Solimac, they want a demo — log it."
+- "Mark Bachelard as won."
+- "Draft a follow-up email to Magali."
+
+## RENDER (quick)
+
+One line: ✅ "<Action>" on / off for <Company>. No table. When turning an
+action ON after a real call or visit, suggest logging it with
+leadbay_report_outreach so the note carries what happened.
+
+---
+
+Sets or clears one prospecting action for **today** on one lead. \`selected: true\` wraps \`POST /leads/epilogue\`; \`selected: false\` wraps \`DELETE /leads/{id}/epilogue?type=\`. Both return 204; the tool echoes \`{lead_id, action, selected}\`.
+
+**What "selected" means.** A lead's actions for today live in \`epilogue_today_statuses\`, and several can be on at once — the web app shows them as a multi-select. Turning one on appends it there and moves \`epilogue_status\`; turning one off removes that type from today's list and leaves \`epilogue_status\` alone. So read the current state from \`epilogue_today_statuses\`, never from \`epilogue_status\`, which is only the last value ever set.
+
+**Not a substitute for logging outreach.** This writes no note and takes no verification, because it records a flag the user controls, not a claim that something happened. When the user tells you a call, email, message or meeting took place, use \`leadbay_report_outreach\` — it writes the note, sets the action, and carries the proof.
+
+**Do not turn an action on twice.** Each \`selected: true\` appends another entry to today's list. Check \`epilogue_today_statuses\` first.
+`;
+// endregion: leadbay_set_prospecting_action
+
 // region: leadbay_set_pushback
 export const leadbay_set_pushback: string = `Snooze (pushback) one or more leads for 3, 6, or 12 months. The leads remain in the user's pipeline but are excluded from \`leadbay_pull_followups\` until the pushback window expires. Use this when the user says "not now", "next quarter", "follow up in 3 months", "6 months out", "next year", or any equivalent deferral.
 
@@ -6897,6 +6939,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_set_active_lens,
   leadbay_set_epilogue_status,
   leadbay_set_lead_status,
+  leadbay_set_prospecting_action,
   leadbay_set_pushback,
   leadbay_set_qualification_questions,
   leadbay_set_telemetry,
