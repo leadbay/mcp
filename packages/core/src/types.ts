@@ -832,6 +832,15 @@ export interface ToolLogger {
 
 export interface ToolContext {
   logger?: ToolLogger;
+  // Who made this call: "artifact" when a control inside a rendered page did,
+  // "agent" otherwise. The MCP server derives it from the `_origin` arg the
+  // artifact runtime stamps, and strips that arg before the tool sees it — so
+  // a composite reads provenance HERE, never from its own params.
+  //
+  // It exists so a tool can tell a button-press from an agent's claim. The
+  // first consumer is report_outreach, which must not open an elicitation
+  // prompt for a page that has nowhere to render one.
+  origin?: "artifact" | "agent";
   // Notifications inbox — populated by the MCP server's WS listener with
   // terminal bulk-progress notifications. The account-status composite
   // surfaces inbox entries on every check-in, and the MCP server decorates
