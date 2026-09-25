@@ -20,7 +20,7 @@ const read = (name: string) => readFileSync(join(snippets, `${name}.md`), "utf8"
 const BATCH_TOOLS = [
   ["pull-leads", /interactive lead triage board/i],
   ["find-new-leads", /interactive lead triage board/i],
-  ["pull-followups", /interactive call board/i],
+  ["pull-followups", /interactive board to contact/i],
 ] as const;
 
 describe("every lead-batch tool offers the board", () => {
@@ -55,7 +55,7 @@ describe("every lead-batch tool offers the board", () => {
   it("pull-followups keeps outreach prep at the top, board second", () => {
     const rows = read("pull-followups").split("\n").filter((l) => l.startsWith("| ") && !l.startsWith("| Observation") && !l.startsWith("|---"));
     expect(rows[0]).toMatch(/Prep outreach/i);
-    expect(rows[1]).toMatch(/call board/i);
+    expect(rows[1]).toMatch(/board to contact/i);
   });
 });
 

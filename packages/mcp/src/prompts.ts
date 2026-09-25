@@ -33,6 +33,8 @@ import {
   leadbay_setup_team_prospecting,
   leadbay_top_accounts_to_activate,
   leadbay_work_campaign,
+  leadbay_outreach_session,
+  leadbay_route_session,
   leadbay_sync_outreach,
   PROMPT_META,
 } from "./prompts.generated.js";
@@ -240,6 +242,50 @@ const CATALOG: CatalogEntry[] = [
         substitutePlaceholders(leadbay_work_campaign, {
           campaign_or_default: args.campaign ?? "<pick from the list>",
           mode_paren: args.mode ? ` (mode: ${args.mode})` : "",
+        }),
+      ),
+    ],
+  },
+  {
+    name: "leadbay_outreach_session",
+    description: PROMPT_META.leadbay_outreach_session.short_description,
+    arguments: promptArguments("leadbay_outreach_session"),
+    render: (args) => {
+      // The session works ANY source, so the opening line names the one the
+      // user asked for — or says it will ask. `work_campaign` stays the door
+      // for a campaign the user names up front; this one only mentions a
+      // campaign when the source is explicitly that.
+      const source = (args.source ?? "").toLowerCase();
+      const label =
+        source === "discover"
+          ? "new leads"
+          : source === "campaign"
+            ? "campaign"
+            : source === "followups"
+              ? "follow-ups"
+              : "<pick a source>";
+      return [
+        userMessage(
+          substitutePlaceholders(leadbay_outreach_session, {
+            source_label: label,
+            campaign_paren:
+              source === "campaign" && args.campaign ? ` — ${args.campaign}` : "",
+          }),
+        ),
+      ];
+    },
+  },
+  {
+    name: "leadbay_route_session",
+    description: PROMPT_META.leadbay_route_session.short_description,
+    arguments: promptArguments("leadbay_route_session"),
+    render: (args) => [
+      userMessage(
+        substitutePlaceholders(leadbay_route_session, {
+          // " in Lyon" / "" — the opening line reads as a sentence either way,
+          // and Phase 0 asks when the place is missing.
+          city_in: args.city ? ` in ${args.city}` : "",
+          day_paren: args.day ? ` (${args.day})` : "",
         }),
       ),
     ],

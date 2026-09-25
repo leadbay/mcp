@@ -58,17 +58,20 @@ describe("leadbay_pull_followups NEXT STEPS", () => {
       next_steps: { options: Array<{ label: string; kind: string }> };
     };
     expect(r.next_steps.options[0].kind).toBe("build_artifact");
-    expect(r.next_steps.options[0].label).toBe("Call board");
+    // Renamed from "Call board": the lead desk does the same job with the
+    // rest of the per-lead surface in the same row, so it takes the slot
+    // rather than sitting beside a strictly worse version of itself.
+    expect(r.next_steps.options[0].label).toBe("Contact and outreach");
   });
 
-  it("names it a CALL board, not a triage board", async () => {
+  it("is for WORKING leads, not triaging them", async () => {
     // A Monitor lead has been seen and worked already: the action is logging
     // outreach, not deciding taste.
     mockHttp(replies({ leads: 3 }));
     const r = (await pullFollowups.execute(newClient(), {})) as {
       next_steps: { options: Array<{ description: string }> };
     };
-    expect(r.next_steps.options[0].description).toMatch(/log outreach/i);
+    expect(r.next_steps.options[0].description).toMatch(/outreach logging/i);
     expect(r.next_steps.options[0].description).not.toMatch(/triage/i);
   });
 
@@ -122,7 +125,7 @@ describe("leadbay_pull_followups NEXT STEPS", () => {
   });
 
   it("offers TWO distinct artifacts, each describing which board it builds", async () => {
-    // The call board is one card per lead; the coverage board is tiles, bars
+    // The lead desk is one row per lead; the coverage board is tiles, bars
     // and a table over the whole portfolio. Both are build_artifact, so the
     // description is the only thing telling the agent which to build —
     // identical wording would make the choice a coin flip.
@@ -132,7 +135,7 @@ describe("leadbay_pull_followups NEXT STEPS", () => {
     };
     const artifacts = r.next_steps.options.filter((o) => o.kind === "build_artifact");
     expect(artifacts).toHaveLength(2);
-    expect(artifacts[0].description).toMatch(/log outreach/i);
+    expect(artifacts[0].description).toMatch(/outreach logging/i);
     expect(artifacts[1].description).toMatch(/sector or city/i);
     expect(artifacts[0].description).not.toBe(artifacts[1].description);
     expect(artifacts[0].label).not.toBe(artifacts[1].label);

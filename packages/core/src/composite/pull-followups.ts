@@ -166,19 +166,55 @@ interface MonitorResponse {
  * `pull_followups` is also the only tool that can filter by sector / location,
  * which is why the segment offer lives here rather than on `pull_leads`.
  */
-function buildFollowupNextSteps(
+/** A lead is mappable when it carries real coordinates. `[0,0]` is the API's
+ *  missing-position sentinel (the Gulf of Guinea), not a lead in the ocean. */
+export function isMappable(lead: unknown): boolean {
+  const p = (lead as { location?: { pos?: unknown } } | null)?.location?.pos;
+  if (!Array.isArray(p) || p.length < 2) return false;
+  const [lat, lng] = p;
+  if (typeof lat !== "number" || typeof lng !== "number") return false;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (lat === 0 && lng === 0) return false;
+  return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
+/** Share of the page that can go on a map, above which a route is the more
+ *  useful board. 60% leaves room for the ungeocoded tail the planner lists
+ *  beside the map, without offering a route for a page that is mostly blanks. */
+const GEO_DENSE_RATIO = 0.6;
+
+export function buildFollowupNextSteps(
   leadCount: number,
   hasMore: boolean,
   nextPage: number | null,
   hasActiveFilter: boolean,
+  /** How many leads on THIS page carry usable coordinates. Optional: omitted,
+   *  the route offer is simply not made and the sector board keeps its slot. */
+  mappableCount?: number,
 ): NextSteps | null {
   if (leadCount === 0) return null; // nothing to work — an offer would be noise
 
   const options: NextStepOption[] = [];
 
+  // Names the tool for the same reason pull-leads.ts does: an agent told only
+  // to "build an artifact" hand-writes one, and a hand-written board logs no
+  // outreach to Leadbay at all.
+  //
+  // This SUPERSEDES the old "call board" offer rather than sitting beside it.
+  // The lead desk does the same job — work these rows, log what happened —
+  // with the rest of the per-lead surface in the same row (contacts and the
+  // enrich that buys them, CRM status, taste, qualify). Two offers for one
+  // job would cost the coverage board its slot in a widget that caps at four,
+  // and would leave the agent choosing between a board and a strictly better
+  // version of it.
   options.push({
-    label: "Call board",
-    description: "Build an interactive call board to work these leads and log outreach.",
+    label: "Contact and outreach",
+    description:
+      "Build an interactive board to contact these leads: contacts with their " +
+      "email and phone, the enrich that buys a missing one, CRM status, " +
+      "outreach logging, taste and requalify — one row per lead. " +
+      "Call leadbay_get_artifact_runtime and follow its LEAD DESK recipe, building " +
+      "from the leads in hand (do NOT re-call pull_followups).",
     kind: "build_artifact",
   });
 
@@ -200,13 +236,58 @@ function buildFollowupNextSteps(
   // saw the board again. A filter is a reason to FRAME the offer differently,
   // not to withhold it — "this slice against your whole book" is exactly the
   // question a filtered view provokes.
-  options.push({
-    label: "Coverage board",
-    description: hasActiveFilter
-      ? "Build a coverage board measuring this filtered slice against the whole book — the filter is server-stored, so measure unfiltered for the denominator."
-      : "Build a coverage board measuring how much of the portfolio sits in each sector or city.",
-    kind: "build_artifact",
-  });
+  // Names the tool and the helpers for the same reason the call board does.
+  // This one needs it MORE: there is no falling back to a sensible hand-built
+  // version. `lb.portfolioSectors` derives the sector list from the leads the
+  // user actually holds; a hand-written list gets it wrong in both directions
+  // (one real portfolio offered a sector holding 3 leads and omitted the
+  // third-largest at 555). `lb.segmentCount` carries the trusted-echo check
+  // that catches the stateful Monitor filter returning 200 with the PREVIOUS
+  // filter still applied — a plausible number answering a different question.
+  const coverageRecipe =
+    " Call leadbay_get_artifact_runtime and follow its segment-coverage recipe — " +
+    "`lb.portfolioSectors` for the sector list (never hardcode one) and " +
+    "`lb.segmentCount` for each figure (it verifies the echoed filter).";
+  // The second board SWAPS on a geo-dense page. Both answer "what shape is my
+  // book", and only one is useful when the rep can see the leads are all
+  // somewhere reachable: a sector bar chart does not tell them what order to
+  // drive. The widget caps at four and two slots already go to boards, so
+  // this is a contest, not an append.
+  //
+  // Gated on the PAGE, never on the account: a book with no coordinates keeps
+  // the sector board on every call. That matters — the last offer gated here
+  // was suppressed indefinitely for an account whose server-stored filter
+  // survived sessions, which is why `pull-followups-coverage-offer.test.ts`
+  // is titled "the coverage board is ALWAYS on the menu".
+  const geoDense =
+    typeof mappableCount === "number" &&
+    leadCount > 0 &&
+    mappableCount / leadCount >= GEO_DENSE_RATIO;
+
+  options.push(
+    geoDense
+      ? {
+          label: "Route planner",
+          description:
+            `${mappableCount} of these ${leadCount} leads have coordinates — build an ` +
+            "interactive route planner: the map on one half, the lead list on the other, " +
+            "clicking a marker opens that lead to set status, log outreach and record a " +
+            "prospecting action, with the pin repainting as you work. " +
+            "Call leadbay_get_artifact_runtime and follow its ROUTE PLANNER recipe, " +
+            "building from the leads in hand (do NOT re-call pull_followups). " +
+            "List the leads WITHOUT coordinates beside the map rather than dropping them.",
+          kind: "build_artifact",
+        }
+      : {
+          label: "Coverage board",
+          description:
+            (hasActiveFilter
+              ? "Build a coverage board measuring this filtered slice against the whole book — the filter is server-stored, so measure unfiltered for the denominator."
+              : "Build a coverage board measuring how much of the portfolio sits in each sector or city.") +
+            coverageRecipe,
+          kind: "build_artifact",
+        },
+  );
 
   if (hasMore && nextPage != null) {
     options.push({
@@ -645,6 +726,9 @@ export const pullFollowups: Tool<PullFollowupsParams> = {
         moreToCome,
         moreToCome ? currentPage + 1 : null,
         Array.isArray(filterCriteria) && filterCriteria.length > 0,
+        // How many of these can go on a map. A geo-dense page is offered the
+        // route planner in place of the sector board.
+        leads.filter(isMappable).length,
       ),
       _meta: {
         region: client.region,

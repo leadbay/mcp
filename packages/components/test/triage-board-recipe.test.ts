@@ -36,6 +36,7 @@ describe("canonical pull-leads triage board recipe", () => {
       "lb.leadStatus()",
       "lb.sortOrder()",
       "Open in Leadbay",
+      "Requalify",
     ]) {
       expect(GUIDE).toContain(control);
     }
@@ -64,11 +65,14 @@ describe("canonical pull-leads triage board recipe", () => {
     expect(flat).toMatch(/Never prefetch it for the batch/i);
   });
 
-  it("pins the requalify argument name, which is camelCase", () => {
+  it("routes requalify through lb.qualify, which owns the arg shape", () => {
+    // The camelCase `leadIds` / `wait_for_completion` contract used to be
+    // prose the agent had to copy correctly. It now lives in the component
+    // (qualify-component.test.ts asserts the wire format), so the recipe's
+    // job is to send the agent there rather than restate it.
     const flat = GUIDE.replace(/\s+/g, " ");
-    expect(GUIDE).toContain("leadbay_bulk_qualify_leads");
-    // `lead_ids` would be silently rejected by the tool's schema.
-    expect(flat).toMatch(/`leadIds` \(camelCase — NOT\s+`lead_ids`\)/);
-    expect(GUIDE).toContain("wait_for_completion: false");
+    expect(GUIDE).toContain("lb.qualify");
+    expect(flat).toMatch(/never hand-roll this action/i);
+    expect(flat).toMatch(/camelCase `leadIds`/);
   });
 });
