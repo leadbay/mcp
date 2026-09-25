@@ -700,6 +700,13 @@ different question: not *who do I call* but *what order do I drive*.
 right; clicking a marker opens that lead in the panel with its actions. A
 map alone cannot be worked and a list alone is not a route.
 
+Use the kit's geo helpers — do NOT hand-roll them. `lb.leadPos`,
+`lb.distanceKm`, `lb.orderByProximity`, `lb.routeUrl` and
+`lb.routeDistanceKm` each encode one of the five rules below, and a page that
+reimplements them locally gets no benefit when a rule is fixed in the kit.
+They landed after kit 0.6.0, so a page pinned to an older runtime has to be
+moved forward rather than given private copies.
+
 ```js
 const stops = leads.map((l) => ({ lead: l, pos: lb.leadPos(l) })).filter((s) => s.pos);
 const ordered = lb.orderByProximity(stops);          // nearest-neighbour default
@@ -726,8 +733,199 @@ Five rules, each one something a hand-built map gets wrong:
   Status changes from the panel repaint the pin immediately — that feedback
   is the whole reason the two halves sit side by side.
 
-Per-lead actions are the desk's: `lb.setStatus`, `lb.outreach` (epilogue +
-note), `lb.relanceRow` if you want contacts and enrichment in the panel too.
+### The panel is FIXED — same sections, same order, every time
+
+A rep who learned the planner once must find the same controls in the same
+place on every board any agent builds. "Clicking a marker opens that lead with
+its actions" is not a spec — it leaves the sections, their order and their
+controls to whoever builds the board, and a rep cannot build a habit on that.
+Emit the head and these four sections, in this order, and add nothing between
+them:
+
+**The panel has TWO modes.** With no lead selected it shows the overview —
+*Today's route* (numbered stops, per-leg km, move up / move down / remove, the
+"as the crow flies" total, and the Google Maps link) then the full lead list.
+Selecting a marker replaces both with the lead detail below; closing it
+returns to the overview.
+
+```html
+<aside class="panel">
+  <!-- HEAD — everything the rep needs before they get out of the car -->
+  <div class="section">
+    <div class="panel-head">
+      <h2>{company}</h2>
+      <button class="icon-btn" aria-label="Close {company}">✕</button>
+    </div>
+    <div class="chips">                  <!-- status chip + "worked today" chip -->
+    <div class="facts">
+      <span class="address">{location.full, else city/state, else "No address on file"}</span>
+      <span>{size}</span>
+      <span>Contact: {name · job_title}  — else "No contact yet — enrich to find one"</span>
+      <span>Company line: ☎ {phone} · ✉ {email}  — else "No company phone or email — enrich to look for them"</span>
+    </div>
+    <div class="actions">                <!-- only when the lead has coordinates -->
+      <button>Locate on map</button>
+      <button>Add to route</button>      <!-- toggles to "Remove from route" -->
+    </div>
+    <div class="links">
+      <a>Google Maps ↗</a>               <!-- only when placeable -->
+      <a>Open in Leadbay ↗</a>
+    </div>
+  </div>
+
+  <div class="section">                  <!-- 1. STATUS — lb.setStatus, saves on change -->
+    <h3 class="section-title">Status</h3>
+    <select class="lb-select">…</select>
+  </div>
+
+  <div class="section">                  <!-- 2. PROSPECTING ACTION — one click = one epilogue -->
+    <h3 class="section-title">Prospecting action</h3>
+    <div class="choices">…</div>         <!--    the 4 lb.EPILOGUE_STATUSES as buttons -->
+  </div>
+
+  <form class="section">                 <!-- 3. LOG OUTREACH — channel + note, NO status -->
+    <h3 class="section-title">Log outreach</h3>
+  </form>
+
+  <div class="section">                  <!-- 4. NEARBY FOLLOW-UPS — lb.distanceKm, nearest first -->
+    <h3 class="section-title">Nearby follow-ups</h3>
+  </div>
+</aside>
+```
+
+The head is not decoration. A rep standing outside the building needs the
+address, who to ask for, and a number to call if the door is locked — and the
+two channel lines are separate because `phone_numbers` / `email` on a lead are
+the COMPANY switchboard, not the contact's direct line. Say so, as
+"Company line:", or the rep dials it expecting the person.
+
+Why this order and not another: **status first** because it is one click and
+the rep usually knows it before they park; **prospecting action second**
+because on a doorstep "nobody in" is the whole report and typing a note is not
+worth it; **log outreach third** because it is the long form, for the visit
+that actually went somewhere; **nearby last** because it is the question you
+ask once the current stop is done.
+
+Three rules the sections carry:
+
+- **Status and prospecting action are DIFFERENT AXES.** Status is the
+  commercial outcome the org sees (`lb.setStatus`); the prospecting action is
+  how this visit went and drives when the lead resurfaces (`lb.outreach`).
+  Setting one never sets the other — a rep who books a meeting sets both.
+- **The prospecting action is four buttons, not a dropdown.** One tap on a
+  phone, in a car park. A select costs two.
+- **Log outreach writes a NOTE. It must not offer the epilogue too.** The
+  first build of this panel put the same four `lb.EPILOGUE_STATUSES` in a
+  select inside the form, so a rep who tapped a button and then submitted the
+  form issued two writes of one field and the second silently won. Worse, the
+  form's "No outcome yet" omitted `epilogue_status` entirely, leaving the
+  button's status standing under a note that said otherwise, with nothing on
+  screen showing the mismatch. One control per axis: the buttons own the
+  epilogue, the form owns the note. Say so under the submit — "Sets no status
+  — use Prospecting action above for that."
+- **Every write repaints the pin before the panel says "saved".** The map is
+  the record the rep reads; a panel that confirms while the pin still shows
+  the old status is lying about what they can see.
+
+`lb.relanceRow` may be added for contacts and enrichment, as a FIFTH section
+after Nearby — never inserted among the four.
+
+### Colours come from the skin, not from a second palette
+
+`lb.styles()` already defines the product's greys, so a page that also
+declares its own ends up with two near-identical neutrals on one screen — a
+blue-tinted `#f4f5f7` page behind a `#f0f0f0` toolbar, borders at `#e2e5ea`
+beside the kit's `#e0e0e0`. Close enough that nobody can name the problem,
+wrong enough to look unfinished. Alias the skin instead:
+
+```css
+:root {
+  --bg:    var(--color-gray-2);   /* the page behind map and panel */
+  --panel: var(--color-white);    /* the panel and any card on it */
+  --line:  var(--color-gray-3);   /* every border */
+  --ink:   var(--lb-fg);
+  --muted: var(--lb-muted);
+}
+```
+
+Status pins take the semantic tokens the chips already use —
+`--color-blue-foreground` for Wanted, green for Won, red for Lost — so a pin
+and its chip are the same colour by construction rather than by two people
+picking the same blue.
+
+Keep exactly three colours of your own, because the kit has none for them —
+`--land`, `--land-border` and `--water` are drawing a country, not UI chrome.
+
+**Then pin the board to light, or aliasing makes it worse than the palette
+did.** A page with its own hardcoded greys is accidentally immune to dark
+mode; the moment it aliases the skin it inherits the skin's dark block, which
+fires on `prefers-color-scheme: dark`. The board a rep opens on a dark-mode
+laptop then paints `--lb-fg` white over a light `--color-gray-2` ground —
+white text on a white page, borders jumped from `#e0e0e0` to mid grey. Same
+rule as the triage board: these boards are light for everyone.
+
+```css
+/* Tripled on purpose. lb.styles() APPENDS the skin to <head> at runtime, i.e.
+   after this sheet, so a plain :root here loses to the skin's
+   :root[data-theme=dark] on source order. :root:root:root outranks it on
+   specificity instead, which source order cannot undo. */
+:root:root:root {
+  --lb-surface: var(--color-gray-1);  --lb-border: var(--color-gray-3);
+  --lb-fg: var(--color-black);        --lb-muted: var(--color-gray-8);
+  --lb-field: var(--color-white);     --lb-chip-bg: var(--color-gray-2);
+  color-scheme: light;
+  /* …and the semantic pairs the pins and chips read, at their light values. */
+}
+```
+
+A single `data-lb-theme="light"` on `<html>` does the same job and is simpler
+— use it when the page owns its `<html>` element. An artifact that is a
+fragment the host wraps does not, which is why the pin is a stylesheet rule.
+
+### The lead list: static dividers, one moving thing
+
+Both lists in the panel — *Follow-ups on the map* and *Nearby follow-ups* —
+use the same row. Copy it; it is three rules, and each one is a thing the
+obvious version gets wrong.
+
+```css
+.rows { display: flex; flex-direction: column; gap: 2px; }
+.row-btn {
+  position: relative; padding: 9px 10px; margin-inline: -6px;
+  border: 0; border-radius: 10px; background: transparent;
+  transition: background-color .12s ease;
+}
+.row-btn + .row-btn::before {          /* between rows only — never first or last */
+  content: ""; position: absolute; inset-inline: 10px; top: -1px; height: 1px;
+  background: var(--line);
+}
+.row-btn:hover, .row-btn:focus-visible { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.row-btn:active { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+@media (prefers-reduced-motion: reduce) { .row-btn { transition: none; } }
+```
+
+- **The divider never reacts to hover, and never animates.** The tempting
+  version fades the line above and below the hovered row so the highlight has
+  clean edges. Do not: two rules then fight over one line — the hovered row
+  hides the divider below it while the next row hides the one above it — so
+  the line flickers as the pointer crosses between rows, and scanning the list
+  makes lines ripple in and out around the cursor. The animation ends up
+  louder than the row it is highlighting. **Only the background moves.**
+- **Space the rows instead of hiding the line.** `gap: 2px` with the hairline
+  centred in the gap means the rounded hover block floats in its own space and
+  never shares an edge with a divider. There is nothing to hide, so nothing
+  has to animate. This is the whole trick.
+- **The divider is inset to the text (`inset-inline: 10px`), not the row.** A
+  line that runs wider than the content it separates stops reading as a
+  divider and starts reading as a rule across the panel. Pair it with
+  `margin-inline: -6px` on the row so the hover block bleeds slightly past
+  the text — inside the panel's own 16px padding, which leaves room for the
+  focus ring.
+
+Use `.row-btn + .row-btn::before`, not `::after` with a `:last-child`
+exception: a selector that only ever matches BETWEEN rows cannot put a line
+under the last one, so there is no special case to forget.
+
 Straight-line totals from `lb.routeDistanceKm` are "as the crow flies" — label
 them that way rather than implying a drive time.
 
