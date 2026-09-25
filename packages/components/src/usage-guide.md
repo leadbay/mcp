@@ -35,7 +35,7 @@ then on every change — render your own DOM from it.
 | `lb.coverageTotal({ask, personal?})` | `Promise<CoverageRow>` | the unfiltered whole-book denominator |
 | `lb.reachCoverage({sample?, personal?, ask})` | `Promise<ReachCoverage>` | callable / contacts-only / empty — the segment that says what to ENRICH. Sampled (not a filter), so rows are an estimate against `bookTotal` |
 | `lb.leadReach(lead)` | `"reachable"` \| `"contacts_only"` \| `"empty"` | one lead's reachability — `contacts_count > 0` is NOT a channel |
-| `lb.outreach({leadId, ask, status?, note?})` | action | log a call → `report_outreach` (verification + `_triggered_by` baked in) |
+| `lb.outreach({leadId, ask, status?, note?})` | action | log a call → `report_outreach` (verification + `_triggered_by` baked in). **NOT from a page's button** — it waits 60s on a confirmation prompt a page cannot show; see *Writing from a page* below |
 | `lb.note({leadId, note})` | action | add a note → `add_note` |
 | `lb.like(leadId)` / `lb.dislike(leadId)` | action | taste signal |
 | `lb.qualify({leadId or leadIds, ask, scored?})` | action | the MANDATORY Qualify/Requalify button → `bulk_qualify_leads` (camelCase `leadIds`, queue-not-wait, `failed[]` + quota checked) |
@@ -82,6 +82,50 @@ follow-up ranking). Lead status = the commercial outcome, org-wide — the same
 field the website's status selector writes. A won deal is a LEAD STATUS;
 "she didn't pick up" is an EPILOGUE. Setting one never sets the other, so when
 the user reports both in one breath, fire both actions.
+
+### Writing from a page: a note, and the prospecting actions
+
+Every board that lets a rep record what happened — call sheet, lead desk,
+triage card, route planner — writes the way the web app does, through two
+calls, and never through `lb.outreach`:
+
+```js
+// The note: the web app's note field.
+lb.bindAction(els.log, lb.note({ leadId: lead.id, note }));   // note = an lb.field gated on non-empty
+
+// The four prospecting actions: toggles over TODAY's list, as in the web app.
+const today = (lead) => new Set((lead.epilogue_today_statuses ?? []).map((e) => e.type.replace(/^EPILOGUE_/, "")));
+async function toggle(lead, value) {                          // value = one of lb.EPILOGUE_STATUSES
+  const selected = !today(lead).has(value);
+  await lb.call("leadbay_set_prospecting_action", { lead_id: lead.id, action: value, selected, _triggered_by: ASK });
+}
+```
+
+- **Why not `lb.outreach`.** It goes to `report_outreach`, which asks a human
+  to type a confirmation for every `user_confirmed` call. A page has nowhere to
+  show that prompt: the button waited 60 seconds, the write landed anyway, and
+  the page said Leadbay "took too long". Reps retried and logged one visit
+  twice. The prompt cannot be skipped for pages — the server cannot tell a
+  page from an agent that claims to be one — so a page takes the path that
+  never asks. `lb.outreach` stays the AGENT's tool for an outreach the user
+  tells it about.
+- **The actions are toggles, several on at once.** The web app's Prospection
+  cell is a multi-select over `epilogue_today_statuses`; each tap turns one on
+  or off. Read "selected" from that list, **never from `epilogue_status`**:
+  unticking removes the type from today's list and leaves `epilogue_status`
+  where it was, so a board that pre-selects from it brings a removed action
+  back. `epilogue_status` is only the last value ever set — show it as a
+  "Last: Still chasing · 24 Sep" line when nothing is on today. The field is
+  absent on a lead nobody has worked: an empty set, not an error.
+- **Buttons, in the web app's colours.** Four `role="checkbox"` buttons with
+  `aria-checked` (a select costs a rep two taps): Still chasing blue, Meeting
+  planned green, Could not reach yellow, Not interested red — the
+  `--color-<hue>-background` / `-foreground` pairs, all four in the skin. The
+  foreground goes on a dot and the selected border, never on the label:
+  yellow's is too light to read as text, and the web app uses it for icons.
+- **One control per axis.** The toggles own the prospecting action; the note
+  form owns the note and offers no action of its own. Two controls writing one
+  field race each other, and the later write silently wins.
 
 **Rendering helpers** — the only three things the library draws, and only
 because hand-rolling them goes wrong the same way every time: an SVG whose
@@ -390,7 +434,7 @@ least one write, and prefer the set the rep actually needs:
 | Card is for | Wire |
 |---|---|
 | triage a discovery batch | `lb.like` / `lb.dislike` + `lb.setStatus` |
-| working a call list | `lb.outreach` (gated on a note) + `lb.leadHistory` |
+| working a call list | `lb.note` (gated on a note) + the prospecting toggles + `lb.leadHistory` — see *Writing from a page* |
 | pipeline review | `lb.setStatus` + `lb.note` |
 
 Always render the `.error` branch of every view-model — a control that cannot
@@ -450,7 +494,7 @@ Two things change with the source, and nothing else does:
   `in_monitor: true` on every row, so a call board links to `monitor`; a
   campaign sheet needs `?campaign=<id>&lead=<id>`. See the leadUrl helper above.
 - **Which write leads the card.** A discovery batch is triaged (taste + status);
-  a follow-up list is worked (`lb.outreach`, gated on a note). Order the
+  a follow-up list is worked (`lb.note` + the prospecting toggles). Order the
   Outreach and Status sections to match, but ship both either way.
 
 **Per card** — a header, then a stack of titled SECTIONS, then the write
@@ -507,8 +551,9 @@ spacing CSS of your own:
 ```
 
 Wire them with `lb.like` / `lb.dislike`, `lb.leadStatus()` +
-`lb.setStatus({leadId, status, ask})`, and `lb.outreach({leadId, ask, status,
-note})` — the note field gated by a `validate` so an empty note cannot log —
+`lb.setStatus({leadId, status, ask})`, `lb.note({leadId, note})` — the note
+field gated by a `validate` so an empty note cannot log — and the four
+prospecting toggles from *Writing from a page*,
 plus `lb.qualify` in `lb-card-foot` — the Qualify/Requalify button every card
 MUST carry, labelled by `lb.qualifyLabel(lead)`.
 
@@ -778,12 +823,13 @@ returns to the overview.
     <select class="lb-select">…</select>
   </div>
 
-  <div class="section">                  <!-- 2. PROSPECTING ACTION — one click = one epilogue -->
+  <div class="section">                  <!-- 2. PROSPECTING ACTION — toggles, leadbay_set_prospecting_action -->
     <h3 class="section-title">Prospecting action</h3>
-    <div class="choices">…</div>         <!--    the 4 lb.EPILOGUE_STATUSES as buttons -->
+    <div class="choices">…</div>         <!--    the 4 lb.EPILOGUE_STATUSES, each on/off, several at once -->
+    <div class="summary">…</div>         <!--    "Last: Still chasing · 24 Sep" when none is on today -->
   </div>
 
-  <form class="section">                 <!-- 3. LOG OUTREACH — channel + note, NO status -->
+  <form class="section">                 <!-- 3. LOG OUTREACH — channel + note, NO status, via lb.note -->
     <h3 class="section-title">Log outreach</h3>
   </form>
 
@@ -806,14 +852,39 @@ worth it; **log outreach third** because it is the long form, for the visit
 that actually went somewhere; **nearby last** because it is the question you
 ask once the current stop is done.
 
-Three rules the sections carry:
+The rules the sections carry:
 
 - **Status and prospecting action are DIFFERENT AXES.** Status is the
   commercial outcome the org sees (`lb.setStatus`); the prospecting action is
-  how this visit went and drives when the lead resurfaces (`lb.outreach`).
+  how this visit went and drives when the lead resurfaces
+  (`leadbay_set_prospecting_action`).
   Setting one never sets the other — a rep who books a meeting sets both.
 - **The prospecting action is four buttons, not a dropdown.** One tap on a
   phone, in a car park. A select costs two.
+- **They are TOGGLES over today's list, exactly as in the web app.** The web
+  app's Prospection cell is a multi-select over `epilogue_today_statuses`:
+  several actions can be on for one day, and each tap turns one on or off.
+  Mirror it, so a rep sees the same state in both places:
+
+  ```js
+  const today = new Set((lead.epilogue_today_statuses ?? []).map((e) => e.type.replace(/^EPILOGUE_/, "")));
+  const selected = !today.has(value);                                 // the tap flips it
+  await lb.call("leadbay_set_prospecting_action", { lead_id: lead.id, action: value, selected, _triggered_by: ASK });
+  ```
+
+  Read "selected" from `epilogue_today_statuses`, **never from
+  `epilogue_status`**. Unticking removes the type from today's list and leaves
+  `epilogue_status` where it was, so a board that pre-selects from it brings a
+  removed action back on the next open. `epilogue_status` is only the last
+  value ever set: show it as a "Last: Still chasing · 24 Sep" line when nothing
+  is on today, as the web app does. The field is absent on a lead nobody has
+  worked — that is an empty set, not an error. Use `role="checkbox"` and
+  `aria-checked`, not `aria-pressed`.
+- **In the web app's colours.** Still chasing blue, Meeting planned green,
+  Could not reach yellow, Not interested red — the `--color-<hue>-background`
+  / `-foreground` pairs, all four in the skin. The foreground goes on a dot
+  and the selected border, never on the label: yellow's is too light to read
+  as text on white, and the web app only uses it for icons.
 - **Log outreach writes a NOTE. It must not offer the epilogue too.** The
   first build of this panel put the same four `lb.EPILOGUE_STATUSES` in a
   select inside the form, so a rep who tapped a button and then submitted the
@@ -823,6 +894,16 @@ Three rules the sections carry:
   screen showing the mismatch. One control per axis: the buttons own the
   epilogue, the form owns the note. Say so under the submit — "Sets no status
   — use Prospecting action above for that."
+- **A page never calls `lb.outreach`** (see *Writing from a page*). Write the
+  note with `lb.note` and the action with `leadbay_set_prospecting_action` —
+  the web app's own two paths.
+  `lb.outreach` goes to `report_outreach`, which asks a human to type a
+  confirmation for every `user_confirmed` call, and a page has nowhere to
+  show that prompt: the button waited 60 seconds, the write landed anyway, and
+  the page showed "took too long". Reps retried and logged one visit twice.
+  The prompt cannot be skipped for pages, because the server cannot tell a
+  page from an agent that claims to be one — so the page takes the path that
+  never asks.
 - **Every write repaints the pin before the panel says "saved".** The map is
   the record the rep reads; a panel that confirms while the pin still shows
   the old status is lying about what they can see.
@@ -1173,11 +1254,11 @@ list.subscribe((l) => renderRows(l.items, l.loading));   // your render
 
 // per lead row (call when you build a row):
 function wireRow(lead, els) {
-  const status = lb.field({ value: "STILL_CHASING" });   // static-enum <select>
-  const note   = lb.field({ validate: (v) => (v && v.trim() ? null : "Add a note") });
-  lb.bindValue(els.status, status);
+  // Note + prospecting toggles, never lb.outreach — see *Writing from a page*.
+  const note = lb.field({ validate: (v) => (v && v.trim() ? null : "Add a note") });
   lb.bindValue(els.note, note);
-  lb.bindAction(els.log,  lb.outreach({ leadId: lead.id, ask: ASK, status, note }));
+  lb.bindAction(els.log, lb.note({ leadId: lead.id, note }));
+  for (const btn of els.actions) btn.onclick = () => toggle(lead, btn.dataset.value);
   lb.bindAction(els.like, lb.like(lead.id));
 
   // MANDATORY here too — a rep on the phone is exactly who discovers the
