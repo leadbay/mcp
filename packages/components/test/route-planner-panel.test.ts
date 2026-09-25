@@ -215,3 +215,75 @@ describe("the lead list row is specified, not left to taste", () => {
     expect(p).toContain("prefers-reduced-motion");
   });
 });
+
+describe("the tile-layer trap is written down", () => {
+  it("names the line an agent would otherwise write", () => {
+    // Every Leaflet tutorial opens with this. Silence in the recipe means the
+    // next agent ships it and the rep gets an empty grey rectangle.
+    expect(planner()).toContain('L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png")');
+    expect(flat).toMatch(/It does not work in an artifact, and it fails silently/);
+  });
+
+  it("says WHY, so it is not read as a style preference", () => {
+    expect(flat).toMatch(/content security policy admits the page's own files/);
+    expect(flat).toMatch(/OpenStreetMap, Carto, Stadia, MapTiler, all of them/);
+  });
+
+  it("scopes the failure to artifacts, not to the code", () => {
+    // The same two lines are correct in the frontend. A rule stated without
+    // its scope gets cargo-culted into pages where tiles work fine.
+    expect(flat).toMatch(/property of WHERE the page runs, not of the code/);
+    expect(flat).toMatch(/work in the Leadbay frontend and in a local/);
+  });
+
+  it("names the one basemap file, and says to stop there", () => {
+    // Roads and town labels were built, shipped and then removed. The recipe
+    // records that so the next agent does not spend an afternoon rebuilding
+    // them and arriving at the same place.
+    expect(planner()).toContain("france-departements.json");
+    expect(flat).toMatch(/\*\*Stop there\.\*\*/);
+    expect(flat).toMatch(/partial substitute for a thing an artifact\s+cannot have/);
+  });
+
+  it("answers a request for more map detail honestly", () => {
+    expect(flat).toMatch(/Open in Google\s+Maps\* link is where navigation lives/);
+  });
+
+  it("does not let a reader think a bigger file would fix it", () => {
+    expect(flat).toMatch(/4\.7 GB/);
+    expect(flat).toMatch(/16 MB ceiling per artifact/);
+  });
+
+  it("holds the crow-flies caveat in place", () => {
+    // Without roads or drive times the straight-line total is all this map
+    // can honestly claim, so the recipe must keep saying so somewhere.
+    expect(planner()).toMatch(/as the crow flies/);
+  });
+});
+
+describe("the board opens on France", () => {
+  it("fits bounds rather than guessing a zoom", () => {
+    // The map pane is half the window, so one zoom number frames the country
+    // differently on a laptop and a wide monitor.
+    const p = planner();
+    expect(p).toContain("FRANCE_BOUNDS");
+    expect(p).toContain("L.latLngBounds([41.3, -5.2], [51.1, 9.6])");
+    expect(flat).toMatch(/`fitBounds`, never `setView\(\[46\.6, 2\.4\], 6\)`/);
+  });
+
+  it("forbids auto-fitting to the leads on load", () => {
+    // The obvious move. It opens the board on whichever region the rep's book
+    // clusters in, and re-fires on every city change, yanking the view.
+    expect(flat).toMatch(/Do NOT fit to the leads on load/);
+    expect(flat).toMatch(/opens on whichever region the rep's\s+book happens to cluster in/);
+  });
+
+  it("puts the fit behind a button the rep presses", () => {
+    expect(flat).toMatch(/Give them a \*\*Fit to leads\*\* button in the toolbar instead/);
+    expect(flat).toMatch(/let the opening view be France every time/);
+  });
+
+  it("says what the button does with no geocoded leads", () => {
+    expect(flat).toMatch(/falls back to France rather than doing nothing/);
+  });
+});

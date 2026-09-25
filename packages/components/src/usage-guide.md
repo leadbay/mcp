@@ -882,6 +882,67 @@ A single `data-lb-theme="light"` on `<html>` does the same job and is simpler
 — use it when the page owns its `<html>` element. An artifact that is a
 fragment the host wraps does not, which is why the pin is a stylesheet rule.
 
+### There is no tile layer. The basemap ships as files
+
+The first instinct on any Leaflet map is the one every tutorial opens with:
+
+```js
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map)  // ← blocked
+```
+
+**It does not work in an artifact, and it fails silently.** The artifact
+viewer's content security policy admits the page's own files, Google Fonts
+and a few script CDNs — nothing else. Every tile provider is off that list:
+OpenStreetMap, Carto, Stadia, MapTiler, all of them. The browser refuses the
+request before it leaves the machine, no error surfaces in the UI, and the rep
+gets an empty grey rectangle with pins floating on it. Probed with a real
+Leaflet map against two providers: `0 loaded`, every tile failed.
+
+This is a property of WHERE the page runs, not of the code. The same two lines
+work in the Leadbay frontend and in a local `.html` file. They only fail in a
+published artifact — which is the only thing this recipe builds.
+
+So the basemap is a **published file**: `france-departements.json`, the 96
+département outlines, fetched and drawn as one `L.geoJSON` layer behind the
+pins. Take the ~570 KB build — coordinates rounded to five decimals, which is
+sub-metre, rather than the sixteen-decimal version of the same outlines that
+costs the same bytes for an eighth of the geometry and omits the islands
+(Ré, Oléron, Belle-Île, the Corsican islets) entirely.
+
+**Stop there.** Roads and town labels were built, shipped and then removed:
+~475 KB of Natural Earth roads and 800 `geo.api.gouv.fr` town labels, tiered
+by zoom. They worked, they cost a layer-ordering bug, and a rep looking at
+them still could not see a drive time, a local street or whether a river ran
+between two stops. They are a partial substitute for a thing an artifact
+cannot have, and the plain outline reads better. If someone asks for "more
+detail on the map", the honest answer is that the panel's *Open in Google
+Maps* link is where navigation lives, and this map is for seeing WHICH leads
+sit near each other — which the outline already does.
+
+Do not try to solve it with a bigger file either. A full OSM extract for
+France is 4.7 GB and a single region ~500 MB, against a 16 MB ceiling per
+artifact file.
+
+### The board opens on France, and stays where the rep put it
+
+```js
+const FRANCE_BOUNDS = L.latLngBounds([41.3, -5.2], [51.1, 9.6])
+map.fitBounds(FRANCE_BOUNDS)                       // Corsen→Italy, Bonifacio→Dunkerque
+```
+
+- **`fitBounds`, never `setView([46.6, 2.4], 6)`.** The map pane is half the
+  window — a tall narrow box — so one fixed zoom frames the country differently
+  on a laptop and a wide monitor. Bounds adapt to the pane; a zoom number
+  guesses at it.
+- **Do NOT fit to the leads on load.** The obvious move is to frame the pins as
+  soon as they arrive. It means the board opens on whichever region the rep's
+  book happens to cluster in, with no sense of the country around it — and if
+  it re-fires on every city change it yanks the view while they are reading.
+  Give them a **Fit to leads** button in the toolbar instead, beside *All
+  areas*, and let the opening view be France every time. With no geocoded
+  leads the button falls back to France rather than doing nothing.
+
+
 ### The lead list: static dividers, one moving thing
 
 Both lists in the panel — *Follow-ups on the map* and *Nearby follow-ups* —
