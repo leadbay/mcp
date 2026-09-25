@@ -20,7 +20,13 @@
  * New file — does not modify no-purchase-offer-on-chatgpt.test.ts.
  */
 import { describe, it, expect } from "vitest";
-import { compositeReadTools, compositeWriteTools, type Tool } from "@leadbay/core";
+import {
+  compositeReadTools,
+  compositeWriteTools,
+  granularReadTools,
+  granularWriteTools,
+  type Tool,
+} from "@leadbay/core";
 import { schemaText } from "./_agent-text.js";
 
 /** Dropped from the catalogue on /chatgpt/mcp — server.ts COMMERCE_TOOL_NAMES. */
@@ -29,9 +35,21 @@ const COMMERCE_TOOLS = new Set([
   "leadbay_open_billing_portal",
 ]);
 
+/**
+ * Every tool that can be served on /chatgpt/mcp.
+ *
+ * Granular tools are included: http-server.ts reads LEADBAY_MCP_ADVANCED from
+ * the environment, so the same deployment that serves ChatGPT can register
+ * them. None of them sells today, and the audit is what keeps it that way.
+ */
 function commerceFreeSurface(): Tool[] {
   const seen = new Map<string, Tool>();
-  for (const t of [...compositeReadTools, ...compositeWriteTools]) {
+  for (const t of [
+    ...compositeReadTools,
+    ...compositeWriteTools,
+    ...granularReadTools,
+    ...granularWriteTools,
+  ]) {
     if (seen.has(t.name) || COMMERCE_TOOLS.has(t.name)) continue;
     seen.set(t.name, t);
   }
