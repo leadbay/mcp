@@ -37,6 +37,11 @@ export const STYLES = `
 --color-green-background:oklch(0.947 0.029 141);--color-green-foreground:oklch(0.564 0.181 141);
 --color-red-background:oklch(0.947 0.029 26);--color-red-foreground:oklch(0.564 0.191 26);
 --color-gold-background:oklch(0.972 0.049 91);--color-gold-foreground:oklch(0.667 0.177 91);
+/* Yellow is the web app's "Could not reach" prospecting action. Its
+   foreground is light (0.864) by design: the web app uses it for icons and
+   borders on the tinted background, never as text on white. */
+--color-yellow-background:oklch(0.972 0.054 91);--color-yellow-foreground:oklch(0.864 0.181 91);
+--color-yellow-border:color-mix(in oklch,var(--color-yellow-foreground),transparent 65%);
 --color-cherry-background:oklch(0.947 0.029 15);--color-cherry-foreground:oklch(0.44 0.146 15);
 /* Purple carries the product's "AI" affordance (Qualify / Requalify). The
    border is the foreground at 65% transparency, exactly as the style package
@@ -82,6 +87,7 @@ color-scheme:dark;
 --color-green-background:oklch(0.30 0.055 141);--color-green-foreground:oklch(0.80 0.13 141);
 --color-red-background:oklch(0.30 0.060 26);--color-red-foreground:oklch(0.80 0.11 26);
 --color-gold-background:oklch(0.30 0.055 91);--color-gold-foreground:oklch(0.82 0.13 91);
+--color-yellow-background:oklch(0.30 0.055 91);--color-yellow-foreground:oklch(0.86 0.14 91);
 --color-cherry-background:oklch(0.30 0.055 15);--color-cherry-foreground:oklch(0.82 0.10 15);
 --color-purple-background:oklch(0.30 0.055 288);--color-purple-foreground:oklch(0.82 0.11 288);
 --color-teal-background:oklch(0.30 0.055 180);--color-teal-foreground:oklch(0.82 0.11 180);
@@ -100,6 +106,7 @@ color-scheme:dark;
 --color-green-background:oklch(0.30 0.055 141);--color-green-foreground:oklch(0.80 0.13 141);
 --color-red-background:oklch(0.30 0.060 26);--color-red-foreground:oklch(0.80 0.11 26);
 --color-gold-background:oklch(0.30 0.055 91);--color-gold-foreground:oklch(0.82 0.13 91);
+--color-yellow-background:oklch(0.30 0.055 91);--color-yellow-foreground:oklch(0.86 0.14 91);
 --color-cherry-background:oklch(0.30 0.055 15);--color-cherry-foreground:oklch(0.82 0.10 15);
 --color-purple-background:oklch(0.30 0.055 288);--color-purple-foreground:oklch(0.82 0.11 288);
 --color-teal-background:oklch(0.30 0.055 180);--color-teal-foreground:oklch(0.82 0.11 180);
