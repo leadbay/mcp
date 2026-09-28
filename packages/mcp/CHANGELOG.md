@@ -1,5 +1,22 @@
 # Changelog — @leadbay/mcp
 
+## 0.42.0 — 2026-09-28 — every rep gets the same boards
+
+- **The route planner and the lead triage board are now finished pages.**
+  Asking for either, or picking it from the suggested next steps, gives every
+  rep exactly the same board, in the same layout and colours, rather than a
+  page the assistant rebuilds each time. Each page loads its own leads when it
+  opens.
+- **The route planner shows your country.** A US workspace gets a map of the
+  United States, the lower 48 in view, instead of France. French workspaces
+  keep the map of France, départements and islands included.
+- **The map opens on the whole country, filling the panel.** It used to open
+  zoomed out, with the country small in a wide margin. It now fits the
+  country to the space, and keeps fitting it while the page settles, until you
+  move the map yourself.
+- **Planning a trip to a city opens the planner on that city.** After "I'm in
+  Lyon on Thursday", the planner opens with Lyon already filtered.
+
 ## 0.41.1 — 2026-09-26 — triage boards stop drawing a second outcome control
 
 - **Triage boards are built with the same outreach controls as the web app.**
