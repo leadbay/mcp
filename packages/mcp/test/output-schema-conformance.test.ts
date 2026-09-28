@@ -1500,6 +1500,60 @@ const CASES: ConformanceCase[] = [
       ]);
     },
   },
+  {
+    // mcp#276: the summary is counted across every page of the campaign, and
+    // `summary_coverage` says what it covers. A two-page mock exercises the
+    // extra read; every key of both blocks must be declared.
+    toolName: "leadbay_campaign_progression",
+    arguments: { campaign_id: "camp-1" },
+    setupMocks: () => {
+      const rowFor = (id: string) => ({
+        lead: { id, name: `Lead ${id}` },
+        progress: { total_contacts: 2, in_progress: 1, declined: 0, headline: "CONTACTED" },
+        affiliation: { own_campaigns: [], other_users_campaign_count: 0 },
+      });
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.6/campaigns/camp-1/leads?count=50&page=0",
+          status: 200,
+          body: { items: [rowFor("lead-1")], pagination: { page: 0, pages: 2, total: 2 } },
+        },
+        {
+          method: "GET",
+          path: "/1.6/campaigns/camp-1/leads?count=50&page=1",
+          status: 200,
+          body: { items: [rowFor("lead-2")], pagination: { page: 1, pages: 2, total: 2 } },
+        },
+      ]);
+    },
+  },
+  {
+    // mcp#276: page information with text and null where numbers belong, and
+    // a lead without an id, still yield an envelope that matches the schema —
+    // the numbers are echoed as null and the coverage is marked incomplete.
+    toolName: "leadbay_campaign_progression",
+    arguments: { campaign_id: "camp-2" },
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.6/campaigns/camp-2/leads?count=50&page=0",
+          status: 200,
+          body: {
+            items: [
+              {
+                lead: { name: "No id" },
+                progress: { total_contacts: 1, in_progress: 0, declined: 1, headline: "DECLINED" },
+                affiliation: { own_campaigns: [], other_users_campaign_count: 0 },
+              },
+            ],
+            pagination: { page: "0", pages: null, total: "three" },
+          },
+        },
+      ]);
+    },
+  },
 ];
 
 // -----------------------------------------------------------------------
@@ -1617,8 +1671,6 @@ const OPT_OUT: Record<string, string> = {
     "Single POST /leads/epilogue or DELETE /leads/{id}/epilogue?type= — both 204; the tool echoes {lead_id, action, selected}.",
   leadbay_list_campaigns:
     "Single GET /campaigns returning CampaignWithStatsPayload[]; envelope-level shape.",
-  leadbay_campaign_progression:
-    "Single GET /campaigns/{id}/leads — paginated CampaignLeadPayload items.",
   leadbay_campaign_call_sheet:
     "Joins GET /campaigns/{id}/contacts + /leads into a call-ready payload; per-contact shape exercised by live-campaigns smoke (test/smoke/live-campaigns.test.ts).",
 };
