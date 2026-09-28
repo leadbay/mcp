@@ -1,5 +1,13 @@
 # Changelog — @leadbay/mcp
 
+## 0.41.1 — 2026-09-26 — triage boards stop drawing a second outcome control
+
+- **Triage boards are built with the same outreach controls as the web app.**
+  The template the assistant copies for a triage board still drew an old
+  "Outreach result" menu next to the prospecting-action buttons — two controls
+  changing the same thing. New boards now get only the four prospecting
+  actions and a note, and the note saves straight away.
+
 ## 0.41.0 — 2026-09-25 — boards a rep can work from: a lead desk, a route planner, and buttons that answer
 
 - **Every Leadbay board is built from the same kit.** Asking for a triage board,
