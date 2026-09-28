@@ -15,6 +15,9 @@ coverage/
 *.js.map
 !src/**
 !test/**
+# The finished boards' page scripts are hand-written source, not build
+# output. `*.js` above hides them, and `!src/**` only matches a root src/.
+!packages/components/src/templates/**/*.js
 !vitest.config.ts
 packages/mcp/dist-native/
 docs/superpowers/
