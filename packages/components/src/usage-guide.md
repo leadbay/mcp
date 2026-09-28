@@ -531,9 +531,9 @@ spacing CSS of your own:
     <div class="lb-section">
       <div class="lb-sec-title">Outreach</div>
       <div class="lb-stack">                  <!-- one control per line -->
-        <select class="lb-select" aria-label="Outreach result for Acme Corp"></select>
+        <div class="lb-actions" role="group"><!-- the 4 prospecting toggles, see *Writing from a page* --></div>
         <input class="lb-input" aria-label="Outreach note for Acme Corp">
-        <button class="lb-btn lb-btn-submit">Log outreach</button>
+        <button class="lb-btn lb-btn-submit">Log outreach</button>   <!-- the note: lb.note, never lb.outreach -->
       </div>
     </div>
     <details class="lb-section"><!-- lazy full profile, see below --></details>
@@ -1660,7 +1660,9 @@ refreshBtn.onclick = () => job.refresh();
 
 ## Write-call rules
 
-The domain factories handle these for you. If you hand-roll an action:
+The domain factories handle these for you. A page's buttons never call
+`leadbay_report_outreach` — see *Writing from a page*; the rule below is for
+an agent logging an outreach itself. If you hand-roll an action:
 `leadbay_report_outreach` args MUST include `verification:{source:"user_confirmed", ref}`
 AND `_triggered_by`; `leadbay_add_leads_to_campaign` needs `_triggered_by`;
 `add_note`/`like_lead`/`dislike_lead` take only their own args. `epilogue_status` is
