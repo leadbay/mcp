@@ -75,7 +75,7 @@ annotations:
 {{include:gates/lead-seen-side-effect}}
 
 
-Leadbay works like an inbox: each login delivers a fresh batch, paced by how many leads the user actually acted on recently. Pulling more won't produce more; outreach, skips and saves do. Leads liked, disliked, noted, with a status or in a campaign are left out. Each returned lead carries a one-line `qualification_summary` built from the lead's AI qualification answers, plus the rich tags / scores / engagement counters / in-flight flags from the lead summary.
+Leadbay works like an inbox: each login delivers a fresh batch, paced by how many leads the user actually acted on recently. Pulling more won't produce more; outreach, skips and saves do. Leads liked, disliked, noted, with a status or in a campaign are left out. Each returned lead carries a `qualification_summary` built from the lead's AI qualification answers, plus the rich tags / scores / engagement counters / in-flight flags from the lead summary. Show `negative_answers` with the lead; the user decides.
 
 Roughly the top 10 of the batch come pre-qualified (populated qualification_summary + ai_agent_lead_score); leads below the top ~10 carry only the basic firmographic `score` — not worse, just resource-saved by the system. Call leadbay_bulk_qualify_leads to deepen any of them on demand — a healthy daily rhythm is to bulk-qualify the rows without ❖ caps so tomorrow's top-10 list is richer.
 

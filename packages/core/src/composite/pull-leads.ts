@@ -47,6 +47,24 @@ interface QualificationSummary {
    */
   avg_qualification_boost: number | null;
   best_response_excerpt: string | null;
+  /**
+   * Every answer with a negative boost_score, with its question (#254).
+   * null when no question has been answered yet, or the answers could not be
+   * read: nobody checked, so an empty list would wrongly read as "nothing
+   * against this lead".
+   */
+  negative_answers: NegativeAnswer[] | null;
+}
+
+interface NegativeAnswer {
+  question: string;
+  boost_score: number;
+  excerpt: string | null;
+}
+
+function excerptOf(response: string | null): string | null {
+  if (response && response.length > 200) return response.slice(0, 197) + "...";
+  return response || null;
 }
 
 function summarise(responses: AiAgentResponse[]): QualificationSummary {
@@ -67,12 +85,26 @@ function summarise(responses: AiAgentResponse[]): QualificationSummary {
     .filter((r) => r.response && r.score != null)
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
 
-  let excerpt = best?.response ?? null;
-  if (excerpt && excerpt.length > 200) {
-    excerpt = excerpt.slice(0, 197) + "...";
-  }
+  const excerpt = excerptOf(best?.response ?? null);
 
-  return { answered, total, avg_qualification_boost: avg, best_response_excerpt: excerpt };
+  const negative_answers =
+    answered > 0
+      ? responses
+          .filter((r) => r.score != null && r.score < 0)
+          .map((r) => ({
+            question: r.question,
+            boost_score: r.score as number,
+            excerpt: excerptOf(r.response),
+          }))
+      : null;
+
+  return {
+    answered,
+    total,
+    avg_qualification_boost: avg,
+    best_response_excerpt: excerpt,
+    negative_answers,
+  };
 }
 
 /**
@@ -426,6 +458,7 @@ export const pullLeads: Tool<PullLeadsParams> = {
               total: 0,
               avg_qualification_boost: null,
               best_response_excerpt: null,
+              negative_answers: null,
             },
           };
         }
