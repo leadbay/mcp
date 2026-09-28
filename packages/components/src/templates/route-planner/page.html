@@ -1,0 +1,283 @@
+<title>Leadbay Route Planner</title>
+<!-- The only part of this board an agent may edit. "city": where the rep is
+     going ("Lyon"), or "" for all follow-ups. Never a country. -->
+<script type="application/json" id="lb-board-config">{"city": ""}</script>
+<style>
+.leaflet-image-layer,.leaflet-layer,.leaflet-marker-icon,.leaflet-marker-shadow,.leaflet-pane,.leaflet-pane>canvas,.leaflet-pane>svg,.leaflet-tile,.leaflet-tile-container,.leaflet-zoom-box{position:absolute;left:0;top:0}.leaflet-container{overflow:hidden}.leaflet-marker-icon,.leaflet-marker-shadow,.leaflet-tile{-webkit-user-select:none;-moz-user-select:none;user-select:none;-webkit-user-drag:none}.leaflet-tile::selection{background:0 0}.leaflet-safari .leaflet-tile{image-rendering:-webkit-optimize-contrast}.leaflet-safari .leaflet-tile-container{width:1600px;height:1600px;-webkit-transform-origin:0 0}.leaflet-marker-icon,.leaflet-marker-shadow{display:block}.leaflet-container .leaflet-overlay-pane svg{max-width:none!important;max-height:none!important}.leaflet-container .leaflet-marker-pane img,.leaflet-container .leaflet-shadow-pane img,.leaflet-container .leaflet-tile,.leaflet-container .leaflet-tile-pane img,.leaflet-container img.leaflet-image-layer{max-width:none!important;max-height:none!important;width:auto;padding:0}.leaflet-container img.leaflet-tile{mix-blend-mode:plus-lighter}.leaflet-container.leaflet-touch-zoom{-ms-touch-action:pan-x pan-y;touch-action:pan-x pan-y}.leaflet-container.leaflet-touch-drag{-ms-touch-action:pinch-zoom;touch-action:none;touch-action:pinch-zoom}.leaflet-container.leaflet-touch-drag.leaflet-touch-zoom{-ms-touch-action:none;touch-action:none}.leaflet-container{-webkit-tap-highlight-color:transparent}.leaflet-container a{-webkit-tap-highlight-color:rgba(51,181,229,.4)}.leaflet-tile{filter:inherit;visibility:hidden}.leaflet-tile-loaded{visibility:inherit}.leaflet-zoom-box{width:0;height:0;-moz-box-sizing:border-box;box-sizing:border-box;z-index:800}.leaflet-overlay-pane svg{-moz-user-select:none}.leaflet-pane{z-index:400}.leaflet-tile-pane{z-index:200}.leaflet-overlay-pane{z-index:400}.leaflet-shadow-pane{z-index:500}.leaflet-marker-pane{z-index:600}.leaflet-tooltip-pane{z-index:650}.leaflet-popup-pane{z-index:700}.leaflet-map-pane canvas{z-index:100}.leaflet-map-pane svg{z-index:200}.leaflet-vml-shape{width:1px;height:1px}.lvml{behavior:url(#default#VML);display:inline-block;position:absolute}.leaflet-control{position:relative;z-index:800;pointer-events:visiblePainted;pointer-events:auto}.leaflet-bottom,.leaflet-top{position:absolute;z-index:1000;pointer-events:none}.leaflet-top{top:0}.leaflet-right{right:0}.leaflet-bottom{bottom:0}.leaflet-left{left:0}.leaflet-control{float:left;clear:both}.leaflet-right .leaflet-control{float:right}.leaflet-top .leaflet-control{margin-top:10px}.leaflet-bottom .leaflet-control{margin-bottom:10px}.leaflet-left .leaflet-control{margin-left:10px}.leaflet-right .leaflet-control{margin-right:10px}.leaflet-fade-anim .leaflet-popup{opacity:0;-webkit-transition:opacity .2s linear;-moz-transition:opacity .2s linear;transition:opacity .2s linear}.leaflet-fade-anim .leaflet-map-pane .leaflet-popup{opacity:1}.leaflet-zoom-animated{-webkit-transform-origin:0 0;-ms-transform-origin:0 0;transform-origin:0 0}svg.leaflet-zoom-animated{will-change:transform}.leaflet-zoom-anim .leaflet-zoom-animated{-webkit-transition:-webkit-transform .25s cubic-bezier(0,0,.25,1);-moz-transition:-moz-transform .25s cubic-bezier(0,0,.25,1);transition:transform .25s cubic-bezier(0,0,.25,1)}.leaflet-pan-anim .leaflet-tile,.leaflet-zoom-anim .leaflet-tile{-webkit-transition:none;-moz-transition:none;transition:none}.leaflet-zoom-anim .leaflet-zoom-hide{visibility:hidden}.leaflet-interactive{cursor:pointer}.leaflet-grab{cursor:-webkit-grab;cursor:-moz-grab;cursor:grab}.leaflet-crosshair,.leaflet-crosshair .leaflet-interactive{cursor:crosshair}.leaflet-control,.leaflet-popup-pane{cursor:auto}.leaflet-dragging .leaflet-grab,.leaflet-dragging .leaflet-grab .leaflet-interactive,.leaflet-dragging .leaflet-marker-draggable{cursor:move;cursor:-webkit-grabbing;cursor:-moz-grabbing;cursor:grabbing}.leaflet-image-layer,.leaflet-marker-icon,.leaflet-marker-shadow,.leaflet-pane>svg path,.leaflet-tile-container{pointer-events:none}.leaflet-image-layer.leaflet-interactive,.leaflet-marker-icon.leaflet-interactive,.leaflet-pane>svg path.leaflet-interactive,svg.leaflet-image-layer.leaflet-interactive path{pointer-events:visiblePainted;pointer-events:auto}.leaflet-container{background:#ddd;outline-offset:1px}.leaflet-container a{color:#0078a8}.leaflet-zoom-box{border:2px dotted #38f;background:rgba(255,255,255,.5)}.leaflet-container{font-family:"Helvetica Neue",Arial,Helvetica,sans-serif;font-size:12px;font-size:.75rem;line-height:1.5}.leaflet-bar{box-shadow:0 1px 5px rgba(0,0,0,.65);border-radius:4px}.leaflet-bar a{background-color:#fff;border-bottom:1px solid #ccc;width:26px;height:26px;line-height:26px;display:block;text-align:center;text-decoration:none;color:#000}.leaflet-bar a,.leaflet-control-layers-toggle{background-position:50% 50%;background-repeat:no-repeat;display:block}.leaflet-bar a:focus,.leaflet-bar a:hover{background-color:#f4f4f4}.leaflet-bar a:first-child{border-top-left-radius:4px;border-top-right-radius:4px}.leaflet-bar a:last-child{border-bottom-left-radius:4px;border-bottom-right-radius:4px;border-bottom:none}.leaflet-bar a.leaflet-disabled{cursor:default;background-color:#f4f4f4;color:#bbb}.leaflet-touch .leaflet-bar a{width:30px;height:30px;line-height:30px}.leaflet-touch .leaflet-bar a:first-child{border-top-left-radius:2px;border-top-right-radius:2px}.leaflet-touch .leaflet-bar a:last-child{border-bottom-left-radius:2px;border-bottom-right-radius:2px}.leaflet-control-zoom-in,.leaflet-control-zoom-out{font:bold 18px 'Lucida Console',Monaco,monospace;text-indent:1px}.leaflet-touch .leaflet-control-zoom-in,.leaflet-touch .leaflet-control-zoom-out{font-size:22px}.leaflet-control-layers{box-shadow:0 1px 5px rgba(0,0,0,.4);background:#fff;border-radius:5px}.leaflet-control-layers-toggle{background-image:url(images/layers.png);width:36px;height:36px}.leaflet-retina .leaflet-control-layers-toggle{background-image:url(images/layers-2x.png);background-size:26px 26px}.leaflet-touch .leaflet-control-layers-toggle{width:44px;height:44px}.leaflet-control-layers .leaflet-control-layers-list,.leaflet-control-layers-expanded .leaflet-control-layers-toggle{display:none}.leaflet-control-layers-expanded .leaflet-control-layers-list{display:block;position:relative}.leaflet-control-layers-expanded{padding:6px 10px 6px 6px;color:#333;background:#fff}.leaflet-control-layers-scrollbar{overflow-y:scroll;overflow-x:hidden;padding-right:5px}.leaflet-control-layers-selector{margin-top:2px;position:relative;top:1px}.leaflet-control-layers label{display:block;font-size:13px;font-size:1.08333em}.leaflet-control-layers-separator{height:0;border-top:1px solid #ddd;margin:5px -10px 5px -6px}.leaflet-default-icon-path{background-image:url(images/marker-icon.png)}.leaflet-container .leaflet-control-attribution{background:#fff;background:rgba(255,255,255,.8);margin:0}.leaflet-control-attribution,.leaflet-control-scale-line{padding:0 5px;color:#333;line-height:1.4}.leaflet-control-attribution a{text-decoration:none}.leaflet-control-attribution a:focus,.leaflet-control-attribution a:hover{text-decoration:underline}.leaflet-attribution-flag{display:inline!important;vertical-align:baseline!important;width:1em;height:.6669em}.leaflet-left .leaflet-control-scale{margin-left:5px}.leaflet-bottom .leaflet-control-scale{margin-bottom:5px}.leaflet-control-scale-line{border:2px solid #777;border-top:none;line-height:1.1;padding:2px 5px 1px;white-space:nowrap;-moz-box-sizing:border-box;box-sizing:border-box;background:rgba(255,255,255,.8);text-shadow:1px 1px #fff}.leaflet-control-scale-line:not(:first-child){border-top:2px solid #777;border-bottom:none;margin-top:-2px}.leaflet-control-scale-line:not(:first-child):not(:last-child){border-bottom:2px solid #777}.leaflet-touch .leaflet-bar,.leaflet-touch .leaflet-control-attribution,.leaflet-touch .leaflet-control-layers{box-shadow:none}.leaflet-touch .leaflet-bar,.leaflet-touch .leaflet-control-layers{border:2px solid rgba(0,0,0,.2);background-clip:padding-box}.leaflet-popup{position:absolute;text-align:center;margin-bottom:20px}.leaflet-popup-content-wrapper{padding:1px;text-align:left;border-radius:12px}.leaflet-popup-content{margin:13px 24px 13px 20px;line-height:1.3;font-size:13px;font-size:1.08333em;min-height:1px}.leaflet-popup-content p{margin:17px 0;margin:1.3em 0}.leaflet-popup-tip-container{width:40px;height:20px;position:absolute;left:50%;margin-top:-1px;margin-left:-20px;overflow:hidden;pointer-events:none}.leaflet-popup-tip{width:17px;height:17px;padding:1px;margin:-10px auto 0;pointer-events:auto;-webkit-transform:rotate(45deg);-moz-transform:rotate(45deg);-ms-transform:rotate(45deg);transform:rotate(45deg)}.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#fff;color:#333;box-shadow:0 3px 14px rgba(0,0,0,.4)}.leaflet-container a.leaflet-popup-close-button{position:absolute;top:0;right:0;border:none;text-align:center;width:24px;height:24px;font:16px/24px Tahoma,Verdana,sans-serif;color:#757575;text-decoration:none;background:0 0}.leaflet-container a.leaflet-popup-close-button:focus,.leaflet-container a.leaflet-popup-close-button:hover{color:#585858}.leaflet-popup-scrolled{overflow:auto}.leaflet-oldie .leaflet-popup-content-wrapper{-ms-zoom:1}.leaflet-oldie .leaflet-popup-tip{width:24px;margin:0 auto}.leaflet-oldie .leaflet-control-layers,.leaflet-oldie .leaflet-control-zoom,.leaflet-oldie .leaflet-popup-content-wrapper,.leaflet-oldie .leaflet-popup-tip{border:1px solid #999}.leaflet-div-icon{background:#fff;border:1px solid #666}.leaflet-tooltip{position:absolute;padding:6px;background-color:#fff;border:1px solid #fff;border-radius:3px;color:#222;white-space:nowrap;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.4)}.leaflet-tooltip.leaflet-interactive{cursor:pointer;pointer-events:auto}.leaflet-tooltip-bottom:before,.leaflet-tooltip-left:before,.leaflet-tooltip-right:before,.leaflet-tooltip-top:before{position:absolute;pointer-events:none;border:6px solid transparent;background:0 0;content:""}.leaflet-tooltip-bottom{margin-top:6px}.leaflet-tooltip-top{margin-top:-6px}.leaflet-tooltip-bottom:before,.leaflet-tooltip-top:before{left:50%;margin-left:-6px}.leaflet-tooltip-top:before{bottom:0;margin-bottom:-12px;border-top-color:#fff}.leaflet-tooltip-bottom:before{top:0;margin-top:-12px;margin-left:-6px;border-bottom-color:#fff}.leaflet-tooltip-left{margin-left:-6px}.leaflet-tooltip-right{margin-left:6px}.leaflet-tooltip-left:before,.leaflet-tooltip-right:before{top:50%;margin-top:-6px}.leaflet-tooltip-left:before{right:0;margin-right:-12px;border-left-color:#fff}.leaflet-tooltip-right:before{left:0;margin-left:-12px;border-right-color:#fff}@media print{.leaflet-control{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+<style>
+/* UI colour comes from the skin that `lb.styles()` already injected. This
+   page used to declare a parallel palette — a blue-tinted #f4f5f7 ground
+   behind the kit's #f0f0f0 toolbar, #e2e5ea borders beside its #e0e0e0 —
+   close enough that nobody could name the problem, wrong enough to look
+   unfinished.
+
+   The board is LIGHT, always — the same rule the triage board carries. The
+   skin ships a dark mode that fires on `prefers-color-scheme: dark`, so
+   aliasing ALONE handed a rep on a dark-mode laptop white text on a light
+   ground. The pin below holds the skin's own tokens at their light values
+   under both dark selectors. That is what `data-lb-theme="light"` would do
+   if this page owned an <html> element to hang it on; it does not, because
+   the host wraps the fragment.
+
+   Three colours stay ours, because the kit has none for them: --land,
+   --land-border and --water draw a country, not UI chrome. */
+:root {
+  --bg: var(--color-gray-2);
+  --panel: var(--color-white);
+  --ink: var(--lb-fg);
+  --muted: var(--lb-muted);
+  --line: var(--lb-border);
+  --route: var(--lb-fg);
+  --acted: var(--color-gold-foreground);
+  --focus-ring: color-mix(in srgb, var(--color-blue-foreground) 35%, transparent);
+  --st-wanted: var(--color-blue-foreground);
+  --st-won: var(--color-green-foreground);
+  --st-lost: var(--color-red-foreground);
+  --st-unwanted: var(--color-gray-6);
+  --st-default: var(--color-gray-8);
+  --font: var(--lb-font, "Nikkei Maru", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+
+  /* Prospecting-action yellow, from the web app's packages/style/color.css.
+     The kit has blue, green and red with identical values; yellow is the one
+     it lacks. */
+  --color-yellow-background: oklch(0.972 0.054 91);
+  --color-yellow-foreground: oklch(0.864 0.181 91);
+
+  /* The map itself — no kit equivalent. */
+  --land: #eceef1;
+  --land-border: #c5cad3;
+  --water: #dce5ee;
+}
+/* The light pin. Every skin token this page reads, held at its light value —
+   so the board looks the same whatever the rep's OS is set to, and the map
+   colours need no dark variant because there is no dark board.
+
+   The selector is tripled on purpose. `lb.styles()` appends the skin to
+   <head> at runtime, i.e. AFTER this sheet, so a plain `:root` here loses to
+   the skin's `:root[data-theme=dark]` on source order. `:root:root:root`
+   outranks it on specificity instead, which source order cannot undo. */
+:root:root:root {
+  --lb-surface: var(--color-gray-1);
+  --lb-border: var(--color-gray-3);
+  --lb-fg: var(--color-black);
+  --lb-muted: var(--color-gray-8);
+  --lb-field: var(--color-white);
+  --lb-chip-bg: var(--color-gray-2);
+  --lb-control-border: var(--color-gray-6);
+  --lb-shadow: 0 0.5rem 1.5rem oklch(0 0 0/.06), 0 0.125rem 0.5rem oklch(0 0 0/.04);
+  color-scheme: light;
+  --color-blue-background: oklch(0.947 0.029 251); --color-blue-foreground: oklch(0.564 0.181 251);
+  --color-green-background: oklch(0.947 0.029 141); --color-green-foreground: oklch(0.564 0.181 141);
+  --color-red-background: oklch(0.947 0.029 26); --color-red-foreground: oklch(0.564 0.191 26);
+  --color-gold-background: oklch(0.972 0.049 91); --color-gold-foreground: oklch(0.667 0.177 91);
+  --color-cherry-background: oklch(0.947 0.029 15); --color-cherry-foreground: oklch(0.44 0.146 15);
+  --color-purple-background: oklch(0.947 0.029 288); --color-purple-foreground: oklch(0.464 0.181 288);
+  --color-teal-background: oklch(0.977 0.019 180); --color-teal-foreground: oklch(0.574 0.182 180);
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  padding-inline: 16px;
+  padding-block: 12px;
+  box-sizing: border-box;
+}
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 12px;
+  min-height: 0;
+}
+
+/* Top bar */
+.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+.brand { display: flex; flex-direction: column; gap: 2px; }
+.brand h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+.brand .tally { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.city-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.city-form .lb-input { min-width: 0; width: 200px; max-width: 100%; }
+.city-hint { font-size: 11px; color: var(--muted); flex-basis: 100%; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; color: var(--muted); margin-inline-start: auto; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.legend .ring { background: transparent; box-shadow: inset 0 0 0 2px var(--acted); }
+.notice:empty { display: none; }
+.notice { font-size: 13px; padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.notice[data-tone="error"] { border-color: var(--st-lost); }
+
+/* Work area */
+.work { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; min-height: 0; }
+.map-frame { position: relative; min-height: 0; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
+#map { position: absolute; inset: 0; }
+.leaflet-container { background: var(--water); font-family: var(--font); }
+.leaflet-container .dept { fill: var(--land); fill-opacity: 1; stroke: var(--land-border); stroke-width: 0.7px; }
+.leaflet-container .route-line { stroke: var(--route); stroke-width: 2px; stroke-dasharray: 6 5; fill: none; stroke-opacity: 0.8; }
+.leaflet-control-attribution { background: var(--panel) !important; color: var(--muted) !important; font-size: 10px !important; }
+.leaflet-control-attribution a { color: var(--muted) !important; }
+.leaflet-bar a { background: var(--panel); color: var(--ink); border-color: var(--line); }
+.map-status { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 500; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 12px; display: flex; gap: 8px; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+
+.pin-wrap { background: none; border: 0; }
+.pin {
+  box-sizing: border-box; width: 100%; height: 100%; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--st-default); border: 2px solid var(--panel);
+  box-shadow: 0 1px 3px rgba(0,0,0,.35);
+  color: #fff; font: 700 11px/1 var(--font); font-variant-numeric: tabular-nums;
+  transition: transform .15s ease;
+}
+.pin[data-status="WANTED"] { background: var(--st-wanted); }
+.pin[data-status="WON"] { background: var(--st-won); }
+.pin[data-status="LOST"] { background: var(--st-lost); }
+.pin[data-status="UNWANTED"] { background: var(--st-unwanted); }
+.pin[data-acted="yes"] { box-shadow: 0 0 0 3px var(--acted), 0 1px 3px rgba(0,0,0,.35); }
+.pin[data-stop="yes"] { border-color: var(--route); }
+.pin[data-selected="yes"] { transform: scale(1.2); box-shadow: 0 0 0 5px var(--focus-ring), 0 1px 3px rgba(0,0,0,.35); }
+.pin[data-selected="yes"][data-acted="yes"] { box-shadow: 0 0 0 3px var(--acted), 0 0 0 7px var(--focus-ring); }
+@media (prefers-reduced-motion: reduce) { .pin { transition: none; } }
+.pin-label {
+  display: none; position: absolute; left: calc(100% + 5px); top: 50%; transform: translateY(-50%);
+  max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 600 11px/1.3 var(--font); color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.18);
+}
+.pin-label[data-visible="yes"] { display: block; }
+.pin[data-selected="yes"] + .pin-label { max-width: 220px; border-color: var(--st-wanted); left: calc(100% + 8px); }
+
+/* Side panel */
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; min-height: 0; display: flex; flex-direction: column; }
+.panel-scroll { overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; min-height: 0; }
+.panel-head { display: flex; align-items: flex-start; gap: 10px; }
+.panel-head h2 { margin: 0; font-size: 18px; line-height: 1.25; text-wrap: balance; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.icon-btn { flex: none; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink); display: grid; place-items: center; cursor: pointer; }
+.icon-btn:hover { background: var(--bg); }
+.icon-btn:focus-visible, .row-btn:focus-visible, .choice:focus-visible { outline: 2px solid var(--st-wanted); outline-offset: 2px; }
+.icon-btn svg { width: 16px; height: 16px; }
+.facts { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.facts .address { color: var(--ink); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); display: inline-flex; align-items: center; gap: 5px; }
+.chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--st-default); }
+.chip[data-status="WANTED"] i { background: var(--st-wanted); }
+.chip[data-status="WON"] i { background: var(--st-won); }
+.chip[data-status="LOST"] i { background: var(--st-lost); }
+.chip[data-status="UNWANTED"] i { background: var(--st-unwanted); }
+.chip.acted { border-color: var(--acted); }
+.chip.acted i { background: var(--acted); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.links { display: flex; flex-wrap: wrap; gap: 14px; }
+.section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0; display: flex; justify-content: space-between; gap: 8px; }
+.section { display: flex; flex-direction: column; gap: 8px; }
+.section .lb-select, .section .lb-input, .section textarea { width: 100%; box-sizing: border-box; }
+.section textarea { min-height: 64px; resize: vertical; font: inherit; }
+.choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+/* Colours are the web app's, per action (ProspectionCell.tsx): Still chasing
+   blue, Meeting planned green, Could not reach yellow, Not interested red —
+   so a rep who knows the web app reads these at a glance. The web app uses
+   the foreground only as an ICON colour on the tinted badge, never as text:
+   the yellow foreground is lightness 0.864 and unreadable as a label. Same
+   here — the dot and the border take the accent, the label stays ink. */
+.choice[data-value="STILL_CHASING"] { --action-bg: var(--color-blue-background); --action-fg: var(--color-blue-foreground); }
+.choice[data-value="INTEREST_VALIDATED_OR_MEETING_PLANED"] { --action-bg: var(--color-green-background); --action-fg: var(--color-green-foreground); }
+.choice[data-value="COULD_NOT_REACH_STILL_TRYING"] { --action-bg: var(--color-yellow-background); --action-fg: var(--color-yellow-foreground); }
+.choice[data-value="NOT_INTERESTED_LOST"] { --action-bg: var(--color-red-background); --action-fg: var(--color-red-foreground); }
+.choice { font: inherit; font-size: 13px; text-align: start; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; display: flex; align-items: center; gap: 8px; }
+.choice::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--action-fg, var(--muted)); }
+.choice:hover { background: var(--bg); }
+.choice[aria-checked="true"] { border-color: var(--action-fg, var(--acted)); background: var(--action-bg, var(--bg)); }
+.choice[aria-checked="true"]:hover { background: color-mix(in srgb, var(--action-bg) 80%, var(--action-fg)); }
+.choice[disabled] { opacity: .6; cursor: progress; }
+.msg { font-size: 12px; color: var(--muted); min-height: 1em; }
+.msg:empty { display: none; }
+.msg[data-tone="error"] { color: var(--st-lost); }
+.msg[data-tone="ok"] { color: var(--st-won); }
+.rows { display: flex; flex-direction: column; gap: 2px; }
+/* Dividers do NOT react to hover. An earlier version faded the line above and
+   below the hovered row, which meant simply scanning the list made lines
+   ripple in and out — the animation drew more attention than the row did.
+   Instead the rows are spaced 2px apart, so the hover block floats in a gap
+   and never shares an edge with a line. Only the background moves. */
+.row-btn {
+  font: inherit; position: relative;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  padding: 9px 10px; margin-inline: -6px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--ink); text-align: start; cursor: pointer;
+  transition: background-color .12s ease;
+}
+.row-btn + .row-btn::before {
+  content: ""; position: absolute; inset-inline: 10px; top: -1px; height: 1px;
+  background: var(--line);
+}
+.row-btn:hover, .row-btn:focus-visible { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.row-btn:active { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+@media (prefers-reduced-motion: reduce) { .row-btn { transition: none; } }
+.row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.row-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--st-default); box-sizing: border-box; }
+.dot[data-status="WANTED"] { background: var(--st-wanted); }
+.dot[data-status="WON"] { background: var(--st-won); }
+.dot[data-status="LOST"] { background: var(--st-lost); }
+.dot[data-status="UNWANTED"] { background: var(--st-unwanted); }
+.dot[data-acted="yes"] { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--acted); }
+.stop { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.stop:last-child { border-bottom: 0; }
+.stop-num { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: var(--ink); color: var(--panel); font-variant-numeric: tabular-nums; }
+.stop-name { font: inherit; font-size: 13px; font-weight: 600; background: none; border: 0; padding: 0; color: var(--ink); text-align: start; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stop-tools { display: flex; gap: 4px; }
+.stop-tools .icon-btn { width: 28px; height: 28px; }
+.empty { font-size: 13px; color: var(--muted); padding: 12px; border: 1px dashed var(--line); border-radius: 10px; }
+.summary { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 760px) {
+  html, body { height: auto; }
+  .app { height: auto; grid-template-rows: auto; }
+  .work { grid-template-columns: 1fr; }
+  .map-frame { height: 58vh; min-height: 320px; }
+  .panel-scroll { overflow: visible; }
+  .legend { margin-inline-start: 0; }
+  .city-form .lb-input { width: 100%; flex: 1 1 160px; }
+}
+</style>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <h1>Route Planner</h1>
+      <span class="tally" id="tally">Connecting to Leadbay…</span>
+    </div>
+    <form class="city-form" id="city-form">
+      <label class="lb-vh" for="city-input">City or area to prospect</label>
+      <input class="lb-input" id="city-input" name="city" type="text" placeholder="City or area" autocomplete="off">
+      <button class="lb-btn lb-btn-submit" id="city-submit" type="submit">Show follow-ups</button>
+      <button class="lb-btn" id="city-clear" type="button" hidden>All areas</button>
+      <button class="lb-btn" id="fit-leads" type="button">Fit to leads</button>
+      <span class="city-hint" id="city-hint">Picking a city also sets the location filter on your Monitor in Leadbay.</span>
+    </form>
+    <div class="legend" aria-label="Map legend">
+      <span><i style="background:var(--st-wanted)"></i>Wanted</span>
+      <span><i style="background:var(--st-won)"></i>Won</span>
+      <span><i style="background:var(--st-lost)"></i>Lost</span>
+      <span><i style="background:var(--st-unwanted)"></i>Unwanted</span>
+      <span><i style="background:var(--st-default)"></i>No status</span>
+      <span><i class="ring"></i>Worked today</span>
+    </div>
+  </header>
+  <div class="notice" id="notice" role="alert"></div>
+  <main class="work">
+    <div class="map-frame">
+      <div id="map" aria-label="Map of follow-up leads"></div>
+      <div class="map-status" id="map-status" hidden><span class="lb-spinner" aria-hidden="true"></span><span id="map-status-text">Loading follow-ups…</span></div>
+    </div>
+    <aside class="panel" aria-label="Lead and route panel">
+      <div class="panel-scroll" id="panel"></div>
+    </aside>
+  </main>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>

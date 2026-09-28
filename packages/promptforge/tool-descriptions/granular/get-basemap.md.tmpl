@@ -1,0 +1,22 @@
+---
+name: leadbay_get_basemap
+kind: tool-description
+short_description: |
+  Internal data feed for Leadbay map boards: returns the country outline for
+  the workspace's own region. Called BY the route planner board's own
+  JavaScript — never by you.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: false
+---
+**Do not call this tool.** The route planner template that
+`leadbay_get_artifact_runtime` serves calls it from inside the published page,
+to draw the grey country shape under its pins. It returns `{region, geojson}`
+for the workspace's region (`fr` or `us`) — a large GeoJSON document that is
+useless in a conversation.
+
+A board needs it because an artifact can only load its own published files,
+and an agent building a board for another user has no outline file to publish.
+With this tool every board gets the same outline, for the right country.

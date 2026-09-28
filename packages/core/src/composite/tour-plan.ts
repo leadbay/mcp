@@ -58,10 +58,12 @@ export function buildTourNextSteps(
       "the map on one half, the lead list on the other, clicking a marker opens that " +
       "lead to set status, log outreach and record a prospecting action, with the pin " +
       "repainting as you work. " +
-      "Call leadbay_get_artifact_runtime and follow its ROUTE PLANNER recipe, building " +
-      "from the leads in hand (do NOT re-call tour_plan)." +
+      "Call leadbay_get_artifact_runtime with template \"route_planner\" (the ROUTE " +
+      "PLANNER recipe as a finished page) and publish its html as it is" +
+      (city ? `, setting "city" to "${city}" in its lb-board-config block — the one edit allowed` : "") +
+      ". The page loads the follow-ups itself, so do NOT re-call tour_plan." +
       (mappable < all.length
-        ? ` ${all.length - mappable} have no coordinates — list them beside the map rather than dropping them.`
+        ? ` ${all.length - mappable} have no coordinates — the page lists them beside the map rather than dropping them.`
         : ""),
     kind: "build_artifact",
   });

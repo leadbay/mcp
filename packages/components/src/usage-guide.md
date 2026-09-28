@@ -460,6 +460,18 @@ reach the host must say so, not sit silent.
 
 ## Recipe: the pull-leads triage board (THE default board)
 
+> **Served finished — do not build this by hand.** For today's Discover batch (`leadbay_pull_leads`), call
+> `leadbay_get_artifact_runtime` with `template: "triage_board"` and publish the
+> returned `html` as it is, with its `capabilities`, `icon` and
+> `description`. That page is the approved board every user gets, byte for
+> byte; this recipe documents what it does and why, so the page can be changed
+> knowingly. Changes to the board are made in the template source
+> (`packages/components/src/templates/`), never in a re-implementation.
+
+For the other batch tools below, the template does not fit yet — it loads
+the Discover batch, not theirs — so those boards are still built from this
+recipe.
+
 When the rep accepts an interactive board after ANY tool that returns a batch
 of leads — `leadbay_pull_leads`, `leadbay_find_new_leads`,
 `leadbay_pull_followups`, `leadbay_campaign_call_sheet` — build THIS. It is a
@@ -737,6 +749,18 @@ affordance, and the app's own QualifyButton is `variant="ai"`.
 
 ## Recipe: the ROUTE PLANNER (leads on a map, worked in person)
 
+> **Served finished — do not build this by hand.** For any route planner, call
+> `leadbay_get_artifact_runtime` with `template: "route_planner"` and publish the
+> returned `html` as it is, with its `capabilities`, `icon` and
+> `description`. That page is the approved board every user gets, byte for
+> byte; this recipe documents what it does and why, so the page can be changed
+> knowingly. Changes to the board are made in the template source
+> (`packages/components/src/templates/`), never in a re-implementation.
+
+Its one permitted edit is the JSON in `<script id="lb-board-config">`: set
+`"city"` to where the rep is going ("Lyon"), or leave it `""` for all
+follow-ups. Never a country.
+
 When the rep is going somewhere — "I'm in Lyon Thursday", "plan my tournée",
 "who can I see on the way" — build THIS rather than the desk. Same writes,
 different question: not *who do I call* but *what order do I drive*.
@@ -983,12 +1007,20 @@ This is a property of WHERE the page runs, not of the code. The same two lines
 work in the Leadbay frontend and in a local `.html` file. They only fail in a
 published artifact — which is the only thing this recipe builds.
 
-So the basemap is a **published file**: `france-departements.json`, the 96
-département outlines, fetched and drawn as one `L.geoJSON` layer behind the
-pins. Take the ~570 KB build — coordinates rounded to five decimals, which is
-sub-metre, rather than the sixteen-decimal version of the same outlines that
-costs the same bytes for an eighth of the geometry and omits the islands
-(Ré, Oléron, Belle-Île, the Corsican islets) entirely.
+So the basemap is a **published file** for the workspace's country, fetched
+and drawn as one `L.geoJSON` layer behind the pins. A workspace serves
+exactly one country — `_meta.region` on every Leadbay result says which — and
+there is one outline per region:
+
+| `_meta.region` | File | What | Source |
+|---|---|---|---|
+| `fr` | `france-departements.json` | the 96 départements, ~570 KB | france-geojson |
+| `us` | `us-states.json` | 50 states + DC + Puerto Rico, ~300 KB | US Census Bureau, 1:20M cartographic boundaries |
+
+Both are simplified and rounded to five decimals, which is sub-metre. For
+France, take that ~570 KB build rather than the sixteen-decimal version of the
+same outlines, which costs the same bytes for an eighth of the geometry and
+omits the islands (Ré, Oléron, Belle-Île, the Corsican islets) entirely.
 
 **Stop there.** Roads and town labels were built, shipped and then removed:
 ~475 KB of Natural Earth roads and 800 `geo.api.gouv.fr` town labels, tiered
@@ -1004,24 +1036,85 @@ Do not try to solve it with a bigger file either. A full OSM extract for
 France is 4.7 GB and a single region ~500 MB, against a 16 MB ceiling per
 artifact file.
 
-### The board opens on France, and stays where the rep put it
+### The board opens on the workspace's country, and stays where the rep put it
 
 ```js
-const FRANCE_BOUNDS = L.latLngBounds([41.3, -5.2], [51.1, 9.6])
-map.fitBounds(FRANCE_BOUNDS)                       // Corsen→Italy, Bonifacio→Dunkerque
+const map = L.map("map", { zoomSnap: 0.25 })       // quarter zoom steps, see below
+const FRANCE_BOUNDS = L.latLngBounds([41.3, -5.2], [51.1, 9.6])   // Corsen→Italy, Bonifacio→Dunkerque
+const US_BOUNDS = L.latLngBounds([24.5, -124.8], [49.4, -66.9])   // the lower 48: Key West→Maine
+const REGIONS = {
+  fr: { file: "france-departements.json", bounds: FRANCE_BOUNDS, center: [46.6, 2.5] },
+  us: { file: "us-states.json",           bounds: US_BOUNDS,     center: [37.0, -95.8] },
+}
+
+// Hold a neutral view until the first answer says which country this is.
+let region = null
+map.setView([40, -30], 2)
+
+// The whole country, just fitting the pane, centred on its main landmass. The
+// zoom comes from the bounds, so it adapts to the pane.
+const showHome = (o) => region && map.setView(region.center, map.getBoundsZoom(region.bounds), o)
+
+function adoptRegion(result, leads) {        // call with the FIRST answer, before rendering
+  if (region) return
+  const meta = String(result?._meta?.region ?? "").toLowerCase()
+  const country = String(leads.find((l) => l?.location?.country)?.location.country ?? "").toLowerCase()
+  region = REGIONS[meta] ?? REGIONS[country] ?? REGIONS.fr
+  loadBasemap(region.file)
+  reframe({ animate: false })
+}
+
+// Re-frame on resize while the map is still on that view (see below).
+let homeView = true, framing = false
+const reframe = (o) => { framing = true; homeView = true; showHome(o); framing = false }
+map.on("movestart", () => { if (!framing) homeView = false })
+new ResizeObserver(() => {
+  map.invalidateSize({ pan: false })        // pan:false — a resize is not the rep moving
+  if (homeView) reframe({ animate: false })
+}).observe(document.getElementById("map"))
 ```
+
+- **The country comes from `_meta.region`, never an assumption.** A US rep's
+  board that opens on France puts their pins over the Atlantic. Read the
+  region from the first answer (the leads' `location.country` is the
+  fallback), then load that outline and frame it. Until it arrives, hold a
+  neutral view: guessing France flashes the wrong country at every US rep.
+  The copy follows the region too — the city placeholder, and the
+  ambiguous-city hint (a département for France, a state for the US).
 
 - **`fitBounds`, never `setView([46.6, 2.4], 6)`.** The map pane is half the
   window — a tall narrow box — so one fixed zoom frames the country differently
   on a laptop and a wide monitor. Bounds adapt to the pane; a zoom number
   guesses at it.
+- **Just fitting, not zoomed in.** Open at exactly `getBoundsZoom(region.bounds)`
+  — every corner of the country in view: France with Corsica, and for the US
+  the lower 48, with Alaska and Hawaii left off-screen rather than shrinking
+  the country to a strip. Tried one, one and a
+  half and two steps closer on the live planner; each cropped the country and
+  pushed a region's leads off the edge. The whole country is the view a rep
+  plans a trip from; *Fit to leads* is one click away.
+- **Re-frame on resize until the rep moves.** The host sizes the artifact
+  frame a beat AFTER the page runs, so the first `getBoundsZoom` can be taken
+  from a near-empty box: the country opens tiny, and `invalidateSize()` alone
+  never re-zooms. This is why nudging the zoom seemed to change nothing. While
+  the map is still on the home view, every resize re-frames it; the first
+  `movestart` that is not the page's own framing ends that. Pass
+  `invalidateSize({ pan: false })` so the resize is not counted as a move.
+- **One `showHome()` for every return to the country** — the opening view, a
+  reset, *Fit to leads* with nothing geocoded — so they cannot drift apart.
+- **`zoomSnap: 0.25`, or the country opens small.** Leaflet zooms in whole steps by
+  default, so `fitBounds` settles on the largest WHOLE zoom that still fits —
+  in the half-width pane that is one level short, and the country sits small
+  in a wide margin, off to one side. Quarter steps let it fill the pane,
+  centred. Keep the zoom buttons at whole steps (`zoomDelta` stays 1).
 - **Do NOT fit to the leads on load.** The obvious move is to frame the pins as
   soon as they arrive. It means the board opens on whichever region the rep's
   book happens to cluster in, with no sense of the country around it — and if
   it re-fires on every city change it yanks the view while they are reading.
   Give them a **Fit to leads** button in the toolbar instead, beside *All
-  areas*, and let the opening view be France every time. With no geocoded
-  leads the button falls back to France rather than doing nothing.
+  areas*, and let the opening view be France every time (the lower 48, on a US
+  workspace). With no geocoded leads the button falls back to France rather
+  than doing nothing (the US, on a US workspace).
 
 
 ### The lead list: static dividers, one moving thing
