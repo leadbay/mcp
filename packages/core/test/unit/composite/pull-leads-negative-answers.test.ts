@@ -127,6 +127,26 @@ describe("leadbay_pull_leads surfaces the answers that count against a lead", ()
     expect(s.negative_answers).toEqual([{ question: Q_FIELD, boost_score: -10, excerpt: null }]);
   });
 
+  it("lists every negative answer, in the order the API returned them", async () => {
+    const s = await summaryFor({
+      status: 200,
+      body: [answer(Q_FIELD, -10, R_FIELD), answer(Q_CRM, 10, R_CRM), answer(Q_B2B, -10, R_B2B)],
+    });
+    expect(s.negative_answers.map((n: any) => n.question)).toEqual([Q_FIELD, Q_B2B]);
+  });
+
+  it("is attached in verbose mode too", async () => {
+    mockHttp([
+      wishlistOk(),
+      { method: "GET", path: /\/ai_agent_responses$/, status: 200, body: [answer(Q_FIELD, -10, R_FIELD)] },
+      { method: "POST", path: "/1.6/interactions", status: 204, body: {} },
+    ]);
+    const result: any = await pullLeads.execute(newClient(), { lensId: LENS, verbose: true });
+    expect(result.leads[0].qualification_summary.negative_answers).toEqual([
+      { question: Q_FIELD, boost_score: -10, excerpt: R_FIELD },
+    ]);
+  });
+
   it("is an empty list when every question was answered and none is negative", async () => {
     const s = await summaryFor({
       status: 200,
