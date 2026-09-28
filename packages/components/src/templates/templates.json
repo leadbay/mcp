@@ -1,0 +1,32 @@
+{
+  "route_planner": {
+    "dir": "route-planner",
+    "title": "Route Planner",
+    "icon": "map",
+    "description": "Your follow-ups on a map of your country: open a lead, set its status, log what happened, and build the day's route.",
+    "tools": [
+      "leadbay_followups_map",
+      "leadbay_get_basemap",
+      "leadbay_set_lead_status",
+      "leadbay_set_prospecting_action",
+      "leadbay_add_note",
+      "leadbay_report_artifact_error"
+    ]
+  },
+  "triage_board": {
+    "dir": "triage-board",
+    "title": "Lead Triage Board",
+    "icon": "list",
+    "description": "Today's leads from your lens as cards you can like, give a status, tick a prospecting action on, note and requalify.",
+    "tools": [
+      "leadbay_pull_leads",
+      "leadbay_like_lead",
+      "leadbay_dislike_lead",
+      "leadbay_set_lead_status",
+      "leadbay_set_prospecting_action",
+      "leadbay_add_note",
+      "leadbay_bulk_qualify_leads",
+      "leadbay_report_artifact_error"
+    ]
+  }
+}

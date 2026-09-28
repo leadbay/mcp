@@ -1,0 +1,74 @@
+<title>Lead Triage Board</title>
+<style>
+  /* Only what the skin does not ship. Colours are the skin's tokens. */
+  body { margin: 0; background: var(--color-gray-2); color: var(--lb-fg); font-family: var(--lb-font); }
+  .page { max-width: 1180px; margin: 0 auto; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; }
+  .page-head h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+  .page-head p { margin: 2px 0 0; font-size: 13px; color: var(--lb-muted); }
+  .deck { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; align-items: start; }
+
+  .fit { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .bar { font-size: 14px; letter-spacing: 1px; background: none; padding: 0; color: var(--lb-fg); }
+  .verdict { font-size: 12px; font-weight: 600; color: var(--lb-muted); }
+  .verdict[data-v="boosted"] { color: var(--color-green-foreground); }
+  .verdict[data-v="penalised"] { color: var(--color-red-foreground); }
+  .excerpt { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* Prospecting actions: the web app's per-action colours (ProspectionCell).
+     The foreground is for the dot and the border only — yellow's is too light
+     to read as text. */
+  .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .lb-action { font: inherit; font-size: 13px; text-align: start; display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: var(--lb-radius-sm); border: 1px solid var(--lb-border);
+    background: var(--lb-field); color: var(--lb-fg); cursor: pointer; transition: background-color .12s ease; }
+  .lb-action::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--action-fg); }
+  .lb-action:hover { background: var(--lb-chip-bg); }
+  .lb-action[aria-checked="true"] { background: var(--action-bg); border-color: var(--action-fg); }
+  .lb-action[disabled] { opacity: .6; cursor: progress; }
+  .lb-action:focus-visible { outline: 2px solid var(--color-blue-foreground); outline-offset: 2px; }
+  .lb-action[data-value="STILL_CHASING"] { --action-bg: var(--color-blue-background); --action-fg: var(--color-blue-foreground); }
+  .lb-action[data-value="INTEREST_VALIDATED_OR_MEETING_PLANED"] { --action-bg: var(--color-green-background); --action-fg: var(--color-green-foreground); }
+  .lb-action[data-value="COULD_NOT_REACH_STILL_TRYING"] { --action-bg: var(--color-yellow-background); --action-fg: var(--color-yellow-foreground); }
+  .lb-action[data-value="NOT_INTERESTED_LOST"] { --action-bg: var(--color-red-background); --action-fg: var(--color-red-foreground); }
+  @media (prefers-reduced-motion: reduce) { .lb-action { transition: none; } }
+  .lb-row .lb-input { flex: 1; min-width: 0; }
+  @media (max-width: 420px) { .actions { grid-template-columns: 1fr; } }
+</style>
+<div class="page">
+  <header class="page-head">
+    <h1>Today's leads</h1>
+    <p>From your active lens. Like, set a status, tick a prospecting action — every control writes to Leadbay.</p>
+  </header>
+
+  <div class="lb-toolbar">
+    <span class="lb-tally" id="tally"></span>
+    <span class="lb-group">
+      <label class="lb-field"><span class="lb-field-label">Taste</span>
+        <select class="lb-select" id="f-taste" aria-label="Filter by taste">
+          <option value="all">All</option><option value="liked">Liked</option><option value="disliked">Disliked</option><option value="none">Not rated</option>
+        </select>
+      </label>
+      <label class="lb-field"><span class="lb-field-label">Verdict</span>
+        <select class="lb-select" id="f-verdict" aria-label="Filter by qualifier verdict">
+          <option value="all">All</option><option value="boosted">AI boosted</option><option value="neutral">No adjustment</option><option value="penalised">AI penalised</option>
+        </select>
+      </label>
+    </span>
+    <span class="lb-spacer"></span>
+    <span class="lb-group">
+      <label class="lb-field lb-field-inline"><input type="checkbox" id="select-all"><span class="lb-field-label">Select all</span></label>
+      <select class="lb-select" id="bulk-status" aria-label="Status for selected leads"></select>
+      <button class="lb-btn lb-btn-submit" id="bulk-apply" type="button">Apply to selected</button>
+    </span>
+    <div class="lb-msg" id="bulk-msg" role="status" aria-live="polite" style="flex:1 0 100%"></div>
+  </div>
+
+  <main class="deck" id="deck" data-lb-state="ready"></main>
+
+  <div class="lb-pager">
+    <button class="lb-btn" id="prev" type="button">Previous</button>
+    <button class="lb-btn" id="next" type="button">Next</button>
+    <span class="lb-spacer"></span>
+    <span class="lb-pager-range" id="range"></span>
+  </div>
+</div>

@@ -134,6 +134,7 @@ import { reportFriction } from "./composite/report-friction.js";
 import { teamActivity } from "./composite/team-activity.js";
 import { sendFeedback } from "./tools/send-feedback.js";
 import { artifactKit } from "./tools/get-artifact-runtime.js";
+import { getBasemap } from "./tools/get-basemap.js";
 import { artifactEvent } from "./tools/report-artifact-error.js";
 
 import type { Tool } from "./types.js";
@@ -185,7 +186,7 @@ export {
   seedCandidates, extendLens,
   // MCP-first lead delivery
   findNewLeads, qualifyLeads, leadJobStatus,
-  artifactKit, artifactEvent,
+  artifactKit, getBasemap, artifactEvent,
 };
 
 // ─── Tool catalogues ─────────────────────────────────────────────────────
@@ -358,6 +359,10 @@ export const compositeReadTools: Tool[] = [
   // buttons call Leadbay writes. No backend call; granular-shaped (lives in
   // tools/) so it carries no _triggered_by mandate for a kit fetch.
   artifactKit,
+  // The country outline the route planner template draws under its pins —
+  // called by the page, never the agent (an artifact can only load its own
+  // files, and an agent publishing a board for someone else has none).
+  getBasemap,
   // Artifact runtime diagnostics (product#4081) — ALWAYS exposed, read-only,
   // and always paired with artifactKit: the runtime that kit ships calls this
   // when a control fails, and a kit without its sink is a blind artifact. Makes

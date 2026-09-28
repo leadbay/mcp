@@ -273,9 +273,10 @@ export function buildFollowupNextSteps(
             "interactive route planner: the map on one half, the lead list on the other, " +
             "clicking a marker opens that lead to set status, log outreach and record a " +
             "prospecting action, with the pin repainting as you work. " +
-            "Call leadbay_get_artifact_runtime and follow its ROUTE PLANNER recipe, " +
-            "building from the leads in hand (do NOT re-call pull_followups). " +
-            "List the leads WITHOUT coordinates beside the map rather than dropping them.",
+            "Call leadbay_get_artifact_runtime with template \"route_planner\" (the ROUTE " +
+            "PLANNER recipe as a finished page) and publish its html as it is — the page " +
+            "loads the follow-ups itself, so do NOT re-call pull_followups, and it lists " +
+            "the leads WITHOUT coordinates beside the map rather than dropping them.",
           kind: "build_artifact",
         }
       : {
