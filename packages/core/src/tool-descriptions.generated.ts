@@ -1981,11 +1981,11 @@ The response shape is identical to \`leadbay_pull_followups\`: \`{leads, active_
 // region: leadbay_get_artifact_runtime
 export const leadbay_get_artifact_runtime: string = `## WHAT IT DOES
 
-Get the headless runtime + usage guide to BUILD an interactive HTML artifact whose buttons/dropdowns call Leadbay tools (e.g. a cold-call sheet that logs notes, statuses, likes per lead). Use when the user wants a clickable artifact. Don't use it to answer a data question.
+Serves Leadbay's finished boards — a route planner and a lead triage board — to publish as they are, and the headless runtime + usage guide to BUILD any other interactive HTML artifact whose controls call Leadbay tools. Use when the user wants a clickable artifact. Don't use it to answer a data question.
 
 ## WHEN TO USE
 
-Trigger phrases: "build me a dashboard", "build a call sheet", "interactive artifact", "make a page with buttons", "build an artifact to work my leads", "interactive lead triage board", "a page with buttons that log my calls", "relance board", "campagne de relance", "board de relance", "follow-up table", "a table with emails and phone numbers to call my leads", "a table where I can set status and log what happened".
+Trigger phrases: "build me a dashboard", "build a call sheet", "interactive artifact", "make a page with buttons", "build an artifact to work my leads", "interactive lead triage board", "route planner board", "a map of my follow-ups I can work from", "a page with buttons that log my calls", "relance board", "campagne de relance", "board de relance", "follow-up table", "a table with emails and phone numbers to call my leads", "a table where I can set status and log what happened".
 
 Do NOT use for: "show me today's leads" → \`leadbay_pull_leads\`; "leads I should follow up with" → \`leadbay_pull_followups\`; "log that I emailed" → \`leadbay_report_outreach\`.
 
@@ -2004,18 +2004,19 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-Do NOT render this tool's result as prose or a table. It returns
-\`runtime\` (a JS string) + \`usage_guide\` (the recipe) + \`version\`. Inline
-\`runtime\` as ONE \`<script>\` (it self-attaches \`window.LeadbayArtifacts\`),
-build view-models with \`lb.field/action/resource/list\` + the domain helpers,
-bind them to your own HTML, and pass the tools you call as the artifact's
-\`mcp_tools\`. READ \`usage_guide\` first. The artifact is the answer.
+With \`template\`: publish the returned \`html\` AS IT IS, with its
+\`capabilities\`, \`icon\` and \`description\`; never restyle it. Without: do
+NOT render the result as prose. Inline \`runtime\` as ONE \`<script>\`, READ
+\`usage_guide\` first, build with \`lb.*\`, and pass the tools you call as
+the artifact's \`mcp_tools\`. The artifact is the answer.
 
 ---
 
 Hands you everything to build an interactive HTML **artifact** the user runs inside their own Claude (cowork): headless **domain view-models** + a markdown usage guide. A view-model owns a control's whole data lifecycle — populate a dropdown's options from a Leadbay call, hold the value, expose loading/error, validate, encapsulate the API call + business rules. You own 100% of the markup, layout, and style. The library renders nothing.
 
-Returns \`{ runtime, usage_guide, version }\`:
+**Finished boards come first.** For a lead triage board or a route planner, pass \`template: "triage_board"\` or \`template: "route_planner"\` and publish the returned \`html\` as it is, as a new artifact, with the \`capabilities\`, \`icon\` and \`description\` the result carries. These are the approved boards every user gets — the same page, byte for byte. Do not restyle, rewrite or trim them, and do not rebuild one from the recipe: a re-implementation drifts. The page loads its own data through the Leadbay connector when it opens, and the map outline comes from \`leadbay_get_basemap\`, so nothing needs attaching. The route planner's ONE permitted edit is the JSON in its \`lb-board-config\` block: \`"city"\` (never a country).
+
+Without \`template\`, returns \`{ runtime, usage_guide, version }\` for building any other board:
 - \`runtime\` — a minified, zero-dependency vanilla IIFE that self-attaches \`window.LeadbayArtifacts\` (call it \`lb\`). Inline once as \`<script>\`.
 - \`usage_guide\` — the full recipe: \`lb.field\` / \`lb.action\` / the \`lb.bind*\` sugar, a copy-paste cold-call call sheet, and the write-call rules. READ IT before building.
 
@@ -2030,6 +2031,19 @@ WHEN TO USE: the user asks for a clickable / interactive artifact, dashboard, or
 WHEN NOT TO USE: the user wants a plain data answer (route to leadbay_pull_leads / leadbay_pull_followups) or to log a single real outreach you just did (leadbay_report_outreach).
 `;
 // endregion: leadbay_get_artifact_runtime
+
+// region: leadbay_get_basemap
+export const leadbay_get_basemap: string = `**Do not call this tool.** The route planner template that
+\`leadbay_get_artifact_runtime\` serves calls it from inside the published page,
+to draw the grey country shape under its pins. It returns \`{region, geojson}\`
+for the workspace's region (\`fr\` or \`us\`) — a large GeoJSON document that is
+useless in a conversation.
+
+A board needs it because an artifact can only load its own published files,
+and an agent building a board for another user has no outline file to publish.
+With this tool every board gets the same outline, for the right country.
+`;
+// endregion: leadbay_get_basemap
 
 // region: leadbay_get_clarification
 export const leadbay_get_clarification: string = `Check whether Leadbay has a pending clarification question — a question raised when refining the intelligence prompt produced contradictory or ambiguous criteria. Returns \`{pending: false, clarification: null}\` when nothing is pending (the backend returns 204).
@@ -6877,6 +6891,7 @@ export const TOOL_DESCRIPTIONS = {
   leadbay_find_new_leads,
   leadbay_followups_map,
   leadbay_get_artifact_runtime,
+  leadbay_get_basemap,
   leadbay_get_clarification,
   leadbay_get_contacts,
   leadbay_get_enrichment_job_titles,
