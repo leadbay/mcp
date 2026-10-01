@@ -23,7 +23,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "--package=@leadbay/mcp@0.42",
+        "--package=@leadbay/mcp@0.43",
         "leadbay-mcp"
       ],
       "env": {

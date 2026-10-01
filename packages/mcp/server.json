@@ -36,7 +36,7 @@
         },
         {
           "type": "positional",
-          "value": "--package=@leadbay/mcp@0.42"
+          "value": "--package=@leadbay/mcp@0.43"
         },
         {
           "type": "positional",
