@@ -52,6 +52,10 @@ export interface ToolCallProps {
   // is the enrich_titles API_ERROR floor 503s, 500s, or a 4xx edge?
   // Absent on success and on errors that never hit the HTTP layer.
   http_status?: number;
+  // Names of the arguments the agent sent, never their values. Only on
+  // ok:false, so a misnamed key shows up without inferring it from `bytes`
+  // (product#4237).
+  arg_keys?: string[];
   // Verbatim user utterance (capped at 500 chars) that the agent reports as
   // the trigger for this call, via the `_triggered_by` meta-param injected
   // into every tool's input schema. Optional because legacy agents and

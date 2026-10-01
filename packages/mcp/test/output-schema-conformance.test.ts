@@ -660,7 +660,7 @@ const CASES: ConformanceCase[] = [
     toolName: "leadbay_report_outreach",
     arguments: {
       lead_id: "lead-1",
-      what: "called the contact",
+      note: "called the contact",
       verification: { source: "user_confirmed", ref: "user said yes" },
       dry_run: true,
     },
