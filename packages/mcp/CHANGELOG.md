@@ -1,5 +1,21 @@
 # Changelog — @leadbay/mcp
 
+## 0.43.0 — 2026-09-30 — a misnamed argument is read or named, never dropped
+
+- **`lead_id` and `leadId` both work.** Leadbay tools spell the lead id
+  differently: researching a lead and adding a note take `leadId`, setting a
+  CRM status takes `lead_ids`. An assistant that used the other spelling was
+  told the id was missing, and a scheduled run lost a night's notes and
+  statuses this way. An argument that differs only by capitals or underscores
+  is now read as the one the tool expects, and setting a status also takes a
+  single lead id.
+- **Any other unknown argument is named.** It used to be dropped silently. It
+  now comes back as an error that names it, suggests the argument it probably
+  meant, and lists the ones the tool takes. A call rejected this way writes
+  nothing.
+- **Team prospecting setup names the right arguments.** It told the assistant
+  to pass `user_prompt` to two tools that take `prompt` and `base`.
+
 ## 0.42.0 — 2026-09-28 — every rep gets the same boards
 
 - **The route planner and the lead triage board are now finished pages.**
