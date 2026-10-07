@@ -1,5 +1,15 @@
 # Changelog — @leadbay/mcp
 
+## 0.43.1 — 2026-10-07 — a job's own spend cap no longer claims to cover any job
+
+- **The search's spend cap stops promising it is enough.** The parameter that
+  bounds what one lead search may spend used to tell the assistant its default
+  "covers any job". It does not: your plan has its own daily allowance, it is
+  far smaller, and it stops a search whatever that parameter is set to. The
+  parameter now says what it bounds and names your plan's allowance as the
+  separate limit. Reported after a paying account spent forty minutes on
+  searches that kept running out (product#4250).
+
 ## 0.43.0 — 2026-09-30 — a misnamed argument is read or named, never dropped
 
 - **`lead_id` and `leadId` both work.** Leadbay tools spell the lead id
