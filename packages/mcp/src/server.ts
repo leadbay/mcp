@@ -20,6 +20,7 @@ import {
   listResourceTemplates,
   readResource,
 } from "./resources.js";
+import { appResourceUriFor, listAppResources, readAppResource } from "./apps.js";
 import { BUILTIN_WIDGETS_PARAGRAPH } from "./host-widgets.js";
 import {
   compositeReadTools,
@@ -28,6 +29,8 @@ import {
   granularReadTools,
   granularWriteTools,
   NO_COMMERCE_TOOL_DESCRIPTIONS,
+  APPS_TOOL_DESCRIPTIONS,
+  APPS_NO_COMMERCE_TOOL_DESCRIPTIONS,
   COMPOSITE_FILE_TOOL_NAMES,
   type LeadbayClient,
   type NotificationInboxEntry,
@@ -490,6 +493,15 @@ interface BuildServerOptions {
    * test/unit/commerce-gate.test.ts.
    */
   includeCommerce?: boolean;
+  /**
+   * Default false. When true, tools with a finished board (apps.ts) point the
+   * host at it through `_meta.ui.resourceUri`, and the board is served as a
+   * `ui://` resource — the MCP Apps extension. Never set on a Claude surface:
+   * Claude would render the board as an iframe and stop using its own
+   * widgets. On for /chatgpt/mcp and /apps/mcp, and for a stdio install with
+   * LEADBAY_MCP_APPS=1.
+   */
+  includeApps?: boolean;
   // Local stdio install only (bin.ts): lets a tool hand the user a file on
   // their own disk. The hosted server omits it. See ToolContext.saveFile.
   saveFile?: ToolContext["saveFile"];
@@ -751,7 +763,7 @@ function findShapeMismatch(
   return undefined;
 }
 
-function toolsListPayload(tools: Tool[]) {
+function toolsListPayload(tools: Tool[], includeApps: boolean) {
   return tools.map((t) => {
     const out: Record<string, unknown> = {
       name: t.name,
@@ -760,6 +772,9 @@ function toolsListPayload(tools: Tool[]) {
     };
     if (t.annotations) out.annotations = t.annotations;
     if (t.outputSchema) out.outputSchema = t.outputSchema;
+    // MCP Apps: the host renders this view next to the tool's result. See apps.ts.
+    const resourceUri = includeApps ? appResourceUriFor(t.name) : undefined;
+    if (resourceUri) out._meta = { ui: { resourceUri } };
     return out;
   });
 }
@@ -819,6 +834,7 @@ export function buildServer(
   // dispatch handler enforces presence by rejecting LAST_PROMPT_REQUIRED.
   const includeCommerce = opts.includeCommerce !== false;
   client.commerce = includeCommerce;
+  const includeApps = opts.includeApps === true;
   const toolByName = new Map<string, Tool>();
   for (const t of exposedTools) {
     if (toolByName.has(t.name) || t.name === "leadbay_login") continue;
@@ -826,12 +842,19 @@ export function buildServer(
     // merged, because these two are registered in both compositeReadTools
     // and granularReadTools.
     if (!includeCommerce && COMMERCE_TOOL_NAMES.has(t.name)) continue;
-    const noCommerce = includeCommerce
-      ? undefined
-      : NO_COMMERCE_TOOL_DESCRIPTIONS[t.name];
+    // The surface's variant of the description, or undefined to keep the
+    // default (Claude: commerce on, no {{apps}} prose). A tool with no apps
+    // prose falls back to its commerce variant on an apps surface.
+    const variant = includeApps
+      ? includeCommerce
+        ? APPS_TOOL_DESCRIPTIONS[t.name]
+        : APPS_NO_COMMERCE_TOOL_DESCRIPTIONS[t.name] ?? NO_COMMERCE_TOOL_DESCRIPTIONS[t.name]
+      : includeCommerce
+        ? undefined
+        : NO_COMMERCE_TOOL_DESCRIPTIONS[t.name];
     toolByName.set(
       t.name,
-      withTriggeredByMeta(noCommerce ? { ...t, description: noCommerce } : t, {
+      withTriggeredByMeta(variant ? { ...t, description: variant } : t, {
         mandatory: COMPOSITE_FILE_TOOL_NAMES.has(t.name),
       })
     );
@@ -856,7 +879,7 @@ export function buildServer(
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: toolsListPayload([...toolByName.values()]),
+    tools: toolsListPayload([...toolByName.values()], includeApps),
   }));
 
   // Prompts: pull-based slash commands the user can invoke directly.
@@ -882,12 +905,14 @@ export function buildServer(
   // Resources: URI-addressable read-only payloads (lead://, lens://, org://).
   // See packages/mcp/src/resources.ts.
   server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-    resources: listResources(),
+    resources: includeApps ? [...listResources(), ...listAppResources()] : listResources(),
   }));
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
     resourceTemplates: listResourceTemplates(),
   }));
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
+    const view = includeApps ? readAppResource(req.params.uri) : null;
+    if (view) return view;
     return readResource(req.params.uri, client);
   });
 

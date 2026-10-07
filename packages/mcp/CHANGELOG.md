@@ -1,5 +1,27 @@
 # Changelog — @leadbay/mcp
 
+## 0.43.0 — 2026-10-07 — the triage board, inside ChatGPT and other assistants
+
+- **Today's leads open as the Lead Triage Board right in the chat, outside
+  Claude.** On ChatGPT and on assistants that can display MCP Apps (GitHub
+  Copilot in VS Code, Goose, …), "show me today's leads" now shows the same
+  board Claude users get as an artifact: every lead with its fit bar, why it
+  fits and the contact, plus like, dislike, status, prospecting action, note
+  and requalify. Each click saves straight away. An assistant that cannot
+  display it shows the usual results.
+- **Claude does not change.** On `https://mcp.leadbay.app/mcp` (and the older
+  `/fr/mcp`) Claude keeps its own map, drafting and choice widgets and its
+  board artifacts.
+- **One connector URL per assistant.** Claude: `/mcp`. ChatGPT:
+  `/chatgpt/mcp`. Every other assistant: the new
+  `https://mcp.leadbay.app/apps/mcp`, also the address the MCP Registry now
+  gives GitHub Copilot's one-click install. All three work for US and French
+  accounts. An assistant already connected to `/mcp` keeps working; switching
+  its URL (and signing in once more) is what brings the board.
+- **No duplicate list under the board.** Where the board shows, the assistant
+  now sums the batch up in a sentence instead of drawing the same leads again
+  as a table.
+
 ## 0.42.0 — 2026-09-28 — every rep gets the same boards
 
 - **The route planner and the lead triage board are now finished pages.**

@@ -1620,6 +1620,9 @@ async function main(): Promise<void> {
   });
   const includeAdvanced = process.env.LEADBAY_MCP_ADVANCED === "1";
   const includeWrite = parseWriteEnv();
+  // MCP Apps views (apps.ts). Opt-in, because the commonest local host is
+  // Claude Desktop, which must keep its own widgets. The .dxt never sets it.
+  const includeApps = process.env.LEADBAY_MCP_APPS === "1";
 
 
   // Auto-update state — best-effort; falls back to in-memory when
@@ -1681,6 +1684,7 @@ async function main(): Promise<void> {
   const server = buildServer(client, {
     includeAdvanced,
     includeWrite,
+    includeApps,
     logger,
     notificationsInbox,
     version: VERSION,

@@ -172,6 +172,31 @@ export function emit(result: AssembleResult): EmitOutput {
   }
   toolParts.push("};\n");
 
+  // Same descriptions WITH their {{apps}} blocks — the surfaces that serve the
+  // MCP Apps boards. The default constants above delete those blocks, so
+  // Claude never reads about a board it will not get. Tools absent from these
+  // maps carry no apps prose. See packages/promptforge/src/apps.ts.
+  toolParts.push(
+    "\n// Descriptions with their {{apps}} blocks kept, for the MCP Apps surfaces\n" +
+      "// (/apps/mcp, and stdio with LEADBAY_MCP_APPS=1). Tools absent from this map\n" +
+      "// carry no apps prose.\n",
+  );
+  toolParts.push("export const APPS_TOOL_DESCRIPTIONS: Record<string, string> = {\n");
+  for (const t of result.toolDescriptions) {
+    if (!t.appsBody) continue;
+    toolParts.push(`  ${t.frontmatter.name}: \`${escapeBacktick(t.appsBody)}\`,\n`);
+  }
+  toolParts.push("};\n");
+  toolParts.push(
+    "\n// The same with the {{commerce}} blocks deleted too — /chatgpt/mcp.\n",
+  );
+  toolParts.push("export const APPS_NO_COMMERCE_TOOL_DESCRIPTIONS: Record<string, string> = {\n");
+  for (const t of result.toolDescriptions) {
+    if (!t.appsNoCommerceBody) continue;
+    toolParts.push(`  ${t.frontmatter.name}: \`${escapeBacktick(t.appsNoCommerceBody)}\`,\n`);
+  }
+  toolParts.push("};\n");
+
   return {
     promptsModule: promptParts.join(""),
     toolDescriptionsModule: toolParts.join(""),

@@ -7,6 +7,7 @@ import {
   renderCommerce,
   validateCommerceMarkers,
 } from "./commerce.js";
+import { hasAppsMarkers, renderApps, validateAppsMarkers } from "./apps.js";
 
 /**
  * Generate the `## WHEN TO USE` block from a tool's routing
@@ -114,6 +115,14 @@ export interface AssembledArtifact {
    * reworded — see src/commerce.ts.
    */
   noCommerceBody?: string;
+  /**
+   * The description WITH its `{{apps}}` blocks, for the surfaces that serve the
+   * MCP Apps boards (`body` deletes them — Claude never gets a board). Set only
+   * when the template carries the marker. `appsNoCommerceBody` is the same with
+   * the `{{commerce}}` blocks deleted too, for /chatgpt/mcp. See src/apps.ts.
+   */
+  appsBody?: string;
+  appsNoCommerceBody?: string;
 }
 
 export interface AssembleResult {
@@ -283,15 +292,23 @@ export function assemble(opts: AssembleOptions): AssembleResult {
         ? applyDescriptionHeader(parsed.frontmatter, resolved)
         : resolved;
 
-    const markerError = validateCommerceMarkers(finalBody);
+    const markerError = validateCommerceMarkers(finalBody) ?? validateAppsMarkers(finalBody);
     if (markerError) throw new AssemblyError(markerError, path);
 
+    // Four surfaces, two independent markers. The default (Claude) keeps the
+    // commerce blocks and deletes the apps ones.
+    const render = (commerce: "with" | "without", apps: "with" | "without") =>
+      renderApps(renderCommerce(finalBody, commerce), apps).trimEnd() + "\n";
+    const isTool = expectedKind === "tool-description";
     const artifact: AssembledArtifact = {
       frontmatter: parsed.frontmatter,
-      body: renderCommerce(finalBody, "with").trimEnd() + "\n",
+      body: render("with", "without"),
       sourcePath: path,
-      ...(hasCommerceMarkers(finalBody) && expectedKind === "tool-description"
-        ? { noCommerceBody: renderCommerce(finalBody, "without").trimEnd() + "\n" }
+      ...(hasCommerceMarkers(finalBody) && isTool
+        ? { noCommerceBody: render("without", "without") }
+        : {}),
+      ...(hasAppsMarkers(finalBody) && isTool
+        ? { appsBody: render("with", "with"), appsNoCommerceBody: render("without", "with") }
         : {}),
     };
 
