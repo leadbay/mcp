@@ -409,7 +409,7 @@ export const findNewLeads: Tool<FindNewLeadsParams, any> = {
       max_cost: {
         type: "number",
         description:
-          "Usage cap for the whole job, in internal units. Leave it unset: the default (100000) covers any job. What the requested channels need is kept for them; a cap below that is refused, naming the minimum. Never show it to the user as money.",
+          "Usage cap for the whole job, in internal units (default 100000). Leave it unset unless the user asked to bound this job. It caps the JOB only; the org's plan quota is a separate and smaller limit that can stop the job with stop_reason:quota whatever this is set to. What the requested channels need is kept for them; a cap below that is refused, naming the minimum. Never show it to the user as money.",
       },
       exploration_cap: {
         type: "number",
