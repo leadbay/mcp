@@ -18,6 +18,8 @@ export {
   validateCommerceMarkers,
 } from "./commerce.js";
 export type { CommerceMode } from "./commerce.js";
+export { hasAppsMarkers, renderApps, validateAppsMarkers } from "./apps.js";
+export type { AppsMode } from "./apps.js";
 export { assemble, AssemblyError } from "./assembler.js";
 export type { AssembledArtifact, AssembleResult, AssembleOptions } from "./assembler.js";
 

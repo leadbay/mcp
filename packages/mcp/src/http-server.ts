@@ -9,7 +9,8 @@
 // Endpoints:
 //   POST /mcp                  Streamable HTTP transport (current MCP spec)
 //   POST /fr/mcp               Compat alias for the README's EU connector URL
-//   POST /chatgpt/mcp          Same, minus every commerce surface (see COMMERCE_FREE_PATHS)
+//   POST /chatgpt/mcp          Same, minus every commerce surface (see COMMERCE_FREE_PATHS), plus MCP Apps
+//   POST /apps/mcp             Same as /mcp, plus MCP Apps — for non-Claude agents (see APP_PATHS)
 //   GET  /sse, POST /messages  Legacy SSE transport (older hosts)
 //   GET  /healthz              Liveness probe for Fly/Render
 //   GET  /.well-known/openai-apps-challenge  Domain proof for the OpenAI Apps directory
@@ -348,6 +349,14 @@ function extractBearer(authHeader: string | undefined): string | undefined {
 // after `instructions` has already been built.
 const COMMERCE_FREE_PATHS = new Set<string>(["/chatgpt/mcp"]);
 
+// Paths that serve the finished boards as MCP Apps views (see apps.ts). Every
+// agent except Claude: Claude renders an MCP App as an iframe and stops using
+// its own widgets, so /mcp — the Claude connector URL — never gets them.
+// A path for the same reasons as COMMERCE_FREE_PATHS: the server is stateless,
+// so by the time a host asks for tools/list the clientInfo it sent on
+// `initialize` is gone, and it was never verified anyway.
+const APP_PATHS = new Set<string>(["/chatgpt/mcp", "/apps/mcp"]);
+
 function buildServerFromClient(
   client: LeadbayClient,
   requestTelemetry: TelemetryHandle,
@@ -360,6 +369,7 @@ function buildServerFromClient(
     includeWrite,
     includeAdvanced,
     includeCommerce: !COMMERCE_FREE_PATHS.has(resourcePath),
+    includeApps: APP_PATHS.has(resourcePath),
     logger,
     telemetry: requestTelemetry,
   });
@@ -391,7 +401,7 @@ const PRM_PREFIX = "/.well-known/oauth-protected-resource";
 // the same single Stargate auth server and the token's `_fr`/`_us` suffix
 // self-routes tool calls — so `/fr/mcp` behaves identically to `/mcp`. Kept as an
 // alias (not a redirect) so those users don't 404.
-const RESOURCE_PATHS = ["/mcp", "/sse", "/fr/mcp", "/fr/sse", "/chatgpt/mcp"] as const;
+const RESOURCE_PATHS = ["/mcp", "/sse", "/fr/mcp", "/fr/sse", "/chatgpt/mcp", "/apps/mcp"] as const;
 
 // Public origin of this request. Fly terminates TLS and forwards over http, so
 // trust x-forwarded-proto; fall back to the request URL (host + scheme).
@@ -521,6 +531,7 @@ const MCP_BODY_LIMIT = bodyLimit({ maxSize: 1 * 1024 * 1024 });
 app.use("/mcp", MCP_BODY_LIMIT);
 app.use("/fr/mcp", MCP_BODY_LIMIT); // compat alias (see RESOURCE_PATHS)
 app.use("/chatgpt/mcp", MCP_BODY_LIMIT); // commerce-free (see COMMERCE_FREE_PATHS)
+app.use("/apps/mcp", MCP_BODY_LIMIT); // MCP Apps (see APP_PATHS)
 app.use("/messages", MCP_BODY_LIMIT);
 
 // Streamable HTTP transport. Stateless mode (no sessionIdGenerator) is the
@@ -529,7 +540,7 @@ app.use("/messages", MCP_BODY_LIMIT);
 // passing `sessionIdGenerator: randomUUID`.
 async function handleStreamable(
   c: Context,
-  resourcePath: "/mcp" | "/fr/mcp" | "/chatgpt/mcp"
+  resourcePath: "/mcp" | "/fr/mcp" | "/chatgpt/mcp" | "/apps/mcp"
 ): Promise<Response> {
   const foreign = rejectForeignOrigin(c);
   if (foreign) return foreign;
@@ -616,6 +627,8 @@ app.all("/fr/mcp", (c) => handleStreamable(c, "/fr/mcp"));
 // The URL submitted to the OpenAI app directory. Identical to /mcp except that
 // nothing on it sells — see COMMERCE_FREE_PATHS.
 app.all("/chatgpt/mcp", (c) => handleStreamable(c, "/chatgpt/mcp"));
+// The connector URL for every non-Claude agent: /mcp plus the MCP Apps views.
+app.all("/apps/mcp", (c) => handleStreamable(c, "/apps/mcp"));
 
 // Legacy SSE transport. Two endpoints: GET /sse opens the stream, POST
 // /messages?sessionId=... feeds JSON-RPC messages in.

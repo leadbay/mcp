@@ -272,18 +272,23 @@ Leadbay connection OK.
 
 ### Claude Desktop / ChatGPT / remote-MCP clients
 
-Leadbay runs a hosted MCP server that any remote-MCP client can connect to without a local install. One URL works for every region:
+Leadbay runs a hosted MCP server that any remote-MCP client can connect to without a local install. Pick the URL for your assistant — each one works for every region:
 
 ```
-https://mcp.leadbay.app/mcp       # all accounts (US and FR)
+https://mcp.leadbay.app/mcp           # Claude (Desktop, web, Cowork, Claude Code)
+https://mcp.leadbay.app/chatgpt/mcp   # ChatGPT
+https://mcp.leadbay.app/apps/mcp      # every other assistant (GitHub Copilot / VS Code, Goose, Cursor, …)
 ```
 
-- **Claude Desktop**: Settings → Connectors → Add custom connector → paste the URL.
-- **ChatGPT Desktop**: Settings → Apps → Add app → paste the URL.
+- **Claude Desktop**: Settings → Connectors → Add custom connector → paste the `/mcp` URL.
+- **ChatGPT Desktop**: Settings → Apps → Add app → paste the `/chatgpt/mcp` URL.
+- **Any other assistant**: add a remote (Streamable HTTP) MCP server with the `/apps/mcp` URL.
+
+The three are the same server, sign-in and leads. `/chatgpt/mcp` and `/apps/mcp` also show the **Lead Triage Board** inside the chat when the assistant can display MCP Apps; an assistant that can't simply shows the usual results. Claude keeps its own widgets and artifacts on `/mcp`. `/chatgpt/mcp` additionally leaves out the top-up and billing tools, which the OpenAI app directory does not allow.
 
 On first connect the client runs the Leadbay OAuth sign-in (the server advertises OAuth 2.0 Protected Resource Metadata per RFC 9728 and challenges unauthenticated requests with `401 + WWW-Authenticate`). Sign in once in the browser; the client stores the token and sends it as `Authorization: Bearer <token>` on every request. No token to copy-paste, no local Node install needed.
 
-You don't pick a region. Sign-in goes through Stargate, Leadbay's single region-agnostic OAuth authority, and your region rides in the token itself rather than in the connector path — so `/mcp` resolves US and FR accounts alike. `/fr/mcp` still works as a compatibility alias for connectors configured before this change; there is no need to migrate and no benefit to using it. If the sign-in prompt never appears, you're on an old build of the hosted server (pre-0.21.0); it auto-updates on release.
+You don't pick a region. Sign-in goes through Stargate, Leadbay's single region-agnostic OAuth authority, and your region rides in the token itself rather than in the connector path — so `/mcp`, `/chatgpt/mcp` and `/apps/mcp` resolve US and FR accounts alike. `/fr/mcp` still works as a compatibility alias for connectors configured before this change; there is no need to migrate and no benefit to using it. If the sign-in prompt never appears, you're on an old build of the hosted server (pre-0.21.0); it auto-updates on release.
 
 **Updates are automatic** — the hosted server is always running the latest published release. You never need to update a config file or restart anything on your side.
 
