@@ -21,6 +21,17 @@
 - **No duplicate list under the board.** Where the board shows, the assistant
   now sums the batch up in a sentence instead of drawing the same leads again
   as a table.
+- **The board follows the assistant's light or dark theme, all of it.** In
+  ChatGPT's dark mode the cards turned dark but the page behind them stayed
+  light grey, so "Today's leads" and its subtitle read white on grey. The whole
+  page now switches together, and it follows a theme change made while the
+  board is open.
+- **The contact's name opens their LinkedIn.** On the triage board and in the
+  route planner's lead panel, the recommended contact's name now links to
+  their LinkedIn profile, as it already did in the assistant's table. When no
+  profile is on file it opens a LinkedIn search for that person at that
+  company, and its tooltip says so. This applies everywhere the boards open:
+  ChatGPT, other assistants, and Claude.
 
 ## 0.43.1 — 2026-10-07 — a job's own spend cap no longer claims to cover any job
 

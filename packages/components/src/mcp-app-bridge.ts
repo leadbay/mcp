@@ -9,6 +9,7 @@
 //   view → host   ui/open-link             a sandboxed frame cannot open tabs
 //   view → host   ui/notifications/size-changed
 //   host → view   ping, ui/resource-teardown   answered with {}
+//   host → view   ui/notifications/host-context-changed   its `theme` is applied
 //
 // Hand-written rather than @modelcontextprotocol/ext-apps' `App` class: that
 // class needs zod and the v2 MCP SDK, and this runtime is zero-dependency and
@@ -72,10 +73,13 @@ export function createMcpAppTransport(
     if (!m || typeof m !== "object" || m.jsonrpc !== "2.0") return;
 
     if (typeof m.method === "string") {
-      // Host notifications (tool-input, tool-result, host-context-changed) need
-      // no answer. The board loads its own data through tools/call, and it pins
-      // its own theme, so none of them changes what it renders.
-      if (m.id === undefined) return;
+      // Host notifications need no answer. The board loads its own data through
+      // tools/call, so tool-input / tool-result change nothing. A theme toggle
+      // in the host does: follow it, like the initialize answer below.
+      if (m.id === undefined) {
+        if (m.method === "ui/notifications/host-context-changed") applyHostTheme(m.params?.theme);
+        return;
+      }
       if (m.method === "ping" || m.method === "ui/resource-teardown") {
         post({ id: m.id, result: {} });
       } else {
@@ -113,11 +117,13 @@ export function createMcpAppTransport(
             );
           }, HANDSHAKE_TIMEOUT_MS);
         });
+        let result: unknown;
         try {
-          await Promise.race([init, timeout]);
+          result = await Promise.race([init, timeout]);
         } finally {
           if (timer) clearTimeout(timer);
         }
+        applyHostTheme((result as { hostContext?: { theme?: unknown } } | undefined)?.hostContext?.theme);
         post({ method: "ui/notifications/initialized", params: {} });
         reportSize(post);
         routeLinksThroughHost(request);
@@ -136,6 +142,18 @@ export function createMcpAppTransport(
     // structuredContent / isError off it, as it does for the other transports.
     return request("tools/call", { name: tool, arguments: args });
   };
+}
+
+// Follow the host's light / dark theme. The skin themes on `data-theme` on
+// <html> (styles.ts), and that hook wins over a board's own light pin
+// (`data-lb-theme="light"`) — which is the point: the board sits INSIDE the
+// host's chat, so a light board in a dark thread is the bright rectangle
+// CLAUDE.md warns about. Some hosts set the attribute themselves (ChatGPT
+// does); this covers the ones that only report it, and theme toggles.
+function applyHostTheme(theme: unknown): void {
+  if (typeof document === "undefined") return;
+  if (theme !== "light" && theme !== "dark") return;
+  document.documentElement.setAttribute("data-theme", theme);
 }
 
 // The host sizes the frame from these reports; without them an inline view is

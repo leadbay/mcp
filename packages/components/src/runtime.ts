@@ -2499,6 +2499,53 @@ async function coverageBuckets(opts: {
   return opts.limit != null ? out.slice(0, opts.limit) : out;
 }
 
+/** Where a contact's name links: their LinkedIn profile, or a LinkedIn people
+ *  search when no profile is on file. `profile` says which, so a board can
+ *  label the link honestly. Null when the contact has no name to show. */
+export interface ContactLinkedin {
+  url: string;
+  profile: boolean;
+}
+
+// Legal suffixes a people search should not carry: "Acme" finds the person,
+// "Acme Inc." mostly finds nothing. Same list as the agent's inline-table rule
+// (promptforge snippets/linking/contact-linkedin.md).
+const COMPANY_SUFFIX = /[\s,]+(inc|llc|corp|ltd|gmbh|co|s\.?a|s\.?l|plc|ag|sas|sarl)\.?$/i;
+
+/** The link for a contact's name — the same rule the agent follows when it
+ *  draws the leads as a table, so a board and a table send the rep to the same
+ *  place:
+ *
+ *   1. `linkedin_page` when it is a real `https://` URL — their own profile.
+ *   2. Otherwise a LinkedIn people search for "<first> <last> <company>", with
+ *      the company's legal suffix stripped. A name is always searchable, so a
+ *      contact name is never a dead label.
+ *
+ *  Never the company's LinkedIn page: that is a different place, and sending
+ *  a rep there to find a person quietly costs them the person. */
+export function contactLinkedin(contact: unknown, company?: string | null): ContactLinkedin | null {
+  const c = (contact ?? {}) as Record<string, any>;
+  const real = (v: unknown) =>
+    typeof v === "string" && v.trim() && v !== "null" ? v.trim() : null;
+  const first = real(c.first_name);
+  const last = real(c.last_name);
+  const name = [first, last].filter(Boolean).join(" ") || real(c.name);
+  if (!name) return null;
+
+  const page = real(c.linkedin_page);
+  if (page && /^https:\/\//i.test(page)) return { url: page, profile: true };
+
+  // ONE suffix: stripping repeatedly turned "Café & Co SARL" into "Café &".
+  const org = (real(company) ?? "").replace(COMPANY_SUFFIX, "").trim();
+  const keywords = [name, org].filter(Boolean).join(" ");
+  return {
+    url:
+      "https://www.linkedin.com/search/results/people/?keywords=" +
+      encodeURIComponent(keywords).replace(/%20/g, "+"),
+    profile: false,
+  };
+}
+
 /** The reachability of one lead, as a list payload can report it. */
 export type Reach = "reachable" | "contacts_only" | "empty";
 
@@ -2930,6 +2977,9 @@ export const lb = {
   // taxonomy so no artifact has to inline or omit it.
   sectorLabels,
   leadContext,
+  // Where a contact's name links — profile, else a people search. The same
+  // rule as the agent's inline table, so both send the rep to one place.
+  contactLinkedin,
   // Route planning: where a lead is, how far apart stops are, and a
   // navigation URL the rep can actually drive.
   leadPos,
