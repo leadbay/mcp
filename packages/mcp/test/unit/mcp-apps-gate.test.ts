@@ -73,7 +73,7 @@ describe("apps on — the non-Claude surfaces", () => {
     const mcp = await connect(true);
     const { tools } = await mcp.listTools();
     const pointed = tools.filter((t) => (t as any)._meta?.ui).map((t) => t.name);
-    expect(pointed).toEqual(["leadbay_pull_leads"]);
+    expect(pointed.sort()).toEqual(["leadbay_followups_map", "leadbay_pull_leads"]);
   });
 
   it("the board is listed as an MCP App resource", async () => {

@@ -117,7 +117,7 @@ describe("hosted catalog over the wire", () => {
     mockHttp([ME, ME, ME, ME, ME, ME]);
     const c = await catalog("/chatgpt/mcp");
     expect(c.pullLeadsUi?.resourceUri).toBe(TRIAGE_URI);
-    expect(c.views).toEqual([TRIAGE_URI]);
+    expect(c.views).toContain(TRIAGE_URI);
     expect(c.names).not.toContain("leadbay_create_topup_link");
   });
 
@@ -125,7 +125,7 @@ describe("hosted catalog over the wire", () => {
     mockHttp([ME, ME, ME, ME, ME, ME]);
     const c = await catalog("/apps/mcp");
     expect(c.pullLeadsUi?.resourceUri).toBe(TRIAGE_URI);
-    expect(c.views).toEqual([TRIAGE_URI]);
+    expect(c.views).toContain(TRIAGE_URI);
     expect(c.names).toContain("leadbay_create_topup_link");
   });
 });

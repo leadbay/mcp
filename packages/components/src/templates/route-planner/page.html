@@ -244,38 +244,59 @@ body {
   .legend { margin-inline-start: 0; }
   .city-form .lb-input { width: 100%; flex: 1 1 160px; }
 }
+
+/* As an MCP App view (ChatGPT, …) the host sizes the frame from the page's
+   own height, while this layout takes its height FROM the frame (100% here,
+   58vh on a phone) — the two chase each other and the map row collapses (the
+   failure that retired the old map widget). There the board sizes itself:
+   the host's fixed frame height when it gives one, else 680px capped at the
+   frame's max; on a phone the map gets a fixed 360px. The kit sets the
+   attribute and the variables after the MCP Apps handshake
+   (mcp-app-bridge.ts); cowork and claude.ai never see them. */
+:root[data-lb-surface="mcp-app"],
+:root[data-lb-surface="mcp-app"] body { height: auto; }
+@media (min-width: 761px) {
+  :root[data-lb-surface="mcp-app"] .app {
+    height: var(--lb-frame-height, min(680px, var(--lb-frame-max-height, 680px)));
+  }
+}
+@media (max-width: 760px) {
+  :root[data-lb-surface="mcp-app"] .map-frame { height: 360px; }
+}
 </style>
 
 <div class="app">
   <header class="topbar">
+    <!-- data-i18n / data-i18n-aria / data-i18n-placeholder: keys into app.js's
+         label dictionary, so the fixed labels follow the viewer's language. -->
     <div class="brand">
-      <h1>Route Planner</h1>
-      <span class="tally" id="tally">Connecting to Leadbay…</span>
+      <h1 data-i18n="heading">Route Planner</h1>
+      <span class="tally" id="tally" data-i18n="connecting">Connecting to Leadbay…</span>
     </div>
     <form class="city-form" id="city-form">
-      <label class="lb-vh" for="city-input">City or area to prospect</label>
-      <input class="lb-input" id="city-input" name="city" type="text" placeholder="City or area" autocomplete="off">
-      <button class="lb-btn lb-btn-submit" id="city-submit" type="submit">Show follow-ups</button>
-      <button class="lb-btn" id="city-clear" type="button" hidden>All areas</button>
-      <button class="lb-btn" id="fit-leads" type="button">Fit to leads</button>
-      <span class="city-hint" id="city-hint">Picking a city also sets the location filter on your Monitor in Leadbay.</span>
+      <label class="lb-vh" for="city-input" data-i18n="cityLabel">City or area to prospect</label>
+      <input class="lb-input" id="city-input" name="city" type="text" placeholder="City or area" data-i18n-placeholder="cityPlaceholder" autocomplete="off">
+      <button class="lb-btn lb-btn-submit" id="city-submit" type="submit" data-i18n="showFollowups">Show follow-ups</button>
+      <button class="lb-btn" id="city-clear" type="button" hidden data-i18n="allAreas">All areas</button>
+      <button class="lb-btn" id="fit-leads" type="button" data-i18n="fitToLeads">Fit to leads</button>
+      <span class="city-hint" id="city-hint" data-i18n="cityHint">Picking a city also sets the location filter on My leads in Leadbay.</span>
     </form>
-    <div class="legend" aria-label="Map legend">
-      <span><i style="background:var(--st-wanted)"></i>Wanted</span>
-      <span><i style="background:var(--st-won)"></i>Won</span>
-      <span><i style="background:var(--st-lost)"></i>Lost</span>
-      <span><i style="background:var(--st-unwanted)"></i>Unwanted</span>
-      <span><i style="background:var(--st-default)"></i>No status</span>
-      <span><i class="ring"></i>Worked today</span>
+    <div class="legend" aria-label="Map legend" data-i18n-aria="legendAria">
+      <span><i style="background:var(--st-wanted)"></i><span data-i18n="statusWanted">Wanted</span></span>
+      <span><i style="background:var(--st-won)"></i><span data-i18n="statusWon">Won</span></span>
+      <span><i style="background:var(--st-lost)"></i><span data-i18n="statusLost">Lost</span></span>
+      <span><i style="background:var(--st-unwanted)"></i><span data-i18n="statusUnwanted">Unwanted</span></span>
+      <span><i style="background:var(--st-default)"></i><span data-i18n="noStatus">No status</span></span>
+      <span><i class="ring"></i><span data-i18n="workedToday">Worked today</span></span>
     </div>
   </header>
   <div class="notice" id="notice" role="alert"></div>
   <main class="work">
     <div class="map-frame">
-      <div id="map" aria-label="Map of follow-up leads"></div>
+      <div id="map" aria-label="Map of follow-up leads" data-i18n-aria="mapAria"></div>
       <div class="map-status" id="map-status" hidden><span class="lb-spinner" aria-hidden="true"></span><span id="map-status-text">Loading follow-ups…</span></div>
     </div>
-    <aside class="panel" aria-label="Lead and route panel">
+    <aside class="panel" aria-label="Lead and route panel" data-i18n-aria="panelAria">
       <div class="panel-scroll" id="panel"></div>
     </aside>
   </main>

@@ -9,7 +9,14 @@
 //   view → host   ui/open-link             a sandboxed frame cannot open tabs
 //   view → host   ui/notifications/size-changed
 //   host → view   ping, ui/resource-teardown   answered with {}
-//   host → view   ui/notifications/host-context-changed   its `theme` is applied
+//   host → view   ui/notifications/host-context-changed   theme / size / locale kept
+//   host → view   ui/notifications/tool-input, tool-result   the call that opened
+//                 this view — a board renders from it instead of calling again
+//
+// After the handshake the page is marked `data-lb-surface="mcp-app"`, and the
+// host's frame limits land as `--lb-frame-height` / `--lb-frame-max-height`,
+// so a board that fills its window (the route planner) can size itself to the
+// frame instead of collapsing in it.
 //
 // Hand-written rather than @modelcontextprotocol/ext-apps' `App` class: that
 // class needs zod and the v2 MCP SDK, and this runtime is zero-dependency and
@@ -47,13 +54,46 @@ export function inFrame(): boolean {
   return typeof window !== "undefined" && window.parent != null && window.parent !== window;
 }
 
+/** The tool call whose result opened this view, as the host reported it. */
+export interface McpAppOpening {
+  args: Record<string, unknown> | null;
+  /** The raw CallToolResult. */
+  result: unknown;
+}
+
+/** A tool-calling function, plus what the host told the view about itself. */
+export type McpAppTransport = CallFn & {
+  /** The opening call, once the host has sent its result — or null if it was
+   *  cancelled or did not arrive within `timeoutMs`. */
+  opening(timeoutMs?: number): Promise<McpAppOpening | null>;
+  /** The host context so far (theme, locale, containerDimensions, …). */
+  hostContext(): Record<string, any>;
+};
+
+// The opening result may still be computing when the view appears — a host
+// MAY show the view during tool execution. Long enough for a slow pull, short
+// enough that a host that never sends it still gets a board.
+const OPENING_TIMEOUT_MS = 20_000;
+
 export function createMcpAppTransport(
   appVersion: string,
   env: McpAppEnv = { parent: window.parent, self: window },
-): CallFn {
+): McpAppTransport {
   const pending = new Map<number, Pending>();
   let nextId = 1;
   let session: Promise<void> | null = null;
+  let context: Record<string, any> = {};
+  // Only the FIRST tool-input / tool-result: the host may also report calls
+  // the view itself makes later, and those did not open it.
+  let openingArgs: Record<string, unknown> | null | undefined;
+  let openingResult: unknown;
+  let openingDone = false;
+  const openingWaiters = new Set<() => void>();
+  const settleOpening = () => {
+    openingDone = true;
+    for (const w of openingWaiters) w();
+    openingWaiters.clear();
+  };
 
   const post = (message: Record<string, unknown>) =>
     env.parent.postMessage({ jsonrpc: "2.0", ...message }, "*");
@@ -73,11 +113,21 @@ export function createMcpAppTransport(
     if (!m || typeof m !== "object" || m.jsonrpc !== "2.0") return;
 
     if (typeof m.method === "string") {
-      // Host notifications need no answer. The board loads its own data through
-      // tools/call, so tool-input / tool-result change nothing. A theme toggle
-      // in the host does: follow it, like the initialize answer below.
+      // Host notifications need no answer.
       if (m.id === undefined) {
-        if (m.method === "ui/notifications/host-context-changed") applyHostTheme(m.params?.theme);
+        if (m.method === "ui/notifications/host-context-changed") {
+          // Partial updates: merge, then re-apply what the page follows.
+          context = { ...context, ...(m.params ?? {}) };
+          applyHostContext(context);
+        } else if (m.method === "ui/notifications/tool-input" && openingArgs === undefined) {
+          const a = m.params?.arguments;
+          openingArgs = a && typeof a === "object" ? (a as Record<string, unknown>) : null;
+        } else if (m.method === "ui/notifications/tool-result" && !openingDone) {
+          openingResult = m.params;
+          settleOpening();
+        } else if (m.method === "ui/notifications/tool-cancelled" && !openingDone) {
+          settleOpening();
+        }
         return;
       }
       if (m.method === "ping" || m.method === "ui/resource-teardown") {
@@ -123,7 +173,12 @@ export function createMcpAppTransport(
         } finally {
           if (timer) clearTimeout(timer);
         }
-        applyHostTheme((result as { hostContext?: { theme?: unknown } } | undefined)?.hostContext?.theme);
+        const ctx = (result as { hostContext?: unknown } | undefined)?.hostContext;
+        context = ctx && typeof ctx === "object" ? { ...(ctx as Record<string, any>) } : {};
+        if (typeof document !== "undefined") {
+          document.documentElement.setAttribute("data-lb-surface", "mcp-app");
+        }
+        applyHostContext(context);
         post({ method: "ui/notifications/initialized", params: {} });
         reportSize(post);
         routeLinksThroughHost(request);
@@ -136,12 +191,47 @@ export function createMcpAppTransport(
     return session;
   }
 
-  return async (tool, args) => {
+  const call: CallFn = async (tool, args) => {
     await connect();
     // The CallToolResult comes back as is; the runtime's normalize() reads
     // structuredContent / isError off it, as it does for the other transports.
     return request("tools/call", { name: tool, arguments: args });
   };
+
+  async function opening(timeoutMs: number = OPENING_TIMEOUT_MS): Promise<McpAppOpening | null> {
+    await connect();
+    if (!openingDone) {
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          clearTimeout(timer);
+          openingWaiters.delete(done);
+          resolve();
+        };
+        const timer = setTimeout(done, timeoutMs);
+        openingWaiters.add(done);
+      });
+    }
+    if (openingResult === undefined) return null;
+    return { args: openingArgs ?? null, result: openingResult };
+  }
+
+  return Object.assign(call, { opening, hostContext: () => context });
+}
+
+/** Apply what the page follows from the host context: the theme, and the
+ *  frame's height limits as CSS variables. */
+function applyHostContext(ctx: Record<string, any>): void {
+  applyHostTheme(ctx.theme);
+  if (typeof document === "undefined") return;
+  const root = document.documentElement.style;
+  const dims = (ctx.containerDimensions ?? {}) as Record<string, unknown>;
+  const px = (v: unknown) => (typeof v === "number" && v > 0 ? `${Math.floor(v)}px` : null);
+  const fixed = px(dims.height);
+  const max = px(dims.maxHeight);
+  if (fixed) root.setProperty("--lb-frame-height", fixed);
+  else root.removeProperty("--lb-frame-height");
+  if (max) root.setProperty("--lb-frame-max-height", max);
+  else root.removeProperty("--lb-frame-max-height");
 }
 
 // Follow the host's light / dark theme. The skin themes on `data-theme` on
