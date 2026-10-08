@@ -763,6 +763,103 @@ function findShapeMismatch(
   return undefined;
 }
 
+// Sibling tools name the same thing differently: `leadId` on
+// leadbay_research_lead_by_id and leadbay_add_note, `lead_ids` on
+// leadbay_set_lead_status, `lead_id` on leadbay_set_prospecting_action. The SDK
+// does not enforce `additionalProperties: false`, so a key spelled the other
+// way was dropped and the tool answered "leadId is required" or "lead_ids is
+// empty", which never names the key the agent sent. A scheduled agent
+// (julien@lelab0.com) burned 18 of 32 calls a night on this, and wrote no
+// notes on 2026-09-29 (product#4237).
+//
+// Two things happen here, for every tool, before execute:
+// 1. A key that differs from a declared one only by case or underscores is
+//    renamed to it (`lead_id` → `leadId`). A singular key whose plural is a
+//    declared array is renamed and wrapped (`lead_id: "x"` → `lead_ids: ["x"]`).
+//    A string that looks like a JSON array is not wrapped, so the shape guard
+//    still rejects it.
+// 2. Any other undeclared key is answered with INVALID_PARAMS naming it, its
+//    likely intended key, and the accepted keys, when the tool's schema says
+//    `additionalProperties: false`. Tools that do not say so keep passing
+//    unknown keys through, as before.
+const argKeyNorm = (k: string) => k.replace(/_/g, "").toLowerCase();
+
+function editDistance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cur = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+  }
+  return row[b.length];
+}
+
+function normalizeArgKeys(
+  tool: Tool,
+  args: Record<string, unknown>
+):
+  | { args: Record<string, unknown>; error?: undefined }
+  | { error: { error: true; code: "INVALID_PARAMS"; message: string; hint: string } } {
+  const schema = tool.inputSchema as Record<string, unknown> | undefined;
+  const props = schema?.properties as Record<string, Record<string, unknown>> | undefined;
+  if (!props || typeof props !== "object") return { args };
+  const declared = Object.keys(props).filter((k) => k !== ORIGIN_FIELD);
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (Object.prototype.hasOwnProperty.call(props, key)) out[key] = value;
+  }
+  const unknown: string[] = [];
+  for (const [key, value] of Object.entries(args)) {
+    if (Object.prototype.hasOwnProperty.call(props, key)) continue;
+    const n = argKeyNorm(key);
+    const same = declared.find((d) => argKeyNorm(d) === n);
+    const plural = declared.find(
+      (d) => props[d]?.type === "array" && argKeyNorm(d) === `${n}s`
+    );
+    if (same && !(same in out)) {
+      out[same] = value;
+    } else if (!same && plural && !(plural in out)) {
+      out[plural] =
+        typeof value === "string" && !value.trim().startsWith("[") ? [value] : value;
+    } else {
+      unknown.push(key);
+    }
+  }
+  if (unknown.length === 0) return { args: out };
+  if (schema?.additionalProperties !== false) {
+    for (const key of unknown) out[key] = args[key];
+    return { args: out };
+  }
+  const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
+  const missing = required.filter((r) => r !== TRIGGERED_BY_FIELD && !(r in out));
+  const suggest = (key: string): string | undefined => {
+    const n = argKeyNorm(key);
+    const close = declared
+      .map((d) => ({ d, dist: editDistance(n, argKeyNorm(d)) }))
+      .filter(({ dist }) => dist <= Math.max(2, Math.floor(n.length / 3)))
+      .sort((a, b) => a.dist - b.dist)[0]?.d;
+    return close ?? (missing.length === 1 ? missing[0] : undefined);
+  };
+  const named = unknown.map((k) => {
+    const s = suggest(k);
+    return s ? `\`${k}\` (did you mean \`${s}\`?)` : `\`${k}\``;
+  });
+  return {
+    error: {
+      error: true,
+      code: "INVALID_PARAMS",
+      message: `${tool.name} has no argument ${named.join(", ")}`,
+      hint:
+        `Accepted arguments: ${declared.map((d) => `\`${d}\``).join(", ")}. ` +
+        "Re-call with those names. Nothing was written.",
+    },
+  };
+}
+
 function toolsListPayload(tools: Tool[], includeApps: boolean) {
   return tools.map((t) => {
     const out: Record<string, unknown> = {
@@ -1304,6 +1401,10 @@ export function buildServer(
 
     const rawArgs = (req.params.arguments ?? {}) as Record<string, unknown>;
     const { triggered_by: rawTriggeredBy, origin, cleaned: args } = extractTriggeredBy(rawArgs);
+    // Argument NAMES, never values, ride on ok:false tool-call events, so a
+    // misnamed key is visible without guessing it from the error's byte size
+    // (product#4237).
+    const arg_keys = Object.keys(args).slice(0, 20).map((k) => k.slice(0, 64));
     // Privacy control (product#3943): `leadbay_report_friction` is the one tool
     // whose entire purpose is sending user words to the team, and the user has
     // approved EXACTLY the `message` argument — nothing else. `_triggered_by` is
@@ -1517,8 +1618,12 @@ export function buildServer(
       // envelope branch a tool's own BAD_INPUT takes below. Runs AFTER the
       // LAST_PROMPT_REQUIRED guard so a composite missing `_triggered_by`
       // still hears about the mandate first.
-      const shapeError = findShapeMismatch(tool, args);
-      const result = shapeError ?? await runWithRequestSignal(extra.signal, () => tool.execute(client, args, {
+      // Key gate (product#4237): misnamed keys are renamed or rejected by name
+      // before the shape gate reads the declared keys.
+      const keyed = normalizeArgKeys(tool, args);
+      const callArgs = keyed.error ? args : keyed.args;
+      const shapeError = keyed.error ?? findShapeMismatch(tool, callArgs);
+      const result = shapeError ?? await runWithRequestSignal(extra.signal, () => tool.execute(client, callArgs, {
         logger: opts.logger,
         notificationsInbox: opts.notificationsInbox,
         signal: extra.signal,
@@ -1656,6 +1761,7 @@ export function buildServer(
             format: "error-envelope",
             bytes: envText.length,
             error_code: envCode,
+            arg_keys,
             triggered_by,
             origin,
           });
@@ -1844,6 +1950,7 @@ export function buildServer(
             bytes: errText.length,
             error_code: code,
             ...(typeof httpStatus === "number" ? { http_status: httpStatus } : {}),
+            arg_keys,
             triggered_by,
             origin,
           });
@@ -1880,6 +1987,7 @@ export function buildServer(
             format: "error-envelope",
             bytes: errText.length,
             error_code: code,
+            arg_keys,
             triggered_by,
             origin,
           });

@@ -1,6 +1,6 @@
 # Changelog — @leadbay/mcp
 
-## 0.43.0 — 2026-10-07 — the triage board, inside ChatGPT and other assistants
+## 0.44.0 — 2026-10-08 — the triage board, inside ChatGPT and other assistants
 
 - **Today's leads open as the Lead Triage Board right in the chat, outside
   Claude.** On ChatGPT and on assistants that can display MCP Apps (GitHub
@@ -21,6 +21,32 @@
 - **No duplicate list under the board.** Where the board shows, the assistant
   now sums the batch up in a sentence instead of drawing the same leads again
   as a table.
+
+## 0.43.1 — 2026-10-07 — a job's own spend cap no longer claims to cover any job
+
+- **The search's spend cap stops promising it is enough.** The parameter that
+  bounds what one lead search may spend used to tell the assistant its default
+  "covers any job". It does not: your plan has its own daily allowance, it is
+  far smaller, and it stops a search whatever that parameter is set to. The
+  parameter now says what it bounds and names your plan's allowance as the
+  separate limit. Reported after a paying account spent forty minutes on
+  searches that kept running out (product#4250).
+
+## 0.43.0 — 2026-09-30 — a misnamed argument is read or named, never dropped
+
+- **`lead_id` and `leadId` both work.** Leadbay tools spell the lead id
+  differently: researching a lead and adding a note take `leadId`, setting a
+  CRM status takes `lead_ids`. An assistant that used the other spelling was
+  told the id was missing, and a scheduled run lost a night's notes and
+  statuses this way. An argument that differs only by capitals or underscores
+  is now read as the one the tool expects, and setting a status also takes a
+  single lead id.
+- **Any other unknown argument is named.** It used to be dropped silently. It
+  now comes back as an error that names it, suggests the argument it probably
+  meant, and lists the ones the tool takes. A call rejected this way writes
+  nothing.
+- **Team prospecting setup names the right arguments.** It told the assistant
+  to pass `user_prompt` to two tools that take `prompt` and `base`.
 
 ## 0.42.0 — 2026-09-28 — every rep gets the same boards
 

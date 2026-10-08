@@ -552,6 +552,8 @@ export const myTool: Tool = {
 };
 ```
 
+Name new arguments in snake_case (`lead_id`, `lead_ids`, `campaign_id`), and set `additionalProperties: false`. Older tools take `leadId`/`leadIds`; the dispatcher reads either spelling and rejects any other undeclared key by name (product#4237), so do not rename existing arguments.
+
 ### 2. Description template
 
 `packages/promptforge/tool-descriptions/composite/my-tool.md.tmpl`
