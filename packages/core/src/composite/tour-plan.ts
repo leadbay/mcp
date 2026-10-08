@@ -43,6 +43,10 @@ export function buildTourNextSteps(
   monitorLeads: unknown[],
   discoverLeads: unknown[],
   city: string | null,
+  /** `apps`: the host renders MCP Apps boards (ChatGPT, …) and cannot publish
+   *  a Claude artifact — see LeadbayClient.apps. `cityId`: the tour's resolved
+   *  location, passed on when the agent used one. */
+  opts: { apps?: boolean; cityId?: string | null } = {},
 ): NextSteps | null {
   const all = [...monitorLeads, ...discoverLeads];
   if (all.length === 0) return null; // nothing to plan a day around
@@ -50,6 +54,31 @@ export function buildTourNextSteps(
   const mappable = all.filter(isMappable).length;
   const where = city ? ` in ${city}` : "";
   const options: NextStepOption[] = [];
+
+  // On an MCP Apps host the route planner is the board leadbay_followups_map
+  // opens: offering the artifact there was a dead end (the host has no
+  // artifacts, so the agent failed or pasted the page's HTML into the chat).
+  if (opts.apps) {
+    const geo = opts.cityId ? `city_id "${opts.cityId}"` : city ? `city "${city}"` : null;
+    options.push({
+      label: "Route planner",
+      description:
+        `Open the route planner${where}: your follow-ups on a map, set a status, log outreach, ` +
+        "tick a prospecting action and build the day's route. " +
+        `Call leadbay_followups_map${geo ? ` with ${geo}` : ""} — this host shows the route planner ` +
+        "for that call. Do NOT call leadbay_get_artifact_runtime: this host cannot publish an artifact.",
+      kind: "open_board",
+    });
+    options.push({
+      label: "Prep outreach",
+      description:
+        "Prepare a call opener and email for the top lead on the tour, so the first " +
+        "visit has something to open with.",
+      kind: "enrich_top_leads",
+    });
+    // No lead desk here: it is an artifact recipe, and this host has none.
+    return { question: "What do you want to do next?", options };
+  }
 
   options.push({
     label: "Route planner",
@@ -769,7 +798,10 @@ export const tourPlan: Tool<TourPlanParams> = {
       discover_leads: discoverLeads,
       discover_filter_note: filterNote,
       ...buildMap(monitorLeads, discoverLeads),
-      next_steps: buildTourNextSteps(monitorLeads, discoverLeads, params.city ?? null),
+      next_steps: buildTourNextSteps(monitorLeads, discoverLeads, params.city ?? null, {
+        apps: client.apps,
+        cityId: params.city_id ?? null,
+      }),
       _meta: {
         region: client.region,
         latency_ms: client.lastMeta?.latency_ms ?? null,

@@ -8,6 +8,11 @@
   panel to set a status, tick a prospecting action and log what happened, and
   a day's route to drive in Google Maps. It opens on the city you named. In
   Claude nothing changes: the assistant keeps its own map.
+- **After a trip plan, "Route planner" opens the map in ChatGPT too.** In
+  ChatGPT and other assistants, picking the suggested next step after "I'm in
+  Lyon on Thursday, who should I meet?" now opens the route planner on Lyon.
+  It used to ask for a Claude artifact, which those assistants cannot make, so
+  nothing opened. Claude keeps its own way of opening it.
 - **The route planner works in cowork too.** It used to reach Leadbay only as
   a claude.ai artifact, and showed "Leadbay isn't available here" anywhere
   else.
