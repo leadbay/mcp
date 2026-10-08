@@ -1,5 +1,19 @@
 # Changelog — @leadbay/mcp
 
+## 0.44.1 — 2026-10-08 — the board in dark mode, and a contact's LinkedIn one click away
+
+- **The board follows the assistant's light or dark theme, all of it.** In
+  ChatGPT's dark mode the cards turned dark but the page behind them stayed
+  light grey, so "Today's leads" and its subtitle read white on grey. The whole
+  page now switches together, and it follows a theme change made while the
+  board is open. In Claude the board stays light, as before.
+- **The contact's name opens their LinkedIn.** On the triage board and in the
+  route planner's lead panel, the recommended contact's name now links to
+  their LinkedIn profile, as it already did in the assistant's table. When no
+  profile is on file it opens a LinkedIn search for that person at that
+  company, and its tooltip says so. This applies everywhere the boards open:
+  ChatGPT, other assistants, and Claude.
+
 ## 0.44.0 — 2026-10-08 — the triage board, inside ChatGPT and other assistants
 
 - **Today's leads open as the Lead Triage Board right in the chat, outside

@@ -64,6 +64,10 @@ export const STYLES = `
    value cannot theme, and a shadow tinted with --color-gray-9 is invisible in
    dark because gray-9 IS the dark surface. */
 --lb-chip-bg:var(--color-gray-2);
+/* The page ground behind the cards. A raw ramp value here cannot theme: in
+   dark mode --lb-fg turns white and a #f0f0f0 ground kept the page title
+   white on light grey (seen in ChatGPT, which marks the frame dark). */
+--lb-page-bg:var(--color-gray-2);
 --lb-control-border:var(--color-gray-6);
 --lb-shadow:0 0.5rem 1.5rem oklch(0 0 0/.06),0 0.125rem 0.5rem oklch(0 0 0/.04);
 color-scheme:light;
@@ -80,6 +84,7 @@ color-scheme:light;
    reads as text on the card (was 1.00:1). */
 --lb-field:#2c2c2c;
 --lb-chip-bg:#3b3b3b;
+--lb-page-bg:#161616;
 --lb-control-border:var(--color-gray-6);
 --lb-shadow:0 0.5rem 1.5rem oklch(0 0 0/.5),0 0.125rem 0.5rem oklch(0 0 0/.35);
 color-scheme:dark;
@@ -99,6 +104,7 @@ color-scheme:dark;
    reads as text on the card (was 1.00:1). */
 --lb-field:#2c2c2c;
 --lb-chip-bg:#3b3b3b;
+--lb-page-bg:#161616;
 --lb-control-border:var(--color-gray-6);
 --lb-shadow:0 0.5rem 1.5rem oklch(0 0 0/.5),0 0.125rem 0.5rem oklch(0 0 0/.35);
 color-scheme:dark;

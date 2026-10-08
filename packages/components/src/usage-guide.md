@@ -45,6 +45,7 @@ then on every change — render your own DOM from it.
 | `lb.enrichContact({leadId, contactId, email?, phone?, ask?, onDone?})` | action | buy ONE contact's email / phone / both → `enrich_contacts`. Confirms the spend; the channel may land on a DIFFERENT contact, so `onDone` re-reads |
 | `lb.sectorLabels()` | `Promise<{id: label}>` | the sector taxonomy, fetched ONCE per page and cached — so no artifact inlines ~1,091 rows or prints a raw id |
 | `lb.leadContext(lead, labels)` | `LeadContext` | one lead's company line: `summary` (short_description → description → sector), `sector`, and the COMPANY `phone` / `email` |
+| `lb.contactLinkedin(contact, company)` | `{url, profile}` \| `null` | where a contact's NAME links: their `linkedin_page` profile, else a LinkedIn people search on name + company (legal suffix stripped) — the agent's inline-table rule. Never the company's page |
 | `lb.EPILOGUE_LABELS` | `Record<string,string>` | the four epilogue values in the rep's words, for the select |
 | `lb.leadStatus(current?)` | field | a status `<select>` (Wanted/Won/Lost/Unwanted) |
 | `lb.setStatus({leadId or leadIds, status, date?, ask})` | action | write the org CRM status → `set_lead_status` |
@@ -207,7 +208,9 @@ enforces. Re-theme by overriding them; don't fight specificity:
 Dark mode works two ways: `data-theme="dark"` on `<html>` (the frontend's own
 hook) **and** `prefers-color-scheme`, because an artifact renders inside a host
 whose theme attribute it cannot set. Never hardcode a light background over the
-skin.
+skin — and that includes the PAGE: paint `body` with `var(--lb-page-bg)`, never
+a raw `--color-gray-*`. A raw grey cannot theme, so when the cards go dark the
+page title turns white on a light ground.
 
 The product face is `Nikkei Maru`; the stack names it first and falls back to
 the system UI font. Do **not** add an `@font-face` — artifacts are inline-only
@@ -363,6 +366,10 @@ tell *why* this lead is on screen. Five lines, in this order.
    const rc = lead.recommended_contact;
    const who = rc ? [rc.first_name, rc.last_name].filter(Boolean).join(" ") : null;
    const whoLine = who ? who + (rc.job_title ? " · " + rc.job_title : "") : "No contact yet — enrich to find one";
+   // The NAME is a link to LinkedIn — never bare text, exactly as in the
+   // agent's inline table: the profile when `linkedin_page` is on file, else a
+   // people search on name + company. `profile` says which, for the tooltip.
+   const li = who ? lb.contactLinkedin(rc, lead.name) : null; // {url, profile} | null
 
    // HOW — company-level channels. `phone_numbers` and `email` belong to the
    // COMPANY, not to `recommended_contact`. Rendering "Jean · ☎ 0123…" claims a
@@ -379,7 +386,7 @@ tell *why* this lead is on screen. Five lines, in this order.
 
    ```html
    <div class="lb-sub">Sector · City · Size</div>
-   <div class="lb-sub"><span aria-hidden="true">👤</span> Jean-François Froemer · Gérant</div>
+   <div class="lb-sub"><span aria-hidden="true">👤</span> <a class="lb-link" href="https://www.linkedin.com/in/…" target="_blank" rel="noopener">Jean-François Froemer</a> · Gérant</div>
    <div class="lb-sub"><span class="lb-vh">Company switchboard: </span><span aria-hidden="true">🏢 ☎</span> 01 23 45 67 89 (company line)</div>
    ```
 
@@ -490,10 +497,16 @@ document.documentElement.setAttribute("data-lb-theme", "light");
 lb.styles();
 ```
 
-Every dark rule in the skin is guarded by `:not([data-lb-theme=light])`, so the
-one attribute disables all of them — no token overrides, no specificity fight,
-and `lb.styles()` still declares `color-scheme:light` so native select popups
-follow. A rep works a board beside the product's own light UI and reads the
+The skin's `prefers-color-scheme` rule is guarded by `:not([data-lb-theme=light])`,
+so the one attribute keeps the OS theme out — no token overrides, no
+specificity fight, and `lb.styles()` still declares `color-scheme:light` so
+native select popups follow. A HOST's `data-theme="dark"` on `<html>` is not
+guarded and wins: an MCP Apps host (ChatGPT sets it; the kit's MCP Apps
+transport applies the theme any host reports) puts the board inside its own
+chat, where a light board in a dark thread is the wrong answer. So every part
+of the board must read through skin tokens — the page ground included
+(`body { background: var(--lb-page-bg) }`) — or that half stays light while the
+cards turn dark. A rep works a board beside the product's own light UI and reads the
 cards as the same surface; a board that flips with the HOST's theme puts a dark
 card next to a light app for the same lead. This is the board's default, not
 the skin's: `lb.styles()` keeps honouring `prefers-color-scheme` everywhere
@@ -829,7 +842,7 @@ returns to the overview.
     <div class="facts">
       <span class="address">{location.full, else city/state, else "No address on file"}</span>
       <span>{size}</span>
-      <span>Contact: {name · job_title}  — else "No contact yet — enrich to find one"</span>
+      <span>Contact: {name → LinkedIn link via lb.contactLinkedin} · {job_title}  — else "No contact yet — enrich to find one"</span>
       <span>Company line: ☎ {phone} · ✉ {email}  — else "No company phone or email — enrich to look for them"</span>
     </div>
     <div class="actions">                <!-- only when the lead has coordinates -->
