@@ -814,6 +814,9 @@
     const address = realValue(lead.location && lead.location.full)
     const contact = lead.recommended_contact
     const contactName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(" ") : ""
+    // The name links to LinkedIn, as in the agent's table and the triage board:
+    // their profile, else a people search (lb.contactLinkedin).
+    const contactLink = contactName ? lb.contactLinkedin(contact, lead.name) : null
     const phone = realValue((lead.phone_numbers || [])[0])
     const email = realValue(lead.email)
     const companyChannels = [phone && `☎ ${phone}`, email && `✉ ${email}`].filter(Boolean).join(" · ")
@@ -836,7 +839,18 @@
         { class: "facts" },
         h("span", { class: "address", text: address || leadPlace(lead) || "No address on file" }),
         leadSize(lead) ? h("span", { text: leadSize(lead) }) : null,
-        h("span", { text: contactName ? `Contact: ${contactName}${contact.job_title ? " · " + contact.job_title : ""}` : "No contact yet — enrich to find one" }),
+        contactName
+          ? h("span", null,
+              "Contact: ",
+              contactLink
+                ? h("a", {
+                    class: "lb-link", href: contactLink.url, target: "_blank", rel: "noopener",
+                    title: contactLink.profile ? `${contactName} on LinkedIn` : `No LinkedIn profile on file — search LinkedIn for ${contactName}`,
+                    text: contactName,
+                  })
+                : contactName,
+              contact.job_title ? " · " + contact.job_title : null)
+          : h("span", { text: "No contact yet — enrich to find one" }),
         h("span", { text: companyChannels ? `Company line: ${companyChannels}` : "No company phone or email — enrich to look for them" }),
       ),
       h(

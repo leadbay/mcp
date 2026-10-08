@@ -1,7 +1,9 @@
 <title>Lead Triage Board</title>
 <style>
   /* Only what the skin does not ship. Colours are the skin's tokens. */
-  body { margin: 0; background: var(--color-gray-2); color: var(--lb-fg); font-family: var(--lb-font); }
+  /* --lb-page-bg, not a raw grey: when a host marks the frame dark the cards
+     go dark, and a fixed #f0f0f0 ground left the title white on light grey. */
+  body { margin: 0; background: var(--lb-page-bg); color: var(--lb-fg); font-family: var(--lb-font); }
   .page { max-width: 1180px; margin: 0 auto; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; }
   .page-head h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
   .page-head p { margin: 2px 0 0; font-size: 13px; color: var(--lb-muted); }

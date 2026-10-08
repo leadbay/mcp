@@ -176,6 +176,9 @@
     // what it is
     const rc = lead.recommended_contact
     const who = rc ? [rc.first_name, rc.last_name].filter(Boolean).join(" ") : null
+    // The contact's name links to LinkedIn, as it does in the agent's table:
+    // their profile, else a people search (lb.contactLinkedin).
+    const li = who ? lb.contactLinkedin(rc, lead.name) : null
     const phone = real((lead.phone_numbers || [])[0])
     const email = real(lead.email)
     const place = [lead.location && lead.location.city, lead.location && lead.location.state].filter(Boolean).join(", ")
@@ -273,7 +276,19 @@
         ),
         h("div", { class: "lb-section" },
           h("div", { class: "lb-sec-title", text: "Data" }),
-          h("div", { class: "lb-sub" }, h("span", { "aria-hidden": "true", text: "👤 " }), who ? who + (rc.job_title ? " · " + rc.job_title : "") : "No contact yet — enrich to find one"),
+          h("div", { class: "lb-sub" }, h("span", { "aria-hidden": "true", text: "👤 " }),
+            who
+              ? [
+                  li
+                    ? h("a", {
+                        class: "lb-link", href: li.url, target: "_blank", rel: "noopener",
+                        title: li.profile ? `${who} on LinkedIn` : `No LinkedIn profile on file — search LinkedIn for ${who}`,
+                        text: who,
+                      })
+                    : who,
+                  rc.job_title ? " · " + rc.job_title : null,
+                ]
+              : "No contact yet — enrich to find one"),
           h("div", { class: "lb-sub" }, h("span", { class: "lb-vh", text: "Company switchboard: " }), h("span", { "aria-hidden": "true", text: "🏢 " }),
             [phone && "☎ " + phone, email && "✉ " + email].filter(Boolean).join(" · ") ? [phone && "☎ " + phone, email && "✉ " + email].filter(Boolean).join(" · ") + " (company line)" : "No phone or email — enrich to look for them"),
         ),
