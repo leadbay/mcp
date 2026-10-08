@@ -36,6 +36,8 @@ If you use Claude on the web, Claude Desktop, or ChatGPT, the fastest path is a 
 - **Name:** `Leadbay`
 - **URL:** `https://mcp.leadbay.app/mcp`  — one URL for every region (`/fr/mcp` remains a compatibility alias)
 - **On ChatGPT, use `https://mcp.leadbay.app/chatgpt/mcp` instead.** Same server, same sign-in, same leads — but the assistant cannot generate a top-up link or open your billing page there, because the OpenAI app directory does not allow an app to sell credits. Buy credits or change your plan in your Leadbay account instead.
+- **On any other assistant (GitHub Copilot / VS Code, Goose, Cursor, …), use `https://mcp.leadbay.app/apps/mcp`.** Same server, same sign-in, every region.
+- On ChatGPT and those assistants, today's leads open as the **Lead Triage Board** right in the chat, when the assistant can display it. Claude keeps its own widgets and artifacts on `/mcp`.
 
 In Claude: **Settings → Connectors → + → Add custom connector**, paste the URL, then open the connector and **Connect**. Sign in with Leadbay, click **Approve**, and you're linked. The server handles OAuth in-app; updates are automatic — you never touch a config file.
 

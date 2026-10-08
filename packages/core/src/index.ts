@@ -489,6 +489,15 @@ export const tools: Tool[] = [...compositeTools, ...granularTools];
 // the templates that carry the marker. The MCP server swaps these in on a
 // surface that may not promote a purchase; nothing is reworded.
 export { NO_COMMERCE_TOOL_DESCRIPTIONS } from "./tool-descriptions.generated.js";
+// Descriptions with their {{apps}} blocks kept, for the surfaces that serve the
+// MCP Apps boards; the default constants delete those blocks (Claude).
+export {
+  APPS_TOOL_DESCRIPTIONS,
+  APPS_NO_COMMERCE_TOOL_DESCRIPTIONS,
+} from "./tool-descriptions.generated.js";
+// The finished boards. The MCP server serves them as MCP Apps views on the
+// non-Claude surfaces (packages/mcp/src/apps.ts).
+export { ARTIFACT_TEMPLATES } from "./artifact-templates.generated.js";
 // In-process double-launch guard. All that remains of the old bulk store:
 // job identity, retention and tenancy belong to the backend, so nothing here
 // persists. See jobs/launch-guard.ts.

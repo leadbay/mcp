@@ -21,6 +21,7 @@
 // window.LeadbayArtifacts (see build.ts).
 
 import { STYLES, STYLE_ELEMENT_ID } from "./styles.js";
+import { createMcpAppTransport, inFrame } from "./mcp-app-bridge.js";
 
 export const VERSION = "0.6.0";
 
@@ -99,8 +100,20 @@ function hostCall(): CallFn | null {
     };
   }
 
+  // - **An MCP App view** (ChatGPT and the other hosts the server's apps
+  //   endpoints serve) gets no global at all: it sits in a frame and speaks
+  //   JSON-RPC to its parent. See mcp-app-bridge.ts. Last, because cowork and
+  //   claude.ai pages are framed too and must keep their own transport.
+  if (inFrame()) {
+    if (!mcpAppCall) mcpAppCall = createMcpAppTransport(VERSION);
+    return mcpAppCall;
+  }
+
   return null;
 }
+
+// One handshake per page: the transport holds the session and its pending ids.
+let mcpAppCall: CallFn | null = null;
 
 let mcpPromise: Promise<unknown> | null = null;
 function mcpNamespace(use: (n: string) => Promise<unknown>): Promise<unknown> {
@@ -354,6 +367,7 @@ export function configure(
   // across reconfigures and across tests.
   mcpServerName = opts.server ?? DEFAULT_MCP_SERVER;
   mcpPromise = null;
+  mcpAppCall = null;
   // Caches keyed to the transport must not outlive it: a page that
   // reconfigures (or a test that swaps the stub) would otherwise keep a
   // taxonomy fetched through the previous one.
@@ -416,7 +430,7 @@ export async function call(tool: string, args: Record<string, unknown> = {}): Pr
   if (!fn) {
     if (!silent) report({ kind: "bridge_unavailable", surface, tool, code: "unavailable" });
     throw new LbError(
-      "Leadbay bridge unavailable — no window.cowork and no window.claude.use(\"mcp\")",
+      "Leadbay bridge unavailable — no window.cowork, no window.claude.use(\"mcp\") and no MCP Apps host",
       { code: "unavailable" },
     );
   }

@@ -30,6 +30,31 @@ So tools render via **two surfaces only**:
 the `Tool` interface in 0.10.0-dev.12. Re-adding it would resurrect the
 iframe-vs-chat structural problem.
 
+### MCP Apps — non-Claude surfaces only
+
+Both failures above are Claude failures: Claude has first-party widgets
+for an iframe to crowd out, and a dark thread for it to clash with. Other
+hosts (ChatGPT, VS Code, …) have neither, so there the finished boards are
+served as MCP Apps views. Rules:
+
+- **Never on a Claude surface.** `buildServer({ includeApps })` is off by
+  default and stays off for `/mcp`, `/fr/mcp`, `/sse` and the `.dxt`. It is
+  on for `/chatgpt/mcp` and `/apps/mcp` (`APP_PATHS` in `http-server.ts`)
+  and for stdio with `LEADBAY_MCP_APPS=1`. A path, not a clientInfo sniff:
+  the HTTP server is stateless, so clientInfo is gone by `tools/list`.
+  `packages/mcp/test/unit/mcp-apps-gate.test.ts` and `mcp-apps-path.test.ts`
+  pin the Claude side clean.
+- **A view is a kit board, never a new page.** `packages/mcp/src/apps.ts`
+  maps a tool to an `ARTIFACT_TEMPLATES` entry and serves its `html` as it
+  is. The board finds the host itself: `components/src/mcp-app-bridge.ts` is
+  the runtime's third transport, after cowork and claude.ai. Changing a board
+  changes it on all three surfaces.
+- **No `Tool.ui` field.** The pointer is added in `toolsListPayload` from the
+  `apps.ts` table, only when `includeApps` is on.
+- **Tell the agent the board is the answer.** A tool with a board carries an
+  `{{apps}}` block saying so (see below), or the agent redraws the same rows
+  as a table under it.
+
 ### The three host-native widgets
 
 Every tool whose result fits one of these shapes carries a RENDER
@@ -290,6 +315,27 @@ Promptforge emits the tool's normal const plus an entry in
 - `packages/mcp/test/unit/commerce-gate.test.ts` asserts the gated strings are
   character-level subsequences of the default ones, so any rewording fails.
 
+### `{{apps}}` — prose that only exists where the boards are served
+
+The reverse of `{{commerce}}`: the block is DELETED from the default (Claude)
+description and kept only on the MCP Apps surfaces, so no Claude description
+ever mentions a board Claude will not get. Same delete-only rule and the same
+block / inline shapes (both tags share `packages/promptforge/src/markers.ts`).
+
+```markdown
+{{apps}}
+**If the host shows the Leadbay board for this call, the board IS the rendering:** …
+{{/apps}}
+```
+
+Promptforge emits `APPS_TOOL_DESCRIPTIONS` (apps on, commerce on — `/apps/mcp`)
+and `APPS_NO_COMMERCE_TOOL_DESCRIPTIONS` (apps on, commerce off —
+`/chatgpt/mcp`); `buildServer` picks the variant per surface. The apps variant
+counts against the same 17,000-char budget, so text added inside `{{apps}}`
+needs headroom in the default too. `packages/mcp/test/unit/mcp-apps-description.test.ts`
+asserts the Claude description carries no apps prose and the apps variant only
+adds to it.
+
 Include them via `{{include:rendering/score-bar}}` etc. Don't duplicate
 content across templates — extract a snippet if you find yourself
 copy-pasting.
@@ -370,8 +416,10 @@ following as high-priority (P0/P1) issues:
   `@leadbay/promptforge` — point at the `.md.tmpl` template instead. See
   *Tool descriptions are generated, not hand-edited* above.
 
-- **Do not re-introduce `Tool.ui` bindings or MCP-Apps iframe widgets.**
-  Removed in 0.10.0-dev.12. See *Rendering surface* above.
+- **Do not re-introduce `Tool.ui` bindings, and no MCP-Apps view on a Claude
+  surface.** Removed in 0.10.0-dev.12. MCP Apps are allowed only behind
+  `includeApps` (`/chatgpt/mcp`, `/apps/mcp`, stdio `LEADBAY_MCP_APPS=1`), and
+  only as an existing kit board. See *MCP Apps — non-Claude surfaces only*.
 
 - **Respect the tool-description char budget** (~16k soft, 17k hard). Never
   "fix" a failing audit by disabling or weakening it; trim the template body.
