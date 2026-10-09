@@ -1,5 +1,31 @@
 # Changelog — @leadbay/mcp
 
+## 0.45.0 — 2026-10-08 — the route planner in ChatGPT, boards that load once, and boards in French
+
+- **The route planner opens in the chat outside Claude.** On ChatGPT and other
+  assistants that can display it, "I'm going to Lyon — who should I visit?"
+  now shows the route planner: your follow-ups on a map of your country, a
+  panel to set a status, tick a prospecting action and log what happened, and
+  a day's route to drive in Google Maps. It opens on the city you named. In
+  Claude nothing changes: the assistant keeps its own map.
+- **After a trip plan, "Route planner" opens the map in ChatGPT too.** In
+  ChatGPT and other assistants, picking the suggested next step after "I'm in
+  Lyon on Thursday, who should I meet?" now opens the route planner on Lyon.
+  It used to ask for a Claude artifact, which those assistants cannot make, so
+  nothing opened. Claude keeps its own way of opening it.
+- **The route planner works in cowork too.** It used to reach Leadbay only as
+  a claude.ai artifact, and showed "Leadbay isn't available here" anywhere
+  else.
+- **The boards don't load the same leads twice.** In ChatGPT and other
+  assistants, the board now shows the leads the assistant just pulled instead
+  of pulling them again, and "next page" continues from there, on the same
+  lens.
+- **The boards speak French.** The triage board and the route planner show
+  their buttons, filters, statuses and messages in French when your assistant
+  or browser is set to French, everywhere they open. Lead data is shown as
+  it is in Leadbay. A note logged from the route planner names its channel in
+  your language ("Appel: …").
+
 ## 0.44.1 — 2026-10-08 — the board in dark mode, and a contact's LinkedIn one click away
 
 - **The board follows the assistant's light or dark theme, all of it.** In

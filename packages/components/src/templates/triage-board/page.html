@@ -38,29 +38,31 @@
 </style>
 <div class="page">
   <header class="page-head">
-    <h1>Today's leads</h1>
-    <p>From your active lens. Like, set a status, tick a prospecting action — every control writes to Leadbay.</p>
+    <!-- data-i18n / data-i18n-aria: keys into app.js's label dictionary, so
+         the fixed labels follow the viewer's language like the cards do. -->
+    <h1 data-i18n="heading">Today's leads</h1>
+    <p data-i18n="subheading">From your active lens. Like, set a status, tick a prospecting action — every control writes to Leadbay.</p>
   </header>
 
   <div class="lb-toolbar">
     <span class="lb-tally" id="tally"></span>
     <span class="lb-group">
-      <label class="lb-field"><span class="lb-field-label">Taste</span>
-        <select class="lb-select" id="f-taste" aria-label="Filter by taste">
-          <option value="all">All</option><option value="liked">Liked</option><option value="disliked">Disliked</option><option value="none">Not rated</option>
+      <label class="lb-field"><span class="lb-field-label" data-i18n="taste">Taste</span>
+        <select class="lb-select" id="f-taste" aria-label="Filter by taste" data-i18n-aria="tasteAria">
+          <option value="all" data-i18n="all">All</option><option value="liked" data-i18n="liked">Liked</option><option value="disliked" data-i18n="disliked">Disliked</option><option value="none" data-i18n="notRated">Not rated</option>
         </select>
       </label>
-      <label class="lb-field"><span class="lb-field-label">Verdict</span>
-        <select class="lb-select" id="f-verdict" aria-label="Filter by qualifier verdict">
-          <option value="all">All</option><option value="boosted">AI boosted</option><option value="neutral">No adjustment</option><option value="penalised">AI penalised</option>
+      <label class="lb-field"><span class="lb-field-label" data-i18n="verdict">Verdict</span>
+        <select class="lb-select" id="f-verdict" aria-label="Filter by qualifier verdict" data-i18n-aria="verdictAria">
+          <option value="all" data-i18n="all">All</option><option value="boosted" data-i18n="boostedOpt">AI boosted</option><option value="neutral" data-i18n="neutralOpt">No adjustment</option><option value="penalised" data-i18n="penalisedOpt">AI penalised</option>
         </select>
       </label>
     </span>
     <span class="lb-spacer"></span>
     <span class="lb-group">
-      <label class="lb-field lb-field-inline"><input type="checkbox" id="select-all"><span class="lb-field-label">Select all</span></label>
-      <select class="lb-select" id="bulk-status" aria-label="Status for selected leads"></select>
-      <button class="lb-btn lb-btn-submit" id="bulk-apply" type="button">Apply to selected</button>
+      <label class="lb-field lb-field-inline"><input type="checkbox" id="select-all"><span class="lb-field-label" data-i18n="selectAll">Select all</span></label>
+      <select class="lb-select" id="bulk-status" aria-label="Status for selected leads" data-i18n-aria="bulkStatusAria"></select>
+      <button class="lb-btn lb-btn-submit" id="bulk-apply" type="button" data-i18n="applySelected">Apply to selected</button>
     </span>
     <div class="lb-msg" id="bulk-msg" role="status" aria-live="polite" style="flex:1 0 100%"></div>
   </div>
@@ -68,8 +70,8 @@
   <main class="deck" id="deck" data-lb-state="ready"></main>
 
   <div class="lb-pager">
-    <button class="lb-btn" id="prev" type="button">Previous</button>
-    <button class="lb-btn" id="next" type="button">Next</button>
+    <button class="lb-btn" id="prev" type="button" data-i18n="previous">Previous</button>
+    <button class="lb-btn" id="next" type="button" data-i18n="next">Next</button>
     <span class="lb-spacer"></span>
     <span class="lb-pager-range" id="range"></span>
   </div>

@@ -22,10 +22,22 @@ interface McpApp {
   template: string;
   /** The model-facing tool whose result the host shows this view for. */
   tool: string;
+  /** Origins the page loads static files from (CSP `resourceDomains`). Omit
+   *  when the page loads nothing: the spec's restrictive default then holds. */
+  resourceDomains?: string[];
 }
 
 const MCP_APPS: McpApp[] = [
   { uri: "ui://leadbay/triage-board", template: "triage_board", tool: "leadbay_pull_leads" },
+  // Leaflet comes from cdnjs (route-planner/page.html). The country outline
+  // and the leads are tool calls, and there are no map tiles, so nothing else
+  // is fetched.
+  {
+    uri: "ui://leadbay/route-planner",
+    template: "route_planner",
+    tool: "leadbay_followups_map",
+    resourceDomains: ["https://cdnjs.cloudflare.com"],
+  },
 ];
 
 /** The view a tool's result renders in, or undefined for a plain tool. */
@@ -50,10 +62,16 @@ export function readAppResource(uri: string) {
         uri,
         mimeType: MCP_APP_MIME_TYPE,
         text: ARTIFACT_TEMPLATES[app.template].html,
-        // No csp block: the board loads nothing from the network — every read
-        // and write is a tools/call through the host — so the spec's
-        // restrictive default policy is the right one.
-        _meta: { ui: { prefersBorder: true } },
+        // Every read and write is a tools/call through the host. A board that
+        // also loads a script declares that origin and nothing more; one that
+        // loads nothing gets no csp block, so the spec's restrictive default
+        // holds.
+        _meta: {
+          ui: {
+            prefersBorder: true,
+            ...(app.resourceDomains ? { csp: { resourceDomains: app.resourceDomains } } : {}),
+          },
+        },
       },
     ],
   };

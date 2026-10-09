@@ -86,7 +86,7 @@ describe("tools without apps prose are untouched on an apps surface", () => {
     const claude = await descriptions({});
     const apps = await descriptions({ includeApps: true });
     for (const [name, text] of apps) {
-      if (name === "leadbay_pull_leads") continue;
+      if (name === "leadbay_pull_leads" || name === "leadbay_followups_map") continue;
       expect(text, name).toBe(claude.get(name));
     }
   });
@@ -95,7 +95,7 @@ describe("tools without apps prose are untouched on an apps surface", () => {
     const chatgptBefore = await descriptions({ includeCommerce: false });
     const chatgpt = await descriptions({ includeApps: true, includeCommerce: false });
     for (const [name, text] of chatgpt) {
-      if (name === "leadbay_pull_leads") continue;
+      if (name === "leadbay_pull_leads" || name === "leadbay_followups_map") continue;
       expect(text, name).toBe(chatgptBefore.get(name));
     }
   });

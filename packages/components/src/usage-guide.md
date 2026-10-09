@@ -23,6 +23,21 @@ Pass every tool you use as the artifact's `mcp_tools` so the host permits it.
 `.error` is `{ message, unavailable } | null`. `subscribe(cb)` fires immediately
 then on every change — render your own DOM from it.
 
+**Surface helpers** — the same page opens in cowork, as a claude.ai artifact,
+and as an MCP Apps view (ChatGPT and other assistants; see *One page, three
+surfaces* below):
+- `lb.openingResult({ timeoutMs? })` → `Promise<{ args, result } | null>` — the
+  tool call that OPENED this page, when the host hands it over (MCP Apps only).
+  Render from it instead of calling the same tool again; `args` are what the
+  agent passed (a city, a page size, a lens). `null` everywhere else, and on an
+  error result — then load your own data as usual.
+- `lb.locale()` → `"fr" | "en"` — the MCP Apps host's locale once reported,
+  else the browser's.
+- `lb.i18n({ en: {...}, fr: {...} })` → `t(key, vars)` — a page's labels in
+  the viewer's language; a key missing in French falls back to English, and
+  `{name}` placeholders are filled from `vars`. Lead data stays as Leadbay
+  returns it.
+
 **Domain components** (pre-wired — bake in the tool name, arg shape, and footguns):
 
 | Call | Returns | For |
@@ -215,6 +230,44 @@ page title turns white on a light ground.
 The product face is `Nikkei Maru`; the stack names it first and falls back to
 the system UI font. Do **not** add an `@font-face` — artifacts are inline-only
 and a remote font URL will silently fail.
+
+## One page, three surfaces
+
+The finished boards open in cowork, as a published claude.ai artifact, and —
+on the `/chatgpt/mcp` and `/apps/mcp` connectors — as an MCP Apps view inside
+ChatGPT or another assistant. The kit picks the transport (`window.cowork`,
+`window.claude.use("mcp")`, else the MCP Apps host), so the same `lb.call`
+works on all three. Four rules keep one page right on every surface:
+
+1. **Never hard-wire one host's runtime.** Calling `window.claude.use("mcp")`
+   yourself makes the page dead everywhere else. If you need claude.ai's own
+   error codes, configure that bridge only when it exists:
+   `lb.configure(window.claude?.use ? { call: myClaudeCall } : {})`.
+2. **Load once.** Start with `const opening = await lb.openingResult()`. When
+   it returns a result, render it and take the agent's `args` (page size,
+   lens, city) as the board's starting state; when it returns `null`, load
+   your first page yourself. Pin the lens the first answer came from
+   (`result.lens.id`) for every later page — the active lens can change
+   between calls.
+3. **Size for the frame.** An MCP Apps host sizes the frame from the page's
+   height. A layout that takes its height FROM the window (`height: 100%`,
+   `vh`) collapses there. After the handshake the kit sets
+   `data-lb-surface="mcp-app"` on `<html>` and `--lb-frame-height` /
+   `--lb-frame-max-height` from the host; give such a layout a height of its
+   own under that attribute:
+   ```css
+   :root[data-lb-surface="mcp-app"] .app {
+     height: var(--lb-frame-height, min(680px, var(--lb-frame-max-height, 680px)));
+   }
+   ```
+4. **Label in the viewer's language.** Put every label in one
+   `lb.i18n({ en, fr })` dictionary and render through `t()`. Mark the page's
+   fixed markup with `data-i18n="<key>"` (text), `data-i18n-aria` and
+   `data-i18n-placeholder`, relabel it at start, and again after
+   `lb.openingResult()` resolves — that is when an MCP Apps host's locale is
+   known. `lb.qualifyLabel(lead)` stays a KEY ("Qualify" | "Requalify"); pass
+   it through `t()`. The kit's own status picker (`lb.leadStatus`) is already
+   localized.
 
 ## What every lead card MUST carry
 
@@ -478,6 +531,12 @@ reach the host must say so, not sit silent.
 For the other batch tools below, the template does not fit yet — it loads
 the Discover batch, not theirs — so those boards are still built from this
 recipe.
+
+On the MCP Apps connectors the same page is the view `leadbay_pull_leads`
+opens in the chat: it renders that call (`lb.openingResult()`), takes the
+agent's `count` and `lensId` for its next pages, and labels itself in English
+or French. A board built from this recipe follows *One page, three surfaces*
+above.
 
 When the rep accepts an interactive board after ANY tool that returns a batch
 of leads — `leadbay_pull_leads`, `leadbay_find_new_leads`,
@@ -773,6 +832,16 @@ affordance, and the app's own QualifyButton is `variant="ai"`.
 Its one permitted edit is the JSON in `<script id="lb-board-config">`: set
 `"city"` to where the rep is going ("Lyon"), or leave it `""` for all
 follow-ups. Never a country.
+
+On the MCP Apps connectors the same page is the view `leadbay_followups_map`
+opens in the chat: it renders that call (`lb.openingResult()`) and opens on the
+agent's `city` / `city_id` and `count` — no config edit there. It reaches
+Leadbay through claude.ai's runtime only on claude.ai, and through the kit's
+transport everywhere else (cowork included). Under
+`data-lb-surface="mcp-app"` it takes a height of its own (680px, or the
+host's frame limits) and a fixed 360px map on a phone, because its 100% / `vh`
+layout would collapse in a frame sized from the page. Its labels follow the
+viewer's language (English or French).
 
 When the rep is going somewhere — "I'm in Lyon Thursday", "plan my tournée",
 "who can I see on the way" — build THIS rather than the desk. Same writes,

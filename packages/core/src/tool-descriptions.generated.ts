@@ -7948,6 +7948,204 @@ were never read. Distinguish "no signal X found" (researched, no match) from
 // (/apps/mcp, and stdio with LEADBAY_MCP_APPS=1). Tools absent from this map
 // carry no apps prose.
 export const APPS_TOOL_DESCRIPTIONS: Record<string, string> = {
+  leadbay_followups_map: `## WHAT IT DOES
+
+Plot follow-up leads on a map for travel / in-person / "I'm going to <city>" intent. Same backend as pull_followups; pass \`city\` (NYC / SF / LA aliases auto-expand) and route into either \`places_map_display_v0\` (Claude native widget) or per-lead place-card prose blocks (host's auto-detected carousel).
+
+## WHEN TO USE
+
+Trigger phrases: "I'm going to <city>", "visit in person", "map of leads", "plan my itinerary".
+
+Do NOT use for: "default follow-up table" → \`leadbay_pull_followups\`; "new prospects" → \`leadbay_pull_leads\`.
+
+Use this when: geographic, travel, in-person, itinerary, or map intent; NEVER a country name — a whole-country ask means NO geo filter
+
+Examples that SHOULD invoke this tool:
+- "I'm flying to New York Thursday — who should I meet in person?"
+- "Who can I visit while I'm in Chicago next week?"
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "What should I follow up on this week?"
+- "Tell me about Acme Corp."
+
+## RENDER (quick)
+
+Two render surfaces — host picks. Primary: route to Claude's
+\`places_map_display_v0\` widget with \`{name, address (lead.location.full),
+latitude+longitude (lead.location.pos[0/1]), notes (short prose with
+bare phone+email)}\` per lead. Fallback: per-lead markdown blocks
+\`### **Company** · City, ST\` + one-sentence note + bare phone/email
+— chat hosts auto-detect into place-card carousel. Detail below.
+
+---
+
+**If the host shows the Leadbay route planner for this call, the board IS the rendering:** don't also draw a map, place cards or a table — sum up in one sentence, then offer NEXT STEPS.
+
+Plot the user's follow-up leads on an interactive map for travel / in-person / "I'm going to <city>" intent. Wraps \`leadbay_pull_followups\` (same params, response, store-then-apply geo filter); named separately so the agent has an explicit entry-point for travel intent and can route to \`places_map_display_v0\` (when the host exposes it) or emit place-card prose blocks (which most chat hosts auto-detect into Google Place cards).
+
+**Common city aliases resolve automatically** — \`NYC\` / \`New York\` → City of New York, \`SF\` / \`S.F.\` → San Francisco, \`LA\` / \`L.A.\` → Los Angeles, \`DC\` / \`Washington D.C.\` → Washington, \`Philly\` → Philadelphia, \`Vegas\` → Las Vegas, \`NOLA\` → New Orleans. Pass either an abbreviation, a city name, or a pre-resolved \`city_id\`. Ambiguous matches surface as \`status: "ambiguous_locations"\` + \`location_ambiguities[]\` — pick an id and re-call with \`city_id\`.
+
+**\`city\` is the universal SUB-country geo arg.** Despite the name, pass any place name BELOW country level: states (\`"Texas"\`, \`"California"\`), regions (\`"New England"\`, \`"Bay Area"\`), counties, neighborhoods (\`"Brooklyn"\`, \`"SoHo"\`), or cities — the \`/geo/search\` resolver indexes every level it returns and the composite picks the best match. A COUNTRY name is the one thing it must never receive (rule below). And \`keywords: ["Texas"]\` returns ≈0 hits even when the user has dozens of Texas leads — that's a text-match against company descriptions, not a geo filter. If \`keywords: ["<PlaceName>"]\` returned empty, the correct next call is \`city: "<PlaceName>"\`, NOT the unfiltered Monitor view.
+
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+\`axis: "include"\`:
+
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
+Place names never go in \`keywords\`, \`sectors\` or \`leadbay_refine_lead_targeting\` — text matches, not geo filters.
+
+
+---
+
+## RENDER — host-native map widget (REQUIRED)
+
+When the host exposes Claude's \`places_map_display_v0\`, route the leads there. It owns the visual surface: markers, place-card carousel, "Notes from Claude".
+
+**Call shape — pass the most precise data you have. A full address plus coordinates lets Google resolve a real business listing and show property pills (phone, website, Directions button, rating) on each card. City-level data gives a basic pin and your notes string only.**
+
+\`\`\`
+places_map_display_v0({
+  locations: leads.map(l => ({
+    name: l.company_name ?? l.name,
+    // ★ REQUIRED — pos is [lat, lng] in our payload. Pass them split.
+    latitude:  l.location.pos[0],
+    longitude: l.location.pos[1],
+    // ★ Pass the FULL detailed address from l.location.full
+    //   ("1140, 6th Avenue, 10036, City of New York, New York, United States"),
+    //   NOT a city-level fallback. Google's place lookup needs the street
+    //   + ZIP to resolve a business listing → that's what unlocks the
+    //   structured phone/website/rating pills on the card.
+    address: l.location.full ?? [l.location.city, l.location.state, l.location.country].filter(Boolean).join(", "),
+    notes: <one-sentence pitch — see notes recipe below>,
+    // place_id omitted — Leadbay's backend doesn't store Google Place
+    // IDs. Google resolves implicitly from name + lat/lng + address.
+    // If it doesn't find a listing (small B2B, no Google business page),
+    // the card falls back to your notes string only — that's why the
+    // notes string MUST be self-sufficient (phone + email inline).
+  })),
+  // travel_mode: "driving" if the user mentioned driving / trip, etc.
+})
+\`\`\`
+
+Skip any lead whose \`location.pos\` is null — without lat/lng the widget can't pin it. (Surface them as a "+ N leads without coordinates" footer below the widget instead.)
+
+**Notes recipe for each lead** — "Notes from Claude" on the place card.
+
+CRITICAL REALITY OF THE CAROUSEL: it renders the notes string as **a single wrapped paragraph of plain text**. The carousel renderer:
+- STRIPS markdown — \`[Name](url)\` shows as literal "Name (url)" with the URL visible mid-text;
+- COLLAPSES newlines — vertical stacking does NOT work;
+- TRUNCATES long URLs mid-string visibly;
+- DOES auto-linkify bare phone numbers (\`+1 212-555-0100\` → tappable \`tel:\`) and bare email addresses (\`name@company.com\` → tappable \`mailto:\`) — those become the only "properties" the user can act on inside the card.
+
+So the notes string MUST be short prose with bare-text channels only. Use exactly this shape (one sentence, ≤ ~30 words):
+
+\`\`\`
+★ <One-sentence sector/fit + why-now>. Reach <Contact First Last>, <role>: <bare phone>, <bare email>.
+\`\`\`
+
+Examples:
+- \`★ Strongest fit — active thread, 'trying to reach' from last Friday. Reach Troy Schirk, Principal & CIO: +1 312-550-2382, tschirk@atlasholdingsllc.com.\`
+- \`★ Mid-size HR/staffing match, multi-branch pattern. Reach Irving Enciso, Regional Ops Manager: 952-835-1288, info@employersolutionsgroup.com.\`
+
+Rules:
+- ONE sentence. No newlines. No emoji prefixes (\`👤📞✉️🌐\` add clutter but do NOT create sections — the carousel ignores layout).
+- NO markdown links anywhere in \`notes\`. Especially no LinkedIn URLs — they're long, they mid-truncate visibly, and the carousel renders them as raw text. Save LinkedIn for the chat prose below the widget.
+- Phone + email inline as bare text. They auto-linkify; that's the user's tap target inside the card.
+- Score callout (\`★ Strongest fit\`, \`Score 83\`, etc.) uses \`ai_agent_lead_score\` when present, else \`score\`.
+- Omit channels that aren't enriched yet — don't write "<no phone>".
+
+## Chat prose AFTER the widget (where markdown DOES render)
+
+The carousel is the spatial visual. The user still wants the rich contact detail somewhere — but the right surface for that is the **chat message after invoking the widget**, not the notes inside it. Chat renders markdown links, lists, emoji properly.
+
+Below the widget invocation, emit a short structured summary like:
+
+\`\`\`
+**Atlas Holdings — Far Rockaway.** ★ Strongest fit. Active thread, "trying to reach" status from last Friday; AI angle is fresh (recent strategic investment signal).
+Contact: **[Troy Schirk](<linkedin_page or constructed search URL>)**, Principal & CIO · ☎ +1 312-550-2382 · ✉ tschirk@atlasholdingsllc.com
+
+**Employer Solutions Services — Midtown.** ★ Mid-size HR/staffing match. Same address as the staffing-group sibling — single visit covers both.
+Contact: **[Irving Enciso](<linkedin URL>)**, Regional Operations Manager · ☎ 952-835-1288 · ✉ info@employersolutionsgroup.com
+\`\`\`
+
+Keep it short — 1 lead per ~3 lines, top 3–5 most relevant. The LinkedIn-linked contact name lives here (chat markdown works), the channels are listed as \` · \`-separated pills. **Do NOT enumerate the same leads as a markdown table** — this list-form summary is the chat-side detail surface.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+
+Open with **one short intro sentence** in chat ("Five lead visits across NYC for your trip next week — three in Midtown, plus Long Island and one in NJ.") and then invoke the widget, then the chat-side list above. **No markdown table.**
+
+**After the widget renders, end the turn with the NEXT STEPS surface** — not with a prose question. See "GATE — PREFER BUILT-IN HOST WIDGETS" below: surface 2–4 mutually-exclusive moves via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`) if the host exposes it, else as a short bulleted list. "Want me to plot these on a map or jump to outreach for Atlas?" is exactly the prose pattern to AVOID — it's a \`single_select\` with two options.
+
+## RENDER — fallback for hosts without \`places_map_display_v0\`
+
+If the host doesn't expose the native map, emit per-lead markdown blocks in this **exact** format — modern chat hosts (Claude.ai web, cowork) auto-detect addresses + company names and render them as a Google-Place-card carousel anyway:
+
+\`\`\`
+### **<Company Name>** · <City>, <State or Country>
+
+★ <Score callout>. <One-sentence sector fit + why-now>.
+
+👤 [<Contact First Last>](<LinkedIn URL>) — <role>
+📞 <bare phone>
+✉️ <bare email>
+🌐 <company website>
+\`\`\`
+
+Same one-channel-per-line discipline — newlines between channels so the carousel renders them as scannable properties (vs a wall of prose). Same auto-linkify rules: bare phone, bare email, markdown-wrapped contact name.
+
+The response payload carries everything you need: \`lead.company_name\` (or \`name\`), \`lead.location.city / country / full / pos\`, \`lead.score\`, \`lead.ai_agent_lead_score\`, \`lead.recommended_contact.{first_name, last_name, job_title, linkedin_page, email, phone_number}\`, \`lead.phone_numbers[]\`, \`lead.website\`, \`lead.short_description\`, \`lead.last_monitor_action\` + \`last_monitor_action_at\`. Score callout uses \`ai_agent_lead_score\` when present, else \`score\`.
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+
+
+---
+
+WHEN TO USE: the user mentions travel, in-person follow-up, "this week's trip", "visiting", "I'm going to", or any phrasing that benefits from a geographic view of pipeline. Also when the user explicitly asks for a map.
+
+WHEN NOT TO USE: for the default follow-up table (status badges, AI take, history) — that's \`leadbay_pull_followups\`. For NEW leads from the Discover wishlist — that's \`leadbay_pull_leads\`.
+
+The response shape is identical to \`leadbay_pull_followups\`: \`{leads, active_filters, pagination, total_excluded_by_pushback, _meta}\` on success; \`{status: "ambiguous_locations", location_ambiguities}\` when a passed \`city\` was ambiguous.
+`,
   leadbay_pull_leads: `## WHAT IT DOES
 
 Pull today's NEW leads from the user's Discover wishlist — fresh prospects the AI has scored for fit, not the known pipeline. Records each one as seen.
@@ -8129,6 +8327,204 @@ If nothing in the menu applies cleanly, suggest only "pull next page" and "resea
 
 // The same with the {{commerce}} blocks deleted too — /chatgpt/mcp.
 export const APPS_NO_COMMERCE_TOOL_DESCRIPTIONS: Record<string, string> = {
+  leadbay_followups_map: `## WHAT IT DOES
+
+Plot follow-up leads on a map for travel / in-person / "I'm going to <city>" intent. Same backend as pull_followups; pass \`city\` (NYC / SF / LA aliases auto-expand) and route into either \`places_map_display_v0\` (Claude native widget) or per-lead place-card prose blocks (host's auto-detected carousel).
+
+## WHEN TO USE
+
+Trigger phrases: "I'm going to <city>", "visit in person", "map of leads", "plan my itinerary".
+
+Do NOT use for: "default follow-up table" → \`leadbay_pull_followups\`; "new prospects" → \`leadbay_pull_leads\`.
+
+Use this when: geographic, travel, in-person, itinerary, or map intent; NEVER a country name — a whole-country ask means NO geo filter
+
+Examples that SHOULD invoke this tool:
+- "I'm flying to New York Thursday — who should I meet in person?"
+- "Who can I visit while I'm in Chicago next week?"
+
+Examples that should NOT invoke this tool (sound similar, route elsewhere):
+- "What should I follow up on this week?"
+- "Tell me about Acme Corp."
+
+## RENDER (quick)
+
+Two render surfaces — host picks. Primary: route to Claude's
+\`places_map_display_v0\` widget with \`{name, address (lead.location.full),
+latitude+longitude (lead.location.pos[0/1]), notes (short prose with
+bare phone+email)}\` per lead. Fallback: per-lead markdown blocks
+\`### **Company** · City, ST\` + one-sentence note + bare phone/email
+— chat hosts auto-detect into place-card carousel. Detail below.
+
+---
+
+**If the host shows the Leadbay route planner for this call, the board IS the rendering:** don't also draw a map, place cards or a table — sum up in one sentence, then offer NEXT STEPS.
+
+Plot the user's follow-up leads on an interactive map for travel / in-person / "I'm going to <city>" intent. Wraps \`leadbay_pull_followups\` (same params, response, store-then-apply geo filter); named separately so the agent has an explicit entry-point for travel intent and can route to \`places_map_display_v0\` (when the host exposes it) or emit place-card prose blocks (which most chat hosts auto-detect into Google Place cards).
+
+**Common city aliases resolve automatically** — \`NYC\` / \`New York\` → City of New York, \`SF\` / \`S.F.\` → San Francisco, \`LA\` / \`L.A.\` → Los Angeles, \`DC\` / \`Washington D.C.\` → Washington, \`Philly\` → Philadelphia, \`Vegas\` → Las Vegas, \`NOLA\` → New Orleans. Pass either an abbreviation, a city name, or a pre-resolved \`city_id\`. Ambiguous matches surface as \`status: "ambiguous_locations"\` + \`location_ambiguities[]\` — pick an id and re-call with \`city_id\`.
+
+**\`city\` is the universal SUB-country geo arg.** Despite the name, pass any place name BELOW country level: states (\`"Texas"\`, \`"California"\`), regions (\`"New England"\`, \`"Bay Area"\`), counties, neighborhoods (\`"Brooklyn"\`, \`"SoHo"\`), or cities — the \`/geo/search\` resolver indexes every level it returns and the composite picks the best match. A COUNTRY name is the one thing it must never receive (rule below). And \`keywords: ["Texas"]\` returns ≈0 hits even when the user has dozens of Texas leads — that's a text-match against company descriptions, not a geo filter. If \`keywords: ["<PlaceName>"]\` returned empty, the correct next call is \`city: "<PlaceName>"\`, NOT the unfiltered Monitor view.
+
+**One workspace = one country — a country name is NEVER a location filter.** The admin-area index holds no country nodes, so \`"France"\` matches the *commune of Francs* and \`"United States"\` matches *Statesboro*: the call is silently fenced to one village and every conclusion from it is wrong. City AND country named? Keep the city, drop the country.
+
+**On \`code: "COUNTRY_LEVEL_LOCATION"\` read \`country_locations[].axis\` and \`[].kind\` — the recovery differs per case and they are NOT interchangeable, and do NOT retry with another spelling or a nearby city.**
+
+\`axis: "include"\`:
+
+- \`home_country\`, or "nationwide" / "everywhere" → drop that ONE value. Omit the geo argument (\`city\` / \`locations\` / \`location_ids\`) only if nothing else was on it — then the result covers the whole workspace. If other values remain, keep them and describe the result as those places.
+- \`foreign_country\` ("leads in France" on a US workspace) → **unsupported, not unfiltered.** Do NOT re-run without the argument: whole-workspace results are US leads and answer nothing about France. Say the workspace holds only its own country's companies.
+- \`supranational\` ("EU", "EMEA") → name what the workspace covers, then offer the whole-workspace view as an explicit choice rather than assuming it.
+- \`country_indeterminate\` (custom/staging backend) → its country is unknown, so claim nothing about what it holds.
+
+\`axis: "exclude"\` reverses all of that — **never "omit the argument"**, which returns the very companies the user asked to remove. Excluding this workspace's own country would empty it; excluding any other country is a harmless no-op. Either way drop the value and ask what to carve out instead.
+
+On a lens-WRITING tool (\`new_lens\`, \`adjust_audience\`, \`update_lens_filter\`) write NOTHING, with no re-call in any form: when the country was the only scope; for ANY \`foreign_country\` or \`supranational\` INCLUDE however much else came with it — the sectors and sizes were QUALIFYING that territory, not a second request, so writing them alone saves a real audience for a territory nobody asked about; and for ANY non-\`foreign_country\` \`exclude\` hit, likewise — dropping it and writing the rest inverts the ask.
+
+**Never infer WHICH country this workspace serves from the user's wording** — "the whole US" does not make it one. Read \`_meta.region\` on any tool result — it outranks any recalled memory; on \`custom\`, claim nothing.
+
+Place names never go in \`keywords\`, \`sectors\` or \`leadbay_refine_lead_targeting\` — text matches, not geo filters.
+
+
+---
+
+## RENDER — host-native map widget (REQUIRED)
+
+When the host exposes Claude's \`places_map_display_v0\`, route the leads there. It owns the visual surface: markers, place-card carousel, "Notes from Claude".
+
+**Call shape — pass the most precise data you have. A full address plus coordinates lets Google resolve a real business listing and show property pills (phone, website, Directions button, rating) on each card. City-level data gives a basic pin and your notes string only.**
+
+\`\`\`
+places_map_display_v0({
+  locations: leads.map(l => ({
+    name: l.company_name ?? l.name,
+    // ★ REQUIRED — pos is [lat, lng] in our payload. Pass them split.
+    latitude:  l.location.pos[0],
+    longitude: l.location.pos[1],
+    // ★ Pass the FULL detailed address from l.location.full
+    //   ("1140, 6th Avenue, 10036, City of New York, New York, United States"),
+    //   NOT a city-level fallback. Google's place lookup needs the street
+    //   + ZIP to resolve a business listing → that's what unlocks the
+    //   structured phone/website/rating pills on the card.
+    address: l.location.full ?? [l.location.city, l.location.state, l.location.country].filter(Boolean).join(", "),
+    notes: <one-sentence pitch — see notes recipe below>,
+    // place_id omitted — Leadbay's backend doesn't store Google Place
+    // IDs. Google resolves implicitly from name + lat/lng + address.
+    // If it doesn't find a listing (small B2B, no Google business page),
+    // the card falls back to your notes string only — that's why the
+    // notes string MUST be self-sufficient (phone + email inline).
+  })),
+  // travel_mode: "driving" if the user mentioned driving / trip, etc.
+})
+\`\`\`
+
+Skip any lead whose \`location.pos\` is null — without lat/lng the widget can't pin it. (Surface them as a "+ N leads without coordinates" footer below the widget instead.)
+
+**Notes recipe for each lead** — "Notes from Claude" on the place card.
+
+CRITICAL REALITY OF THE CAROUSEL: it renders the notes string as **a single wrapped paragraph of plain text**. The carousel renderer:
+- STRIPS markdown — \`[Name](url)\` shows as literal "Name (url)" with the URL visible mid-text;
+- COLLAPSES newlines — vertical stacking does NOT work;
+- TRUNCATES long URLs mid-string visibly;
+- DOES auto-linkify bare phone numbers (\`+1 212-555-0100\` → tappable \`tel:\`) and bare email addresses (\`name@company.com\` → tappable \`mailto:\`) — those become the only "properties" the user can act on inside the card.
+
+So the notes string MUST be short prose with bare-text channels only. Use exactly this shape (one sentence, ≤ ~30 words):
+
+\`\`\`
+★ <One-sentence sector/fit + why-now>. Reach <Contact First Last>, <role>: <bare phone>, <bare email>.
+\`\`\`
+
+Examples:
+- \`★ Strongest fit — active thread, 'trying to reach' from last Friday. Reach Troy Schirk, Principal & CIO: +1 312-550-2382, tschirk@atlasholdingsllc.com.\`
+- \`★ Mid-size HR/staffing match, multi-branch pattern. Reach Irving Enciso, Regional Ops Manager: 952-835-1288, info@employersolutionsgroup.com.\`
+
+Rules:
+- ONE sentence. No newlines. No emoji prefixes (\`👤📞✉️🌐\` add clutter but do NOT create sections — the carousel ignores layout).
+- NO markdown links anywhere in \`notes\`. Especially no LinkedIn URLs — they're long, they mid-truncate visibly, and the carousel renders them as raw text. Save LinkedIn for the chat prose below the widget.
+- Phone + email inline as bare text. They auto-linkify; that's the user's tap target inside the card.
+- Score callout (\`★ Strongest fit\`, \`Score 83\`, etc.) uses \`ai_agent_lead_score\` when present, else \`score\`.
+- Omit channels that aren't enriched yet — don't write "<no phone>".
+
+## Chat prose AFTER the widget (where markdown DOES render)
+
+The carousel is the spatial visual. The user still wants the rich contact detail somewhere — but the right surface for that is the **chat message after invoking the widget**, not the notes inside it. Chat renders markdown links, lists, emoji properly.
+
+Below the widget invocation, emit a short structured summary like:
+
+\`\`\`
+**Atlas Holdings — Far Rockaway.** ★ Strongest fit. Active thread, "trying to reach" status from last Friday; AI angle is fresh (recent strategic investment signal).
+Contact: **[Troy Schirk](<linkedin_page or constructed search URL>)**, Principal & CIO · ☎ +1 312-550-2382 · ✉ tschirk@atlasholdingsllc.com
+
+**Employer Solutions Services — Midtown.** ★ Mid-size HR/staffing match. Same address as the staffing-group sibling — single visit covers both.
+Contact: **[Irving Enciso](<linkedin URL>)**, Regional Operations Manager · ☎ 952-835-1288 · ✉ info@employersolutionsgroup.com
+\`\`\`
+
+Keep it short — 1 lead per ~3 lines, top 3–5 most relevant. The LinkedIn-linked contact name lives here (chat markdown works), the channels are listed as \` · \`-separated pills. **Do NOT enumerate the same leads as a markdown table** — this list-form summary is the chat-side detail surface.
+
+## Linking a contact's name
+
+**MANDATORY: every contact name in your output — table cells, prose, headers, "Reach <Name>" callouts — MUST be wrapped in markdown link syntax \`[Name](URL)\`. Never render a contact name as bare text. A plain-text name is a broken contact card; the underlined name is the user's primary affordance for "take me to this person's profile". No "no URL available" exception — the search URL below is always constructable from name + company.**
+
+URL priority (first applicable wins):
+
+1. **Real profile** — \`contact.linkedin_page\` when it's a string starting with \`https://\` (the MCP coerces the legacy literal \`"null"\` string to real null before you see it).
+2. **Constructed people-search** — \`https://www.linkedin.com/search/results/people/?keywords=<First>+<Last>+<Company>\`. URL-encode params. Strip Inc / LLC / Corp / Ltd / GmbH / Co / S.A. / S.L. / PLC / AG / SAS / SARL suffixes from the company. Append a trailing \` °\` to the rendered name ONLY when this fallback is in use AND \`social_presence.linkedin == false\`. Never append \`°\` when a real \`linkedin_page\` was used.
+
+Never link a person's name to the company's LinkedIn page (and vice versa) — the two surfaces are different and conflating them quietly degrades the workflow.
+
+
+Open with **one short intro sentence** in chat ("Five lead visits across NYC for your trip next week — three in Midtown, plus Long Island and one in NJ.") and then invoke the widget, then the chat-side list above. **No markdown table.**
+
+**After the widget renders, end the turn with the NEXT STEPS surface** — not with a prose question. See "GATE — PREFER BUILT-IN HOST WIDGETS" below: surface 2–4 mutually-exclusive moves via your host's choice widget (\`ask_user_input_v0\` or \`AskUserQuestion\`) if the host exposes it, else as a short bulleted list. "Want me to plot these on a map or jump to outreach for Atlas?" is exactly the prose pattern to AVOID — it's a \`single_select\` with two options.
+
+## RENDER — fallback for hosts without \`places_map_display_v0\`
+
+If the host doesn't expose the native map, emit per-lead markdown blocks in this **exact** format — modern chat hosts (Claude.ai web, cowork) auto-detect addresses + company names and render them as a Google-Place-card carousel anyway:
+
+\`\`\`
+### **<Company Name>** · <City>, <State or Country>
+
+★ <Score callout>. <One-sentence sector fit + why-now>.
+
+👤 [<Contact First Last>](<LinkedIn URL>) — <role>
+📞 <bare phone>
+✉️ <bare email>
+🌐 <company website>
+\`\`\`
+
+Same one-channel-per-line discipline — newlines between channels so the carousel renders them as scannable properties (vs a wall of prose). Same auto-linkify rules: bare phone, bare email, markdown-wrapped contact name.
+
+The response payload carries everything you need: \`lead.company_name\` (or \`name\`), \`lead.location.city / country / full / pos\`, \`lead.score\`, \`lead.ai_agent_lead_score\`, \`lead.recommended_contact.{first_name, last_name, job_title, linkedin_page, email, phone_number}\`, \`lead.phone_numbers[]\`, \`lead.website\`, \`lead.short_description\`, \`lead.last_monitor_action\` + \`last_monitor_action_at\`. Score callout uses \`ai_agent_lead_score\` when present, else \`score\`.
+
+## GATE — PREFER BUILT-IN HOST WIDGETS
+
+Modern chat hosts (Claude, ChatGPT) expose first-party widgets the agent can route into. These ALWAYS produce a better UX than markdown tables / inline prose for the data shapes they support — they're tappable on mobile, persistent across turns, and integrate with the host's quick-actions.
+
+**The Big Three** — when a tool result fits, route there:
+
+| Host widget | Use when | Field map (from Leadbay payload) |
+|---|---|---|
+| \`places_map_display_v0\` + \`places_search\` (Claude) | ≥2 leads with coords / \`location.city\`, geographic / "in person" / travel intent | **Two-step**: \`places_search\` each lead (query = company + full street address) → real \`place_id\`/coords, THEN render with \`places_map_display_v0\` (Itinerary mode for a tour). Skipping \`places_search\` → schematic scatter, not a street map. |
+| \`message_compose_v1\` (Claude) | You're about to draft outreach (email / message / call opener) | \`{kind: "email", summary_title, variants: [{label, body, subject}]}\` — 2–3 variants, labels describe STRATEGY ("Push for alignment", "Reference the M&A signal"), not tone ("Friendly", "Formal") |
+| \`ask_user_input_v0\` (Claude chat / ChatGPT) **or** \`AskUserQuestion\` (Claude cowork / Claude Code) — whichever is in your tool set; their schemas differ, match the one you have | The tool's NEXT STEPS block has 2–4 mutually-exclusive next moves and the user hasn't already chosen | Per-tool schema in the server instructions + NEXT STEPS routing block. Max 3 questions. |
+
+ChatGPT exposes the same routing pattern via \`_meta.openai/outputTemplate\`. We don't ship any custom widgets ourselves — this gate is exclusively about routing into the host's first-party widgets when the data shape fits.
+
+**Rules:**
+- The widget IS the visual. Do NOT emit a markdown table or prose list of the same data alongside — that produces two competing UIs.
+- Pass identifiers (place_id, lead.id, contact_id) verbatim. Don't rewrite.
+- When the host doesn't expose the named widget, the agent falls back to the prose/table rendering the per-tool description already specifies. The directive is host-conditional; the fallback is automatic.
+- One short intro sentence in chat is enough — "Here are your 5 NYC follow-ups." Then route into the widget.
+
+
+---
+
+WHEN TO USE: the user mentions travel, in-person follow-up, "this week's trip", "visiting", "I'm going to", or any phrasing that benefits from a geographic view of pipeline. Also when the user explicitly asks for a map.
+
+WHEN NOT TO USE: for the default follow-up table (status badges, AI take, history) — that's \`leadbay_pull_followups\`. For NEW leads from the Discover wishlist — that's \`leadbay_pull_leads\`.
+
+The response shape is identical to \`leadbay_pull_followups\`: \`{leads, active_filters, pagination, total_excluded_by_pushback, _meta}\` on success; \`{status: "ambiguous_locations", location_ambiguities}\` when a passed \`city\` was ambiguous.
+`,
   leadbay_pull_leads: `## WHAT IT DOES
 
 Pull today's NEW leads from the user's Discover wishlist — fresh prospects the AI has scored for fit, not the known pipeline. Records each one as seen.

@@ -573,6 +573,15 @@ export class LeadbayClient {
    */
   commerce = true;
 
+  /**
+   * Whether this session's host renders the MCP Apps boards (the server's
+   * /chatgpt/mcp and /apps/mcp, see BuildServerOptions.includeApps). Default
+   * false — Claude. A tool reads it to offer a board the way this host can
+   * open it: there, by calling the tool the board is attached to, because the
+   * host cannot publish a Claude artifact.
+   */
+  apps = false;
+
   get baseUrl(): string {
     return this._baseUrl;
   }

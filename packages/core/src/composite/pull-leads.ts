@@ -89,6 +89,9 @@ export interface NextStepOption {
   description: string;
   kind:
     | "build_artifact"
+    // Call the tool whose result the host shows as an MCP Apps board — the
+    // non-Claude surfaces' way to "open the board" (no artifact to publish).
+    | "open_board"
     | "enrich_top_leads"
     | "pull_next_page"
     | "qualify_deeper"
