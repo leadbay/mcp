@@ -932,6 +932,7 @@ export function buildServer(
   const includeCommerce = opts.includeCommerce !== false;
   client.commerce = includeCommerce;
   const includeApps = opts.includeApps === true;
+  client.apps = includeApps;
   const toolByName = new Map<string, Tool>();
   for (const t of exposedTools) {
     if (toolByName.has(t.name) || t.name === "leadbay_login") continue;

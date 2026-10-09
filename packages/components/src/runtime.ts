@@ -21,7 +21,7 @@
 // window.LeadbayArtifacts (see build.ts).
 
 import { STYLES, STYLE_ELEMENT_ID } from "./styles.js";
-import { createMcpAppTransport, inFrame } from "./mcp-app-bridge.js";
+import { createMcpAppTransport, inFrame, type McpAppTransport } from "./mcp-app-bridge.js";
 
 export const VERSION = "0.6.0";
 
@@ -104,16 +104,69 @@ function hostCall(): CallFn | null {
   //   endpoints serve) gets no global at all: it sits in a frame and speaks
   //   JSON-RPC to its parent. See mcp-app-bridge.ts. Last, because cowork and
   //   claude.ai pages are framed too and must keep their own transport.
-  if (inFrame()) {
-    if (!mcpAppCall) mcpAppCall = createMcpAppTransport(VERSION);
-    return mcpAppCall;
-  }
-
-  return null;
+  return mcpAppTransport();
 }
 
 // One handshake per page: the transport holds the session and its pending ids.
-let mcpAppCall: CallFn | null = null;
+let mcpAppCall: McpAppTransport | null = null;
+
+/** The MCP Apps transport when it is the one this page uses — never when a
+ *  call was configured, or cowork / claude.ai provide theirs. */
+function mcpAppTransport(): McpAppTransport | null {
+  if (configuredCall) return null;
+  const g = globalThis as { cowork?: { callMcpTool?: unknown }; claude?: { use?: unknown } };
+  if (g.cowork && typeof g.cowork.callMcpTool === "function") return null;
+  if (g.claude && typeof g.claude.use === "function") return null;
+  if (!inFrame()) return null;
+  if (!mcpAppCall) mcpAppCall = createMcpAppTransport(VERSION);
+  return mcpAppCall;
+}
+
+/** The result of the tool call that OPENED this page, when the host hands it
+ *  over — today only as an MCP App view, where the host sends the call that
+ *  rendered the board. Render from it instead of calling the tool again: the
+ *  agent already paid for that call, and a second `pull_leads` posts its
+ *  "seen" receipt twice. Null everywhere else (cowork, claude.ai, a test), and
+ *  when the host sends no result or an error — the page then loads its own
+ *  data as it always has. `args` are the arguments the agent passed (a city,
+ *  a lens, a page size), so the page can open on what was asked. */
+export async function openingResult(
+  opts: { timeoutMs?: number } = {},
+): Promise<{ args: Record<string, unknown>; result: unknown } | null> {
+  const t = mcpAppTransport();
+  if (!t) return null;
+  try {
+    const o = await t.opening(opts.timeoutMs);
+    if (!o) return null;
+    const raw = o.result as { isError?: unknown } | null;
+    if (!raw || raw.isError) return null;
+    return { args: o.args ?? {}, result: normalize(o.result, undefined, "call") };
+  } catch {
+    return null;
+  }
+}
+
+/** The language to label a page in: "fr" or "en". An MCP Apps host's own
+ *  locale wins once the handshake has reported it; otherwise the browser's.
+ *  Labels only — lead data is shown as Leadbay returns it. */
+export function locale(): "fr" | "en" {
+  const host = mcpAppCall ? mcpAppCall.hostContext().locale : undefined;
+  const nav =
+    typeof navigator !== "undefined" ? (navigator.languages && navigator.languages[0]) || navigator.language : "";
+  const raw = (typeof host === "string" && host) || nav || "en";
+  return /^fr\b/i.test(raw) ? "fr" : "en";
+}
+
+/** A page's label dictionary → `t(key, vars)`. Looked up at call time, so a
+ *  page that re-renders after the host reports its locale relabels itself.
+ *  A key missing in French falls back to English, and `{name}` placeholders
+ *  are filled from `vars`. */
+export function i18n<K extends string>(dict: { en: Record<K, string>; fr?: Partial<Record<K, string>> }) {
+  return (key: K, vars?: Record<string, string | number>): string => {
+    const text = (locale() === "fr" && dict.fr && dict.fr[key]) || dict.en[key] || key;
+    return vars ? text.replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? String(vars[k]) : m)) : text;
+  };
+}
 
 let mcpPromise: Promise<unknown> | null = null;
 function mcpNamespace(use: (n: string) => Promise<unknown>): Promise<unknown> {
@@ -1084,6 +1137,20 @@ export const LEAD_STATUSES: ReadonlyArray<Option> = [
 
 const UNSET_OPTION: Option = { value: "", label: "Pick a status" };
 
+// French labels for the same values. LEAD_STATUSES stays the English source of
+// truth (it is exported); the picker relabels at load time via locale().
+const STATUS_LABELS_FR: Record<string, string> = {
+  WANTED: "En cours",
+  WON: "Gagné",
+  LOST: "Perdu",
+  UNWANTED: "Non souhaité",
+  "": "Choisir un statut",
+};
+const statusLabel = (o: Option): Option => {
+  const fr = locale() === "fr" ? STATUS_LABELS_FR[String(o.value)] : undefined;
+  return fr ? { ...o, label: fr } : o;
+};
+
 /** Lead-status picker field. Static options (no API call), so bind it with
  *  `lb.bindSelect` — the options land on the first emit.
  *
@@ -1099,9 +1166,9 @@ function leadStatus(current?: string | null): Field {
   return new Field({
     kind: "select",
     value: known ? cur : "",
-    validate: (v) => (String(v ?? "") === "" ? "Pick a status" : null),
+    validate: (v) => (String(v ?? "") === "" ? statusLabel(UNSET_OPTION).label : null),
     // Resolves immediately — this is the emit/ready bookkeeping path, not I/O.
-    load: async () => (known ? LEAD_STATUSES.slice() : [UNSET_OPTION, ...LEAD_STATUSES]),
+    load: async () => (known ? LEAD_STATUSES : [UNSET_OPTION, ...LEAD_STATUSES]).map(statusLabel),
   });
 }
 
@@ -2921,6 +2988,13 @@ export const lb = {
   configure,
   styles,
   call,
+  // The call that opened this page, when the host hands it over (MCP Apps) —
+  // render from it instead of calling again. Null elsewhere.
+  openingResult,
+  // Labels in the viewer's language ("fr" | "en"): the host's locale on MCP
+  // Apps, else the browser's. `i18n({en, fr})` → `t(key, vars)`.
+  locale,
+  i18n,
   // telemetry (product#4081) — `report` is exposed so an artifact can report a
   // failure the library cannot see (a render that threw, a control the agent
   // wired by hand). `setTelemetry(false)` opts this page out; the ACCOUNT-level

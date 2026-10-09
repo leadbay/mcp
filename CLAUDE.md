@@ -54,6 +54,13 @@ served as MCP Apps views. Rules:
 - **Tell the agent the board is the answer.** A tool with a board carries an
   `{{apps}}` block saying so (see below), or the agent redraws the same rows
   as a table under it.
+- **Two views today:** `leadbay_pull_leads` → triage board,
+  `leadbay_followups_map` → route planner. A view that loads a script declares
+  that origin and nothing else (`resourceDomains` in `apps.ts` — the route
+  planner's Leaflet on cdnjs); one that loads nothing declares no CSP. Boards
+  render the call that opened them (`lb.openingResult()`), size themselves
+  under `data-lb-surface="mcp-app"`, and label in English or French — see the
+  kit guide's *One page, three surfaces*.
 
 ### The three host-native widgets
 
