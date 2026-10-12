@@ -70,6 +70,18 @@ export const STYLES = `
 --lb-page-bg:var(--color-gray-2);
 --lb-control-border:var(--color-gray-6);
 --lb-shadow:0 0.5rem 1.5rem oklch(0 0 0/.06),0 0.125rem 0.5rem oklch(0 0 0/.04);
+/* Coloured TEXT, by role. The palette above is the web app's, verbatim, and
+   its 0.564-lightness foregrounds were made for icons, borders and dots. As
+   12–13px text on a light ground they measured 3.4–4.3:1, under AA. These
+   keep each hue and chroma and only lower the lightness until every light
+   ground they sit on (white, gray-1, gray-2, their own tint) clears 4.5:1.
+   Dark mode points them back at the palette, which already passes there. */
+--lb-text-blue:oklch(0.521 0.181 251);--lb-text-green:oklch(0.509 0.181 141);
+--lb-text-red:oklch(0.543 0.191 26);--lb-text-teal:oklch(0.479 0.182 180);
+/* A plain button follows the theme: --lb-fg on --lb-field, like every
+   control. It was a fixed white, so in dark mode it looked exactly like the
+   inverted primary (.lb-btn-submit) and the primary stopped standing out. */
+--lb-btn-border:var(--color-gray-5);
 color-scheme:light;
 /* macOS renders text heavier than intended. This belongs once on the root,
    never per component — an artifact that injects this sheet gets it for free
@@ -79,7 +91,13 @@ color-scheme:light;
 }
 :root[data-theme=dark],:root[data-lb-theme=dark]{
 --lb-surface:var(--color-gray-9);--lb-border:var(--color-gray-8);
---lb-fg:var(--color-white);--lb-muted:var(--color-gray-3);
+/* Muted is gray-5, not gray-3: gray-3 (#e0e0e0) sat so close to the white
+   --lb-fg that helper text read as loud as headings. gray-5 still clears AA
+   on the chip (6.4:1), the field and the card. */
+--lb-fg:var(--color-white);--lb-muted:var(--color-gray-5);
+--lb-text-blue:var(--color-blue-foreground);--lb-text-green:var(--color-green-foreground);
+--lb-text-red:var(--color-red-foreground);--lb-text-teal:var(--color-teal-foreground);
+--lb-btn-border:var(--color-gray-8);
 /* --lb-field must NOT equal --lb-surface: a control needs its own ground or it
    reads as text on the card (was 1.00:1). */
 --lb-field:#2c2c2c;
@@ -99,7 +117,10 @@ color-scheme:dark;
 }
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]):not([data-lb-theme=light]){
 --lb-surface:var(--color-gray-9);--lb-border:var(--color-gray-8);
---lb-fg:var(--color-white);--lb-muted:var(--color-gray-3);
+--lb-fg:var(--color-white);--lb-muted:var(--color-gray-5);
+--lb-text-blue:var(--color-blue-foreground);--lb-text-green:var(--color-green-foreground);
+--lb-text-red:var(--color-red-foreground);--lb-text-teal:var(--color-teal-foreground);
+--lb-btn-border:var(--color-gray-8);
 /* --lb-field must NOT equal --lb-surface: a control needs its own ground or it
    reads as text on the card (was 1.00:1). */
 --lb-field:#2c2c2c;
@@ -314,8 +335,8 @@ border-radius:var(--lb-radius-sm);corner-shape:squircle;padding:0.4rem 0.55rem;m
    large. The app's default variant is secondary — white ground, gray-5
    border, black text — which is what an unadorned .lb-btn already was. */
 .lb-btn{font:inherit;font-family:var(--lb-font);font-size:0.8125rem;font-weight:600;
-color:var(--color-black);background-color:var(--color-white);
-border:1px solid var(--color-gray-5);
+color:var(--lb-fg);background-color:var(--lb-field);
+border:1px solid var(--lb-btn-border);
 border-radius:0.4375rem;corner-shape:squircle;padding:0.4375rem 0.4375rem;min-height:2.125rem;
 cursor:pointer;user-select:none;-webkit-user-select:none;text-wrap:nowrap;
 font-variant-numeric:tabular-nums;
@@ -325,6 +346,15 @@ opacity .16s ease,transform .16s cubic-bezier(0.23,1,0.32,1)}
 @media (hover:hover){
 .lb-btn:hover:not([disabled]):not([data-lb-state=loading]){
 background-color:var(--color-gray-2)}}
+/* Dark: the button's ground is now --lb-field, so a gray-2 hover would put
+   white text on light grey. :where() keeps the specificity of the rule above,
+   and the variants below (.lb-btn-submit, .lb-btn-ai …) still win on order. */
+@media (hover:hover){
+:where(:root[data-theme=dark],:root[data-lb-theme=dark]) .lb-btn:hover:not([disabled]):not([data-lb-state=loading]){
+background-color:var(--lb-chip-bg)}}
+@media (hover:hover) and (prefers-color-scheme:dark){
+:where(:root:not([data-theme=light]):not([data-lb-theme=light])) .lb-btn:hover:not([disabled]):not([data-lb-state=loading]){
+background-color:var(--lb-chip-bg)}}
 /* Front-loaded press, so the tap leads the colour crossfade. */
 .lb-btn:active:not([disabled]):not([data-lb-state=loading]){transform:scale(0.97)}
 .lb-btn[disabled]{opacity:.4;cursor:default}
@@ -419,24 +449,24 @@ border-radius:var(--lb-radius-sm)}
 .lb-msg[data-tone=error]::before{content:"✕ "}
 .lb-msg[data-tone=ok]::before{content:"✓ "}
 .lb-btn[data-lb-state=success]{background-color:var(--color-green-background);
-border-color:var(--color-green-foreground);color:var(--color-green-foreground)}
+border-color:var(--color-green-foreground);color:var(--lb-text-green)}
 .lb-btn[data-lb-state=error],.lb-select[data-lb-state=error]{
 background-color:var(--color-red-background);border-color:var(--color-red-foreground);
-color:var(--color-red-foreground)}
+color:var(--lb-text-red)}
 .lb-btn[data-lb-state=unavailable],.lb-btn[disabled]{opacity:.5;cursor:not-allowed}
 .lb-msg{font-size:0.8125rem;line-height:1.45;color:var(--lb-muted)}
 /* Screen-reader-only text: control labels, unit suffixes, "opens in a new tab". */
 .lb-vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;
 overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
-.lb-msg[data-tone=error]{color:var(--color-red-foreground)}
-.lb-msg[data-tone=ok]{color:var(--color-green-foreground)}
+.lb-msg[data-tone=error]{color:var(--lb-text-red)}
+.lb-msg[data-tone=ok]{color:var(--lb-text-green)}
 .lb-chip{display:inline-flex;align-items:center;gap:.25rem;white-space:nowrap;
 font-size:0.75rem;font-weight:600;line-height:1rem;padding:0.125rem 0.5rem;
 border-radius:var(--lb-radius-sm);corner-shape:squircle;
 background-color:var(--lb-chip-bg);color:var(--lb-muted)}
-.lb-chip[data-status=WANTED]{background-color:var(--color-blue-background);color:var(--color-blue-foreground)}
-.lb-chip[data-status=WON]{background-color:var(--color-green-background);color:var(--color-green-foreground)}
-.lb-chip[data-status=LOST]{background-color:var(--color-red-background);color:var(--color-red-foreground)}
+.lb-chip[data-status=WANTED]{background-color:var(--color-blue-background);color:var(--lb-text-blue)}
+.lb-chip[data-status=WON]{background-color:var(--color-green-background);color:var(--lb-text-green)}
+.lb-chip[data-status=LOST]{background-color:var(--color-red-background);color:var(--lb-text-red)}
 .lb-chip[data-status=UNWANTED]{background-color:var(--lb-chip-bg);color:var(--lb-muted)}
 .lb-chip[data-taste=liked]{background-color:var(--color-cherry-background);color:var(--color-red-like)}
 .lb-chip[data-taste=disliked]{background-color:var(--lb-chip-bg);color:var(--lb-muted)}
@@ -460,7 +490,7 @@ color:var(--lb-muted);border-radius:0.375rem;padding:0.125rem 0.375rem;
 font-size:0.75rem;font-weight:500;line-height:1.5;white-space:nowrap}
 .lb-tags-intent>*{display:inline-flex;align-items:center;
 background-color:var(--color-teal-background);border:1px solid var(--color-teal-border);
-color:var(--color-teal-foreground);border-radius:0.375rem;padding:0.1875rem 0.4375rem;
+color:var(--lb-text-teal);border-radius:0.375rem;padding:0.1875rem 0.4375rem;
 font-size:0.75rem;line-height:1.4}
 /* The honest empty state: a blank tag row reads as a rendering bug, so say
    what is missing and what fixes it. */
@@ -490,7 +520,7 @@ font-variant-numeric:tabular-nums}
 .lb-table th[aria-sort=none]::after{content:" \\2195";opacity:.35}
 /* The row a manager is acting on. */
 .lb-table tbody tr[aria-selected=true]{background-color:var(--lb-chip-bg)}
-.lb-link{color:var(--color-blue-foreground);text-decoration:none}
+.lb-link{color:var(--lb-text-blue);text-decoration:none}
 .lb-link:hover{text-decoration:underline}
 /* Quiet text link out of the artifact. Button-height so it shares the row's
    baseline; understated so it never competes with the actions beside it. The

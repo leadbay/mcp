@@ -4,30 +4,30 @@ kind: tool-description
 short_description: |
   Returns the guided first-run walkthrough script — four one-forward-option gates
   (check the account → pull leads → draft a first email to the top one → reveal
-  who to send it to). Use when the user is new or asks to be SHOWN how Leadbay
-  works. Don't use it to answer a data question or orientation prose.
+  who to send it to). Use when the user asks to be SHOWN how Leadbay works,
+  step by step. Don't use it to answer a data question or orientation prose.
 routing:
   triggers:
     - "walk me through leadbay"
-    - "I'm new"
     - "how do I use this"
     - "getting started"
     - "show me how this works"
     - "give me a tour"
     - "help me get started"
-    - "I just installed this"
   anti_triggers:
+    - phrase: "I'm new / what can Leadbay do"
+      route_to: leadbay_welcome
     - phrase: "show me today's leads"
       route_to: leadbay_pull_leads
     - phrase: "which audiences do I have"
       route_to: leadbay_manage_lenses
     - phrase: "where am I / what's my plan and quota"
       route_to: leadbay_account_status
-  prefer_when: "the user has never used Leadbay, or asks to be SHOWN rather than told — the walkthrough runs real calls on their own account"
+  prefer_when: "the user asks to be SHOWN rather than told — the walkthrough runs real calls on their own account. A new user who only asked what is possible gets the welcome board (leadbay_welcome) instead"
   examples:
     positive:
       - "Walk me through Leadbay."
-      - "I'm new here — how do I use this?"
+      - "Can you give me a tour — how do I use this?"
       - "Can you show me how this works?"
     negative:
       - "Show me today's leads."

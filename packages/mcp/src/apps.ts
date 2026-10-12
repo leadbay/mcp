@@ -38,6 +38,9 @@ const MCP_APPS: McpApp[] = [
     tool: "leadbay_followups_map",
     resourceDomains: ["https://cdnjs.cloudflare.com"],
   },
+  // The welcome board loads nothing: its logo and icons are inline, and the
+  // live-onboarding link opens through ui/open-link.
+  { uri: "ui://leadbay/welcome", template: "onboarding", tool: "leadbay_welcome" },
 ];
 
 /** The view a tool's result renders in, or undefined for a plain tool. */

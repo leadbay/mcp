@@ -81,12 +81,14 @@ describe("leadbay_pull_leads description per surface", () => {
   });
 });
 
+const WITH_BOARD = new Set(["leadbay_pull_leads", "leadbay_followups_map", "leadbay_welcome"]);
+
 describe("tools without apps prose are untouched on an apps surface", () => {
   it("every other description on /apps/mcp equals the Claude one", async () => {
     const claude = await descriptions({});
     const apps = await descriptions({ includeApps: true });
     for (const [name, text] of apps) {
-      if (name === "leadbay_pull_leads" || name === "leadbay_followups_map") continue;
+      if (WITH_BOARD.has(name)) continue;
       expect(text, name).toBe(claude.get(name));
     }
   });
@@ -95,7 +97,7 @@ describe("tools without apps prose are untouched on an apps surface", () => {
     const chatgptBefore = await descriptions({ includeCommerce: false });
     const chatgpt = await descriptions({ includeApps: true, includeCommerce: false });
     for (const [name, text] of chatgpt) {
-      if (name === "leadbay_pull_leads" || name === "leadbay_followups_map") continue;
+      if (WITH_BOARD.has(name)) continue;
       expect(text, name).toBe(chatgptBefore.get(name));
     }
   });

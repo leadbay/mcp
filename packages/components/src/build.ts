@@ -112,7 +112,10 @@ async function main(): Promise<void> {
 // runtime inlined once, and its script. An agent publishes the result as it
 // is, so every user who asks for the board gets the same page. `</script` is
 // escaped so neither the runtime nor the page script can close its own tag.
-interface TemplateDef { dir: string; title: string; icon: string; description: string; tools: string[] }
+// `capabilities`: what the board needs on claude.ai beyond the Leadbay
+// connector, declared at publish beside `mcp` (the welcome board's `room`, for
+// sendToClaudeSession). Omitted when it needs nothing else.
+interface TemplateDef { dir: string; title: string; icon: string; description: string; tools: string[]; capabilities?: Record<string, unknown> }
 function buildTemplatesModule(runtime: string): string {
   const esc = (js: string) => js.replace(/<\/script/gi, "<\\/script");
   const read = (path: string) => readFileSync(path, "utf8").replace(/\r\n/g, "\n").trimEnd();
@@ -122,7 +125,11 @@ function buildTemplatesModule(runtime: string): string {
     const page = read(TEMPLATES_DIR + def.dir + "/page.html");
     const app = read(TEMPLATES_DIR + def.dir + "/app.js");
     const html = `${page}\n<script>${esc(runtime)}</script>\n<script>${esc(app)}</script>\n`;
-    templates[name] = { title: def.title, icon: def.icon, description: def.description, tools: def.tools, html };
+    templates[name] = {
+      title: def.title, icon: def.icon, description: def.description, tools: def.tools,
+      ...(def.capabilities ? { capabilities: def.capabilities } : {}),
+      html,
+    };
   }
   // Re-stringified so the committed module carries no whitespace or CRLF.
   // Stored as ready-made JSON STRINGS: the server pretty-prints every result
@@ -135,7 +142,7 @@ function buildTemplatesModule(runtime: string): string {
   return (
     HEADER.replace("{runtime.ts, usage-guide.md}", "{templates/, basemaps/} + runtime.ts") +
     `/** Finished boards, keyed by name. \`html\` is published as it is. */\n` +
-    `export const ARTIFACT_TEMPLATES: Record<string, { title: string; icon: string; description: string; tools: string[]; html: string }> = ${JSON.stringify(templates)};\n\n` +
+    `export const ARTIFACT_TEMPLATES: Record<string, { title: string; icon: string; description: string; tools: string[]; capabilities?: Record<string, unknown>; html: string }> = ${JSON.stringify(templates)};\n\n` +
     `/** Country outlines by workspace region, as GeoJSON serialized to a string. */\n` +
     `export const ARTIFACT_BASEMAPS: Record<string, string> = ${JSON.stringify(basemaps)};\n`
   );

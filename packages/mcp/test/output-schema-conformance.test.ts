@@ -1360,6 +1360,34 @@ const CASES: ConformanceCase[] = [
     },
   },
   {
+    toolName: "leadbay_welcome",
+    arguments: {},
+    setupMocks: () => {
+      mockHttp([
+        {
+          method: "GET",
+          path: "/1.6/users/me",
+          status: 200,
+          body: { id: "u", name: "Test User", organization: { id: "org-1", name: "Test Co", computing_intelligence: false }, last_requested_lens: null },
+        },
+        {
+          method: "GET",
+          path: "/1.6/organizations/org-1/ideal_buyer_profile",
+          status: 200,
+          body: { summary: "Gyms", key_characteristics: ["Busy floors"], anti_patterns: [], generated_at: "2026-09-01T00:00:00Z" },
+        },
+        { method: "GET", path: "/1.6/organizations/org-1/user_prompt", status: 204, body: null },
+        { method: "GET", path: "/1.6/organizations/org-1/ai_agent_questions", status: 200, body: [] },
+        {
+          method: "GET",
+          path: "/1.6/organizations/org-1/purchase_intent_tags",
+          status: 200,
+          body: [{ id: 1, display_name: "New Site Opening", tag: "new_site_opening" }],
+        },
+      ]);
+    },
+  },
+  {
     toolName: "leadbay_get_artifact_runtime",
     arguments: {},
     setupMocks: () => {
