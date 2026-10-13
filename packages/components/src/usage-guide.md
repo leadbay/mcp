@@ -231,6 +231,19 @@ The product face is `Nikkei Maru`; the stack names it first and falls back to
 the system UI font. Do **not** add an `@font-face` — artifacts are inline-only
 and a remote font URL will silently fail.
 
+Colour TEXT through the role tokens `--lb-text-blue`, `--lb-text-green`,
+`--lb-text-red` and `--lb-text-teal`, never straight from
+`--color-*-foreground`. The palette is the web app's, and its light-mode
+foregrounds are made for icons, borders and dots: as small text they fall
+under AA (3.4–4.3:1). The role tokens keep the hue, clear 4.5:1 on every light
+ground, and turn back into the palette in dark mode.
+
+`lb.styles()` injects the skin AFTER the page's own `<style>`, and `.lb-card`
+is a grid. A rule like `.ask { display: flex }` on a card ties on specificity
+and loses, so the card's buttons stretch to its full width and stop lining up.
+Give a card its own layout with `.lb-card.ask`, never a lone class. The
+welcome board (`templates/onboarding`) does this for every card.
+
 ## One page, three surfaces
 
 The finished boards open in cowork, as a published claude.ai artifact, and —
@@ -1278,6 +1291,62 @@ Changing the source or the sort resets to page 0 — page 2 of the old list is
 not page 2 of the new one. Every row is a `lb.relanceRow`, which now carries
 taste and qualify alongside contacts, status and outreach, so the row is
 complete whichever source it came from.
+
+## Recipe: the WELCOME board (a new user's first look)
+
+Served finished — do not build this by hand. Ask the kit for
+`template: "onboarding"` and publish the page as it is. `leadbay_welcome`
+says when: on a first visit, or when the user asks what Leadbay can do. On
+the MCP Apps surfaces the host shows it for `leadbay_welcome` on its own.
+
+It is the web app's welcome dialog, carried into the chat:
+
+- a greeting by first name;
+- **what our AI learned** about the business — intent signals, qualification
+  questions, the ideal buyer profile. Each section hides when Leadbay has
+  nothing for it, and the whole card hides when every section is empty. The
+  intent signals use `lb-tags-intent`, the same teal as the lead cards' intent
+  tags, so a signal looks the same wherever it appears. The ideal buyer
+  profile's summary opens with a bold "Summary:" / "Résumé :" lead-in, so a
+  summary Leadbay wrote as a fragment ("pour les équipes…") still reads as a
+  labelled line;
+- **what you can ask Leadbay** — one card per thing it does in the chat;
+- one footer action, the primary button: **Join the next live onboarding**
+  (the web app's luma.com session). There is no tour button: the guided tour
+  (`leadbay_getting_started`) is for users who ask to be walked through.
+
+Every card is a phrase the user would type, with one button. The button
+calls `lb.sendToChat(phrase, {label})`, which reaches the chat on two
+surfaces:
+- **MCP Apps host** (ChatGPT …): posts the phrase as the user's own message
+  (`ui/message`).
+- **Published claude.ai artifact** that declares the `room` capability (the
+  template does): hands `{from, label, request}` to the viewer's own Claude
+  conversation with `room.sendToClaudeSession(…, {deliver: "send"})`.
+  Claude's dialog asks them to confirm, and their Send starts the turn. Where
+  only a staged send is offered, the request waits in their composer.
+  `sendToChat` must be called straight from the click, with nothing awaited
+  before it, or claude.ai refuses it.
+
+On cowork neither exists, so `sendToChat` resolves `false` and the button
+copies the phrase instead. If the frame blocks the clipboard too, the button
+selects the phrase and tells the user to paste it. Label the button from
+`lb.canSendToChat()`, checked after both `lb.openingResult()` and
+`lb.chatSendReady()` resolve: "Ask Leadbay" when the phrase will be sent,
+"Copy the phrase" when it will not.
+Use the same pattern for any button whose job is to hand the next request
+to the assistant. When several buttons share one label, point each one's
+`aria-describedby` at its card's title, and keep its status line rendered
+while empty (never `display: none`), or screen readers miss "Copied".
+
+Where the buttons only copy, the board says so above the cards: "To start
+right away, click one of the suggestions in the chat." The assistant MUST
+then offer `leadbay_welcome`'s `starters` through its choice widget right
+after publishing the board, because those clicks are the one-click start on
+Claude.
+
+Changes to the board are made in the template source
+(`templates/onboarding/`), never in a re-implementation.
 
 ## Recipe: relance table (the follow-up board)
 

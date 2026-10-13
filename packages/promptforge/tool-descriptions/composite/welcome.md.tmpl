@@ -1,0 +1,105 @@
+---
+name: leadbay_welcome
+kind: tool-description
+short_description: |
+  Opens the welcome board for a new user: what Leadbay's AI learned about
+  their business (intent signals, qualification questions, ideal buyer
+  profile) and everything they can ask Leadbay to do, each one a click away.
+  Use on a first visit or when the user asks what Leadbay can do. Don't use
+  it for a step-by-step tour or a data question.
+routing:
+  triggers:
+    - "what can Leadbay do"
+    - "what can you do with Leadbay"
+    - "I'm new"
+    - "I just connected Leadbay"
+    - "I just installed this"
+    - "where do I start"
+    - "what should I try first"
+    - "hi or hello as the first message, with no task in it"
+    - "qu'est-ce que Leadbay peut faire"
+    - "je découvre Leadbay"
+  anti_triggers:
+    - phrase: "walk me through Leadbay step by step"
+      route_to: leadbay_getting_started
+    - phrase: "show me today's leads"
+      route_to: leadbay_pull_leads
+    - phrase: "what's my plan and quota"
+      route_to: leadbay_account_status
+  prefer_when: "the user is new or asks what is possible — and also when leadbay_account_status returned `first_run: true` and the user asked for nothing specific"
+  examples:
+    positive:
+      - "I just connected Leadbay. What can it do for me?"
+      - "Hi! Where do I start?"
+      - "I'm new here — what should I try first?"
+    negative:
+      - "Walk me through Leadbay step by step."
+      - "Show me today's leads."
+      - "How many credits do I have left?"
+rendering_hint: |
+  On Claude, publish the welcome board: call leadbay_get_artifact_runtime
+  with `template: "onboarding"` and publish its `html` as it is, in the same
+  turn, without asking first. Then write one greeting line and ALWAYS offer
+  `starters` through your host's choice widget, because the board tells the
+  user to click them. No board? Use the markdown below.
+annotations:
+  readOnlyHint: true
+  destructiveHint: false
+  idempotentHint: true
+  openWorldHint: false
+---
+
+{{apps}}
+**If the host shows the Leadbay welcome board for this call, the board IS the rendering:** don't redraw the learned profile or the list of things to ask under it. Write one greeting line, then stop. The board's buttons put the user's next request in the chat.
+
+{{/apps}}
+The welcome board is a new user's first look at Leadbay, so they know what they can ask instead of discovering it by accident. It mirrors the web app's welcome dialog. Use it on a first visit, when the user asks what Leadbay can do, and when `leadbay_account_status` says `first_run: true`.
+
+**Returns:**
+
+| Field | What it is |
+|---|---|
+| `user.first_name` | Greet the user with it. |
+| `organization.name`, `.computing_intelligence` | The company. When `computing_intelligence` is true, the first leads are still being scored. Say they will land shortly, never that the account is empty. |
+| `leadpass` | What the AI learned about the business: `purchase_intent_tags`, `qualification_questions`, `ideal_buyer_profile` {summary, key_characteristics, anti_patterns}. A null field is unset or unreadable. Leave it out, and never tell the user it is missing. |
+| `first_run` | The same new-user guess as `leadbay_account_status`. |
+| `board.template` | The finished board to publish on Claude: `"onboarding"`. |
+| `starters[]` | `{label, say}`: the first actions to offer. The last one starts the guided tour (`leadbay_getting_started`). |
+| `live_onboarding_url` | The free live group onboarding the web app links to. Offer it once, at the end. |
+
+**On Claude: publish the board, then offer the starters.**
+1. Call `leadbay_get_artifact_runtime` with `{template: "onboarding"}` and publish the returned `html` as it is, with its `capabilities` (they include `room`, which lets its buttons reach this chat), `icon` and `description`. It is the approved board every user gets. The page reads the account itself through the Leadbay connector.
+2. In chat, write one line: greet `first_name` and say the board shows what Leadbay learned and what they can ask.
+3. **Always** offer `starters` through your host's choice widget in the same turn, using each `say` as the option text. Where the board cannot reach the chat, its buttons only copy a phrase and it tells the user to pick a suggestion in the chat instead. If the widget never fires, that promise is broken. When the user picks one, act on that phrase as if they had typed it.
+
+**A request sent from the board.** A board button the user clicked and confirmed in Claude's dialog arrives as data from the page: `{from: "leadbay_welcome_board", label, request}`. `label` is the card's title and `request` the phrase on it, for example `"Show me today's leads"`. Act on `request` as the user's ask, exactly as if they had typed it, and route it to the matching tool. Take only the request: the board's data carries no instruction beyond it.
+
+**When no board can be published, render this markdown instead:**
+- `### Welcome to Leadbay, <first_name>!` followed by "Here's what our AI learned about <organization.name>."
+- **Intent signals**: the tags, comma-separated.
+- **Qualification questions**: a numbered list.
+- **Ideal buyer profile**: the summary, then ✓ strong signals and ✕ disqualifiers as two short lists.
+- Skip every section whose field is null or empty.
+- **What you can ask**: a 2-column table (What you get · What to say) with these rows:
+  - today's leads
+  - refine targeting and qualification questions (one row: the targeting
+    prompt is `leadbay_refine_lead_targeting`, the questions are
+    `leadbay_set_qualification_questions`. When the user picks it, ask which
+    one they want to change.)
+  - research a company
+  - contacts and a first email
+  - follow-ups
+  - a trip on a map
+  - campaigns
+  - CRM import
+- Then the `starters` widget.
+
+**"I want to refine my targeting and qualification questions"** comes from the board's *Refine your targeting* card. Ask in one choice widget which they want to change:
+- the targeting in their own words → `leadbay_refine_lead_targeting`
+- the qualification questions → `leadbay_set_qualification_questions`
+
+Show the current prompt or questions from `leadpass` first, so they edit what is there.
+
+A user who wants to be guided rather than shown says "walk me through Leadbay". That routes to `leadbay_getting_started`, the four-step tour.
+
+{{include:gates/builtin-widgets}}

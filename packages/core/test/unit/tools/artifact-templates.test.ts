@@ -20,8 +20,8 @@ const get = (template?: string) => artifactKit.execute(client(), template ? { te
 beforeEach(() => resetHttpMock());
 
 describe("the kit serves finished boards", () => {
-  it("offers exactly the route planner and the triage board", () => {
-    expect([...TEMPLATE_NAMES].sort()).toEqual(["route_planner", "triage_board"]);
+  it("offers exactly the route planner, the triage board and the welcome board", () => {
+    expect([...TEMPLATE_NAMES].sort()).toEqual(["onboarding", "route_planner", "triage_board"]);
   });
 
   it("returns the page, its tools and how to publish it", async () => {

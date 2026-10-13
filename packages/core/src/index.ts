@@ -104,6 +104,7 @@ import { researchLeadById } from "./composite/research-lead-by-id.js";
 import { researchLeadByNameFuzzy } from "./composite/research-lead-by-name-fuzzy.js";
 import { getQualificationQuestions } from "./composite/get-qualification-questions.js";
 import { gettingStarted } from "./composite/getting-started.js";
+import { welcome } from "./composite/welcome.js";
 import { setQualificationQuestions } from "./composite/set-qualification-questions.js";
 import { getLeadCustomFields } from "./composite/get-lead-custom-fields.js";
 import { accountHistory } from "./composite/account-history.js";
@@ -174,7 +175,7 @@ export {
   pullLeads, pullFollowups, followupsMap, tourPlan, listCampaigns,
   campaignProgression, campaignCallSheet, researchLeadById, researchLeadByNameFuzzy,
   getQualificationQuestions, getLeadCustomFields,
-  gettingStarted,
+  gettingStarted, welcome,
   setQualificationQuestions,
   accountHistory,
   recallOrderedTitles, accountStatus, scanPortfolioSignals, teamActivity,
@@ -288,6 +289,10 @@ export const compositeReadTools: Tool[] = [
   // manifest's gate-4 branch ends the tour after gate 3 rather than offering a
   // button whose tool cannot run.
   gettingStarted,
+  // The welcome board (onboarding template): what the AI learned about the
+  // business plus everything the user can ask, with the tour as one card.
+  // Read-only, so it is there on every deployment like the tour.
+  welcome,
   // Per-lead custom-field VALUES. ALWAYS exposed: complements the always-on
   // list_mappable_fields (which returns DEFINITIONS only). The lead payload
   // embeds each field's definition, so no catalog join is needed (issue #3768).

@@ -81,6 +81,7 @@ const TOOLS_WITH_ROUTING = new Set([
   "leadbay_account_history",
   "leadbay_get_artifact_runtime",
   "leadbay_getting_started",
+  "leadbay_welcome",
   "leadbay_team_activity",
   "leadbay_set_telemetry",
   "leadbay_enrich_contacts",

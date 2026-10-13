@@ -226,6 +226,9 @@ export interface OrgPayload {
   computing_intelligence?: boolean;
   quota_plan?: string;
   billing?: BillingStatePayload | null;
+  // Where the org is in the web app's signup wizard. "FINISHED" once its CRM
+  // import (or skip) has been processed. Read by isFirstRun().
+  onboarding_step?: "ORGANIZATION_INFO" | "CRM" | "ICP" | "PROCESSING" | "FINISHED" | string;
 }
 
 export interface NotePayload {

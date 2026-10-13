@@ -10,6 +10,7 @@ import type {
 } from "../types.js";
 import { fetchTerminalNotifications } from "../notifications/catch-up.js";
 import { isUnlimitedAccount } from "./_credits-helpers.js";
+import { isFirstRun } from "./_first-run.js";
 
 import { leadbay_account_status as ACCOUNT_STATUS_DESCRIPTION } from "../tool-descriptions.generated.js";
 
@@ -18,7 +19,9 @@ import { leadbay_account_status as ACCOUNT_STATUS_DESCRIPTION } from "../tool-de
 // without these four org settings the agent could answer "yes" and nothing
 // else. Each read settles on its own: a failed read is null (unknown), never
 // an empty list that would read as "not configured", and never fails the call.
-async function readSearchConfiguration(
+// leadbay_welcome shows the same four settings as its "what our AI learned"
+// card, so it reads them through here too.
+export async function readSearchConfiguration(
   client: LeadbayClient,
   orgId: string,
   ctx?: ToolContext
@@ -101,6 +104,11 @@ export const accountStatus: Tool<Record<string, never>> = {
               "True for internal/unlimited accounts (billing disabled server-side). When true, DO NOT read the null `plan` or absent quota as 'no credits' — the account has unlimited credits; enrichment/qualify proceed freely. Stay SILENT on credits: don't announce 'unlimited', don't show a balance, and never tell the user they're out of credits. False for normal accounts, where the usual quota/credit story applies.",
           },
         },
+      },
+      first_run: {
+        type: "boolean",
+        description:
+          "True when this looks like the user's first steps in Leadbay (never pulled a batch of leads, or the org's signup is still processing). When true and the user asked for nothing specific, open the welcome board with leadbay_welcome. When they did ask for something, answer it first, then offer the welcome board once as a next step.",
       },
       last_requested_lens: {
         type: ["string", "null"],
@@ -318,6 +326,7 @@ export const accountStatus: Tool<Record<string, never>> = {
         // plan:null as "no credits" and refuses enrichment. product#3851.
         unlimited_credits: isUnlimitedAccount(me),
       },
+      first_run: isFirstRun(me),
       // Lens is withheld unless the user asked (lensAsked, above). When present,
       // the id is normalized to the STRING form (my-lenses.ts) so it matches the
       // schema and never drifts string-vs-number across accounts.

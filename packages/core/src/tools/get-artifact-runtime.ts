@@ -68,7 +68,7 @@ export const artifactKit: Tool<ArtifactKitParams> = {
         type: "string",
         enum: TEMPLATE_NAMES,
         description:
-          "A finished board to publish as it is: \"route_planner\" (follow-ups on a map) or \"triage_board\" (today's leads as cards). Omit to get the runtime and usage guide for building a custom page.",
+          "A finished board to publish as it is: \"route_planner\" (follow-ups on a map), \"triage_board\" (today's leads as cards) or \"onboarding\" (the welcome board for a new user). Omit to get the runtime and usage guide for building a custom page.",
       },
     },
     additionalProperties: false,
@@ -94,7 +94,9 @@ export const artifactKit: Tool<ArtifactKitParams> = {
         icon: t.icon,
         description: t.description,
         html: t.html,
-        capabilities: { mcp: { servers: [{ server: "Leadbay", tools: t.tools }] } },
+        // The board's own extras (the welcome board's `room`, which lets its
+        // buttons hand a request to the viewer's chat) beside the connector.
+        capabilities: { ...(t.capabilities ?? {}), mcp: { servers: [{ server: "Leadbay", tools: t.tools }] } },
         instructions:
           "Publish `html` AS IT IS, as a new artifact, with `capabilities`, `icon` and `description` from this result. " +
           "Do not restyle, rewrite or trim it: this page is the board every user gets. " +

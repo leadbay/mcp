@@ -7,6 +7,9 @@
 //   view → host   ui/notifications/initialized
 //   view → host   tools/call               proxied by the host to OUR server
 //   view → host   ui/open-link             a sandboxed frame cannot open tabs
+//   view → host   ui/message               a phrase posted as the user's own chat
+//                                          message — only when the host lists
+//                                          `message` in its hostCapabilities
 //   view → host   ui/notifications/size-changed
 //   host → view   ping, ui/resource-teardown   answered with {}
 //   host → view   ui/notifications/host-context-changed   theme / size / locale kept
@@ -68,6 +71,11 @@ export type McpAppTransport = CallFn & {
   opening(timeoutMs?: number): Promise<McpAppOpening | null>;
   /** The host context so far (theme, locale, containerDimensions, …). */
   hostContext(): Record<string, any>;
+  /** True once the handshake has shown the host takes `ui/message`. */
+  canSendMessage(): boolean;
+  /** Post `text` into the chat as the user's message. Resolves false when the
+   *  host does not take messages or refuses this one. */
+  sendMessage(text: string): Promise<boolean>;
 };
 
 // The opening result may still be computing when the view appears — a host
@@ -83,6 +91,7 @@ export function createMcpAppTransport(
   let nextId = 1;
   let session: Promise<void> | null = null;
   let context: Record<string, any> = {};
+  let capabilities: Record<string, any> = {};
   // Only the FIRST tool-input / tool-result: the host may also report calls
   // the view itself makes later, and those did not open it.
   let openingArgs: Record<string, unknown> | null | undefined;
@@ -175,6 +184,8 @@ export function createMcpAppTransport(
         }
         const ctx = (result as { hostContext?: unknown } | undefined)?.hostContext;
         context = ctx && typeof ctx === "object" ? { ...(ctx as Record<string, any>) } : {};
+        const caps = (result as { hostCapabilities?: unknown } | undefined)?.hostCapabilities;
+        capabilities = caps && typeof caps === "object" ? (caps as Record<string, any>) : {};
         if (typeof document !== "undefined") {
           document.documentElement.setAttribute("data-lb-surface", "mcp-app");
         }
@@ -215,7 +226,23 @@ export function createMcpAppTransport(
     return { args: openingArgs ?? null, result: openingResult };
   }
 
-  return Object.assign(call, { opening, hostContext: () => context });
+  const canSendMessage = () => capabilities.message != null;
+
+  async function sendMessage(text: string): Promise<boolean> {
+    await connect();
+    if (!canSendMessage()) return false;
+    try {
+      const r = (await request("ui/message", {
+        role: "user",
+        content: [{ type: "text", text }],
+      })) as { isError?: unknown } | null;
+      return !(r && r.isError);
+    } catch {
+      return false;
+    }
+  }
+
+  return Object.assign(call, { opening, hostContext: () => context, canSendMessage, sendMessage });
 }
 
 /** Apply what the page follows from the host context: the theme, and the
