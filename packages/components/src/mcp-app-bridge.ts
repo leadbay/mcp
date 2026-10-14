@@ -270,7 +270,18 @@ function applyHostContext(ctx: Record<string, any>): void {
 function applyHostTheme(theme: unknown): void {
   if (typeof document === "undefined") return;
   if (theme !== "light" && theme !== "dark") return;
-  document.documentElement.setAttribute("data-theme", theme);
+  const root = document.documentElement;
+  if (root.getAttribute("data-theme") === theme) return;
+  // Switch with transitions off: otherwise the buttons fade to the new
+  // colours over 160ms while every other surface changes at once.
+  const freeze = document.createElement("style");
+  freeze.textContent = "*,*::before,*::after{transition:none!important}";
+  (document.head || root).appendChild(freeze);
+  root.setAttribute("data-theme", theme);
+  void root.offsetHeight; // apply the new colours while the freeze holds
+  const lift = () => freeze.remove();
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(lift);
+  else setTimeout(lift, 0);
 }
 
 // The host sizes the frame from these reports; without them an inline view is

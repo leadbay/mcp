@@ -1139,6 +1139,7 @@ export function bindAction(el: HTMLElement, action: Action): () => void {
   // artifact — still claiming "saved" after the rep has changed the value to
   // something that was never written.
   let settle: ReturnType<typeof setTimeout> | undefined;
+  let refocus = false;
   const unsub = action.subscribe(() => {
     const state = action.error?.unavailable
       ? "unavailable"
@@ -1150,7 +1151,14 @@ export function bindAction(el: HTMLElement, action: Action): () => void {
             ? "success"
             : "ready";
     el.setAttribute("data-lb-state", state);
+    // Disabling a focused button drops its focus to the page; note it, and
+    // give it back when the write settles, so a keyboard user stays put.
+    if (action.loading && typeof document !== "undefined" && document.activeElement === el) refocus = true;
     if ("disabled" in el) (el as unknown as { disabled: boolean }).disabled = action.loading;
+    if (!action.loading && refocus) {
+      refocus = false;
+      (el as HTMLElement).focus({ preventScroll: true });
+    }
     // aria-busy is the assistive-tech equivalent of the loading style; without
     // it an in-flight write is silent to a screen reader.
     el.setAttribute("aria-busy", String(action.loading));
@@ -1318,6 +1326,12 @@ function setStatus(opts: SetStatusOpts): Action {
       if (!Array.isArray(failed) || failed.length === 0) return null;
       const total = ids().length;
       const first = failed[0]?.message ?? "write rejected";
+      // Labelled in the viewer's language, like the page around it.
+      if (locale() === "fr") {
+        return failed.length === total
+          ? `Statut non appliqué : ${first}. Réessayez.`
+          : `${failed.length} leads sur ${total} en échec : ${first}. Réessayez pour ceux-là.`;
+      }
       return failed.length === total
         ? `Status not applied: ${first}`
         : `${failed.length} of ${total} leads failed: ${first}`;
@@ -1463,12 +1477,22 @@ function qualify(opts: QualifyOpts): Action {
         // `failed[]` entries carry `error`, not `message` — set_lead_status
         // uses the other key, and reading the wrong one prints "undefined".
         const first = failed[0]?.error ?? "launch rejected";
+        if (locale() === "fr") {
+          return failed.length >= total
+            ? `La qualification n'a pas démarré : ${first}. Réessayez.`
+            : `${failed.length} leads sur ${total} n'ont pas démarré : ${first}. Réessayez pour ceux-là.`;
+        }
         return failed.length >= total
           ? `Qualification did not start: ${first}`
           : `${failed.length} of ${total} leads did not start: ${first}`;
       }
       if (res.quota_exceeded) {
         const ok = res.launched_count ?? 0;
+        if (locale() === "fr") {
+          return ok > 0
+            ? `Quota atteint — ${ok} sur ${total} lancés, les autres n'ont pas démarré. Réessayez après la remise à zéro du quota.`
+            : "Quota atteint — aucun lead mis en file. Réessayez après la remise à zéro du quota.";
+        }
         return ok > 0
           ? `Quota reached — ${ok} of ${total} launched, the rest were not started.`
           : "Quota reached — no leads were queued.";

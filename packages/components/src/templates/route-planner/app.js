@@ -263,6 +263,7 @@
   const CHANNELS = ["channelVisit", "channelCall", "channelEmail", "channelMessage"]
 
   const state = {
+    panelView: null, // what the panel last showed: "overview" or "lead:<id>"
     leadsById: new Map(),
     leadOrder: [],
     total: 0,
@@ -948,7 +949,7 @@
       showHome()
       return
     }
-    map.fitBounds(L.latLngBounds(positions).pad(0.15), { maxZoom: 11 })
+    map.fitBounds(L.latLngBounds(positions).pad(0.15), { maxZoom: 11, animate: !prefersReducedMotion() })
   }
 
   // SELECTION
@@ -976,11 +977,61 @@
 
   // PANEL
 
+  // The panel is rebuilt on every change, so three things are carried across
+  // the rebuild by hand:
+  //   scroll  only a new view (overview ↔ a lead, or another lead) goes back
+  //           to the top; moving a stop, adding one, or more leads loading
+  //           leaves the rep where they were reading
+  //   focus   the button the rep pressed is found again by its data-focus-key,
+  //           so a keyboard user can press "move up" twice in a row
+  //   stops   each route stop that changed place slides from where it was
+  //           (220ms, transform only); reduced motion fades it in instead
   function renderPanel() {
     const panel = document.getElementById("panel")
     const lead = state.selectedId && state.leadsById.get(state.selectedId)
+    const view = lead ? "lead:" + lead.id : "overview"
+    const sameView = view === state.panelView
+    state.panelView = view
+
+    const scrollTop = panel.scrollTop
+    const focusKey = panel.contains(document.activeElement) ? document.activeElement.getAttribute("data-focus-key") : null
+    const focusIndex = focusKey ? [...panel.querySelectorAll(".stop")].findIndex((row) => row.contains(document.activeElement)) : -1
+    const stopTops = new Map()
+    if (sameView) for (const row of panel.querySelectorAll(".stop[data-stop-id]")) stopTops.set(row.dataset.stopId, row.getBoundingClientRect().top)
+
     panel.replaceChildren(...(lead ? renderLeadDetail(lead) : renderOverview()))
-    panel.scrollTop = 0
+    panel.scrollTop = sameView ? scrollTop : 0
+
+    if (focusKey) restorePanelFocus(panel, focusKey, focusIndex)
+    if (stopTops.size) slideMovedStops(panel, stopTops)
+  }
+
+  function restorePanelFocus(panel, focusKey, focusIndex) {
+    const usable = (element) => element && !element.disabled
+    const byKey = (key) => [...panel.querySelectorAll("[data-focus-key]")].find((element) => element.getAttribute("data-focus-key") === key)
+    let target = byKey(focusKey)
+    // Moved to the end of the list, its arrow is now disabled: stay on the stop.
+    if (!usable(target)) target = byKey("name:" + focusKey.slice(focusKey.indexOf(":") + 1))
+    // Removed: the stop that took its place, else the first one left.
+    if (!usable(target)) {
+      const rows = panel.querySelectorAll(".stop")
+      const row = rows[Math.min(focusIndex, rows.length - 1)]
+      target = row && row.querySelector('[data-focus-key^="remove:"]')
+    }
+    if (usable(target)) target.focus()
+  }
+
+  function slideMovedStops(panel, stopTops) {
+    for (const row of panel.querySelectorAll(".stop[data-stop-id]")) {
+      const before = stopTops.get(row.dataset.stopId)
+      if (before === undefined || !row.animate) continue
+      const dy = before - row.getBoundingClientRect().top
+      if (Math.abs(dy) < 1) continue
+      row.animate(
+        prefersReducedMotion() ? [{ opacity: 0 }, { opacity: 1 }] : [{ transform: `translateY(${dy}px)` }, { transform: "none" }],
+        { duration: prefersReducedMotion() ? 150 : 220, easing: "cubic-bezier(0.23, 1, 0.32, 1)" },
+      )
+    }
   }
 
   function renderOverview() {
@@ -1008,20 +1059,20 @@
       list.append(
         h(
           "div",
-          { class: "stop" },
+          { class: "stop", "data-stop-id": stop.id },
           h("span", { class: "stop-num", text: String(index + 1), "aria-hidden": "true" }),
           h(
             "div",
             { class: "row-main" },
-            h("button", { class: "stop-name", type: "button", text: stop.name, onClick: handleStopOpen(stop.id), "aria-label": t("stopAria", { n: index + 1, name: stop.name }) }),
+            h("button", { class: "stop-name", type: "button", text: stop.name, "data-focus-key": `name:${stop.id}`, onClick: handleStopOpen(stop.id), "aria-label": t("stopAria", { n: index + 1, name: stop.name }) }),
             h("span", { class: "row-sub", text: [stop.place, legKm !== null ? `+${formatKm(legKm)}` : t("start")].filter(Boolean).join(" · ") }),
           ),
           h(
             "div",
             { class: "stop-tools" },
-            h("button", { class: "icon-btn", type: "button", title: t("moveUp"), "aria-label": t("moveUpAria", { name: stop.name }), disabled: index === 0, onClick: handleStopMove(index, -1) }, svgIcon(ICONS.up)),
-            h("button", { class: "icon-btn", type: "button", title: t("moveDown"), "aria-label": t("moveDownAria", { name: stop.name }), disabled: index === stops.length - 1, onClick: handleStopMove(index, 1) }, svgIcon(ICONS.down)),
-            h("button", { class: "icon-btn", type: "button", title: t("removeFromRoute"), "aria-label": t("removeAria", { name: stop.name }), onClick: handleStopRemove(stop.id) }, svgIcon(ICONS.remove)),
+            h("button", { class: "icon-btn", type: "button", title: t("moveUp"), "aria-label": t("moveUpAria", { name: stop.name }), "data-focus-key": `up:${stop.id}`, disabled: index === 0, onClick: handleStopMove(index, -1) }, svgIcon(ICONS.up)),
+            h("button", { class: "icon-btn", type: "button", title: t("moveDown"), "aria-label": t("moveDownAria", { name: stop.name }), "data-focus-key": `down:${stop.id}`, disabled: index === stops.length - 1, onClick: handleStopMove(index, 1) }, svgIcon(ICONS.down)),
+            h("button", { class: "icon-btn", type: "button", title: t("removeFromRoute"), "aria-label": t("removeAria", { name: stop.name }), "data-focus-key": `remove:${stop.id}`, onClick: handleStopRemove(stop.id) }, svgIcon(ICONS.remove)),
           ),
         ),
       )
@@ -1415,7 +1466,7 @@
         return
       }
       const stop = state.route.find((routeStop) => routeStop.id === leadId)
-      if (stop) map.flyTo(stop.pos, Math.max(map.getZoom(), 11))
+      if (stop) map.flyTo(stop.pos, Math.max(map.getZoom(), 11), { duration: prefersReducedMotion() ? 0 : 0.6 })
     }
   }
 
@@ -1447,12 +1498,24 @@
     }
   }
 
+  // The removed stop leaves softly (150ms, fading and lifting 4px) before
+  // the list redraws and the stops below slide up into its place: an
+  // instant exit was the one step with no continuity. Instant under
+  // reduced motion; a second click while it leaves does nothing.
   function handleStopRemove(leadId) {
     return function handleClick() {
-      const index = routeIndex(leadId)
-      if (index >= 0) state.route.splice(index, 1)
-      afterRouteChange()
-      renderPanel()
+      const row = [...document.querySelectorAll(".stop[data-stop-id]")].find((el) => el.dataset.stopId === String(leadId))
+      if (row && row.dataset.leaving) return
+      const remove = () => {
+        const index = routeIndex(leadId)
+        if (index >= 0) state.route.splice(index, 1)
+        afterRouteChange()
+        renderPanel()
+      }
+      if (!row || !row.animate || prefersReducedMotion()) return remove()
+      row.dataset.leaving = "yes"
+      row.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(-4px)" }],
+        { duration: 150, easing: "cubic-bezier(0.23, 1, 0.32, 1)", fill: "forwards" }).finished.then(remove, remove)
     }
   }
 

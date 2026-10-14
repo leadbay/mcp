@@ -5,74 +5,310 @@
      go dark, and a fixed #f0f0f0 ground left the title white on light grey. */
   body { margin: 0; background: var(--lb-page-bg); color: var(--lb-fg); font-family: var(--lb-font); }
   .page { max-width: 1180px; margin: 0 auto; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; }
-  .page-head h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
-  .page-head p { margin: 2px 0 0; font-size: 13px; color: var(--lb-muted); }
-  .deck { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; align-items: start; }
+  .page-head h1 { margin: 0; font-size: 1.125rem; font-weight: 700; letter-spacing: -0.01em; }
+  .page-head p { margin: 2px 0 0; font-size: 0.8125rem; color: var(--lb-muted); text-wrap: pretty; }
+  /* The dim while a page loads (the skin's .lb-deck) eases in and out rather
+     than flashing on a quick answer. Opacity only, so reduced motion keeps it. */
+  /* min(320px, 100%): a plain 320px floor overflowed a 320px-wide screen
+     (288px of content), cutting the status, actions and "Open" off the card. */
+  .deck { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 12px; align-items: start;
+    transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1); }
+  /* The board enters once, in reading order, --enter-step apart: the title and its count,
+     its line, the toolbar's box, then its two groups (filters, bulk apply),
+     then the cards (app.js starts them at 250ms, 60ms apart, or at once if the batch
+     lands later), then the pager. These pieces are never rebuilt, so nothing
+     replays; only the first successful batch of cards enters, and routine
+     triage renders stay instant. Under reduced motion everything fades in
+     together, without moving. */
+  /* Shared with the welcome board and the route planner: 280ms per piece,
+     50ms apart, on the iOS drawer curve, which settles softly; a page
+     entrance plays once and answers no click. app.js starts the cards at
+     5 × the step (250ms): change both together. */
+  :root { --enter-dur: 280ms; --enter-ease: cubic-bezier(0.32, 0.72, 0, 1); --enter-step: 50ms; }
+  @keyframes triage-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes triage-fade { from { opacity: 0; } to { opacity: 1; } }
+  .triage-enter, .page-title, .page-head p, .lb-toolbar, .lb-toolbar > .lb-group, .lb-pager {
+    animation: triage-enter var(--enter-dur) var(--enter-ease) both;
+    animation-delay: calc(var(--d, 0) * var(--enter-step));
+  }
+  .page-head p { --d: 1; }
+  /* The box only fades: its groups carry the rise. Both rising made the
+     groups travel 16px, their move riding on the box's. */
+  .lb-toolbar { --d: 2; animation-name: triage-fade; }
+  .lb-toolbar > .filters { --d: 3; }
+  .lb-toolbar > .bulk { --d: 4; }
+  .lb-pager { --d: 11; }  /* after the sixth card: 250ms + 5 × 60ms */
+  @media (prefers-reduced-motion: reduce) {
+    .triage-enter, .page-title, .page-head p, .lb-toolbar, .lb-toolbar > .lb-group, .lb-pager {
+      animation-name: triage-fade; animation-delay: 0ms !important;
+    }
+  }
+
+  /* An empty state spans the whole grid (a lone grid item sat in the first
+     320px column, at the left). */
+  .deck > .lb-empty { grid-column: 1 / -1; }
+  .lb-empty > .lb-btn { margin-top: 8px; }  /* "Try again" under a failed first load */
+
+  /* The first load: three skeleton cards in the lead card's shape (title row
+     with its two taste buttons, the place tags, the why-it-fits lines, the
+     section titles and bars, the status select, the four action tiles, the
+     note field and button, the footer), so the deck has its real rhythm
+     before the leads land and the cards replace them where they stood. The
+     bars pulse gently, still under reduced motion; they enter right after the
+     toolbar. Decorative — a hidden status line says "Loading…". Same skeleton
+     as the welcome board's: the light grey-4 / dark grey-8 bar. */
+  :root { --tb-skeleton: var(--color-gray-4); }
+  :root[data-theme=dark], :root[data-lb-theme=dark] { --tb-skeleton: var(--color-gray-8); }
+  /* The card's own surface (the skin's .lb-card values), on a class of its
+     own so nothing waiting for the first .lb-card takes a skeleton for it. */
+  .sk-card { display: flex; flex-direction: column; gap: 10px; padding: 0.875rem;
+    background-color: var(--lb-surface); border: 1px solid var(--lb-border); border-radius: var(--lb-radius);
+    corner-shape: squircle; box-shadow: var(--lb-shadow);
+    animation: triage-enter var(--enter-dur) var(--enter-ease) both; animation-delay: calc(5 * var(--enter-step) + var(--i, 0) * 60ms); }
+  .sk { display: block; border-radius: 6px; background: var(--tb-skeleton); animation: tb-pulse 1.4s ease-in-out infinite; }
+  .sk-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sk-box { width: 16px; height: 16px; border-radius: 4px; }
+  .sk-name { width: 45%; height: 16px; margin-inline-end: auto; }  /* pushes the two taste squares to the far edge */
+  .sk-icon { width: 34px; height: 34px; border-radius: 0.4375rem; }
+  .sk-pill { width: 96px; height: 20px; }
+  .sk-line { width: 92%; height: 11px; }
+  .sk-line.short { width: 60%; }
+  .sk-title { width: 28%; height: 12px; margin-top: 8px; }
+  .sk-field { width: 100%; height: 34px; border-radius: var(--lb-radius-sm); }
+  .sk-grow { flex: 1 1 auto; width: auto; }
+  .sk-btn { width: 132px; height: 34px; border-radius: var(--lb-radius-sm); }
+  .sk-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .sk-tiles > .sk { height: 34px; border-radius: var(--lb-radius-sm); }
+  .sk-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+  .sk-qualify { width: 74px; height: 32px; border-radius: var(--lb-radius-sm); }
+  .sk-open { width: 112px; height: 11px; }
+  @keyframes tb-pulse { 50% { opacity: .55; } }
+  /* A card replacing its settled skeleton: the surface stays exactly where
+     the skeleton stood, only the contents fade in. Opacity only, so reduced
+     motion keeps it. */
+  .triage-swap > * { animation: triage-fade 180ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+  @media (prefers-reduced-motion: reduce) {
+    .sk { animation: none; }
+    .sk-card { animation-name: triage-fade; animation-delay: 0ms; }
+  }
 
   .fit { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .bar { font-size: 14px; letter-spacing: 1px; background: none; padding: 0; color: var(--lb-fg); }
-  .verdict { font-size: 12px; font-weight: 600; color: var(--lb-muted); }
-  .verdict[data-v="boosted"] { color: var(--color-green-foreground); }
-  .verdict[data-v="penalised"] { color: var(--color-red-foreground); }
+  /* One symbol face for ▰ ❖ ▱: the default monospace lacks them and each
+     glyph fell back to a different font, at a different size. */
+  .bar { font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", monospace; font-size: 0.875rem;
+    line-height: 1; letter-spacing: 0.07em; background: none; padding: 0; color: var(--lb-fg); }
+  .nowrap { white-space: nowrap; }
+  .verdict { font-size: 0.75rem; font-weight: 600; color: var(--lb-muted); }
+  /* The skin's text-role tokens: the palette foregrounds are for icons and
+     dots, and green measured 4.06:1 as 12px text on the card (AA is 4.5). */
+  .verdict[data-v="boosted"] { color: var(--lb-text-green); }
+  .verdict[data-v="penalised"] { color: var(--lb-text-red); }
+  /* Clamped to 3 lines; app.js shows a "Show more" toggle only on an
+     excerpt that actually overflows, so the full text is always reachable. */
   .excerpt { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .excerpt[data-open] { display: block; overflow: visible; }
+  .excerpt-toggle { justify-self: start; font: inherit; font-size: 0.75rem; font-weight: 600; padding: 0; border: 0; background: none;
+    color: var(--lb-text-blue); cursor: pointer; }
+  .excerpt-toggle[hidden] { display: none; }
+  /* A small text button: its target reaches ~40px through an overhang. */
+  .excerpt-toggle { position: relative; }
+  .excerpt-toggle::before { content: ""; position: absolute; inset: -12px -8px; }
+  .excerpt-toggle:focus-visible { outline: 2px solid var(--color-blue-foreground); outline-offset: 2px; border-radius: 4px; }
 
   /* Prospecting actions: the web app's per-action colours (ProspectionCell).
      The foreground is for the dot and the border only — yellow's is too light
      to read as text. */
   .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-  .lb-action { font: inherit; font-size: 13px; text-align: start; display: flex; align-items: center; gap: 8px;
-    padding: 8px 10px; border-radius: var(--lb-radius-sm); border: 1px solid var(--lb-border);
-    background: var(--lb-field); color: var(--lb-fg); cursor: pointer; transition: background-color .12s ease; }
+  .lb-action { font: inherit; font-size: 0.8125rem; text-align: start; display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: var(--lb-radius-sm); border: 1px solid var(--lb-control-border);
+    background: var(--lb-field); color: var(--lb-fg); cursor: pointer;
+    transition: background-color .12s ease, border-color .12s ease, transform 160ms cubic-bezier(0.23, 1, 0.32, 1), opacity 160ms cubic-bezier(0.23, 1, 0.32, 1); }
+  .lb-action[data-pressed]:not([aria-disabled="true"]) { transform: scale(.97); }
+  /* The dot is the action's colour, filled whether ticked or not. Ticked is
+     not colour alone: a ✓ closes the row (it also survives forced colours);
+     the tint and border alone measured 1.09–1.18:1 against an unticked tile. */
   .lb-action::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--action-fg); }
-  .lb-action:hover { background: var(--lb-chip-bg); }
+  .lb-action[aria-checked="true"]::after { content: "✓"; margin-inline-start: auto; font-weight: 700; color: var(--lb-fg); }
+  /* Mouse only: on touch a tap left the hover fill on a tile just unticked. */
+  @media (hover: hover) { .lb-action:hover:not([aria-disabled="true"]) { background: var(--lb-chip-bg); } }
   .lb-action[aria-checked="true"] { background: var(--action-bg); border-color: var(--action-fg); }
-  .lb-action[disabled] { opacity: .6; cursor: progress; }
-  .lb-action:focus-visible { outline: 2px solid var(--color-blue-foreground); outline-offset: 2px; }
+  /* aria-disabled while one saves, not disabled: that would drop the focus. */
+  .lb-action[aria-disabled="true"] { opacity: .6; cursor: progress; }
+  .lb-action:focus-visible { outline: 2px solid var(--color-blue-foreground); outline-offset: 1px; }
   .lb-action[data-value="STILL_CHASING"] { --action-bg: var(--color-blue-background); --action-fg: var(--color-blue-foreground); }
   .lb-action[data-value="INTEREST_VALIDATED_OR_MEETING_PLANED"] { --action-bg: var(--color-green-background); --action-fg: var(--color-green-foreground); }
   .lb-action[data-value="COULD_NOT_REACH_STILL_TRYING"] { --action-bg: var(--color-yellow-background); --action-fg: var(--color-yellow-foreground); }
+  /* On a light card the web app's yellow (#ffcc00) is 1.44:1 as a dot or
+     border; the same hue, darker, clears 3:1. A dark host keeps the palette
+     yellow, which is already light on dark. */
+  :root:not([data-theme=dark]) .lb-action[data-value="COULD_NOT_REACH_STILL_TRYING"] { --action-fg: oklch(0.60 0.13 91); }
   .lb-action[data-value="NOT_INTERESTED_LOST"] { --action-bg: var(--color-red-background); --action-fg: var(--color-red-foreground); }
-  @media (prefers-reduced-motion: reduce) { .lb-action { transition: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .lb-action { transition: background-color .12s ease, border-color .12s ease, opacity 160ms cubic-bezier(0.23, 1, 0.32, 1); }
+    .lb-action[data-pressed]:not([aria-disabled="true"]) { transform: none; opacity: .85; }
+  }
+  /* Header: the title and its count on one line, the count a muted chip on
+     the title's baseline. An empty tally (loading) takes no room, but stays
+     rendered so its role=status still announces. */
+  .page-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  /* On the card surface with a hairline: the chip grey is the page's own
+     grey, so a filled chip vanished into it. */
+  .page-head .lb-tally { font-size: 0.8125rem; font-weight: 600; color: var(--lb-muted); font-variant-numeric: tabular-nums;
+    background: var(--lb-surface); border: 1px solid var(--lb-border); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+  .page-head .lb-tally:empty { border-width: 0; }
+  .page-head .lb-tally:empty { padding: 0; }
+
+  /* Toolbar: one row, centred on the controls (the skin aligns to the
+     bottom edge for captions stacked above their fields; these sit beside
+     them). Filters lead; the bulk actions trail. */
+  .page .lb-toolbar { align-items: center; }
+  .page .lb-toolbar .filter { flex-direction: row; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; max-width: none; }
+  .page .lb-toolbar .filter > .lb-field-label { font-weight: 500; color: var(--lb-muted); white-space: nowrap; }
+  .page .lb-toolbar .filter > .lb-select { width: auto; min-width: 8.5rem; }
+  /* 20px between the two filters, against 8px between a caption and its
+     picker, so each pair reads as one field (scoped: the skin's group gap
+     is (0,2,0)). */
+  .page .lb-toolbar .filters { gap: 20px; }
+  .bulk-act { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .bulk-act[hidden] { display: none; }
+  .bulk-count { font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .lb-row .lb-input { flex: 1; min-width: 0; }
-  @media (max-width: 420px) { .actions { grid-template-columns: 1fr; } }
+
+  /* The card reads in two groups: what the lead is (fit, intent, data) and
+     what the rep does about it (status, prospecting, note). Every section is
+     16px apart; the second group starts 28px down, so the turn from reading
+     to acting shows in the spacing alone. */
+  .lb-section.act-start { margin-block-start: 0.75rem; }
+
+  /* The note field fills the row, its button sits at its trailing end at
+     its label's width, and wraps under the field when the card is narrow. */
+  .lb-stack > .note-row { gap: 8px; }
+  .note-row > .lb-input { flex: 1 1 10rem; min-width: 0; }
+  .note-row > .lb-btn { flex: 0 0 auto; width: auto; border-radius: var(--lb-radius-sm); }
+
+  /* Company: two columns. The leading one has a line each for the
+     switchboard, the email and the website; the trailing one stacks the
+     social profiles as small link pills, top-aligned with the first line.
+     They sit side by side while the lines keep ~11rem, and the profiles wrap
+     under them, as a row, on a narrower card. Space alone separates them. */
+  .company-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 16px; }
+  .company-row > .company { flex: 1 1 11rem; min-width: 0; }
+  .company .lb-fact > .lb-link { justify-self: start; overflow-wrap: anywhere; }
+  /* Line icons in place of emoji (the welcome board's set): muted, 14px,
+     centred on the first text line of the fact row. */
+  .fact-icon { width: 14px; height: 14px; color: var(--lb-muted); align-self: center; }
+  /* Icon-only profile links, three to a row at most, at the trailing edge
+     of the second column; on a narrow card they wrap under the lines,
+     starting at the leading edge. Each is a 32px square with a 40px target
+     (a 4px overhang; 8px apart, so neighbouring targets meet, never
+     overlap). Muted, ink on hover; the mark is the platform's own glyph. */
+  .socials { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; flex: 0 0 auto;
+    max-width: calc(3 * 32px + 2 * 8px); }
+  @media (max-width: 420px) { .socials { justify-content: flex-start; max-width: none; } }
+  .social { position: relative; box-sizing: border-box; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px;
+    border: 1px solid var(--lb-border); background: var(--lb-surface); color: var(--lb-muted);
+    transition: color .12s ease, border-color .12s ease; }
+  .social::before { content: ""; position: absolute; inset: -4px; }
+  .social > svg { width: 16px; height: 16px; }
+  @media (hover: hover) { .social:hover { color: var(--lb-fg); border-color: var(--lb-control-border); } }
+  .social:focus-visible { outline: 2px solid var(--color-blue-foreground); outline-offset: 1px; }
+
+  /* The LinkedIn mark sits inline with the linked name, on its centre line;
+     the underline runs under the name only. */
+  .li-link { display: inline-flex; align-items: center; gap: 4px; vertical-align: bottom; }
+  .li-icon { flex: none; width: 13px; height: 13px; }
+
+  /* Section titles and field captions in natural case, not the skin's
+     uppercase + 0.08em tracking (tracking is only there to air out capitals,
+     so it goes with them). 13px / 600 in the ink colour: one step under the
+     15px / 700 company name, set apart from the 13px / 400 muted body by
+     weight and colour. Scoped under .page, (0,2,0), because the skin loads
+     after this sheet; the skin's own inline-checkbox label rule, also
+     (0,2,0) and later, still wins for "Select all". */
+  .page .lb-sec-title, .page .lb-field-label {
+    font-size: 0.8125rem; font-weight: 600; letter-spacing: normal; text-transform: none; line-height: 1.4; }
+
+  /* Numbered pages between Previous and Next. Stays at the right edge even
+     when it wraps under the range on a narrow screen. */
+  .pages { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-inline-start: auto; }
+  .page-nums { display: contents; }
+  .page-num { min-width: 2.125rem; padding-inline: 8px; justify-content: center; font-variant-numeric: tabular-nums; }
+  /* The current page: inverted like the skin's primary button, and no hover
+     or press, since clicking it does nothing. Light: black fill, white text.
+     A dark host: white fill, dark text, so it stands out from its darker
+     neighbours instead of sinking below them (a fixed black did, 1.03:1
+     against the page).
+     Specificity (0,5,0) with :hover: the skin's .lb-btn:hover:not(…):not(…)
+     is (0,4,0) and loads after this sheet, so anything less loses to it. */
+  .pages .page-num.lb-btn[aria-current="page"],
+  .pages .page-num.lb-btn[aria-current="page"]:hover,
+  .pages .page-num.lb-btn[aria-current="page"]:active {
+    background-color: var(--lb-fg); border-color: var(--lb-fg); color: var(--lb-field);
+    cursor: default; transform: none; }
+  .page-gap { min-width: 1.25rem; text-align: center; color: var(--lb-muted); font-size: 0.8125rem; }
+  @media (max-width: 420px) {
+    .actions { grid-template-columns: 1fr; }
+    .lb-toolbar > .lb-group { flex: 1 1 100%; }
+    /* On a phone each filter is a caption over a full-width picker. */
+    .page .lb-toolbar .filters { flex-direction: column; align-items: stretch; gap: 12px; }
+    .page .lb-toolbar .filter { flex-direction: column; align-items: stretch; gap: 4px; }
+    .page .lb-toolbar .filter > .lb-select { width: 100%; }
+    .bulk-act { flex: 1 1 100%; }
+    .bulk-act > .lb-select, .bulk-act > .lb-btn { flex: 1 1 100%; }
+  }
 </style>
 <div class="page">
   <header class="page-head">
     <!-- data-i18n / data-i18n-aria: keys into app.js's label dictionary, so
          the fixed labels follow the viewer's language like the cards do. -->
-    <h1 data-i18n="heading">Today's leads</h1>
+    <!-- The count describes the list, so it sits with the list's title. -->
+    <div class="page-title">
+      <h1 data-i18n="heading">Today’s leads</h1>
+      <span class="lb-tally" id="tally" role="status"></span>
+    </div>
     <p data-i18n="subheading">From your active lens. Like, set a status, tick a prospecting action — every control writes to Leadbay.</p>
   </header>
 
+  <!-- One row: what narrows the list on the leading side, what acts on a
+       selection on the trailing side. The status picker and Apply appear only
+       once something is selected. -->
   <div class="lb-toolbar">
-    <span class="lb-tally" id="tally"></span>
-    <span class="lb-group">
-      <label class="lb-field"><span class="lb-field-label" data-i18n="taste">Taste</span>
+    <span class="lb-group filters">
+      <label class="lb-field filter"><span class="lb-field-label" data-i18n="taste">Taste</span>
         <select class="lb-select" id="f-taste" aria-label="Filter by taste" data-i18n-aria="tasteAria">
           <option value="all" data-i18n="all">All</option><option value="liked" data-i18n="liked">Liked</option><option value="disliked" data-i18n="disliked">Disliked</option><option value="none" data-i18n="notRated">Not rated</option>
         </select>
       </label>
-      <label class="lb-field"><span class="lb-field-label" data-i18n="verdict">Verdict</span>
-        <select class="lb-select" id="f-verdict" aria-label="Filter by qualifier verdict" data-i18n-aria="verdictAria">
-          <option value="all" data-i18n="all">All</option><option value="boosted" data-i18n="boostedOpt">AI boosted</option><option value="neutral" data-i18n="neutralOpt">No adjustment</option><option value="penalised" data-i18n="penalisedOpt">AI penalised</option>
+      <label class="lb-field filter"><span class="lb-field-label" data-i18n="verdict">AI adjustment</span>
+        <select class="lb-select" id="f-verdict" aria-label="Filter by AI adjustment" data-i18n-aria="verdictAria">
+          <option value="all" data-i18n="all">All</option><option value="boosted" data-i18n="boostedOpt">AI boost</option><option value="neutral" data-i18n="neutralOpt">No AI adjustment</option><option value="penalised" data-i18n="penalisedOpt">AI penalty</option>
         </select>
       </label>
     </span>
     <span class="lb-spacer"></span>
-    <span class="lb-group">
-      <label class="lb-field lb-field-inline"><input type="checkbox" id="select-all"><span class="lb-field-label" data-i18n="selectAll">Select all</span></label>
-      <select class="lb-select" id="bulk-status" aria-label="Status for selected leads" data-i18n-aria="bulkStatusAria"></select>
-      <button class="lb-btn lb-btn-submit" id="bulk-apply" type="button" data-i18n="applySelected">Apply to selected</button>
+    <span class="lb-group bulk">
+      <label class="lb-field lb-field-inline"><input type="checkbox" id="select-all"><span class="lb-field-label" data-i18n="selectAll">Select all on this page</span></label>
+      <span class="bulk-act" id="bulk-act" hidden>
+        <span class="bulk-count" id="bulk-count"></span>
+        <select class="lb-select" id="bulk-status" aria-label="Status for selected leads" data-i18n-aria="bulkStatusAria"></select>
+        <button class="lb-btn lb-btn-submit" id="bulk-apply" type="button" data-i18n="applySelected">Apply to selected</button>
+      </span>
     </span>
     <div class="lb-msg" id="bulk-msg" role="status" aria-live="polite" style="flex:1 0 100%"></div>
   </div>
 
-  <main class="deck" id="deck" data-lb-state="ready"></main>
+  <!-- lb-deck: the skin dims and locks it while the next page loads. -->
+  <main class="deck lb-deck" id="deck" data-lb-state="ready"></main>
 
+  <!-- The range reads first, on the left; the controls sit at the bottom
+       right, where the eye lands after the last card. -->
   <div class="lb-pager">
-    <button class="lb-btn" id="prev" type="button" data-i18n="previous">Previous</button>
-    <button class="lb-btn" id="next" type="button" data-i18n="next">Next</button>
-    <span class="lb-spacer"></span>
     <span class="lb-pager-range" id="range"></span>
+    <span class="lb-spacer"></span>
+    <nav class="pages" aria-label="Pagination" data-i18n-aria="pagination">
+      <button class="lb-btn" id="prev" type="button" data-i18n="previous">Previous</button>
+      <span class="page-nums" id="page-nums"></span>
+      <button class="lb-btn" id="next" type="button" data-i18n="next">Next</button>
+    </nav>
   </div>
 </div>
