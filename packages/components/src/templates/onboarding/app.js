@@ -16,23 +16,24 @@
       subtitleLearned: "Here's what our AI learned about {company}.",
       subtitlePlain: "Here's what you can ask Leadbay to do, right from this chat.",
       subtitleFailed: "Your account could not be read just now — everything below still works.",
-      computing: "Leadbay is still learning about your business — your first leads are being scored and will land shortly.",
+      computing: "Leadbay is still learning about your business. Your first leads are being scored; ask for today's leads in a few minutes.",
       tagsLabel: "Intent signals",
       tagsTip: "Topics your ideal buyers are actively researching and signaling intent around.",
       qqLabel: "Qualification questions",
       qqTip: "Questions to quickly assess whether a prospect matches your ideal profile during outreach.",
       ibpLabel: "Ideal buyer profile",
-      ibpTip: "AI-learned profile of your ideal customer, built from your CRM data.",
+      ibpTip: "AI-learned profile of your ideal customer.",
       summaryLead: "Summary:",
       signals: "Strong signals",
       disqualifiers: "Disqualifiers",
-      editAnytime: "You can edit your preferences anytime",
+      editAnytime: "All of this lives in your taste profile, in the Leadbay web app.",
       editTaste: "Edit your taste profile",
       newTab: " (opens in a new tab)",
       asksLabel: "What you can ask Leadbay",
       chatHint: "To start right away, pick one of the suggestions in the chat. Or copy any phrase below and paste it.",
       ctaLabel: "Want to get the most out of Leadbay?",
-      live: "Join the next live onboarding",
+      live: "Sign up for a live onboarding session",
+      retry: "Try again",
       ask: "Ask Leadbay",
       copy: "Copy the phrase",
       sent: "Sent to the chat.",
@@ -53,7 +54,7 @@
       outreachText: "Find the decision-makers' emails and phones, then get a first email drafted for you.",
       outreachSay: "Draft a first email to my top lead",
       followTitle: "Follow up",
-      followText: "The leads you already know or have worked, ranked so you know who to call next.",
+      followText: "The leads you already know or have contacted, ranked so you know who to call next.",
       followSay: "Which leads should I follow up with?",
       mapTitle: "Plan a trip",
       mapText: "Going somewhere? See your leads on a map and plan the day's route.",
@@ -72,54 +73,55 @@
       subtitleLoading: "Chargement de ce que Leadbay sait de votre entreprise…",
       subtitleLearned: "Voici ce que notre IA a appris sur {company}.",
       subtitlePlain: "Voici ce que vous pouvez demander à Leadbay, directement depuis ce chat.",
-      subtitleFailed: "Votre compte n'a pas pu être lu pour l'instant — tout ce qui suit fonctionne quand même.",
-      computing: "Leadbay apprend encore à connaître votre entreprise — vos premiers leads sont en cours de scoring et arrivent bientôt.",
+      subtitleFailed: "Impossible de charger ce que Leadbay a appris sur votre entreprise. Demandez ce que vous voulez ci-dessous, ou réessayez.",
+      computing: "Leadbay apprend encore à connaître votre entreprise. Vos premiers leads sont en cours de notation\u202f: demandez les leads du jour dans quelques minutes.",
       tagsLabel: "Signaux d'intention",
       tagsTip: "Sujets sur lesquels vos acheteurs idéaux font activement des recherches et manifestent leur intérêt.",
       qqLabel: "Questions de qualification",
       qqTip: "Questions permettant d'évaluer rapidement si un prospect correspond à votre profil idéal lors de la prise de contact.",
       ibpLabel: "Profil de l'acheteur idéal",
-      ibpTip: "Profil de votre client idéal établi par l'IA à partir des données de votre CRM.",
+      ibpTip: "Profil de votre client idéal établi par l'IA.",
       // French puts a non-breaking space before the colon.
       summaryLead: "Résumé :",
       signals: "Signaux forts",
       disqualifiers: "Motifs d'exclusion",
-      editAnytime: "Vous pouvez éditer vos préférences à tout moment",
+      editAnytime: "Tout ceci se trouve dans votre profil caractéristique, sur l'application web Leadbay.",
       editTaste: "Modifier votre profil caractéristique",
       newTab: " (s'ouvre dans un nouvel onglet)",
       asksLabel: "Ce que vous pouvez demander à Leadbay",
-      chatHint: "Pour commencer tout de suite, choisissez l'une des suggestions dans le chat. Ou copiez une phrase ci-dessous et collez-la.",
-      ctaLabel: "Vous souhaitez tirer le meilleur parti de Leadbay ?",
-      live: "Participer au prochain live onboarding",
+      chatHint: "Pour commencer tout de suite, choisissez l'une des suggestions dans la conversation. Ou copiez une phrase ci-dessous et collez-la.",
+      ctaLabel: "Vous souhaitez tirer le meilleur parti de Leadbay\u202f?",
+      live: "S'inscrire à une session de prise en main en direct",
+      retry: "Réessayer",
       ask: "Demander à Leadbay",
       copy: "Copier la phrase",
-      sent: "Envoyé dans le chat.",
-      staged: "Prêt dans votre chat : appuyez sur Entrée pour l'envoyer.",
-      copied: "Copié — collez-le dans le chat.",
-      selectIt: "La phrase est sélectionnée : copiez-la et collez-la dans le chat.",
+      sent: "Phrase envoyée dans la conversation.",
+      staged: "Phrase prête dans votre zone de message\u202f: appuyez sur Entrée pour l'envoyer.",
+      copied: "Phrase copiée — collez-la dans la conversation.",
+      selectIt: "La phrase est sélectionnée\u202f: copiez-la et collez-la dans la conversation.",
       leadsTitle: "Voir les leads du jour",
-      leadsText: "De nouvelles entreprises qui correspondent à votre acheteur idéal, choisies et scorées chaque jour par l'IA.",
+      leadsText: "De nouvelles entreprises qui correspondent à votre acheteur idéal, choisies et notées chaque jour par l'IA.",
       leadsSay: "Montre-moi les leads du jour",
       refineTitle: "Affiner votre ciblage",
       refineText: "Dites avec vos mots ce qui fait un bon lead, ou ajoutez, supprimez et reformulez les questions que Leadbay vérifie sur chaque lead. Le prochain lot en tient compte.",
       refineSay: "Je veux affiner mon ciblage et mes questions de qualification",
       researchTitle: "Analyser une entreprise",
-      researchText: "Une fiche d'une page sur n'importe quel lead : son activité et ses signaux d'achat.",
+      researchText: "Une fiche d'une page sur n'importe quel lead\u202f: son activité et ses signaux d'achat.",
       researchSay: "Analyse mon meilleur lead",
       outreachTitle: "Trouver des contacts, rédiger un e-mail",
       outreachText: "Trouvez l'e-mail et le téléphone des décideurs, puis obtenez un premier e-mail rédigé pour vous.",
       outreachSay: "Rédige un premier e-mail pour mon meilleur lead",
       followTitle: "Relancer",
-      followText: "Les leads que vous connaissez déjà ou avez travaillés, classés pour savoir qui appeler ensuite.",
+      followText: "Les leads que vous connaissez déjà ou avez contactés, classés pour savoir qui appeler ensuite.",
       followSay: "Quels leads dois-je relancer ?",
       mapTitle: "Préparer un déplacement",
-      mapText: "Vous partez en déplacement ? Voyez vos leads sur une carte et préparez l'itinéraire de la journée.",
+      mapText: "Vous partez en déplacement\u202f? Voyez vos leads sur une carte et préparez l'itinéraire de la journée.",
       mapSay: "Montre mes relances sur une carte",
       campaignTitle: "Lancer une campagne",
       campaignText: "Regroupez des leads dans une campagne et travaillez-les comme une liste d'appels, avec le suivi de l'avancement.",
       campaignSay: "Crée une campagne avec mes meilleurs leads",
       importTitle: "Importer votre CRM",
-      importText: "Importez un fichier de comptes. Leadbay les rapproche, les score et les qualifie.",
+      importText: "Importez un fichier de comptes. Leadbay les retrouve dans sa base, les note et les qualifie.",
       importSay: "Importe mon fichier CRM",
     },
   })
@@ -127,19 +129,25 @@
   // Order follows the web app's tour: Discover, the taste profile, a lead's
   // profile, the selection actions (contacts), Monitor, the map, Campaign —
   // then the CRM import that feeds Monitor.
+  // `hue` tints each card's icon tile, one hue per pair of related jobs, so
+  // colour carries meaning (never blue: on this board blue is a link):
+  //   purple  the AI's picks and targeting (the kit's AI colour, as Qualify)
+  //   teal    research and reaching out (the intent-signal teal)
+  //   green   following up, on the phone or on the road
+  //   cherry  organising: campaigns and the CRM import
   const ASKS = [
-    { key: "leads", icon: '<path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/>' },
+    { key: "leads", hue: "purple", icon: '<path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/>' },
     // One card for the two parts of the taste profile the chat can change:
     // the targeting prompt (leadbay_refine_lead_targeting) and the
     // qualification questions (leadbay_set_qualification_questions). The
     // assistant asks which the user means.
-    { key: "refine", icon: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>' },
-    { key: "research", icon: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>' },
-    { key: "outreach", icon: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>' },
-    { key: "follow", icon: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>' },
-    { key: "map", icon: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>' },
-    { key: "campaign", icon: '<path d="M3 11v2a1 1 0 0 0 1 1h3l5 4V6L7 10H4a1 1 0 0 0-1 1Z"/><path d="M16 9a3 3 0 0 1 0 6"/><path d="M19 6a7 7 0 0 1 0 12"/>' },
-    { key: "import", icon: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>' },
+    { key: "refine", hue: "purple", icon: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>' },
+    { key: "research", hue: "teal", icon: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>' },
+    { key: "outreach", hue: "teal", icon: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>' },
+    { key: "follow", hue: "green", icon: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>' },
+    { key: "map", hue: "green", icon: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>' },
+    { key: "campaign", hue: "cherry", icon: '<path d="M3 11v2a1 1 0 0 0 1 1h3l5 4V6L7 10H4a1 1 0 0 0-1 1Z"/><path d="M16 9a3 3 0 0 1 0 6"/><path d="M19 6a7 7 0 0 1 0 12"/>' },
+    { key: "import", hue: "cherry", icon: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>' },
   ]
 
   let data = null
@@ -169,7 +177,13 @@
   }
   const $ = (id) => document.getElementById(id)
   const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()) : [])
-  function say(msg, text, tone) { msg.textContent = text; msg.dataset.tone = tone || "" }
+  // A new status fades in (150ms, the skin's ease-out), so a repeat click
+  // that writes the same "Copied" still shows it heard the user. The motion is
+  // opacity only, so reduced motion keeps it.
+  function say(msg, text, tone) {
+    msg.textContent = text; msg.dataset.tone = tone || ""
+    if (text && msg.animate) msg.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: "cubic-bezier(0.23, 1, 0.32, 1)" })
+  }
 
   function translatePage() {
     document.title = t("docTitle")
@@ -220,6 +234,11 @@
           ? t("subtitleLearned", { company })
           : t("subtitlePlain")
     $("computing").hidden = !(data && data.organization && data.organization.computing_intelligence)
+    // The skeleton holds the learned card's place until the account is read
+    // (or could not be); then the real card, or nothing, takes over.
+    $("learned-loading").hidden = !!(data || failed)
+    // A failed read offers a way back, beside the line that says it failed.
+    $("retry").hidden = !failed
   }
 
   function learnedAnything() {
@@ -259,33 +278,94 @@
     $("learned").hidden = !learnedAnything()
   }
 
+  // The cards are built once and only relabelled after, so their staggered
+  // entrance (--i, in page.html) plays once and a later render never
+  // replaces a card under the user's cursor.
+  let cards = null
   function renderAsks() {
     // Where the buttons only copy, send the user to the suggestions the
     // assistant offers in the chat: those are the one-click start there.
     $("chat-hint").hidden = !booted || lb.canSendToChat()
     if (booted) $("asks").setAttribute("data-ready", "")
-    $("asks").replaceChildren(
-      ...ASKS.map((a) => {
-        const phrase = t(a.key + "Say")
+    if (!cards) {
+      cards = ASKS.map((a, i) => {
         const titleId = "ask-" + a.key + "-title"
-        const quote = h("p", { class: "say", text: "“" + phrase + "”" })
+        const title = h("span", { id: titleId })
+        const text = h("p", {})
+        const quote = h("p", { class: "say" })
         const msg = h("div", { class: "lb-msg", role: "status", "aria-live": "polite" })
         // Eight buttons share one label; the card's title tells them apart.
-        const btn = h("button", { class: "lb-btn", type: "button", "data-ask": a.key, "aria-describedby": titleId, text: buttonLabel(), onclick: () => deliver(phrase, t(a.key + "Title"), msg, quote) })
-        return h("article", { class: "lb-card ask" },
-          h("h3", {}, svg(a.icon), h("span", { id: titleId, text: t(a.key + "Title") })),
-          h("p", { text: t(a.key + "Text") }),
-          quote, h("div", { class: "ask-act" }, btn, msg),
+        const btn = h("button", { class: "lb-btn", type: "button", "data-ask": a.key, "aria-describedby": titleId, onclick: () => deliver(t(a.key + "Say"), t(a.key + "Title"), msg, quote) })
+        // Named by its title, so article navigation tells the eight apart.
+        const card = h("article", { class: "lb-card ask", "aria-labelledby": titleId, style: "--i: " + i },
+          h("h3", {}, h("span", { class: "ico", "data-hue": a.hue }, svg(a.icon)), title), text, quote, h("div", { class: "ask-act" }, btn, msg),
         )
-      }),
-    )
+        return { a, card, title, text, quote, btn }
+      })
+      $("asks").replaceChildren(...cards.map((c) => c.card))
+    }
+    // The page's own quotation marks: « » (with narrow no-break spaces) in
+    // French, “ ” in English. Only the display; the phrase sent or copied is
+    // the bare words.
+    const [open, close] = lb.locale() === "fr" ? ["« ", " »"] : ["“", "”"]
+    for (const c of cards) {
+      c.title.textContent = t(c.a.key + "Title")
+      c.text.textContent = t(c.a.key + "Text")
+      c.quote.textContent = open + t(c.a.key + "Say") + close
+      c.btn.textContent = buttonLabel()
+    }
   }
 
+  const EASE = "cubic-bezier(0.23, 1, 0.32, 1)"
+  const reduceMotion = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+  let painted = false
+
+  // An element still in its CSS entrance: a second animation on top of it
+  // would fight it for opacity or transform, and the entrance already shows
+  // the new state as it fades in.
+  const entering = (el) => !!(el.getAnimations && el.getAnimations().some((a) => a.animationName && a.playState === "running"))
+
+  // A greeting that changes once the account is read (the name, "what our
+  // AI learned about …") fades in rather than swapping in one frame.
+  // Opacity only, so reduced motion keeps it.
+  function fadeIfChanged(el, before) {
+    if (painted && el.animate && el.textContent !== before && !entering(el)) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: EASE })
+  }
+
+  // Shown late — after the first paint — these must not wait out their
+  // first-paint place in the entrance queue: the learned card would leave an
+  // empty gap where the skeleton was, and the chat hint a blank strip.
+  const LATE = ["computing", "learned", "chat-hint"]
+
   function render() {
+    // When the learned card appears, the sections under it would drop by its
+    // height in one frame: measure them, render, then slide each from where
+    // it was to where it is (transform only, so the MCP App frame does not
+    // jump while it sizes itself). The ask cards are measured as their own
+    // grid, since the chat hint can push them inside their section. Reduced
+    // motion skips the slide; the cards' own fades still play.
+    const below = [document.querySelector(".start > h2"), $("asks"), document.querySelector(".lb-card.foot")]
+    const tops = painted ? below.map((el) => el.getBoundingClientRect().top) : null
+    const title = $("title").textContent, subtitle = $("subtitle").textContent
+    const wasHidden = LATE.map((id) => $(id).hidden)
+
     translatePage()
     renderHeader()
     renderLearned()
     renderAsks()
+
+    if (painted) LATE.forEach((id, i) => { if (wasHidden[i] && !$(id).hidden) $(id).style.animationDelay = "0ms" })
+    fadeIfChanged($("title"), title)
+    fadeIfChanged($("subtitle"), subtitle)
+    if (tops && !reduceMotion()) {
+      below.forEach((el, i) => {
+        const dy = tops[i] - el.getBoundingClientRect().top
+        if (dy && el.animate && !entering(el)) el.animate([{ transform: "translateY(" + dy + "px)" }, { transform: "none" }], { duration: 280, easing: EASE })
+      })
+    }
+    // Painted once the browser has drawn the first frame, not when this
+    // first, synchronous render returns.
+    if (!painted) requestAnimationFrame(() => requestAnimationFrame(() => { painted = true }))
   }
 
   // ---- start ----
@@ -301,14 +381,26 @@
     const res = opening && opening.result
     if (res && res.user) {
       data = res
+      render() // the host's locale and send capability are known now
     } else {
-      try {
-        data = await lb.call("leadbay_welcome", { _triggered_by: ASK })
-      } catch {
-        failed = true
-      }
+      await readAccount()
     }
-    render() // the host's locale and send capability are known now
   }
+
+  async function readAccount() {
+    try {
+      data = await lb.call("leadbay_welcome", { _triggered_by: ASK })
+    } catch {
+      failed = true
+    }
+    render()
+  }
+
+  // Try again: back to the skeleton, then one more read.
+  $("retry").addEventListener("click", () => {
+    failed = false
+    render()
+    readAccount()
+  })
   boot()
 })()

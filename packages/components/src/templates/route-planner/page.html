@@ -53,11 +53,15 @@
    so the board looks the same whatever the rep's OS is set to, and the map
    colours need no dark variant because there is no dark board.
 
-   The selector is tripled on purpose. `lb.styles()` appends the skin to
-   <head> at runtime, i.e. AFTER this sheet, so a plain `:root` here loses to
-   the skin's `:root[data-theme=dark]` on source order. `:root:root:root`
-   outranks it on specificity instead, which source order cannot undo. */
-:root:root:root {
+   The selector is quadrupled on purpose. `lb.styles()` appends the skin to
+   <head> at runtime, i.e. AFTER this sheet, so a rule here must outrank the
+   skin's dark blocks on specificity, which source order cannot undo. A host's
+   `:root[data-theme=dark]` is (0,2,0); the OS one,
+   `:root:not([data-theme=light]):not([data-lb-theme=light])`, is (0,3,0).
+   The old tripled `:root:root:root` only TIED that second one and lost on
+   order, so a dark-mode laptop got white text on the white panel. (0,4,0)
+   beats both. Every token either block changes is held here. */
+:root:root:root:root {
   --lb-surface: var(--color-gray-1);
   --lb-border: var(--color-gray-3);
   --lb-fg: var(--color-black);
@@ -66,7 +70,14 @@
   --lb-chip-bg: var(--color-gray-2);
   --lb-control-border: var(--color-gray-6);
   --lb-shadow: 0 0.5rem 1.5rem oklch(0 0 0/.06), 0 0.125rem 0.5rem oklch(0 0 0/.04);
+  --lb-page-bg: var(--color-gray-2);
+  --lb-btn-border: var(--color-gray-5);
+  --lb-text-blue: oklch(0.521 0.181 251); --lb-text-green: oklch(0.509 0.181 141);
+  --lb-text-red: oklch(0.543 0.191 26); --lb-text-teal: oklch(0.479 0.182 180);
   color-scheme: light;
+  /* The yellow is ours (the :root block above), but the skin's dark blocks
+     redefine it too and outrank a plain :root. */
+  --color-yellow-background: oklch(0.972 0.054 91); --color-yellow-foreground: oklch(0.864 0.181 91);
   --color-blue-background: oklch(0.947 0.029 251); --color-blue-foreground: oklch(0.564 0.181 251);
   --color-green-background: oklch(0.947 0.029 141); --color-green-foreground: oklch(0.564 0.181 141);
   --color-red-background: oklch(0.947 0.029 26); --color-red-foreground: oklch(0.564 0.191 26);
@@ -92,6 +103,11 @@ body {
   gap: 12px;
   min-height: 0;
 }
+/* Without a notice (.notice:empty is display:none) the work area moves up into
+   the second row, an `auto` one, so the map took only the height of whatever
+   the panel held: a short strip while "Loading your follow-ups…" showed, full
+   height once the list landed. Two rows then, the work area on the fill row. */
+.app:has(> .notice:empty) { grid-template-rows: auto 1fr; }
 
 /* Top bar */
 .topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
@@ -100,25 +116,59 @@ body {
 .brand .tally { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .city-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .city-form .lb-input { min-width: 0; width: 200px; max-width: 100%; }
-.city-hint { font-size: 11px; color: var(--muted); flex-basis: 100%; }
+.city-hint { font-size: 11px; color: var(--muted); flex-basis: 100%; text-wrap: pretty; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; color: var(--muted); margin-inline-start: auto; }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .legend .ring { background: transparent; box-shadow: inset 0 0 0 2px var(--acted); }
 .notice:empty { display: none; }
-.notice { font-size: 13px; padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.notice { font-size: 13px; text-wrap: pretty; padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .notice[data-tone="error"] { border-color: var(--st-lost); }
 
 /* Work area */
 .work { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; min-height: 0; }
-.map-frame { position: relative; min-height: 0; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
+.map-frame { position: relative; min-height: 0; border-radius: 26px; overflow: hidden; border: 1px solid var(--line); }
 #map { position: absolute; inset: 0; }
+
+/* Entrance, once, in reading order, --enter-step apart (the triage board's timing):
+   the title, the tally, the city field and its buttons, the hint, the
+   legend, then the map on the left and the panel on the right. Only elements
+   never rebuilt take part, so nothing replays; "All areas" is left out since
+   it appears later, when a city is picked. Opacity and transform only, so
+   the MCP App frame does not jump while it sizes itself, and Leaflet, which
+   measures the container's layout size, is not thrown off. Under reduced
+   motion everything fades in together, without moving. */
+/* Shared with the welcome and triage boards: 280ms per piece, 50ms apart,
+   on the iOS drawer curve, which settles softly. */
+:root { --enter-dur: 280ms; --enter-ease: cubic-bezier(0.32, 0.72, 0, 1); --enter-step: 50ms; }
+@keyframes rp-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes rp-fade { from { opacity: 0; } to { opacity: 1; } }
+.brand h1, .brand .tally, .city-form .lb-input, #city-submit, #fit-leads, .city-hint, .legend, .map-frame, .panel {
+  animation: rp-enter var(--enter-dur) var(--enter-ease) both;
+  animation-delay: calc(var(--d, 0) * var(--enter-step));
+}
+.brand .tally { --d: 1; }
+.city-form .lb-input { --d: 2; }
+#city-submit { --d: 3; }
+#fit-leads { --d: 4; }
+.city-hint { --d: 5; }
+.legend { --d: 6; }
+.map-frame { --d: 7; }
+.panel { --d: 8; }
+@media (prefers-reduced-motion: reduce) {
+  .brand h1, .brand .tally, .city-form .lb-input, #city-submit, #fit-leads, .city-hint, .legend, .map-frame, .panel {
+    animation-name: rp-fade; animation-delay: 0ms;
+  }
+}
 .leaflet-container { background: var(--water); font-family: var(--font); }
 .leaflet-container .dept { fill: var(--land); fill-opacity: 1; stroke: var(--land-border); stroke-width: 0.7px; }
 .leaflet-container .route-line { stroke: var(--route); stroke-width: 2px; stroke-dasharray: 6 5; fill: none; stroke-opacity: 0.8; }
 .leaflet-control-attribution { background: var(--panel) !important; color: var(--muted) !important; font-size: 10px !important; }
 .leaflet-control-attribution a { color: var(--muted) !important; }
 .leaflet-bar a { background: var(--panel); color: var(--ink); border-color: var(--line); }
+/* display:flex below beats the browser's own [hidden] rule, so without this
+   the "Loading follow-ups…" pill stayed on the map after the leads loaded. */
+.map-status[hidden] { display: none; }
 .map-status { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 500; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 12px; display: flex; gap: 8px; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
 
 .pin-wrap { background: none; border: 0; }
@@ -150,12 +200,24 @@ body {
 .pin[data-selected="yes"] + .pin-label { max-width: 220px; border-color: var(--st-wanted); left: calc(100% + 8px); }
 
 /* Side panel */
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; min-height: 0; display: flex; flex-direction: column; }
+/* 26px = the 10px rows, choices and tiles inside + its 16px padding, so
+   the corners run concentric; the map frame beside it matches. */
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 26px; min-height: 0; display: flex; flex-direction: column; }
 .panel-scroll { overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; min-height: 0; }
 .panel-head { display: flex; align-items: flex-start; gap: 10px; }
 .panel-head h2 { margin: 0; font-size: 18px; line-height: 1.25; text-wrap: balance; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .icon-btn { flex: none; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink); display: grid; place-items: center; cursor: pointer; }
 .icon-btn:hover { background: var(--bg); }
+/* 40px targets without a bigger box: a 4px overhang on every side. The
+   stop tools sit 8px apart, so neighbouring overhangs meet but never
+   overlap. */
+.icon-btn { position: relative; }
+.icon-btn::before { content: ""; position: absolute; inset: -4px; }
+/* Pressed, the stop tools and the action choices give the same small press as
+   the skin's .lb-btn beside them (scale 0.97, its curve). */
+.icon-btn, .choice { transition: transform .16s cubic-bezier(0.23, 1, 0.32, 1), background-color .12s ease; }
+.icon-btn:active:not([disabled]), .choice:active:not([disabled]) { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) { .icon-btn, .choice { transition: background-color .12s ease; } }
 .icon-btn:focus-visible, .row-btn:focus-visible, .choice:focus-visible { outline: 2px solid var(--st-wanted); outline-offset: 2px; }
 .icon-btn svg { width: 16px; height: 16px; }
 .facts { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
@@ -171,7 +233,12 @@ body {
 .chip.acted i { background: var(--acted); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .links { display: flex; flex-wrap: wrap; gap: 14px; }
-.section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0; display: flex; justify-content: space-between; gap: 8px; }
+/* Natural case, as on the triage board, no tracking (it only aired out the
+   capitals). 14px / 700 in the ink colour: one step over the 13px / 600 lead
+   names in the rows below, so the title heads its list instead of reading as
+   another row. The count at the far end ("10") stays muted. */
+.section-title { font-size: 0.875rem; font-weight: 700; line-height: 1.4; color: var(--ink); margin: 0; display: flex; justify-content: space-between; gap: 8px; }
+.section-title > span + span { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
 .section { display: flex; flex-direction: column; gap: 8px; }
 .section .lb-select, .section .lb-input, .section textarea { width: 100%; box-sizing: border-box; }
 .section textarea { min-height: 64px; resize: vertical; font: inherit; }
@@ -230,9 +297,9 @@ body {
 .stop:last-child { border-bottom: 0; }
 .stop-num { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: var(--ink); color: var(--panel); font-variant-numeric: tabular-nums; }
 .stop-name { font: inherit; font-size: 13px; font-weight: 600; background: none; border: 0; padding: 0; color: var(--ink); text-align: start; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.stop-tools { display: flex; gap: 4px; }
-.stop-tools .icon-btn { width: 28px; height: 28px; }
-.empty { font-size: 13px; color: var(--muted); padding: 12px; border: 1px dashed var(--line); border-radius: 10px; }
+.stop-tools { display: flex; gap: 8px; }
+.stop-tools .icon-btn { width: 32px; height: 32px; }
+.empty { font-size: 13px; text-wrap: pretty; color: var(--muted); padding: 12px; border: 1px dashed var(--line); border-radius: 10px; }
 .summary { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 @media (max-width: 760px) {
