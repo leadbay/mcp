@@ -1,5 +1,37 @@
 # Changelog — @leadbay/mcp
 
+## 0.46.0 — 2026-10-14 — a welcome board, boards that load without a blank wait, and a clearer lead card
+
+- **A welcome board for new users.** On a first visit, or when you ask what
+  Leadbay can do, the assistant shows a board that greets you by name, shows
+  what Leadbay's AI learned about your business (intent signals,
+  qualification questions, your ideal buyer profile) and lists eight things
+  you can ask, each with a button that sends or copies the phrase. If your
+  account can't be read, it says so and offers Try again.
+- **The boards load without a blank wait.** While leads or your account load,
+  the boards show grey placeholders in the shape of what is coming, and the
+  real content takes their place where they stood. Each board appears piece
+  by piece in reading order; with reduced motion turned on, it simply fades
+  in.
+- **A clearer triage board.** The lead count sits next to the title, the
+  filters fit on one line, and the status picker and "Apply to selection"
+  appear only once you have ticked leads. Pages are numbered at the bottom
+  right, and changing page brings you back to the top.
+- **A clearer lead card.** The recommended contact and the company's own
+  phone, email and website are now separate, so the switchboard is never
+  mistaken for the contact's direct line. The company's social profiles show
+  as icons, the contact's name carries the LinkedIn mark, and a ticked
+  prospecting action shows a ✓, not just a colour. "Save note" is on one line
+  with its field, and a long qualifier answer has "Show more".
+- **The route planner, fixed.** On a computer in dark mode the panel no
+  longer shows white text on white. "All areas" no longer shows before a city
+  is picked, the "Loading follow-ups…" label no longer stays on the map, and
+  the map fills its space from the first moment. Reordering your stops slides
+  them into place, and a removed stop fades out.
+- **The boards fit a phone screen and work better with a keyboard and a
+  screen reader.** Nothing runs off a 320px screen, focus stays on the button
+  you pressed, and loading, filtering and errors are announced.
+
 ## 0.45.0 — 2026-10-08 — the route planner in ChatGPT, boards that load once, and boards in French
 
 - **The route planner opens in the chat outside Claude.** On ChatGPT and other
